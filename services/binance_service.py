@@ -83,7 +83,25 @@ class BinanceService:
         """Get top futures pairs by 24h volume"""
         try:
             await self.load_public_markets()
-            tickers = await self.public_exchange.fetch_tickers()
+            
+            # Retry with backoff if rate limited
+            tickers = None
+            for attempt in range(3):
+                try:
+                    tickers = await self.public_exchange.fetch_tickers()
+                    break
+                except Exception as e:
+                    if 'Too many requests' in str(e) or '1003' in str(e):
+                        wait = (attempt + 1) * 5  # 5s, 10s, 15s
+                        print(f"Rate limited fetching tickers, waiting {wait}s (attempt {attempt + 1}/3)")
+                        import asyncio
+                        await asyncio.sleep(wait)
+                    else:
+                        raise
+            
+            if tickers is None:
+                print("Failed to fetch tickers after 3 attempts")
+                return []
             
             # Filter USDT perpetual futures and sort by volume
             futures_pairs = []

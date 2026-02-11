@@ -603,6 +603,18 @@ class TradingEngine:
             if not indicators:
                 continue
             
+            # Skip pairs with degenerate data (no price movement)
+            # RSI of exactly 0 or 100 means all candles moved in one direction (or not at all)
+            # Null ADX means not enough price variation to compute trend strength
+            rsi_val = indicators.get('rsi')
+            adx_val = indicators.get('adx')
+            if rsi_val is not None and (rsi_val >= 99.9 or rsi_val <= 0.1):
+                logger.debug(f"[SKIP] {pair}: Degenerate RSI={rsi_val:.1f} (no price variation)")
+                continue
+            if adx_val is None:
+                logger.debug(f"[SKIP] {pair}: ADX is null (insufficient price data)")
+                continue
+            
             # Get signal
             signal, confidence = get_signal(
                 ema5=indicators.get('ema5'),

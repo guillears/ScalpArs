@@ -420,20 +420,27 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
     
     orders_data = []
     for o in orders:
+        # Use real-time WebSocket price instead of stale DB value
+        ws_tracker = websocket_tracker.trackers.get(o.pair)
+        if ws_tracker and ws_tracker.last_price and ws_tracker.last_price > 0:
+            current_price = ws_tracker.last_price
+        else:
+            current_price = o.current_price
+        
         # Calculate current P&L (including both entry and estimated exit fees)
-        if o.current_price and o.entry_price:
+        if current_price and o.entry_price:
             # Estimate exit fee based on current notional value
-            current_notional = o.current_price * o.quantity
+            current_notional = current_price * o.quantity
             entry_notional = o.entry_price * o.quantity
             estimated_exit_fee = current_notional * config.trading_config.trading_fee
             total_fees = o.entry_fee + estimated_exit_fee
             
             if o.direction == "LONG":
-                pnl = (o.current_price - o.entry_price) * o.quantity - total_fees
+                pnl = (current_price - o.entry_price) * o.quantity - total_fees
                 # P&L percentage as % of notional (not investment)
                 pnl_pct = (pnl / entry_notional) * 100
             else:
-                pnl = (o.entry_price - o.current_price) * o.quantity - total_fees
+                pnl = (o.entry_price - current_price) * o.quantity - total_fees
                 # P&L percentage as % of notional (not investment)
                 pnl_pct = (pnl / entry_notional) * 100
         else:
@@ -449,10 +456,10 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
         
         # Calculate PRICE drop from peak (this is what triggers the pullback/trailing stop)
         if o.direction == "LONG" and o.high_price_since_entry and o.high_price_since_entry > 0:
-            drop_from_peak = ((o.high_price_since_entry - (o.current_price or o.entry_price)) / 
+            drop_from_peak = ((o.high_price_since_entry - (current_price or o.entry_price)) / 
                             o.high_price_since_entry * 100)
         elif o.direction == "SHORT" and o.low_price_since_entry and o.low_price_since_entry > 0:
-            drop_from_peak = (((o.current_price or o.entry_price) - o.low_price_since_entry) / 
+            drop_from_peak = (((current_price or o.entry_price) - o.low_price_since_entry) / 
                             o.low_price_since_entry * 100)
         else:
             drop_from_peak = 0
@@ -467,7 +474,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "notional_value": round(o.notional_value, 2),
             "quantity": o.quantity,
             "entry_price": o.entry_price,
-            "current_price": o.current_price,
+            "current_price": current_price,
             "entry_fee": round(o.entry_fee, 4),
             "estimated_exit_fee": round(estimated_exit_fee, 4),
             "total_fees": round(o.entry_fee + estimated_exit_fee, 4),

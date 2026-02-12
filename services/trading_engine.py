@@ -412,19 +412,8 @@ class TradingEngine:
         if self.is_paper_mode:
             await self.save_state(db)
         
-        # Check if we should unsubscribe from WebSocket (no more open orders for this pair)
-        other_orders = await db.execute(
-            select(Order).where(
-                and_(
-                    Order.pair == order.pair,
-                    Order.status == "OPEN",
-                    Order.is_paper == order.is_paper,
-                    Order.id != order.id
-                )
-            )
-        )
-        if not other_orders.scalar_one_or_none():
-            await websocket_tracker.unsubscribe_pair(order.pair)
+        # Keep WebSocket subscription active for all top pairs (real-time price display)
+        # Pairs are subscribed in scan_and_trade() and stay subscribed
         
         return order
     
@@ -587,6 +576,10 @@ class TradingEngine:
         # Get top pairs based on config limit
         pairs_limit = config.trading_config.trading_pairs_limit
         top_pairs = await binance_service.get_top_futures_pairs(pairs_limit)
+        
+        # Subscribe all top pairs to WebSocket for real-time price streaming
+        for pair_info in top_pairs:
+            await websocket_tracker.subscribe_pair(pair_info['pair'])
         
         for pair_info in top_pairs:
             pair = pair_info['pair']

@@ -341,14 +341,21 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         long_count = positions.get((p.pair, "LONG"), 0)
         short_count = positions.get((p.pair, "SHORT"), 0)
         
-        # Calculate gap: (EMA5 - EMA20) / price * 100
+        # Use real-time WebSocket price instead of stale OHLCV close
+        ws_tracker = websocket_tracker.trackers.get(p.pair)
+        if ws_tracker and ws_tracker.last_price and ws_tracker.last_price > 0:
+            display_price = ws_tracker.last_price
+        else:
+            display_price = p.price
+        
+        # Calculate gap using OHLCV price (matches indicator logic)
         gap = None
         if p.ema5 and p.ema20 and p.price and p.price > 0:
             gap = round(((p.ema5 - p.ema20) / p.price) * 100, 4)
         
         pairs_data.append({
             "pair": p.pair,
-            "price": p.price,
+            "price": display_price,
             "ema5": round(p.ema5, 2) if p.ema5 else None,
             "ema8": round(p.ema8, 2) if p.ema8 else None,
             "ema13": round(p.ema13, 2) if p.ema13 else None,

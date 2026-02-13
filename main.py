@@ -635,6 +635,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "avg_win_long": 0,
             "avg_win_short": 0,
             "avg_loss": 0,
+            "avg_loss_long": 0,
+            "avg_loss_short": 0,
             "best_win_long": 0,
             "best_win_short": 0,
             "worst_loss_long": 0,
@@ -682,6 +684,10 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     avg_win_long = sum(o.pnl for o in long_wins) / len(long_wins) if long_wins else 0
     avg_win_short = sum(o.pnl for o in short_wins) / len(short_wins) if short_wins else 0
     avg_loss = sum(o.pnl for o in losses) / len(losses) if losses else 0
+    long_losses = [o for o in longs if (o.pnl or 0) <= 0]
+    short_losses = [o for o in shorts if (o.pnl or 0) <= 0]
+    avg_loss_long = sum(o.pnl for o in long_losses) / len(long_losses) if long_losses else 0
+    avg_loss_short = sum(o.pnl for o in short_losses) / len(short_losses) if short_losses else 0
     
     # Best/worst - Best win should only count winning trades (pnl > 0)
     long_wins_pnls = [o.pnl for o in longs if (o.pnl or 0) > 0]
@@ -737,10 +743,24 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         conf_long_wins = len([o for o in conf_longs if (o.pnl or 0) > 0])
         conf_short_wins = len([o for o in conf_shorts if (o.pnl or 0) > 0])
         
+        # Total P&L, Win Rate, and Risk/Reward
+        conf_total_pnl = conf_long_pnl + conf_short_pnl
+        conf_total_wins = conf_long_wins + conf_short_wins
+        conf_total_win_rate = round(conf_total_wins / len(conf_orders) * 100, 2) if conf_orders else 0
+        
+        conf_wins_list = [o for o in conf_orders if (o.pnl or 0) > 0]
+        conf_losses_list = [o for o in conf_orders if (o.pnl or 0) <= 0]
+        conf_avg_win = sum(o.pnl for o in conf_wins_list) / len(conf_wins_list) if conf_wins_list else 0
+        conf_avg_loss = sum(o.pnl for o in conf_losses_list) / len(conf_losses_list) if conf_losses_list else 0
+        conf_risk_reward = round(conf_avg_win / abs(conf_avg_loss), 2) if conf_avg_loss != 0 else 0
+        
         confidence_performance[conf] = {
             "total_trades": len(conf_orders),
             "long_trades": len(conf_longs),
             "short_trades": len(conf_shorts),
+            "total_pnl": round(conf_total_pnl, 2),
+            "total_win_rate": conf_total_win_rate,
+            "risk_reward": conf_risk_reward,
             "long_pnl": round(conf_long_pnl, 2),
             "short_pnl": round(conf_short_pnl, 2),
             "long_pnl_pct": round(conf_long_pnl / conf_long_investment * 100, 2) if conf_long_investment > 0 else 0,
@@ -821,6 +841,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "avg_win_long": round(avg_win_long, 2),
         "avg_win_short": round(avg_win_short, 2),
         "avg_loss": round(avg_loss, 2),
+        "avg_loss_long": round(avg_loss_long, 2),
+        "avg_loss_short": round(avg_loss_short, 2),
         "best_win_long": round(best_win_long, 2),
         "best_win_short": round(best_win_short, 2),
         "worst_loss_long": round(worst_loss_long, 2),

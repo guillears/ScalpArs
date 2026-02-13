@@ -200,6 +200,14 @@
                         <p id="perf-avg-loss" class="text-xl font-bold text-red-400">$0.00</p>
                     </div>
                     <div>
+                        <p class="text-xs text-gray-500 mb-1">Avg. Loss Long</p>
+                        <p id="perf-avg-loss-long" class="text-xl font-bold text-red-400">$0.00</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 mb-1">Avg. Loss Short</p>
+                        <p id="perf-avg-loss-short" class="text-xl font-bold text-red-400">$0.00</p>
+                    </div>
+                    <div>
                         <p class="text-xs text-gray-500 mb-1">Best Win Long</p>
                         <p id="perf-best-win-long" class="text-xl font-bold text-emerald-400">$0.00</p>
                     </div>
@@ -270,6 +278,9 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Confidence</th>
                                     <th class="px-3 py-2 font-medium text-center">Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total Win%</th>
+                                    <th class="px-3 py-2 font-medium text-right">R:R</th>
                                     <th class="px-3 py-2 font-medium text-right">Long P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Long %</th>
                                     <th class="px-3 py-2 font-medium text-right">Long Win%</th>
@@ -279,7 +290,7 @@
                                 </tr>
                             </thead>
                             <tbody id="confidence-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -696,6 +707,7 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <select id="config-low-mode" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                            <option value="disabled">Disabled</option>
                                             <option value="both">Both</option>
                                             <option value="long">Long</option>
                                             <option value="short">Short</option>
@@ -741,6 +753,7 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <select id="config-medium-mode" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                            <option value="disabled">Disabled</option>
                                             <option value="both">Both</option>
                                             <option value="long">Long</option>
                                             <option value="short">Short</option>
@@ -786,6 +799,7 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <select id="config-high-mode" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                            <option value="disabled">Disabled</option>
                                             <option value="both">Both</option>
                                             <option value="long">Long</option>
                                             <option value="short">Short</option>
@@ -831,6 +845,7 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <select id="config-extreme-mode" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                            <option value="disabled">Disabled</option>
                                             <option value="both">Both</option>
                                             <option value="long">Long</option>
                                             <option value="short">Short</option>
@@ -1168,6 +1183,8 @@
                 document.getElementById('perf-avg-win-long').textContent = formatUSD(data.avg_win_long);
                 document.getElementById('perf-avg-win-short').textContent = formatUSD(data.avg_win_short);
                 document.getElementById('perf-avg-loss').textContent = formatUSD(data.avg_loss);
+                document.getElementById('perf-avg-loss-long').textContent = formatUSD(data.avg_loss_long);
+                document.getElementById('perf-avg-loss-short').textContent = formatUSD(data.avg_loss_short);
                 document.getElementById('perf-best-win-long').textContent = formatUSD(data.best_win_long);
                 document.getElementById('perf-best-win-short').textContent = formatUSD(data.best_win_short);
                 document.getElementById('perf-worst-loss-long').textContent = formatUSD(data.worst_loss_long);
@@ -1213,19 +1230,27 @@
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
+                                    <td class="px-3 py-2 text-right text-gray-500">-</td>
+                                    <td class="px-3 py-2 text-right text-gray-500">-</td>
+                                    <td class="px-3 py-2 text-right text-gray-500">-</td>
                                 </tr>
                             `;
                         }
                         
+                        const totalPnlClass = c.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const longPnlClass = c.long_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const shortPnlClass = c.short_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const longPctClass = c.long_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const shortPctClass = c.short_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const rrClass = c.risk_reward >= 1 ? 'text-emerald-400' : 'text-red-400';
                         
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${confColors[conf]} font-medium">${conf}</td>
                                 <td class="px-3 py-2 text-center">${c.total_trades} (${c.long_trades}L/${c.short_trades}S)</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-bold">${formatUSD(c.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right">${c.total_win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${rrClass} font-medium">${c.risk_reward > 0 ? c.risk_reward.toFixed(2) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${longPnlClass} font-medium">${c.long_trades > 0 ? formatUSD(c.long_pnl) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${longPctClass}">${c.long_trades > 0 ? c.long_pnl_pct.toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right">${c.long_trades > 0 ? c.long_win_rate.toFixed(0) + '%' : '-'}</td>
@@ -1645,7 +1670,7 @@
                 ['low', 'medium', 'high', 'extreme'].forEach(level => {
                     const cfg = config.confidence_levels[level.toUpperCase()];
                     if (cfg) {
-                        document.getElementById(`config-${level}-mode`).value = cfg.trade_mode || 'both';
+                        document.getElementById(`config-${level}-mode`).value = cfg.enabled === false ? 'disabled' : (cfg.trade_mode || 'both');
                         document.getElementById(`config-${level}-leverage`).value = cfg.leverage;
                         document.getElementById(`config-${level}-multiplier`).value = cfg.investment_multiplier || 1.0;
                         document.getElementById(`config-${level}-sl`).value = cfg.stop_loss;

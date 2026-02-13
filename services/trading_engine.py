@@ -5,7 +5,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from sqlalchemy import select, update, and_, desc
+from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Order, Transaction, BotState, PairData
@@ -177,6 +177,15 @@ class TradingEngine:
         # Ensure investment doesn't exceed tradeable balance
         investment = min(investment, tradeable)
         
+        # Clamp investment to min/max size limits
+        investment = max(investment, tc.investment.min_investment_size)
+        investment = min(investment, tc.investment.max_investment_size)
+        
+        # If clamped min exceeds available tradeable balance, skip the trade
+        if investment > tradeable:
+            logger.warning(f"Min investment size ({tc.investment.min_investment_size}) exceeds tradeable balance ({tradeable:.2f}), skipping")
+            return 0, 0
+        
         # Get leverage from config
         leverage = conf_level.leverage
         
@@ -188,7 +197,8 @@ class TradingEngine:
         pair: str,
         direction: str,
         confidence: str,
-        current_price: float
+        current_price: float,
+        entry_gap: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -199,6 +209,16 @@ class TradingEngine:
         conf_config = config.trading_config.confidence_levels.get(confidence)
         if not conf_config or not conf_config.enabled:
             logger.warning(f"[SKIP] {pair}: {confidence} confidence not enabled")
+            return None
+        
+        # Check max open positions limit
+        total_open = await db.execute(
+            select(func.count(Order.id)).where(
+                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+            )
+        )
+        if total_open.scalar() >= config.trading_config.investment.max_open_positions:
+            logger.warning(f"[SKIP] {pair}: Max open positions ({config.trading_config.investment.max_open_positions}) reached")
             return None
         
         # Check if we already have a position for this pair
@@ -289,6 +309,7 @@ class TradingEngine:
             notional_value=notional_value,
             quantity=quantity,
             confidence=confidence,
+            entry_gap=entry_gap,
             entry_fee=entry_fee,
             peak_pnl=0.0,
             high_price_since_entry=actual_price if direction == "LONG" else None,
@@ -631,12 +652,17 @@ class TradingEngine:
             # Open position if we have a valid signal
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
                 logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
+                # Compute entry gap for tracking
+                entry_gap = None
+                if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
+                    entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
                 order = await self.open_position(
                     db=db,
                     pair=pair,
                     direction=signal,
                     confidence=confidence,
-                    current_price=indicators['price']
+                    current_price=indicators['price'],
+                    entry_gap=entry_gap
                 )
                 
                 if order:

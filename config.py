@@ -72,6 +72,11 @@ class InvestmentConfig(BaseModel):
     
     # Cooldown after losing trade (prevents immediate re-entry on same pair)
     cooldown_after_loss_minutes: int = 5  # Minutes to wait before re-entering same pair after loss
+    
+    # Position limits
+    max_open_positions: int = 100  # Max simultaneous open positions
+    min_investment_size: float = 100.0  # Min investment per trade (USD)
+    max_investment_size: float = 50000.0  # Max investment per trade (USD)
 
 
 class TradingConfig(BaseModel):

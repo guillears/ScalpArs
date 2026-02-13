@@ -656,6 +656,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "avg_leverage": 0,
             "by_confidence": {},
             "outcome_distribution": [],
+            "gap_performance": [],
             "by_close_reason": {}
         }
     
@@ -754,6 +755,10 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         conf_avg_loss = sum(o.pnl for o in conf_losses_list) / len(conf_losses_list) if conf_losses_list else 0
         conf_risk_reward = round(conf_avg_win / abs(conf_avg_loss), 2) if conf_avg_loss != 0 else 0
         
+        # Average entry gap
+        conf_gaps = [o.entry_gap for o in conf_orders if o.entry_gap is not None]
+        conf_avg_gap = round(sum(conf_gaps) / len(conf_gaps), 4) if conf_gaps else None
+        
         confidence_performance[conf] = {
             "total_trades": len(conf_orders),
             "long_trades": len(conf_longs),
@@ -766,7 +771,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "long_pnl_pct": round(conf_long_pnl / conf_long_investment * 100, 2) if conf_long_investment > 0 else 0,
             "short_pnl_pct": round(conf_short_pnl / conf_short_investment * 100, 2) if conf_short_investment > 0 else 0,
             "long_win_rate": round(conf_long_wins / len(conf_longs) * 100, 2) if conf_longs else 0,
-            "short_win_rate": round(conf_short_wins / len(conf_shorts) * 100, 2) if conf_shorts else 0
+            "short_win_rate": round(conf_short_wins / len(conf_shorts) * 100, 2) if conf_shorts else 0,
+            "avg_entry_gap": conf_avg_gap
         }
     
     # Outcome Distribution - trades grouped by P&L percentage ranges
@@ -790,6 +796,51 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "range": range_name,
             "count": count,
             "avg_pnl_usd": round(avg_pnl_usd, 2)
+        })
+    
+    # Performance by Entry Gap Range
+    gap_ranges = [
+        ("0.06 - 0.10%", 0.06, 0.10),
+        ("0.10 - 0.14%", 0.10, 0.14),
+        ("0.14 - 0.18%", 0.14, 0.18),
+        ("0.18 - 0.24%", 0.18, 0.24),
+        ("0.24 - 0.32%", 0.24, 0.32),
+        ("0.32 - 0.40%", 0.32, 0.40),
+        ("> 0.40%", 0.40, 999),
+    ]
+    
+    # Only include orders with entry_gap tracked
+    gap_orders = [o for o in orders if o.entry_gap is not None]
+    
+    gap_performance = []
+    for range_name, gap_min, gap_max in gap_ranges:
+        range_orders = [o for o in gap_orders if gap_min <= o.entry_gap < gap_max]
+        count = len(range_orders)
+        if count == 0:
+            gap_performance.append({
+                "range": range_name,
+                "count": 0,
+                "win_rate": 0,
+                "avg_pnl_usd": 0,
+                "by_confidence": {}
+            })
+            continue
+        
+        range_wins = len([o for o in range_orders if (o.pnl or 0) > 0])
+        range_pnl_sum = sum(o.pnl or 0 for o in range_orders)
+        
+        # Confidence breakdown
+        conf_breakdown = {}
+        for o in range_orders:
+            conf = o.confidence or "UNKNOWN"
+            conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+        
+        gap_performance.append({
+            "range": range_name,
+            "count": count,
+            "win_rate": round(range_wins / count * 100, 1),
+            "avg_pnl_usd": round(range_pnl_sum / count, 2),
+            "by_confidence": conf_breakdown
         })
     
     # By Close Reason - group by reason with L4+ aggregation
@@ -863,6 +914,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "avg_leverage": round(avg_leverage, 2),
         "by_confidence": confidence_performance,
         "outcome_distribution": outcome_distribution,
+        "gap_performance": gap_performance,
         "by_close_reason": by_close_reason
     }
 

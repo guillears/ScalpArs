@@ -287,10 +287,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Short P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Short %</th>
                                     <th class="px-3 py-2 font-medium text-right">Short Win%</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
                                 </tr>
                             </thead>
                             <tbody id="confidence-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -338,6 +339,28 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+                
+                <!-- Performance by Entry Gap -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by EMA gap range at entry (only tracks new trades)</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Gap Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gap-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -566,6 +589,31 @@
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">min</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Wait before re-entering same pair after loss</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Position & Size Limits -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Max Open Positions</label>
+                            <input type="number" id="config-max-positions" min="1" max="999" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="100">
+                            <p class="text-xs text-gray-500 mt-1">Max simultaneous open positions</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Min Investment Size</label>
+                            <div class="flex">
+                                <input type="number" id="config-min-investment" min="1" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="100">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">USD</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Minimum investment per trade</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Max Investment Size</label>
+                            <div class="flex">
+                                <input type="number" id="config-max-investment" min="1" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="50000">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">USD</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Maximum investment per trade</p>
                         </div>
                     </div>
                 </div>
@@ -1233,6 +1281,7 @@
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
+                                    <td class="px-3 py-2 text-right text-gray-500">-</td>
                                 </tr>
                             `;
                         }
@@ -1257,6 +1306,7 @@
                                 <td class="px-3 py-2 text-right ${shortPnlClass} font-medium">${c.short_trades > 0 ? formatUSD(c.short_pnl) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${shortPctClass}">${c.short_trades > 0 ? c.short_pnl_pct.toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right">${c.short_trades > 0 ? c.short_win_rate.toFixed(0) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${c.avg_entry_gap != null ? c.avg_entry_gap.toFixed(3) + '%' : '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -1330,6 +1380,42 @@
                     }).join('');
                 } else {
                     reasonBody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+                
+                // Performance by Entry Gap
+                const gapBody = document.getElementById('gap-performance-body');
+                if (data.gap_performance && data.gap_performance.some(g => g.count > 0)) {
+                    const confBadgeColorsGap = {
+                        'LOW': 'text-yellow-400',
+                        'MEDIUM': 'text-orange-400',
+                        'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400'
+                    };
+                    
+                    gapBody.innerHTML = data.gap_performance.filter(g => g.count > 0).map(g => {
+                        const pnlClass = g.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = g.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        
+                        // Build confidence badges
+                        const confBadges = Object.entries(g.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confBadgeColorsGap[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${g.range}</td>
+                                <td class="px-3 py-2 text-center">${g.count}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${g.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(g.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    gapBody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);
@@ -1644,6 +1730,9 @@
                 document.getElementById('config-reserve-value').value = config.investment.reserve_mode === 'percentage' ? config.investment.reserve_percentage : config.investment.reserve_fixed;
                 document.getElementById('config-paper-balance').value = config.paper_balance;
                 document.getElementById('config-cooldown-loss').value = config.investment.cooldown_after_loss_minutes || 5;
+                document.getElementById('config-max-positions').value = config.investment.max_open_positions || 100;
+                document.getElementById('config-min-investment').value = config.investment.min_investment_size || 100;
+                document.getElementById('config-max-investment').value = config.investment.max_investment_size || 50000;
                 
                 // Trading pairs limit
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
@@ -1720,7 +1809,10 @@
                     reserve_mode: resMode,
                     reserve_fixed: resMode === 'fixed' ? resValue : 500,
                     reserve_percentage: resMode === 'percentage' ? resValue : 20,
-                    cooldown_after_loss_minutes: parseInt(document.getElementById('config-cooldown-loss').value) || 5
+                    cooldown_after_loss_minutes: parseInt(document.getElementById('config-cooldown-loss').value) || 5,
+                    max_open_positions: parseInt(document.getElementById('config-max-positions').value) || 100,
+                    min_investment_size: parseFloat(document.getElementById('config-min-investment').value) || 100,
+                    max_investment_size: parseFloat(document.getElementById('config-max-investment').value) || 50000
                 },
                 thresholds: {
                     long_rsi_extreme: parseFloat(document.getElementById('config-long-rsi-extreme').value),

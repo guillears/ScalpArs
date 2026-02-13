@@ -52,6 +52,9 @@ class Order(Base):
     # Confidence
     confidence = Column(String(10), nullable=False)  # LOW, MEDIUM, HIGH, EXTREME
     
+    # Entry gap: abs((ema5 - ema20) / price * 100) at time of entry
+    entry_gap = Column(Float, nullable=True)
+    
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)
     exit_fee = Column(Float, nullable=True, default=0.0)

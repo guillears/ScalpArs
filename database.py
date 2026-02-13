@@ -28,6 +28,19 @@ async def init_db():
     """Initialize database tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Auto-migrate: add new columns to existing tables if missing
+    async with engine.begin() as conn:
+        from sqlalchemy import text, inspect as sa_inspect
+        
+        def _migrate(connection):
+            inspector = sa_inspect(connection)
+            if 'orders' in inspector.get_table_names():
+                columns = [c['name'] for c in inspector.get_columns('orders')]
+                if 'entry_gap' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_gap FLOAT"))
+        
+        await conn.run_sync(_migrate)
 
 
 async def get_db():

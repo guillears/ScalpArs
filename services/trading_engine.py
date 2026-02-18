@@ -522,6 +522,26 @@ class TradingEngine:
             ema13 = pair_data.ema13 if pair_data else None
             ema20 = pair_data.ema20 if pair_data else None
             
+            # Check max holding time
+            max_hold = config.trading_config.investment.max_holding_time_minutes
+            if max_hold > 0 and order.opened_at:
+                from datetime import timezone
+                opened = order.opened_at.replace(tzinfo=timezone.utc) if order.opened_at.tzinfo is None else order.opened_at
+                age_minutes = (datetime.now(timezone.utc) - opened).total_seconds() / 60
+                if age_minutes >= max_hold:
+                    logger.info(f"[MAX_HOLD_TIME] {order.pair} {order.direction}: held {age_minutes:.0f}min >= limit {max_hold}min, force closing")
+                    closed_order = await self.close_position(db, order, current_price, "MAX_HOLD_TIME")
+                    if closed_order:
+                        updates.append({
+                            "order_id": closed_order.id,
+                            "pair": closed_order.pair,
+                            "action": "CLOSED",
+                            "reason": "MAX_HOLD_TIME",
+                            "pnl": closed_order.pnl,
+                            "tp_level": order.current_tp_level or 1
+                        })
+                    continue
+            
             # Check exit conditions (including fees for accurate SL/TP)
             exit_result = check_exit_conditions(
                 direction=order.direction,

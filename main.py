@@ -654,6 +654,9 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "avg_duration_long": "00:00:00",
             "avg_duration_short": "00:00:00",
             "avg_leverage": 0,
+            "return_multiple": round(trading_engine.paper_balance / config.trading_config.paper_balance, 4) if config.trading_config.paper_balance > 0 else 0,
+            "daily_compound_return": 0,
+            "runtime_days": round(trading_engine.get_runtime_seconds() / 86400.0, 2),
             "by_confidence": {},
             "outcome_distribution": [],
             "gap_performance": [],
@@ -714,6 +717,16 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     
     total_fees = sum(o.total_fee or 0 for o in orders)
     avg_leverage = sum(o.leverage for o in orders) / total_trades if total_trades > 0 else 0
+    
+    # Return Multiple & Daily Compound Return
+    initial_balance = config.trading_config.paper_balance
+    current_balance = trading_engine.paper_balance
+    runtime_days = trading_engine.get_runtime_seconds() / 86400.0
+    return_multiple = current_balance / initial_balance if initial_balance > 0 else 0
+    if runtime_days >= 0.01 and return_multiple > 0:
+        daily_compound_return = (return_multiple ** (1 / runtime_days) - 1) * 100
+    else:
+        daily_compound_return = 0
     
     # Durations
     def calc_avg_duration(order_list):
@@ -842,6 +855,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "count": count,
             "win_rate": round(range_wins / count * 100, 1),
             "avg_pnl_usd": round(range_pnl_sum / count, 2),
+            "total_pnl_usd": round(range_pnl_sum, 2),
             "by_confidence": conf_breakdown
         })
     
@@ -914,6 +928,9 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "avg_duration_long": calc_avg_duration(longs),
         "avg_duration_short": calc_avg_duration(shorts),
         "avg_leverage": round(avg_leverage, 2),
+        "return_multiple": round(return_multiple, 4),
+        "daily_compound_return": round(daily_compound_return, 4),
+        "runtime_days": round(runtime_days, 2),
         "by_confidence": confidence_performance,
         "outcome_distribution": outcome_distribution,
         "gap_performance": gap_performance,

@@ -77,6 +77,7 @@ class InvestmentConfig(BaseModel):
     max_open_positions: int = 100  # Max simultaneous open positions
     min_investment_size: float = 100.0  # Min investment per trade (USD)
     max_investment_size: float = 50000.0  # Max investment per trade (USD)
+    max_holding_time_minutes: int = 180  # Max time to hold a trade (minutes), 0 = disabled
 
 
 class TradingConfig(BaseModel):
@@ -87,7 +88,7 @@ class TradingConfig(BaseModel):
     
     # Paper trading
     paper_trading: bool = True
-    paper_balance: float = 10000.0  # Starting balance for paper trading
+    paper_balance: float = 2000.0  # Starting balance for paper trading
     
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 50  # 5, 10, 20, or 50

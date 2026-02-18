@@ -1831,17 +1831,22 @@
         document.getElementById('config-investment-mode').addEventListener('change', updateInvestmentUnit);
         document.getElementById('config-reserve-mode').addEventListener('change', updateReserveUnit);
 
+        // Locale-safe float parser: handles comma decimal separators (e.g. "0,018" -> 0.018)
+        function safeFloat(val) {
+            if (typeof val === 'number') return val;
+            return parseFloat(String(val).replace(',', '.')) || 0;
+        }
+
         // Save configuration
         async function saveConfig() {
             const invMode = document.getElementById('config-investment-mode').value;
-            const invValue = parseFloat(document.getElementById('config-investment-value').value);
+            const invValue = safeFloat(document.getElementById('config-investment-value').value);
             const resMode = document.getElementById('config-reserve-mode').value;
-            const resValue = parseFloat(document.getElementById('config-reserve-value').value);
+            const resValue = safeFloat(document.getElementById('config-reserve-value').value);
             
             const config = {
-                // Convert percentage input to decimal (divide by 100)
-                trading_fee: parseFloat(document.getElementById('config-trading-fee').value) / 100,
-                paper_balance: parseFloat(document.getElementById('config-paper-balance').value),
+                trading_fee: safeFloat(document.getElementById('config-trading-fee').value) / 100,
+                paper_balance: safeFloat(document.getElementById('config-paper-balance').value),
                 investment: {
                     mode: invMode,
                     fixed_amount: invMode === 'fixed' ? invValue : 100,
@@ -1851,24 +1856,24 @@
                     reserve_percentage: resMode === 'percentage' ? resValue : 20,
                     cooldown_after_loss_minutes: parseInt(document.getElementById('config-cooldown-loss').value) || 5,
                     max_open_positions: parseInt(document.getElementById('config-max-positions').value) || 100,
-                    min_investment_size: parseFloat(document.getElementById('config-min-investment').value) || 100,
-                    max_investment_size: parseFloat(document.getElementById('config-max-investment').value) || 50000,
+                    min_investment_size: safeFloat(document.getElementById('config-min-investment').value) || 100,
+                    max_investment_size: safeFloat(document.getElementById('config-max-investment').value) || 50000,
                     max_holding_time_minutes: parseInt(document.getElementById('config-max-holding-time').value) || 0
                 },
                 thresholds: {
-                    long_rsi_extreme: parseFloat(document.getElementById('config-long-rsi-extreme').value),
-                    long_rsi_high: parseFloat(document.getElementById('config-long-rsi-high').value),
-                    long_rsi_medium: parseFloat(document.getElementById('config-long-rsi-medium').value),
-                    long_rsi_low: parseFloat(document.getElementById('config-long-rsi-low').value),
-                    short_rsi_extreme: parseFloat(document.getElementById('config-short-rsi-extreme').value),
-                    short_rsi_high: parseFloat(document.getElementById('config-short-rsi-high').value),
-                    short_rsi_medium: parseFloat(document.getElementById('config-short-rsi-medium').value),
-                    short_rsi_low: parseFloat(document.getElementById('config-short-rsi-low').value),
-                    adx_low: parseFloat(document.getElementById('config-adx-low').value),
-                    adx_medium: parseFloat(document.getElementById('config-adx-medium').value),
-                    adx_high: parseFloat(document.getElementById('config-adx-high').value),
-                    adx_extreme: parseFloat(document.getElementById('config-adx-extreme').value),
-                    volume_multiplier: parseFloat(document.getElementById('config-volume-mult').value)
+                    long_rsi_extreme: safeFloat(document.getElementById('config-long-rsi-extreme').value),
+                    long_rsi_high: safeFloat(document.getElementById('config-long-rsi-high').value),
+                    long_rsi_medium: safeFloat(document.getElementById('config-long-rsi-medium').value),
+                    long_rsi_low: safeFloat(document.getElementById('config-long-rsi-low').value),
+                    short_rsi_extreme: safeFloat(document.getElementById('config-short-rsi-extreme').value),
+                    short_rsi_high: safeFloat(document.getElementById('config-short-rsi-high').value),
+                    short_rsi_medium: safeFloat(document.getElementById('config-short-rsi-medium').value),
+                    short_rsi_low: safeFloat(document.getElementById('config-short-rsi-low').value),
+                    adx_low: safeFloat(document.getElementById('config-adx-low').value),
+                    adx_medium: safeFloat(document.getElementById('config-adx-medium').value),
+                    adx_high: safeFloat(document.getElementById('config-adx-high').value),
+                    adx_extreme: safeFloat(document.getElementById('config-adx-extreme').value),
+                    volume_multiplier: safeFloat(document.getElementById('config-volume-mult').value)
                 },
                 confidence_levels: {}
             };
@@ -1878,16 +1883,16 @@
                 config.confidence_levels[level.toUpperCase()] = {
                     enabled: tradeMode !== 'disabled',
                     trade_mode: tradeMode === 'disabled' ? 'both' : tradeMode,
-                    leverage: parseFloat(document.getElementById(`config-${level}-leverage`).value),
-                    investment_multiplier: parseFloat(document.getElementById(`config-${level}-multiplier`).value),
-                    stop_loss: parseFloat(document.getElementById(`config-${level}-sl`).value),
-                    tp_min: parseFloat(document.getElementById(`config-${level}-tp`).value),
-                    pullback_trigger: parseFloat(document.getElementById(`config-${level}-pb`).value),
-                    gap_min: parseFloat(document.getElementById(`config-${level}-gap-min`).value),
-                    gap_max: parseFloat(document.getElementById(`config-${level}-gap-max`).value),
+                    leverage: safeFloat(document.getElementById(`config-${level}-leverage`).value),
+                    investment_multiplier: safeFloat(document.getElementById(`config-${level}-multiplier`).value),
+                    stop_loss: safeFloat(document.getElementById(`config-${level}-sl`).value),
+                    tp_min: safeFloat(document.getElementById(`config-${level}-tp`).value),
+                    pullback_trigger: safeFloat(document.getElementById(`config-${level}-pb`).value),
+                    gap_min: safeFloat(document.getElementById(`config-${level}-gap-min`).value),
+                    gap_max: safeFloat(document.getElementById(`config-${level}-gap-max`).value),
                     gap_enabled: document.getElementById(`config-${level}-gap-enabled`).checked,
-                    breakeven_trigger: parseFloat(document.getElementById(`config-${level}-be-trigger`).value),
-                    breakeven_offset: parseFloat(document.getElementById(`config-${level}-be-offset`).value)
+                    breakeven_trigger: safeFloat(document.getElementById(`config-${level}-be-trigger`).value),
+                    breakeven_offset: safeFloat(document.getElementById(`config-${level}-be-offset`).value)
                 };
             });
             

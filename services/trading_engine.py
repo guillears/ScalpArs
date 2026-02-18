@@ -543,6 +543,15 @@ class TradingEngine:
                         })
                     continue
             
+            # Merge realtime peak from cache (may be higher than DB if a
+            # price spike occurred between polling cycles)
+            realtime_peak = order.peak_pnl or 0
+            async with _cache_lock:
+                for cached in _open_orders_cache.get(order.pair, []):
+                    if cached['id'] == order.id:
+                        realtime_peak = max(realtime_peak, cached.get('peak_pnl', 0))
+                        break
+            
             # Check exit conditions (including fees for accurate SL/TP)
             exit_result = check_exit_conditions(
                 direction=order.direction,
@@ -550,7 +559,7 @@ class TradingEngine:
                 current_price=current_price,
                 leverage=order.leverage,
                 confidence=order.confidence,
-                peak_pnl=order.peak_pnl,
+                peak_pnl=realtime_peak,
                 quantity=order.quantity,
                 entry_fee=order.entry_fee,
                 investment=order.investment,
@@ -969,6 +978,20 @@ class TradingEngine:
             new_cache[order.pair].append(order_info)
         
         async with _cache_lock:
+            # Preserve realtime-tracked peaks that the DB may not have yet.
+            # The realtime callback updates peak_pnl/high_price/low_price in
+            # the cache between polling cycles; a naive overwrite would lose them.
+            for pair, new_orders in new_cache.items():
+                old_orders = _open_orders_cache.get(pair, [])
+                for new_info in new_orders:
+                    for old_info in old_orders:
+                        if old_info['id'] == new_info['id']:
+                            new_info['peak_pnl'] = max(new_info['peak_pnl'], old_info.get('peak_pnl', 0))
+                            if new_info['direction'] == 'LONG':
+                                new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
+                            else:
+                                new_info['low_price'] = min(new_info['low_price'], old_info.get('low_price', float('inf')))
+                            break
             _open_orders_cache = new_cache
         
         logger.debug(f"[CACHE] Updated orders cache: {len(orders)} orders across {len(new_cache)} pairs")

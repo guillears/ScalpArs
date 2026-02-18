@@ -29,7 +29,7 @@ class TradingEngine:
     def __init__(self):
         self.is_running = False
         self.is_paper_mode = True
-        self.paper_balance = 10000.0
+        self.paper_balance = config.trading_config.paper_balance
         self.started_at: Optional[datetime] = None
         self.total_runtime_seconds = 0
         self._task: Optional[asyncio.Task] = None
@@ -52,7 +52,7 @@ class TradingEngine:
             state = BotState(
                 is_running=False,
                 is_paper_mode=True,
-                paper_balance=10000.0,
+                paper_balance=config.trading_config.paper_balance,
                 total_runtime_seconds=0
             )
             db.add(state)

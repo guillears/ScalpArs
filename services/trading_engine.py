@@ -711,10 +711,6 @@ class TradingEngine:
                         "price": indicators['price']
                     })
             
-            # Delay between API calls to avoid Binance rate limits
-            # (0.3s per pair = ~15s for 50 pairs, well within limits)
-            await asyncio.sleep(0.3)
-        
         self._last_scan_time = time.time()
         return actions
     

@@ -14,6 +14,7 @@ class BinanceService:
     def __init__(self):
         # Public exchange for market data (no auth needed)
         self.public_exchange = ccxt.binanceusdm({
+            'enableRateLimit': True,
             'sandbox': False,
             'options': {
                 'defaultType': 'future',
@@ -25,6 +26,7 @@ class BinanceService:
         self.exchange = ccxt.binanceusdm({
             'apiKey': settings.binance_api_key,
             'secret': settings.binance_api_secret,
+            'enableRateLimit': True,
             'sandbox': False,
             'options': {
                 'defaultType': 'future',
@@ -136,13 +138,21 @@ class BinanceService:
     
     async def get_ohlcv(self, symbol: str, timeframe: str = '5m', limit: int = 100) -> List:
         """Get OHLCV data for indicator calculation"""
-        try:
-            await self.load_public_markets()
-            ohlcv = await self.public_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            return ohlcv
-        except Exception as e:
-            print(f"Error fetching OHLCV for {symbol}: {e}")
-            return []
+        await self.load_public_markets()
+        for attempt in range(3):
+            try:
+                ohlcv = await self.public_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+                return ohlcv
+            except Exception as e:
+                if 'Too many requests' in str(e) or '1003' in str(e):
+                    wait = (attempt + 1) * 5
+                    print(f"Rate limited fetching OHLCV for {symbol}, waiting {wait}s (attempt {attempt + 1}/3)")
+                    await asyncio.sleep(wait)
+                else:
+                    print(f"Error fetching OHLCV for {symbol}: {e}")
+                    return []
+        print(f"Failed to fetch OHLCV for {symbol} after 3 attempts")
+        return []
     
     async def get_current_price(self, symbol: str) -> float:
         """Get current price for a symbol"""

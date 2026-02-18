@@ -316,14 +316,27 @@ def check_exit_conditions(
     
     # Check Stop Loss (P&L based, with break-even adjustment in pre-TP zone only)
     if pnl_pct <= effective_stop_loss:
-        reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
-        logger.info(f"[{reason_prefix}] {direction} L{current_tp_level} triggered: pnl_pct={pnl_pct:.4f}% <= effective_sl={effective_stop_loss}% (original_sl={stop_loss}%, peak={peak_pnl:.4f}%, be_trigger={breakeven_trigger}%)")
-        return {
-            "should_close": True,
-            "reason": f"{reason_prefix} L{current_tp_level}",
-            "peak_pnl": peak_pnl,
-            "tp_level": current_tp_level
-        }
+        if breakeven_active and pnl_pct < 0:
+            # Break-even triggered but P&L gapped into negative territory.
+            # Don't close at a loss via BE - wait for recovery or original SL.
+            logger.info(f"[BREAKEVEN_BLOCKED] {direction} L{current_tp_level}: pnl={pnl_pct:.4f}% gapped below 0, skipping BE close (peak={peak_pnl:.4f}%)")
+            if pnl_pct <= stop_loss:
+                logger.info(f"[STOP_LOSS] {direction} L{current_tp_level} triggered: pnl_pct={pnl_pct:.4f}% <= stop_loss={stop_loss}% (BE was active but P&L negative)")
+                return {
+                    "should_close": True,
+                    "reason": f"STOP_LOSS L{current_tp_level}",
+                    "peak_pnl": peak_pnl,
+                    "tp_level": current_tp_level
+                }
+        else:
+            reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
+            logger.info(f"[{reason_prefix}] {direction} L{current_tp_level} triggered: pnl_pct={pnl_pct:.4f}% <= effective_sl={effective_stop_loss}% (original_sl={stop_loss}%, peak={peak_pnl:.4f}%, be_trigger={breakeven_trigger}%)")
+            return {
+                "should_close": True,
+                "reason": f"{reason_prefix} L{current_tp_level}",
+                "peak_pnl": peak_pnl,
+                "tp_level": current_tp_level
+            }
     
     # Check if we've reached the current TP target
     if pnl_pct >= effective_tp_target:

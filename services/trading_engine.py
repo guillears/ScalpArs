@@ -860,7 +860,17 @@ class TradingEngine:
             
             # Check if stop loss triggered
             if pnl_pct <= effective_sl:
-                reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
+                if breakeven_active and pnl_pct < 0:
+                    # Break-even triggered but P&L gapped into negative territory.
+                    # Don't close at a loss via BE - wait for recovery or original SL.
+                    logger.info(f"[REALTIME_BREAKEVEN_BLOCKED] {pair} {direction}: pnl={pnl_pct:.4f}% gapped below 0, skipping BE close (peak={current_peak:.4f}%)")
+                    if pnl_pct <= stop_loss_pct:
+                        reason_prefix = "STOP_LOSS"
+                    else:
+                        continue  # Skip close, wait for recovery or original SL
+                else:
+                    reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
+                
                 logger.warning(f"[REALTIME_{reason_prefix}] {pair} {direction}: pnl={pnl_pct:.4f}% <= effective_sl={effective_sl}% (original_sl={stop_loss_pct}%, peak={current_peak:.4f}%) - CLOSING NOW!")
                 
                 # Close the order immediately using a new database session

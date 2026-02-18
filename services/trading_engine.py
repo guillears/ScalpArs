@@ -814,6 +814,7 @@ class TradingEngine:
             
             # Track peak P&L in real-time for break-even decisions
             current_peak = max(cached_peak_pnl, pnl_pct) if pnl_pct > 0 else cached_peak_pnl
+            order_info['peak_pnl'] = current_peak
             
             # Get TP target to determine if trailing stop would be active
             tp_level = order_info.get('current_tp_level', 1)

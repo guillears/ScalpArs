@@ -635,6 +635,12 @@ class TradingEngine:
         # Get top pairs based on config limit
         pairs_limit = config.trading_config.trading_pairs_limit
         top_pairs = await binance_service.get_top_futures_pairs(pairs_limit)
+        logger.info(f"[SCAN] Fetched {len(top_pairs)} pairs from Binance (limit={pairs_limit})")
+        
+        if not top_pairs:
+            logger.warning("[SCAN] No pairs returned from Binance - skipping scan cycle")
+            self._last_scan_time = time.time()
+            return []
         
         # Subscribe all top pairs to WebSocket for real-time price streaming
         for pair_info in top_pairs:
@@ -712,6 +718,8 @@ class TradingEngine:
                     })
             
         self._last_scan_time = time.time()
+        elapsed = self._last_scan_time - now
+        logger.info(f"[SCAN] Completed in {elapsed:.1f}s - {len(top_pairs)} pairs processed, {len(actions)} positions opened")
         return actions
     
     async def update_pair_data(

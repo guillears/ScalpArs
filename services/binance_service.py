@@ -2,10 +2,14 @@
 SCALPARS Trading Platform - Binance Service
 """
 import ccxt.async_support as ccxt
+from ccxt.base.errors import RateLimitExceeded, DDoSProtection, ExchangeNotAvailable
 from typing import Dict, List, Optional, Tuple
 import asyncio
+import logging
 from config import settings, trading_config
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class BinanceService:
@@ -71,7 +75,7 @@ class BinanceService:
                 'total_portfolio': float(balance.get('total', {}).get('USDT', 0))
             }
         except Exception as e:
-            print(f"Error fetching balance: {e}")
+            logger.error(f"[BINANCE] Error fetching balance: {e}")
             return {
                 'usdt_free': 0,
                 'usdt_used': 0,
@@ -92,17 +96,20 @@ class BinanceService:
                 try:
                     tickers = await self.public_exchange.fetch_tickers()
                     break
+                except (RateLimitExceeded, DDoSProtection, ExchangeNotAvailable) as e:
+                    wait = (attempt + 1) * 5
+                    logger.warning(f"[BINANCE] Rate limited fetching tickers, waiting {wait}s (attempt {attempt + 1}/3): {e}")
+                    await asyncio.sleep(wait)
                 except Exception as e:
-                    if 'Too many requests' in str(e) or '1003' in str(e):
-                        wait = (attempt + 1) * 5  # 5s, 10s, 15s
-                        print(f"Rate limited fetching tickers, waiting {wait}s (attempt {attempt + 1}/3)")
-                        import asyncio
+                    if 'Too many requests' in str(e) or '1003' in str(e) or '429' in str(e):
+                        wait = (attempt + 1) * 5
+                        logger.warning(f"[BINANCE] Rate limited fetching tickers, waiting {wait}s (attempt {attempt + 1}/3): {e}")
                         await asyncio.sleep(wait)
                     else:
                         raise
             
             if tickers is None:
-                print("Failed to fetch tickers after 3 attempts")
+                logger.error("[BINANCE] Failed to fetch tickers after 3 attempts")
                 return []
             
             # Filter USDT perpetual futures and sort by volume
@@ -131,9 +138,7 @@ class BinanceService:
             
             return futures_pairs[:limit]
         except Exception as e:
-            print(f"Error fetching top pairs: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"[BINANCE] Error fetching top pairs: {e}", exc_info=True)
             return []
     
     async def get_ohlcv(self, symbol: str, timeframe: str = '5m', limit: int = 100) -> List:
@@ -143,15 +148,19 @@ class BinanceService:
             try:
                 ohlcv = await self.public_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
                 return ohlcv
+            except (RateLimitExceeded, DDoSProtection, ExchangeNotAvailable) as e:
+                wait = (attempt + 1) * 5
+                logger.warning(f"[BINANCE] Rate limited fetching OHLCV for {symbol}, waiting {wait}s (attempt {attempt + 1}/3): {e}")
+                await asyncio.sleep(wait)
             except Exception as e:
-                if 'Too many requests' in str(e) or '1003' in str(e):
+                if 'Too many requests' in str(e) or '1003' in str(e) or '429' in str(e):
                     wait = (attempt + 1) * 5
-                    print(f"Rate limited fetching OHLCV for {symbol}, waiting {wait}s (attempt {attempt + 1}/3)")
+                    logger.warning(f"[BINANCE] Rate limited fetching OHLCV for {symbol}, waiting {wait}s (attempt {attempt + 1}/3): {e}")
                     await asyncio.sleep(wait)
                 else:
-                    print(f"Error fetching OHLCV for {symbol}: {e}")
+                    logger.error(f"[BINANCE] Error fetching OHLCV for {symbol}: {e}")
                     return []
-        print(f"Failed to fetch OHLCV for {symbol} after 3 attempts")
+        logger.error(f"[BINANCE] Failed to fetch OHLCV for {symbol} after 3 attempts")
         return []
     
     async def get_current_price(self, symbol: str) -> float:
@@ -161,7 +170,7 @@ class BinanceService:
             ticker = await self.public_exchange.fetch_ticker(symbol)
             return float(ticker.get('last', 0))
         except Exception as e:
-            print(f"Error fetching price for {symbol}: {e}")
+            logger.error(f"[BINANCE] Error fetching price for {symbol}: {e}")
             return 0.0
     
     async def set_leverage(self, symbol: str, leverage: int) -> bool:
@@ -171,7 +180,7 @@ class BinanceService:
             await self.exchange.set_leverage(leverage, symbol)
             return True
         except Exception as e:
-            print(f"Error setting leverage for {symbol}: {e}")
+            logger.error(f"[BINANCE] Error setting leverage for {symbol}: {e}")
             return False
     
     async def create_market_order(
@@ -207,7 +216,7 @@ class BinanceService:
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
             }
         except Exception as e:
-            print(f"Error creating order for {symbol}: {e}")
+            logger.error(f"[BINANCE] Error creating order for {symbol}: {e}")
             return None
     
     async def close_position(self, symbol: str, side: str, amount: float) -> Optional[Dict]:
@@ -240,7 +249,7 @@ class BinanceService:
             
             return open_positions
         except Exception as e:
-            print(f"Error fetching positions: {e}")
+            logger.error(f"[BINANCE] Error fetching positions: {e}")
             return []
 
 

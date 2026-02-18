@@ -37,10 +37,10 @@
       "tp_min": 0.15,
       "pullback_trigger": 0.06,
       "gap_min": 0.08,
-      "gap_max": 0.40,
+      "gap_max": 0.80,
       "gap_enabled": true,
-      "breakeven_trigger": 0.03,
-      "breakeven_offset": -0.02
+      "breakeven_trigger": 0.06,
+      "breakeven_offset": 0.02
     },
     "MEDIUM": {
       "enabled": true,
@@ -51,10 +51,10 @@
       "tp_min": 0.15,
       "pullback_trigger": 0.06,
       "gap_min": 0.08,
-      "gap_max": 0.40,
+      "gap_max": 0.80,
       "gap_enabled": true,
-      "breakeven_trigger": 0.03,
-      "breakeven_offset": -0.02
+      "breakeven_trigger": 0.06,
+      "breakeven_offset": 0.02
     },
     "HIGH": {
       "enabled": true,
@@ -65,10 +65,10 @@
       "tp_min": 0.15,
       "pullback_trigger": 0.07,
       "gap_min": 0.08,
-      "gap_max": 0.40,
+      "gap_max": 0.80,
       "gap_enabled": true,
-      "breakeven_trigger": 0.03,
-      "breakeven_offset": -0.02
+      "breakeven_trigger": 0.06,
+      "breakeven_offset": 0.02
     },
     "EXTREME": {
       "enabled": true,
@@ -79,10 +79,10 @@
       "tp_min": 0.15,
       "pullback_trigger": 0.08,
       "gap_min": 0.08,
-      "gap_max": 0.40,
+      "gap_max": 0.80,
       "gap_enabled": false,
-      "breakeven_trigger": 0.03,
-      "breakeven_offset": -0.02
+      "breakeven_trigger": 0.06,
+      "breakeven_offset": 0.02
     }
   }
 }

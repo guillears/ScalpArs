@@ -659,7 +659,7 @@ class TradingEngine:
                 adx=indicators.get('adx'),
                 volume=indicators.get('volume'),
                 avg_volume=indicators.get('avg_volume'),
-                price=indicators.get('close')
+                price=indicators.get('price')
             )
             
             # Log signal for debugging (only log tradeable signals)

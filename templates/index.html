@@ -1282,12 +1282,12 @@
                 document.getElementById('perf-avg-duration-short').textContent = data.avg_duration_short;
                 
                 const rmEl = document.getElementById('perf-return-multiple');
-                rmEl.textContent = (data.return_multiple || 0).toFixed(4) + 'x';
+                rmEl.textContent = (data.return_multiple || 0).toFixed(2) + 'x';
                 rmEl.className = `text-xl font-bold ${data.return_multiple >= 1 ? 'text-emerald-400' : 'text-red-400'}`;
                 
                 const dcrEl = document.getElementById('perf-daily-compound');
                 const dcrVal = data.daily_compound_return || 0;
-                dcrEl.textContent = (dcrVal >= 0 ? '+' : '') + dcrVal.toFixed(4) + '%';
+                dcrEl.textContent = (dcrVal >= 0 ? '+' : '') + dcrVal.toFixed(2) + '%';
                 dcrEl.className = `text-xl font-bold ${dcrVal >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
                 
                 document.getElementById('perf-runtime-days').textContent = (data.runtime_days || 0) + ' days';

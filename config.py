@@ -61,7 +61,7 @@ class SignalThresholds(BaseModel):
 
 class InvestmentConfig(BaseModel):
     """Investment configuration"""
-    mode: str = "percentage"  # "fixed" or "percentage"
+    mode: str = "percentage"  # "fixed", "percentage", or "equal_split"
     fixed_amount: float = 100.0  # USD
     percentage: float = 5.0  # % of available balance
     

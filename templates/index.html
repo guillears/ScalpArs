@@ -346,10 +346,11 @@
                                         <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                        <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -557,6 +558,7 @@
                             <select id="config-investment-mode" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
                                 <option value="percentage">Percentage of Balance</option>
                                 <option value="fixed">Fixed Amount</option>
+                                <option value="equal_split">Equal Split (Balance / Max Positions)</option>
                             </select>
                         </div>
                         <div>
@@ -1412,11 +1414,12 @@
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
                                 <td class="px-3 py-2 text-right ${pnlPctClass}">${stats.avg_pnl_pct >= 0 ? '+' : ''}${stats.avg_pnl_pct.toFixed(2)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${stats.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(stats.total_pnl_usd)}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="5" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap
@@ -1762,7 +1765,13 @@
                 
                 // Investment settings
                 document.getElementById('config-investment-mode').value = config.investment.mode;
-                document.getElementById('config-investment-value').value = config.investment.mode === 'percentage' ? config.investment.percentage : config.investment.fixed_amount;
+                if (config.investment.mode === 'percentage') {
+                    document.getElementById('config-investment-value').value = config.investment.percentage;
+                } else if (config.investment.mode === 'fixed') {
+                    document.getElementById('config-investment-value').value = config.investment.fixed_amount;
+                } else {
+                    document.getElementById('config-investment-value').value = '';
+                }
                 // Display fee as percentage (multiply by 100)
                 document.getElementById('config-trading-fee').value = (config.trading_fee * 100).toFixed(4);
                 document.getElementById('config-reserve-mode').value = config.investment.reserve_mode;
@@ -1820,7 +1829,18 @@
         // Update investment unit display
         function updateInvestmentUnit() {
             const mode = document.getElementById('config-investment-mode').value;
-            document.getElementById('config-investment-unit').textContent = mode === 'percentage' ? '%' : 'USD';
+            const valueInput = document.getElementById('config-investment-value');
+            const unitLabel = document.getElementById('config-investment-unit');
+            if (mode === 'equal_split') {
+                unitLabel.textContent = 'auto';
+                valueInput.disabled = true;
+                valueInput.value = '';
+                valueInput.placeholder = 'Balance / Max Pos';
+            } else {
+                unitLabel.textContent = mode === 'percentage' ? '%' : 'USD';
+                valueInput.disabled = false;
+                valueInput.placeholder = '';
+            }
         }
 
         function updateReserveUnit() {

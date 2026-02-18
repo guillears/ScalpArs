@@ -168,6 +168,9 @@ class TradingEngine:
         # Calculate base investment
         if tc.investment.mode == "percentage":
             investment = tradeable * (tc.investment.percentage / 100)
+        elif tc.investment.mode == "equal_split":
+            max_pos = tc.investment.max_open_positions or 5
+            investment = tradeable / max_pos
         else:
             investment = min(tc.investment.fixed_amount, tradeable)
         

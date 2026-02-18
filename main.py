@@ -897,6 +897,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "trades": count,
             "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
             "avg_pnl_usd": round(data["pnl_sum"] / count, 2) if count > 0 else 0,
+            "total_pnl_usd": round(data["pnl_sum"], 2),
             "by_confidence": data["by_confidence"]
         }
     

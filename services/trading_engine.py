@@ -34,6 +34,7 @@ class TradingEngine:
         self.total_runtime_seconds = 0
         self._task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
+        self._last_scan_time: float = 0
     
     async def initialize(self, db: AsyncSession):
         """Initialize engine state from database"""
@@ -611,6 +612,11 @@ class TradingEngine:
         if not self.is_running:
             return []
         
+        import time
+        now = time.time()
+        if now - self._last_scan_time < 30:
+            return []
+        
         logger.info(f"[SCAN] Starting scan_and_trade cycle...")
         actions = []
         
@@ -697,6 +703,7 @@ class TradingEngine:
             # (0.3s per pair = ~15s for 50 pairs, well within limits)
             await asyncio.sleep(0.3)
         
+        self._last_scan_time = time.time()
         return actions
     
     async def update_pair_data(

@@ -651,6 +651,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "worst_loss_short": 0,
             "total_pnl": 0,
             "total_pnl_percentage": 0,
+            "total_pnl_notional_percentage": 0,
             "total_investment_notional": 0,
             "total_investment_value": 0,
             "total_investment_long_notional": 0,
@@ -975,7 +976,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     
     for o in sl_orders:
         conf = o.confidence or "LOW"
-        conf_config = getattr(tc.confidence_levels, conf.lower(), tc.confidence_levels.low)
+        conf_config = tc.confidence_levels.get(conf, tc.confidence_levels.get("LOW"))
         trigger = conf_config.breakeven_trigger
         peak = o.peak_pnl or 0
         

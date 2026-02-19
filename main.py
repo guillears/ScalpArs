@@ -624,6 +624,14 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     orders = result.scalars().all()
     
     if not orders:
+        early_open_result = await db.execute(
+            select(Order).where(
+                and_(Order.status == "OPEN", Order.is_paper == trading_engine.is_paper_mode)
+            )
+        )
+        early_used_margin = sum(o.investment for o in early_open_result.scalars().all())
+        early_portfolio = trading_engine.paper_balance + early_used_margin
+        early_return_multiple = round(early_portfolio / config.trading_config.paper_balance, 4) if config.trading_config.paper_balance > 0 else 0
         return {
             "total_trades": 0,
             "total_longs": 0,
@@ -654,7 +662,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "avg_duration_long": "00:00:00",
             "avg_duration_short": "00:00:00",
             "avg_leverage": 0,
-            "return_multiple": round(trading_engine.paper_balance / config.trading_config.paper_balance, 4) if config.trading_config.paper_balance > 0 else 0,
+            "return_multiple": early_return_multiple,
             "daily_compound_return": 0,
             "runtime_days": round(trading_engine.get_runtime_seconds() / 86400.0, 2),
             "by_confidence": {},
@@ -720,10 +728,17 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     
     # Return Multiple & Daily Compound Return
     initial_balance = config.trading_config.paper_balance
-    current_balance = trading_engine.paper_balance
+    open_result = await db.execute(
+        select(Order).where(
+            and_(Order.status == "OPEN", Order.is_paper == trading_engine.is_paper_mode)
+        )
+    )
+    open_orders_for_balance = open_result.scalars().all()
+    used_margin = sum(o.investment for o in open_orders_for_balance)
+    current_balance = trading_engine.paper_balance + used_margin
     runtime_days = trading_engine.get_runtime_seconds() / 86400.0
     return_multiple = current_balance / initial_balance if initial_balance > 0 else 0
-    if runtime_days >= 0.01 and return_multiple > 0:
+    if runtime_days >= 0.5 and return_multiple > 0:
         daily_compound_return = (return_multiple ** (1 / runtime_days) - 1) * 100
     else:
         daily_compound_return = 0

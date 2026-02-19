@@ -143,7 +143,7 @@ class TradingEngine:
             balance = await binance_service.get_balance()
             return balance['usdt_free']
     
-    def calculate_position_size(self, available_balance: float, confidence: str) -> Tuple[float, float]:
+    def calculate_position_size(self, available_balance: float, confidence: str, total_portfolio: float = None) -> Tuple[float, float]:
         """
         Calculate position size and leverage based on config
         
@@ -170,7 +170,12 @@ class TradingEngine:
             investment = tradeable * (tc.investment.percentage / 100)
         elif tc.investment.mode == "equal_split":
             max_pos = tc.investment.max_open_positions or 5
-            investment = tradeable / max_pos
+            base = total_portfolio if total_portfolio else available_balance
+            if tc.investment.reserve_mode == "percentage":
+                reserve_from_total = base * (tc.investment.reserve_percentage / 100)
+            else:
+                reserve_from_total = tc.investment.reserve_fixed
+            investment = max(0, base - reserve_from_total) / max_pos
         else:
             investment = min(tc.investment.fixed_amount, tradeable)
         
@@ -240,7 +245,7 @@ class TradingEngine:
             logger.info(f"[SKIP] {pair}: Already have open position")
             return None  # Already have position
         
-        # Check cooldown after loss - don't re-enter same pair too quickly after a loss
+        # Check cooldown - don't re-enter same pair too quickly after any close
         cooldown_minutes = config.trading_config.investment.cooldown_after_loss_minutes
         if cooldown_minutes > 0:
             cooldown_threshold = datetime.utcnow() - timedelta(minutes=cooldown_minutes)
@@ -250,20 +255,25 @@ class TradingEngine:
                         Order.pair == pair,
                         Order.status == "CLOSED",
                         Order.is_paper == self.is_paper_mode,
-                        Order.pnl < 0,  # Only check losing trades
                         Order.closed_at >= cooldown_threshold
                     )
                 ).order_by(desc(Order.closed_at)).limit(1)
             )
-            recent_loss = result.scalar_one_or_none()
-            if recent_loss:
-                time_since_loss = (datetime.utcnow() - recent_loss.closed_at).total_seconds() / 60
-                logger.info(f"[COOLDOWN] {pair}: Recent loss {time_since_loss:.1f} mins ago, waiting {cooldown_minutes} mins")
+            recent_close = result.scalar_one_or_none()
+            if recent_close:
+                time_since_close = (datetime.utcnow() - recent_close.closed_at).total_seconds() / 60
+                logger.info(f"[COOLDOWN] {pair}: Recent close {time_since_close:.1f} mins ago, waiting {cooldown_minutes} mins")
                 return None
         
         # Calculate position size
         available = await self.get_available_balance(db)
-        investment, leverage = self.calculate_position_size(available, confidence)
+        open_margin_result = await db.execute(
+            select(func.coalesce(func.sum(Order.investment), 0)).where(
+                and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+            )
+        )
+        total_portfolio = available + (open_margin_result.scalar() or 0)
+        investment, leverage = self.calculate_position_size(available, confidence, total_portfolio=total_portfolio)
         logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x")
         
         if investment <= 0:

@@ -6,10 +6,14 @@ from ccxt.base.errors import RateLimitExceeded, DDoSProtection, ExchangeNotAvail
 from typing import Dict, List, Optional, Tuple
 import asyncio
 import logging
+import re
+import time
 from config import settings, trading_config
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+_ban_until: float = 0
 
 
 class BinanceService:
@@ -52,6 +56,26 @@ class BinanceService:
             await self.public_exchange.load_markets()
             self._public_markets_loaded = True
     
+    async def _check_ban(self):
+        """If Binance has IP-banned us, sleep until the ban expires."""
+        global _ban_until
+        if _ban_until > 0:
+            now = time.time()
+            if now < _ban_until:
+                wait = _ban_until - now + 2
+                logger.warning(f"[BINANCE] IP banned, waiting {wait:.0f}s until ban expires")
+                await asyncio.sleep(wait)
+            _ban_until = 0
+
+    @staticmethod
+    def _detect_ban(error):
+        """Check if an error is an IP ban and record the expiry."""
+        global _ban_until
+        match = re.search(r'banned until (\d+)', str(error))
+        if match:
+            _ban_until = int(match.group(1)) / 1000
+            logger.error(f"[BINANCE] IP ban detected, expires at {_ban_until:.0f} (epoch)")
+
     async def close(self):
         """Close exchange connections"""
         await self.exchange.close()
@@ -88,20 +112,28 @@ class BinanceService:
     async def get_top_futures_pairs(self, limit: int = 50) -> List[Dict]:
         """Get top futures pairs by 24h volume"""
         try:
+            await self._check_ban()
             await self.load_public_markets()
             
-            # Retry with backoff if rate limited
             tickers = None
             for attempt in range(3):
                 try:
                     tickers = await self.public_exchange.fetch_tickers()
                     break
                 except (RateLimitExceeded, DDoSProtection, ExchangeNotAvailable) as e:
+                    self._detect_ban(e)
+                    if _ban_until > 0:
+                        await self._check_ban()
+                        continue
                     wait = (attempt + 1) * 5
                     logger.warning(f"[BINANCE] Rate limited fetching tickers, waiting {wait}s (attempt {attempt + 1}/3): {e}")
                     await asyncio.sleep(wait)
                 except Exception as e:
-                    if 'Too many requests' in str(e) or '1003' in str(e) or '429' in str(e):
+                    if 'Too many requests' in str(e) or '1003' in str(e) or '429' in str(e) or 'banned' in str(e).lower():
+                        self._detect_ban(e)
+                        if _ban_until > 0:
+                            await self._check_ban()
+                            continue
                         wait = (attempt + 1) * 5
                         logger.warning(f"[BINANCE] Rate limited fetching tickers, waiting {wait}s (attempt {attempt + 1}/3): {e}")
                         await asyncio.sleep(wait)
@@ -143,17 +175,26 @@ class BinanceService:
     
     async def get_ohlcv(self, symbol: str, timeframe: str = '5m', limit: int = 100) -> List:
         """Get OHLCV data for indicator calculation"""
+        await self._check_ban()
         await self.load_public_markets()
         for attempt in range(3):
             try:
                 ohlcv = await self.public_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
                 return ohlcv
             except (RateLimitExceeded, DDoSProtection, ExchangeNotAvailable) as e:
+                self._detect_ban(e)
+                if _ban_until > 0:
+                    await self._check_ban()
+                    continue
                 wait = (attempt + 1) * 5
                 logger.warning(f"[BINANCE] Rate limited fetching OHLCV for {symbol}, waiting {wait}s (attempt {attempt + 1}/3): {e}")
                 await asyncio.sleep(wait)
             except Exception as e:
-                if 'Too many requests' in str(e) or '1003' in str(e) or '429' in str(e):
+                if 'Too many requests' in str(e) or '1003' in str(e) or '429' in str(e) or 'banned' in str(e).lower():
+                    self._detect_ban(e)
+                    if _ban_until > 0:
+                        await self._check_ban()
+                        continue
                     wait = (attempt + 1) * 5
                     logger.warning(f"[BINANCE] Rate limited fetching OHLCV for {symbol}, waiting {wait}s (attempt {attempt + 1}/3): {e}")
                     await asyncio.sleep(wait)
@@ -166,10 +207,16 @@ class BinanceService:
     async def get_current_price(self, symbol: str) -> float:
         """Get current price for a symbol"""
         try:
+            await self._check_ban()
             await self.load_public_markets()
             ticker = await self.public_exchange.fetch_ticker(symbol)
             return float(ticker.get('last', 0))
+        except (DDoSProtection, RateLimitExceeded) as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] Rate limited fetching price for {symbol}: {e}")
+            return 0.0
         except Exception as e:
+            self._detect_ban(e)
             logger.error(f"[BINANCE] Error fetching price for {symbol}: {e}")
             return 0.0
     

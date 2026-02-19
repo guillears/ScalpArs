@@ -68,23 +68,31 @@ async def monitor_loop():
 
 
 async def scan_loop():
-    """Slow loop (30s) for scanning pairs and opening new positions.
+    """Slow loop for scanning pairs and opening new positions.
     
     Runs in its own task so it never blocks the fast monitor_loop.
+    Uses exponential backoff on failures to avoid hammering Binance
+    after rate-limit bans.
     """
     global should_stop
-    logger.info("[SCAN_LOOP] Scan loop started (30s cycle)")
+    logger.info("[SCAN_LOOP] Waiting 10s before first scan (post-deploy cooldown)...")
+    await asyncio.sleep(10)
+    logger.info("[SCAN_LOOP] Scan loop started")
+    scan_backoff = 1
     while not should_stop:
         try:
             async with AsyncSessionLocal() as db:
                 await trading_engine.initialize(db)
                 if trading_engine.is_running:
                     await trading_engine.scan_and_trade(db)
+                    scan_backoff = 1
         except Exception as e:
             logger.error(f"[ERROR] Error in scan loop: {e}")
             import traceback
             traceback.print_exc()
-        await asyncio.sleep(1)
+            scan_backoff = min(scan_backoff * 2, 300)
+            logger.warning(f"[SCAN_LOOP] Backing off {scan_backoff}s after error")
+        await asyncio.sleep(scan_backoff)
 
 
 async def start_background_tasks():

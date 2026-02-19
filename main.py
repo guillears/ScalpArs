@@ -41,43 +41,55 @@ logging.getLogger("services").setLevel(logging.INFO)
 logger = logging.getLogger("scalpars")
 
 # Background task control
-background_task = None
-monitor_task = None
+_scan_task = None
+_monitor_task = None
 should_stop = False
 
 
-async def trading_loop():
-    """Main trading loop that runs in background"""
+async def monitor_loop():
+    """Fast loop (1s) for SL/TP checks and cache updates.
+    
+    Runs independently of scan_loop so stop-loss monitoring is never
+    blocked by slow API calls in scan_and_trade.
+    """
     global should_stop
-    logger.info("[LOOP] Trading loop started")
+    logger.info("[MONITOR] Monitor loop started (1s cycle)")
     while not should_stop:
         try:
             async with AsyncSessionLocal() as db:
                 await trading_engine.initialize(db)
-                
-                logger.info(f"[LOOP] Cycle - is_running: {trading_engine.is_running}, is_paper: {trading_engine.is_paper_mode}")
-                
-                if trading_engine.is_running:
-                    # Scan and open new positions
-                    await trading_engine.scan_and_trade(db)
-                
-                # Always update and check open positions (even when paused)
                 await trading_engine.update_open_positions(db)
-                
-                # Update orders cache for real-time stop loss checking
                 await trading_engine.update_orders_cache(db)
         except Exception as e:
-            logger.error(f"[ERROR] Error in trading loop: {e}")
+            logger.error(f"[ERROR] Error in monitor loop: {e}")
             import traceback
             traceback.print_exc()
-        
-        # Wait 1 second before next iteration (real-time price tracking)
+        await asyncio.sleep(1)
+
+
+async def scan_loop():
+    """Slow loop (30s) for scanning pairs and opening new positions.
+    
+    Runs in its own task so it never blocks the fast monitor_loop.
+    """
+    global should_stop
+    logger.info("[SCAN_LOOP] Scan loop started (30s cycle)")
+    while not should_stop:
+        try:
+            async with AsyncSessionLocal() as db:
+                await trading_engine.initialize(db)
+                if trading_engine.is_running:
+                    await trading_engine.scan_and_trade(db)
+        except Exception as e:
+            logger.error(f"[ERROR] Error in scan loop: {e}")
+            import traceback
+            traceback.print_exc()
         await asyncio.sleep(1)
 
 
 async def start_background_tasks():
     """Start background trading tasks"""
-    global background_task, should_stop
+    global _scan_task, _monitor_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -88,24 +100,27 @@ async def start_background_tasks():
     websocket_tracker.set_price_callback(realtime_stop_loss_callback)
     logger.info("[STARTUP] Real-time stop loss callback registered")
     
-    background_task = asyncio.create_task(trading_loop())
+    _monitor_task = asyncio.create_task(monitor_loop())
+    _scan_task = asyncio.create_task(scan_loop())
+    logger.info("[STARTUP] Monitor and scan loops started independently")
 
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global background_task, should_stop
+    global _scan_task, _monitor_task, should_stop
     should_stop = True
     
     # Stop WebSocket tracker
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
     
-    if background_task:
-        background_task.cancel()
-        try:
-            await background_task
-        except asyncio.CancelledError:
-            pass
+    for task in (_monitor_task, _scan_task):
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 @asynccontextmanager

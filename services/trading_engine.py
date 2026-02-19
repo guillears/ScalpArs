@@ -397,6 +397,29 @@ class TradingEngine:
         websocket_tracker.force_reset_tracking(pair, actual_price)
         await websocket_tracker.subscribe_pair(pair, actual_price)
         
+        # Immediately add to real-time cache so the WebSocket SL callback can
+        # protect this order right away (without waiting for update_orders_cache).
+        async with _cache_lock:
+            order_cache_entry = {
+                'id': order.id,
+                'direction': direction,
+                'entry_price': actual_price,
+                'quantity': quantity,
+                'entry_fee': entry_fee,
+                'confidence': confidence,
+                'stop_loss': conf_config.stop_loss,
+                'current_tp_level': 1,
+                'peak_pnl': 0.0,
+                'breakeven_trigger': conf_config.breakeven_trigger,
+                'breakeven_offset': conf_config.breakeven_offset,
+                'high_price': actual_price,
+                'low_price': actual_price,
+                'pullback_trigger': conf_config.pullback_trigger
+            }
+            if pair not in _open_orders_cache:
+                _open_orders_cache[pair] = []
+            _open_orders_cache[pair].append(order_cache_entry)
+        
         logger.info(f"[ORDER CREATED] {pair}: {direction} {confidence} - ID={order.id}, Investment=${investment:.2f}")
         
         return order
@@ -685,9 +708,8 @@ class TradingEngine:
             self._last_scan_time = time.time()
             return []
         
-        # Subscribe all top pairs to WebSocket for real-time price streaming
-        for pair_info in top_pairs:
-            await websocket_tracker.subscribe_pair(pair_info['pair'])
+        # Subscribe all top pairs to WebSocket in a single batch (one reconnection)
+        await websocket_tracker.subscribe_pairs_batch([p['pair'] for p in top_pairs])
         
         for pair_info in top_pairs:
             pair = pair_info['pair']

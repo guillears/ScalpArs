@@ -99,7 +99,8 @@ class WebSocketTracker:
         self._task: Optional[asyncio.Task] = None
         self._reconnect_delay = 1  # Start with 1 second
         self._max_reconnect_delay = 60  # Max 60 seconds
-        self._price_callback = None  # Callback for real-time price updates (e.g., stop loss checking)
+        self._price_callback = None
+        self._lock = asyncio.Lock()
     
     def set_price_callback(self, callback):
         """Set callback function to be called on each price update.
@@ -109,7 +110,6 @@ class WebSocketTracker:
         """
         self._price_callback = callback
         logger.info("[WS_TRACKER] Price callback registered for real-time stop loss")
-        self._lock = asyncio.Lock()
     
     async def start(self):
         """Start the WebSocket tracker"""
@@ -162,6 +162,25 @@ class WebSocketTracker:
                 self.trackers[pair].update(initial_price)
                 logger.debug(f"[WS_TRACKER] Updated {pair} price: {initial_price} (preserved tracking)")
     
+    async def subscribe_pairs_batch(self, pairs: list):
+        """Subscribe multiple pairs at once with a single reconnection.
+        
+        Much more efficient than calling subscribe_pair() in a loop when
+        adding many pairs (e.g. during scan_and_trade), because the
+        WebSocket only reconnects once instead of once per new pair.
+        """
+        new_pairs = []
+        async with self._lock:
+            for pair in pairs:
+                if pair not in self.subscribed_pairs:
+                    self.subscribed_pairs.add(pair)
+                    self.trackers[pair] = PriceTracker(pair)
+                    new_pairs.append(pair)
+            if new_pairs and self.websocket and self.running:
+                await self._reconnect()
+        if new_pairs:
+            logger.info(f"[WS_TRACKER] Batch subscribed {len(new_pairs)} new pairs (total: {len(self.subscribed_pairs)})")
+
     async def unsubscribe_pair(self, pair: str):
         """Unsubscribe from price updates for a pair"""
         async with self._lock:

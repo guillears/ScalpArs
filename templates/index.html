@@ -393,6 +393,7 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Gap Range</th>
                                     <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
                                     <th class="px-3 py-2 font-medium text-right">Win Rate</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
@@ -400,7 +401,7 @@
                                 </tr>
                             </thead>
                             <tbody id="gap-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -416,6 +417,7 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">RSI Range</th>
                                     <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
                                     <th class="px-3 py-2 font-medium text-right">Win Rate</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
@@ -423,7 +425,7 @@
                                 </tr>
                             </thead>
                             <tbody id="rsi-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry RSI)</td></tr>
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry RSI)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1494,10 +1496,13 @@
                                 return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
                             }).join(' ');
                         
+                        const dirLabel = g.by_direction ? `${g.by_direction.LONG || 0}L / ${g.by_direction.SHORT || 0}S` : '-';
+                        
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${g.range}</td>
                                 <td class="px-3 py-2 text-center">${g.count}</td>
+                                <td class="px-3 py-2 text-center text-gray-300">${dirLabel}</td>
                                 <td class="px-3 py-2 text-right ${wrClass} font-medium">${g.win_rate.toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(g.total_pnl_usd || 0)}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(g.avg_pnl_usd)}</td>
@@ -1506,7 +1511,7 @@
                         `;
                     }).join('');
                 } else {
-                    gapBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>';
+                    gapBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>';
                 }
                 
                 // Performance by Entry RSI
@@ -1531,10 +1536,13 @@
                                 return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
                             }).join(' ');
                         
+                        const dirLabel = r.by_direction ? `${r.by_direction.LONG || 0}L / ${r.by_direction.SHORT || 0}S` : '-';
+                        
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-purple-400">${r.range}</td>
                                 <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center text-gray-300">${dirLabel}</td>
                                 <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
@@ -1543,7 +1551,7 @@
                         `;
                     }).join('');
                 } else {
-                    rsiBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry RSI)</td></tr>';
+                    rsiBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry RSI)</td></tr>';
                 }
                 
                 // Stop Loss Deep Dive

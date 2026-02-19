@@ -300,13 +300,12 @@ def check_exit_conditions(
     if pnl_pct > 0:
         peak_pnl = max(peak_pnl, pnl_pct)
     
-    # Determine if trailing stop is active (provides better protection than break-even)
-    # Trailing stop activates when we've reached TP target or extended TP at least once
-    trailing_stop_active = peak_pnl >= effective_tp_target or current_tp_level >= 2
+    # Trailing stop (pullback from peak price) only activates at L2+.
+    # At L1, the TP check handles exits: extend if trend valid, close if trend broken.
+    trailing_stop_active = current_tp_level >= 2
     
-    # Break-even stop loss: ONLY applies in the PRE-TP zone where trailing stop is NOT active.
-    # Once trailing stop is active (L2+ or peak >= TP target), it provides much tighter
-    # protection (0.04% pullback from peak) vs break-even (-0.02% from entry).
+    # Break-even stop loss: applies when trailing stop is NOT active (L1 and pre-TP zone).
+    # At L2+ the pullback trailing provides tighter protection so BE is not needed.
     effective_stop_loss = stop_loss
     breakeven_active = False
     if not trailing_stop_active and peak_pnl >= breakeven_trigger:
@@ -369,6 +368,15 @@ def check_exit_conditions(
                 "peak_pnl": peak_pnl,
                 "new_tp_level": new_tp_level,
                 "new_tp_target": new_tp_target
+            }
+        else:
+            # Trend broken while at/above TP target -- exit immediately
+            logger.info(f"[TREND_BREAK_EXIT] {direction} L{current_tp_level}: pnl={pnl_pct:.4f}% >= target={effective_tp_target:.4f}% but trend broken, closing now")
+            return {
+                "should_close": True,
+                "reason": f"TRAILING_STOP L{current_tp_level}",
+                "peak_pnl": peak_pnl,
+                "tp_level": current_tp_level
             }
     
     # peak_pnl is already tracked unconditionally above

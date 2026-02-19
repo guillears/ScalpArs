@@ -54,6 +54,8 @@ class Order(Base):
     
     # Entry gap: abs((ema5 - ema20) / price * 100) at time of entry
     entry_gap = Column(Float, nullable=True)
+    # RSI(12) value at time of entry
+    entry_rsi = Column(Float, nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

@@ -39,6 +39,8 @@ async def init_db():
                 columns = [c['name'] for c in inspector.get_columns('orders')]
                 if 'entry_gap' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_gap FLOAT"))
+                if 'entry_rsi' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_rsi FLOAT"))
         
         await conn.run_sync(_migrate)
 

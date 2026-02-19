@@ -357,6 +357,32 @@
                     </div>
                 </div>
                 
+                <!-- Stop Loss Deep Dive -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Stop Loss Deep Dive</h3>
+                    <p class="text-xs text-gray-500 mb-3">Breakdown of STOP_LOSS trades by peak P&L reached before close</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Category</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Peak P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L USD</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sl-deep-dive-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
                 <!-- Performance by Entry Gap -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap</h3>
@@ -375,6 +401,29 @@
                             </thead>
                             <tbody id="gap-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Performance by Entry RSI -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry RSI</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by RSI(12) range at entry (only tracks new trades)</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">RSI Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rsi-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry RSI)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1458,6 +1507,105 @@
                     }).join('');
                 } else {
                     gapBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>';
+                }
+                
+                // Performance by Entry RSI
+                const rsiBody = document.getElementById('rsi-performance-body');
+                if (data.rsi_performance && data.rsi_performance.some(r => r.count > 0)) {
+                    const confBadgeColorsRsi = {
+                        'LOW': 'text-yellow-400',
+                        'MEDIUM': 'text-orange-400',
+                        'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400'
+                    };
+                    
+                    rsiBody.innerHTML = data.rsi_performance.filter(r => r.count > 0).map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confBadgeColorsRsi[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-purple-400">${r.range}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    rsiBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting entry RSI)</td></tr>';
+                }
+                
+                // Stop Loss Deep Dive
+                const slBody = document.getElementById('sl-deep-dive-body');
+                const sld = data.stop_loss_deep_dive;
+                const slConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                
+                function slConfBadges(byConf) {
+                    if (!byConf || Object.keys(byConf).length === 0) return '-';
+                    return ['LOW','MEDIUM','HIGH','EXTREME']
+                        .filter(c => byConf[c])
+                        .map(c => `<span class="${slConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${byConf[c]}</span>`)
+                        .join(' ');
+                }
+                function slDirLabel(byDir) {
+                    if (!byDir) return '-';
+                    return `<span class="text-emerald-400 text-xs">${byDir.LONG || 0}L</span> / <span class="text-red-400 text-xs">${byDir.SHORT || 0}S</span>`;
+                }
+                
+                if (sld && sld.total_sl_trades > 0) {
+                    const categories = [
+                        { name: 'BE Was Active', data: sld.be_was_active, color: 'text-orange-400', desc: 'Reached BE trigger, still hit SL' },
+                        { name: 'Positive, No BE', data: sld.positive_no_be, color: 'text-yellow-400', desc: 'Went positive but never reached BE trigger' },
+                        { name: 'Never Positive', data: sld.never_positive, color: 'text-red-400', desc: 'Went straight to SL' }
+                    ];
+                    
+                    let rows = categories.filter(c => c.data.count > 0).map(c => {
+                        const peakClass = c.data.avg_peak_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const closeClass = c.data.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = c.data.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        return `
+                            <tr class="hover:bg-white/5" title="${c.desc}">
+                                <td class="px-3 py-2 font-medium ${c.color}">${c.name}</td>
+                                <td class="px-3 py-2 text-center">${c.data.count}</td>
+                                <td class="px-3 py-2 text-center">${slDirLabel(c.data.by_direction)}</td>
+                                <td class="px-3 py-2 text-center">${slConfBadges(c.data.by_confidence)}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${c.data.avg_entry_gap != null ? c.data.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-purple-400">${c.data.avg_entry_rsi != null ? c.data.avg_entry_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${c.data.avg_peak_pnl >= 0 ? '+' : ''}${c.data.avg_peak_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${closeClass} font-medium">${c.data.avg_close_pnl >= 0 ? '+' : ''}${c.data.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(c.data.total_pnl_usd)}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                    
+                    rows += `
+                        <tr class="border-t border-white/10 hover:bg-white/5">
+                            <td class="px-3 py-2 font-medium text-gray-300">All SL Trades</td>
+                            <td class="px-3 py-2 text-center font-medium">${sld.total_sl_trades}</td>
+                            <td class="px-3 py-2 text-center">${slDirLabel(sld.all_by_direction)}</td>
+                            <td class="px-3 py-2 text-center">${slConfBadges(sld.all_by_confidence)}</td>
+                            <td class="px-3 py-2 text-right text-cyan-400">${sld.all_avg_entry_gap != null ? sld.all_avg_entry_gap.toFixed(2) + '%' : '-'}</td>
+                            <td class="px-3 py-2 text-right text-purple-400">${sld.all_avg_entry_rsi != null ? sld.all_avg_entry_rsi.toFixed(1) : '-'}</td>
+                            <td class="px-3 py-2 text-right ${sld.avg_peak_all_sl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.avg_peak_all_sl >= 0 ? '+' : ''}${sld.avg_peak_all_sl.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right text-gray-500">-</td>
+                            <td class="px-3 py-2 text-right text-gray-500">-</td>
+                        </tr>
+                    `;
+                    
+                    slBody.innerHTML = rows;
+                } else {
+                    slBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);

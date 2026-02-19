@@ -35,9 +35,13 @@ class TradingEngine:
         self._task: Optional[asyncio.Task] = None
         self._monitor_task: Optional[asyncio.Task] = None
         self._last_scan_time: float = 0
+        self._initialized = False
     
     async def initialize(self, db: AsyncSession):
-        """Initialize engine state from database"""
+        """Initialize engine state from database (only on first call)"""
+        if self._initialized:
+            return
+        
         result = await db.execute(select(BotState).limit(1))
         state = result.scalar_one_or_none()
         
@@ -58,6 +62,33 @@ class TradingEngine:
             )
             db.add(state)
             await db.commit()
+        
+        # Recalculate paper_balance from orders to self-heal any accumulated drift
+        if self.is_paper_mode:
+            initial = config.trading_config.paper_balance
+            closed_pnl_result = await db.execute(
+                select(func.coalesce(func.sum(Order.pnl), 0)).where(
+                    and_(Order.status == "CLOSED", Order.is_paper == True)
+                )
+            )
+            total_closed_pnl = closed_pnl_result.scalar() or 0
+            open_margin_result = await db.execute(
+                select(func.coalesce(func.sum(Order.investment), 0)).where(
+                    and_(Order.status == "OPEN", Order.is_paper == True)
+                )
+            )
+            total_open_margin = open_margin_result.scalar() or 0
+            correct_balance = initial + total_closed_pnl - total_open_margin
+            if abs(correct_balance - self.paper_balance) > 0.01:
+                logger.warning(
+                    f"[BALANCE_HEAL] Paper balance drift detected: "
+                    f"stored={self.paper_balance:.2f}, correct={correct_balance:.2f}, "
+                    f"diff={self.paper_balance - correct_balance:.2f}. Correcting."
+                )
+                self.paper_balance = correct_balance
+                await self.save_state(db)
+        
+        self._initialized = True
     
     async def save_state(self, db: AsyncSession):
         """Save engine state to database"""
@@ -207,7 +238,8 @@ class TradingEngine:
         direction: str,
         confidence: str,
         current_price: float,
-        entry_gap: float = None
+        entry_gap: float = None,
+        entry_rsi: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -324,6 +356,7 @@ class TradingEngine:
             quantity=quantity,
             confidence=confidence,
             entry_gap=entry_gap,
+            entry_rsi=entry_rsi,
             entry_fee=entry_fee,
             peak_pnl=0.0,
             high_price_since_entry=actual_price if direction == "LONG" else None,
@@ -706,17 +739,19 @@ class TradingEngine:
             # Open position if we have a valid signal
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
                 logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
-                # Compute entry gap for tracking
+                # Compute entry gap and RSI for tracking
                 entry_gap = None
                 if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
                     entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
+                entry_rsi = indicators.get('rsi')
                 order = await self.open_position(
                     db=db,
                     pair=pair,
                     direction=signal,
                     confidence=confidence,
                     current_price=indicators['price'],
-                    entry_gap=entry_gap
+                    entry_gap=entry_gap,
+                    entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None
                 )
                 
                 if order:

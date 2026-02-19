@@ -668,7 +668,9 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "by_confidence": {},
             "outcome_distribution": [],
             "gap_performance": [],
-            "by_close_reason": {}
+            "rsi_performance": [],
+            "by_close_reason": {},
+            "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
         }
     
     # Separate longs and shorts
@@ -877,6 +879,53 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "by_confidence": conf_breakdown
         })
     
+    # Performance by Entry RSI Range
+    rsi_ranges = [
+        ("20 - 30", 20, 30),
+        ("30 - 35", 30, 35),
+        ("35 - 40", 35, 40),
+        ("40 - 45", 40, 45),
+        ("45 - 50", 45, 50),
+        ("50 - 55", 50, 55),
+        ("55 - 60", 55, 60),
+        ("60 - 65", 60, 65),
+        ("65 - 70", 65, 70),
+        ("70 - 80", 70, 80),
+    ]
+    
+    rsi_orders = [o for o in orders if o.entry_rsi is not None]
+    
+    rsi_performance = []
+    for range_name, rsi_min, rsi_max in rsi_ranges:
+        range_orders = [o for o in rsi_orders if rsi_min <= o.entry_rsi < rsi_max]
+        count = len(range_orders)
+        if count == 0:
+            rsi_performance.append({
+                "range": range_name,
+                "count": 0,
+                "win_rate": 0,
+                "avg_pnl_usd": 0,
+                "by_confidence": {}
+            })
+            continue
+        
+        range_wins = len([o for o in range_orders if (o.pnl or 0) > 0])
+        range_pnl_sum = sum(o.pnl or 0 for o in range_orders)
+        
+        conf_breakdown = {}
+        for o in range_orders:
+            conf = o.confidence or "UNKNOWN"
+            conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+        
+        rsi_performance.append({
+            "range": range_name,
+            "count": count,
+            "win_rate": round(range_wins / count * 100, 1),
+            "avg_pnl_usd": round(range_pnl_sum / count, 2),
+            "total_pnl_usd": round(range_pnl_sum, 2),
+            "by_confidence": conf_breakdown
+        })
+    
     # By Close Reason - group by reason with L4+ aggregation
     close_reason_stats = {}
     for o in orders:
@@ -916,6 +965,83 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "by_confidence": data["by_confidence"]
         }
     
+    # Stop Loss Deep Dive: analyze SL trades by peak P&L journey
+    tc = config.trading_config
+    sl_orders = [o for o in orders if o.close_reason and o.close_reason.startswith("STOP_LOSS")]
+    
+    be_active_trades = []
+    positive_no_be_trades = []
+    never_positive_trades = []
+    
+    for o in sl_orders:
+        conf = o.confidence or "LOW"
+        conf_config = getattr(tc.confidence_levels, conf.lower(), tc.confidence_levels.low)
+        trigger = conf_config.breakeven_trigger
+        peak = o.peak_pnl or 0
+        
+        if peak >= trigger:
+            be_active_trades.append(o)
+        elif peak > 0:
+            positive_no_be_trades.append(o)
+        else:
+            never_positive_trades.append(o)
+    
+    def _sl_group_stats(group_orders):
+        count = len(group_orders)
+        empty = {
+            "count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl_usd": 0,
+            "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0},
+            "avg_entry_gap": None, "avg_entry_rsi": None
+        }
+        if count == 0:
+            return empty
+        avg_peak = sum(o.peak_pnl or 0 for o in group_orders) / count
+        avg_close = sum(o.pnl_percentage or 0 for o in group_orders) / count
+        total_pnl = sum(o.pnl or 0 for o in group_orders)
+        by_conf = {}
+        for o in group_orders:
+            c = o.confidence or "LOW"
+            by_conf[c] = by_conf.get(c, 0) + 1
+        by_dir = {"LONG": 0, "SHORT": 0}
+        for o in group_orders:
+            d = o.direction or "LONG"
+            by_dir[d] = by_dir.get(d, 0) + 1
+        gaps = [o.entry_gap for o in group_orders if o.entry_gap is not None]
+        rsis = [o.entry_rsi for o in group_orders if o.entry_rsi is not None]
+        return {
+            "count": count,
+            "avg_peak_pnl": round(avg_peak, 4),
+            "avg_close_pnl": round(avg_close, 4),
+            "total_pnl_usd": round(total_pnl, 2),
+            "by_confidence": by_conf,
+            "by_direction": by_dir,
+            "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
+            "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None
+        }
+    
+    all_sl_by_conf = {}
+    for o in sl_orders:
+        c = o.confidence or "LOW"
+        all_sl_by_conf[c] = all_sl_by_conf.get(c, 0) + 1
+    all_sl_by_dir = {"LONG": 0, "SHORT": 0}
+    for o in sl_orders:
+        d = o.direction or "LONG"
+        all_sl_by_dir[d] = all_sl_by_dir.get(d, 0) + 1
+    all_sl_gaps = [o.entry_gap for o in sl_orders if o.entry_gap is not None]
+    all_sl_rsis = [o.entry_rsi for o in sl_orders if o.entry_rsi is not None]
+
+    stop_loss_deep_dive = {
+        "total_sl_trades": len(sl_orders),
+        "be_was_active": _sl_group_stats(be_active_trades),
+        "positive_no_be": _sl_group_stats(positive_no_be_trades),
+        "never_positive": _sl_group_stats(never_positive_trades),
+        "avg_peak_all_sl": round(sum(o.peak_pnl or 0 for o in sl_orders) / len(sl_orders), 4) if sl_orders else 0,
+        "all_by_confidence": all_sl_by_conf,
+        "all_by_direction": all_sl_by_dir,
+        "all_avg_entry_gap": round(sum(all_sl_gaps) / len(all_sl_gaps), 2) if all_sl_gaps else None,
+        "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None
+    }
+    
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -953,7 +1079,9 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "by_confidence": confidence_performance,
         "outcome_distribution": outcome_distribution,
         "gap_performance": gap_performance,
-        "by_close_reason": by_close_reason
+        "rsi_performance": rsi_performance,
+        "by_close_reason": by_close_reason,
+        "stop_loss_deep_dive": stop_loss_deep_dive
     }
 
 

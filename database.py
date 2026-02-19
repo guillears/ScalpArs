@@ -41,6 +41,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_gap FLOAT"))
                 if 'entry_rsi' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_rsi FLOAT"))
+                if 'trough_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN trough_pnl FLOAT DEFAULT 0.0"))
         
         await conn.run_sync(_migrate)
 

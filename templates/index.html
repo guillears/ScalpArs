@@ -383,6 +383,31 @@
                     </div>
                 </div>
                 
+                <!-- Winning Trades Drawdown -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Winning Trades Drawdown</h3>
+                    <p class="text-xs text-gray-500 mb-3">How deep winning trades dipped before closing in profit (trough P&L)</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Close Reason</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Trough %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Worst Trough %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
                 <!-- Performance by Entry Gap -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap</h3>
@@ -1614,6 +1639,69 @@
                     slBody.innerHTML = rows;
                 } else {
                     slBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                }
+                
+                // Winning Trades Drawdown
+                const wdBody = document.getElementById('winning-drawdown-body');
+                const wdd = data.winning_trades_drawdown;
+                const wdConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                
+                if (wdd && wdd.length > 0) {
+                    let totalCount = 0, totalPnl = 0;
+                    let allTroughs = [];
+                    let allClosePnls = [];
+                    
+                    let rows = wdd.map(w => {
+                        totalCount += w.count;
+                        totalPnl += w.total_pnl_usd;
+                        allTroughs.push(...Array(w.count).fill(w.avg_trough_pnl));
+                        allClosePnls.push(...Array(w.count).fill(w.avg_close_pnl));
+                        
+                        const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const closeClass = w.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        
+                        const dirLabel = w.by_direction ? `<span class="text-emerald-400 text-xs">${w.by_direction.LONG || 0}L</span> / <span class="text-red-400 text-xs">${w.by_direction.SHORT || 0}S</span>` : '-';
+                        const confBadges = Object.entries(w.by_confidence || {})
+                            .filter(([,v]) => v > 0)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${wdConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ') || '-';
+                        
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${w.close_reason}</td>
+                                <td class="px-3 py-2 text-center">${w.count}</td>
+                                <td class="px-3 py-2 text-center">${dirLabel}</td>
+                                <td class="px-3 py-2 text-center">${confBadges}</td>
+                                <td class="px-3 py-2 text-right ${troughClass} font-medium">${w.avg_trough_pnl >= 0 ? '+' : ''}${w.avg_trough_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${worstClass} font-medium">${w.worst_trough_pnl >= 0 ? '+' : ''}${w.worst_trough_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${closeClass} font-medium">${w.avg_close_pnl >= 0 ? '+' : ''}${w.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(w.total_pnl_usd)}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                    
+                    const avgTrough = totalCount > 0 ? allTroughs.reduce((a,b) => a + b, 0) / totalCount : 0;
+                    const worstOverall = allTroughs.length > 0 ? Math.min(...wdd.map(w => w.worst_trough_pnl)) : 0;
+                    const avgClose = totalCount > 0 ? allClosePnls.reduce((a,b) => a + b, 0) / totalCount : 0;
+                    
+                    rows += `
+                        <tr class="border-t border-white/10 hover:bg-white/5">
+                            <td class="px-3 py-2 font-medium text-gray-300">All Winners</td>
+                            <td class="px-3 py-2 text-center font-medium">${totalCount}</td>
+                            <td class="px-3 py-2 text-center text-gray-500">-</td>
+                            <td class="px-3 py-2 text-center text-gray-500">-</td>
+                            <td class="px-3 py-2 text-right ${avgTrough >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgTrough >= 0 ? '+' : ''}${avgTrough.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${worstOverall >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${worstOverall >= 0 ? '+' : ''}${worstOverall.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${avgClose >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgClose >= 0 ? '+' : ''}${avgClose.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(totalPnl)}</td>
+                        </tr>
+                    `;
+                    
+                    wdBody.innerHTML = rows;
+                } else {
+                    wdBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);

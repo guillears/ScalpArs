@@ -359,6 +359,7 @@ class TradingEngine:
             entry_rsi=entry_rsi,
             entry_fee=entry_fee,
             peak_pnl=0.0,
+            trough_pnl=0.0,
             high_price_since_entry=actual_price if direction == "LONG" else None,
             low_price_since_entry=actual_price if direction == "SHORT" else None,
             is_paper=self.is_paper_mode,
@@ -410,6 +411,7 @@ class TradingEngine:
                 'stop_loss': conf_config.stop_loss,
                 'current_tp_level': 1,
                 'peak_pnl': 0.0,
+                'trough_pnl': 0.0,
                 'breakeven_trigger': conf_config.breakeven_trigger,
                 'breakeven_offset': conf_config.breakeven_offset,
                 'high_price': actual_price,
@@ -612,13 +614,15 @@ class TradingEngine:
                         })
                     continue
             
-            # Merge realtime peak from cache (may be higher than DB if a
+            # Merge realtime peak/trough from cache (may differ from DB if a
             # price spike occurred between polling cycles)
             realtime_peak = order.peak_pnl or 0
+            realtime_trough = order.trough_pnl or 0
             async with _cache_lock:
                 for cached in _open_orders_cache.get(order.pair, []):
                     if cached['id'] == order.id:
                         realtime_peak = max(realtime_peak, cached.get('peak_pnl', 0))
+                        realtime_trough = min(realtime_trough, cached.get('trough_pnl', 0))
                         break
             
             # Check exit conditions (including fees for accurate SL/TP)
@@ -629,6 +633,7 @@ class TradingEngine:
                 leverage=order.leverage,
                 confidence=order.confidence,
                 peak_pnl=realtime_peak,
+                trough_pnl=realtime_trough,
                 quantity=order.quantity,
                 entry_fee=order.entry_fee,
                 investment=order.investment,
@@ -644,6 +649,7 @@ class TradingEngine:
             )
             
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
+            order.trough_pnl = exit_result.get("trough_pnl", order.trough_pnl)
             reason = exit_result.get("reason")
             
             if exit_result.get("should_close"):
@@ -868,6 +874,7 @@ class TradingEngine:
             quantity = order_info['quantity']
             entry_fee = order_info['entry_fee']
             cached_peak_pnl = order_info.get('peak_pnl', 0.0)
+            cached_trough_pnl = order_info.get('trough_pnl', 0.0)
             breakeven_trigger = order_info.get('breakeven_trigger', 999)
             breakeven_offset = order_info.get('breakeven_offset', 0.0)
             pullback_trigger = order_info.get('pullback_trigger', 0.04)
@@ -905,6 +912,9 @@ class TradingEngine:
             # Track peak P&L in real-time for break-even decisions
             current_peak = max(cached_peak_pnl, pnl_pct) if pnl_pct > 0 else cached_peak_pnl
             order_info['peak_pnl'] = current_peak
+            
+            current_trough = min(cached_trough_pnl, pnl_pct) if pnl_pct < 0 else cached_trough_pnl
+            order_info['trough_pnl'] = current_trough
             
             # Get TP target to determine if trailing stop would be active
             tp_level = order_info.get('current_tp_level', 1)
@@ -1050,6 +1060,7 @@ class TradingEngine:
                 'stop_loss': conf_config.stop_loss,
                 'current_tp_level': order.current_tp_level,
                 'peak_pnl': order.peak_pnl or 0.0,
+                'trough_pnl': order.trough_pnl or 0.0,
                 'breakeven_trigger': conf_config.breakeven_trigger,
                 'breakeven_offset': conf_config.breakeven_offset,
                 'high_price': order.high_price_since_entry or order.entry_price,
@@ -1071,6 +1082,7 @@ class TradingEngine:
                     for old_info in old_orders:
                         if old_info['id'] == new_info['id']:
                             new_info['peak_pnl'] = max(new_info['peak_pnl'], old_info.get('peak_pnl', 0))
+                            new_info['trough_pnl'] = min(new_info['trough_pnl'], old_info.get('trough_pnl', 0))
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

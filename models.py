@@ -66,6 +66,7 @@ class Order(Base):
     pnl = Column(Float, nullable=True, default=0.0)  # Realized P&L
     pnl_percentage = Column(Float, nullable=True, default=0.0)
     peak_pnl = Column(Float, nullable=False, default=0.0)  # For trailing stop
+    trough_pnl = Column(Float, nullable=False, default=0.0)  # Lowest P&L reached during trade
     high_price_since_entry = Column(Float, nullable=True)  # For LONG
     low_price_since_entry = Column(Float, nullable=True)  # For SHORT
     

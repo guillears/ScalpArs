@@ -694,7 +694,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "gap_performance": [],
             "rsi_performance": [],
             "by_close_reason": {},
-            "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
+            "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
+            "winning_trades_drawdown": []
         }
     
     # Separate longs and shorts
@@ -1079,6 +1080,41 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None
     }
     
+    # Winning Trades Drawdown: analyze how deep winners dipped before closing in profit
+    winning_orders = [o for o in orders if o.pnl and o.pnl > 0]
+    win_by_reason = {}
+    for o in winning_orders:
+        reason = (o.close_reason or "UNKNOWN").split(" L")[0]
+        if reason not in win_by_reason:
+            win_by_reason[reason] = []
+        win_by_reason[reason].append(o)
+    
+    winning_trades_drawdown = []
+    for reason, group in sorted(win_by_reason.items()):
+        count = len(group)
+        troughs = [o.trough_pnl or 0 for o in group]
+        avg_trough = sum(troughs) / count
+        worst_trough = min(troughs)
+        avg_close_pnl = sum(o.pnl_percentage or 0 for o in group) / count
+        total_pnl_usd = sum(o.pnl or 0 for o in group)
+        by_dir = {"LONG": 0, "SHORT": 0}
+        for o in group:
+            by_dir[o.direction or "LONG"] += 1
+        by_conf = {}
+        for o in group:
+            c = o.confidence or "LOW"
+            by_conf[c] = by_conf.get(c, 0) + 1
+        winning_trades_drawdown.append({
+            "close_reason": reason,
+            "count": count,
+            "by_direction": by_dir,
+            "by_confidence": by_conf,
+            "avg_trough_pnl": round(avg_trough, 4),
+            "worst_trough_pnl": round(worst_trough, 4),
+            "avg_close_pnl": round(avg_close_pnl, 4),
+            "total_pnl_usd": round(total_pnl_usd, 2)
+        })
+    
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -1118,7 +1154,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "gap_performance": gap_performance,
         "rsi_performance": rsi_performance,
         "by_close_reason": by_close_reason,
-        "stop_loss_deep_dive": stop_loss_deep_dive
+        "stop_loss_deep_dive": stop_loss_deep_dive,
+        "winning_trades_drawdown": winning_trades_drawdown
     }
 
 

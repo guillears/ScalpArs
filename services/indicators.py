@@ -214,6 +214,7 @@ def check_exit_conditions(
     leverage: float,
     confidence: str,
     peak_pnl: float,
+    trough_pnl: float = 0.0,
     quantity: float = 0,
     entry_fee: float = 0,
     investment: float = 0,
@@ -265,7 +266,7 @@ def check_exit_conditions(
     # Get confidence level config
     conf_config = tc.confidence_levels.get(confidence)
     if not conf_config:
-        return {"should_close": False, "reason": None, "peak_pnl": peak_pnl}
+        return {"should_close": False, "reason": None, "peak_pnl": peak_pnl, "trough_pnl": trough_pnl}
     
     # Calculate current P&L percentage INCLUDING FEES (on margin/investment)
     if direction == "LONG":
@@ -299,6 +300,8 @@ def check_exit_conditions(
     # This ensures we don't lose the peak when price drops after TP extension
     if pnl_pct > 0:
         peak_pnl = max(peak_pnl, pnl_pct)
+    if pnl_pct < 0:
+        trough_pnl = min(trough_pnl, pnl_pct)
     
     # Trailing stop (pullback from peak price) only activates at L2+.
     # At L1, the TP check handles exits: extend if trend valid, close if trend broken.
@@ -325,6 +328,7 @@ def check_exit_conditions(
                     "should_close": True,
                     "reason": f"STOP_LOSS L{current_tp_level}",
                     "peak_pnl": peak_pnl,
+                    "trough_pnl": trough_pnl,
                     "tp_level": current_tp_level
                 }
         else:
@@ -334,6 +338,7 @@ def check_exit_conditions(
                 "should_close": True,
                 "reason": f"{reason_prefix} L{current_tp_level}",
                 "peak_pnl": peak_pnl,
+                "trough_pnl": trough_pnl,
                 "tp_level": current_tp_level
             }
     
@@ -366,6 +371,7 @@ def check_exit_conditions(
                 "should_close": False,
                 "reason": "EXTEND_TP",
                 "peak_pnl": peak_pnl,
+                "trough_pnl": trough_pnl,
                 "new_tp_level": new_tp_level,
                 "new_tp_target": new_tp_target
             }
@@ -376,6 +382,7 @@ def check_exit_conditions(
                 "should_close": True,
                 "reason": f"TRAILING_STOP L{current_tp_level}",
                 "peak_pnl": peak_pnl,
+                "trough_pnl": trough_pnl,
                 "tp_level": current_tp_level
             }
     
@@ -414,6 +421,7 @@ def check_exit_conditions(
                         "should_close": True,
                         "reason": f"TRAILING_STOP L{current_tp_level}",
                         "peak_pnl": peak_pnl,
+                        "trough_pnl": trough_pnl,
                         "tp_level": current_tp_level
                     }
         elif direction == "SHORT" and low_price and low_price > 0:
@@ -430,10 +438,11 @@ def check_exit_conditions(
                         "should_close": True,
                         "reason": f"TRAILING_STOP L{current_tp_level}",
                         "peak_pnl": peak_pnl,
+                        "trough_pnl": trough_pnl,
                         "tp_level": current_tp_level
                     }
     
-    return {"should_close": False, "reason": None, "peak_pnl": peak_pnl}
+    return {"should_close": False, "reason": None, "peak_pnl": peak_pnl, "trough_pnl": trough_pnl}
 
 
 def calculate_pnl(

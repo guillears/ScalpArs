@@ -29,6 +29,7 @@ class ConfidenceConfig(BaseModel):
     gap_min: float = 0.08  # % minimum gap required (EMA5-EMA20)/price
     gap_max: float = 0.40  # % maximum gap allowed (filters overextended entries)
     gap_enabled: bool = True  # Whether to enforce gap requirement
+    max_ema5_stretch: float = 0.12  # % max distance from EMA5 allowed for entry
     # Break-even stop loss: once peak P&L reaches breakeven_trigger,
     # the effective stop loss moves from stop_loss to breakeven_offset
     breakeven_trigger: float = 0.15  # P&L % that activates break-even protection
@@ -91,7 +92,7 @@ class TradingConfig(BaseModel):
     paper_balance: float = 2000.0  # Starting balance for paper trading
     
     # Trading pairs limit (how many top pairs by volume to trade)
-    trading_pairs_limit: int = 50  # 5, 10, 20, or 50
+    trading_pairs_limit: int = 20  # 5, 10, 20, or 50
     
     # Investment settings
     investment: InvestmentConfig = InvestmentConfig()

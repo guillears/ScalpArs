@@ -466,8 +466,8 @@
                     <select id="top-pairs-limit" onchange="updateTradingPairsLimit()" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm">
                         <option value="5">Top 5</option>
                         <option value="10">Top 10</option>
-                        <option value="20">Top 20</option>
-                        <option value="50" selected>Top 50</option>
+                        <option value="20" selected>Top 20</option>
+                        <option value="50">Top 50</option>
                     </select>
                     <span class="text-xs text-yellow-400/80 ml-2">← Only these pairs can open trades</span>
                 </div>
@@ -842,6 +842,7 @@
                                     <th class="px-3 py-3 font-medium text-center" title="Minimum gap % required (EMA5-EMA20)/price">Gap Min</th>
                                     <th class="px-3 py-3 font-medium text-center" title="Maximum gap % allowed (filters overextended entries)">Gap Max</th>
                                     <th class="px-3 py-3 font-medium text-center">Gap?</th>
+                                    <th class="px-3 py-3 font-medium text-center text-cyan-400" title="Max EMA5 Stretch %: max distance from EMA5 allowed for entry">Stretch</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="Break-even trigger: once peak P&L reaches this %, SL moves to BE Offset">BE Trig</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="Break-even offset: new effective stop loss once break-even is active">BE Off</th>
                                 </tr>
@@ -885,6 +886,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-low-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-low-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.15">
@@ -933,6 +937,9 @@
                                         <input type="checkbox" id="config-medium-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-medium-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.20">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -979,6 +986,9 @@
                                         <input type="checkbox" id="config-high-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-high-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.25">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -1023,6 +1033,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-extreme-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-extreme-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.30">
@@ -2061,6 +2074,7 @@
                         document.getElementById(`config-${level}-gap-min`).value = cfg.gap_min !== undefined ? cfg.gap_min : 0.08;
                         document.getElementById(`config-${level}-gap-max`).value = cfg.gap_max !== undefined ? cfg.gap_max : 0.40;
                         document.getElementById(`config-${level}-gap-enabled`).checked = cfg.gap_enabled !== false;
+                        document.getElementById(`config-${level}-stretch`).value = cfg.max_ema5_stretch !== undefined ? cfg.max_ema5_stretch : 0.12;
                         document.getElementById(`config-${level}-be-trigger`).value = cfg.breakeven_trigger !== undefined ? cfg.breakeven_trigger : 0.15;
                         document.getElementById(`config-${level}-be-offset`).value = cfg.breakeven_offset !== undefined ? cfg.breakeven_offset : -0.05;
                     }
@@ -2155,6 +2169,7 @@
                     gap_min: safeFloat(document.getElementById(`config-${level}-gap-min`).value),
                     gap_max: safeFloat(document.getElementById(`config-${level}-gap-max`).value),
                     gap_enabled: document.getElementById(`config-${level}-gap-enabled`).checked,
+                    max_ema5_stretch: safeFloat(document.getElementById(`config-${level}-stretch`).value),
                     breakeven_trigger: safeFloat(document.getElementById(`config-${level}-be-trigger`).value),
                     breakeven_offset: safeFloat(document.getElementById(`config-${level}-be-offset`).value)
                 };

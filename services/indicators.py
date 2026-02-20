@@ -141,6 +141,20 @@ def get_signal(
                     logger.debug(f"SHORT {confidence} rejected: |gap| {abs_gap:.4f}% > max {gap_max}% (overextended)")
                     return False
         
+        # EMA5 Stretch filter: reject if price too far from EMA5
+        max_stretch = getattr(conf, 'max_ema5_stretch', 0.12)
+        if price and price > 0 and max_stretch > 0:
+            if direction == "LONG":
+                stretch = (price - ema5) / price * 100
+                if stretch > max_stretch:
+                    logger.debug(f"LONG {confidence} rejected: EMA5 stretch {stretch:.4f}% > max {max_stretch}%")
+                    return False
+            if direction == "SHORT":
+                stretch = (ema5 - price) / price * 100
+                if stretch > max_stretch:
+                    logger.debug(f"SHORT {confidence} rejected: EMA5 stretch {stretch:.4f}% > max {max_stretch}%")
+                    return False
+        
         return True
     
     # Check for bullish EMA stack (LONG conditions - looking for oversold)

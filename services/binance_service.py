@@ -109,7 +109,7 @@ class BinanceService:
                 'total_portfolio': 0
             }
     
-    async def get_top_futures_pairs(self, limit: int = 50) -> List[Dict]:
+    async def get_top_futures_pairs(self, limit: int = 20) -> List[Dict]:
         """Get top futures pairs by 24h volume"""
         try:
             await self._check_ban()

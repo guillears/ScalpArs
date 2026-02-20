@@ -324,7 +324,7 @@ def check_exit_conditions(
     # At L2+ the pullback trailing provides tighter protection so BE is not needed.
     effective_stop_loss = stop_loss
     breakeven_active = False
-    if not trailing_stop_active and peak_pnl >= breakeven_trigger:
+    if peak_pnl >= breakeven_trigger:
         breakeven_active = True
         effective_stop_loss = breakeven_offset
         logger.debug(f"[BREAKEVEN] {direction} L{current_tp_level}: Active! peak_pnl={peak_pnl:.4f}% >= trigger={breakeven_trigger}%, SL moved from {stop_loss}% to {breakeven_offset}%")

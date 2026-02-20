@@ -35,13 +35,13 @@
       "leverage": 20.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.25,
-      "tp_min": 0.15,
+      "tp_min": 0.10,
       "pullback_trigger": 0.06,
       "gap_min": 0.12,
       "gap_max": 0.35,
       "gap_enabled": true,
       "max_ema5_stretch": 0.12,
-      "breakeven_trigger": 0.09,
+      "breakeven_trigger": 0.07,
       "breakeven_offset": 0.02
     },
     "MEDIUM": {
@@ -50,13 +50,13 @@
       "leverage": 20.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.25,
-      "tp_min": 0.15,
+      "tp_min": 0.10,
       "pullback_trigger": 0.06,
       "gap_min": 0.12,
       "gap_max": 0.35,
       "gap_enabled": true,
       "max_ema5_stretch": 0.12,
-      "breakeven_trigger": 0.09,
+      "breakeven_trigger": 0.07,
       "breakeven_offset": 0.02
     },
     "HIGH": {
@@ -65,13 +65,13 @@
       "leverage": 20.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.25,
-      "tp_min": 0.15,
+      "tp_min": 0.10,
       "pullback_trigger": 0.06,
       "gap_min": 0.12,
       "gap_max": 0.35,
       "gap_enabled": true,
       "max_ema5_stretch": 0.12,
-      "breakeven_trigger": 0.09,
+      "breakeven_trigger": 0.07,
       "breakeven_offset": 0.02
     },
     "EXTREME": {
@@ -80,13 +80,13 @@
       "leverage": 20.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.25,
-      "tp_min": 0.15,
+      "tp_min": 0.10,
       "pullback_trigger": 0.06,
       "gap_min": 0.12,
       "gap_max": 0.35,
       "gap_enabled": false,
       "max_ema5_stretch": 0.12,
-      "breakeven_trigger": 0.09,
+      "breakeven_trigger": 0.07,
       "breakeven_offset": 0.02
     }
   }

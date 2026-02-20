@@ -929,7 +929,7 @@ class TradingEngine:
             # Apply break-even logic ONLY in pre-TP zone (trailing stop not active)
             effective_sl = stop_loss_pct
             breakeven_active = False
-            if not trailing_stop_would_be_active and current_peak >= breakeven_trigger:
+            if current_peak >= breakeven_trigger:
                 breakeven_active = True
                 effective_sl = breakeven_offset
             

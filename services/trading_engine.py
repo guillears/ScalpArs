@@ -923,10 +923,8 @@ class TradingEngine:
             tp_min = conf.tp_min if conf else 0.1
             effective_tp_target = tp_level * tp_min if tp_level > 1 else tp_min
             
-            # For REAL-TIME checks, trailing stop only activates at L2+ (TP already extended).
-            # At L1, the polling loop handles TP extension first, then trailing stop.
-            # This prevents the real-time trailing stop from firing before TP can be extended.
-            trailing_stop_would_be_active = tp_level >= 2
+            # Trailing stop activates once peak reaches TP target or at L2+.
+            trailing_stop_would_be_active = current_peak >= effective_tp_target or tp_level >= 2
             
             # Apply break-even logic ONLY in pre-TP zone (trailing stop not active)
             effective_sl = stop_loss_pct
@@ -937,16 +935,7 @@ class TradingEngine:
             
             # Check if stop loss triggered
             if pnl_pct <= effective_sl:
-                if breakeven_active and pnl_pct < 0:
-                    # Break-even triggered but P&L gapped into negative territory.
-                    # Don't close at a loss via BE - wait for recovery or original SL.
-                    logger.info(f"[REALTIME_BREAKEVEN_BLOCKED] {pair} {direction}: pnl={pnl_pct:.4f}% gapped below 0, skipping BE close (peak={current_peak:.4f}%)")
-                    if pnl_pct <= stop_loss_pct:
-                        reason_prefix = "STOP_LOSS"
-                    else:
-                        continue  # Skip close, wait for recovery or original SL
-                else:
-                    reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
+                reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
                 
                 logger.warning(f"[REALTIME_{reason_prefix}] {pair} {direction}: pnl={pnl_pct:.4f}% <= effective_sl={effective_sl}% (original_sl={stop_loss_pct}%, peak={current_peak:.4f}%) - CLOSING NOW!")
                 

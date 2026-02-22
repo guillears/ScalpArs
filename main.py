@@ -728,6 +728,10 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     avg_loss_long = sum(o.pnl for o in long_losses) / len(long_losses) if long_losses else 0
     avg_loss_short = sum(o.pnl for o in short_losses) / len(short_losses) if short_losses else 0
     
+    # Expectancy per trade: E = WR * AvgWin - (1 - WR) * |AvgLoss|
+    wr = win_rate / 100
+    expectancy = (wr * avg_win) - ((1 - wr) * abs(avg_loss)) if total_trades > 0 else 0
+    
     # Best/worst - Best win should only count winning trades (pnl > 0)
     long_wins_pnls = [o.pnl for o in longs if (o.pnl or 0) > 0]
     short_wins_pnls = [o.pnl for o in shorts if (o.pnl or 0) > 0]
@@ -1128,6 +1132,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "avg_loss": round(avg_loss, 2),
         "avg_loss_long": round(avg_loss_long, 2),
         "avg_loss_short": round(avg_loss_short, 2),
+        "expectancy": round(expectancy, 2),
         "best_win_long": round(best_win_long, 2),
         "best_win_short": round(best_win_short, 2),
         "worst_loss_long": round(worst_loss_long, 2),

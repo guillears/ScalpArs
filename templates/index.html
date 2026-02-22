@@ -208,6 +208,10 @@
                         <p id="perf-avg-loss-short" class="text-xl font-bold text-red-400">$0.00</p>
                     </div>
                     <div>
+                        <p class="text-xs text-gray-500 mb-1">Expectancy / Trade</p>
+                        <p id="perf-expectancy" class="text-xl font-bold">$0.00</p>
+                    </div>
+                    <div>
                         <p class="text-xs text-gray-500 mb-1">Best Win Long</p>
                         <p id="perf-best-win-long" class="text-xl font-bold text-emerald-400">$0.00</p>
                     </div>
@@ -1350,6 +1354,9 @@
                 document.getElementById('perf-avg-loss').textContent = formatUSD(data.avg_loss);
                 document.getElementById('perf-avg-loss-long').textContent = formatUSD(data.avg_loss_long);
                 document.getElementById('perf-avg-loss-short').textContent = formatUSD(data.avg_loss_short);
+                const expectancyEl = document.getElementById('perf-expectancy');
+                expectancyEl.textContent = formatUSD(data.expectancy);
+                expectancyEl.className = `text-xl font-bold ${data.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
                 document.getElementById('perf-best-win-long').textContent = formatUSD(data.best_win_long);
                 document.getElementById('perf-best-win-short').textContent = formatUSD(data.best_win_short);
                 document.getElementById('perf-worst-loss-long').textContent = formatUSD(data.worst_loss_long);

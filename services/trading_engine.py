@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # Cache for open orders to enable fast real-time stop loss checks
 _open_orders_cache: Dict[str, List[Dict]] = {}  # pair -> list of order info
 _cache_lock = asyncio.Lock()
+_close_lock = asyncio.Lock()
 
 
 class TradingEngine:
@@ -434,7 +435,28 @@ class TradingEngine:
         reason: str = "MANUAL"
     ) -> Optional[Order]:
         """Close an existing position"""
+        async with _close_lock:
+            return await self._close_position_locked(db, order, current_price, reason)
+
+    async def _close_position_locked(
+        self,
+        db: AsyncSession,
+        order: Order,
+        current_price: float,
+        reason: str = "MANUAL"
+    ) -> Optional[Order]:
+        """Internal close logic, must be called under _close_lock."""
         if order.status != "OPEN":
+            return None
+        
+        # Re-verify from DB to prevent race between polling loop and real-time monitor
+        db.expire_all()
+        fresh_check = await db.execute(
+            select(Order.status).where(Order.id == order.id)
+        )
+        db_status = fresh_check.scalar_one_or_none()
+        if db_status != "OPEN":
+            logger.warning(f"[CLOSE_RACE_PREVENTED] {order.pair}: Order {order.id} already {db_status}, skipping duplicate close (reason={reason})")
             return None
         
         # CRITICAL: Never close with invalid price - this would cause -100% P&L

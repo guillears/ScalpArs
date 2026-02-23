@@ -450,7 +450,6 @@ class TradingEngine:
             return None
         
         # Re-verify from DB to prevent race between polling loop and real-time monitor
-        db.expire_all()
         fresh_check = await db.execute(
             select(Order.status).where(Order.id == order.id)
         )

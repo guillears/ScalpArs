@@ -63,6 +63,7 @@ class SignalThresholds(BaseModel):
     ema_gap_threshold: float = 3.0  # % minimum EMA5-EMA8 gap for momentum signals
     adx_strong: float = 16.0  # ADX threshold for STRONG_BUY
     adx_very_strong: float = 30.0  # ADX threshold for VERY_STRONG
+    momentum_ema20_filter: bool = True  # Require Price>EMA20 for LONG, Price<EMA20 for SHORT momentum signals
 
 
 class InvestmentConfig(BaseModel):
@@ -84,6 +85,7 @@ class InvestmentConfig(BaseModel):
     min_investment_size: float = 100.0  # Min investment per trade (USD)
     max_investment_size: float = 50000.0  # Max investment per trade (USD)
     max_holding_time_minutes: int = 180  # Max time to hold a trade (minutes), 0 = disabled
+    no_expansion_minutes: int = 15  # Close if no expansion after N minutes (peak < BE trigger & current < BE offset), 0 = disabled
 
 
 class TradingConfig(BaseModel):

@@ -646,6 +646,39 @@ class TradingEngine:
                         realtime_trough = min(realtime_trough, cached.get('trough_pnl', 0))
                         break
             
+            # Check NO_EXPANSION: close stale trades that never expanded
+            no_exp_minutes = config.trading_config.investment.no_expansion_minutes
+            if no_exp_minutes > 0 and order.opened_at:
+                from datetime import timezone
+                opened_ne = order.opened_at.replace(tzinfo=timezone.utc) if order.opened_at.tzinfo is None else order.opened_at
+                age_minutes = (datetime.now(timezone.utc) - opened_ne).total_seconds() / 60
+                if age_minutes >= no_exp_minutes:
+                    conf_config = config.trading_config.confidence_levels.get(order.confidence)
+                    if conf_config:
+                        be_trigger = conf_config.breakeven_trigger
+                        be_offset = conf_config.breakeven_offset
+                        if order.direction == "LONG":
+                            raw_pnl = (current_price - order.entry_price) * order.quantity
+                        else:
+                            raw_pnl = (order.entry_price - current_price) * order.quantity
+                        est_exit_fee = current_price * order.quantity * config.trading_config.trading_fee
+                        net_pnl = raw_pnl - (order.entry_fee or 0) - est_exit_fee
+                        entry_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
+                        cur_pnl_pct = (net_pnl / entry_notional) * 100
+                        if realtime_peak < be_trigger and cur_pnl_pct < be_offset:
+                            logger.info(f"[NO_EXPANSION] {order.pair} {order.direction}: {age_minutes:.0f}min, peak={realtime_peak:.4f}% < BE_trig={be_trigger}%, cur={cur_pnl_pct:.4f}% < BE_off={be_offset}%")
+                            closed_order = await self.close_position(db, order, current_price, "NO_EXPANSION")
+                            if closed_order:
+                                updates.append({
+                                    "order_id": closed_order.id,
+                                    "pair": closed_order.pair,
+                                    "action": "CLOSED",
+                                    "reason": "NO_EXPANSION",
+                                    "pnl": closed_order.pnl,
+                                    "tp_level": order.current_tp_level or 1
+                                })
+                            continue
+
             # Check exit conditions (including fees for accurate SL/TP)
             exit_result = check_exit_conditions(
                 direction=order.direction,

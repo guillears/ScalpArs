@@ -720,6 +720,14 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Auto-close after this time (0 = disabled)</p>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">No Expansion Timeout</label>
+                            <div class="flex">
+                                <input type="number" id="config-no-expansion" min="0" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="15">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">min</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Close if peak &lt; BE Trig &amp; current &lt; BE Off (0 = disabled)</p>
+                        </div>
                     </div>
                 </div>
 
@@ -865,6 +873,13 @@
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div class="flex items-center mt-3 mb-2 px-4">
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="config-momentum-ema20-filter" class="sr-only peer" checked>
+                            <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                            <span class="ml-3 text-sm text-gray-300">Price &gt; EMA20 filter <span class="text-gray-500">(LONG: Price &gt; EMA20 | SHORT: Price &lt; EMA20)</span></span>
+                        </label>
                     </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
@@ -2201,7 +2216,8 @@
                 document.getElementById('config-min-investment').value = config.investment.min_investment_size || 100;
                 document.getElementById('config-max-investment').value = config.investment.max_investment_size || 50000;
                 document.getElementById('config-max-holding-time').value = config.investment.max_holding_time_minutes !== undefined ? config.investment.max_holding_time_minutes : 180;
-                
+                document.getElementById('config-no-expansion').value = config.investment.no_expansion_minutes !== undefined ? config.investment.no_expansion_minutes : 15;
+
                 // Trading pairs limit
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
                 
@@ -2225,6 +2241,7 @@
                 document.getElementById('config-ema-gap-threshold').value = config.thresholds.ema_gap_threshold !== undefined ? config.thresholds.ema_gap_threshold : 3.0;
                 document.getElementById('config-adx-strong').value = config.thresholds.adx_strong !== undefined ? config.thresholds.adx_strong : 16.0;
                 document.getElementById('config-adx-very-strong').value = config.thresholds.adx_very_strong !== undefined ? config.thresholds.adx_very_strong : 30.0;
+                document.getElementById('config-momentum-ema20-filter').checked = config.thresholds.momentum_ema20_filter !== undefined ? config.thresholds.momentum_ema20_filter : true;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -2301,7 +2318,8 @@
                     max_open_positions: parseInt(document.getElementById('config-max-positions').value) || 100,
                     min_investment_size: safeFloat(document.getElementById('config-min-investment').value) || 100,
                     max_investment_size: safeFloat(document.getElementById('config-max-investment').value) || 50000,
-                    max_holding_time_minutes: parseInt(document.getElementById('config-max-holding-time').value) || 0
+                    max_holding_time_minutes: parseInt(document.getElementById('config-max-holding-time').value) || 0,
+                    no_expansion_minutes: parseInt(document.getElementById('config-no-expansion').value) || 0
                 },
                 thresholds: {
                     long_rsi_extreme: safeFloat(document.getElementById('config-long-rsi-extreme').value),
@@ -2319,7 +2337,8 @@
                     volume_multiplier: safeFloat(document.getElementById('config-volume-mult').value),
                     ema_gap_threshold: safeFloat(document.getElementById('config-ema-gap-threshold').value),
                     adx_strong: safeFloat(document.getElementById('config-adx-strong').value),
-                    adx_very_strong: safeFloat(document.getElementById('config-adx-very-strong').value)
+                    adx_very_strong: safeFloat(document.getElementById('config-adx-very-strong').value),
+                    momentum_ema20_filter: document.getElementById('config-momentum-ema20-filter').checked
                 },
                 confidence_levels: {}
             };

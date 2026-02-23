@@ -50,7 +50,7 @@ class Order(Base):
     quantity = Column(Float, nullable=False)  # Amount of asset
     
     # Confidence
-    confidence = Column(String(10), nullable=False)  # LOW, MEDIUM, HIGH, EXTREME
+    confidence = Column(String(15), nullable=False)  # LOW, MEDIUM, HIGH, EXTREME, STRONG_BUY, VERY_STRONG
     
     # Entry gap: abs((ema5 - ema20) / price * 100) at time of entry
     entry_gap = Column(Float, nullable=True)

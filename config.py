@@ -58,6 +58,11 @@ class SignalThresholds(BaseModel):
     
     # Volume threshold for EXTREME
     volume_multiplier: float = 1.5
+    
+    # Momentum signal thresholds (EMA5/EMA8 gap)
+    ema_gap_threshold: float = 3.0  # % minimum EMA5-EMA8 gap for momentum signals
+    adx_strong: float = 16.0  # ADX threshold for STRONG_BUY
+    adx_very_strong: float = 30.0  # ADX threshold for VERY_STRONG
 
 
 class InvestmentConfig(BaseModel):
@@ -157,6 +162,34 @@ class TradingConfig(BaseModel):
             gap_enabled=False,
             breakeven_trigger=0.30,
             breakeven_offset=-0.02
+        ),
+        "VERY_STRONG": ConfidenceConfig(
+            enabled=True,
+            trade_mode="both",
+            leverage=10.0,
+            investment_multiplier=1.0,
+            stop_loss=-0.25,
+            tp_min=0.25,
+            pullback_trigger=0.05,
+            gap_min=0.12,
+            gap_max=0.30,
+            gap_enabled=True,
+            breakeven_trigger=0.18,
+            breakeven_offset=0.10
+        ),
+        "STRONG_BUY": ConfidenceConfig(
+            enabled=True,
+            trade_mode="both",
+            leverage=10.0,
+            investment_multiplier=1.0,
+            stop_loss=-0.25,
+            tp_min=0.25,
+            pullback_trigger=0.05,
+            gap_min=0.12,
+            gap_max=0.30,
+            gap_enabled=True,
+            breakeven_trigger=0.18,
+            breakeven_offset=0.10
         )
     }
 

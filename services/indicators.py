@@ -157,6 +157,33 @@ def get_signal(
         
         return True
     
+    # --- Momentum signals (EMA5/EMA8 gap) - evaluated FIRST ---
+    if ema8 and ema8 > 0:
+        if ema5 > ema8:
+            ema_gap_pct = ((ema5 - ema8) / ema8) * 100
+            gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
+            if gap_threshold_met:
+                if adx > th.adx_very_strong:
+                    if check_gap_and_mode("LONG", "VERY_STRONG"):
+                        logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}")
+                        return "LONG", "VERY_STRONG"
+                if adx > th.adx_strong and adx <= th.adx_very_strong:
+                    if check_gap_and_mode("LONG", "STRONG_BUY"):
+                        logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}")
+                        return "LONG", "STRONG_BUY"
+        elif ema5 < ema8 and ema5 > 0:
+            ema_gap_pct = ((ema8 - ema5) / ema5) * 100
+            gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
+            if gap_threshold_met:
+                if adx > th.adx_very_strong:
+                    if check_gap_and_mode("SHORT", "VERY_STRONG"):
+                        logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}")
+                        return "SHORT", "VERY_STRONG"
+                if adx > th.adx_strong and adx <= th.adx_very_strong:
+                    if check_gap_and_mode("SHORT", "STRONG_BUY"):
+                        logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}")
+                        return "SHORT", "STRONG_BUY"
+    
     # Check for bullish EMA stack (LONG conditions - looking for oversold)
     if ema5 > ema8 > ema13 > ema20:
         # EXTREME: RSI ≤ 30 + ADX > 35 + Volume > 1.5x avg

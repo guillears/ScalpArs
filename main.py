@@ -790,7 +790,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     
     # Performance by confidence level
     confidence_performance = {}
-    for conf in ['LOW', 'MEDIUM', 'HIGH', 'EXTREME']:
+    for conf in ['VERY_STRONG', 'STRONG_BUY', 'LOW', 'MEDIUM', 'HIGH', 'EXTREME']:
         conf_orders = [o for o in orders if o.confidence == conf]
         conf_longs = [o for o in conf_orders if o.direction == "LONG"]
         conf_shorts = [o for o in conf_orders if o.direction == "SHORT"]

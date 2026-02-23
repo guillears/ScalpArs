@@ -822,6 +822,51 @@
                     </div>
                     <p class="text-xs text-gray-500">LONG signals require RSI at or below threshold (oversold). SHORT signals require RSI at or above threshold (overbought). EMA stacking is always required.</p>
                     <p class="text-xs text-gray-500 mt-1">EMA Stacked for LONG: EMA5 &gt; EMA8 &gt; EMA13 &gt; EMA20 (bullish). EMA Stacked for SHORT: EMA5 &lt; EMA8 &lt; EMA13 &lt; EMA20 (bearish).</p>
+                    
+                    <!-- Momentum Signal Thresholds -->
+                    <h4 class="text-sm font-semibold text-purple-400 mt-6 mb-3">Momentum Signals (EMA5/EMA8 Gap)</h4>
+                    <div class="overflow-x-auto mb-4">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-4 py-3 font-medium">Signal</th>
+                                    <th class="px-4 py-3 font-medium text-center text-cyan-400">ADX Range</th>
+                                    <th class="px-4 py-3 font-medium text-center text-purple-400">EMA Gap Threshold %</th>
+                                    <th class="px-4 py-3 font-medium">Conditions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-white/5">
+                                <tr>
+                                    <td class="px-4 py-3">
+                                        <span class="flex items-center">
+                                            <span class="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>
+                                            VERY_STRONG
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        &gt; <input type="number" id="config-adx-very-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
+                                    </td>
+                                    <td class="px-4 py-3 text-center" rowspan="2">
+                                        <input type="number" step="0.1" id="config-ema-gap-threshold" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3.0">
+                                    </td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">EMA5 vs EMA8 momentum + gap &ge; threshold + ADX &gt; very_strong</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-3">
+                                        <span class="flex items-center">
+                                            <span class="w-3 h-3 rounded-full bg-pink-500 mr-2"></span>
+                                            STRONG_BUY
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        &gt; <input type="number" id="config-adx-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="16">
+                                    </td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">EMA5 vs EMA8 momentum + gap &ge; threshold + ADX strong..very_strong</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
 
                 <!-- Confidence Levels -->
@@ -1048,6 +1093,104 @@
                                         <input type="number" step="0.01" id="config-extreme-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.02">
                                     </td>
                                 </tr>
+                                <tr>
+                                    <td class="px-3 py-3">
+                                        <span class="flex items-center">
+                                            <span class="w-3 h-3 rounded-full bg-purple-500 mr-2"></span>
+                                            V_STRONG
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <select id="config-very_strong-mode" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                            <option value="disabled">Disabled</option>
+                                            <option value="both">Both</option>
+                                            <option value="long">Long</option>
+                                            <option value="short">Short</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" id="config-very_strong-leverage" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="10">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-very_strong-multiplier" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="1.0">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-very_strong-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.30">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-very_strong-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.10">
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="px-3 py-3">
+                                        <span class="flex items-center">
+                                            <span class="w-3 h-3 rounded-full bg-pink-500 mr-2"></span>
+                                            STRONG
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <select id="config-strong_buy-mode" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                            <option value="disabled">Disabled</option>
+                                            <option value="both">Both</option>
+                                            <option value="long">Long</option>
+                                            <option value="short">Short</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" id="config-strong_buy-leverage" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="10">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-strong_buy-multiplier" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="1.0">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-strong_buy-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.30">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-strong_buy-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.10">
+                                    </td>
+                                </tr>
                             </tbody>
                         </table>
                     </div>
@@ -1162,6 +1305,8 @@
                 case 'MEDIUM': return 'text-orange-400';
                 case 'HIGH': return 'text-emerald-400';
                 case 'EXTREME': return 'text-blue-400';
+                case 'VERY_STRONG': return 'text-purple-400';
+                case 'STRONG_BUY': return 'text-pink-400';
                 default: return 'text-gray-400';
             }
         }
@@ -1397,10 +1542,12 @@
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
                         'HIGH': 'text-emerald-400',
-                        'EXTREME': 'text-blue-400'
+                        'EXTREME': 'text-blue-400',
+                        'VERY_STRONG': 'text-purple-400',
+                        'STRONG_BUY': 'text-pink-400'
                     };
                     
-                    confBody.innerHTML = ['LOW', 'MEDIUM', 'HIGH', 'EXTREME'].map(conf => {
+                    confBody.innerHTML = ['VERY_STRONG', 'STRONG_BUY', 'LOW', 'MEDIUM', 'HIGH', 'EXTREME'].map(conf => {
                         const c = data.by_confidence[conf];
                         if (!c || c.total_trades === 0) {
                             return `
@@ -1486,7 +1633,9 @@
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
                         'HIGH': 'text-emerald-400',
-                        'EXTREME': 'text-blue-400'
+                        'EXTREME': 'text-blue-400',
+                        'VERY_STRONG': 'text-purple-400',
+                        'STRONG_BUY': 'text-pink-400'
                     };
                     
                     reasonBody.innerHTML = sortedReasons.map(([reason, stats]) => {
@@ -1497,7 +1646,7 @@
                         
                         // Build confidence badges
                         const confBadges = stats.by_confidence 
-                            ? ['LOW', 'MEDIUM', 'HIGH', 'EXTREME']
+                            ? ['VERY_STRONG', 'STRONG_BUY', 'LOW', 'MEDIUM', 'HIGH', 'EXTREME']
                                 .filter(c => stats.by_confidence[c])
                                 .map(c => `<span class="${confBadgeColors[c] || 'text-gray-400'} text-xs">${c[0]}:${stats.by_confidence[c]}</span>`)
                                 .join(' ')
@@ -1525,7 +1674,9 @@
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
                         'HIGH': 'text-emerald-400',
-                        'EXTREME': 'text-blue-400'
+                        'EXTREME': 'text-blue-400',
+                        'VERY_STRONG': 'text-purple-400',
+                        'STRONG_BUY': 'text-pink-400'
                     };
                     
                     gapBody.innerHTML = data.gap_performance.filter(g => g.count > 0).map(g => {
@@ -1566,7 +1717,9 @@
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
                         'HIGH': 'text-emerald-400',
-                        'EXTREME': 'text-blue-400'
+                        'EXTREME': 'text-blue-400',
+                        'VERY_STRONG': 'text-purple-400',
+                        'STRONG_BUY': 'text-pink-400'
                     };
                     
                     rsiBody.innerHTML = data.rsi_performance.filter(r => r.count > 0).map(r => {
@@ -1602,11 +1755,11 @@
                 // Stop Loss Deep Dive
                 const slBody = document.getElementById('sl-deep-dive-body');
                 const sld = data.stop_loss_deep_dive;
-                const slConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                const slConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400' };
                 
                 function slConfBadges(byConf) {
                     if (!byConf || Object.keys(byConf).length === 0) return '-';
-                    return ['LOW','MEDIUM','HIGH','EXTREME']
+                    return ['VERY_STRONG','STRONG_BUY','LOW','MEDIUM','HIGH','EXTREME']
                         .filter(c => byConf[c])
                         .map(c => `<span class="${slConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${byConf[c]}</span>`)
                         .join(' ');
@@ -1664,7 +1817,7 @@
                 // Winning Trades Drawdown
                 const wdBody = document.getElementById('winning-drawdown-body');
                 const wdd = data.winning_trades_drawdown;
-                const wdConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                const wdConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400' };
                 
                 if (wdd && wdd.length > 0) {
                     let totalCount = 0, totalPnl = 0;
@@ -1763,7 +1916,9 @@
                     const signalClass = p.signal === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 
                                        p.signal === 'SHORT' ? 'bg-red-500/20 text-red-400' : 
                                        'bg-yellow-500/20 text-yellow-400';
-                    const confidenceClass = p.confidence === 'EXTREME' ? 'text-blue-400' :
+                    const confidenceClass = p.confidence === 'VERY_STRONG' ? 'text-purple-400' :
+                                           p.confidence === 'STRONG_BUY' ? 'text-pink-400' :
+                                           p.confidence === 'EXTREME' ? 'text-blue-400' :
                                            p.confidence === 'HIGH' ? 'text-emerald-400' :
                                            p.confidence === 'MEDIUM' ? 'text-orange-400' :
                                            p.confidence === 'LOW' ? 'text-yellow-400' : 'text-gray-400';
@@ -2067,9 +2222,12 @@
                 document.getElementById('config-adx-high').value = config.thresholds.adx_high;
                 document.getElementById('config-adx-extreme').value = config.thresholds.adx_extreme;
                 document.getElementById('config-volume-mult').value = config.thresholds.volume_multiplier;
-                
+                document.getElementById('config-ema-gap-threshold').value = config.thresholds.ema_gap_threshold !== undefined ? config.thresholds.ema_gap_threshold : 3.0;
+                document.getElementById('config-adx-strong').value = config.thresholds.adx_strong !== undefined ? config.thresholds.adx_strong : 16.0;
+                document.getElementById('config-adx-very-strong').value = config.thresholds.adx_very_strong !== undefined ? config.thresholds.adx_very_strong : 30.0;
+
                 // Confidence levels
-                ['low', 'medium', 'high', 'extreme'].forEach(level => {
+                ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
                     const cfg = config.confidence_levels[level.toUpperCase()];
                     if (cfg) {
                         document.getElementById(`config-${level}-mode`).value = cfg.enabled === false ? 'disabled' : (cfg.trade_mode || 'both');
@@ -2158,12 +2316,15 @@
                     adx_medium: safeFloat(document.getElementById('config-adx-medium').value),
                     adx_high: safeFloat(document.getElementById('config-adx-high').value),
                     adx_extreme: safeFloat(document.getElementById('config-adx-extreme').value),
-                    volume_multiplier: safeFloat(document.getElementById('config-volume-mult').value)
+                    volume_multiplier: safeFloat(document.getElementById('config-volume-mult').value),
+                    ema_gap_threshold: safeFloat(document.getElementById('config-ema-gap-threshold').value),
+                    adx_strong: safeFloat(document.getElementById('config-adx-strong').value),
+                    adx_very_strong: safeFloat(document.getElementById('config-adx-very-strong').value)
                 },
                 confidence_levels: {}
             };
             
-            ['low', 'medium', 'high', 'extreme'].forEach(level => {
+            ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
                 const tradeMode = document.getElementById(`config-${level}-mode`).value;
                 config.confidence_levels[level.toUpperCase()] = {
                     enabled: tradeMode !== 'disabled',

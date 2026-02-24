@@ -63,8 +63,10 @@ class SignalThresholds(BaseModel):
     ema_gap_threshold: float = 3.0  # % minimum EMA5-EMA8 gap for momentum signals
     adx_strong: float = 16.0  # ADX threshold for STRONG_BUY
     adx_very_strong: float = 30.0  # ADX threshold for VERY_STRONG
-    momentum_ema20_filter: bool = True  # Require Price>EMA20 for LONG, Price<EMA20 for SHORT momentum signals
-    momentum_ema20_slope_filter: bool = True  # Require EMA20 rising for LONG, falling for SHORT momentum signals
+    momentum_ema20_filter_long: bool = True
+    momentum_ema20_filter_short: bool = True
+    momentum_ema20_slope_filter_long: bool = True
+    momentum_ema20_slope_filter_short: bool = True
 
 
 class InvestmentConfig(BaseModel):

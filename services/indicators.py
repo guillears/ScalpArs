@@ -143,30 +143,28 @@ def get_signal(
                     logger.debug(f"SHORT {confidence} rejected: |gap| {abs_gap:.4f}% > max {gap_max}% (overextended)")
                     return False
         
-        # EMA5 Stretch filter: reject if price too far from EMA5
-        max_stretch = getattr(conf, 'max_ema5_stretch', 0.12)
+        # EMA5 Stretch filter: reject if price too far from EMA5 (abs for defensive edge-case coverage)
+        max_stretch = getattr(conf, 'max_ema5_stretch', 0.14)
         if price and price > 0 and max_stretch > 0:
-            if direction == "LONG":
-                stretch = (price - ema5) / price * 100
-                if stretch > max_stretch:
-                    logger.debug(f"LONG {confidence} rejected: EMA5 stretch {stretch:.4f}% > max {max_stretch}%")
-                    return False
-            if direction == "SHORT":
-                stretch = (ema5 - price) / price * 100
-                if stretch > max_stretch:
-                    logger.debug(f"SHORT {confidence} rejected: EMA5 stretch {stretch:.4f}% > max {max_stretch}%")
-                    return False
+            stretch_pct = abs(price - ema5) / price * 100
+            allowed = stretch_pct <= max_stretch
+            if not allowed:
+                logger.debug(f"{direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% > max {max_stretch}% | price={price}, ema5={ema5}")
+                return False
+            logger.debug(f"{direction} {confidence} stretch OK: {stretch_pct:.4f}% <= {max_stretch}% | price={price}, ema5={ema5}")
         
         return True
     
     # --- Momentum signals (EMA5/EMA8 gap) - evaluated FIRST ---
-    ema20_filter = getattr(th, 'momentum_ema20_filter', True)
-    ema20_slope_filter = getattr(th, 'momentum_ema20_slope_filter', True)
+    ema20_filter_long = getattr(th, 'momentum_ema20_filter_long', True)
+    ema20_filter_short = getattr(th, 'momentum_ema20_filter_short', True)
+    ema20_slope_long = getattr(th, 'momentum_ema20_slope_filter_long', True)
+    ema20_slope_short = getattr(th, 'momentum_ema20_slope_filter_short', True)
     if ema8 and ema8 > 0:
         if ema5 > ema8:
-            if ema20_filter and (price is None or price <= ema20):
+            if ema20_filter_long and (price is None or price <= ema20):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
-            elif ema20_slope_filter and (ema20_prev3 is None or ema20 <= ema20_prev3):
+            elif ema20_slope_long and (ema20_prev3 is None or ema20 <= ema20_prev3):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
@@ -181,9 +179,9 @@ def get_signal(
                             logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}, slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
                             return "LONG", "STRONG_BUY"
         elif ema5 < ema8 and ema5 > 0:
-            if ema20_filter and (price is None or price >= ema20):
+            if ema20_filter_short and (price is None or price >= ema20):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
-            elif ema20_slope_filter and (ema20_prev3 is None or ema20 >= ema20_prev3):
+            elif ema20_slope_short and (ema20_prev3 is None or ema20 >= ema20_prev3):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100

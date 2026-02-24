@@ -31,8 +31,10 @@
     "ema_gap_threshold": 0.03,
     "adx_strong": 16.0,
     "adx_very_strong": 30.0,
-    "momentum_ema20_filter": true,
-    "momentum_ema20_slope_filter": true
+    "momentum_ema20_filter_long": true,
+    "momentum_ema20_filter_short": true,
+    "momentum_ema20_slope_filter_long": true,
+    "momentum_ema20_slope_filter_short": true
   },
   "confidence_levels": {
     "LOW": {

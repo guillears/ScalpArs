@@ -877,19 +877,35 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="flex items-center mt-3 mb-1 px-4">
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="config-momentum-ema20-filter" class="sr-only peer" checked>
-                            <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
-                            <span class="ml-3 text-sm text-gray-300">Price &gt; EMA20 filter <span class="text-gray-500">(LONG: Price &gt; EMA20 | SHORT: Price &lt; EMA20)</span></span>
-                        </label>
+                    <div class="mt-3 mb-1 px-4">
+                        <span class="text-sm text-gray-300">Price &gt; EMA20 filter</span>
+                        <div class="flex items-center gap-6 mt-1">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-momentum-ema20-filter-long" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">LONG</span>
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-momentum-ema20-filter-short" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">SHORT</span>
+                            </label>
+                        </div>
                     </div>
-                    <div class="flex items-center mb-2 px-4">
-                        <label class="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="config-momentum-ema20-slope-filter" class="sr-only peer" checked>
-                            <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
-                            <span class="ml-3 text-sm text-gray-300">EMA20 Slope filter <span class="text-gray-500">(LONG: EMA20 rising | SHORT: EMA20 falling)</span></span>
-                        </label>
+                    <div class="mb-2 px-4">
+                        <span class="text-sm text-gray-300">EMA20 Slope filter</span>
+                        <div class="flex items-center gap-6 mt-1">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-momentum-ema20-slope-filter-long" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">LONG</span>
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-momentum-ema20-slope-filter-short" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">SHORT</span>
+                            </label>
+                        </div>
                     </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
@@ -2262,8 +2278,10 @@
                 document.getElementById('config-ema-gap-threshold').value = config.thresholds.ema_gap_threshold !== undefined ? config.thresholds.ema_gap_threshold : 3.0;
                 document.getElementById('config-adx-strong').value = config.thresholds.adx_strong !== undefined ? config.thresholds.adx_strong : 16.0;
                 document.getElementById('config-adx-very-strong').value = config.thresholds.adx_very_strong !== undefined ? config.thresholds.adx_very_strong : 30.0;
-                document.getElementById('config-momentum-ema20-filter').checked = config.thresholds.momentum_ema20_filter !== undefined ? config.thresholds.momentum_ema20_filter : true;
-                document.getElementById('config-momentum-ema20-slope-filter').checked = config.thresholds.momentum_ema20_slope_filter !== undefined ? config.thresholds.momentum_ema20_slope_filter : true;
+                document.getElementById('config-momentum-ema20-filter-long').checked = config.thresholds.momentum_ema20_filter_long !== undefined ? config.thresholds.momentum_ema20_filter_long : true;
+                document.getElementById('config-momentum-ema20-filter-short').checked = config.thresholds.momentum_ema20_filter_short !== undefined ? config.thresholds.momentum_ema20_filter_short : true;
+                document.getElementById('config-momentum-ema20-slope-filter-long').checked = config.thresholds.momentum_ema20_slope_filter_long !== undefined ? config.thresholds.momentum_ema20_slope_filter_long : true;
+                document.getElementById('config-momentum-ema20-slope-filter-short').checked = config.thresholds.momentum_ema20_slope_filter_short !== undefined ? config.thresholds.momentum_ema20_slope_filter_short : true;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -2360,8 +2378,10 @@
                     ema_gap_threshold: safeFloat(document.getElementById('config-ema-gap-threshold').value),
                     adx_strong: safeFloat(document.getElementById('config-adx-strong').value),
                     adx_very_strong: safeFloat(document.getElementById('config-adx-very-strong').value),
-                    momentum_ema20_filter: document.getElementById('config-momentum-ema20-filter').checked,
-                    momentum_ema20_slope_filter: document.getElementById('config-momentum-ema20-slope-filter').checked
+                    momentum_ema20_filter_long: document.getElementById('config-momentum-ema20-filter-long').checked,
+                    momentum_ema20_filter_short: document.getElementById('config-momentum-ema20-filter-short').checked,
+                    momentum_ema20_slope_filter_long: document.getElementById('config-momentum-ema20-slope-filter-long').checked,
+                    momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked
                 },
                 confidence_levels: {}
             };

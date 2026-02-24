@@ -310,7 +310,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
     await trading_engine.initialize(db)
     
     if trading_engine.is_paper_mode:
-        # Calculate paper trading balance
+        # Always recalculate from DB to prevent stale/inflated values
+        balance = await trading_engine._recalculate_paper_balance(db)
         result = await db.execute(
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == True)
@@ -320,10 +321,10 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         used_margin = sum(o.investment for o in open_orders)
         
         return {
-            "usdt_balance": trading_engine.paper_balance,
+            "usdt_balance": balance,
             "bnb_balance": 0,
             "usdt_in_orders": used_margin,
-            "total_portfolio": trading_engine.paper_balance + used_margin,
+            "total_portfolio": balance + used_margin,
             "is_paper": True
         }
     else:

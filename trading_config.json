@@ -4,7 +4,7 @@
   "paper_balance": 2000.0,
   "trading_pairs_limit": 50,
   "investment": {
-    "mode": "fixed",
+    "mode": "equal_split",
     "fixed_amount": 200.0,
     "percentage": 30.0,
     "reserve_mode": "percentage",
@@ -31,7 +31,8 @@
     "ema_gap_threshold": 0.03,
     "adx_strong": 16.0,
     "adx_very_strong": 30.0,
-    "momentum_ema20_filter": true
+    "momentum_ema20_filter": true,
+    "momentum_ema20_slope_filter": true
   },
   "confidence_levels": {
     "LOW": {

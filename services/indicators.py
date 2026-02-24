@@ -53,6 +53,7 @@ def calculate_indicators(ohlcv: List) -> Dict:
         'ema8': float(ema8.iloc[-1]) if not pd.isna(ema8.iloc[-1]) else None,
         'ema13': float(ema13.iloc[-1]) if not pd.isna(ema13.iloc[-1]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
+        'ema20_prev3': float(ema20.iloc[-4]) if len(ema20) >= 4 and not pd.isna(ema20.iloc[-4]) else None,
         'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'volume': float(df['volume'].iloc[-1]),
@@ -70,7 +71,8 @@ def get_signal(
     volume: float,
     avg_volume: float,
     price: float = None,
-    config: Optional[Dict] = None
+    config: Optional[Dict] = None,
+    ema20_prev3: float = None
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -159,36 +161,41 @@ def get_signal(
     
     # --- Momentum signals (EMA5/EMA8 gap) - evaluated FIRST ---
     ema20_filter = getattr(th, 'momentum_ema20_filter', True)
+    ema20_slope_filter = getattr(th, 'momentum_ema20_slope_filter', True)
     if ema8 and ema8 > 0:
         if ema5 > ema8:
             if ema20_filter and (price is None or price <= ema20):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
+            elif ema20_slope_filter and (ema20_prev3 is None or ema20 <= ema20_prev3):
+                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
                 if gap_threshold_met:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("LONG", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}")
+                            logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}, slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
                             return "LONG", "VERY_STRONG"
                     if adx > th.adx_strong and adx <= th.adx_very_strong:
                         if check_gap_and_mode("LONG", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}")
+                            logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}, slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
                             return "LONG", "STRONG_BUY"
         elif ema5 < ema8 and ema5 > 0:
             if ema20_filter and (price is None or price >= ema20):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
+            elif ema20_slope_filter and (ema20_prev3 is None or ema20 >= ema20_prev3):
+                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
                 if gap_threshold_met:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}")
+                            logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}, slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
                             return "SHORT", "VERY_STRONG"
                     if adx > th.adx_strong and adx <= th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}")
+                            logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, threshold={th.ema_gap_threshold}%, ADX={adx:.1f}, price={price}, ema20={ema20}, slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
                             return "SHORT", "STRONG_BUY"
     
     # Check for bullish EMA stack (LONG conditions - looking for oversold)

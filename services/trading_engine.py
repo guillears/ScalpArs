@@ -66,28 +66,8 @@ class TradingEngine:
         
         # Recalculate paper_balance from orders to self-heal any accumulated drift
         if self.is_paper_mode:
-            initial = config.trading_config.paper_balance
-            closed_pnl_result = await db.execute(
-                select(func.coalesce(func.sum(Order.pnl), 0)).where(
-                    and_(Order.status == "CLOSED", Order.is_paper == True)
-                )
-            )
-            total_closed_pnl = closed_pnl_result.scalar() or 0
-            open_margin_result = await db.execute(
-                select(func.coalesce(func.sum(Order.investment), 0)).where(
-                    and_(Order.status == "OPEN", Order.is_paper == True)
-                )
-            )
-            total_open_margin = open_margin_result.scalar() or 0
-            correct_balance = initial + total_closed_pnl - total_open_margin
-            if abs(correct_balance - self.paper_balance) > 0.01:
-                logger.warning(
-                    f"[BALANCE_HEAL] Paper balance drift detected: "
-                    f"stored={self.paper_balance:.2f}, correct={correct_balance:.2f}, "
-                    f"diff={self.paper_balance - correct_balance:.2f}. Correcting."
-                )
-                self.paper_balance = correct_balance
-                await self.save_state(db)
+            await self._recalculate_paper_balance(db)
+            await self.save_state(db)
         
         self._initialized = True
     
@@ -163,14 +143,42 @@ class TradingEngine:
             "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         }
     
+    async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
+        """Recalculate paper_balance from DB as source of truth.
+        
+        Formula: initial_balance + sum(closed PnL) - sum(open investments)
+        This prevents any in-memory drift from accumulating.
+        """
+        initial = config.trading_config.paper_balance
+        closed_pnl_result = await db.execute(
+            select(func.coalesce(func.sum(Order.pnl), 0)).where(
+                and_(Order.status == "CLOSED", Order.is_paper == True)
+            )
+        )
+        total_closed_pnl = closed_pnl_result.scalar() or 0
+        open_margin_result = await db.execute(
+            select(func.coalesce(func.sum(Order.investment), 0)).where(
+                and_(Order.status == "OPEN", Order.is_paper == True)
+            )
+        )
+        total_open_margin = open_margin_result.scalar() or 0
+        correct_balance = initial + total_closed_pnl - total_open_margin
+        if abs(correct_balance - self.paper_balance) > 0.01:
+            logger.warning(
+                f"[BALANCE_SYNC] Correcting drift: "
+                f"in_memory={self.paper_balance:.2f}, db_correct={correct_balance:.2f}, "
+                f"diff={self.paper_balance - correct_balance:.2f}"
+            )
+        self.paper_balance = correct_balance
+        return correct_balance
+
     async def get_available_balance(self, db: AsyncSession) -> float:
         """Get available balance for trading.
         
-        For paper trading: self.paper_balance already represents free cash
-        (reduced on open, restored on close), so no need to subtract used_margin.
+        For paper trading: always recalculate from DB to prevent drift.
         """
         if self.is_paper_mode:
-            return self.paper_balance
+            return await self._recalculate_paper_balance(db)
         else:
             balance = await binance_service.get_balance()
             return balance['usdt_free']
@@ -340,8 +348,8 @@ class TradingEngine:
                 actual_price = result['price']
                 entry_fee = result.get('fee', entry_fee)
         else:
-            # Paper trade - deduct from paper balance
-            self.paper_balance -= investment
+            # Paper trade - balance will be recalculated from DB after commit
+            pass
         
         # Create order record
         order = Order(
@@ -390,8 +398,9 @@ class TradingEngine:
         await db.commit()
         await db.refresh(order)
         
-        # Save paper balance to database (critical - was missing before!)
+        # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
+            await self._recalculate_paper_balance(db)
             await self.save_state(db)
         
         # Force reset WebSocket tracking for new order (fresh start from entry price)
@@ -490,8 +499,8 @@ class TradingEngine:
             if not result:
                 return None
         else:
-            # Paper trade - return investment + P&L
-            self.paper_balance += order.investment + pnl_data['pnl']
+            # Paper trade - will recalculate from DB after commit
+            pass
         
         # Update order
         order.status = "CLOSED"
@@ -522,8 +531,9 @@ class TradingEngine:
         await db.commit()
         await db.refresh(order)
         
-        # Save paper balance
+        # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
+            await self._recalculate_paper_balance(db)
             await self.save_state(db)
         
         # Keep WebSocket subscription active for all top pairs (real-time price display)
@@ -808,7 +818,8 @@ class TradingEngine:
                 adx=indicators.get('adx'),
                 volume=indicators.get('volume'),
                 avg_volume=indicators.get('avg_volume'),
-                price=indicators.get('price')
+                price=indicators.get('price'),
+                ema20_prev3=indicators.get('ema20_prev3')
             )
             
             # Log signal for debugging (only log tradeable signals)

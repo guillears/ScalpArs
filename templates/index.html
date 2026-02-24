@@ -350,11 +350,12 @@
                                         <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                        <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average price drop from peak (high for LONG, low for SHORT)">Price Drop %</th>
                                         <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -377,11 +378,12 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Peak P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average price drop from peak">Price Drop %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L USD</th>
                                 </tr>
                             </thead>
                             <tbody id="sl-deep-dive-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -402,11 +404,12 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Worst Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average price drop from peak">Price Drop %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                 </tr>
                             </thead>
                             <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1667,6 +1670,7 @@
                                 .join(' ')
                             : '-';
                         
+                        const dropVal = stats.avg_price_drop || 0;
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${reasonClass}">${reason}</td>
@@ -1674,6 +1678,7 @@
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
                                 <td class="px-3 py-2 text-right ${pnlPctClass}">${stats.avg_pnl_pct >= 0 ? '+' : ''}${stats.avg_pnl_pct.toFixed(2)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${stats.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(stats.total_pnl_usd)}</td>
                             </tr>
                         `;
@@ -1795,6 +1800,7 @@
                         const peakClass = c.data.avg_peak_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const closeClass = c.data.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = c.data.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const slDropVal = c.data.avg_price_drop || 0;
                         return `
                             <tr class="hover:bg-white/5" title="${c.desc}">
                                 <td class="px-3 py-2 font-medium ${c.color}">${c.name}</td>
@@ -1805,6 +1811,7 @@
                                 <td class="px-3 py-2 text-right text-purple-400">${c.data.avg_entry_rsi != null ? c.data.avg_entry_rsi.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${c.data.avg_peak_pnl >= 0 ? '+' : ''}${c.data.avg_peak_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${c.data.avg_close_pnl >= 0 ? '+' : ''}${c.data.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-amber-400 font-medium">${slDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(c.data.total_pnl_usd)}</td>
                             </tr>
                         `;
@@ -1821,12 +1828,13 @@
                             <td class="px-3 py-2 text-right ${sld.avg_peak_all_sl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.avg_peak_all_sl >= 0 ? '+' : ''}${sld.avg_peak_all_sl.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-gray-500">-</td>
                             <td class="px-3 py-2 text-right text-gray-500">-</td>
+                            <td class="px-3 py-2 text-right text-gray-500">-</td>
                         </tr>
                     `;
                     
                     slBody.innerHTML = rows;
                 } else {
-                    slBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                    slBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
                 // Winning Trades Drawdown
@@ -1838,12 +1846,14 @@
                     let totalCount = 0, totalPnl = 0;
                     let allTroughs = [];
                     let allClosePnls = [];
+                    let allDrops = [];
                     
                     let rows = wdd.map(w => {
                         totalCount += w.count;
                         totalPnl += w.total_pnl_usd;
                         allTroughs.push(...Array(w.count).fill(w.avg_trough_pnl));
                         allClosePnls.push(...Array(w.count).fill(w.avg_close_pnl));
+                        allDrops.push(...Array(w.count).fill(w.avg_price_drop || 0));
                         
                         const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -1856,6 +1866,7 @@
                             .map(([c, n]) => `<span class="${wdConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
                             .join(' ') || '-';
                         
+                        const wdDropVal = w.avg_price_drop || 0;
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${w.close_reason}</td>
@@ -1865,6 +1876,7 @@
                                 <td class="px-3 py-2 text-right ${troughClass} font-medium">${w.avg_trough_pnl >= 0 ? '+' : ''}${w.avg_trough_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${worstClass} font-medium">${w.worst_trough_pnl >= 0 ? '+' : ''}${w.worst_trough_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${w.avg_close_pnl >= 0 ? '+' : ''}${w.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-amber-400 font-medium">${wdDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(w.total_pnl_usd)}</td>
                             </tr>
                         `;
@@ -1873,6 +1885,7 @@
                     const avgTrough = totalCount > 0 ? allTroughs.reduce((a,b) => a + b, 0) / totalCount : 0;
                     const worstOverall = allTroughs.length > 0 ? Math.min(...wdd.map(w => w.worst_trough_pnl)) : 0;
                     const avgClose = totalCount > 0 ? allClosePnls.reduce((a,b) => a + b, 0) / totalCount : 0;
+                    const avgDrop = totalCount > 0 ? allDrops.reduce((a,b) => a + b, 0) / totalCount : 0;
                     
                     rows += `
                         <tr class="border-t border-white/10 hover:bg-white/5">
@@ -1883,13 +1896,14 @@
                             <td class="px-3 py-2 text-right ${avgTrough >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgTrough >= 0 ? '+' : ''}${avgTrough.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${worstOverall >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${worstOverall >= 0 ? '+' : ''}${worstOverall.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${avgClose >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgClose >= 0 ? '+' : ''}${avgClose.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right text-amber-400 font-medium">${avgDrop.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(totalPnl)}</td>
                         </tr>
                     `;
                     
                     wdBody.innerHTML = rows;
                 } else {
-                    wdBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
+                    wdBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);

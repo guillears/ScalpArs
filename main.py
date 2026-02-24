@@ -996,15 +996,26 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         conf = o.confidence or "UNKNOWN"
         close_reason_stats[reason]["by_confidence"][conf] = close_reason_stats[reason]["by_confidence"].get(conf, 0) + 1
     
+    def _price_drop_pct(o):
+        """Price-based drop from peak: LONG = drop from high, SHORT = bounce from low"""
+        if o.direction == "LONG" and o.high_price_since_entry and o.exit_price and o.high_price_since_entry > 0:
+            return (o.high_price_since_entry - o.exit_price) / o.high_price_since_entry * 100
+        elif o.direction == "SHORT" and o.low_price_since_entry and o.exit_price and o.low_price_since_entry > 0:
+            return (o.exit_price - o.low_price_since_entry) / o.low_price_since_entry * 100
+        return 0
+
     by_close_reason = {}
     for reason, data in close_reason_stats.items():
         count = len(data["trades"])
+        drops = [_price_drop_pct(o) for o in data["trades"]]
+        avg_drop = sum(drops) / count if count > 0 else 0
         by_close_reason[reason] = {
             "trades": count,
             "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
             "avg_pnl_usd": round(data["pnl_sum"] / count, 2) if count > 0 else 0,
             "total_pnl_usd": round(data["pnl_sum"], 2),
-            "by_confidence": data["by_confidence"]
+            "by_confidence": data["by_confidence"],
+            "avg_price_drop": round(avg_drop, 4)
         }
     
     # Stop Loss Deep Dive: analyze SL trades by peak P&L journey
@@ -1033,13 +1044,15 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         empty = {
             "count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl_usd": 0,
             "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0},
-            "avg_entry_gap": None, "avg_entry_rsi": None
+            "avg_entry_gap": None, "avg_entry_rsi": None, "avg_price_drop": 0
         }
         if count == 0:
             return empty
         avg_peak = sum(o.peak_pnl or 0 for o in group_orders) / count
         avg_close = sum(o.pnl_percentage or 0 for o in group_orders) / count
         total_pnl = sum(o.pnl or 0 for o in group_orders)
+        drops = [_price_drop_pct(o) for o in group_orders]
+        avg_drop = sum(drops) / count
         by_conf = {}
         for o in group_orders:
             c = o.confidence or "LOW"
@@ -1058,7 +1071,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "by_confidence": by_conf,
             "by_direction": by_dir,
             "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
-            "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None
+            "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+            "avg_price_drop": round(avg_drop, 4)
         }
     
     all_sl_by_conf = {}
@@ -1108,6 +1122,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         for o in group:
             c = o.confidence or "LOW"
             by_conf[c] = by_conf.get(c, 0) + 1
+        drops = [_price_drop_pct(o) for o in group]
+        avg_drop = sum(drops) / count
         winning_trades_drawdown.append({
             "close_reason": reason,
             "count": count,
@@ -1116,7 +1132,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "avg_trough_pnl": round(avg_trough, 4),
             "worst_trough_pnl": round(worst_trough, 4),
             "avg_close_pnl": round(avg_close_pnl, 4),
-            "total_pnl_usd": round(total_pnl_usd, 2)
+            "total_pnl_usd": round(total_pnl_usd, 2),
+            "avg_price_drop": round(avg_drop, 4)
         })
     
     return {

@@ -1020,7 +1020,10 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     
     # Stop Loss Deep Dive: analyze SL trades by peak P&L journey
     tc = config.trading_config
-    sl_orders = [o for o in orders if o.close_reason and o.close_reason.startswith("STOP_LOSS")]
+    sl_orders = [o for o in orders if o.close_reason and (
+        o.close_reason.startswith("STOP_LOSS") or
+        (o.close_reason.startswith("BREAKEVEN_SL") and (o.pnl or 0) <= 0)
+    )]
     
     be_active_trades = []
     positive_no_be_trades = []

@@ -1128,11 +1128,15 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             by_conf[c] = by_conf.get(c, 0) + 1
         drops = [_price_drop_pct(o) for o in group]
         avg_drop = sum(drops) / count
+        gaps = [o.entry_gap for o in group if o.entry_gap is not None]
+        rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
         winning_trades_drawdown.append({
             "close_reason": reason,
             "count": count,
             "by_direction": by_dir,
             "by_confidence": by_conf,
+            "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
+            "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
             "avg_trough_pnl": round(avg_trough, 4),
             "worst_trough_pnl": round(worst_trough, 4),
             "avg_close_pnl": round(avg_close_pnl, 4),

@@ -660,8 +660,10 @@ class TradingEngine:
             no_exp_minutes = config.trading_config.investment.no_expansion_minutes
             if no_exp_minutes > 0 and order.opened_at:
                 from datetime import timezone
-                opened_ne = order.opened_at.replace(tzinfo=timezone.utc) if order.opened_at.tzinfo is None else order.opened_at
-                age_minutes = (datetime.now(timezone.utc) - opened_ne).total_seconds() / 60
+                # Use last reset time if available, otherwise use opened_at
+                ref_time = order.no_expansion_last_check or order.opened_at
+                ref_time = ref_time.replace(tzinfo=timezone.utc) if ref_time.tzinfo is None else ref_time
+                age_minutes = (datetime.now(timezone.utc) - ref_time).total_seconds() / 60
                 if age_minutes >= no_exp_minutes:
                     conf_config = config.trading_config.confidence_levels.get(order.confidence)
                     if conf_config:
@@ -676,6 +678,11 @@ class TradingEngine:
                         entry_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
                         cur_pnl_pct = (net_pnl / entry_notional) * 100
                         if realtime_peak < be_trigger and cur_pnl_pct < be_offset:
+                            # Re-check if buy signal is still active before closing
+                            if pair_data and pair_data.signal == order.direction:
+                                order.no_expansion_last_check = datetime.now(timezone.utc)
+                                logger.info(f"[NO_EXPANSION_RESET] {order.pair} {order.direction}: signal still {order.direction}, resetting timer (was {age_minutes:.0f}min)")
+                                continue
                             logger.info(f"[NO_EXPANSION] {order.pair} {order.direction}: {age_minutes:.0f}min, peak={realtime_peak:.4f}% < BE_trig={be_trigger}%, cur={cur_pnl_pct:.4f}% < BE_off={be_offset}%")
                             closed_order = await self.close_position(db, order, current_price, "NO_EXPANSION")
                             if closed_order:

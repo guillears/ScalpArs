@@ -74,6 +74,9 @@ class Order(Base):
     current_tp_level = Column(Integer, nullable=False, default=1)  # Which TP level (1, 2, 3, ...)
     dynamic_tp_target = Column(Float, nullable=True)  # Current TP target (% of notional)
     
+    # NO_EXPANSION timer reset: last time signal was re-verified (None = use opened_at)
+    no_expansion_last_check = Column(DateTime, nullable=True)
+    
     # Timestamps
     opened_at = Column(DateTime, nullable=False, default=func.now())
     closed_at = Column(DateTime, nullable=True)

@@ -401,6 +401,8 @@
                                     <th class="px-3 py-2 font-medium text-center"># Trades</th>
                                     <th class="px-3 py-2 font-medium text-center">Direction</th>
                                     <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Worst Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
@@ -409,7 +411,7 @@
                                 </tr>
                             </thead>
                             <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1870,6 +1872,8 @@
                     let allTroughs = [];
                     let allClosePnls = [];
                     let allDrops = [];
+                    let allGaps = [];
+                    let allRsis = [];
                     
                     let rows = wdd.map(w => {
                         totalCount += w.count;
@@ -1877,6 +1881,8 @@
                         allTroughs.push(...Array(w.count).fill(w.avg_trough_pnl));
                         allClosePnls.push(...Array(w.count).fill(w.avg_close_pnl));
                         allDrops.push(...Array(w.count).fill(w.avg_price_drop || 0));
+                        if (w.avg_entry_gap != null) allGaps.push(...Array(w.count).fill(w.avg_entry_gap));
+                        if (w.avg_entry_rsi != null) allRsis.push(...Array(w.count).fill(w.avg_entry_rsi));
                         
                         const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -1890,12 +1896,16 @@
                             .join(' ') || '-';
                         
                         const wdDropVal = w.avg_price_drop || 0;
+                        const wdGapVal = w.avg_entry_gap != null ? w.avg_entry_gap.toFixed(2) + '%' : '-';
+                        const wdRsiVal = w.avg_entry_rsi != null ? w.avg_entry_rsi.toFixed(1) : '-';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${w.close_reason}</td>
                                 <td class="px-3 py-2 text-center">${w.count}</td>
                                 <td class="px-3 py-2 text-center">${dirLabel}</td>
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
+                                <td class="px-3 py-2 text-right">${wdGapVal}</td>
+                                <td class="px-3 py-2 text-right">${wdRsiVal}</td>
                                 <td class="px-3 py-2 text-right ${troughClass} font-medium">${w.avg_trough_pnl >= 0 ? '+' : ''}${w.avg_trough_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${worstClass} font-medium">${w.worst_trough_pnl >= 0 ? '+' : ''}${w.worst_trough_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${w.avg_close_pnl >= 0 ? '+' : ''}${w.avg_close_pnl.toFixed(4)}%</td>
@@ -1909,6 +1919,8 @@
                     const worstOverall = allTroughs.length > 0 ? Math.min(...wdd.map(w => w.worst_trough_pnl)) : 0;
                     const avgClose = totalCount > 0 ? allClosePnls.reduce((a,b) => a + b, 0) / totalCount : 0;
                     const avgDrop = totalCount > 0 ? allDrops.reduce((a,b) => a + b, 0) / totalCount : 0;
+                    const allAvgGap = allGaps.length > 0 ? (allGaps.reduce((a,b) => a + b, 0) / allGaps.length).toFixed(2) + '%' : '-';
+                    const allAvgRsi = allRsis.length > 0 ? (allRsis.reduce((a,b) => a + b, 0) / allRsis.length).toFixed(1) : '-';
                     
                     rows += `
                         <tr class="border-t border-white/10 hover:bg-white/5">
@@ -1916,6 +1928,8 @@
                             <td class="px-3 py-2 text-center font-medium">${totalCount}</td>
                             <td class="px-3 py-2 text-center text-gray-500">-</td>
                             <td class="px-3 py-2 text-center text-gray-500">-</td>
+                            <td class="px-3 py-2 text-right">${allAvgGap}</td>
+                            <td class="px-3 py-2 text-right">${allAvgRsi}</td>
                             <td class="px-3 py-2 text-right ${avgTrough >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgTrough >= 0 ? '+' : ''}${avgTrough.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${worstOverall >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${worstOverall >= 0 ? '+' : ''}${worstOverall.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${avgClose >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgClose >= 0 ? '+' : ''}${avgClose.toFixed(4)}%</td>
@@ -1926,7 +1940,7 @@
                     
                     wdBody.innerHTML = rows;
                 } else {
-                    wdBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
+                    wdBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);

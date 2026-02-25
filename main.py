@@ -694,6 +694,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "outcome_distribution": [],
             "gap_performance": [],
             "rsi_performance": [],
+            "adx_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": []
@@ -969,6 +970,58 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "by_direction": dir_breakdown
         })
     
+    # Performance by Entry ADX Range
+    adx_ranges = [
+        ("10 - 15", 10, 15),
+        ("15 - 20", 15, 20),
+        ("20 - 25", 20, 25),
+        ("25 - 30", 25, 30),
+        ("30 - 35", 30, 35),
+        ("35 - 40", 35, 40),
+        ("40 - 50", 40, 50),
+        ("> 50", 50, 999),
+    ]
+    
+    adx_orders = [o for o in orders if o.entry_adx is not None]
+    
+    adx_performance = []
+    for range_name, adx_min, adx_max in adx_ranges:
+        range_orders = [o for o in adx_orders if adx_min <= o.entry_adx < adx_max]
+        count = len(range_orders)
+        if count == 0:
+            adx_performance.append({
+                "range": range_name,
+                "count": 0,
+                "win_rate": 0,
+                "avg_pnl_usd": 0,
+                "by_confidence": {},
+                "by_direction": {"LONG": 0, "SHORT": 0}
+            })
+            continue
+        
+        range_wins = len([o for o in range_orders if (o.pnl or 0) > 0])
+        range_pnl_sum = sum(o.pnl or 0 for o in range_orders)
+        
+        conf_breakdown = {}
+        for o in range_orders:
+            conf = o.confidence or "UNKNOWN"
+            conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+        
+        dir_breakdown = {"LONG": 0, "SHORT": 0}
+        for o in range_orders:
+            d = o.direction or "LONG"
+            dir_breakdown[d] = dir_breakdown.get(d, 0) + 1
+        
+        adx_performance.append({
+            "range": range_name,
+            "count": count,
+            "win_rate": round(range_wins / count * 100, 1),
+            "avg_pnl_usd": round(range_pnl_sum / count, 2),
+            "total_pnl_usd": round(range_pnl_sum, 2),
+            "by_confidence": conf_breakdown,
+            "by_direction": dir_breakdown
+        })
+    
     # By Close Reason - group by reason with L4+ aggregation
     close_reason_stats = {}
     for o in orders:
@@ -1183,6 +1236,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "outcome_distribution": outcome_distribution,
         "gap_performance": gap_performance,
         "rsi_performance": rsi_performance,
+        "adx_performance": adx_performance,
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown

@@ -248,7 +248,8 @@ class TradingEngine:
         confidence: str,
         current_price: float,
         entry_gap: float = None,
-        entry_rsi: float = None
+        entry_rsi: float = None,
+        entry_adx: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -366,6 +367,7 @@ class TradingEngine:
             confidence=confidence,
             entry_gap=entry_gap,
             entry_rsi=entry_rsi,
+            entry_adx=entry_adx,
             entry_fee=entry_fee,
             peak_pnl=0.0,
             trough_pnl=0.0,
@@ -844,6 +846,7 @@ class TradingEngine:
                 if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
                     entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
                 entry_rsi = indicators.get('rsi')
+                entry_adx = indicators.get('adx')
                 order = await self.open_position(
                     db=db,
                     pair=pair,
@@ -851,7 +854,8 @@ class TradingEngine:
                     confidence=confidence,
                     current_price=indicators['price'],
                     entry_gap=entry_gap,
-                    entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None
+                    entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
+                    entry_adx=round(entry_adx, 1) if entry_adx is not None else None
                 )
                 
                 if order:

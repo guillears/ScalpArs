@@ -56,6 +56,8 @@ class Order(Base):
     entry_gap = Column(Float, nullable=True)
     # RSI(12) value at time of entry
     entry_rsi = Column(Float, nullable=True)
+    # ADX(14) value at time of entry
+    entry_adx = Column(Float, nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

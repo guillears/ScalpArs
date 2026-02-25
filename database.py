@@ -45,6 +45,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN trough_pnl FLOAT DEFAULT 0.0"))
                 if 'no_expansion_last_check' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN no_expansion_last_check DATETIME"))
+                if 'entry_adx' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_adx FLOAT"))
         
         await conn.run_sync(_migrate)
 

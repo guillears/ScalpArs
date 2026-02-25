@@ -67,6 +67,8 @@ class SignalThresholds(BaseModel):
     momentum_ema20_filter_short: bool = True
     momentum_ema20_slope_filter_long: bool = True
     momentum_ema20_slope_filter_short: bool = True
+    momentum_long_rsi_min: float = 55.0  # Min RSI for momentum LONG (0 = disabled)
+    momentum_short_rsi_max: float = 50.0  # Max RSI for momentum SHORT (100 = disabled)
 
 
 class InvestmentConfig(BaseModel):

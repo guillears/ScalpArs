@@ -909,6 +909,20 @@
                             </label>
                         </div>
                     </div>
+                    <div class="mt-3 mb-2 px-4">
+                        <span class="text-sm text-gray-300">RSI Filter</span>
+                        <div class="flex items-center gap-6 mt-1">
+                            <label class="flex items-center text-sm text-gray-400">
+                                LONG RSI &ge;
+                                <input type="number" step="1" id="config-momentum-long-rsi-min" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="55">
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                SHORT RSI &le;
+                                <input type="number" step="1" id="config-momentum-short-rsi-max" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Set LONG to 0 or SHORT to 100 to disable. Filters out momentum entries in weak RSI zones.</p>
+                    </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
 
@@ -2296,6 +2310,8 @@
                 document.getElementById('config-momentum-ema20-filter-short').checked = config.thresholds.momentum_ema20_filter_short !== undefined ? config.thresholds.momentum_ema20_filter_short : true;
                 document.getElementById('config-momentum-ema20-slope-filter-long').checked = config.thresholds.momentum_ema20_slope_filter_long !== undefined ? config.thresholds.momentum_ema20_slope_filter_long : true;
                 document.getElementById('config-momentum-ema20-slope-filter-short').checked = config.thresholds.momentum_ema20_slope_filter_short !== undefined ? config.thresholds.momentum_ema20_slope_filter_short : true;
+                document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
+                document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -2395,7 +2411,9 @@
                     momentum_ema20_filter_long: document.getElementById('config-momentum-ema20-filter-long').checked,
                     momentum_ema20_filter_short: document.getElementById('config-momentum-ema20-filter-short').checked,
                     momentum_ema20_slope_filter_long: document.getElementById('config-momentum-ema20-slope-filter-long').checked,
-                    momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked
+                    momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked,
+                    momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
+                    momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value)
                 },
                 confidence_levels: {}
             };

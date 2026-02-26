@@ -155,7 +155,7 @@
             <div class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
                 
-                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-6">
                     <!-- Row 1 -->
                     <div>
                         <p class="text-xs text-gray-500 mb-1">Total Trades</p>
@@ -168,6 +168,14 @@
                     <div>
                         <p class="text-xs text-gray-500 mb-1">Total Shorts</p>
                         <p id="perf-total-shorts" class="text-xl font-bold text-red-400">0</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 mb-1">Total Wins</p>
+                        <p id="perf-total-wins" class="text-xl font-bold text-emerald-400">0</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 mb-1">Total Losses</p>
+                        <p id="perf-total-losses" class="text-xl font-bold text-red-400">0</p>
                     </div>
                     <div>
                         <p class="text-xs text-gray-500 mb-1">Win Rate</p>
@@ -1574,6 +1582,8 @@
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
                 document.getElementById('perf-total-longs').textContent = data.total_longs;
                 document.getElementById('perf-total-shorts').textContent = data.total_shorts;
+                document.getElementById('perf-total-wins').textContent = data.total_wins;
+                document.getElementById('perf-total-losses').textContent = data.total_losses;
                 document.getElementById('perf-win-rate').textContent = data.win_rate + '%';
                 document.getElementById('perf-win-rate-longs').textContent = data.win_rate_longs + '%';
                 document.getElementById('perf-win-rate-shorts').textContent = data.win_rate_shorts + '%';

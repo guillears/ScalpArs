@@ -170,13 +170,19 @@ class BinanceService:
             
             return futures_pairs[:limit]
         except Exception as e:
+            self._detect_ban(e)
             logger.error(f"[BINANCE] Error fetching top pairs: {e}", exc_info=True)
             return []
     
     async def get_ohlcv(self, symbol: str, timeframe: str = '5m', limit: int = 100) -> List:
         """Get OHLCV data for indicator calculation"""
-        await self._check_ban()
-        await self.load_public_markets()
+        try:
+            await self._check_ban()
+            await self.load_public_markets()
+        except Exception as e:
+            self._detect_ban(e)
+            logger.error(f"[BINANCE] Error initializing for OHLCV {symbol}: {e}")
+            return []
         for attempt in range(3):
             try:
                 ohlcv = await self.public_exchange.fetch_ohlcv(symbol, timeframe, limit=limit)

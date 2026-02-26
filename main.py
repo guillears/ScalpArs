@@ -1101,7 +1101,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         empty = {
             "count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl_usd": 0,
             "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0},
-            "avg_entry_gap": None, "avg_entry_rsi": None, "avg_price_drop": 0
+            "avg_entry_gap": None, "avg_entry_rsi": None, "avg_price_drop": 0,
+            "avg_duration": "00:00:00"
         }
         if count == 0:
             return empty
@@ -1129,7 +1130,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "by_direction": by_dir,
             "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
             "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
-            "avg_price_drop": round(avg_drop, 4)
+            "avg_price_drop": round(avg_drop, 4),
+            "avg_duration": calc_avg_duration(group_orders)
         }
     
     all_sl_by_conf = {}
@@ -1152,7 +1154,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         "all_by_confidence": all_sl_by_conf,
         "all_by_direction": all_sl_by_dir,
         "all_avg_entry_gap": round(sum(all_sl_gaps) / len(all_sl_gaps), 2) if all_sl_gaps else None,
-        "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None
+        "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None,
+        "all_avg_duration": calc_avg_duration(sl_orders)
     }
     
     # Winning Trades Drawdown: analyze how deep winners dipped before closing in profit
@@ -1194,7 +1197,8 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "worst_trough_pnl": round(worst_trough, 4),
             "avg_close_pnl": round(avg_close_pnl, 4),
             "total_pnl_usd": round(total_pnl_usd, 2),
-            "avg_price_drop": round(avg_drop, 4)
+            "avg_price_drop": round(avg_drop, 4),
+            "avg_duration": calc_avg_duration(group)
         })
     
     return {

@@ -380,10 +380,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price">Avg Pullback %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
                                 </tr>
                             </thead>
                             <tbody id="sl-deep-dive-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -408,10 +409,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price">Avg Pullback %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
                                 </tr>
                             </thead>
                             <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1919,6 +1921,7 @@
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${c.data.avg_close_pnl >= 0 ? '+' : ''}${c.data.avg_close_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${slDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(c.data.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right text-gray-400">${c.data.avg_duration || '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -1935,12 +1938,13 @@
                             <td class="px-3 py-2 text-right text-gray-500">-</td>
                             <td class="px-3 py-2 text-right text-gray-500">-</td>
                             <td class="px-3 py-2 text-right text-gray-500">-</td>
+                            <td class="px-3 py-2 text-right text-gray-400">${sld.all_avg_duration || '-'}</td>
                         </tr>
                     `;
                     
                     slBody.innerHTML = rows;
                 } else {
-                    slBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                    slBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
                 // Winning Trades Drawdown
@@ -1955,6 +1959,7 @@
                     let allDrops = [];
                     let allGaps = [];
                     let allRsis = [];
+                    let allDurSecs = [];
                     
                     let rows = wdd.map(w => {
                         totalCount += w.count;
@@ -1964,6 +1969,10 @@
                         allDrops.push(...Array(w.count).fill(w.avg_price_drop || 0));
                         if (w.avg_entry_gap != null) allGaps.push(...Array(w.count).fill(w.avg_entry_gap));
                         if (w.avg_entry_rsi != null) allRsis.push(...Array(w.count).fill(w.avg_entry_rsi));
+                        if (w.avg_duration) {
+                            const dp = w.avg_duration.split(':').map(Number);
+                            allDurSecs.push(...Array(w.count).fill(dp[0]*3600 + dp[1]*60 + dp[2]));
+                        }
                         
                         const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -1992,6 +2001,7 @@
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${w.avg_close_pnl >= 0 ? '+' : ''}${w.avg_close_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${wdDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(w.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right text-gray-400">${w.avg_duration || '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -2002,6 +2012,11 @@
                     const avgDrop = totalCount > 0 ? allDrops.reduce((a,b) => a + b, 0) / totalCount : 0;
                     const allAvgGap = allGaps.length > 0 ? (allGaps.reduce((a,b) => a + b, 0) / allGaps.length).toFixed(2) + '%' : '-';
                     const allAvgRsi = allRsis.length > 0 ? (allRsis.reduce((a,b) => a + b, 0) / allRsis.length).toFixed(1) : '-';
+                    let allAvgDur = '-';
+                    if (allDurSecs.length > 0) {
+                        const s = Math.round(allDurSecs.reduce((a,b) => a + b, 0) / allDurSecs.length);
+                        allAvgDur = String(Math.floor(s/3600)).padStart(2,'0') + ':' + String(Math.floor((s%3600)/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+                    }
                     
                     rows += `
                         <tr class="border-t border-white/10 hover:bg-white/5">
@@ -2016,12 +2031,13 @@
                             <td class="px-3 py-2 text-right ${avgClose >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgClose >= 0 ? '+' : ''}${avgClose.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-amber-400 font-medium">${avgDrop.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(totalPnl)}</td>
+                            <td class="px-3 py-2 text-right text-gray-400">${allAvgDur}</td>
                         </tr>
                     `;
                     
                     wdBody.innerHTML = rows;
                 } else {
-                    wdBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
+                    wdBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);

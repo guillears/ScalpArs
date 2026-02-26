@@ -558,18 +558,13 @@ class TradingEngine:
         updates = []
         
         for order in open_orders:
-            # Prefer WebSocket real-time price to avoid REST API rate limits.
-            # Only fall back to REST when WebSocket has no data for this pair.
+            # Use WebSocket price only -- no REST fallback to avoid rate-limit bans.
+            # Open orders are always subscribed to WebSocket; if no price yet
+            # (e.g. first seconds after startup), just skip and retry next cycle.
             tracker = websocket_tracker.get_tracker(order.pair)
-            ws_price = tracker.last_price if tracker else None
+            current_price = tracker.last_price if tracker else None
 
-            if ws_price and ws_price > 0:
-                current_price = ws_price
-            else:
-                symbol = order.pair.replace('USDT', '/USDT:USDT')
-                current_price = await binance_service.get_current_price(symbol)
-
-            if current_price <= 0:
+            if not current_price or current_price <= 0:
                 continue
             
             order.current_price = current_price

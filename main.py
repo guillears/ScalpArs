@@ -402,36 +402,43 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
 @app.post("/api/pairs/refresh")
 async def refresh_pairs(db: AsyncSession = Depends(get_db)):
     """Force refresh pair data"""
+    from services.trading_engine import OHLCV_BATCH_SIZE, OHLCV_BATCH_DELAY
+
     top_pairs = await binance_service.get_top_futures_pairs(config.trading_config.trading_pairs_limit)
-    
-    for pair_info in top_pairs:
-        symbol = pair_info['symbol']
-        pair = pair_info['pair']
-        volume_24h = pair_info['volume_24h']  # Get 24h volume from tickers
-        
-        ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
-        if not ohlcv:
-            continue
-        
-        indicators = calculate_indicators(ohlcv)
-        if not indicators:
-            continue
-        
-        signal, confidence = get_signal(
-            ema5=indicators.get('ema5'),
-            ema8=indicators.get('ema8'),
-            ema13=indicators.get('ema13'),
-            ema20=indicators.get('ema20'),
-            rsi=indicators.get('rsi'),
-            adx=indicators.get('adx'),
-            volume=indicators.get('volume'),
-            avg_volume=indicators.get('avg_volume'),
-            price=indicators.get('close')
-        )
-        
-        # Pass the 24h volume from tickers, not from OHLCV
-        await trading_engine.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
-    
+
+    for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
+        batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
+
+        for pair_info in batch:
+            symbol = pair_info['symbol']
+            pair = pair_info['pair']
+            volume_24h = pair_info['volume_24h']
+
+            ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
+            if not ohlcv:
+                continue
+
+            indicators = calculate_indicators(ohlcv)
+            if not indicators:
+                continue
+
+            signal, confidence = get_signal(
+                ema5=indicators.get('ema5'),
+                ema8=indicators.get('ema8'),
+                ema13=indicators.get('ema13'),
+                ema20=indicators.get('ema20'),
+                rsi=indicators.get('rsi'),
+                adx=indicators.get('adx'),
+                volume=indicators.get('volume'),
+                avg_volume=indicators.get('avg_volume'),
+                price=indicators.get('close')
+            )
+
+            await trading_engine.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
+
+        if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
+            await asyncio.sleep(OHLCV_BATCH_DELAY)
+
     return {"status": "refreshed", "count": len(top_pairs)}
 
 

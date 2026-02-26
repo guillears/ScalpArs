@@ -18,6 +18,9 @@ from services.websocket_tracker import websocket_tracker
 
 logger = logging.getLogger(__name__)
 
+OHLCV_BATCH_SIZE = 10
+OHLCV_BATCH_DELAY = 2.0
+
 # Cache for open orders to enable fast real-time stop loss checks
 _open_orders_cache: Dict[str, List[Dict]] = {}  # pair -> list of order info
 _cache_lock = asyncio.Lock()
@@ -555,20 +558,24 @@ class TradingEngine:
         updates = []
         
         for order in open_orders:
-            # Get current price
-            symbol = order.pair.replace('USDT', '/USDT:USDT')
-            current_price = await binance_service.get_current_price(symbol)
-            
+            # Prefer WebSocket real-time price to avoid REST API rate limits.
+            # Only fall back to REST when WebSocket has no data for this pair.
+            tracker = websocket_tracker.get_tracker(order.pair)
+            ws_price = tracker.last_price if tracker else None
+
+            if ws_price and ws_price > 0:
+                current_price = ws_price
+            else:
+                symbol = order.pair.replace('USDT', '/USDT:USDT')
+                current_price = await binance_service.get_current_price(symbol)
+
             if current_price <= 0:
                 continue
             
-            # Update current price
             order.current_price = current_price
             
-            # Get real-time high/low from WebSocket tracker (more accurate)
             ws_high, ws_low = websocket_tracker.get_high_low(order.pair)
             
-            # Also update WebSocket tracker with current price (fallback/sync)
             websocket_tracker.update_price(order.pair, current_price)
             
             # Use the best of WebSocket tracking and order tracking
@@ -790,81 +797,80 @@ class TradingEngine:
         # Subscribe all top pairs to WebSocket in a single batch (one reconnection)
         await websocket_tracker.subscribe_pairs_batch([p['pair'] for p in top_pairs])
         
-        for pair_info in top_pairs:
-            pair = pair_info['pair']
-            symbol = pair_info['symbol']
-            volume_24h = pair_info['volume_24h']  # Get 24h volume from tickers
-            
-            # Get OHLCV data
-            ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
-            if not ohlcv:
-                continue
-            
-            # Calculate indicators
-            indicators = calculate_indicators(ohlcv)
-            if not indicators:
-                continue
-            
-            # Skip pairs with degenerate data (no price movement)
-            # RSI of exactly 0 or 100 means all candles moved in one direction (or not at all)
-            # Null ADX means not enough price variation to compute trend strength
-            rsi_val = indicators.get('rsi')
-            adx_val = indicators.get('adx')
-            if rsi_val is not None and (rsi_val >= 99.9 or rsi_val <= 0.1):
-                logger.debug(f"[SKIP] {pair}: Degenerate RSI={rsi_val:.1f} (no price variation)")
-                continue
-            if adx_val is None:
-                logger.debug(f"[SKIP] {pair}: ADX is null (insufficient price data)")
-                continue
-            
-            # Get signal
-            signal, confidence = get_signal(
-                ema5=indicators.get('ema5'),
-                ema8=indicators.get('ema8'),
-                ema13=indicators.get('ema13'),
-                ema20=indicators.get('ema20'),
-                rsi=indicators.get('rsi'),
-                adx=indicators.get('adx'),
-                volume=indicators.get('volume'),
-                avg_volume=indicators.get('avg_volume'),
-                price=indicators.get('price'),
-                ema20_prev3=indicators.get('ema20_prev3')
-            )
-            
-            # Log signal for debugging (only log tradeable signals)
-            if signal in ["LONG", "SHORT"]:
-                logger.info(f"[SIGNAL-FOUND] {pair}: {signal} {confidence} - RSI={indicators.get('rsi'):.1f}, ADX={indicators.get('adx')}")
-            
-            # Update pair data cache with 24h volume from tickers
-            await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
-            
-            # Open position if we have a valid signal
-            if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
-                logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
-                # Compute entry gap and RSI for tracking
-                entry_gap = None
-                if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
-                    entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
-                entry_rsi = indicators.get('rsi')
-                entry_adx = indicators.get('adx')
-                order = await self.open_position(
-                    db=db,
-                    pair=pair,
-                    direction=signal,
-                    confidence=confidence,
-                    current_price=indicators['price'],
-                    entry_gap=entry_gap,
-                    entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
-                    entry_adx=round(entry_adx, 1) if entry_adx is not None else None
+        for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
+            batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
+            batch_num = batch_start // OHLCV_BATCH_SIZE + 1
+            total_batches = (len(top_pairs) + OHLCV_BATCH_SIZE - 1) // OHLCV_BATCH_SIZE
+            logger.info(f"[SCAN] Processing batch {batch_num}/{total_batches} ({len(batch)} pairs)")
+
+            for pair_info in batch:
+                pair = pair_info['pair']
+                symbol = pair_info['symbol']
+                volume_24h = pair_info['volume_24h']
+
+                ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
+                if not ohlcv:
+                    continue
+
+                indicators = calculate_indicators(ohlcv)
+                if not indicators:
+                    continue
+
+                rsi_val = indicators.get('rsi')
+                adx_val = indicators.get('adx')
+                if rsi_val is not None and (rsi_val >= 99.9 or rsi_val <= 0.1):
+                    logger.debug(f"[SKIP] {pair}: Degenerate RSI={rsi_val:.1f} (no price variation)")
+                    continue
+                if adx_val is None:
+                    logger.debug(f"[SKIP] {pair}: ADX is null (insufficient price data)")
+                    continue
+
+                signal, confidence = get_signal(
+                    ema5=indicators.get('ema5'),
+                    ema8=indicators.get('ema8'),
+                    ema13=indicators.get('ema13'),
+                    ema20=indicators.get('ema20'),
+                    rsi=indicators.get('rsi'),
+                    adx=indicators.get('adx'),
+                    volume=indicators.get('volume'),
+                    avg_volume=indicators.get('avg_volume'),
+                    price=indicators.get('price'),
+                    ema20_prev3=indicators.get('ema20_prev3')
                 )
-                
-                if order:
-                    actions.append({
-                        "pair": pair,
-                        "action": f"OPENED_{signal}",
-                        "confidence": confidence,
-                        "price": indicators['price']
-                    })
+
+                if signal in ["LONG", "SHORT"]:
+                    logger.info(f"[SIGNAL-FOUND] {pair}: {signal} {confidence} - RSI={indicators.get('rsi'):.1f}, ADX={indicators.get('adx')}")
+
+                await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
+
+                if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
+                    logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
+                    entry_gap = None
+                    if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
+                        entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
+                    entry_rsi = indicators.get('rsi')
+                    entry_adx = indicators.get('adx')
+                    order = await self.open_position(
+                        db=db,
+                        pair=pair,
+                        direction=signal,
+                        confidence=confidence,
+                        current_price=indicators['price'],
+                        entry_gap=entry_gap,
+                        entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
+                        entry_adx=round(entry_adx, 1) if entry_adx is not None else None
+                    )
+
+                    if order:
+                        actions.append({
+                            "pair": pair,
+                            "action": f"OPENED_{signal}",
+                            "confidence": confidence,
+                            "price": indicators['price']
+                        })
+
+            if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
+                await asyncio.sleep(OHLCV_BATCH_DELAY)
             
         self._last_scan_time = time.time()
         elapsed = self._last_scan_time - now

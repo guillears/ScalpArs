@@ -344,7 +344,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
 async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
     """Get top pairs with indicators"""
     # Validate limit
-    limit = min(max(limit, 5), 50)
+    limit = min(max(limit, 5), 100)
     
     # Get pairs from cache
     result = await db.execute(
@@ -402,7 +402,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
 @app.post("/api/pairs/refresh")
 async def refresh_pairs(db: AsyncSession = Depends(get_db)):
     """Force refresh pair data"""
-    top_pairs = await binance_service.get_top_futures_pairs(50)
+    top_pairs = await binance_service.get_top_futures_pairs(config.trading_config.trading_pairs_limit)
     
     for pair_info in top_pairs:
         symbol = pair_info['symbol']
@@ -1303,8 +1303,8 @@ async def update_pairs_limit(data: dict):
     
     limit = data.get('limit', 50)
     # Validate limit
-    if limit not in [5, 10, 20, 50]:
-        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, or 50")
+    if limit not in [5, 10, 20, 50, 100]:
+        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, 50, or 100")
     
     current_config = load_trading_config()
     current_config.trading_pairs_limit = limit

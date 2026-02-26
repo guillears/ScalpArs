@@ -2,7 +2,7 @@
   "trading_fee": 0.0004,
   "paper_trading": true,
   "paper_balance": 2000.0,
-  "trading_pairs_limit": 50,
+  "trading_pairs_limit": 100,
   "investment": {
     "mode": "equal_split",
     "fixed_amount": 200.0,
@@ -28,7 +28,7 @@
     "adx_medium": 20.0,
     "adx_low": 18.0,
     "volume_multiplier": 1.1,
-    "ema_gap_threshold": 0.005,
+    "ema_gap_threshold": 0.01,
     "adx_strong": 20.0,
     "adx_very_strong": 30.0,
     "momentum_ema20_filter_long": true,

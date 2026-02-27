@@ -2,6 +2,7 @@
 SCALPARS Trading Platform - Main Application
 """
 import asyncio
+import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -648,6 +649,38 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     """Get closed orders performance metrics"""
     await trading_engine.initialize(db)
     
+    try:
+        return await _compute_performance(db)
+    except Exception as e:
+        logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
+        return {
+            "total_trades": 0, "total_longs": 0, "total_shorts": 0,
+            "total_wins": 0, "total_losses": 0,
+            "win_rate": 0, "win_rate_longs": 0, "win_rate_shorts": 0,
+            "avg_win": 0, "avg_win_long": 0, "avg_win_short": 0,
+            "avg_loss": 0, "avg_loss_long": 0, "avg_loss_short": 0,
+            "expectancy": 0,
+            "best_win_long": 0, "best_win_short": 0,
+            "worst_loss_long": 0, "worst_loss_short": 0,
+            "total_pnl": 0, "total_pnl_percentage": 0,
+            "total_pnl_notional_percentage": 0,
+            "total_investment_notional": 0, "total_investment_value": 0,
+            "total_investment_long_notional": 0, "total_investment_long_value": 0,
+            "total_investment_short_notional": 0, "total_investment_short_value": 0,
+            "total_fees": 0,
+            "avg_duration": "00:00:00", "avg_duration_long": "00:00:00", "avg_duration_short": "00:00:00",
+            "avg_leverage": 0, "return_multiple": 0, "daily_compound_return": 0,
+            "runtime_days": 0,
+            "by_confidence": {}, "outcome_distribution": [],
+            "gap_performance": [], "rsi_performance": [], "adx_performance": [],
+            "by_close_reason": {},
+            "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
+            "winning_trades_drawdown": [],
+            "_error": str(e)
+        }
+
+
+async def _compute_performance(db: AsyncSession):
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
@@ -868,310 +901,317 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "avg_pnl_usd": round(avg_pnl_usd, 2)
         })
     
-    # Performance by Entry Gap Range
-    gap_ranges = [
-        ("0.12 - 0.15%", 0.12, 0.15),
-        ("0.15 - 0.20%", 0.15, 0.20),
-        ("0.20 - 0.25%", 0.20, 0.25),
-        ("0.25 - 0.30%", 0.25, 0.30),
-        ("0.30 - 0.35%", 0.30, 0.35),
-        ("0.35 - 0.40%", 0.35, 0.40),
-        ("0.40 - 0.50%", 0.40, 0.50),
-        ("0.50 - 0.60%", 0.50, 0.60),
-        ("0.60 - 0.70%", 0.60, 0.70),
-        ("0.70 - 0.80%", 0.70, 0.80),
-        ("> 0.80%", 0.80, 999),
-    ]
-    
-    # Only include orders with entry_gap tracked
-    gap_orders = [o for o in orders if o.entry_gap is not None]
-    
+    # Performance by Entry Gap / RSI / ADX (split by direction)
     gap_performance = []
-    for range_name, gap_min, gap_max in gap_ranges:
-        range_orders = [o for o in gap_orders if gap_min <= o.entry_gap < gap_max]
-        if not range_orders:
-            continue
-        for direction in ["LONG", "SHORT"]:
-            dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
-            count = len(dir_orders)
-            if count == 0:
-                continue
-            wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
-            pnl_sum = sum(o.pnl or 0 for o in dir_orders)
-            conf_breakdown = {}
-            for o in dir_orders:
-                conf = o.confidence or "UNKNOWN"
-                conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-            gap_performance.append({
-                "range": range_name,
-                "direction": direction,
-                "count": count,
-                "win_rate": round(wins / count * 100, 1),
-                "avg_pnl_usd": round(pnl_sum / count, 2),
-                "total_pnl_usd": round(pnl_sum, 2),
-                "by_confidence": conf_breakdown
-            })
-    
-    # Performance by Entry RSI Range
-    rsi_ranges = [
-        ("20 - 30", 20, 30),
-        ("30 - 35", 30, 35),
-        ("35 - 40", 35, 40),
-        ("40 - 45", 40, 45),
-        ("45 - 50", 45, 50),
-        ("50 - 55", 50, 55),
-        ("55 - 60", 55, 60),
-        ("60 - 65", 60, 65),
-        ("65 - 70", 65, 70),
-        ("70 - 80", 70, 80),
-    ]
-    
-    rsi_orders = [o for o in orders if o.entry_rsi is not None]
-    
     rsi_performance = []
-    for range_name, rsi_min, rsi_max in rsi_ranges:
-        range_orders = [o for o in rsi_orders if rsi_min <= o.entry_rsi < rsi_max]
-        if not range_orders:
-            continue
-        for direction in ["LONG", "SHORT"]:
-            dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
-            count = len(dir_orders)
-            if count == 0:
-                continue
-            wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
-            pnl_sum = sum(o.pnl or 0 for o in dir_orders)
-            conf_breakdown = {}
-            for o in dir_orders:
-                conf = o.confidence or "UNKNOWN"
-                conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-            rsi_performance.append({
-                "range": range_name,
-                "direction": direction,
-                "count": count,
-                "win_rate": round(wins / count * 100, 1),
-                "avg_pnl_usd": round(pnl_sum / count, 2),
-                "total_pnl_usd": round(pnl_sum, 2),
-                "by_confidence": conf_breakdown
-            })
-    
-    # Performance by Entry ADX Range
-    adx_ranges = [
-        ("10 - 15", 10, 15),
-        ("15 - 20", 15, 20),
-        ("20 - 25", 20, 25),
-        ("25 - 30", 25, 30),
-        ("30 - 35", 30, 35),
-        ("35 - 40", 35, 40),
-        ("40 - 50", 40, 50),
-        ("> 50", 50, 999),
-    ]
-    
-    adx_orders = [o for o in orders if o.entry_adx is not None]
-    
     adx_performance = []
-    for range_name, adx_min, adx_max in adx_ranges:
-        range_orders = [o for o in adx_orders if adx_min <= o.entry_adx < adx_max]
-        if not range_orders:
-            continue
-        for direction in ["LONG", "SHORT"]:
-            dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
-            count = len(dir_orders)
-            if count == 0:
+    try:
+        gap_ranges = [
+            ("0.12 - 0.15%", 0.12, 0.15),
+            ("0.15 - 0.20%", 0.15, 0.20),
+            ("0.20 - 0.25%", 0.20, 0.25),
+            ("0.25 - 0.30%", 0.25, 0.30),
+            ("0.30 - 0.35%", 0.30, 0.35),
+            ("0.35 - 0.40%", 0.35, 0.40),
+            ("0.40 - 0.50%", 0.40, 0.50),
+            ("0.50 - 0.60%", 0.50, 0.60),
+            ("0.60 - 0.70%", 0.60, 0.70),
+            ("0.70 - 0.80%", 0.70, 0.80),
+            ("> 0.80%", 0.80, 999),
+        ]
+        gap_orders = [o for o in orders if o.entry_gap is not None]
+        for range_name, gap_min, gap_max in gap_ranges:
+            range_orders = [o for o in gap_orders if gap_min <= o.entry_gap < gap_max]
+            if not range_orders:
                 continue
-            wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
-            pnl_sum = sum(o.pnl or 0 for o in dir_orders)
-            conf_breakdown = {}
-            for o in dir_orders:
-                conf = o.confidence or "UNKNOWN"
-                conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-            adx_performance.append({
-                "range": range_name,
-                "direction": direction,
-                "count": count,
-                "win_rate": round(wins / count * 100, 1),
-                "avg_pnl_usd": round(pnl_sum / count, 2),
-                "total_pnl_usd": round(pnl_sum, 2),
-                "by_confidence": conf_breakdown
-            })
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                gap_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown
+                })
+
+        rsi_ranges = [
+            ("20 - 30", 20, 30),
+            ("30 - 35", 30, 35),
+            ("35 - 40", 35, 40),
+            ("40 - 45", 40, 45),
+            ("45 - 50", 45, 50),
+            ("50 - 55", 50, 55),
+            ("55 - 60", 55, 60),
+            ("60 - 65", 60, 65),
+            ("65 - 70", 65, 70),
+            ("70 - 80", 70, 80),
+        ]
+        rsi_orders = [o for o in orders if o.entry_rsi is not None]
+        for range_name, rsi_min, rsi_max in rsi_ranges:
+            range_orders = [o for o in rsi_orders if rsi_min <= o.entry_rsi < rsi_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                rsi_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown
+                })
+
+        adx_ranges = [
+            ("10 - 15", 10, 15),
+            ("15 - 20", 15, 20),
+            ("20 - 25", 20, 25),
+            ("25 - 30", 25, 30),
+            ("30 - 35", 30, 35),
+            ("35 - 40", 35, 40),
+            ("40 - 50", 40, 50),
+            ("> 50", 50, 999),
+        ]
+        adx_orders = [o for o in orders if o.entry_adx is not None]
+        for range_name, adx_min, adx_max in adx_ranges:
+            range_orders = [o for o in adx_orders if adx_min <= o.entry_adx < adx_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                adx_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown
+                })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing gap/rsi/adx performance: {e}\n{traceback.format_exc()}")
+        gap_performance = []
+        rsi_performance = []
+        adx_performance = []
     
     # By Close Reason - group by reason with L4+ aggregation
-    close_reason_stats = {}
-    for o in orders:
-        reason = o.close_reason or "UNKNOWN"
-        
-        # Normalize reason: group L4, L5, L6... into L4+
-        if " L" in reason:
-            parts = reason.split(" L")
-            base_reason = parts[0]
-            try:
-                level = int(parts[1].replace("+", ""))
-                if level >= 4:
-                    reason = f"{base_reason} L4+"
-                # Keep L1, L2, L3 as-is
-            except ValueError:
-                pass  # Keep original if parsing fails
-        
-        if reason not in close_reason_stats:
-            close_reason_stats[reason] = {"trades": [], "pnl_sum": 0, "pnl_pct_sum": 0, "by_confidence": {}}
-        
-        close_reason_stats[reason]["trades"].append(o)
-        close_reason_stats[reason]["pnl_sum"] += o.pnl or 0
-        close_reason_stats[reason]["pnl_pct_sum"] += o.pnl_percentage or 0
-        
-        # Track confidence breakdown per close reason
-        conf = o.confidence or "UNKNOWN"
-        close_reason_stats[reason]["by_confidence"][conf] = close_reason_stats[reason]["by_confidence"].get(conf, 0) + 1
-    
-    def _price_drop_pct(o):
-        """Price-based drop from peak: LONG = drop from high, SHORT = bounce from low"""
-        if o.direction == "LONG" and o.high_price_since_entry and o.exit_price and o.high_price_since_entry > 0:
-            return (o.high_price_since_entry - o.exit_price) / o.high_price_since_entry * 100
-        elif o.direction == "SHORT" and o.low_price_since_entry and o.exit_price and o.low_price_since_entry > 0:
-            return (o.exit_price - o.low_price_since_entry) / o.low_price_since_entry * 100
-        return 0
-
     by_close_reason = {}
-    for reason, data in close_reason_stats.items():
-        count = len(data["trades"])
-        drops = [_price_drop_pct(o) for o in data["trades"]]
-        avg_drop = sum(drops) / count if count > 0 else 0
-        by_close_reason[reason] = {
-            "trades": count,
-            "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
-            "avg_pnl_usd": round(data["pnl_sum"] / count, 2) if count > 0 else 0,
-            "total_pnl_usd": round(data["pnl_sum"], 2),
-            "by_confidence": data["by_confidence"],
-            "avg_price_drop": round(avg_drop, 4)
-        }
-    
-    # Stop Loss Deep Dive: analyze SL trades by peak P&L journey
-    tc = config.trading_config
-    sl_orders = [o for o in orders if o.close_reason and (
-        o.close_reason.startswith("STOP_LOSS") or
-        (o.close_reason.startswith("BREAKEVEN_SL") and (o.pnl or 0) <= 0)
-    )]
-    
-    be_active_trades = []
-    positive_no_be_trades = []
-    never_positive_trades = []
-    
-    for o in sl_orders:
-        conf = o.confidence or "LOW"
-        conf_config = tc.confidence_levels.get(conf, tc.confidence_levels.get("LOW"))
-        trigger = conf_config.breakeven_trigger
-        peak = o.peak_pnl or 0
+    try:
+        close_reason_stats = {}
+        for o in orders:
+            reason = o.close_reason or "UNKNOWN"
+            
+            if " L" in reason:
+                parts = reason.split(" L")
+                base_reason = parts[0]
+                try:
+                    level = int(parts[1].replace("+", ""))
+                    if level >= 4:
+                        reason = f"{base_reason} L4+"
+                except ValueError:
+                    pass
+            
+            if reason not in close_reason_stats:
+                close_reason_stats[reason] = {"trades": [], "pnl_sum": 0, "pnl_pct_sum": 0, "by_confidence": {}}
+            
+            close_reason_stats[reason]["trades"].append(o)
+            close_reason_stats[reason]["pnl_sum"] += o.pnl or 0
+            close_reason_stats[reason]["pnl_pct_sum"] += o.pnl_percentage or 0
+            
+            conf = o.confidence or "UNKNOWN"
+            close_reason_stats[reason]["by_confidence"][conf] = close_reason_stats[reason]["by_confidence"].get(conf, 0) + 1
         
-        if peak >= trigger:
-            be_active_trades.append(o)
-        elif peak > 0:
-            positive_no_be_trades.append(o)
-        else:
-            never_positive_trades.append(o)
-    
-    def _sl_group_stats(group_orders):
-        count = len(group_orders)
-        empty = {
-            "count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl_usd": 0,
-            "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0},
-            "avg_entry_gap": None, "avg_entry_rsi": None, "avg_price_drop": 0,
-            "avg_duration": "00:00:00"
-        }
-        if count == 0:
-            return empty
-        avg_peak = sum(o.peak_pnl or 0 for o in group_orders) / count
-        avg_close = sum(o.pnl_percentage or 0 for o in group_orders) / count
-        total_pnl = sum(o.pnl or 0 for o in group_orders)
-        drops = [_price_drop_pct(o) for o in group_orders]
-        avg_drop = sum(drops) / count
-        by_conf = {}
-        for o in group_orders:
-            c = o.confidence or "LOW"
-            by_conf[c] = by_conf.get(c, 0) + 1
-        by_dir = {"LONG": 0, "SHORT": 0}
-        for o in group_orders:
-            d = o.direction or "LONG"
-            by_dir[d] = by_dir.get(d, 0) + 1
-        gaps = [o.entry_gap for o in group_orders if o.entry_gap is not None]
-        rsis = [o.entry_rsi for o in group_orders if o.entry_rsi is not None]
-        return {
-            "count": count,
-            "avg_peak_pnl": round(avg_peak, 4),
-            "avg_close_pnl": round(avg_close, 4),
-            "total_pnl_usd": round(total_pnl, 2),
-            "by_confidence": by_conf,
-            "by_direction": by_dir,
-            "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
-            "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
-            "avg_price_drop": round(avg_drop, 4),
-            "avg_duration": calc_avg_duration(group_orders)
-        }
-    
-    all_sl_by_conf = {}
-    for o in sl_orders:
-        c = o.confidence or "LOW"
-        all_sl_by_conf[c] = all_sl_by_conf.get(c, 0) + 1
-    all_sl_by_dir = {"LONG": 0, "SHORT": 0}
-    for o in sl_orders:
-        d = o.direction or "LONG"
-        all_sl_by_dir[d] = all_sl_by_dir.get(d, 0) + 1
-    all_sl_gaps = [o.entry_gap for o in sl_orders if o.entry_gap is not None]
-    all_sl_rsis = [o.entry_rsi for o in sl_orders if o.entry_rsi is not None]
+        def _price_drop_pct(o):
+            if o.direction == "LONG" and o.high_price_since_entry and o.exit_price and o.high_price_since_entry > 0:
+                return (o.high_price_since_entry - o.exit_price) / o.high_price_since_entry * 100
+            elif o.direction == "SHORT" and o.low_price_since_entry and o.exit_price and o.low_price_since_entry > 0:
+                return (o.exit_price - o.low_price_since_entry) / o.low_price_since_entry * 100
+            return 0
 
-    stop_loss_deep_dive = {
-        "total_sl_trades": len(sl_orders),
-        "be_was_active": _sl_group_stats(be_active_trades),
-        "positive_no_be": _sl_group_stats(positive_no_be_trades),
-        "never_positive": _sl_group_stats(never_positive_trades),
-        "avg_peak_all_sl": round(sum(o.peak_pnl or 0 for o in sl_orders) / len(sl_orders), 4) if sl_orders else 0,
-        "all_by_confidence": all_sl_by_conf,
-        "all_by_direction": all_sl_by_dir,
-        "all_avg_entry_gap": round(sum(all_sl_gaps) / len(all_sl_gaps), 2) if all_sl_gaps else None,
-        "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None,
-        "all_avg_duration": calc_avg_duration(sl_orders)
-    }
+        for reason, data in close_reason_stats.items():
+            count = len(data["trades"])
+            drops = [_price_drop_pct(o) for o in data["trades"]]
+            avg_drop = sum(drops) / count if count > 0 else 0
+            by_close_reason[reason] = {
+                "trades": count,
+                "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
+                "avg_pnl_usd": round(data["pnl_sum"] / count, 2) if count > 0 else 0,
+                "total_pnl_usd": round(data["pnl_sum"], 2),
+                "by_confidence": data["by_confidence"],
+                "avg_price_drop": round(avg_drop, 4)
+            }
+    except Exception as e:
+        logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
+        by_close_reason = {}
     
-    # Winning Trades Drawdown: analyze how deep winners dipped before closing in profit
-    winning_orders = [o for o in orders if o.pnl and o.pnl > 0]
-    win_by_reason = {}
-    for o in winning_orders:
-        reason = (o.close_reason or "UNKNOWN").split(" L")[0]
-        if reason not in win_by_reason:
-            win_by_reason[reason] = []
-        win_by_reason[reason].append(o)
-    
+    # Stop Loss Deep Dive + Winning Trades Drawdown
+    stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
-    for reason, group in sorted(win_by_reason.items()):
-        count = len(group)
-        troughs = [o.trough_pnl or 0 for o in group]
-        avg_trough = sum(troughs) / count
-        worst_trough = min(troughs)
-        avg_close_pnl = sum(o.pnl_percentage or 0 for o in group) / count
-        total_pnl_usd = sum(o.pnl or 0 for o in group)
-        by_dir = {"LONG": 0, "SHORT": 0}
-        for o in group:
-            by_dir[o.direction or "LONG"] += 1
-        by_conf = {}
-        for o in group:
+    try:
+        def _price_drop_pct_sl(o):
+            if o.direction == "LONG" and o.high_price_since_entry and o.exit_price and o.high_price_since_entry > 0:
+                return (o.high_price_since_entry - o.exit_price) / o.high_price_since_entry * 100
+            elif o.direction == "SHORT" and o.low_price_since_entry and o.exit_price and o.low_price_since_entry > 0:
+                return (o.exit_price - o.low_price_since_entry) / o.low_price_since_entry * 100
+            return 0
+
+        tc = config.trading_config
+        sl_orders = [o for o in orders if o.close_reason and (
+            o.close_reason.startswith("STOP_LOSS") or
+            (o.close_reason.startswith("BREAKEVEN_SL") and (o.pnl or 0) <= 0)
+        )]
+        
+        be_active_trades = []
+        positive_no_be_trades = []
+        never_positive_trades = []
+        
+        for o in sl_orders:
+            conf = o.confidence or "LOW"
+            conf_config = tc.confidence_levels.get(conf, tc.confidence_levels.get("LOW"))
+            trigger = conf_config.breakeven_trigger
+            peak = o.peak_pnl or 0
+            
+            if peak >= trigger:
+                be_active_trades.append(o)
+            elif peak > 0:
+                positive_no_be_trades.append(o)
+            else:
+                never_positive_trades.append(o)
+        
+        def _sl_group_stats(group_orders):
+            count = len(group_orders)
+            empty = {
+                "count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl_usd": 0,
+                "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0},
+                "avg_entry_gap": None, "avg_entry_rsi": None, "avg_price_drop": 0,
+                "avg_duration": "00:00:00"
+            }
+            if count == 0:
+                return empty
+            avg_peak = sum(o.peak_pnl or 0 for o in group_orders) / count
+            avg_close = sum(o.pnl_percentage or 0 for o in group_orders) / count
+            total_pnl = sum(o.pnl or 0 for o in group_orders)
+            drops = [_price_drop_pct_sl(o) for o in group_orders]
+            avg_drop = sum(drops) / count
+            by_conf = {}
+            for o in group_orders:
+                c = o.confidence or "LOW"
+                by_conf[c] = by_conf.get(c, 0) + 1
+            by_dir = {"LONG": 0, "SHORT": 0}
+            for o in group_orders:
+                d = o.direction or "LONG"
+                by_dir[d] = by_dir.get(d, 0) + 1
+            gaps = [o.entry_gap for o in group_orders if o.entry_gap is not None]
+            rsis = [o.entry_rsi for o in group_orders if o.entry_rsi is not None]
+            return {
+                "count": count,
+                "avg_peak_pnl": round(avg_peak, 4),
+                "avg_close_pnl": round(avg_close, 4),
+                "total_pnl_usd": round(total_pnl, 2),
+                "by_confidence": by_conf,
+                "by_direction": by_dir,
+                "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
+                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+                "avg_price_drop": round(avg_drop, 4),
+                "avg_duration": calc_avg_duration(group_orders)
+            }
+        
+        all_sl_by_conf = {}
+        for o in sl_orders:
             c = o.confidence or "LOW"
-            by_conf[c] = by_conf.get(c, 0) + 1
-        drops = [_price_drop_pct(o) for o in group]
-        avg_drop = sum(drops) / count
-        gaps = [o.entry_gap for o in group if o.entry_gap is not None]
-        rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
-        winning_trades_drawdown.append({
-            "close_reason": reason,
-            "count": count,
-            "by_direction": by_dir,
-            "by_confidence": by_conf,
-            "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
-            "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
-            "avg_trough_pnl": round(avg_trough, 4),
-            "worst_trough_pnl": round(worst_trough, 4),
-            "avg_close_pnl": round(avg_close_pnl, 4),
-            "total_pnl_usd": round(total_pnl_usd, 2),
-            "avg_price_drop": round(avg_drop, 4),
-            "avg_duration": calc_avg_duration(group)
-        })
+            all_sl_by_conf[c] = all_sl_by_conf.get(c, 0) + 1
+        all_sl_by_dir = {"LONG": 0, "SHORT": 0}
+        for o in sl_orders:
+            d = o.direction or "LONG"
+            all_sl_by_dir[d] = all_sl_by_dir.get(d, 0) + 1
+        all_sl_gaps = [o.entry_gap for o in sl_orders if o.entry_gap is not None]
+        all_sl_rsis = [o.entry_rsi for o in sl_orders if o.entry_rsi is not None]
+
+        stop_loss_deep_dive = {
+            "total_sl_trades": len(sl_orders),
+            "be_was_active": _sl_group_stats(be_active_trades),
+            "positive_no_be": _sl_group_stats(positive_no_be_trades),
+            "never_positive": _sl_group_stats(never_positive_trades),
+            "avg_peak_all_sl": round(sum(o.peak_pnl or 0 for o in sl_orders) / len(sl_orders), 4) if sl_orders else 0,
+            "all_by_confidence": all_sl_by_conf,
+            "all_by_direction": all_sl_by_dir,
+            "all_avg_entry_gap": round(sum(all_sl_gaps) / len(all_sl_gaps), 2) if all_sl_gaps else None,
+            "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None,
+            "all_avg_duration": calc_avg_duration(sl_orders)
+        }
+        
+        winning_orders = [o for o in orders if o.pnl and o.pnl > 0]
+        win_by_reason = {}
+        for o in winning_orders:
+            reason = (o.close_reason or "UNKNOWN").split(" L")[0]
+            if reason not in win_by_reason:
+                win_by_reason[reason] = []
+            win_by_reason[reason].append(o)
+        
+        for reason, group in sorted(win_by_reason.items()):
+            count = len(group)
+            troughs = [o.trough_pnl or 0 for o in group]
+            avg_trough = sum(troughs) / count
+            worst_trough = min(troughs)
+            avg_close_pnl = sum(o.pnl_percentage or 0 for o in group) / count
+            total_pnl_usd = sum(o.pnl or 0 for o in group)
+            by_dir = {"LONG": 0, "SHORT": 0}
+            for o in group:
+                by_dir[o.direction or "LONG"] += 1
+            by_conf = {}
+            for o in group:
+                c = o.confidence or "LOW"
+                by_conf[c] = by_conf.get(c, 0) + 1
+            drops = [_price_drop_pct_sl(o) for o in group]
+            avg_drop = sum(drops) / count
+            gaps = [o.entry_gap for o in group if o.entry_gap is not None]
+            rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
+            winning_trades_drawdown.append({
+                "close_reason": reason,
+                "count": count,
+                "by_direction": by_dir,
+                "by_confidence": by_conf,
+                "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
+                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+                "avg_trough_pnl": round(avg_trough, 4),
+                "worst_trough_pnl": round(worst_trough, 4),
+                "avg_close_pnl": round(avg_close_pnl, 4),
+                "total_pnl_usd": round(total_pnl_usd, 2),
+                "avg_price_drop": round(avg_drop, 4),
+                "avg_duration": calc_avg_duration(group)
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing SL deep dive / winning drawdown: {e}\n{traceback.format_exc()}")
     
     return {
         "total_trades": total_trades,

@@ -19,7 +19,7 @@ from services.websocket_tracker import websocket_tracker
 logger = logging.getLogger(__name__)
 
 OHLCV_BATCH_SIZE = 10
-OHLCV_BATCH_DELAY = 2.0
+OHLCV_BATCH_DELAY = 5.0
 
 # Cache for open orders to enable fast real-time stop loss checks
 _open_orders_cache: Dict[str, List[Dict]] = {}  # pair -> list of order info

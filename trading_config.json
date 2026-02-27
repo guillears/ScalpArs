@@ -2,7 +2,7 @@
   "trading_fee": 0.0004,
   "paper_trading": true,
   "paper_balance": 2000.0,
-  "trading_pairs_limit": 100,
+  "trading_pairs_limit": 50,
   "investment": {
     "mode": "equal_split",
     "fixed_amount": 200.0,

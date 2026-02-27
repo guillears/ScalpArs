@@ -1765,7 +1765,7 @@
                 
                 // Performance by Entry Gap
                 const gapBody = document.getElementById('gap-performance-body');
-                if (data.gap_performance && data.gap_performance.some(g => g.count > 0)) {
+                if (data.gap_performance && data.gap_performance.length > 0) {
                     const confBadgeColorsGap = {
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
@@ -1775,12 +1775,12 @@
                         'STRONG_BUY': 'text-pink-400'
                     };
                     
-                    gapBody.innerHTML = data.gap_performance.filter(g => g.count > 0).map(g => {
+                    gapBody.innerHTML = data.gap_performance.map(g => {
                         const pnlClass = g.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalPnlClass = (g.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = g.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = g.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                         
-                        // Build confidence badges
                         const confBadges = Object.entries(g.by_confidence || {})
                             .sort((a, b) => b[1] - a[1])
                             .map(([conf, count]) => {
@@ -1788,13 +1788,11 @@
                                 return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
                             }).join(' ');
                         
-                        const dirLabel = g.by_direction ? `${g.by_direction.LONG || 0}L / ${g.by_direction.SHORT || 0}S` : '-';
-                        
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${g.range}</td>
                                 <td class="px-3 py-2 text-center">${g.count}</td>
-                                <td class="px-3 py-2 text-center text-gray-300">${dirLabel}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${g.direction}</td>
                                 <td class="px-3 py-2 text-right ${wrClass} font-medium">${g.win_rate.toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(g.total_pnl_usd || 0)}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(g.avg_pnl_usd)}</td>
@@ -1808,7 +1806,7 @@
                 
                 // Performance by Entry RSI
                 const rsiBody = document.getElementById('rsi-performance-body');
-                if (data.rsi_performance && data.rsi_performance.some(r => r.count > 0)) {
+                if (data.rsi_performance && data.rsi_performance.length > 0) {
                     const confBadgeColorsRsi = {
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
@@ -1818,10 +1816,11 @@
                         'STRONG_BUY': 'text-pink-400'
                     };
                     
-                    rsiBody.innerHTML = data.rsi_performance.filter(r => r.count > 0).map(r => {
+                    rsiBody.innerHTML = data.rsi_performance.map(r => {
                         const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                         
                         const confBadges = Object.entries(r.by_confidence || {})
                             .sort((a, b) => b[1] - a[1])
@@ -1830,13 +1829,11 @@
                                 return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
                             }).join(' ');
                         
-                        const dirLabel = r.by_direction ? `${r.by_direction.LONG || 0}L / ${r.by_direction.SHORT || 0}S` : '-';
-                        
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-purple-400">${r.range}</td>
                                 <td class="px-3 py-2 text-center">${r.count}</td>
-                                <td class="px-3 py-2 text-center text-gray-300">${dirLabel}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
                                 <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
@@ -1850,7 +1847,7 @@
                 
                 // Performance by Entry ADX
                 const adxBody = document.getElementById('adx-performance-body');
-                if (data.adx_performance && data.adx_performance.some(r => r.count > 0)) {
+                if (data.adx_performance && data.adx_performance.length > 0) {
                     const confBadgeColorsAdx = {
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
@@ -1860,10 +1857,11 @@
                         'STRONG_BUY': 'text-pink-400'
                     };
                     
-                    adxBody.innerHTML = data.adx_performance.filter(r => r.count > 0).map(r => {
+                    adxBody.innerHTML = data.adx_performance.map(r => {
                         const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                         
                         const confBadges = Object.entries(r.by_confidence || {})
                             .sort((a, b) => b[1] - a[1])
@@ -1872,13 +1870,11 @@
                                 return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
                             }).join(' ');
                         
-                        const dirLabel = r.by_direction ? `${r.by_direction.LONG || 0}L / ${r.by_direction.SHORT || 0}S` : '-';
-                        
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-orange-400">${r.range}</td>
                                 <td class="px-3 py-2 text-center">${r.count}</td>
-                                <td class="px-3 py-2 text-center text-gray-300">${dirLabel}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
                                 <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>

@@ -889,41 +889,28 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     gap_performance = []
     for range_name, gap_min, gap_max in gap_ranges:
         range_orders = [o for o in gap_orders if gap_min <= o.entry_gap < gap_max]
-        count = len(range_orders)
-        if count == 0:
+        if not range_orders:
+            continue
+        for direction in ["LONG", "SHORT"]:
+            dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+            count = len(dir_orders)
+            if count == 0:
+                continue
+            wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+            pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+            conf_breakdown = {}
+            for o in dir_orders:
+                conf = o.confidence or "UNKNOWN"
+                conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
             gap_performance.append({
                 "range": range_name,
-                "count": 0,
-                "win_rate": 0,
-                "avg_pnl_usd": 0,
-                "by_confidence": {},
-                "by_direction": {"LONG": 0, "SHORT": 0}
+                "direction": direction,
+                "count": count,
+                "win_rate": round(wins / count * 100, 1),
+                "avg_pnl_usd": round(pnl_sum / count, 2),
+                "total_pnl_usd": round(pnl_sum, 2),
+                "by_confidence": conf_breakdown
             })
-            continue
-        
-        range_wins = len([o for o in range_orders if (o.pnl or 0) > 0])
-        range_pnl_sum = sum(o.pnl or 0 for o in range_orders)
-        
-        # Confidence breakdown
-        conf_breakdown = {}
-        for o in range_orders:
-            conf = o.confidence or "UNKNOWN"
-            conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-        
-        dir_breakdown = {"LONG": 0, "SHORT": 0}
-        for o in range_orders:
-            d = o.direction or "LONG"
-            dir_breakdown[d] = dir_breakdown.get(d, 0) + 1
-        
-        gap_performance.append({
-            "range": range_name,
-            "count": count,
-            "win_rate": round(range_wins / count * 100, 1),
-            "avg_pnl_usd": round(range_pnl_sum / count, 2),
-            "total_pnl_usd": round(range_pnl_sum, 2),
-            "by_confidence": conf_breakdown,
-            "by_direction": dir_breakdown
-        })
     
     # Performance by Entry RSI Range
     rsi_ranges = [
@@ -944,40 +931,28 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     rsi_performance = []
     for range_name, rsi_min, rsi_max in rsi_ranges:
         range_orders = [o for o in rsi_orders if rsi_min <= o.entry_rsi < rsi_max]
-        count = len(range_orders)
-        if count == 0:
+        if not range_orders:
+            continue
+        for direction in ["LONG", "SHORT"]:
+            dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+            count = len(dir_orders)
+            if count == 0:
+                continue
+            wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+            pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+            conf_breakdown = {}
+            for o in dir_orders:
+                conf = o.confidence or "UNKNOWN"
+                conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
             rsi_performance.append({
                 "range": range_name,
-                "count": 0,
-                "win_rate": 0,
-                "avg_pnl_usd": 0,
-                "by_confidence": {},
-                "by_direction": {"LONG": 0, "SHORT": 0}
+                "direction": direction,
+                "count": count,
+                "win_rate": round(wins / count * 100, 1),
+                "avg_pnl_usd": round(pnl_sum / count, 2),
+                "total_pnl_usd": round(pnl_sum, 2),
+                "by_confidence": conf_breakdown
             })
-            continue
-        
-        range_wins = len([o for o in range_orders if (o.pnl or 0) > 0])
-        range_pnl_sum = sum(o.pnl or 0 for o in range_orders)
-        
-        conf_breakdown = {}
-        for o in range_orders:
-            conf = o.confidence or "UNKNOWN"
-            conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-        
-        dir_breakdown = {"LONG": 0, "SHORT": 0}
-        for o in range_orders:
-            d = o.direction or "LONG"
-            dir_breakdown[d] = dir_breakdown.get(d, 0) + 1
-        
-        rsi_performance.append({
-            "range": range_name,
-            "count": count,
-            "win_rate": round(range_wins / count * 100, 1),
-            "avg_pnl_usd": round(range_pnl_sum / count, 2),
-            "total_pnl_usd": round(range_pnl_sum, 2),
-            "by_confidence": conf_breakdown,
-            "by_direction": dir_breakdown
-        })
     
     # Performance by Entry ADX Range
     adx_ranges = [
@@ -996,40 +971,28 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
     adx_performance = []
     for range_name, adx_min, adx_max in adx_ranges:
         range_orders = [o for o in adx_orders if adx_min <= o.entry_adx < adx_max]
-        count = len(range_orders)
-        if count == 0:
+        if not range_orders:
+            continue
+        for direction in ["LONG", "SHORT"]:
+            dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+            count = len(dir_orders)
+            if count == 0:
+                continue
+            wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+            pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+            conf_breakdown = {}
+            for o in dir_orders:
+                conf = o.confidence or "UNKNOWN"
+                conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
             adx_performance.append({
                 "range": range_name,
-                "count": 0,
-                "win_rate": 0,
-                "avg_pnl_usd": 0,
-                "by_confidence": {},
-                "by_direction": {"LONG": 0, "SHORT": 0}
+                "direction": direction,
+                "count": count,
+                "win_rate": round(wins / count * 100, 1),
+                "avg_pnl_usd": round(pnl_sum / count, 2),
+                "total_pnl_usd": round(pnl_sum, 2),
+                "by_confidence": conf_breakdown
             })
-            continue
-        
-        range_wins = len([o for o in range_orders if (o.pnl or 0) > 0])
-        range_pnl_sum = sum(o.pnl or 0 for o in range_orders)
-        
-        conf_breakdown = {}
-        for o in range_orders:
-            conf = o.confidence or "UNKNOWN"
-            conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-        
-        dir_breakdown = {"LONG": 0, "SHORT": 0}
-        for o in range_orders:
-            d = o.direction or "LONG"
-            dir_breakdown[d] = dir_breakdown.get(d, 0) + 1
-        
-        adx_performance.append({
-            "range": range_name,
-            "count": count,
-            "win_rate": round(range_wins / count * 100, 1),
-            "avg_pnl_usd": round(range_pnl_sum / count, 2),
-            "total_pnl_usd": round(range_pnl_sum, 2),
-            "by_confidence": conf_breakdown,
-            "by_direction": dir_breakdown
-        })
     
     # By Close Reason - group by reason with L4+ aggregation
     close_reason_stats = {}

@@ -957,7 +957,7 @@ async def _compute_performance(db: AsyncSession):
                 count = len(dir_orders)
                 if count == 0:
                     continue
-                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
@@ -967,7 +967,7 @@ async def _compute_performance(db: AsyncSession):
                     "range": range_name,
                     "direction": direction,
                     "count": count,
-                    "win_rate": round(wins / count * 100, 1),
+                    "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
@@ -995,7 +995,7 @@ async def _compute_performance(db: AsyncSession):
                 count = len(dir_orders)
                 if count == 0:
                     continue
-                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
@@ -1005,7 +1005,7 @@ async def _compute_performance(db: AsyncSession):
                     "range": range_name,
                     "direction": direction,
                     "count": count,
-                    "win_rate": round(wins / count * 100, 1),
+                    "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
@@ -1031,7 +1031,7 @@ async def _compute_performance(db: AsyncSession):
                 count = len(dir_orders)
                 if count == 0:
                     continue
-                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
@@ -1041,7 +1041,7 @@ async def _compute_performance(db: AsyncSession):
                     "range": range_name,
                     "direction": direction,
                     "count": count,
-                    "win_rate": round(wins / count * 100, 1),
+                    "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown

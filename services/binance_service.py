@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 _ban_until: float = 0
 _ban_persist_callback = None
+POST_BAN_COOLDOWN = 60
 
 
 def set_ban_persist_callback(callback):
@@ -34,6 +35,15 @@ def set_ban_until(value: float):
         else:
             logger.info("[BINANCE] Ban state from DB already expired, clearing")
             _ban_until = 0
+
+
+def get_ban_status() -> dict:
+    """Return current ban state for API consumers."""
+    if _ban_until > 0:
+        remaining = _ban_until - time.time()
+        if remaining > 0:
+            return {"banned": True, "remaining_seconds": int(remaining)}
+    return {"banned": False, "remaining_seconds": 0}
 
 
 class BinanceService:
@@ -77,7 +87,7 @@ class BinanceService:
             self._public_markets_loaded = True
     
     async def _check_ban(self):
-        """If Binance has IP-banned us, sleep until the ban expires."""
+        """If Binance has IP-banned us, sleep until the ban expires + cooldown buffer."""
         global _ban_until
         if _ban_until > 0:
             now = time.time()
@@ -85,6 +95,8 @@ class BinanceService:
                 wait = _ban_until - now + 2
                 logger.warning(f"[BINANCE] IP banned, waiting {wait:.0f}s until ban expires")
                 await asyncio.sleep(wait)
+            logger.info(f"[BINANCE] Ban expired, waiting {POST_BAN_COOLDOWN}s cooldown before resuming API calls")
+            await asyncio.sleep(POST_BAN_COOLDOWN)
             _ban_until = 0
             if _ban_persist_callback:
                 try:

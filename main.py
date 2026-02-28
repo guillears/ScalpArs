@@ -25,7 +25,7 @@ from config import (
     trading_config, save_trading_config, load_trading_config,
     TradingConfig, ConfidenceConfig, SignalThresholds, InvestmentConfig
 )
-from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback
+from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status
 from services.trading_engine import trading_engine, realtime_stop_loss_callback
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
@@ -46,6 +46,7 @@ logger = logging.getLogger("scalpars")
 _scan_task = None
 _monitor_task = None
 should_stop = False
+_scan_lock = asyncio.Lock()
 
 
 async def monitor_loop():
@@ -86,7 +87,8 @@ async def scan_loop():
             async with AsyncSessionLocal() as db:
                 await trading_engine.initialize(db)
                 if trading_engine.is_running:
-                    await trading_engine.scan_and_trade(db)
+                    async with _scan_lock:
+                        await trading_engine.scan_and_trade(db)
                     scan_backoff = 1
         except Exception as e:
             logger.error(f"[ERROR] Error in scan loop: {e}")
@@ -274,6 +276,9 @@ async def get_status(db: AsyncSession = Depends(get_db)):
 async def start_bot(db: AsyncSession = Depends(get_db)):
     """Start the trading bot"""
     result = await trading_engine.start(db)
+    ban = get_ban_status()
+    if ban["banned"]:
+        result["ban_warning"] = f"Binance IP ban active, {ban['remaining_seconds']}s remaining. Bot will wait before scanning."
     return result
 
 
@@ -430,43 +435,58 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
 
 @app.post("/api/pairs/refresh")
 async def refresh_pairs(db: AsyncSession = Depends(get_db)):
-    """Force refresh pair data"""
+    """Force refresh pair data. Skips Binance calls if data is already fresh."""
     from services.trading_engine import OHLCV_BATCH_SIZE, OHLCV_BATCH_DELAY
 
-    top_pairs = await binance_service.get_top_futures_pairs(config.trading_config.trading_pairs_limit)
+    freshness = await db.execute(
+        select(func.max(PairData.updated_at))
+    )
+    latest_update = freshness.scalar_one_or_none()
+    if latest_update and (datetime.utcnow() - latest_update).total_seconds() < 30:
+        count_result = await db.execute(select(func.count(PairData.pair)))
+        cached_count = count_result.scalar() or 0
+        logger.info(f"[REFRESH] Data is fresh ({(datetime.utcnow() - latest_update).total_seconds():.0f}s old), skipping Binance API calls")
+        return {"status": "cached", "count": cached_count}
 
-    for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
-        batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
+    if _scan_lock.locked():
+        logger.info("[REFRESH] Scan already in progress, skipping duplicate API calls")
+        return {"status": "scan_in_progress", "count": 0}
 
-        for pair_info in batch:
-            symbol = pair_info['symbol']
-            pair = pair_info['pair']
-            volume_24h = pair_info['volume_24h']
+    async with _scan_lock:
+        top_pairs = await binance_service.get_top_futures_pairs(config.trading_config.trading_pairs_limit)
 
-            ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
-            if not ohlcv:
-                continue
+        for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
+            batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
 
-            indicators = calculate_indicators(ohlcv)
-            if not indicators:
-                continue
+            for pair_info in batch:
+                symbol = pair_info['symbol']
+                pair = pair_info['pair']
+                volume_24h = pair_info['volume_24h']
 
-            signal, confidence = get_signal(
-                ema5=indicators.get('ema5'),
-                ema8=indicators.get('ema8'),
-                ema13=indicators.get('ema13'),
-                ema20=indicators.get('ema20'),
-                rsi=indicators.get('rsi'),
-                adx=indicators.get('adx'),
-                volume=indicators.get('volume'),
-                avg_volume=indicators.get('avg_volume'),
-                price=indicators.get('close')
-            )
+                ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
+                if not ohlcv:
+                    continue
 
-            await trading_engine.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
+                indicators = calculate_indicators(ohlcv)
+                if not indicators:
+                    continue
 
-        if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
-            await asyncio.sleep(OHLCV_BATCH_DELAY)
+                signal, confidence = get_signal(
+                    ema5=indicators.get('ema5'),
+                    ema8=indicators.get('ema8'),
+                    ema13=indicators.get('ema13'),
+                    ema20=indicators.get('ema20'),
+                    rsi=indicators.get('rsi'),
+                    adx=indicators.get('adx'),
+                    volume=indicators.get('volume'),
+                    avg_volume=indicators.get('avg_volume'),
+                    price=indicators.get('close')
+                )
+
+                await trading_engine.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
+
+            if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
+                await asyncio.sleep(OHLCV_BATCH_DELAY)
 
     return {"status": "refreshed", "count": len(top_pairs)}
 

@@ -517,7 +517,7 @@
                 </div>
                 <div class="flex items-center space-x-2 text-sm text-gray-500">
                     <span>Auto-refresh: 10s</span>
-                    <button onclick="refreshPairs()" class="px-3 py-1 glass rounded-lg hover:bg-white/10 transition">
+                    <button id="refresh-btn" onclick="refreshPairs()" class="px-3 py-1 glass rounded-lg hover:bg-white/10 transition">
                         Refresh Now
                     </button>
                 </div>
@@ -1481,7 +1481,11 @@
                         runtimeSeconds++;
                         updateTimer(runtimeSeconds);
                     }, 1000);
-                    showToast('Bot started successfully');
+                    if (data.ban_warning) {
+                        showToast(data.ban_warning, 'error');
+                    } else {
+                        showToast('Bot started successfully');
+                    }
                 } else {
                     clearInterval(timerInterval);
                     timerInterval = null;
@@ -2146,17 +2150,46 @@
             }
         }
 
-        // Refresh pairs manually
+        let _refreshCooldown = null;
+
         async function refreshPairs() {
+            const btn = document.getElementById('refresh-btn');
+            if (btn.disabled) return;
+
             try {
                 document.getElementById('pairs-table-body').innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-gray-500">Refreshing...</td></tr>';
-                await fetch(`${API_BASE}/api/pairs/refresh`, { method: 'POST' });
+                const res = await fetch(`${API_BASE}/api/pairs/refresh`, { method: 'POST' });
+                const data = await res.json();
                 await loadPairs();
-                showToast('Pairs data refreshed');
+
+                if (data.status === 'cached') {
+                    showToast('Pairs data is already fresh');
+                } else if (data.status === 'scan_in_progress') {
+                    showToast('Scan in progress, please wait');
+                } else {
+                    showToast('Pairs data refreshed');
+                }
             } catch (e) {
                 console.error('Error refreshing pairs:', e);
                 showToast('Error refreshing pairs', 'error');
             }
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            let remaining = 60;
+            btn.textContent = `Wait ${remaining}s`;
+            _refreshCooldown = setInterval(() => {
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(_refreshCooldown);
+                    _refreshCooldown = null;
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btn.textContent = 'Refresh Now';
+                } else {
+                    btn.textContent = `Wait ${remaining}s`;
+                }
+            }, 1000);
         }
 
         // Switch orders tab

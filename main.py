@@ -2,6 +2,7 @@
 SCALPARS Trading Platform - Main Application
 """
 import asyncio
+import time
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -24,7 +25,7 @@ from config import (
     trading_config, save_trading_config, load_trading_config,
     TradingConfig, ConfidenceConfig, SignalThresholds, InvestmentConfig
 )
-from services.binance_service import binance_service
+from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback
 from services.trading_engine import trading_engine, realtime_stop_loss_callback
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
@@ -138,6 +139,33 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("[STARTUP] Initializing database...")
     await init_db()
+    
+    # Restore ban state from DB before any Binance calls
+    async with AsyncSessionLocal() as db:
+        ban_state = await db.execute(select(BotState).limit(1))
+        bot_state = ban_state.scalar_one_or_none()
+        if bot_state and bot_state.ban_until and bot_state.ban_until > time.time():
+            set_ban_until(bot_state.ban_until)
+            logger.warning(f"[STARTUP] Restored Binance ban state: {bot_state.ban_until - time.time():.0f}s remaining")
+    
+    # Register callback to persist ban state to DB when detected
+    def _persist_ban(ban_epoch: float):
+        import asyncio as _aio
+        async def _save():
+            async with AsyncSessionLocal() as _db:
+                result = await _db.execute(select(BotState).limit(1))
+                state = result.scalar_one_or_none()
+                if state:
+                    state.ban_until = ban_epoch
+                    await _db.commit()
+                    logger.info(f"[BINANCE] Ban state persisted to DB: expires at {ban_epoch:.0f}")
+        try:
+            loop = _aio.get_running_loop()
+            loop.create_task(_save())
+        except RuntimeError:
+            pass
+    set_ban_persist_callback(_persist_ban)
+    
     logger.info("[STARTUP] Starting background tasks...")
     await start_background_tasks()
     

@@ -138,6 +138,9 @@ class BotState(Base):
     # Paper trading balance
     paper_balance = Column(Float, nullable=False, default=10000.0)
     
+    # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
+    ban_until = Column(Float, nullable=True, default=0.0)
+    
     # Last updated
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 

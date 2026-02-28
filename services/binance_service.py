@@ -14,6 +14,26 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 _ban_until: float = 0
+_ban_persist_callback = None
+
+
+def set_ban_persist_callback(callback):
+    """Register a callback that persists ban_until to the database."""
+    global _ban_persist_callback
+    _ban_persist_callback = callback
+
+
+def set_ban_until(value: float):
+    """Set the ban expiry from external code (e.g. loaded from DB at startup)."""
+    global _ban_until
+    _ban_until = value
+    if value > 0:
+        wait = value - time.time()
+        if wait > 0:
+            logger.warning(f"[BINANCE] Ban state restored from DB, {wait:.0f}s remaining")
+        else:
+            logger.info("[BINANCE] Ban state from DB already expired, clearing")
+            _ban_until = 0
 
 
 class BinanceService:
@@ -66,6 +86,11 @@ class BinanceService:
                 logger.warning(f"[BINANCE] IP banned, waiting {wait:.0f}s until ban expires")
                 await asyncio.sleep(wait)
             _ban_until = 0
+            if _ban_persist_callback:
+                try:
+                    _ban_persist_callback(0)
+                except Exception:
+                    pass
 
     @staticmethod
     def _detect_ban(error):
@@ -75,6 +100,11 @@ class BinanceService:
         if match:
             _ban_until = int(match.group(1)) / 1000
             logger.error(f"[BINANCE] IP ban detected, expires at {_ban_until:.0f} (epoch)")
+            if _ban_persist_callback:
+                try:
+                    _ban_persist_callback(_ban_until)
+                except Exception as cb_err:
+                    logger.error(f"[BINANCE] Failed to persist ban state: {cb_err}")
 
     async def close(self):
         """Close exchange connections"""

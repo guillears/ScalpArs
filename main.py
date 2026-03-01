@@ -1090,11 +1090,15 @@ async def _compute_performance(db: AsyncSession):
                     pass
             
             if reason not in close_reason_stats:
-                close_reason_stats[reason] = {"trades": [], "pnl_sum": 0, "pnl_pct_sum": 0, "by_confidence": {}}
+                close_reason_stats[reason] = {"trades": [], "pnl_sum": 0, "pnl_pct_sum": 0, "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0}}
             
             close_reason_stats[reason]["trades"].append(o)
             close_reason_stats[reason]["pnl_sum"] += o.pnl or 0
             close_reason_stats[reason]["pnl_pct_sum"] += o.pnl_percentage or 0
+            
+            direction = o.direction or "UNKNOWN"
+            if direction in close_reason_stats[reason]["by_direction"]:
+                close_reason_stats[reason]["by_direction"][direction] += 1
             
             conf = o.confidence or "UNKNOWN"
             close_reason_stats[reason]["by_confidence"][conf] = close_reason_stats[reason]["by_confidence"].get(conf, 0) + 1
@@ -1116,6 +1120,7 @@ async def _compute_performance(db: AsyncSession):
                 "avg_pnl_usd": round(data["pnl_sum"] / count, 2) if count > 0 else 0,
                 "total_pnl_usd": round(data["pnl_sum"], 2),
                 "by_confidence": data["by_confidence"],
+                "by_direction": data["by_direction"],
                 "avg_price_drop": round(avg_drop, 4)
             }
     except Exception as e:
@@ -1204,13 +1209,18 @@ async def _compute_performance(db: AsyncSession):
             all_sl_by_dir[d] = all_sl_by_dir.get(d, 0) + 1
         all_sl_gaps = [o.entry_gap for o in sl_orders if o.entry_gap is not None]
         all_sl_rsis = [o.entry_rsi for o in sl_orders if o.entry_rsi is not None]
+        all_sl_drops = [_price_drop_pct_sl(o) for o in sl_orders]
+        all_sl_count = len(sl_orders)
 
         stop_loss_deep_dive = {
-            "total_sl_trades": len(sl_orders),
+            "total_sl_trades": all_sl_count,
             "be_was_active": _sl_group_stats(be_active_trades),
             "positive_no_be": _sl_group_stats(positive_no_be_trades),
             "never_positive": _sl_group_stats(never_positive_trades),
-            "avg_peak_all_sl": round(sum(o.peak_pnl or 0 for o in sl_orders) / len(sl_orders), 4) if sl_orders else 0,
+            "avg_peak_all_sl": round(sum(o.peak_pnl or 0 for o in sl_orders) / all_sl_count, 4) if sl_orders else 0,
+            "all_avg_close_pnl": round(sum(o.pnl_percentage or 0 for o in sl_orders) / all_sl_count, 4) if sl_orders else 0,
+            "all_avg_price_drop": round(sum(all_sl_drops) / all_sl_count, 4) if sl_orders else 0,
+            "all_total_pnl_usd": round(sum(o.pnl or 0 for o in sl_orders), 2),
             "all_by_confidence": all_sl_by_conf,
             "all_by_direction": all_sl_by_dir,
             "all_avg_entry_gap": round(sum(all_sl_gaps) / len(all_sl_gaps), 2) if all_sl_gaps else None,

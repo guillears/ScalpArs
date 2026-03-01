@@ -324,7 +324,7 @@
                 </div>
                 
                 <!-- Trade Outcome Distribution and Closing Reason Summary - Side by Side -->
-                <div class="mt-6 pt-6 border-t border-white/10 grid grid-cols-1 lg:grid-cols-5 gap-6">
+                <div class="mt-6 pt-6 border-t border-white/10 grid grid-cols-1 lg:grid-cols-7 gap-6">
                     <!-- Trade Outcome Distribution -->
                     <div class="lg:col-span-2">
                         <h3 class="text-sm font-semibold text-gray-300 mb-4">Trade Outcome Distribution</h3>
@@ -333,9 +333,9 @@
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="text-gray-400 text-left border-b border-white/10">
-                                        <th class="px-3 py-2 font-medium">Return Range</th>
-                                        <th class="px-3 py-2 font-medium text-center"># of Trades</th>
-                                        <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                        <th class="px-2 py-2 font-medium">Return Range</th>
+                                        <th class="px-2 py-2 font-medium text-center"># Trades</th>
+                                        <th class="px-2 py-2 font-medium text-right">Avg P&L</th>
                                     </tr>
                                 </thead>
                                 <tbody id="outcome-distribution-body" class="divide-y divide-white/5">
@@ -346,7 +346,7 @@
                     </div>
                     
                     <!-- Closing Reason Summary -->
-                    <div class="lg:col-span-3">
+                    <div class="lg:col-span-5">
                         <h3 class="text-sm font-semibold text-gray-300 mb-4">Closing Reason Summary</h3>
                         <p class="text-xs text-gray-500 mb-3">Performance by close reason (L = TP Level reached)</p>
                         <div class="overflow-x-auto">
@@ -355,6 +355,7 @@
                                     <tr class="text-gray-400 text-left border-b border-white/10">
                                         <th class="px-3 py-2 font-medium">Close Reason</th>
                                         <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                        <th class="px-3 py-2 font-medium text-center">Direction</th>
                                         <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
@@ -363,7 +364,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -915,32 +916,34 @@
                         </table>
                     </div>
                     <div class="mt-3 mb-1 px-4">
-                        <span class="text-sm text-gray-300">Price &gt; EMA20 filter</span>
+                        <span class="text-sm text-gray-300">Price vs EMA20 filter</span>
+                        <p class="text-xs text-gray-500 mb-1">Only enter LONGs when price &gt; EMA20; only enter SHORTs when price &lt; EMA20</p>
                         <div class="flex items-center gap-6 mt-1">
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="config-momentum-ema20-filter-long" class="sr-only peer" checked>
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                <span class="ml-2 text-sm text-gray-400">LONG</span>
+                                <span class="ml-2 text-sm text-gray-400">LONG: Price &gt; EMA20</span>
                             </label>
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="config-momentum-ema20-filter-short" class="sr-only peer" checked>
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                <span class="ml-2 text-sm text-gray-400">SHORT</span>
+                                <span class="ml-2 text-sm text-gray-400">SHORT: Price &lt; EMA20</span>
                             </label>
                         </div>
                     </div>
                     <div class="mb-2 px-4">
-                        <span class="text-sm text-gray-300">EMA20 Slope filter</span>
+                        <span class="text-sm text-gray-300">EMA20 Slope filter (6-candle / 30min)</span>
+                        <p class="text-xs text-gray-500 mb-1">Only enter LONGs when EMA20 is rising vs 6 candles ago; only enter SHORTs when falling</p>
                         <div class="flex items-center gap-6 mt-1">
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="config-momentum-ema20-slope-filter-long" class="sr-only peer" checked>
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                <span class="ml-2 text-sm text-gray-400">LONG</span>
+                                <span class="ml-2 text-sm text-gray-400">LONG: EMA20 rising</span>
                             </label>
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="config-momentum-ema20-slope-filter-short" class="sr-only peer" checked>
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                <span class="ml-2 text-sm text-gray-400">SHORT</span>
+                                <span class="ml-2 text-sm text-gray-400">SHORT: EMA20 falling</span>
                             </label>
                         </div>
                     </div>
@@ -1700,9 +1703,9 @@
                         const avgClass = item.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                         return `
                             <tr class="hover:bg-white/5">
-                                <td class="px-3 py-2 font-medium">${item.range}</td>
-                                <td class="px-3 py-2 text-center ${countClass}">${item.count}</td>
-                                <td class="px-3 py-2 text-right ${item.count > 0 ? avgClass : 'text-gray-500'}">${item.count > 0 ? formatUSD(item.avg_pnl_usd) : '-'}</td>
+                                <td class="px-2 py-2 font-medium">${item.range}</td>
+                                <td class="px-2 py-2 text-center ${countClass}">${item.count}</td>
+                                <td class="px-2 py-2 text-right ${item.count > 0 ? avgClass : 'text-gray-500'}">${item.count > 0 ? formatUSD(item.avg_pnl_usd) : '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -1749,12 +1752,20 @@
                                 .map(c => `<span class="${confBadgeColors[c] || 'text-gray-400'} text-xs">${c[0]}:${stats.by_confidence[c]}</span>`)
                                 .join(' ')
                             : '-';
+
+                        const dirParts = [];
+                        if (stats.by_direction) {
+                            if (stats.by_direction.LONG) dirParts.push(`<span class="text-emerald-400 text-xs">L:${stats.by_direction.LONG}</span>`);
+                            if (stats.by_direction.SHORT) dirParts.push(`<span class="text-red-400 text-xs">S:${stats.by_direction.SHORT}</span>`);
+                        }
+                        const dirBadges = dirParts.length > 0 ? dirParts.join(' ') : '-';
                         
                         const dropVal = stats.avg_price_drop || 0;
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${reasonClass}">${reason}</td>
                                 <td class="px-3 py-2 text-center">${stats.trades}</td>
+                                <td class="px-3 py-2 text-center">${dirBadges}</td>
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
                                 <td class="px-3 py-2 text-right ${pnlPctClass}">${stats.avg_pnl_pct >= 0 ? '+' : ''}${stats.avg_pnl_pct.toFixed(2)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
@@ -1764,7 +1775,7 @@
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap
@@ -1945,9 +1956,9 @@
                             <td class="px-3 py-2 text-right text-cyan-400">${sld.all_avg_entry_gap != null ? sld.all_avg_entry_gap.toFixed(2) + '%' : '-'}</td>
                             <td class="px-3 py-2 text-right text-purple-400">${sld.all_avg_entry_rsi != null ? sld.all_avg_entry_rsi.toFixed(1) : '-'}</td>
                             <td class="px-3 py-2 text-right ${sld.avg_peak_all_sl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.avg_peak_all_sl >= 0 ? '+' : ''}${sld.avg_peak_all_sl.toFixed(4)}%</td>
-                            <td class="px-3 py-2 text-right text-gray-500">-</td>
-                            <td class="px-3 py-2 text-right text-gray-500">-</td>
-                            <td class="px-3 py-2 text-right text-gray-500">-</td>
+                            <td class="px-3 py-2 text-right ${sld.all_avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.all_avg_close_pnl >= 0 ? '+' : ''}${sld.all_avg_close_pnl.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right text-amber-400 font-medium">${(sld.all_avg_price_drop || 0).toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${sld.all_total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${formatUSD(sld.all_total_pnl_usd)}</td>
                             <td class="px-3 py-2 text-right text-gray-400">${sld.all_avg_duration || '-'}</td>
                         </tr>
                     `;
@@ -1970,6 +1981,8 @@
                     let allGaps = [];
                     let allRsis = [];
                     let allDurSecs = [];
+                    let allDir = {LONG: 0, SHORT: 0};
+                    let allConf = {};
                     
                     let rows = wdd.map(w => {
                         totalCount += w.count;
@@ -1983,7 +1996,14 @@
                             const dp = w.avg_duration.split(':').map(Number);
                             allDurSecs.push(...Array(w.count).fill(dp[0]*3600 + dp[1]*60 + dp[2]));
                         }
-                        
+                        if (w.by_direction) {
+                            allDir.LONG += w.by_direction.LONG || 0;
+                            allDir.SHORT += w.by_direction.SHORT || 0;
+                        }
+                        if (w.by_confidence) {
+                            Object.entries(w.by_confidence).forEach(([c, n]) => { allConf[c] = (allConf[c] || 0) + n; });
+                        }
+
                         const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const closeClass = w.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -2032,8 +2052,8 @@
                         <tr class="border-t border-white/10 hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-gray-300">All Winners</td>
                             <td class="px-3 py-2 text-center font-medium">${totalCount}</td>
-                            <td class="px-3 py-2 text-center text-gray-500">-</td>
-                            <td class="px-3 py-2 text-center text-gray-500">-</td>
+                            <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${allDir.LONG}L</span> / <span class="text-red-400 text-xs">${allDir.SHORT}S</span></td>
+                            <td class="px-3 py-2 text-center">${Object.entries(allConf).filter(([,v]) => v > 0).sort((a,b) => b[1] - a[1]).map(([c,n]) => `<span class="${wdConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ') || '-'}</td>
                             <td class="px-3 py-2 text-right">${allAvgGap}</td>
                             <td class="px-3 py-2 text-right">${allAvgRsi}</td>
                             <td class="px-3 py-2 text-right ${avgTrough >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgTrough >= 0 ? '+' : ''}${avgTrough.toFixed(4)}%</td>

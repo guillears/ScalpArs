@@ -1114,6 +1114,8 @@ async def _compute_performance(db: AsyncSession):
             count = len(data["trades"])
             drops = [_price_drop_pct(o) for o in data["trades"]]
             avg_drop = sum(drops) / count if count > 0 else 0
+            sig_active = sum(1 for o in data["trades"] if o.signal_active_at_close is True)
+            sig_inactive = sum(1 for o in data["trades"] if o.signal_active_at_close is False)
             by_close_reason[reason] = {
                 "trades": count,
                 "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
@@ -1121,7 +1123,9 @@ async def _compute_performance(db: AsyncSession):
                 "total_pnl_usd": round(data["pnl_sum"], 2),
                 "by_confidence": data["by_confidence"],
                 "by_direction": data["by_direction"],
-                "avg_price_drop": round(avg_drop, 4)
+                "avg_price_drop": round(avg_drop, 4),
+                "signal_active": sig_active,
+                "signal_inactive": sig_inactive
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
@@ -1167,7 +1171,8 @@ async def _compute_performance(db: AsyncSession):
                 "count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl_usd": 0,
                 "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0},
                 "avg_entry_gap": None, "avg_entry_rsi": None, "avg_price_drop": 0,
-                "avg_duration": "00:00:00"
+                "avg_duration": "00:00:00",
+                "signal_active": 0, "signal_inactive": 0
             }
             if count == 0:
                 return empty
@@ -1186,6 +1191,8 @@ async def _compute_performance(db: AsyncSession):
                 by_dir[d] = by_dir.get(d, 0) + 1
             gaps = [o.entry_gap for o in group_orders if o.entry_gap is not None]
             rsis = [o.entry_rsi for o in group_orders if o.entry_rsi is not None]
+            sig_active = sum(1 for o in group_orders if o.signal_active_at_close is True)
+            sig_inactive = sum(1 for o in group_orders if o.signal_active_at_close is False)
             return {
                 "count": count,
                 "avg_peak_pnl": round(avg_peak, 4),
@@ -1196,7 +1203,9 @@ async def _compute_performance(db: AsyncSession):
                 "avg_entry_gap": round(sum(gaps) / len(gaps), 2) if gaps else None,
                 "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                 "avg_price_drop": round(avg_drop, 4),
-                "avg_duration": calc_avg_duration(group_orders)
+                "avg_duration": calc_avg_duration(group_orders),
+                "signal_active": sig_active,
+                "signal_inactive": sig_inactive
             }
         
         all_sl_by_conf = {}
@@ -1225,7 +1234,9 @@ async def _compute_performance(db: AsyncSession):
             "all_by_direction": all_sl_by_dir,
             "all_avg_entry_gap": round(sum(all_sl_gaps) / len(all_sl_gaps), 2) if all_sl_gaps else None,
             "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None,
-            "all_avg_duration": calc_avg_duration(sl_orders)
+            "all_avg_duration": calc_avg_duration(sl_orders),
+            "all_signal_active": sum(1 for o in sl_orders if o.signal_active_at_close is True),
+            "all_signal_inactive": sum(1 for o in sl_orders if o.signal_active_at_close is False)
         }
         
         winning_orders = [o for o in orders if o.pnl and o.pnl > 0]
@@ -1254,6 +1265,8 @@ async def _compute_performance(db: AsyncSession):
             avg_drop = sum(drops) / count
             gaps = [o.entry_gap for o in group if o.entry_gap is not None]
             rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
+            sig_active = sum(1 for o in group if o.signal_active_at_close is True)
+            sig_inactive = sum(1 for o in group if o.signal_active_at_close is False)
             winning_trades_drawdown.append({
                 "close_reason": reason,
                 "count": count,
@@ -1266,11 +1279,45 @@ async def _compute_performance(db: AsyncSession):
                 "avg_close_pnl": round(avg_close_pnl, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
                 "avg_price_drop": round(avg_drop, 4),
-                "avg_duration": calc_avg_duration(group)
+                "avg_duration": calc_avg_duration(group),
+                "signal_active": sig_active,
+                "signal_inactive": sig_inactive
             })
     except Exception as e:
         logger.error(f"[PERF] Error computing SL deep dive / winning drawdown: {e}\n{traceback.format_exc()}")
     
+    rsi_adx_crosstab = []
+    try:
+        ct_rsi_ranges = [
+            ("20-30", 20, 30), ("30-40", 30, 40), ("40-50", 40, 50),
+            ("50-60", 50, 60), ("60-70", 60, 70), ("70-80", 70, 80),
+        ]
+        ct_adx_ranges = [
+            ("10-20", 10, 20), ("20-30", 20, 30), ("30-40", 30, 40), ("40+", 40, 999),
+        ]
+        ct_orders = [o for o in orders if o.entry_rsi is not None and o.entry_adx is not None]
+        for direction in ["LONG", "SHORT"]:
+            dir_ct = [o for o in ct_orders if (o.direction or "LONG") == direction]
+            for rsi_name, rsi_lo, rsi_hi in ct_rsi_ranges:
+                for adx_name, adx_lo, adx_hi in ct_adx_ranges:
+                    bucket = [o for o in dir_ct if rsi_lo <= o.entry_rsi < rsi_hi and adx_lo <= o.entry_adx < adx_hi]
+                    if not bucket:
+                        continue
+                    ct_count = len(bucket)
+                    ct_wins = sum(1 for o in bucket if (o.pnl or 0) > 0)
+                    ct_pnl = sum(o.pnl or 0 for o in bucket)
+                    rsi_adx_crosstab.append({
+                        "direction": direction,
+                        "rsi_range": rsi_name,
+                        "adx_range": adx_name,
+                        "trades": ct_count,
+                        "win_rate": round(ct_wins / ct_count * 100, 1),
+                        "total_pnl": round(ct_pnl, 2),
+                        "avg_pnl": round(ct_pnl / ct_count, 2)
+                    })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing RSI x ADX cross-tab: {e}\n{traceback.format_exc()}")
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -1315,7 +1362,8 @@ async def _compute_performance(db: AsyncSession):
         "adx_performance": adx_performance,
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
-        "winning_trades_drawdown": winning_trades_drawdown
+        "winning_trades_drawdown": winning_trades_drawdown,
+        "rsi_adx_crosstab": rsi_adx_crosstab
     }
 
 

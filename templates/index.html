@@ -361,10 +361,11 @@
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
                                         <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price (comparable to pullback_trigger)">Avg Pullback %</th>
                                         <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                        <th class="px-3 py-2 font-medium text-center" title="Was the entry signal still active when trade closed?">Signal</th>
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -390,10 +391,11 @@
                                     <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price">Avg Pullback %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L USD</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Entry signal still active at close (Active/Inactive)">Signal</th>
                                 </tr>
                             </thead>
                             <tbody id="sl-deep-dive-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
+                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -419,10 +421,11 @@
                                     <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price">Avg Pullback %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Entry signal still active at close (Active/Inactive)">Signal</th>
                                 </tr>
                             </thead>
                             <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -495,6 +498,30 @@
                             </thead>
                             <tbody id="adx-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry ADX)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- RSI x ADX Cross-Tab -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by RSI x ADX</h3>
+                    <p class="text-xs text-gray-500 mb-3">Cross-tabulation: how RSI and ADX ranges interact per direction</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Direction</th>
+                                    <th class="px-3 py-2 font-medium">RSI Range</th>
+                                    <th class="px-3 py-2 font-medium">ADX Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rsi-adx-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1771,11 +1798,12 @@
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${stats.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(stats.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center text-xs">${(stats.signal_active || 0) + (stats.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${stats.signal_active || 0}</span>/<span class="text-red-400">${stats.signal_inactive || 0}</span>` : '-'}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap
@@ -1900,7 +1928,31 @@
                 } else {
                     adxBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry ADX)</td></tr>';
                 }
-                
+
+                // RSI x ADX Cross-Tab
+                const ctBody = document.getElementById('rsi-adx-crosstab-body');
+                if (data.rsi_adx_crosstab && data.rsi_adx_crosstab.length > 0) {
+                    ctBody.innerHTML = data.rsi_adx_crosstab.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : r.win_rate >= 40 ? 'text-yellow-400' : 'text-red-400';
+                        const avgClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${dirColor}">${r.direction}</td>
+                                <td class="px-3 py-2 text-purple-400">${r.rsi_range}</td>
+                                <td class="px-3 py-2 text-orange-400">${r.adx_range}</td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${avgClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    ctBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
                 // Stop Loss Deep Dive
                 const slBody = document.getElementById('sl-deep-dive-body');
                 const sld = data.stop_loss_deep_dive;
@@ -1943,6 +1995,7 @@
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${slDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(c.data.total_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right text-gray-400">${c.data.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center text-xs">${(c.data.signal_active || 0) + (c.data.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${c.data.signal_active || 0}</span>/<span class="text-red-400">${c.data.signal_inactive || 0}</span>` : '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -1960,12 +2013,13 @@
                             <td class="px-3 py-2 text-right text-amber-400 font-medium">${(sld.all_avg_price_drop || 0).toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${sld.all_total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${formatUSD(sld.all_total_pnl_usd)}</td>
                             <td class="px-3 py-2 text-right text-gray-400">${sld.all_avg_duration || '-'}</td>
+                            <td class="px-3 py-2 text-center text-xs">${(sld.all_signal_active || 0) + (sld.all_signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${sld.all_signal_active || 0}</span>/<span class="text-red-400">${sld.all_signal_inactive || 0}</span>` : '-'}</td>
                         </tr>
                     `;
                     
                     slBody.innerHTML = rows;
                 } else {
-                    slBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                    slBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
                 // Winning Trades Drawdown
@@ -1983,6 +2037,7 @@
                     let allDurSecs = [];
                     let allDir = {LONG: 0, SHORT: 0};
                     let allConf = {};
+                    let allSigActive = 0, allSigInactive = 0;
                     
                     let rows = wdd.map(w => {
                         totalCount += w.count;
@@ -2003,6 +2058,8 @@
                         if (w.by_confidence) {
                             Object.entries(w.by_confidence).forEach(([c, n]) => { allConf[c] = (allConf[c] || 0) + n; });
                         }
+                        allSigActive += w.signal_active || 0;
+                        allSigInactive += w.signal_inactive || 0;
 
                         const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -2032,6 +2089,7 @@
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${wdDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(w.total_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right text-gray-400">${w.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center text-xs">${(w.signal_active || 0) + (w.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${w.signal_active || 0}</span>/<span class="text-red-400">${w.signal_inactive || 0}</span>` : '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -2062,12 +2120,13 @@
                             <td class="px-3 py-2 text-right text-amber-400 font-medium">${avgDrop.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(totalPnl)}</td>
                             <td class="px-3 py-2 text-right text-gray-400">${allAvgDur}</td>
+                            <td class="px-3 py-2 text-center text-xs">${allSigActive + allSigInactive > 0 ? `<span class="text-emerald-400">${allSigActive}</span>/<span class="text-red-400">${allSigInactive}</span>` : '-'}</td>
                         </tr>
                     `;
                     
                     wdBody.innerHTML = rows;
                 } else {
-                    wdBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
+                    wdBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);

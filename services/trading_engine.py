@@ -516,7 +516,16 @@ class TradingEngine:
         order.pnl_percentage = pnl_data['pnl_percentage']
         order.closed_at = datetime.utcnow()
         order.close_reason = reason
-        
+
+        try:
+            pair_data_result = await db.execute(
+                select(PairData.signal).where(PairData.pair == order.pair)
+            )
+            current_signal = pair_data_result.scalar_one_or_none()
+            order.signal_active_at_close = (current_signal == order.direction) if current_signal else None
+        except Exception:
+            order.signal_active_at_close = None
+
         # Create transaction record
         transaction = Transaction(
             order_id=order.id,

@@ -78,6 +78,9 @@ class Order(Base):
     
     # NO_EXPANSION timer reset: last time signal was re-verified (None = use opened_at)
     no_expansion_last_check = Column(DateTime, nullable=True)
+
+    # Whether the entry signal was still active when the order was closed
+    signal_active_at_close = Column(Boolean, nullable=True)
     
     # Timestamps
     opened_at = Column(DateTime, nullable=False, default=func.now())

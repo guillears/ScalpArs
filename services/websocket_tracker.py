@@ -91,6 +91,8 @@ class WebSocketTracker:
     
     BINANCE_WS_URL = "wss://fstream.binance.com/stream"
     
+    ZERO_PRICE_THRESHOLD = 50
+
     def __init__(self):
         self.trackers: Dict[str, PriceTracker] = {}
         self.subscribed_pairs: Set[str] = set()
@@ -100,6 +102,8 @@ class WebSocketTracker:
         self._reconnect_delay = 1  # Start with 1 second
         self._max_reconnect_delay = 60  # Max 60 seconds
         self._price_callback = None
+        self._open_orders_callback = None
+        self._consecutive_zero_prices = 0
         self._lock = asyncio.Lock()
     
     def set_price_callback(self, callback):
@@ -110,7 +114,16 @@ class WebSocketTracker:
         """
         self._price_callback = callback
         logger.info("[WS_TRACKER] Price callback registered for real-time stop loss")
-    
+
+    def set_open_orders_callback(self, callback):
+        """Set callback to check for open orders before forcing reconnect.
+
+        Callback signature: async def callback() -> bool
+        Returns True if there are open orders (reconnect should be skipped).
+        """
+        self._open_orders_callback = callback
+        logger.info("[WS_TRACKER] Open-orders callback registered for staleness check")
+
     async def start(self):
         """Start the WebSocket tracker"""
         if self.running:
@@ -243,6 +256,25 @@ class WebSocketTracker:
         if tracker:
             tracker.update(price)
     
+    async def _staleness_reconnect(self):
+        """Force reconnect only when no open orders exist."""
+        if self._open_orders_callback:
+            try:
+                has_open = await self._open_orders_callback()
+                if has_open:
+                    logger.warning(
+                        "[WS_TRACKER] Stale stream detected but open orders exist — "
+                        "skipping reconnect to protect position tracking"
+                    )
+                    return
+            except Exception as e:
+                logger.error(f"[WS_TRACKER] Error checking open orders: {e}")
+                return
+
+        logger.info("[WS_TRACKER] No open orders — forcing reconnect to recover stale stream")
+        self._consecutive_zero_prices = 0
+        await self._reconnect()
+
     async def _reconnect(self):
         """Reconnect WebSocket with updated subscriptions"""
         if self.websocket:
@@ -324,23 +356,27 @@ class WebSocketTracker:
             # Extract price from trade data
             if "p" in trade_data:
                 price = float(trade_data["p"])
-                
-                # CRITICAL: Never process invalid prices
+
                 if price <= 0:
-                    logger.warning(f"[WS_TRACKER] Received invalid price {price} for {pair}, skipping")
+                    self._consecutive_zero_prices += 1
+                    if self._consecutive_zero_prices % self.ZERO_PRICE_THRESHOLD == 0:
+                        logger.warning(
+                            f"[WS_TRACKER] {self._consecutive_zero_prices} consecutive zero-price "
+                            f"messages (latest: {pair}). Checking if safe to reconnect..."
+                        )
+                        await self._staleness_reconnect()
                     return
-                
-                # Update tracker
+
+                self._consecutive_zero_prices = 0
+
                 tracker = self.trackers.get(pair)
                 if tracker:
                     tracker.update(price)
-                
-                # Call price callback for real-time stop loss checking
+
                 if self._price_callback:
                     try:
                         await self._price_callback(pair, price)
                     except Exception as e:
-                        # Don't let callback errors break the WebSocket loop
                         logger.error(f"[WS_TRACKER] Price callback error for {pair}: {e}")
 
 

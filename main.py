@@ -111,6 +111,14 @@ async def start_background_tasks():
     # Register real-time stop loss callback
     websocket_tracker.set_price_callback(realtime_stop_loss_callback)
     logger.info("[STARTUP] Real-time stop loss callback registered")
+
+    async def has_open_orders() -> bool:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(func.count(Order.id)).where(Order.status == "OPEN"))
+            return (result.scalar() or 0) > 0
+
+    websocket_tracker.set_open_orders_callback(has_open_orders)
+    logger.info("[STARTUP] Open-orders callback registered for WS staleness check")
     
     _monitor_task = asyncio.create_task(monitor_loop())
     _scan_task = asyncio.create_task(scan_loop())

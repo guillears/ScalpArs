@@ -291,7 +291,7 @@ class TradingEngine:
             logger.info(f"[SKIP] {pair}: Already have open position")
             return None  # Already have position
         
-        # Check cooldown - don't re-enter same pair too quickly after any close
+        # Check cooldown - don't re-enter same pair too quickly after a LOSING close
         cooldown_minutes = config.trading_config.investment.cooldown_after_loss_minutes
         if cooldown_minutes > 0:
             cooldown_threshold = datetime.utcnow() - timedelta(minutes=cooldown_minutes)
@@ -301,14 +301,15 @@ class TradingEngine:
                         Order.pair == pair,
                         Order.status == "CLOSED",
                         Order.is_paper == self.is_paper_mode,
-                        Order.closed_at >= cooldown_threshold
+                        Order.closed_at >= cooldown_threshold,
+                        Order.pnl <= 0
                     )
                 ).order_by(desc(Order.closed_at)).limit(1)
             )
-            recent_close = result.scalar_one_or_none()
-            if recent_close:
-                time_since_close = (datetime.utcnow() - recent_close.closed_at).total_seconds() / 60
-                logger.info(f"[COOLDOWN] {pair}: Recent close {time_since_close:.1f} mins ago, waiting {cooldown_minutes} mins")
+            recent_loss = result.scalar_one_or_none()
+            if recent_loss:
+                time_since_close = (datetime.utcnow() - recent_loss.closed_at).total_seconds() / 60
+                logger.info(f"[COOLDOWN] {pair}: Recent loss {time_since_close:.1f} mins ago (pnl={recent_loss.pnl:.2f}), waiting {cooldown_minutes} mins")
                 return None
         
         # Calculate position size

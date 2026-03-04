@@ -852,6 +852,24 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Close if peak &lt; BE Trig &amp; current &lt; BE Off (0 = disabled)</p>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Signal Lost Exit</label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-signal-lost-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Min P&L
+                                    <input type="number" step="0.01" min="0" id="config-signal-lost-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                    <span class="ml-1">%</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Close when EMA5/EMA8 momentum reverses while P&L is above min % (pre-TP only)</p>
+                        </div>
                     </div>
                 </div>
 
@@ -1064,8 +1082,12 @@
                                 SHORT RSI &le;
                                 <input type="number" step="1" id="config-momentum-short-rsi-max" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
                             </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                SHORT RSI &ge;
+                                <input type="number" step="1" id="config-momentum-short-rsi-min" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
+                            </label>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">Set LONG to 0 or SHORT to 100 to disable. Filters out momentum entries in weak RSI zones.</p>
+                        <p class="text-xs text-gray-500 mt-1">LONG RSI &ge; 0 or SHORT RSI &le; 100 to disable. SHORT RSI &ge; prevents shorting oversold (set 0 to disable).</p>
                     </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
@@ -2653,6 +2675,9 @@
                 document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
+                document.getElementById('config-momentum-short-rsi-min').value = config.thresholds.momentum_short_rsi_min !== undefined ? config.thresholds.momentum_short_rsi_min : 30;
+                document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
+                document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -2757,7 +2782,10 @@
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
                     macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
-                    momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value)
+                    momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),
+                    momentum_short_rsi_min: safeFloat(document.getElementById('config-momentum-short-rsi-min').value),
+                    signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
+                    signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value)
                 },
                 confidence_levels: {}
             };

@@ -36,10 +36,13 @@
     "momentum_ema20_slope_filter_long": true,
     "momentum_ema20_slope_filter_short": true,
     "macro_trend_filter_enabled": true,
-    "macro_trend_neutral_mode": "both",
+    "macro_trend_neutral_mode": "none",
     "macro_trend_flat_threshold": 0.02,
     "momentum_long_rsi_min": 52.0,
-    "momentum_short_rsi_max": 48.0
+    "momentum_short_rsi_max": 48.0,
+    "momentum_short_rsi_min": 30.0,
+    "signal_lost_exit_enabled": true,
+    "signal_lost_min_profit": 0.05
   },
   "confidence_levels": {
     "LOW": {
@@ -118,7 +121,7 @@
       "breakeven_offset": 0.10
     },
     "STRONG_BUY": {
-      "enabled": true,
+      "enabled": false,
       "trade_mode": "both",
       "leverage": 20.0,
       "investment_multiplier": 1.0,

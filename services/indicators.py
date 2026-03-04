@@ -198,6 +198,7 @@ def get_signal(
     ema20_slope_short = getattr(th, 'momentum_ema20_slope_filter_short', True)
     long_rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
     short_rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
+    short_rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
     if ema8 and ema8 > 0:
         if ema5 > ema8:
             if not regime_allows("LONG"):
@@ -229,6 +230,8 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
             elif short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} > max {short_rsi_max}")
+            elif short_rsi_min > 0 and rsi is not None and rsi < short_rsi_min:
+                logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} < min {short_rsi_min} (oversold)")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
@@ -425,6 +428,26 @@ def check_exit_conditions(
             "trough_pnl": trough_pnl,
             "tp_level": current_tp_level
         }
+    
+    # Signal Lost exit: momentum reversed while in small profit (pre-TP)
+    signal_lost_enabled = getattr(tc.thresholds, 'signal_lost_exit_enabled', True)
+    signal_lost_min = getattr(tc.thresholds, 'signal_lost_min_profit', 0.05)
+    if signal_lost_enabled and pnl_pct >= signal_lost_min and pnl_pct < effective_tp_target:
+        signal_reversed = False
+        if ema5 is not None and ema8 is not None:
+            if direction == "LONG" and ema5 <= ema8:
+                signal_reversed = True
+            elif direction == "SHORT" and ema5 >= ema8:
+                signal_reversed = True
+        if signal_reversed:
+            logger.info(f"[SIGNAL_LOST] {direction} L{current_tp_level}: pnl={pnl_pct:.4f}% >= min {signal_lost_min}%, EMA5/EMA8 reversed (ema5={ema5}, ema8={ema8})")
+            return {
+                "should_close": True,
+                "reason": f"SIGNAL_LOST L{current_tp_level}",
+                "peak_pnl": peak_pnl,
+                "trough_pnl": trough_pnl,
+                "tp_level": current_tp_level
+            }
     
     # Check if we've reached the current TP target
     if pnl_pct >= effective_tp_target:

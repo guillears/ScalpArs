@@ -35,8 +35,8 @@
     "momentum_ema20_filter_short": true,
     "momentum_ema20_slope_filter_long": true,
     "momentum_ema20_slope_filter_short": true,
-    "momentum_ema50_trend_filter_long": true,
-    "momentum_ema50_trend_filter_short": true,
+    "momentum_ema30_trend_filter_long": true,
+    "momentum_ema30_trend_filter_short": true,
     "momentum_long_rsi_min": 52.0,
     "momentum_short_rsi_max": 48.0
   },

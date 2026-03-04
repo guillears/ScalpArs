@@ -295,6 +295,43 @@
                     </div>
                 </div>
                 
+                <!-- Regime Filter -->
+                <div class="mt-6 pt-6 border-t border-white/10 flex items-center gap-4">
+                    <span class="text-sm font-semibold text-gray-300">Filter by Macro Trend:</span>
+                    <select id="regime-filter" class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()">
+                        <option value="">All Regimes</option>
+                        <option value="BULLISH">BULLISH</option>
+                        <option value="BEARISH">BEARISH</option>
+                        <option value="NEUTRAL">NEUTRAL</option>
+                    </select>
+                    <span id="regime-filter-badge" class="text-xs text-gray-500"></span>
+                </div>
+
+                <!-- Performance by Macro Trend -->
+                <div class="mt-4 pt-4 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Macro Trend (EMA50)</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Trend</th>
+                                    <th class="px-3 py-2 font-medium text-center">Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                    <th class="px-3 py-2 font-medium text-right">R:R</th>
+                                    <th class="px-3 py-2 font-medium text-right">Long P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Long Win%</th>
+                                    <th class="px-3 py-2 font-medium text-right">Short P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Short Win%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="macro-trend-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Confidence Level -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Confidence Level</h3>
@@ -975,18 +1012,25 @@
                         </div>
                     </div>
                     <div class="mb-2 px-4">
-                        <span class="text-sm text-gray-300">EMA30 Trend filter (macro / ~2h)</span>
-                        <p class="text-xs text-gray-500 mb-1">Only enter LONGs when EMA30 is rising vs 6 candles ago (1h); only enter SHORTs when falling</p>
+                        <span class="text-sm text-gray-300">Macro Trend Regime (EMA50)</span>
+                        <p class="text-xs text-gray-500 mb-1">EMA50 rising = BULLISH (LONGs only), falling = BEARISH (SHORTs only), flat = NEUTRAL (configurable)</p>
                         <div class="flex items-center gap-6 mt-1">
                             <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="config-momentum-ema30-trend-filter-long" class="sr-only peer" checked>
+                                <input type="checkbox" id="config-macro-trend-filter-enabled" class="sr-only peer" checked>
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                <span class="ml-2 text-sm text-gray-400">LONG: EMA30 rising</span>
+                                <span class="ml-2 text-sm text-gray-400">Enabled</span>
                             </label>
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="config-momentum-ema30-trend-filter-short" class="sr-only peer" checked>
-                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                <span class="ml-2 text-sm text-gray-400">SHORT: EMA30 falling</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Neutral:
+                                <select id="config-macro-trend-neutral-mode" class="ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm">
+                                    <option value="both">Allow both</option>
+                                    <option value="none">Block both</option>
+                                </select>
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Flat threshold:
+                                <input type="number" step="0.01" id="config-macro-trend-flat-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
+                                <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
                     </div>
@@ -1626,7 +1670,11 @@
         // Load performance metrics
         async function loadPerformance() {
             try {
-                const res = await fetch(`${API_BASE}/api/performance`);
+                const regimeFilter = document.getElementById('regime-filter').value;
+                const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
+                const badge = document.getElementById('regime-filter-badge');
+                badge.textContent = regimeFilter ? `Showing ${regimeFilter} trades only` : '';
+                const res = await fetch(`${API_BASE}/api/performance${regimeParam}`);
                 const data = await res.json();
                 
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
@@ -1679,6 +1727,34 @@
                 
                 document.getElementById('perf-runtime-days').textContent = (data.runtime_days || 0) + ' days';
                 
+                // Performance by Macro Trend
+                const trendBody = document.getElementById('macro-trend-perf-body');
+                if (data.by_macro_trend) {
+                    const trendColors = { 'BULLISH': 'text-emerald-400', 'BEARISH': 'text-red-400', 'NEUTRAL': 'text-yellow-400' };
+                    trendBody.innerHTML = ['BULLISH', 'BEARISH', 'NEUTRAL'].map(trend => {
+                        const t = data.by_macro_trend[trend];
+                        if (!t || t.total_trades === 0) {
+                            return `<tr class="hover:bg-white/5"><td class="px-3 py-2 ${trendColors[trend]} font-medium">${trend}</td><td class="px-3 py-2 text-center text-gray-500">0</td><td colspan="7" class="px-3 py-2 text-center text-gray-500">-</td></tr>`;
+                        }
+                        const pnlClass = t.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const rrClass = t.risk_reward >= 1 ? 'text-emerald-400' : 'text-red-400';
+                        const lClass = t.long_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const sClass = t.short_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 ${trendColors[trend]} font-medium">${trend}</td>
+                                <td class="px-3 py-2 text-center">${t.total_trades} (${t.long_trades}L/${t.short_trades}S)</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-bold">${formatUSD(t.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right">${t.total_win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${rrClass} font-medium">${t.risk_reward > 0 ? t.risk_reward.toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${lClass} font-medium">${t.long_trades > 0 ? formatUSD(t.long_pnl) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${t.long_trades > 0 ? t.long_win_rate.toFixed(0) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${sClass} font-medium">${t.short_trades > 0 ? formatUSD(t.short_pnl) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${t.short_trades > 0 ? t.short_win_rate.toFixed(0) + '%' : '-'}</td>
+                            </tr>`;
+                    }).join('');
+                }
+
                 // Performance by confidence level
                 const confBody = document.getElementById('confidence-perf-body');
                 if (data.by_confidence) {
@@ -2527,8 +2603,9 @@
                 document.getElementById('config-momentum-ema20-filter-short').checked = config.thresholds.momentum_ema20_filter_short !== undefined ? config.thresholds.momentum_ema20_filter_short : true;
                 document.getElementById('config-momentum-ema20-slope-filter-long').checked = config.thresholds.momentum_ema20_slope_filter_long !== undefined ? config.thresholds.momentum_ema20_slope_filter_long : true;
                 document.getElementById('config-momentum-ema20-slope-filter-short').checked = config.thresholds.momentum_ema20_slope_filter_short !== undefined ? config.thresholds.momentum_ema20_slope_filter_short : true;
-                document.getElementById('config-momentum-ema30-trend-filter-long').checked = config.thresholds.momentum_ema30_trend_filter_long !== undefined ? config.thresholds.momentum_ema30_trend_filter_long : true;
-                document.getElementById('config-momentum-ema30-trend-filter-short').checked = config.thresholds.momentum_ema30_trend_filter_short !== undefined ? config.thresholds.momentum_ema30_trend_filter_short : true;
+                document.getElementById('config-macro-trend-filter-enabled').checked = config.thresholds.macro_trend_filter_enabled !== undefined ? config.thresholds.macro_trend_filter_enabled : true;
+                document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
+                document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
 
@@ -2631,8 +2708,9 @@
                     momentum_ema20_filter_short: document.getElementById('config-momentum-ema20-filter-short').checked,
                     momentum_ema20_slope_filter_long: document.getElementById('config-momentum-ema20-slope-filter-long').checked,
                     momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked,
-                    momentum_ema30_trend_filter_long: document.getElementById('config-momentum-ema30-trend-filter-long').checked,
-                    momentum_ema30_trend_filter_short: document.getElementById('config-momentum-ema30-trend-filter-short').checked,
+                    macro_trend_filter_enabled: document.getElementById('config-macro-trend-filter-enabled').checked,
+                    macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
+                    macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value)
                 },

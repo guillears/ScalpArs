@@ -13,7 +13,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime
 from services.websocket_tracker import websocket_tracker
 
 logger = logging.getLogger(__name__)
@@ -252,7 +252,8 @@ class TradingEngine:
         current_price: float,
         entry_gap: float = None,
         entry_rsi: float = None,
-        entry_adx: float = None
+        entry_adx: float = None,
+        entry_macro_trend: str = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -371,6 +372,7 @@ class TradingEngine:
             entry_gap=entry_gap,
             entry_rsi=entry_rsi,
             entry_adx=entry_adx,
+            entry_macro_trend=entry_macro_trend,
             entry_fee=entry_fee,
             peak_pnl=0.0,
             trough_pnl=0.0,
@@ -840,8 +842,8 @@ class TradingEngine:
                     avg_volume=indicators.get('avg_volume'),
                     price=indicators.get('price'),
                     ema20_prev6=indicators.get('ema20_prev6'),
-                    ema30=indicators.get('ema30'),
-                    ema30_prev6=indicators.get('ema30_prev6')
+                    ema50=indicators.get('ema50'),
+                    ema50_prev6=indicators.get('ema50_prev6')
                 )
 
                 if signal in ["LONG", "SHORT"]:
@@ -856,6 +858,10 @@ class TradingEngine:
                         entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
                     entry_rsi = indicators.get('rsi')
                     entry_adx = indicators.get('adx')
+                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                    entry_regime = determine_macro_regime(
+                        indicators.get('ema50'), indicators.get('ema50_prev6'), flat_th
+                    )
                     order = await self.open_position(
                         db=db,
                         pair=pair,
@@ -864,7 +870,8 @@ class TradingEngine:
                         current_price=indicators['price'],
                         entry_gap=entry_gap,
                         entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
-                        entry_adx=round(entry_adx, 1) if entry_adx is not None else None
+                        entry_adx=round(entry_adx, 1) if entry_adx is not None else None,
+                        entry_macro_trend=entry_regime
                     )
 
                     if order:

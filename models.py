@@ -58,6 +58,8 @@ class Order(Base):
     entry_rsi = Column(Float, nullable=True)
     # ADX(14) value at time of entry
     entry_adx = Column(Float, nullable=True)
+    # Macro trend regime at time of entry (BULLISH, BEARISH, NEUTRAL)
+    entry_macro_trend = Column(String(10), nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

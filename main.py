@@ -701,12 +701,12 @@ async def close_order(request: ManualCloseRequest, db: AsyncSession = Depends(ge
 # ----- Performance Metrics -----
 
 @app.get("/api/performance")
-async def get_performance(db: AsyncSession = Depends(get_db)):
-    """Get closed orders performance metrics"""
+async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)):
+    """Get closed orders performance metrics, optionally filtered by macro trend regime"""
     await trading_engine.initialize(db)
     
     try:
-        return await _compute_performance(db)
+        return await _compute_performance(db, regime=regime)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         return {
@@ -727,7 +727,7 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
             "avg_duration": "00:00:00", "avg_duration_long": "00:00:00", "avg_duration_short": "00:00:00",
             "avg_leverage": 0, "return_multiple": 0, "daily_compound_return": 0,
             "runtime_days": 0,
-            "by_confidence": {}, "outcome_distribution": [],
+            "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "rsi_performance": [], "adx_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
@@ -736,12 +736,53 @@ async def get_performance(db: AsyncSession = Depends(get_db)):
         }
 
 
-async def _compute_performance(db: AsyncSession):
+async def _compute_performance(db: AsyncSession, regime: str = None):
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
     )
-    orders = result.scalars().all()
+    all_orders = result.scalars().all()
+    
+    # Compute by_macro_trend summary from ALL orders (before filtering)
+    macro_trend_performance = {}
+    for trend in ['BULLISH', 'BEARISH', 'NEUTRAL']:
+        trend_orders = [o for o in all_orders if (o.entry_macro_trend or 'NEUTRAL') == trend]
+        trend_longs = [o for o in trend_orders if o.direction == "LONG"]
+        trend_shorts = [o for o in trend_orders if o.direction == "SHORT"]
+        trend_long_pnl = sum(o.pnl or 0 for o in trend_longs)
+        trend_short_pnl = sum(o.pnl or 0 for o in trend_shorts)
+        trend_long_inv = sum(o.investment for o in trend_longs)
+        trend_short_inv = sum(o.investment for o in trend_shorts)
+        trend_long_wins = len([o for o in trend_longs if (o.pnl or 0) > 0])
+        trend_short_wins = len([o for o in trend_shorts if (o.pnl or 0) > 0])
+        trend_total_pnl = trend_long_pnl + trend_short_pnl
+        trend_total_wins = trend_long_wins + trend_short_wins
+        trend_total_wr = round(trend_total_wins / len(trend_orders) * 100, 2) if trend_orders else 0
+        t_wins_list = [o for o in trend_orders if (o.pnl or 0) > 0]
+        t_losses_list = [o for o in trend_orders if (o.pnl or 0) <= 0]
+        t_avg_win = sum(o.pnl for o in t_wins_list) / len(t_wins_list) if t_wins_list else 0
+        t_avg_loss = sum(o.pnl for o in t_losses_list) / len(t_losses_list) if t_losses_list else 0
+        t_rr = round(t_avg_win / abs(t_avg_loss), 2) if t_avg_loss != 0 else 0
+        macro_trend_performance[trend] = {
+            "total_trades": len(trend_orders),
+            "long_trades": len(trend_longs),
+            "short_trades": len(trend_shorts),
+            "total_pnl": round(trend_total_pnl, 2),
+            "total_win_rate": trend_total_wr,
+            "risk_reward": t_rr,
+            "long_pnl": round(trend_long_pnl, 2),
+            "short_pnl": round(trend_short_pnl, 2),
+            "long_pnl_pct": round(trend_long_pnl / trend_long_inv * 100, 2) if trend_long_inv > 0 else 0,
+            "short_pnl_pct": round(trend_short_pnl / trend_short_inv * 100, 2) if trend_short_inv > 0 else 0,
+            "long_win_rate": round(trend_long_wins / len(trend_longs) * 100, 2) if trend_longs else 0,
+            "short_win_rate": round(trend_short_wins / len(trend_shorts) * 100, 2) if trend_shorts else 0,
+        }
+    
+    # Apply regime filter if requested
+    if regime and regime in ('BULLISH', 'BEARISH', 'NEUTRAL'):
+        orders = [o for o in all_orders if (o.entry_macro_trend or 'NEUTRAL') == regime]
+    else:
+        orders = all_orders
     
     if not orders:
         early_open_result = await db.execute(
@@ -789,6 +830,7 @@ async def _compute_performance(db: AsyncSession):
             "daily_compound_return": 0,
             "runtime_days": round(trading_engine.get_runtime_seconds() / 86400.0, 2),
             "by_confidence": {},
+            "by_macro_trend": macro_trend_performance,
             "outcome_distribution": [],
             "gap_performance": [],
             "rsi_performance": [],
@@ -1364,6 +1406,7 @@ async def _compute_performance(db: AsyncSession):
         "daily_compound_return": round(daily_compound_return, 4),
         "runtime_days": round(runtime_days, 2),
         "by_confidence": confidence_performance,
+        "by_macro_trend": macro_trend_performance,
         "outcome_distribution": outcome_distribution,
         "gap_performance": gap_performance,
         "rsi_performance": rsi_performance,

@@ -20,7 +20,7 @@ def calculate_indicators(ohlcv: List) -> Dict:
     Returns:
         Dictionary with all indicator values
     """
-    if not ohlcv or len(ohlcv) < 31:  # Need at least 31 candles for EMA30
+    if not ohlcv or len(ohlcv) < 51:  # Need at least 51 candles for EMA50
         return {}
     
     # Convert to DataFrame
@@ -35,7 +35,7 @@ def calculate_indicators(ohlcv: List) -> Dict:
     ema8 = EMAIndicator(close=df['close'], window=8).ema_indicator()
     ema13 = EMAIndicator(close=df['close'], window=13).ema_indicator()
     ema20 = EMAIndicator(close=df['close'], window=20).ema_indicator()
-    ema30 = EMAIndicator(close=df['close'], window=30).ema_indicator()
+    ema50 = EMAIndicator(close=df['close'], window=50).ema_indicator()
     
     # Calculate RSI (12 period as specified)
     rsi = RSIIndicator(close=df['close'], window=12).rsi()
@@ -55,13 +55,28 @@ def calculate_indicators(ohlcv: List) -> Dict:
         'ema13': float(ema13.iloc[-1]) if not pd.isna(ema13.iloc[-1]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
         'ema20_prev6': float(ema20.iloc[-7]) if len(ema20) >= 7 and not pd.isna(ema20.iloc[-7]) else None,
-        'ema30': float(ema30.iloc[-1]) if not pd.isna(ema30.iloc[-1]) else None,
-        'ema30_prev6': float(ema30.iloc[-7]) if len(ema30) >= 7 and not pd.isna(ema30.iloc[-7]) else None,
+        'ema50': float(ema50.iloc[-1]) if not pd.isna(ema50.iloc[-1]) else None,
+        'ema50_prev6': float(ema50.iloc[-7]) if len(ema50) >= 7 and not pd.isna(ema50.iloc[-7]) else None,
         'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'volume': float(df['volume'].iloc[-1]),
         'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None
     }
+
+
+def determine_macro_regime(ema50: float, ema50_prev6: float, flat_threshold: float = 0.02) -> str:
+    """
+    Determine macro trend regime from EMA50 slope.
+    Returns "BULLISH", "BEARISH", or "NEUTRAL".
+    """
+    if ema50 is None or ema50_prev6 is None or ema50_prev6 == 0:
+        return "NEUTRAL"
+    pct_change = ((ema50 - ema50_prev6) / ema50_prev6) * 100
+    if pct_change > flat_threshold:
+        return "BULLISH"
+    elif pct_change < -flat_threshold:
+        return "BEARISH"
+    return "NEUTRAL"
 
 
 def get_signal(
@@ -76,8 +91,8 @@ def get_signal(
     price: float = None,
     config: Optional[Dict] = None,
     ema20_prev6: float = None,
-    ema30: float = None,
-    ema30_prev6: float = None
+    ema50: float = None,
+    ema50_prev6: float = None
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -160,9 +175,23 @@ def get_signal(
         
         return True
     
+    # --- Macro trend regime (EMA50) ---
+    macro_filter_enabled = getattr(th, 'macro_trend_filter_enabled', True)
+    neutral_mode = getattr(th, 'macro_trend_neutral_mode', 'both')
+    flat_threshold = getattr(th, 'macro_trend_flat_threshold', 0.02)
+    regime = determine_macro_regime(ema50, ema50_prev6, flat_threshold)
+    
+    def regime_allows(direction: str) -> bool:
+        if not macro_filter_enabled:
+            return True
+        if regime == "BULLISH":
+            return direction == "LONG"
+        if regime == "BEARISH":
+            return direction == "SHORT"
+        # NEUTRAL
+        return neutral_mode == "both"
+    
     # --- Momentum signals (EMA5/EMA8 gap) - evaluated FIRST ---
-    ema30_trend_long = getattr(th, 'momentum_ema30_trend_filter_long', True)
-    ema30_trend_short = getattr(th, 'momentum_ema30_trend_filter_short', True)
     ema20_filter_long = getattr(th, 'momentum_ema20_filter_long', True)
     ema20_filter_short = getattr(th, 'momentum_ema20_filter_short', True)
     ema20_slope_long = getattr(th, 'momentum_ema20_slope_filter_long', True)
@@ -171,8 +200,8 @@ def get_signal(
     short_rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
     if ema8 and ema8 > 0:
         if ema5 > ema8:
-            if ema30_trend_long and (ema30 is None or ema30_prev6 is None or ema30 <= ema30_prev6):
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA30 macro trend filter, ema30={ema30}, ema30_prev6={ema30_prev6}")
+            if not regime_allows("LONG"):
+                logger.debug(f"[MOMENTUM] LONG skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev6={ema50_prev6}")
             elif ema20_filter_long and (price is None or price <= ema20):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_long and (ema20_prev6 is None or ema20 <= ema20_prev6):
@@ -185,15 +214,15 @@ def get_signal(
                 if gap_threshold_met:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("LONG", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}, ema30_slope={'up' if ema30_prev6 and ema30 and ema30 > ema30_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
                             return "LONG", "VERY_STRONG"
                     if adx > th.adx_strong and adx <= th.adx_very_strong:
                         if check_gap_and_mode("LONG", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}, ema30_slope={'up' if ema30_prev6 and ema30 and ema30 > ema30_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
                             return "LONG", "STRONG_BUY"
         elif ema5 < ema8 and ema5 > 0:
-            if ema30_trend_short and (ema30 is None or ema30_prev6 is None or ema30 >= ema30_prev6):
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA30 macro trend filter, ema30={ema30}, ema30_prev6={ema30_prev6}")
+            if not regime_allows("SHORT"):
+                logger.debug(f"[MOMENTUM] SHORT skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev6={ema50_prev6}")
             elif ema20_filter_short and (price is None or price >= ema20):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_short and (ema20_prev6 is None or ema20 >= ema20_prev6):
@@ -206,11 +235,11 @@ def get_signal(
                 if gap_threshold_met:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}, ema30_slope={'down' if ema30_prev6 and ema30 and ema30 < ema30_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}")
                             return "SHORT", "VERY_STRONG"
                     if adx > th.adx_strong and adx <= th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}, ema30_slope={'down' if ema30_prev6 and ema30 and ema30 < ema30_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}")
                             return "SHORT", "STRONG_BUY"
     
     # Check for bullish EMA stack (LONG conditions - looking for oversold)

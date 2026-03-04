@@ -839,7 +839,9 @@ class TradingEngine:
                     volume=indicators.get('volume'),
                     avg_volume=indicators.get('avg_volume'),
                     price=indicators.get('price'),
-                    ema20_prev6=indicators.get('ema20_prev6')
+                    ema20_prev6=indicators.get('ema20_prev6'),
+                    ema50=indicators.get('ema50'),
+                    ema50_prev12=indicators.get('ema50_prev12')
                 )
 
                 if signal in ["LONG", "SHORT"]:

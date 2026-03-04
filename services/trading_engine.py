@@ -908,6 +908,11 @@ class TradingEngine:
         # Use provided 24h volume, or fall back to candle volume
         actual_volume_24h = volume_24h if volume_24h is not None else indicators.get('volume', 0)
         
+        flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+        regime = determine_macro_regime(
+            indicators.get('ema50'), indicators.get('ema50_prev6'), flat_th
+        )
+        
         if pair_data:
             pair_data.price = indicators.get('price', 0)
             pair_data.ema5 = indicators.get('ema5')
@@ -920,6 +925,7 @@ class TradingEngine:
             pair_data.avg_volume = indicators.get('avg_volume')
             pair_data.signal = signal
             pair_data.confidence = confidence
+            pair_data.macro_regime = regime
             pair_data.updated_at = datetime.utcnow()
         else:
             pair_data = PairData(
@@ -934,7 +940,8 @@ class TradingEngine:
                 volume_24h=actual_volume_24h,
                 avg_volume=indicators.get('avg_volume'),
                 signal=signal,
-                confidence=confidence
+                confidence=confidence,
+                macro_regime=regime
             )
             db.add(pair_data)
         

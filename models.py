@@ -176,5 +176,8 @@ class PairData(Base):
     signal = Column(String(10), nullable=True)  # LONG, SHORT, NOTHING
     confidence = Column(String(10), nullable=True)
     
+    # Macro trend regime (EMA50-based)
+    macro_regime = Column(String(10), nullable=True)  # BULLISH, BEARISH, NEUTRAL
+    
     # Timestamp
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())

@@ -431,6 +431,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "adx": round(p.adx, 2) if p.adx else None,
             "signal": p.signal,
             "confidence": p.confidence,
+            "macro_regime": p.macro_regime,
             "volume_24h": p.volume_24h,
             "open_positions": {
                 "long": long_count,

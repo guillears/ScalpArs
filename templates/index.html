@@ -125,6 +125,25 @@
         </div>
     </header>
 
+    <!-- Market Regime Bar -->
+    <div class="glass border-b border-white/5">
+        <div class="container mx-auto px-6 py-2 flex items-center justify-between text-sm">
+            <div class="flex items-center space-x-3">
+                <span class="text-gray-400 font-medium">Market Regime:</span>
+                <span id="btc-regime-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400">--</span>
+                <span class="text-gray-500">(BTC)</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="regime-pair-count" class="text-gray-500">--</span>
+                <div class="flex items-center space-x-2 text-xs">
+                    <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block mr-1"></span><span id="regime-bull-count" class="text-gray-400">0</span></span>
+                    <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-red-400 inline-block mr-1"></span><span id="regime-bear-count" class="text-gray-400">0</span></span>
+                    <span class="flex items-center"><span class="w-2 h-2 rounded-full bg-yellow-400 inline-block mr-1"></span><span id="regime-neutral-count" class="text-gray-400">0</span></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <main class="container mx-auto px-6 py-8 space-y-8">
         <!-- Balance Cards -->
         <section>
@@ -2316,6 +2335,32 @@
                         </tr>
                     `;
                 }).join('');
+                
+                // Update regime bar
+                let bulls = 0, bears = 0, neutrals = 0;
+                let btcRegime = null;
+                data.forEach(p => {
+                    const r = p.macro_regime || 'NEUTRAL';
+                    if (r === 'BULLISH') bulls++;
+                    else if (r === 'BEARISH') bears++;
+                    else neutrals++;
+                    if (p.pair === 'BTCUSDT') btcRegime = r;
+                });
+                const badge = document.getElementById('btc-regime-badge');
+                if (btcRegime === 'BULLISH') {
+                    badge.textContent = 'BULLISH';
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400';
+                } else if (btcRegime === 'BEARISH') {
+                    badge.textContent = 'BEARISH';
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-500/20 text-red-400';
+                } else {
+                    badge.textContent = btcRegime || 'NEUTRAL';
+                    badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500/20 text-yellow-400';
+                }
+                document.getElementById('regime-pair-count').textContent = `${data.length} pairs:`;
+                document.getElementById('regime-bull-count').textContent = `${bulls} Bull`;
+                document.getElementById('regime-bear-count').textContent = `${bears} Bear`;
+                document.getElementById('regime-neutral-count').textContent = `${neutrals} Neutral`;
             } catch (e) {
                 console.error('Error loading pairs:', e);
             }

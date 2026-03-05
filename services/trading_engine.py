@@ -833,6 +833,22 @@ class TradingEngine:
         # Subscribe all top pairs to WebSocket in a single batch (one reconnection)
         await websocket_tracker.subscribe_pairs_batch([p['pair'] for p in top_pairs])
         
+        # BTC global regime filter: fetch BTC data once before processing all pairs
+        btc_global_enabled = getattr(config.trading_config.thresholds, 'btc_global_filter_enabled', False)
+        btc_ema50 = None
+        btc_ema50_prev6 = None
+        btc_regime = "NEUTRAL"
+        if btc_global_enabled:
+            btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
+            if btc_ohlcv:
+                btc_indicators = calculate_indicators(btc_ohlcv)
+                if btc_indicators:
+                    btc_ema50 = btc_indicators.get('ema50')
+                    btc_ema50_prev6 = btc_indicators.get('ema50_prev6')
+                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                    btc_regime = determine_macro_regime(btc_ema50, btc_ema50_prev6, flat_th)
+            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema50={btc_ema50}, prev6={btc_ema50_prev6})")
+        
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
             batch_num = batch_start // OHLCV_BATCH_SIZE + 1
@@ -861,6 +877,9 @@ class TradingEngine:
                     logger.debug(f"[SKIP] {pair}: ADX is null (insufficient price data)")
                     continue
 
+                regime_ema50 = btc_ema50 if btc_global_enabled else indicators.get('ema50')
+                regime_ema50_prev6 = btc_ema50_prev6 if btc_global_enabled else indicators.get('ema50_prev6')
+
                 signal, confidence = get_signal(
                     ema5=indicators.get('ema5'),
                     ema8=indicators.get('ema8'),
@@ -872,8 +891,8 @@ class TradingEngine:
                     avg_volume=indicators.get('avg_volume'),
                     price=indicators.get('price'),
                     ema20_prev6=indicators.get('ema20_prev6'),
-                    ema50=indicators.get('ema50'),
-                    ema50_prev6=indicators.get('ema50_prev6')
+                    ema50=regime_ema50,
+                    ema50_prev6=regime_ema50_prev6
                 )
 
                 if signal in ["LONG", "SHORT"]:
@@ -888,10 +907,13 @@ class TradingEngine:
                         entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
                     entry_rsi = indicators.get('rsi')
                     entry_adx = indicators.get('adx')
-                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
-                    entry_regime = determine_macro_regime(
-                        indicators.get('ema50'), indicators.get('ema50_prev6'), flat_th
-                    )
+                    if btc_global_enabled:
+                        entry_regime = btc_regime
+                    else:
+                        flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                        entry_regime = determine_macro_regime(
+                            indicators.get('ema50'), indicators.get('ema50_prev6'), flat_th
+                        )
                     order = await self.open_position(
                         db=db,
                         pair=pair,

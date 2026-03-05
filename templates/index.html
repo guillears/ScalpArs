@@ -132,6 +132,7 @@
                 <span class="text-gray-400 font-medium">Market Regime:</span>
                 <span id="btc-regime-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400">--</span>
                 <span class="text-gray-500">(BTC)</span>
+                <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
             </div>
             <div class="flex items-center space-x-4">
                 <span id="regime-pair-count" class="text-gray-500">--</span>
@@ -1057,6 +1058,11 @@
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
                                 <span class="ml-2 text-sm text-gray-400">Enabled</span>
                             </label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-btc-global-filter-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">BTC Global</span>
+                            </label>
                             <label class="flex items-center text-sm text-gray-400">
                                 Neutral:
                                 <select id="config-macro-trend-neutral-mode" class="ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm">
@@ -1070,6 +1076,7 @@
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
+                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA50 regime to gate ALL pairs (overrides per-pair regime)</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI Filter</span>
@@ -2383,6 +2390,9 @@
                 document.getElementById('regime-bull-count').textContent = `${bulls} Bull`;
                 document.getElementById('regime-bear-count').textContent = `${bears} Bear`;
                 document.getElementById('regime-neutral-count').textContent = `${neutrals} Neutral`;
+                const globalTag = document.getElementById('btc-global-tag');
+                const btcGlobalOn = document.getElementById('config-btc-global-filter-enabled');
+                if (globalTag) globalTag.classList.toggle('hidden', !(btcGlobalOn && btcGlobalOn.checked));
             } catch (e) {
                 console.error('Error loading pairs:', e);
             }
@@ -2671,6 +2681,7 @@
                 document.getElementById('config-momentum-ema20-slope-filter-long').checked = config.thresholds.momentum_ema20_slope_filter_long !== undefined ? config.thresholds.momentum_ema20_slope_filter_long : true;
                 document.getElementById('config-momentum-ema20-slope-filter-short').checked = config.thresholds.momentum_ema20_slope_filter_short !== undefined ? config.thresholds.momentum_ema20_slope_filter_short : true;
                 document.getElementById('config-macro-trend-filter-enabled').checked = config.thresholds.macro_trend_filter_enabled !== undefined ? config.thresholds.macro_trend_filter_enabled : true;
+                document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
                 document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
@@ -2779,6 +2790,7 @@
                     momentum_ema20_slope_filter_long: document.getElementById('config-momentum-ema20-slope-filter-long').checked,
                     momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked,
                     macro_trend_filter_enabled: document.getElementById('config-macro-trend-filter-enabled').checked,
+                    btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
                     macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),

@@ -742,6 +742,7 @@ class TradingEngine:
                     continue
 
             # Check exit conditions (including fees for accurate SL/TP)
+            is_signal_active = (pair_data.signal == order.direction) if pair_data else False
             exit_result = check_exit_conditions(
                 direction=order.direction,
                 entry_price=order.entry_price,
@@ -761,7 +762,8 @@ class TradingEngine:
                 ema13=ema13,
                 ema20=ema20,
                 current_tp_level=order.current_tp_level or 1,
-                dynamic_tp_target=order.dynamic_tp_target
+                dynamic_tp_target=order.dynamic_tp_target,
+                signal_active=is_signal_active
             )
             
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
@@ -1082,14 +1084,23 @@ class TradingEngine:
             
             # Apply break-even logic ONLY in pre-TP zone (trailing stop not active)
             effective_sl = stop_loss_pct
+            signal_still_active = (direction == order_info.get('pair_signal'))
             breakeven_active = False
+            
             if current_peak >= breakeven_trigger:
                 breakeven_active = True
                 effective_sl = breakeven_offset
+            elif signal_still_active:
+                effective_sl = order_info.get('signal_active_sl', stop_loss_pct)
             
             # Check if stop loss triggered
             if pnl_pct <= effective_sl:
-                reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
+                if breakeven_active:
+                    reason_prefix = "BREAKEVEN_SL"
+                elif signal_still_active:
+                    reason_prefix = "STOP_LOSS_WIDE"
+                else:
+                    reason_prefix = "STOP_LOSS"
                 
                 logger.warning(f"[REALTIME_{reason_prefix}] {pair} {direction}: pnl={pnl_pct:.4f}% <= effective_sl={effective_sl}% (original_sl={stop_loss_pct}%, peak={current_peak:.4f}%) - CLOSING NOW!")
                 
@@ -1185,6 +1196,16 @@ class TradingEngine:
         )
         orders = result.scalars().all()
         
+        # Fetch current signal for each pair with open orders
+        pair_names = list({o.pair for o in orders})
+        pair_signals: Dict[str, str] = {}
+        if pair_names:
+            sig_result = await db.execute(
+                select(PairData.pair, PairData.signal).where(PairData.pair.in_(pair_names))
+            )
+            for row in sig_result:
+                pair_signals[row.pair] = row.signal
+        
         # Build new cache
         new_cache: Dict[str, List[Dict]] = {}
         for order in orders:
@@ -1201,6 +1222,8 @@ class TradingEngine:
                 'entry_fee': order.entry_fee,
                 'confidence': order.confidence,
                 'stop_loss': conf_config.stop_loss,
+                'signal_active_sl': conf_config.signal_active_sl,
+                'pair_signal': pair_signals.get(order.pair),
                 'current_tp_level': order.current_tp_level,
                 'peak_pnl': order.peak_pnl or 0.0,
                 'trough_pnl': order.trough_pnl or 0.0,

@@ -1116,6 +1116,7 @@
                                     <th class="px-3 py-3 font-medium text-center">Leverage</th>
                                     <th class="px-3 py-3 font-medium text-center">Multiplier</th>
                                     <th class="px-3 py-3 font-medium text-center">Stop Loss</th>
+                                    <th class="px-3 py-3 font-medium text-center text-violet-400" title="Wider stop loss used when entry signal is still active (pre-breakeven)">Sig SL</th>
                                     <th class="px-3 py-3 font-medium text-center">TP Min</th>
                                     <th class="px-3 py-3 font-medium text-center">Pullback</th>
                                     <th class="px-3 py-3 font-medium text-center" title="Minimum gap % required (EMA5-EMA20)/price">Gap Min</th>
@@ -1150,6 +1151,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.1" id="config-low-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.4">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-low-signal-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-violet-300 text-center text-xs" value="-0.40">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-low-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.6">
@@ -1201,6 +1205,9 @@
                                         <input type="number" step="0.1" id="config-medium-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.6">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-medium-signal-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-violet-300 text-center text-xs" value="-0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-medium-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.9">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -1248,6 +1255,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.1" id="config-high-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.8">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-high-signal-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-violet-300 text-center text-xs" value="-0.40">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-high-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="1.2">
@@ -1299,6 +1309,9 @@
                                         <input type="number" step="0.1" id="config-extreme-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-1.0">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-extreme-signal-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-violet-300 text-center text-xs" value="-0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-extreme-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="1.5">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -1348,6 +1361,9 @@
                                         <input type="number" step="0.1" id="config-very_strong-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.25">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-very_strong-signal-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-violet-300 text-center text-xs" value="-0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-very_strong-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.25">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -1395,6 +1411,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.1" id="config-strong_buy-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.1" id="config-strong_buy-signal-sl" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-violet-300 text-center text-xs" value="-0.40">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-tp" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.25">
@@ -2698,6 +2717,7 @@
                         document.getElementById(`config-${level}-leverage`).value = cfg.leverage;
                         document.getElementById(`config-${level}-multiplier`).value = cfg.investment_multiplier || 1.0;
                         document.getElementById(`config-${level}-sl`).value = cfg.stop_loss;
+                        document.getElementById(`config-${level}-signal-sl`).value = cfg.signal_active_sl !== undefined ? cfg.signal_active_sl : -0.40;
                         document.getElementById(`config-${level}-tp`).value = cfg.tp_min;
                         document.getElementById(`config-${level}-pb`).value = cfg.pullback_trigger;
                         document.getElementById(`config-${level}-gap-min`).value = cfg.gap_min !== undefined ? cfg.gap_min : 0.08;
@@ -2810,6 +2830,7 @@
                     leverage: safeFloat(document.getElementById(`config-${level}-leverage`).value),
                     investment_multiplier: safeFloat(document.getElementById(`config-${level}-multiplier`).value),
                     stop_loss: safeFloat(document.getElementById(`config-${level}-sl`).value),
+                    signal_active_sl: safeFloat(document.getElementById(`config-${level}-signal-sl`).value),
                     tp_min: safeFloat(document.getElementById(`config-${level}-tp`).value),
                     pullback_trigger: safeFloat(document.getElementById(`config-${level}-pb`).value),
                     gap_min: safeFloat(document.getElementById(`config-${level}-gap-min`).value),

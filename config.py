@@ -24,6 +24,7 @@ class ConfidenceConfig(BaseModel):
     leverage: float = 3.0
     investment_multiplier: float = 1.0  # Multiplier for investment size
     stop_loss: float = -0.4  # % of notional
+    signal_active_sl: float = -0.40  # Wider SL used when entry signal is still active
     tp_min: float = 0.6  # % of notional
     pullback_trigger: float = 0.3  # % price pullback from peak
     gap_min: float = 0.08  # % minimum gap required (EMA5-EMA20)/price

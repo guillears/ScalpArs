@@ -329,7 +329,8 @@ def check_exit_conditions(
     ema13: float = None,
     ema20: float = None,
     current_tp_level: int = 1,
-    dynamic_tp_target: float = None
+    dynamic_tp_target: float = None,
+    signal_active: bool = False
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -416,10 +417,18 @@ def check_exit_conditions(
         breakeven_active = True
         effective_stop_loss = breakeven_offset
         logger.debug(f"[BREAKEVEN] {direction} L{current_tp_level}: Active! peak_pnl={peak_pnl:.4f}% >= trigger={breakeven_trigger}%, SL moved from {stop_loss}% to {breakeven_offset}%")
+    elif signal_active:
+        effective_stop_loss = conf_config.signal_active_sl
+        logger.debug(f"[SIGNAL_ACTIVE_SL] {direction} L{current_tp_level}: Signal still active, SL widened from {stop_loss}% to {effective_stop_loss}%")
     
     # Check Stop Loss (P&L based, with break-even adjustment in pre-TP zone only)
     if pnl_pct <= effective_stop_loss:
-        reason_prefix = "BREAKEVEN_SL" if breakeven_active else "STOP_LOSS"
+        if breakeven_active:
+            reason_prefix = "BREAKEVEN_SL"
+        elif signal_active:
+            reason_prefix = "STOP_LOSS_WIDE"
+        else:
+            reason_prefix = "STOP_LOSS"
         logger.info(f"[{reason_prefix}] {direction} L{current_tp_level} triggered: pnl_pct={pnl_pct:.4f}% <= effective_sl={effective_stop_loss}% (original_sl={stop_loss}%, peak={peak_pnl:.4f}%, be_trigger={breakeven_trigger}%)")
         return {
             "should_close": True,

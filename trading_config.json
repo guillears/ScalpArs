@@ -42,7 +42,7 @@
     "momentum_short_rsi_max": 48.0,
     "momentum_short_rsi_min": 30.0,
     "signal_lost_exit_enabled": true,
-    "signal_lost_min_profit": 0.05
+    "signal_lost_min_profit": 0.03
   },
   "confidence_levels": {
     "LOW": {

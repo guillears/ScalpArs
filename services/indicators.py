@@ -429,26 +429,6 @@ def check_exit_conditions(
             "tp_level": current_tp_level
         }
     
-    # Signal Lost exit: momentum reversed while in small profit (pre-TP)
-    signal_lost_enabled = getattr(tc.thresholds, 'signal_lost_exit_enabled', True)
-    signal_lost_min = getattr(tc.thresholds, 'signal_lost_min_profit', 0.05)
-    if signal_lost_enabled and pnl_pct >= signal_lost_min and pnl_pct < effective_tp_target:
-        signal_reversed = False
-        if ema5 is not None and ema8 is not None:
-            if direction == "LONG" and ema5 <= ema8:
-                signal_reversed = True
-            elif direction == "SHORT" and ema5 >= ema8:
-                signal_reversed = True
-        if signal_reversed:
-            logger.info(f"[SIGNAL_LOST] {direction} L{current_tp_level}: pnl={pnl_pct:.4f}% >= min {signal_lost_min}%, EMA5/EMA8 reversed (ema5={ema5}, ema8={ema8})")
-            return {
-                "should_close": True,
-                "reason": f"SIGNAL_LOST L{current_tp_level}",
-                "peak_pnl": peak_pnl,
-                "trough_pnl": trough_pnl,
-                "tp_level": current_tp_level
-            }
-    
     # Check if we've reached the current TP target
     if pnl_pct >= effective_tp_target:
         

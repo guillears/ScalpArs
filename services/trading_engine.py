@@ -712,6 +712,35 @@ class TradingEngine:
                                 })
                             continue
 
+            # SIGNAL_LOST: full signal no longer matches entry direction while in small profit
+            signal_lost_enabled = getattr(config.trading_config.thresholds, 'signal_lost_exit_enabled', True)
+            if signal_lost_enabled and pair_data and pair_data.signal != order.direction:
+                signal_lost_min = getattr(config.trading_config.thresholds, 'signal_lost_min_profit', 0.03)
+                if order.direction == "LONG":
+                    sl_raw_pnl = (current_price - order.entry_price) * order.quantity
+                else:
+                    sl_raw_pnl = (order.entry_price - current_price) * order.quantity
+                sl_exit_fee = current_price * order.quantity * config.trading_config.trading_fee
+                sl_net_pnl = sl_raw_pnl - (order.entry_fee or 0) - sl_exit_fee
+                sl_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
+                sl_pnl_pct = (sl_net_pnl / sl_notional) * 100
+                conf_config = config.trading_config.confidence_levels.get(order.confidence)
+                sl_tp_target = order.dynamic_tp_target if order.dynamic_tp_target is not None else (conf_config.tp_min if conf_config else 0.2)
+                if sl_pnl_pct >= signal_lost_min and sl_pnl_pct < sl_tp_target:
+                    tp_level = order.current_tp_level or 1
+                    logger.info(f"[SIGNAL_LOST] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% >= min {signal_lost_min}%, signal now '{pair_data.signal}' != '{order.direction}'")
+                    closed_order = await self.close_position(db, order, current_price, f"SIGNAL_LOST L{tp_level}")
+                    if closed_order:
+                        updates.append({
+                            "order_id": closed_order.id,
+                            "pair": closed_order.pair,
+                            "action": "CLOSED",
+                            "reason": f"SIGNAL_LOST L{tp_level}",
+                            "pnl": closed_order.pnl,
+                            "tp_level": tp_level
+                        })
+                    continue
+
             # Check exit conditions (including fees for accurate SL/TP)
             exit_result = check_exit_conditions(
                 direction=order.direction,

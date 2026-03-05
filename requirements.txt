@@ -12,7 +12,7 @@ aiosqlite>=0.19.0
 greenlet>=3.0.0
 
 # Binance API
-ccxt>=4.2.0
+ccxt>=4.2.0,<4.5.0
 
 # Technical Analysis
 pandas>=2.0.0

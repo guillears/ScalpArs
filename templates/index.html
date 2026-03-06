@@ -915,12 +915,8 @@
                                     <input type="number" step="0.005" min="0" id="config-ema5-slope-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
                                     <span class="ml-1">%</span>
                                 </label>
-                                <label class="flex items-center text-sm text-gray-400">
-                                    Gap Ratio
-                                    <input type="number" step="0.05" min="0" max="1" id="config-momentum-gap-ratio" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
-                                </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Gap Ratio: exit when EMA5-EMA8 gap drops to this fraction of entry gap (0.5 = gap halved). Slope Min: fallback exit on EMA5 reversal (0 = full reversal only)</p>
+                            <p class="text-xs text-gray-500 mt-1">Exits when Price crosses EMA5 (LONG: price &lt; EMA5, SHORT: price &gt; EMA5). Slope Min: fallback exit on EMA5 reversal (0 = full reversal only)</p>
                         </div>
                     </div>
                 </div>
@@ -2822,7 +2818,6 @@
                 document.getElementById('config-ema5-slope-enabled').checked = config.thresholds.ema5_slope_exit_enabled !== undefined ? config.thresholds.ema5_slope_exit_enabled : true;
                 document.getElementById('config-ema5-slope-lookback').value = config.thresholds.ema5_slope_lookback !== undefined ? config.thresholds.ema5_slope_lookback : 3;
                 document.getElementById('config-ema5-slope-threshold').value = config.thresholds.ema5_slope_threshold !== undefined ? config.thresholds.ema5_slope_threshold : 0;
-                document.getElementById('config-momentum-gap-ratio').value = config.thresholds.momentum_exit_gap_ratio !== undefined ? config.thresholds.momentum_exit_gap_ratio : 0.5;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -2936,8 +2931,7 @@
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     ema5_slope_exit_enabled: document.getElementById('config-ema5-slope-enabled').checked,
                     ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3,
-                    ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value),
-                    momentum_exit_gap_ratio: safeFloat(document.getElementById('config-momentum-gap-ratio').value)
+                    ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value)
                 },
                 confidence_levels: {}
             };

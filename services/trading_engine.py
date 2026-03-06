@@ -714,20 +714,17 @@ class TradingEngine:
                                 })
                             continue
 
-            # MOMENTUM_EXIT: EMA5-EMA8 gap convergence (primary) + slope reversal (fallback)
+            # MOMENTUM_EXIT: Price vs EMA5 (primary) + slope reversal (fallback)
             ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
             if ema5_slope_enabled and pair_data and pair_data.ema5 is not None:
                 should_exit_momentum = False
                 exit_reason_detail = ""
 
-                # Primary: gap convergence
-                gap_ratio = getattr(config.trading_config.thresholds, 'momentum_exit_gap_ratio', 0.0)
-                if gap_ratio > 0 and order.entry_ema_gap_5_8 and order.entry_ema_gap_5_8 > 0 and pair_data.ema8 is not None and pair_data.ema8 != 0:
-                    current_gap = abs((pair_data.ema5 - pair_data.ema8) / pair_data.ema8) * 100
-                    gap_threshold = order.entry_ema_gap_5_8 * gap_ratio
-                    if current_gap <= gap_threshold:
-                        should_exit_momentum = True
-                        exit_reason_detail = f"gap convergence: current={current_gap:.4f}% <= {gap_threshold:.4f}% (entry={order.entry_ema_gap_5_8:.4f}% x {gap_ratio})"
+                # Primary: Price vs EMA5
+                if (order.direction == "LONG" and current_price < pair_data.ema5) or \
+                   (order.direction == "SHORT" and current_price > pair_data.ema5):
+                    should_exit_momentum = True
+                    exit_reason_detail = f"price vs EMA5: price={current_price:.6f}, EMA5={pair_data.ema5:.6f}"
 
                 # Fallback: EMA5 slope reversal
                 if not should_exit_momentum and pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
@@ -1182,6 +1179,42 @@ class TradingEngine:
                     logger.error(f"[REALTIME_SL] Error closing {pair}: {e}")
                 continue  # Already handled, skip trailing stop check
             
+            # Real-time MOMENTUM_EXIT: Price vs EMA5
+            cached_ema5 = order_info.get('cached_ema5')
+            ema5_exit_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
+            if ema5_exit_enabled and cached_ema5 is not None and cached_ema5 > 0:
+                should_exit_momentum = False
+                if direction == "LONG" and current_price < cached_ema5:
+                    should_exit_momentum = True
+                elif direction == "SHORT" and current_price > cached_ema5:
+                    should_exit_momentum = True
+                
+                if should_exit_momentum:
+                    tp_level = order_info.get('current_tp_level', 1)
+                    logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: price={current_price:.6f} vs EMA5={cached_ema5:.6f}, pnl={pnl_pct:.4f}% - CLOSING NOW!")
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(
+                                    and_(Order.id == order_id, Order.status == "OPEN")
+                                )
+                            )
+                            order = result.scalar_one_or_none()
+                            if order:
+                                await self.close_position(
+                                    db, order, current_price,
+                                    f"MOMENTUM_EXIT L{tp_level}"
+                                )
+                                logger.info(f"[REALTIME_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                async with _cache_lock:
+                                    _open_orders_cache[pair] = [
+                                        o for o in _open_orders_cache.get(pair, [])
+                                        if o['id'] != order_id
+                                    ]
+                    except Exception as e:
+                        logger.error(f"[REALTIME_MOMENTUM_EXIT] Error closing {pair}: {e}")
+                    continue
+            
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled)
             if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', True):
                 should_close_trailing = False
@@ -1245,15 +1278,18 @@ class TradingEngine:
         )
         orders = result.scalars().all()
         
-        # Fetch current signal for each pair with open orders
+        # Fetch current signal and EMA5 for each pair with open orders
         pair_names = list({o.pair for o in orders})
         pair_signals: Dict[str, str] = {}
+        pair_ema5s: Dict[str, float] = {}
         if pair_names:
             sig_result = await db.execute(
-                select(PairData.pair, PairData.signal).where(PairData.pair.in_(pair_names))
+                select(PairData.pair, PairData.signal, PairData.ema5).where(PairData.pair.in_(pair_names))
             )
             for row in sig_result:
                 pair_signals[row.pair] = row.signal
+                if row.ema5 is not None:
+                    pair_ema5s[row.pair] = row.ema5
         
         # Build new cache
         new_cache: Dict[str, List[Dict]] = {}
@@ -1281,7 +1317,8 @@ class TradingEngine:
                 'high_price': order.high_price_since_entry or order.entry_price,
                 'low_price': order.low_price_since_entry or order.entry_price,
                 'pullback_trigger': conf_config.pullback_trigger,
-                'tp_trailing_enabled': conf_config.tp_trailing_enabled
+                'tp_trailing_enabled': conf_config.tp_trailing_enabled,
+                'cached_ema5': pair_ema5s.get(order.pair)
             }
             
             if order.pair not in new_cache:

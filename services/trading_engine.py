@@ -732,9 +732,11 @@ class TradingEngine:
                     if current_gap > realtime_peak_ema5_gap:
                         realtime_peak_ema5_gap = current_gap
                     order.peak_ema5_gap = realtime_peak_ema5_gap
-                    if realtime_peak_ema5_gap > 0 and current_gap <= realtime_peak_ema5_gap * exit_ratio:
+                    min_gap_pct = getattr(config.trading_config.thresholds, 'min_peak_ema5_gap_pct', 0.0)
+                    min_gap_abs = order.entry_price * min_gap_pct / 100 if min_gap_pct > 0 else 0
+                    if realtime_peak_ema5_gap > 0 and realtime_peak_ema5_gap >= min_gap_abs and current_gap <= realtime_peak_ema5_gap * exit_ratio:
                         should_exit_momentum = True
-                        exit_reason_detail = f"EMA5 distance trailing: gap={current_gap:.6f} <= peak={realtime_peak_ema5_gap:.6f}*{exit_ratio}={realtime_peak_ema5_gap*exit_ratio:.6f}"
+                        exit_reason_detail = f"EMA5 distance trailing: gap={current_gap:.6f} <= peak={realtime_peak_ema5_gap:.6f}*{exit_ratio}={realtime_peak_ema5_gap*exit_ratio:.6f}, min_gap={min_gap_abs:.6f}"
 
                 # Fallback: EMA5 slope reversal
                 if not should_exit_momentum and pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
@@ -1204,9 +1206,12 @@ class TradingEngine:
                     order_info['peak_ema5_gap'] = current_gap
                     cached_peak_gap = current_gap
                 
-                if cached_peak_gap > 0 and current_gap <= cached_peak_gap * exit_ratio:
+                min_gap_pct = getattr(config.trading_config.thresholds, 'min_peak_ema5_gap_pct', 0.0)
+                min_gap_abs = entry_price * min_gap_pct / 100 if min_gap_pct > 0 else 0
+                
+                if cached_peak_gap > 0 and cached_peak_gap >= min_gap_abs and current_gap <= cached_peak_gap * exit_ratio:
                     tp_level = order_info.get('current_tp_level', 1)
-                    logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: gap={current_gap:.6f} <= peak={cached_peak_gap:.6f}*{exit_ratio}={cached_peak_gap*exit_ratio:.6f}, price={current_price:.6f}, EMA5={cached_ema5:.6f}, pnl={pnl_pct:.4f}% - CLOSING NOW!")
+                    logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: gap={current_gap:.6f} <= peak={cached_peak_gap:.6f}*{exit_ratio}={cached_peak_gap*exit_ratio:.6f}, min_gap={min_gap_abs:.6f}, price={current_price:.6f}, EMA5={cached_ema5:.6f}, pnl={pnl_pct:.4f}% - CLOSING NOW!")
                     try:
                         async with AsyncSessionLocal() as db:
                             result = await db.execute(

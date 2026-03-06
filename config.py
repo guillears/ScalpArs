@@ -82,6 +82,7 @@ class SignalThresholds(BaseModel):
     ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
     ema5_slope_threshold: float = 0.01  # Min EMA5 slope % to stay in trade (0 = original behavior)
     price_ema5_exit_ratio: float = 0.3  # Exit when price-to-EMA5 distance drops to this fraction of peak (0 = disabled)
+    min_peak_ema5_gap_pct: float = 0.05  # Min peak gap (% of entry price) before distance trailing activates (0 = no minimum)
 
 
 class InvestmentConfig(BaseModel):

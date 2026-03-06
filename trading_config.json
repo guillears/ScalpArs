@@ -47,7 +47,8 @@
     "ema5_slope_exit_enabled": true,
     "ema5_slope_lookback": 3,
     "ema5_slope_threshold": 0,
-    "price_ema5_exit_ratio": 0.3
+    "price_ema5_exit_ratio": 0.3,
+    "min_peak_ema5_gap_pct": 0.05
   },
   "confidence_levels": {
     "LOW": {

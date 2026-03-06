@@ -51,6 +51,7 @@ def calculate_indicators(ohlcv: List) -> Dict:
     return {
         'price': float(df['close'].iloc[-1]),
         'ema5': float(ema5.iloc[-1]) if not pd.isna(ema5.iloc[-1]) else None,
+        'ema5_prev3': float(ema5.iloc[-4]) if len(ema5) >= 4 and not pd.isna(ema5.iloc[-4]) else None,
         'ema8': float(ema8.iloc[-1]) if not pd.isna(ema8.iloc[-1]) else None,
         'ema13': float(ema13.iloc[-1]) if not pd.isna(ema13.iloc[-1]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
@@ -330,7 +331,8 @@ def check_exit_conditions(
     ema20: float = None,
     current_tp_level: int = 1,
     dynamic_tp_target: float = None,
-    signal_active: bool = False
+    signal_active: bool = False,
+    tp_trailing_enabled: bool = True
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -438,6 +440,10 @@ def check_exit_conditions(
             "tp_level": current_tp_level
         }
     
+    # TP extension and trailing stop (skipped when tp_trailing_enabled=False)
+    if not tp_trailing_enabled:
+        return {"should_close": False, "reason": None, "peak_pnl": peak_pnl, "trough_pnl": trough_pnl}
+
     # Check if we've reached the current TP target
     if pnl_pct >= effective_tp_target:
         

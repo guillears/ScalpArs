@@ -512,6 +512,30 @@
                     </div>
                 </div>
                 
+                <!-- Performance by Entry Gap EMA5-EMA8 -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap EMA5-EMA8</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by momentum EMA5-EMA8 gap range at entry</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Gap Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ema58-gap-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting EMA5-EMA8 gaps)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
                 <!-- Performance by Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry RSI</h3>
@@ -871,6 +895,24 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Close when EMA5/EMA8 momentum reverses while P&L is above min % (pre-TP only)</p>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">EMA5 Slope Exit</label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-ema5-slope-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Lookback
+                                    <input type="number" step="1" min="1" max="10" id="config-ema5-slope-lookback" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3">
+                                    <span class="ml-1">candles</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Exit when EMA5 slope decelerates (EMA5_now - EMA5_prevN &lt;= 0 for LONG, &gt;= 0 for SHORT)</p>
+                        </div>
                     </div>
                 </div>
 
@@ -1125,6 +1167,7 @@
                                     <th class="px-3 py-3 font-medium text-center text-cyan-400" title="Max EMA5 Stretch %: max distance from EMA5 allowed for entry">Stretch</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="Break-even trigger: once peak P&L reaches this %, SL moves to BE Offset">BE Trig</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="Break-even offset: new effective stop loss once break-even is active">BE Off</th>
+                                    <th class="px-3 py-3 font-medium text-center text-sky-400" title="Enable TP extension and trailing stop logic">TP/Trail</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-white/5">
@@ -1179,6 +1222,9 @@
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-low-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.05">
                                     </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-low-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <td class="px-3 py-3">
@@ -1230,6 +1276,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-medium-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-medium-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
                                 <tr>
@@ -1283,6 +1332,9 @@
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-high-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.03">
                                     </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-high-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <td class="px-3 py-3">
@@ -1334,6 +1386,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-extreme-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.02">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-extreme-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
                                 <tr>
@@ -1387,6 +1442,9 @@
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-very_strong-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.10">
                                     </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-very_strong-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
+                                    </td>
                                 </tr>
                                 <tr>
                                     <td class="px-3 py-3">
@@ -1438,6 +1496,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.10">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-strong_buy-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
                             </tbody>
@@ -2006,6 +2067,47 @@
                     gapBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry gaps)</td></tr>';
                 }
                 
+                // Performance by Entry Gap EMA5-EMA8
+                const ema58Body = document.getElementById('ema58-gap-performance-body');
+                if (data.ema58_gap_performance && data.ema58_gap_performance.length > 0) {
+                    const confBadgeColorsEma58 = {
+                        'LOW': 'text-yellow-400',
+                        'MEDIUM': 'text-orange-400',
+                        'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400',
+                        'VERY_STRONG': 'text-purple-400',
+                        'STRONG_BUY': 'text-pink-400'
+                    };
+                    
+                    ema58Body.innerHTML = data.ema58_gap_performance.map(g => {
+                        const pnlClass = g.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (g.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = g.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = g.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        
+                        const confBadges = Object.entries(g.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confBadgeColorsEma58[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${g.range}</td>
+                                <td class="px-3 py-2 text-center">${g.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${g.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${g.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(g.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(g.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    ema58Body.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting EMA5-EMA8 gaps)</td></tr>';
+                }
+
                 // Performance by Entry RSI
                 const rsiBody = document.getElementById('rsi-performance-body');
                 if (data.rsi_performance && data.rsi_performance.length > 0) {
@@ -2708,6 +2810,8 @@
                 document.getElementById('config-momentum-short-rsi-min').value = config.thresholds.momentum_short_rsi_min !== undefined ? config.thresholds.momentum_short_rsi_min : 30;
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
+                document.getElementById('config-ema5-slope-enabled').checked = config.thresholds.ema5_slope_exit_enabled !== undefined ? config.thresholds.ema5_slope_exit_enabled : true;
+                document.getElementById('config-ema5-slope-lookback').value = config.thresholds.ema5_slope_lookback !== undefined ? config.thresholds.ema5_slope_lookback : 3;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -2726,6 +2830,7 @@
                         document.getElementById(`config-${level}-stretch`).value = cfg.max_ema5_stretch !== undefined ? cfg.max_ema5_stretch : 0.12;
                         document.getElementById(`config-${level}-be-trigger`).value = cfg.breakeven_trigger !== undefined ? cfg.breakeven_trigger : 0.15;
                         document.getElementById(`config-${level}-be-offset`).value = cfg.breakeven_offset !== undefined ? cfg.breakeven_offset : -0.05;
+                        document.getElementById(`config-${level}-tp-trailing`).checked = cfg.tp_trailing_enabled !== undefined ? cfg.tp_trailing_enabled : true;
                     }
                 });
             } catch (e) {
@@ -2817,7 +2922,9 @@
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),
                     momentum_short_rsi_min: safeFloat(document.getElementById('config-momentum-short-rsi-min').value),
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
-                    signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value)
+                    signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
+                    ema5_slope_exit_enabled: document.getElementById('config-ema5-slope-enabled').checked,
+                    ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3
                 },
                 confidence_levels: {}
             };
@@ -2838,7 +2945,8 @@
                     gap_enabled: document.getElementById(`config-${level}-gap-enabled`).checked,
                     max_ema5_stretch: safeFloat(document.getElementById(`config-${level}-stretch`).value),
                     breakeven_trigger: safeFloat(document.getElementById(`config-${level}-be-trigger`).value),
-                    breakeven_offset: safeFloat(document.getElementById(`config-${level}-be-offset`).value)
+                    breakeven_offset: safeFloat(document.getElementById(`config-${level}-be-offset`).value),
+                    tp_trailing_enabled: document.getElementById(`config-${level}-tp-trailing`).checked
                 };
             });
             

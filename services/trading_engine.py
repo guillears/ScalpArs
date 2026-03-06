@@ -251,6 +251,7 @@ class TradingEngine:
         confidence: str,
         current_price: float,
         entry_gap: float = None,
+        entry_ema_gap_5_8: float = None,
         entry_rsi: float = None,
         entry_adx: float = None,
         entry_macro_trend: str = None
@@ -371,6 +372,7 @@ class TradingEngine:
             quantity=quantity,
             confidence=confidence,
             entry_gap=entry_gap,
+            entry_ema_gap_5_8=entry_ema_gap_5_8,
             entry_rsi=entry_rsi,
             entry_adx=entry_adx,
             entry_macro_trend=entry_macro_trend,
@@ -712,6 +714,29 @@ class TradingEngine:
                                 })
                             continue
 
+            # MOMENTUM_EXIT: EMA5 slope deceleration (primary exit strategy)
+            ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
+            if ema5_slope_enabled and pair_data and pair_data.ema5 is not None and pair_data.ema5_prev3 is not None:
+                ema5_slope = pair_data.ema5 - pair_data.ema5_prev3
+                should_exit_slope = (
+                    (order.direction == "LONG" and ema5_slope <= 0) or
+                    (order.direction == "SHORT" and ema5_slope >= 0)
+                )
+                if should_exit_slope:
+                    tp_level = order.current_tp_level or 1
+                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: EMA5 slope={ema5_slope:.6f} (ema5={pair_data.ema5:.6f}, prev3={pair_data.ema5_prev3:.6f})")
+                    closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
+                    if closed_order:
+                        updates.append({
+                            "order_id": closed_order.id,
+                            "pair": closed_order.pair,
+                            "action": "CLOSED",
+                            "reason": f"MOMENTUM_EXIT L{tp_level}",
+                            "pnl": closed_order.pnl,
+                            "tp_level": tp_level
+                        })
+                    continue
+
             # SIGNAL_LOST: full signal no longer matches entry direction while in small profit
             signal_lost_enabled = getattr(config.trading_config.thresholds, 'signal_lost_exit_enabled', True)
             if signal_lost_enabled and pair_data and pair_data.signal != order.direction:
@@ -743,6 +768,7 @@ class TradingEngine:
 
             # Check exit conditions (including fees for accurate SL/TP)
             is_signal_active = (pair_data.signal == order.direction) if pair_data else False
+            exit_conf_config = config.trading_config.confidence_levels.get(order.confidence)
             exit_result = check_exit_conditions(
                 direction=order.direction,
                 entry_price=order.entry_price,
@@ -763,7 +789,8 @@ class TradingEngine:
                 ema20=ema20,
                 current_tp_level=order.current_tp_level or 1,
                 dynamic_tp_target=order.dynamic_tp_target,
-                signal_active=is_signal_active
+                signal_active=is_signal_active,
+                tp_trailing_enabled=exit_conf_config.tp_trailing_enabled if exit_conf_config else True
             )
             
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
@@ -907,6 +934,9 @@ class TradingEngine:
                     entry_gap = None
                     if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
                         entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
+                    entry_ema_gap_5_8 = None
+                    if indicators.get('ema5') and indicators.get('ema8') and indicators['ema8'] > 0:
+                        entry_ema_gap_5_8 = round(abs((indicators['ema5'] - indicators['ema8']) / indicators['ema8'] * 100), 4)
                     entry_rsi = indicators.get('rsi')
                     entry_adx = indicators.get('adx')
                     if btc_global_enabled:
@@ -923,6 +953,7 @@ class TradingEngine:
                         confidence=confidence,
                         current_price=indicators['price'],
                         entry_gap=entry_gap,
+                        entry_ema_gap_5_8=entry_ema_gap_5_8,
                         entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
                         entry_adx=round(entry_adx, 1) if entry_adx is not None else None,
                         entry_macro_trend=entry_regime
@@ -970,6 +1001,7 @@ class TradingEngine:
         if pair_data:
             pair_data.price = indicators.get('price', 0)
             pair_data.ema5 = indicators.get('ema5')
+            pair_data.ema5_prev3 = indicators.get('ema5_prev3')
             pair_data.ema8 = indicators.get('ema8')
             pair_data.ema13 = indicators.get('ema13')
             pair_data.ema20 = indicators.get('ema20')
@@ -986,6 +1018,7 @@ class TradingEngine:
                 pair=pair,
                 price=indicators.get('price', 0),
                 ema5=indicators.get('ema5'),
+                ema5_prev3=indicators.get('ema5_prev3'),
                 ema8=indicators.get('ema8'),
                 ema13=indicators.get('ema13'),
                 ema20=indicators.get('ema20'),
@@ -1133,8 +1166,8 @@ class TradingEngine:
                     logger.error(f"[REALTIME_SL] Error closing {pair}: {e}")
                 continue  # Already handled, skip trailing stop check
             
-            # Real-time trailing stop check (only when trailing stop is active)
-            if trailing_stop_would_be_active:
+            # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled)
+            if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', True):
                 should_close_trailing = False
                 tp_level = order_info.get('current_tp_level', 1)
                 
@@ -1231,7 +1264,8 @@ class TradingEngine:
                 'breakeven_offset': conf_config.breakeven_offset,
                 'high_price': order.high_price_since_entry or order.entry_price,
                 'low_price': order.low_price_since_entry or order.entry_price,
-                'pullback_trigger': conf_config.pullback_trigger
+                'pullback_trigger': conf_config.pullback_trigger,
+                'tp_trailing_enabled': conf_config.tp_trailing_enabled
             }
             
             if order.pair not in new_cache:

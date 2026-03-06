@@ -54,6 +54,8 @@ class Order(Base):
     
     # Entry gap: abs((ema5 - ema20) / price * 100) at time of entry
     entry_gap = Column(Float, nullable=True)
+    # Entry EMA5-EMA8 gap: abs((ema5 - ema8) / ema8 * 100) at time of entry
+    entry_ema_gap_5_8 = Column(Float, nullable=True)
     # RSI(12) value at time of entry
     entry_rsi = Column(Float, nullable=True)
     # ADX(14) value at time of entry
@@ -164,6 +166,7 @@ class PairData(Base):
     
     # EMAs
     ema5 = Column(Float, nullable=True)
+    ema5_prev3 = Column(Float, nullable=True)
     ema8 = Column(Float, nullable=True)
     ema13 = Column(Float, nullable=True)
     ema20 = Column(Float, nullable=True)

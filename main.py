@@ -729,7 +729,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "avg_leverage": 0, "return_multiple": 0, "daily_compound_return": 0,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
-            "gap_performance": [], "rsi_performance": [], "adx_performance": [],
+            "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "adx_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
@@ -834,6 +834,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "by_macro_trend": macro_trend_performance,
             "outcome_distribution": [],
             "gap_performance": [],
+            "ema58_gap_performance": [],
             "rsi_performance": [],
             "adx_performance": [],
             "by_close_reason": {},
@@ -1002,6 +1003,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     
     # Performance by Entry Gap / RSI / ADX (split by direction)
     gap_performance = []
+    ema58_gap_performance = []
     rsi_performance = []
     adx_performance = []
     try:
@@ -1035,6 +1037,41 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     conf = o.confidence or "UNKNOWN"
                     conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
                 gap_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown
+                })
+
+        # Performance by Entry Gap EMA5-EMA8 (momentum gap)
+        ema58_ranges = [
+            ("0.00 - 0.01%", 0.00, 0.01),
+            ("0.01 - 0.02%", 0.01, 0.02),
+            ("0.02 - 0.05%", 0.02, 0.05),
+            ("0.05 - 0.10%", 0.05, 0.10),
+            ("0.10 - 0.20%", 0.10, 0.20),
+            ("> 0.20%", 0.20, 999),
+        ]
+        ema58_gap_orders = [o for o in orders if o.entry_ema_gap_5_8 is not None]
+        for range_name, gap_min, gap_max in ema58_ranges:
+            range_orders = [o for o in ema58_gap_orders if gap_min <= o.entry_ema_gap_5_8 < gap_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                ema58_gap_performance.append({
                     "range": range_name,
                     "direction": direction,
                     "count": count,
@@ -1120,6 +1157,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing gap/rsi/adx performance: {e}\n{traceback.format_exc()}")
         gap_performance = []
+        ema58_gap_performance = []
         rsi_performance = []
         adx_performance = []
     
@@ -1410,6 +1448,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "by_macro_trend": macro_trend_performance,
         "outcome_distribution": outcome_distribution,
         "gap_performance": gap_performance,
+        "ema58_gap_performance": ema58_gap_performance,
         "rsi_performance": rsi_performance,
         "adx_performance": adx_performance,
         "by_close_reason": by_close_reason,

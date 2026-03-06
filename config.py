@@ -35,6 +35,7 @@ class ConfidenceConfig(BaseModel):
     # the effective stop loss moves from stop_loss to breakeven_offset
     breakeven_trigger: float = 0.15  # P&L % that activates break-even protection
     breakeven_offset: float = -0.05  # New effective SL once break-even is active (slightly negative for fees/slippage)
+    tp_trailing_enabled: bool = True  # Enable TP extension and trailing stop logic
 
 
 class SignalThresholds(BaseModel):
@@ -77,6 +78,8 @@ class SignalThresholds(BaseModel):
     btc_global_filter_enabled: bool = True  # Use BTC regime to gate all pairs (overrides per-pair regime)
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit
     signal_lost_min_profit: float = 0.05  # Min P&L % (notional) to trigger signal-lost exit
+    ema5_slope_exit_enabled: bool = True  # Exit when EMA5 slope decelerates (momentum loss)
+    ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
 
 
 class InvestmentConfig(BaseModel):

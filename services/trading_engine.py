@@ -716,15 +716,16 @@ class TradingEngine:
 
             # MOMENTUM_EXIT: EMA5 slope deceleration (primary exit strategy)
             ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
-            if ema5_slope_enabled and pair_data and pair_data.ema5 is not None and pair_data.ema5_prev3 is not None:
-                ema5_slope = pair_data.ema5 - pair_data.ema5_prev3
+            if ema5_slope_enabled and pair_data and pair_data.ema5 is not None and pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
+                ema5_slope_pct = ((pair_data.ema5 - pair_data.ema5_prev3) / pair_data.ema5_prev3) * 100
+                slope_threshold = getattr(config.trading_config.thresholds, 'ema5_slope_threshold', 0.0)
                 should_exit_slope = (
-                    (order.direction == "LONG" and ema5_slope <= 0) or
-                    (order.direction == "SHORT" and ema5_slope >= 0)
+                    (order.direction == "LONG" and ema5_slope_pct <= slope_threshold) or
+                    (order.direction == "SHORT" and ema5_slope_pct >= -slope_threshold)
                 )
                 if should_exit_slope:
                     tp_level = order.current_tp_level or 1
-                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: EMA5 slope={ema5_slope:.6f} (ema5={pair_data.ema5:.6f}, prev3={pair_data.ema5_prev3:.6f})")
+                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: EMA5 slope={ema5_slope_pct:.4f}% (threshold={slope_threshold}%, ema5={pair_data.ema5:.6f}, prev3={pair_data.ema5_prev3:.6f})")
                     closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
                     if closed_order:
                         updates.append({

@@ -80,6 +80,7 @@ class SignalThresholds(BaseModel):
     signal_lost_min_profit: float = 0.05  # Min P&L % (notional) to trigger signal-lost exit
     ema5_slope_exit_enabled: bool = True  # Exit when EMA5 slope decelerates (momentum loss)
     ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
+    ema5_slope_threshold: float = 0.01  # Min EMA5 slope % to stay in trade (0 = original behavior)
 
 
 class InvestmentConfig(BaseModel):

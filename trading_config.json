@@ -45,7 +45,8 @@
     "signal_lost_exit_enabled": true,
     "signal_lost_min_profit": -0.5,
     "ema5_slope_exit_enabled": true,
-    "ema5_slope_lookback": 3
+    "ema5_slope_lookback": 3,
+    "ema5_slope_threshold": 0.01
   },
   "confidence_levels": {
     "LOW": {

@@ -910,8 +910,13 @@
                                     <input type="number" step="1" min="1" max="10" id="config-ema5-slope-lookback" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3">
                                     <span class="ml-1">candles</span>
                                 </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Slope Min
+                                    <input type="number" step="0.005" min="0" id="config-ema5-slope-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.01">
+                                    <span class="ml-1">%</span>
+                                </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Exit when EMA5 slope decelerates (EMA5_now - EMA5_prevN &lt;= 0 for LONG, &gt;= 0 for SHORT)</p>
+                            <p class="text-xs text-gray-500 mt-1">Exit when EMA5 slope % drops below threshold (0 = exit on full reversal only)</p>
                         </div>
                     </div>
                 </div>
@@ -2812,6 +2817,7 @@
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-ema5-slope-enabled').checked = config.thresholds.ema5_slope_exit_enabled !== undefined ? config.thresholds.ema5_slope_exit_enabled : true;
                 document.getElementById('config-ema5-slope-lookback').value = config.thresholds.ema5_slope_lookback !== undefined ? config.thresholds.ema5_slope_lookback : 3;
+                document.getElementById('config-ema5-slope-threshold').value = config.thresholds.ema5_slope_threshold !== undefined ? config.thresholds.ema5_slope_threshold : 0.01;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -2924,7 +2930,8 @@
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     ema5_slope_exit_enabled: document.getElementById('config-ema5-slope-enabled').checked,
-                    ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3
+                    ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3,
+                    ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value)
                 },
                 confidence_levels: {}
             };

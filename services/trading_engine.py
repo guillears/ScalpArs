@@ -714,18 +714,33 @@ class TradingEngine:
                                 })
                             continue
 
-            # MOMENTUM_EXIT: EMA5 slope deceleration (primary exit strategy)
+            # MOMENTUM_EXIT: EMA5-EMA8 gap convergence (primary) + slope reversal (fallback)
             ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
-            if ema5_slope_enabled and pair_data and pair_data.ema5 is not None and pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
-                ema5_slope_pct = ((pair_data.ema5 - pair_data.ema5_prev3) / pair_data.ema5_prev3) * 100
-                slope_threshold = getattr(config.trading_config.thresholds, 'ema5_slope_threshold', 0.0)
-                should_exit_slope = (
-                    (order.direction == "LONG" and ema5_slope_pct <= slope_threshold) or
-                    (order.direction == "SHORT" and ema5_slope_pct >= -slope_threshold)
-                )
-                if should_exit_slope:
+            if ema5_slope_enabled and pair_data and pair_data.ema5 is not None:
+                should_exit_momentum = False
+                exit_reason_detail = ""
+
+                # Primary: gap convergence
+                gap_ratio = getattr(config.trading_config.thresholds, 'momentum_exit_gap_ratio', 0.0)
+                if gap_ratio > 0 and order.entry_ema_gap_5_8 and order.entry_ema_gap_5_8 > 0 and pair_data.ema8 is not None and pair_data.ema8 != 0:
+                    current_gap = abs((pair_data.ema5 - pair_data.ema8) / pair_data.ema8) * 100
+                    gap_threshold = order.entry_ema_gap_5_8 * gap_ratio
+                    if current_gap <= gap_threshold:
+                        should_exit_momentum = True
+                        exit_reason_detail = f"gap convergence: current={current_gap:.4f}% <= {gap_threshold:.4f}% (entry={order.entry_ema_gap_5_8:.4f}% x {gap_ratio})"
+
+                # Fallback: EMA5 slope reversal
+                if not should_exit_momentum and pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
+                    ema5_slope_pct = ((pair_data.ema5 - pair_data.ema5_prev3) / pair_data.ema5_prev3) * 100
+                    slope_threshold = getattr(config.trading_config.thresholds, 'ema5_slope_threshold', 0.0)
+                    if (order.direction == "LONG" and ema5_slope_pct <= slope_threshold) or \
+                       (order.direction == "SHORT" and ema5_slope_pct >= -slope_threshold):
+                        should_exit_momentum = True
+                        exit_reason_detail = f"slope reversal: slope={ema5_slope_pct:.4f}% (threshold={slope_threshold}%)"
+
+                if should_exit_momentum:
                     tp_level = order.current_tp_level or 1
-                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: EMA5 slope={ema5_slope_pct:.4f}% (threshold={slope_threshold}%, ema5={pair_data.ema5:.6f}, prev3={pair_data.ema5_prev3:.6f})")
+                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: {exit_reason_detail}")
                     closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
                     if closed_order:
                         updates.append({

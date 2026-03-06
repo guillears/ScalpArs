@@ -81,6 +81,7 @@ class SignalThresholds(BaseModel):
     ema5_slope_exit_enabled: bool = True  # Exit when EMA5 slope decelerates (momentum loss)
     ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
     ema5_slope_threshold: float = 0.01  # Min EMA5 slope % to stay in trade (0 = original behavior)
+    momentum_exit_gap_ratio: float = 0.5  # Exit when EMA5-EMA8 gap drops to this fraction of entry gap (0 = disabled)
 
 
 class InvestmentConfig(BaseModel):

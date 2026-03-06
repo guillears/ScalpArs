@@ -1234,6 +1234,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         tc = config.trading_config
         sl_orders = [o for o in orders if o.close_reason and (
             o.close_reason.startswith("STOP_LOSS") or
+            o.close_reason.startswith("MOMENTUM_EXIT") or
+            o.close_reason.startswith("SIGNAL_LOST") or
             (o.close_reason.startswith("BREAKEVEN_SL") and (o.pnl or 0) <= 0)
         )]
         

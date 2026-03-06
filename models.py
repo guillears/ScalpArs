@@ -75,6 +75,7 @@ class Order(Base):
     trough_pnl = Column(Float, nullable=False, default=0.0)  # Lowest P&L reached during trade
     high_price_since_entry = Column(Float, nullable=True)  # For LONG
     low_price_since_entry = Column(Float, nullable=True)  # For SHORT
+    peak_ema5_gap = Column(Float, nullable=True, default=0.0)  # Peak price-to-EMA5 distance for momentum exit
     
     # Dynamic TP tracking
     current_tp_level = Column(Integer, nullable=False, default=1)  # Which TP level (1, 2, 3, ...)

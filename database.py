@@ -51,6 +51,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_macro_trend VARCHAR(10)"))
                 if 'entry_ema_gap_5_8' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema_gap_5_8 FLOAT"))
+                if 'peak_ema5_gap' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN peak_ema5_gap FLOAT DEFAULT 0.0"))
             
             if 'pair_data' in inspector.get_table_names():
                 pd_columns = [c['name'] for c in inspector.get_columns('pair_data')]

@@ -198,8 +198,10 @@ def get_signal(
     ema20_slope_long = getattr(th, 'momentum_ema20_slope_filter_long', True)
     ema20_slope_short = getattr(th, 'momentum_ema20_slope_filter_short', True)
     long_rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
+    long_rsi_max = getattr(th, 'momentum_long_rsi_max', 100)
     short_rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
     short_rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
+    adx_max = getattr(th, 'momentum_adx_max', 100)
     if ema8 and ema8 > 0:
         if ema5 > ema8:
             if not regime_allows("LONG"):
@@ -210,6 +212,10 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
             elif long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} < min {long_rsi_min}")
+            elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:
+                logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} > max {long_rsi_max}")
+            elif adx_max < 100 and adx > adx_max:
+                logger.debug(f"[MOMENTUM] LONG skipped: ADX {adx:.1f} > max {adx_max}")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
@@ -233,6 +239,8 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} > max {short_rsi_max}")
             elif short_rsi_min > 0 and rsi is not None and rsi < short_rsi_min:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} < min {short_rsi_min} (oversold)")
+            elif adx_max < 100 and adx > adx_max:
+                logger.debug(f"[MOMENTUM] SHORT skipped: ADX {adx:.1f} > max {adx_max}")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold

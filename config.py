@@ -73,7 +73,9 @@ class SignalThresholds(BaseModel):
     macro_trend_neutral_mode: str = "both"  # "both" or "none"
     macro_trend_flat_threshold: float = 0.02  # % change below which EMA50 is considered neutral
     momentum_long_rsi_min: float = 55.0  # Min RSI for momentum LONG (0 = disabled)
+    momentum_long_rsi_max: float = 100.0  # Max RSI for momentum LONG (100 = disabled)
     momentum_short_rsi_max: float = 50.0  # Max RSI for momentum SHORT (100 = disabled)
+    momentum_adx_max: float = 100.0  # Max ADX for momentum entries (100 = disabled)
     momentum_short_rsi_min: float = 30.0  # Min RSI for momentum SHORT - avoid shorting oversold (0 = disabled)
     btc_global_filter_enabled: bool = True  # Use BTC regime to gate all pairs (overrides per-pair regime)
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit

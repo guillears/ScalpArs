@@ -150,13 +150,14 @@ async def lifespan(app: FastAPI):
     logger.info("[STARTUP] Initializing database...")
     await init_db()
     
-    # Restore ban state from DB before any Binance calls
+    # Clear any stale ban state from DB on startup (fresh deploy = fresh IP)
     async with AsyncSessionLocal() as db:
-        ban_state = await db.execute(select(BotState).limit(1))
-        bot_state = ban_state.scalar_one_or_none()
-        if bot_state and bot_state.ban_until and bot_state.ban_until > time.time():
-            set_ban_until(bot_state.ban_until)
-            logger.warning(f"[STARTUP] Restored Binance ban state: {bot_state.ban_until - time.time():.0f}s remaining")
+        ban_row = await db.execute(select(BotState).limit(1))
+        bot_state = ban_row.scalar_one_or_none()
+        if bot_state and bot_state.ban_until and bot_state.ban_until > 0:
+            bot_state.ban_until = 0
+            await db.commit()
+            logger.info("[STARTUP] Cleared stale ban state from DB (fresh deploy)")
     
     # Register callback to persist ban state to DB when detected
     def _persist_ban(ban_epoch: float):
@@ -329,8 +330,17 @@ async def reset_paper_trading(db: AsyncSession = Depends(get_db)):
     trading_engine.started_at = None
     trading_engine.is_running = False
     
+    # Clear any ban state
+    set_ban_until(0)
+    
     # Save the reset state
     await trading_engine.save_state(db)
+    
+    # Clear ban in DB
+    result_state = await db.execute(select(BotState).limit(1))
+    state_row = result_state.scalar_one_or_none()
+    if state_row:
+        state_row.ban_until = 0
     
     await db.commit()
     

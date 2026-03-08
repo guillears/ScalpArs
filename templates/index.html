@@ -607,6 +607,37 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Never Positive Deep Dive -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Never Positive Deep Dive</h3>
+                    <p class="text-xs text-gray-500 mb-3">Breakdown of trades that never went positive — identify which entry conditions produce the worst losers</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Dimension</th>
+                                    <th class="px-3 py-2 font-medium">Value</th>
+                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap 5-8</th>
+                                    <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center">Signal</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="never-positive-deep-dive-body" class="divide-y divide-white/5">
+                                <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -2238,6 +2269,54 @@
                     }).join('');
                 } else {
                     ctBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
+                // Never Positive Deep Dive
+                const npBody = document.getElementById('never-positive-deep-dive-body');
+                if (data.never_positive_deep_dive && data.never_positive_deep_dive.length > 0) {
+                    const npConfColors = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    const dimColors = {
+                        'Direction': 'text-cyan-400', 'Confidence': 'text-pink-400', 'ADX': 'text-orange-400',
+                        'RSI': 'text-purple-400', 'EMA5-EMA8 Gap': 'text-yellow-400', 'Entry Gap': 'text-emerald-400',
+                        'Close Reason': 'text-red-400'
+                    };
+                    let lastDim = '';
+                    npBody.innerHTML = data.never_positive_deep_dive.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const pnlClass = 'text-red-400';
+                        const dimColor = dimColors[r.dimension] || 'text-gray-300';
+                        const showDim = r.dimension !== lastDim;
+                        lastDim = r.dimension;
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${npConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
+                        const sigText = `${r.signal_active || 0}/${r.signal_inactive || 0}`;
+                        const separator = showDim ? 'border-t border-white/10' : '';
+                        return `
+                            <tr class="hover:bg-white/5 ${separator}">
+                                <td class="px-3 py-2 font-medium ${dimColor}">${showDim ? r.dimension : ''}</td>
+                                <td class="px-3 py-2 font-medium text-white">${r.value}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction || '-'}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass}">${r.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlClass}">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_adx != null ? r.avg_entry_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_gap58 != null ? r.avg_entry_gap58.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center text-gray-400">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center text-gray-400">${sigText}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    npBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Stop Loss Deep Dive

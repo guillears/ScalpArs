@@ -716,30 +716,33 @@ class TradingEngine:
                                 })
                             continue
 
-            # MOMENTUM_EXIT: Price-to-EMA5 distance trailing (primary) + slope reversal (fallback)
+            # Compute current P&L % for exit checks
+            if order.direction == "LONG":
+                _raw_pnl = (current_price - order.entry_price) * order.quantity
+            else:
+                _raw_pnl = (order.entry_price - current_price) * order.quantity
+            _est_fee = current_price * order.quantity * config.trading_config.trading_fee
+            _net_pnl = _raw_pnl - (order.entry_fee or 0) - _est_fee
+            _notional = order.entry_price * order.quantity if order.quantity > 0 else 1
+            pnl_pct = (_net_pnl / _notional) * 100
+
+            # MOMENTUM_EXIT: P&L trailing (primary) + slope reversal (fallback)
             ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
-            if ema5_slope_enabled and pair_data and pair_data.ema5 is not None:
-                should_exit_momentum = False
-                exit_reason_detail = ""
+            should_exit_momentum = False
+            exit_reason_detail = ""
 
-                # Primary: Price-to-EMA5 distance trailing
-                exit_ratio = getattr(config.trading_config.thresholds, 'price_ema5_exit_ratio', 0.0)
-                if exit_ratio > 0:
-                    if order.direction == "LONG":
-                        current_gap = current_price - pair_data.ema5
-                    else:
-                        current_gap = pair_data.ema5 - current_price
-                    if current_gap > realtime_peak_ema5_gap:
-                        realtime_peak_ema5_gap = current_gap
-                    order.peak_ema5_gap = realtime_peak_ema5_gap
-                    min_gap_pct = getattr(config.trading_config.thresholds, 'min_peak_ema5_gap_pct', 0.0)
-                    min_gap_abs = order.entry_price * min_gap_pct / 100 if min_gap_pct > 0 else 0
-                    if realtime_peak_ema5_gap > 0 and realtime_peak_ema5_gap >= min_gap_abs and current_gap <= realtime_peak_ema5_gap * exit_ratio:
-                        should_exit_momentum = True
-                        exit_reason_detail = f"EMA5 distance trailing: gap={current_gap:.6f} <= peak={realtime_peak_ema5_gap:.6f}*{exit_ratio}={realtime_peak_ema5_gap*exit_ratio:.6f}, min_gap={min_gap_abs:.6f}"
+            # Primary: P&L trailing stop
+            pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
+            pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
+            if pnl_trigger > 0 and pnl_ratio > 0 and realtime_peak >= pnl_trigger:
+                pnl_exit_level = realtime_peak * pnl_ratio
+                if pnl_pct <= pnl_exit_level:
+                    should_exit_momentum = True
+                    exit_reason_detail = f"P&L trailing: pnl={pnl_pct:.4f}% <= peak={realtime_peak:.4f}%*{pnl_ratio}={pnl_exit_level:.4f}%"
 
-                # Fallback: EMA5 slope reversal
-                if not should_exit_momentum and pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
+            # Fallback: EMA5 slope reversal
+            if not should_exit_momentum and ema5_slope_enabled and pair_data and pair_data.ema5 is not None:
+                if pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
                     ema5_slope_pct = ((pair_data.ema5 - pair_data.ema5_prev3) / pair_data.ema5_prev3) * 100
                     slope_threshold = getattr(config.trading_config.thresholds, 'ema5_slope_threshold', 0.0)
                     if (order.direction == "LONG" and ema5_slope_pct <= slope_threshold) or \
@@ -747,20 +750,20 @@ class TradingEngine:
                         should_exit_momentum = True
                         exit_reason_detail = f"slope reversal: slope={ema5_slope_pct:.4f}% (threshold={slope_threshold}%)"
 
-                if should_exit_momentum:
-                    tp_level = order.current_tp_level or 1
-                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: {exit_reason_detail}")
-                    closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
-                    if closed_order:
-                        updates.append({
-                            "order_id": closed_order.id,
-                            "pair": closed_order.pair,
-                            "action": "CLOSED",
-                            "reason": f"MOMENTUM_EXIT L{tp_level}",
-                            "pnl": closed_order.pnl,
-                            "tp_level": tp_level
-                        })
-                    continue
+            if should_exit_momentum:
+                tp_level = order.current_tp_level or 1
+                logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: {exit_reason_detail}")
+                closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
+                if closed_order:
+                    updates.append({
+                        "order_id": closed_order.id,
+                        "pair": closed_order.pair,
+                        "action": "CLOSED",
+                        "reason": f"MOMENTUM_EXIT L{tp_level}",
+                        "pnl": closed_order.pnl,
+                        "tp_level": tp_level
+                    })
+                continue
 
             # SIGNAL_LOST: full signal no longer matches entry direction while in small profit
             signal_lost_enabled = getattr(config.trading_config.thresholds, 'signal_lost_exit_enabled', True)
@@ -1191,27 +1194,23 @@ class TradingEngine:
                     logger.error(f"[REALTIME_SL] Error closing {pair}: {e}")
                 continue  # Already handled, skip trailing stop check
             
-            # Real-time MOMENTUM_EXIT: Price-to-EMA5 distance trailing
-            cached_ema5 = order_info.get('cached_ema5')
-            ema5_exit_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
-            exit_ratio = getattr(config.trading_config.thresholds, 'price_ema5_exit_ratio', 0.0)
-            if ema5_exit_enabled and exit_ratio > 0 and cached_ema5 is not None and cached_ema5 > 0:
-                if direction == "LONG":
-                    current_gap = current_price - cached_ema5
-                else:
-                    current_gap = cached_ema5 - current_price
-                
-                cached_peak_gap = order_info.get('peak_ema5_gap', 0.0)
-                if current_gap > cached_peak_gap:
-                    order_info['peak_ema5_gap'] = current_gap
-                    cached_peak_gap = current_gap
-                
-                min_gap_pct = getattr(config.trading_config.thresholds, 'min_peak_ema5_gap_pct', 0.0)
-                min_gap_abs = entry_price * min_gap_pct / 100 if min_gap_pct > 0 else 0
-                
-                if cached_peak_gap > 0 and cached_peak_gap >= min_gap_abs and current_gap <= cached_peak_gap * exit_ratio:
+            # Update peak/trough P&L in cache
+            cached_peak_pnl = order_info.get('peak_pnl', 0.0)
+            if pnl_pct > cached_peak_pnl:
+                order_info['peak_pnl'] = pnl_pct
+                cached_peak_pnl = pnl_pct
+            cached_trough_pnl = order_info.get('trough_pnl', 0.0)
+            if pnl_pct < cached_trough_pnl:
+                order_info['trough_pnl'] = pnl_pct
+
+            # Real-time MOMENTUM_EXIT: P&L trailing stop
+            pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
+            pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
+            if pnl_trigger > 0 and pnl_ratio > 0 and cached_peak_pnl >= pnl_trigger:
+                pnl_exit_level = cached_peak_pnl * pnl_ratio
+                if pnl_pct <= pnl_exit_level:
                     tp_level = order_info.get('current_tp_level', 1)
-                    logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: gap={current_gap:.6f} <= peak={cached_peak_gap:.6f}*{exit_ratio}={cached_peak_gap*exit_ratio:.6f}, min_gap={min_gap_abs:.6f}, price={current_price:.6f}, EMA5={cached_ema5:.6f}, pnl={pnl_pct:.4f}% - CLOSING NOW!")
+                    logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={cached_peak_pnl:.4f}%*{pnl_ratio}={pnl_exit_level:.4f}%, price={current_price:.6f} - CLOSING NOW!")
                     try:
                         async with AsyncSessionLocal() as db:
                             result = await db.execute(
@@ -1221,12 +1220,11 @@ class TradingEngine:
                             )
                             order = result.scalar_one_or_none()
                             if order:
-                                order.peak_ema5_gap = cached_peak_gap
                                 await self.close_position(
                                     db, order, current_price,
                                     f"MOMENTUM_EXIT L{tp_level}"
                                 )
-                                logger.info(f"[REALTIME_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                logger.info(f"[REALTIME_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%, peak was {cached_peak_pnl:.4f}%")
                                 async with _cache_lock:
                                     _open_orders_cache[pair] = [
                                         o for o in _open_orders_cache.get(pair, [])

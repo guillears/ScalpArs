@@ -939,13 +939,13 @@
                                         <span class="ml-2 text-sm text-gray-300">Enabled</span>
                                     </label>
                                     <label class="flex items-center text-sm text-gray-400">
-                                        Dist Ratio
-                                        <input type="number" step="0.05" min="0" max="1" id="config-price-ema5-exit-ratio" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.3">
+                                        P&L Trigger
+                                        <input type="number" step="0.01" min="0" id="config-pnl-trailing-trigger" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.1">
+                                        <span class="ml-1">%</span>
                                     </label>
                                     <label class="flex items-center text-sm text-gray-400">
-                                        Min Gap
-                                        <input type="number" step="0.01" min="0" id="config-min-peak-ema5-gap" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
-                                        <span class="ml-1">%</span>
+                                        P&L Ratio
+                                        <input type="number" step="0.05" min="0" max="1" id="config-pnl-trailing-ratio" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
                                     </label>
                                 </div>
                                 <div class="flex items-center gap-4">
@@ -961,7 +961,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Dist Ratio: exit when price-to-EMA5 gap shrinks to this fraction of peak | Min Gap: min peak gap (% of price) before trailing activates | Slope: fallback on EMA5 reversal (0 = full reversal)</p>
+                            <p class="text-xs text-gray-500 mt-1">P&L Trigger: min peak P&L % to activate trailing | P&L Ratio: exit when P&L drops to this fraction of peak | Slope: fallback on EMA5 reversal (0 = full reversal)</p>
                         </div>
                     </div>
                 </div>
@@ -1891,7 +1891,7 @@
 
                 lines.push('\nMomentum Exit:');
                 lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
-                lines.push(`  Dist Ratio: ${th.price_ema5_exit_ratio}  |  Min Gap: ${th.min_peak_ema5_gap_pct}%`);
+                lines.push(`  P&L Trigger: ${th.pnl_trailing_trigger}%  |  P&L Ratio: ${th.pnl_trailing_ratio}`);
                 lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Min Profit: ${th.signal_lost_min_profit}%`);
 
                 lines.push('\nConfidence Levels:');
@@ -1939,12 +1939,14 @@
                 // --- CLOSING REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Signal'.padEnd(8)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)}`);
                 for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
-                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${sigStr.padEnd(8)}`);
+                    const gapStr = r.avg_entry_gap != null ? (r.avg_entry_gap * 100).toFixed(2) + '%' : '-';
+                    const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -1978,11 +1980,30 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Winning Trades Drawdown\n');
                 lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
-                for (const w of (perf.winning_trades_drawdown || [])) {
+                const wdAll = perf.winning_trades_drawdown || [];
+                let allWinCount = 0, allWinTrough = 0, allWinClose = 0, allWinDrop = 0, allWinTotal = 0, allWinWorst = 0;
+                let allWinLong = 0, allWinShort = 0, allWinSigA = 0, allWinSigI = 0;
+                for (const w of wdAll) {
                     const dirStr = `${(w.by_direction||{}).LONG||0}L/${(w.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(w.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${w.signal_active||0}/${w.signal_inactive||0}`;
                     lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                    const n = w.count || 0;
+                    allWinCount += n;
+                    allWinTrough += (w.avg_trough_pnl||0) * n;
+                    allWinClose += (w.avg_close_pnl||0) * n;
+                    allWinDrop += (w.avg_price_drop||0) * n;
+                    allWinTotal += w.total_pnl_usd || 0;
+                    if ((w.worst_trough_pnl||0) < allWinWorst) allWinWorst = w.worst_trough_pnl;
+                    allWinLong += (w.by_direction||{}).LONG||0;
+                    allWinShort += (w.by_direction||{}).SHORT||0;
+                    allWinSigA += w.signal_active||0;
+                    allWinSigI += w.signal_inactive||0;
+                }
+                if (allWinCount > 0) {
+                    const awDir = `${allWinLong}L/${allWinShort}S`;
+                    const awSig = `${allWinSigA}/${allWinSigI}`;
+                    lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
                 }
 
                 // --- NEVER POSITIVE DEEP DIVE ---
@@ -3140,8 +3161,8 @@
                 document.getElementById('config-ema5-slope-enabled').checked = config.thresholds.ema5_slope_exit_enabled !== undefined ? config.thresholds.ema5_slope_exit_enabled : true;
                 document.getElementById('config-ema5-slope-lookback').value = config.thresholds.ema5_slope_lookback !== undefined ? config.thresholds.ema5_slope_lookback : 3;
                 document.getElementById('config-ema5-slope-threshold').value = config.thresholds.ema5_slope_threshold !== undefined ? config.thresholds.ema5_slope_threshold : 0;
-                document.getElementById('config-price-ema5-exit-ratio').value = config.thresholds.price_ema5_exit_ratio !== undefined ? config.thresholds.price_ema5_exit_ratio : 0.3;
-                document.getElementById('config-min-peak-ema5-gap').value = config.thresholds.min_peak_ema5_gap_pct !== undefined ? config.thresholds.min_peak_ema5_gap_pct : 0.05;
+                document.getElementById('config-pnl-trailing-trigger').value = config.thresholds.pnl_trailing_trigger !== undefined ? config.thresholds.pnl_trailing_trigger : 0.1;
+                document.getElementById('config-pnl-trailing-ratio').value = config.thresholds.pnl_trailing_ratio !== undefined ? config.thresholds.pnl_trailing_ratio : 0.5;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -3258,8 +3279,8 @@
                     ema5_slope_exit_enabled: document.getElementById('config-ema5-slope-enabled').checked,
                     ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3,
                     ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value),
-                    price_ema5_exit_ratio: safeFloat(document.getElementById('config-price-ema5-exit-ratio').value),
-                    min_peak_ema5_gap_pct: safeFloat(document.getElementById('config-min-peak-ema5-gap').value)
+                    pnl_trailing_trigger: safeFloat(document.getElementById('config-pnl-trailing-trigger').value),
+                    pnl_trailing_ratio: safeFloat(document.getElementById('config-pnl-trailing-ratio').value)
                 },
                 confidence_levels: {}
             };

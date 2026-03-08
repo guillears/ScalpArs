@@ -1217,6 +1217,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             avg_drop = sum(drops) / count if count > 0 else 0
             sig_active = sum(1 for o in data["trades"] if o.signal_active_at_close is True)
             sig_inactive = sum(1 for o in data["trades"] if o.signal_active_at_close is False)
+            gaps = [o.entry_gap for o in data["trades"] if o.entry_gap is not None]
+            rsis = [o.entry_rsi for o in data["trades"] if o.entry_rsi is not None]
             by_close_reason[reason] = {
                 "trades": count,
                 "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
@@ -1226,7 +1228,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "by_direction": data["by_direction"],
                 "avg_price_drop": round(avg_drop, 4),
                 "signal_active": sig_active,
-                "signal_inactive": sig_inactive
+                "signal_inactive": sig_inactive,
+                "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
+                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")

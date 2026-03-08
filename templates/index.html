@@ -325,6 +325,7 @@
                         <option value="NEUTRAL">NEUTRAL</option>
                     </select>
                     <span id="regime-filter-badge" class="text-xs text-gray-500"></span>
+                    <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
                 </div>
 
                 <!-- Performance by Macro Trend -->
@@ -1849,6 +1850,225 @@
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
             } catch (e) {
                 console.error('Error loading balance:', e);
+            }
+        }
+
+        // Copy Analytics to clipboard
+        async function copyAnalytics() {
+            const btn = document.getElementById('copy-analytics-btn');
+            btn.textContent = 'Loading...';
+            btn.disabled = true;
+            try {
+                const regimeFilter = document.getElementById('regime-filter').value;
+                const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
+                const [perfRes, cfgRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/performance${regimeParam}`),
+                    fetch(`${API_BASE}/api/config`)
+                ]);
+                const perf = await perfRes.json();
+                const cfg = await cfgRes.json();
+                const lines = [];
+                const hr = '='.repeat(80);
+                const hr2 = '-'.repeat(60);
+
+                lines.push(hr);
+                lines.push('TRADING BOT ANALYTICS REPORT');
+                lines.push(`Generated: ${new Date().toISOString()}`);
+                if (regimeFilter) lines.push(`Filter: ${regimeFilter} trades only`);
+                lines.push(hr);
+
+                // --- CONFIG ---
+                lines.push('\n## CONFIGURATION\n');
+                const th = cfg.thresholds || {};
+                lines.push('Signal Thresholds:');
+                lines.push(`  EMA Gap Threshold: ${th.ema_gap_threshold}`);
+                lines.push(`  ADX Very Strong: >${th.adx_very_strong}  |  ADX Strong: >${th.adx_strong}`);
+                lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
+                lines.push(`  ADX Max: ${th.momentum_adx_max}`);
+                lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
+                lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
+                lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}`);
+
+                lines.push('\nMomentum Exit:');
+                lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
+                lines.push(`  Dist Ratio: ${th.price_ema5_exit_ratio}  |  Min Gap: ${th.min_peak_ema5_gap_pct}%`);
+                lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Min Profit: ${th.signal_lost_min_profit}%`);
+
+                lines.push('\nConfidence Levels:');
+                lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   BE Trig  BE Off  GapMin  GapMax  Gap?   Stretch  TP Trail`);
+                for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
+                    if (!c.enabled) continue;
+                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  ${c.breakeven_trigger}%   ${c.breakeven_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+                }
+
+                // --- OVERALL PERFORMANCE ---
+                lines.push(`\n${hr}`);
+                lines.push('## OVERALL PERFORMANCE\n');
+                lines.push(`Total Trades: ${perf.total_trades}  (${perf.total_longs}L / ${perf.total_shorts}S)`);
+                lines.push(`Wins: ${perf.total_wins}  |  Losses: ${perf.total_losses}  |  Win Rate: ${perf.win_rate}%`);
+                lines.push(`Win Rate Longs: ${perf.win_rate_longs}%  |  Shorts: ${perf.win_rate_shorts}%`);
+                lines.push(`Avg Win: $${perf.avg_win}  (L:$${perf.avg_win_long} S:$${perf.avg_win_short})`);
+                lines.push(`Avg Loss: $${perf.avg_loss}  (L:$${perf.avg_loss_long} S:$${perf.avg_loss_short})`);
+                lines.push(`Expectancy: $${perf.expectancy}/trade`);
+                lines.push(`Best Win L:$${perf.best_win_long} S:$${perf.best_win_short}  |  Worst Loss L:$${perf.worst_loss_long} S:$${perf.worst_loss_short}`);
+                lines.push(`Total P&L: $${perf.total_pnl} (${perf.total_pnl_percentage}%)  |  Fees: $${perf.total_fees}`);
+                lines.push(`Avg Duration: ${perf.avg_duration} (L:${perf.avg_duration_long} S:${perf.avg_duration_short})`);
+                lines.push(`Avg Leverage: ${perf.avg_leverage}x  |  Return Multiple: ${perf.return_multiple}x`);
+                lines.push(`Daily Compound Return: ${perf.daily_compound_return}%  |  Runtime: ${perf.runtime_days} days`);
+                lines.push(`Investment L:$${perf.total_investment_long_value} S:$${perf.total_investment_short_value}`);
+
+                // --- BY MACRO TREND ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Macro Trend\n');
+                lines.push(`${'Trend'.padEnd(10)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Long P&L'.padEnd(12)} ${'L Win%'.padEnd(8)} ${'Short P&L'.padEnd(12)} ${'S Win%'.padEnd(8)}`);
+                for (const [trend, t] of Object.entries(perf.by_macro_trend || {})) {
+                    const trades = `${t.long_trades||0}L/${t.short_trades||0}S`;
+                    lines.push(`${trend.padEnd(10)} ${trades.padEnd(18)} ${(t.total_win_rate||0)+'%'.padEnd(6)} ${(t.risk_reward||0).toString().padEnd(6)} $${(t.long_pnl||0).toFixed(2).padStart(10)} ${((t.long_win_rate||0)+'%').padEnd(8)} $${(t.short_pnl||0).toFixed(2).padStart(10)} ${((t.short_win_rate||0)+'%').padEnd(8)}`);
+                }
+
+                // --- BY CONFIDENCE ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Confidence Level\n');
+                lines.push(`${'Confidence'.padEnd(14)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Total P&L'.padEnd(12)} ${'L P&L'.padEnd(10)} ${'S P&L'.padEnd(10)} ${'Avg Gap'.padEnd(8)}`);
+                for (const [conf, c] of Object.entries(perf.by_confidence || {})) {
+                    if (c.total_trades === 0) continue;
+                    const trades = `${c.long_trades||0}L/${c.short_trades||0}S`;
+                    lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
+                }
+
+                // --- CLOSING REASON ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Closing Reason Summary\n');
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Signal'.padEnd(8)}`);
+                for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
+                    const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${sigStr.padEnd(8)}`);
+                }
+
+                // --- OUTCOME DISTRIBUTION ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Trade Outcome Distribution\n');
+                lines.push(`${'Range'.padEnd(18)} ${'#'.padEnd(5)} ${'Avg P&L'.padEnd(10)}`);
+                for (const o of (perf.outcome_distribution || [])) {
+                    lines.push(`${o.range.padEnd(18)} ${String(o.count).padEnd(5)} $${(o.avg_pnl_usd||0).toFixed(2)}`);
+                }
+
+                // --- STOP LOSS DEEP DIVE ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Stop Loss Deep Dive\n');
+                const sld = perf.stop_loss_deep_dive || {};
+                const slCats = [
+                    ['BE Was Active', sld.be_was_active],
+                    ['Positive, No BE', sld.positive_no_be],
+                    ['Never Positive', sld.never_positive]
+                ];
+                lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                for (const [name, d] of slCats) {
+                    if (!d || d.count === 0) continue;
+                    const dirStr = `${(d.by_direction||{}).LONG||0}L/${(d.by_direction||{}).SHORT||0}S`;
+                    const confStr = Object.entries(d.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const sigStr = `${d.signal_active||0}/${d.signal_inactive||0}`;
+                    lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                }
+                lines.push(`${'All SL Trades'.padEnd(18)} ${String(sld.total_sl_trades||0).padEnd(5)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'}`);
+
+                // --- WINNING TRADES DRAWDOWN ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Winning Trades Drawdown\n');
+                lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                for (const w of (perf.winning_trades_drawdown || [])) {
+                    const dirStr = `${(w.by_direction||{}).LONG||0}L/${(w.by_direction||{}).SHORT||0}S`;
+                    const confStr = Object.entries(w.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const sigStr = `${w.signal_active||0}/${w.signal_inactive||0}`;
+                    lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                }
+
+                // --- NEVER POSITIVE DEEP DIVE ---
+                if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Never Positive Deep Dive\n');
+                    lines.push(`${'Dimension'.padEnd(16)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
+                    for (const r of perf.never_positive_deep_dive) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
+                        lines.push(`${(r.dimension||'').padEnd(16)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
+                    }
+                }
+
+                // --- GAP PERFORMANCE ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Entry Gap (EMA20)\n');
+                lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const g of (perf.gap_performance || [])) {
+                    const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(g.range||'').padEnd(16)} ${String(g.count).padEnd(5)} ${(g.direction||'').padEnd(7)} ${(g.win_rate+'%').padEnd(6)} ${('$'+((g.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((g.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+                }
+
+                // --- EMA5-EMA8 GAP ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Entry Gap EMA5-EMA8\n');
+                lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const g of (perf.ema58_gap_performance || [])) {
+                    const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(g.range||'').padEnd(16)} ${String(g.count).padEnd(5)} ${(g.direction||'').padEnd(7)} ${(g.win_rate+'%').padEnd(6)} ${('$'+((g.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((g.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+                }
+
+                // --- RSI PERFORMANCE ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Entry RSI\n');
+                lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of (perf.rsi_performance || [])) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+                }
+
+                // --- ADX PERFORMANCE ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Entry ADX\n');
+                lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of (perf.adx_performance || [])) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+                }
+
+                // --- RSI x ADX CROSS-TAB ---
+                if (perf.rsi_adx_crosstab && perf.rsi_adx_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by RSI x ADX\n');
+                    lines.push(`${'Dir'.padEnd(7)} ${'RSI'.padEnd(7)} ${'ADX'.padEnd(7)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                    for (const r of perf.rsi_adx_crosstab) {
+                        lines.push(`${(r.direction||'').padEnd(7)} ${(r.rsi_range||'').padEnd(7)} ${(r.adx_range||'').padEnd(7)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)}`);
+                    }
+                }
+
+                lines.push(`\n${hr}`);
+                lines.push('END OF REPORT');
+                lines.push(hr);
+
+                const text = lines.join('\n');
+                await navigator.clipboard.writeText(text);
+                btn.textContent = 'Copied!';
+                btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
+                btn.classList.add('bg-emerald-600');
+                setTimeout(() => {
+                    btn.textContent = 'Copy Analytics';
+                    btn.classList.remove('bg-emerald-600');
+                    btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
+                    btn.disabled = false;
+                }, 2000);
+            } catch (err) {
+                console.error('Copy analytics failed:', err);
+                btn.textContent = 'Failed!';
+                btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
+                btn.classList.add('bg-red-600');
+                setTimeout(() => {
+                    btn.textContent = 'Copy Analytics';
+                    btn.classList.remove('bg-red-600');
+                    btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
+                    btn.disabled = false;
+                }, 2000);
             }
         }
 

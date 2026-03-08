@@ -39,7 +39,7 @@
     "macro_trend_neutral_mode": "none",
     "macro_trend_flat_threshold": 0.02,
     "momentum_long_rsi_min": 50.0,
-    "momentum_long_rsi_max": 60.0,
+    "momentum_long_rsi_max": 70.0,
     "momentum_short_rsi_max": 55.0,
     "momentum_short_rsi_min": 35.0,
     "momentum_adx_max": 50.0,

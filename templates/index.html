@@ -653,14 +653,16 @@
                                     <th class="px-3 py-2 font-medium text-center">Dir</th>
                                     <th class="px-3 py-2 font-medium text-center">Win %</th>
                                     <th class="px-3 py-2 font-medium text-right">P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Cumulative P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                    <th class="px-3 py-2 font-medium text-right">EMA5-8</th>
                                 </tr>
                             </thead>
                             <tbody id="performance-over-time-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1970,7 +1972,7 @@
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
-                    const gapStr = r.avg_entry_gap != null ? (r.avg_entry_gap * 100).toFixed(2) + '%' : '-';
+                    const gapStr = r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-';
                     const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
                     lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
                 }
@@ -2048,11 +2050,12 @@
                 if (perf.performance_over_time && perf.performance_over_time.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance Over Time (15min buckets)\n');
-                    lines.push(`${'Time'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
+                    lines.push(`${'Time'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'AvgP&L'.padEnd(10)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'EMA5-8'.padEnd(8)}`);
                     for (const b of perf.performance_over_time) {
                         const dirStr = `${b.longs}L/${b.shorts}S`;
-                        const gapStr = b.avg_gap != null ? (b.avg_gap * 100).toFixed(2) + '%' : '-';
-                        lines.push(`${(b.time||'').padEnd(8)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)}`);
+                        const gapStr = b.avg_gap != null ? b.avg_gap.toFixed(2) + '%' : '-';
+                        const gap58Str = b.avg_gap58 != null ? b.avg_gap58.toFixed(4) + '%' : '-';
+                        lines.push(`${(b.time||'').padEnd(8)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.avg_pnl||0).toFixed(2)).padStart(9)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)} ${gap58Str.padStart(8)}`);
                     }
                 }
 
@@ -2613,15 +2616,17 @@
                                 <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${b.longs}L</span> / <span class="text-red-400 text-xs">${b.shorts}S</span></td>
                                 <td class="px-3 py-2 text-center ${wrClass} font-medium">${b.win_rate}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(b.pnl)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass}">${formatUSD(b.avg_pnl)}</td>
                                 <td class="px-3 py-2 text-right ${cumClass} font-bold">${formatUSD(b.cumulative_pnl)}</td>
                                 <td class="px-3 py-2 text-right text-purple-400">${b.avg_rsi != null ? b.avg_rsi.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right text-cyan-400">${b.avg_adx != null ? b.avg_adx.toFixed(1) : '-'}</td>
-                                <td class="px-3 py-2 text-right text-gray-400">${b.avg_gap != null ? (b.avg_gap * 100).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-400">${b.avg_gap != null ? b.avg_gap.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-400">${b.avg_gap58 != null ? b.avg_gap58.toFixed(4) + '%' : '-'}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    potBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    potBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Stop Loss Deep Dive

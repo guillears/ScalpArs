@@ -781,6 +781,7 @@ def _compute_time_buckets(orders, bucket_minutes=15):
             rsis = [o.entry_rsi for o in bucket_orders if o.entry_rsi is not None]
             gaps = [o.entry_gap for o in bucket_orders if o.entry_gap is not None]
             adxs = [o.entry_adx for o in bucket_orders if o.entry_adx is not None]
+            gaps58 = [o.entry_ema_gap_5_8 for o in bucket_orders if o.entry_ema_gap_5_8 is not None]
             local_time = bk.astimezone(UTC_MINUS_3)
             result.append({
                 "time": local_time.strftime("%H:%M"),
@@ -790,9 +791,11 @@ def _compute_time_buckets(orders, bucket_minutes=15):
                 "wins": wins,
                 "win_rate": round(wins / count * 100, 1) if count > 0 else 0,
                 "pnl": round(pnl_sum, 2),
+                "avg_pnl": round(pnl_sum / count, 2) if count > 0 else 0,
                 "cumulative_pnl": round(cumulative_pnl, 2),
                 "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                 "avg_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
+                "avg_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
                 "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None
             })
         return result

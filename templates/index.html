@@ -639,6 +639,32 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Performance Over Time -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance Over Time</h3>
+                    <p class="text-xs text-gray-500 mb-3">P&L grouped by 15-minute windows — identify when market conditions shifted</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Time</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center">Win %</th>
+                                    <th class="px-3 py-2 font-medium text-right">P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Cumulative P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                </tr>
+                            </thead>
+                            <tbody id="performance-over-time-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -2018,6 +2044,18 @@
                     }
                 }
 
+                // --- PERFORMANCE OVER TIME ---
+                if (perf.performance_over_time && perf.performance_over_time.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance Over Time (15min buckets)\n');
+                    lines.push(`${'Time'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
+                    for (const b of perf.performance_over_time) {
+                        const dirStr = `${b.longs}L/${b.shorts}S`;
+                        const gapStr = b.avg_gap != null ? (b.avg_gap * 100).toFixed(2) + '%' : '-';
+                        lines.push(`${(b.time||'').padEnd(8)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)}`);
+                    }
+                }
+
                 // --- GAP PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Entry Gap (EMA20)\n');
@@ -2558,6 +2596,32 @@
                     }).join('');
                 } else {
                     npBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
+                // Performance Over Time
+                const potBody = document.getElementById('performance-over-time-body');
+                const potData = data.performance_over_time;
+                if (potData && potData.length > 0) {
+                    potBody.innerHTML = potData.map(b => {
+                        const pnlClass = b.pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const cumClass = b.cumulative_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = b.win_rate >= 60 ? 'text-emerald-400' : b.win_rate >= 40 ? 'text-yellow-400' : 'text-red-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-gray-300">${b.time}</td>
+                                <td class="px-3 py-2 text-center">${b.trades}</td>
+                                <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${b.longs}L</span> / <span class="text-red-400 text-xs">${b.shorts}S</span></td>
+                                <td class="px-3 py-2 text-center ${wrClass} font-medium">${b.win_rate}%</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(b.pnl)}</td>
+                                <td class="px-3 py-2 text-right ${cumClass} font-bold">${formatUSD(b.cumulative_pnl)}</td>
+                                <td class="px-3 py-2 text-right text-purple-400">${b.avg_rsi != null ? b.avg_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${b.avg_adx != null ? b.avg_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-400">${b.avg_gap != null ? (b.avg_gap * 100).toFixed(2) + '%' : '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    potBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Stop Loss Deep Dive

@@ -5,7 +5,7 @@ import asyncio
 import time
 import traceback
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
@@ -744,8 +744,61 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
             "never_positive_deep_dive": [],
+            "performance_over_time": [],
             "_error": str(e)
         }
+
+
+def _compute_time_buckets(orders, bucket_minutes=15):
+    """Group closed trades into time buckets and compute per-bucket stats."""
+    from datetime import timezone
+    UTC_MINUS_3 = timezone(timedelta(hours=-3))
+    try:
+        timed = [(o, o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at and o.closed_at.tzinfo is None else o.closed_at)
+                 for o in orders if o.closed_at is not None]
+        if not timed:
+            return []
+        timed.sort(key=lambda x: x[1])
+        first_time = timed[0][1]
+        buckets = {}
+        for o, ct in timed:
+            mins_since_start = (ct - first_time).total_seconds() / 60
+            bucket_idx = int(mins_since_start // bucket_minutes)
+            bucket_key = first_time + timedelta(minutes=bucket_idx * bucket_minutes)
+            if bucket_key not in buckets:
+                buckets[bucket_key] = []
+            buckets[bucket_key].append(o)
+        result = []
+        cumulative_pnl = 0
+        for bk in sorted(buckets.keys()):
+            bucket_orders = buckets[bk]
+            count = len(bucket_orders)
+            pnl_sum = sum(o.pnl or 0 for o in bucket_orders)
+            cumulative_pnl += pnl_sum
+            wins = sum(1 for o in bucket_orders if (o.pnl or 0) > 0)
+            longs = sum(1 for o in bucket_orders if o.direction == "LONG")
+            shorts = count - longs
+            rsis = [o.entry_rsi for o in bucket_orders if o.entry_rsi is not None]
+            gaps = [o.entry_gap for o in bucket_orders if o.entry_gap is not None]
+            adxs = [o.entry_adx for o in bucket_orders if o.entry_adx is not None]
+            local_time = bk.astimezone(UTC_MINUS_3)
+            result.append({
+                "time": local_time.strftime("%H:%M"),
+                "trades": count,
+                "longs": longs,
+                "shorts": shorts,
+                "wins": wins,
+                "win_rate": round(wins / count * 100, 1) if count > 0 else 0,
+                "pnl": round(pnl_sum, 2),
+                "cumulative_pnl": round(cumulative_pnl, 2),
+                "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+                "avg_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
+                "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None
+            })
+        return result
+    except Exception as e:
+        logger.error(f"[PERF] Error computing time buckets: {e}\n{traceback.format_exc()}")
+        return []
 
 
 async def _compute_performance(db: AsyncSession, regime: str = None):
@@ -851,7 +904,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
-            "never_positive_deep_dive": []
+            "never_positive_deep_dive": [],
+            "performance_over_time": []
         }
     
     # Separate longs and shorts
@@ -1575,7 +1629,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown,
         "rsi_adx_crosstab": rsi_adx_crosstab,
-        "never_positive_deep_dive": never_positive_deep_dive
+        "never_positive_deep_dive": never_positive_deep_dive,
+        "performance_over_time": _compute_time_buckets(orders)
     }
 
 

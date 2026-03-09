@@ -86,10 +86,6 @@ class Order(Base):
 
     # Whether the entry signal was still active when the order was closed
     signal_active_at_close = Column(Boolean, nullable=True)
-
-    # Signal loss tracking: recorded the first time the signal no longer matches direction
-    signal_lost_at = Column(DateTime, nullable=True)
-    pnl_at_signal_loss = Column(Float, nullable=True)
     
     # Timestamps
     opened_at = Column(DateTime, nullable=False, default=func.now())
@@ -147,8 +143,8 @@ class BotState(Base):
     total_runtime_seconds = Column(Integer, nullable=False, default=0)
     last_pause_at = Column(DateTime, nullable=True)
     
-    # Paper trading balance (must match config.py TradingConfig.paper_balance default)
-    paper_balance = Column(Float, nullable=False, default=2000.0)
+    # Paper trading balance
+    paper_balance = Column(Float, nullable=False, default=10000.0)
     
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)

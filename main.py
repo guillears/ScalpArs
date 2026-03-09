@@ -1287,7 +1287,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "signal_active": sig_active,
                 "signal_inactive": sig_inactive,
                 "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
-                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None
+                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+                "avg_duration": calc_avg_duration(data["trades"])
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")

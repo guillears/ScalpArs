@@ -420,11 +420,12 @@
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
                                         <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price (comparable to pullback_trigger)">Avg Pullback %</th>
                                         <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                        <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
                                         <th class="px-3 py-2 font-medium text-center" title="Was the entry signal still active when trade closed?">Signal</th>
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1957,14 +1958,14 @@
                 // --- CLOSING REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)}`);
                 for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
                     const gapStr = r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-';
                     const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
-                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -2347,12 +2348,13 @@
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${stats.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(stats.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center text-gray-400 text-xs">${stats.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center text-xs">${(stats.signal_active || 0) + (stats.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${stats.signal_active || 0}</span>/<span class="text-red-400">${stats.signal_inactive || 0}</span>` : '-'}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap

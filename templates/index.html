@@ -6,6 +6,7 @@
     <title>SCALPARS - Automated Trading Platform</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -644,28 +645,10 @@
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance Over Time</h3>
                     <p class="text-xs text-gray-500 mb-3">P&L grouped by 15-minute windows — identify when market conditions shifted</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
-                            <thead>
-                                <tr class="text-gray-400 text-left border-b border-white/10">
-                                    <th class="px-3 py-2 font-medium">Time</th>
-                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
-                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
-                                    <th class="px-3 py-2 font-medium text-center">Win %</th>
-                                    <th class="px-3 py-2 font-medium text-right">P&L</th>
-                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
-                                    <th class="px-3 py-2 font-medium text-right">Cumulative P&L</th>
-                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
-                                    <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
-                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
-                                    <th class="px-3 py-2 font-medium text-right">EMA5-8</th>
-                                </tr>
-                            </thead>
-                            <tbody id="performance-over-time-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
-                            </tbody>
-                        </table>
+                    <div style="height: 320px; position: relative;">
+                        <canvas id="performance-over-time-chart"></canvas>
                     </div>
+                    <p id="performance-over-time-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
                 </div>
             </div>
         </section>
@@ -1102,7 +1085,7 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-4 py-3 font-medium">Signal</th>
                                     <th class="px-4 py-3 font-medium text-center text-cyan-400">ADX Range</th>
-                                    <th class="px-4 py-3 font-medium text-center text-purple-400">EMA Gap Threshold %</th>
+                                    <th class="px-4 py-3 font-medium text-center text-purple-400">EMA5-EMA8 Gap %</th>
                                     <th class="px-4 py-3 font-medium">Conditions</th>
                                 </tr>
                             </thead>
@@ -1116,11 +1099,15 @@
                                     </td>
                                     <td class="px-4 py-3 text-center">
                                         &gt; <input type="number" id="config-adx-very-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
+                                        &le; <input type="number" step="1" id="config-momentum-adx-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
                                     </td>
-                                    <td class="px-4 py-3 text-center" rowspan="2">
-                                        <input type="number" step="0.1" id="config-ema-gap-threshold" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3.0">
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="text-xs text-gray-500">Min</span>
+                                        <input type="number" step="0.01" id="config-ema-gap-threshold" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
+                                        <span class="text-xs text-gray-500 ml-2">Max</span>
+                                        <input type="number" step="0.01" id="config-ema-gap-5-8-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-400">EMA5 vs EMA8 momentum + gap &ge; threshold + ADX &gt; very_strong</td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; min &amp; &le; max + ADX &gt; very_strong</td>
                                 </tr>
                                 <tr>
                                     <td class="px-4 py-3">
@@ -1131,11 +1118,19 @@
                                     </td>
                                     <td class="px-4 py-3 text-center">
                                         &gt; <input type="number" id="config-adx-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="16">
+                                        &le; <span class="text-sm text-gray-400" id="config-adx-max-mirror"></span>
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-400">EMA5 vs EMA8 momentum + gap &ge; threshold + ADX strong..very_strong</td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="text-xs text-gray-500">Min</span>
+                                        <span class="text-sm text-gray-400" id="config-ema-gap-min-mirror"></span>
+                                        <span class="text-xs text-gray-500 ml-2">Max</span>
+                                        <span class="text-sm text-gray-400" id="config-ema-gap-max-mirror"></span>
+                                    </td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; min &amp; &le; max + ADX strong..very_strong</td>
                                 </tr>
                             </tbody>
                         </table>
+                        <p class="text-xs text-gray-500 mt-1 px-4">ADX Max &le; 100 to disable. EMA Gap Max = 0 to disable.</p>
                     </div>
                     <div class="mt-3 mb-1 px-4">
                         <span class="text-sm text-gray-300">Price vs EMA20 filter</span>
@@ -1217,12 +1212,8 @@
                                 SHORT RSI &ge;
                                 <input type="number" step="1" id="config-momentum-short-rsi-min" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
                             </label>
-                            <label class="flex items-center text-sm text-gray-400">
-                                ADX &le;
-                                <input type="number" step="1" id="config-momentum-adx-max" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
-                            </label>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">LONG RSI &ge; 0 or &le; 100 to disable. SHORT RSI &le; 100 or &ge; 0 to disable. ADX &le; 100 to disable max cap.</p>
+                        <p class="text-xs text-gray-500 mt-1">LONG RSI &ge; 0 or &le; 100 to disable. SHORT RSI &le; 100 or &ge; 0 to disable.</p>
                     </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
@@ -1909,10 +1900,9 @@
                 lines.push('\n## CONFIGURATION\n');
                 const th = cfg.thresholds || {};
                 lines.push('Signal Thresholds:');
-                lines.push(`  EMA Gap Threshold: ${th.ema_gap_threshold}`);
-                lines.push(`  ADX Very Strong: >${th.adx_very_strong}  |  ADX Strong: >${th.adx_strong}`);
+                lines.push(`  EMA Gap Threshold: ${th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
+                lines.push(`  ADX Very Strong: >${th.adx_very_strong}  |  ADX Strong: >${th.adx_strong}  |  ADX Max: ${th.momentum_adx_max}`);
                 lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
-                lines.push(`  ADX Max: ${th.momentum_adx_max}`);
                 lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
                 lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
                 lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}`);
@@ -2601,32 +2591,97 @@
                     npBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
-                // Performance Over Time
-                const potBody = document.getElementById('performance-over-time-body');
+                // Performance Over Time Chart
+                const potCanvas = document.getElementById('performance-over-time-chart');
+                const potEmpty = document.getElementById('performance-over-time-empty');
                 const potData = data.performance_over_time;
+                if (window._potChart) { window._potChart.destroy(); window._potChart = null; }
                 if (potData && potData.length > 0) {
-                    potBody.innerHTML = potData.map(b => {
-                        const pnlClass = b.pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const cumClass = b.cumulative_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const wrClass = b.win_rate >= 60 ? 'text-emerald-400' : b.win_rate >= 40 ? 'text-yellow-400' : 'text-red-400';
-                        return `
-                            <tr class="hover:bg-white/5">
-                                <td class="px-3 py-2 font-medium text-gray-300">${b.time}</td>
-                                <td class="px-3 py-2 text-center">${b.trades}</td>
-                                <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${b.longs}L</span> / <span class="text-red-400 text-xs">${b.shorts}S</span></td>
-                                <td class="px-3 py-2 text-center ${wrClass} font-medium">${b.win_rate}%</td>
-                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(b.pnl)}</td>
-                                <td class="px-3 py-2 text-right ${pnlClass}">${formatUSD(b.avg_pnl)}</td>
-                                <td class="px-3 py-2 text-right ${cumClass} font-bold">${formatUSD(b.cumulative_pnl)}</td>
-                                <td class="px-3 py-2 text-right text-purple-400">${b.avg_rsi != null ? b.avg_rsi.toFixed(1) : '-'}</td>
-                                <td class="px-3 py-2 text-right text-cyan-400">${b.avg_adx != null ? b.avg_adx.toFixed(1) : '-'}</td>
-                                <td class="px-3 py-2 text-right text-gray-400">${b.avg_gap != null ? b.avg_gap.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-gray-400">${b.avg_gap58 != null ? b.avg_gap58.toFixed(4) + '%' : '-'}</td>
-                            </tr>
-                        `;
-                    }).join('');
+                    potEmpty.style.display = 'none';
+                    potCanvas.style.display = 'block';
+                    const labels = potData.map(b => b.time);
+                    const pnlValues = potData.map(b => b.pnl || 0);
+                    const cumValues = potData.map(b => b.cumulative_pnl || 0);
+                    const barColors = pnlValues.map(v => v >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)');
+                    window._potChart = new Chart(potCanvas, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Bucket P&L',
+                                    data: pnlValues,
+                                    backgroundColor: barColors,
+                                    borderColor: barColors,
+                                    borderWidth: 1,
+                                    yAxisID: 'y',
+                                    order: 2
+                                },
+                                {
+                                    label: 'Cumulative P&L',
+                                    data: cumValues,
+                                    type: 'line',
+                                    borderColor: 'rgba(96, 165, 250, 1)',
+                                    backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                                    borderWidth: 2,
+                                    pointRadius: 2,
+                                    pointHoverRadius: 5,
+                                    fill: true,
+                                    tension: 0.3,
+                                    yAxisID: 'y1',
+                                    order: 1
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: {
+                                legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                                tooltip: {
+                                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                    titleColor: '#e5e7eb',
+                                    bodyColor: '#d1d5db',
+                                    borderColor: 'rgba(255,255,255,0.1)',
+                                    borderWidth: 1,
+                                    callbacks: {
+                                        afterBody: function(ctx) {
+                                            const i = ctx[0].dataIndex;
+                                            const b = potData[i];
+                                            const lines = [];
+                                            lines.push(`Trades: ${b.trades} (${b.longs}L/${b.shorts}S)`);
+                                            lines.push(`Win Rate: ${b.win_rate}%`);
+                                            lines.push(`Avg P&L: $${(b.avg_pnl||0).toFixed(2)}`);
+                                            if (b.avg_rsi != null) lines.push(`Avg RSI: ${b.avg_rsi.toFixed(1)}`);
+                                            if (b.avg_adx != null) lines.push(`Avg ADX: ${b.avg_adx.toFixed(1)}`);
+                                            if (b.avg_gap != null) lines.push(`Avg Gap: ${b.avg_gap.toFixed(2)}%`);
+                                            if (b.avg_gap58 != null) lines.push(`EMA5-8: ${b.avg_gap58.toFixed(4)}%`);
+                                            return lines;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                y: {
+                                    position: 'left',
+                                    title: { display: true, text: 'Bucket P&L ($)', color: '#9ca3af', font: { size: 11 } },
+                                    ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                    grid: { color: 'rgba(255,255,255,0.05)' }
+                                },
+                                y1: {
+                                    position: 'right',
+                                    title: { display: true, text: 'Cumulative P&L ($)', color: '#60a5fa', font: { size: 11 } },
+                                    ticks: { color: '#60a5fa', callback: v => '$' + v.toFixed(0) },
+                                    grid: { drawOnChartArea: false }
+                                }
+                            }
+                        }
+                    });
                 } else {
-                    potBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    potEmpty.style.display = 'block';
+                    potCanvas.style.display = 'none';
                 }
 
                 // Stop Loss Deep Dive
@@ -3225,6 +3280,11 @@
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
                 document.getElementById('config-momentum-short-rsi-min').value = config.thresholds.momentum_short_rsi_min !== undefined ? config.thresholds.momentum_short_rsi_min : 30;
                 document.getElementById('config-momentum-adx-max').value = config.thresholds.momentum_adx_max !== undefined ? config.thresholds.momentum_adx_max : 100;
+                document.getElementById('config-ema-gap-5-8-max').value = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
+                // Sync mirror elements for STRONG_BUY row
+                document.getElementById('config-adx-max-mirror').textContent = document.getElementById('config-momentum-adx-max').value;
+                document.getElementById('config-ema-gap-min-mirror').textContent = document.getElementById('config-ema-gap-threshold').value;
+                document.getElementById('config-ema-gap-max-mirror').textContent = document.getElementById('config-ema-gap-5-8-max').value;
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-ema5-slope-enabled').checked = config.thresholds.ema5_slope_exit_enabled !== undefined ? config.thresholds.ema5_slope_exit_enabled : true;
@@ -3282,6 +3342,17 @@
 
         document.getElementById('config-investment-mode').addEventListener('change', updateInvestmentUnit);
         document.getElementById('config-reserve-mode').addEventListener('change', updateReserveUnit);
+
+        // Sync mirror elements in STRONG_BUY row when primary inputs change
+        document.getElementById('config-momentum-adx-max').addEventListener('input', function() {
+            document.getElementById('config-adx-max-mirror').textContent = this.value;
+        });
+        document.getElementById('config-ema-gap-threshold').addEventListener('input', function() {
+            document.getElementById('config-ema-gap-min-mirror').textContent = this.value;
+        });
+        document.getElementById('config-ema-gap-5-8-max').addEventListener('input', function() {
+            document.getElementById('config-ema-gap-max-mirror').textContent = this.value;
+        });
 
         // Locale-safe float parser: handles comma decimal separators (e.g. "0,018" -> 0.018)
         function safeFloat(val) {
@@ -3343,6 +3414,7 @@
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),
                     momentum_short_rsi_min: safeFloat(document.getElementById('config-momentum-short-rsi-min').value),
                     momentum_adx_max: safeFloat(document.getElementById('config-momentum-adx-max').value),
+                    ema_gap_5_8_max: safeFloat(document.getElementById('config-ema-gap-5-8-max').value),
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     ema5_slope_exit_enabled: document.getElementById('config-ema5-slope-enabled').checked,

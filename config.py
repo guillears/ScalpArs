@@ -63,6 +63,7 @@ class SignalThresholds(BaseModel):
     
     # Momentum signal thresholds (EMA5/EMA8 gap)
     ema_gap_threshold: float = 3.0  # % minimum EMA5-EMA8 gap for momentum signals
+    ema_gap_5_8_max: float = 0.0  # Max EMA5-EMA8 gap % for entry (0 = disabled)
     adx_strong: float = 16.0  # ADX threshold for STRONG_BUY
     adx_very_strong: float = 30.0  # ADX threshold for VERY_STRONG
     momentum_ema20_filter_long: bool = True

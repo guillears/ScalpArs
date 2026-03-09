@@ -218,8 +218,11 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] LONG skipped: ADX {adx:.1f} > max {adx_max}")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
+                ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
-                if gap_threshold_met:
+                if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
+                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
+                elif gap_threshold_met:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("LONG", "VERY_STRONG"):
                             logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
@@ -243,8 +246,11 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] SHORT skipped: ADX {adx:.1f} > max {adx_max}")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
+                ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
-                if gap_threshold_met:
+                if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
+                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
+                elif gap_threshold_met:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "VERY_STRONG"):
                             logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}")

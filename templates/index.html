@@ -3688,12 +3688,12 @@
 
         function btInitDefaultStrategies() {
             btAddStrategy('Baseline', {});
-            btAddStrategy('SHORT Only', { trade_mode: 'short' });
-            btAddStrategy('LONG Only', { trade_mode: 'long' });
-            btAddStrategy('Tight Gap 0.15-0.30', { gap_max: 0.30 });
-            btAddStrategy('High ADX Floor', { adx_strong: 28 });
-            btAddStrategy('SHORT + ADX 28', { trade_mode: 'short', adx_strong: 28 });
-            btAddStrategy('SHORT + Tight RSI', { trade_mode: 'short', momentum_short_rsi_min: 35, momentum_short_rsi_max: 48 });
+            btAddStrategy('No Breakeven', { breakeven_trigger: 99.0 });
+            btAddStrategy('Higher BE 0.30', { breakeven_trigger: 0.30, breakeven_offset: 0.10 });
+            btAddStrategy('Tight SL 0.20', { stop_loss: -0.20, signal_active_sl: -0.25 });
+            btAddStrategy('SHORT + No BE', { trade_mode: 'short', breakeven_trigger: 99.0 });
+            btAddStrategy('SHORT + Tight SL', { trade_mode: 'short', stop_loss: -0.20, signal_active_sl: -0.25 });
+            btAddStrategy('SHORT + High BE + Tight SL', { trade_mode: 'short', stop_loss: -0.25, signal_active_sl: -0.30, breakeven_trigger: 0.25, breakeven_offset: 0.08 });
         }
         function btCollectStrategies() {
             const strats = [];

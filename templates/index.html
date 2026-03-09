@@ -956,8 +956,12 @@
                                         <span class="ml-1">%</span>
                                     </label>
                                     <label class="flex items-center text-sm text-gray-400">
-                                        P&L Ratio
+                                        Ratio (no signal)
                                         <input type="number" step="0.05" min="0" max="1" id="config-pnl-trailing-ratio" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
+                                    </label>
+                                    <label class="flex items-center text-sm text-gray-400">
+                                        Ratio (signal)
+                                        <input type="number" step="0.05" min="0" max="1" id="config-pnl-trailing-ratio-signal" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.3">
                                     </label>
                                 </div>
                                 <div class="flex items-center gap-4">
@@ -973,7 +977,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">P&L Trigger: min peak P&L % to activate trailing | P&L Ratio: exit when P&L drops to this fraction of peak | Slope: fallback on EMA5 reversal (0 = full reversal)</p>
+                            <p class="text-xs text-gray-500 mt-1">P&L Trigger: min peak P&L % to activate trailing | Ratio (no signal): MOMENTUM_EXIT, tighter | Ratio (signal): PNL_TRAILING, wider | Slope: EMA5 reversal exit</p>
                         </div>
                     </div>
                 </div>
@@ -1910,7 +1914,7 @@
 
                 lines.push('\nMomentum Exit:');
                 lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
-                lines.push(`  P&L Trigger: ${th.pnl_trailing_trigger}%  |  P&L Ratio: ${th.pnl_trailing_ratio}`);
+                lines.push(`  P&L Trigger: ${th.pnl_trailing_trigger}%  |  Ratio (no signal): ${th.pnl_trailing_ratio}  |  Ratio (signal): ${th.pnl_trailing_ratio_signal_active}`);
                 lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Min Profit: ${th.signal_lost_min_profit}%`);
 
                 lines.push('\nConfidence Levels:');
@@ -3294,6 +3298,7 @@
                 document.getElementById('config-ema5-slope-threshold').value = config.thresholds.ema5_slope_threshold !== undefined ? config.thresholds.ema5_slope_threshold : 0;
                 document.getElementById('config-pnl-trailing-trigger').value = config.thresholds.pnl_trailing_trigger !== undefined ? config.thresholds.pnl_trailing_trigger : 0.1;
                 document.getElementById('config-pnl-trailing-ratio').value = config.thresholds.pnl_trailing_ratio !== undefined ? config.thresholds.pnl_trailing_ratio : 0.5;
+                document.getElementById('config-pnl-trailing-ratio-signal').value = config.thresholds.pnl_trailing_ratio_signal_active !== undefined ? config.thresholds.pnl_trailing_ratio_signal_active : 0.3;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -3423,7 +3428,8 @@
                     ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3,
                     ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value),
                     pnl_trailing_trigger: safeFloat(document.getElementById('config-pnl-trailing-trigger').value),
-                    pnl_trailing_ratio: safeFloat(document.getElementById('config-pnl-trailing-ratio').value)
+                    pnl_trailing_ratio: safeFloat(document.getElementById('config-pnl-trailing-ratio').value),
+                    pnl_trailing_ratio_signal_active: safeFloat(document.getElementById('config-pnl-trailing-ratio-signal').value)
                 },
                 confidence_levels: {}
             };

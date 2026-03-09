@@ -726,21 +726,26 @@ class TradingEngine:
             _notional = order.entry_price * order.quantity if order.quantity > 0 else 1
             pnl_pct = (_net_pnl / _notional) * 100
 
-            # MOMENTUM_EXIT: P&L trailing stop
+            # P&L trailing stop: PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
+            pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
             if pnl_trigger > 0 and pnl_ratio > 0 and realtime_peak >= pnl_trigger:
-                pnl_exit_level = realtime_peak * pnl_ratio
+                signal_active = pair_data and pair_data.signal == order.direction
+                effective_ratio = pnl_ratio_active if signal_active else pnl_ratio
+                pnl_exit_level = realtime_peak * effective_ratio
                 if pnl_pct <= pnl_exit_level:
                     tp_level = order.current_tp_level or 1
-                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: P&L trailing: pnl={pnl_pct:.4f}% <= peak={realtime_peak:.4f}%*{pnl_ratio}={pnl_exit_level:.4f}%")
-                    closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
+                    exit_reason = "PNL_TRAILING" if signal_active else "MOMENTUM_EXIT"
+                    ratio_tag = f"{effective_ratio}({'signal' if signal_active else 'no-signal'})"
+                    logger.info(f"[{exit_reason}] {order.pair} {order.direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={realtime_peak:.4f}%*{ratio_tag}={pnl_exit_level:.4f}%")
+                    closed_order = await self.close_position(db, order, current_price, f"{exit_reason} L{tp_level}")
                     if closed_order:
                         updates.append({
                             "order_id": closed_order.id,
                             "pair": closed_order.pair,
                             "action": "CLOSED",
-                            "reason": f"MOMENTUM_EXIT L{tp_level}",
+                            "reason": f"{exit_reason} L{tp_level}",
                             "pnl": closed_order.pnl,
                             "tp_level": tp_level
                         })

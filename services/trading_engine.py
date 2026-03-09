@@ -1211,14 +1211,19 @@ class TradingEngine:
             if pnl_pct < cached_trough_pnl:
                 order_info['trough_pnl'] = pnl_pct
 
-            # Real-time MOMENTUM_EXIT: P&L trailing stop
+            # Real-time P&L trailing stop: PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
+            pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
             if pnl_trigger > 0 and pnl_ratio > 0 and cached_peak_pnl >= pnl_trigger:
-                pnl_exit_level = cached_peak_pnl * pnl_ratio
+                rt_signal_active = order_info.get('pair_signal') == direction
+                rt_effective_ratio = pnl_ratio_active if rt_signal_active else pnl_ratio
+                pnl_exit_level = cached_peak_pnl * rt_effective_ratio
                 if pnl_pct <= pnl_exit_level:
                     tp_level = order_info.get('current_tp_level', 1)
-                    logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={cached_peak_pnl:.4f}%*{pnl_ratio}={pnl_exit_level:.4f}%, price={current_price:.6f} - CLOSING NOW!")
+                    rt_exit_reason = "PNL_TRAILING" if rt_signal_active else "MOMENTUM_EXIT"
+                    rt_ratio_tag = f"{rt_effective_ratio}({'signal' if rt_signal_active else 'no-signal'})"
+                    logger.warning(f"[REALTIME_{rt_exit_reason}] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={cached_peak_pnl:.4f}%*{rt_ratio_tag}={pnl_exit_level:.4f}%, price={current_price:.6f} - CLOSING NOW!")
                     try:
                         async with AsyncSessionLocal() as db:
                             result = await db.execute(
@@ -1230,16 +1235,16 @@ class TradingEngine:
                             if order:
                                 await self.close_position(
                                     db, order, current_price,
-                                    f"MOMENTUM_EXIT L{tp_level}"
+                                    f"{rt_exit_reason} L{tp_level}"
                                 )
-                                logger.info(f"[REALTIME_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%, peak was {cached_peak_pnl:.4f}%")
+                                logger.info(f"[REALTIME_{rt_exit_reason}] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%, peak was {cached_peak_pnl:.4f}%")
                                 async with _cache_lock:
                                     _open_orders_cache[pair] = [
                                         o for o in _open_orders_cache.get(pair, [])
                                         if o['id'] != order_id
                                     ]
                     except Exception as e:
-                        logger.error(f"[REALTIME_MOMENTUM_EXIT] Error closing {pair}: {e}")
+                        logger.error(f"[REALTIME_{rt_exit_reason}] Error closing {pair}: {e}")
                     continue
             
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled)

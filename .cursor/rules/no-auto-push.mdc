@@ -1,0 +1,13 @@
+---
+description: Never push to remote unless the user explicitly says to push
+alwaysApply: true
+---
+
+# Git Push Policy
+
+NEVER run `git push` unless the user explicitly requests it with words like "push", "push it", "push to remote", etc.
+
+- Committing locally is fine when asked to commit.
+- Pushing is a separate action that requires explicit user permission every time.
+- Do NOT combine commit and push in a single command unless the user explicitly asked for both.
+- When in doubt, commit only and confirm before pushing.

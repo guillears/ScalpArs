@@ -744,7 +744,6 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
             "never_positive_deep_dive": [],
-            "signal_lost_deep_dive": [],
             "performance_over_time": [],
             "_error": str(e)
         }
@@ -909,7 +908,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
             "never_positive_deep_dive": [],
-            "signal_lost_deep_dive": [],
             "performance_over_time": []
         }
     
@@ -1289,8 +1287,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "signal_active": sig_active,
                 "signal_inactive": sig_inactive,
                 "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
-                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
-                "avg_duration": calc_avg_duration(data["trades"])
+                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
@@ -1496,8 +1493,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     return None
                 total_pnl = sum(o.pnl or 0 for o in bucket_orders)
                 avg_close = sum(o.pnl_percentage or 0 for o in bucket_orders) / count
-                peaks = [o.peak_pnl or 0 for o in bucket_orders]
-                sig_loss_pnls = [o.pnl_at_signal_loss for o in bucket_orders if o.pnl_at_signal_loss is not None]
                 gaps = [o.entry_gap for o in bucket_orders if o.entry_gap is not None]
                 gaps58 = [o.entry_ema_gap_5_8 for o in bucket_orders if o.entry_ema_gap_5_8 is not None]
                 rsis = [o.entry_rsi for o in bucket_orders if o.entry_rsi is not None]
@@ -1512,17 +1507,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     by_reason[r] = by_reason.get(r, 0) + 1
                 sig_active = sum(1 for o in bucket_orders if o.signal_active_at_close is True)
                 sig_inactive = sum(1 for o in bucket_orders if o.signal_active_at_close is False)
-                avg_peak = round(sum(peaks) / len(peaks), 4) if peaks else 0
-                avg_sig_loss_pnl = round(sum(sig_loss_pnls) / len(sig_loss_pnls), 4) if sig_loss_pnls else None
                 return {
                     "dimension": label,
                     "value": dimension_value,
                     "direction": direction,
                     "count": count,
                     "avg_close_pnl": round(avg_close, 4),
-                    "avg_peak_pnl": avg_peak,
-                    "avg_pnl_at_signal_loss": avg_sig_loss_pnl,
-                    "avg_pullback": round(avg_peak - avg_close, 4),
                     "total_pnl_usd": round(total_pnl, 2),
                     "avg_pnl_usd": round(total_pnl / count, 2),
                     "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
@@ -1594,69 +1584,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Never Positive deep dive: {e}\n{traceback.format_exc()}")
 
-    # --- Signal Lost Deep Dive ---
-    signal_lost_deep_dive = []
-    try:
-        sl_trades = [o for o in orders if o.signal_lost_at is not None]
-        if sl_trades:
-            for direction in ["LONG", "SHORT"]:
-                dir_trades = [o for o in sl_trades if (o.direction or "LONG") == direction]
-                row = _np_bucket_stats(dir_trades, "Direction", direction, direction)
-                if row:
-                    signal_lost_deep_dive.append(row)
-
-            for conf in ["VERY_STRONG", "STRONG_BUY"]:
-                for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in sl_trades if (o.confidence or "LOW") == conf and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "Confidence", conf, direction)
-                    if row:
-                        signal_lost_deep_dive.append(row)
-
-            sl_adx_ranges = [("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-50", 40, 50)]
-            sl_adx_trades = [o for o in sl_trades if o.entry_adx is not None]
-            for rng, lo, hi in sl_adx_ranges:
-                for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in sl_adx_trades if lo <= o.entry_adx < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "ADX", rng, direction)
-                    if row:
-                        signal_lost_deep_dive.append(row)
-
-            sl_rsi_ranges = [("30-40", 30, 40), ("40-50", 40, 50), ("50-60", 50, 60), ("60-70", 60, 70), ("70-80", 70, 80)]
-            sl_rsi_trades = [o for o in sl_trades if o.entry_rsi is not None]
-            for rng, lo, hi in sl_rsi_ranges:
-                for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in sl_rsi_trades if lo <= o.entry_rsi < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "RSI", rng, direction)
-                    if row:
-                        signal_lost_deep_dive.append(row)
-
-            sl_gap58_ranges = [("0.02-0.05%", 0.02, 0.05), ("0.05-0.10%", 0.05, 0.10), ("0.10-0.20%", 0.10, 0.20), (">0.20%", 0.20, 999)]
-            sl_gap58_trades = [o for o in sl_trades if o.entry_ema_gap_5_8 is not None]
-            for rng, lo, hi in sl_gap58_ranges:
-                for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in sl_gap58_trades if lo <= o.entry_ema_gap_5_8 < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "EMA5-EMA8 Gap", rng, direction)
-                    if row:
-                        signal_lost_deep_dive.append(row)
-
-            sl_gap_ranges = [("0.15-0.25%", 0.15, 0.25), ("0.25-0.35%", 0.25, 0.35), ("0.35-0.50%", 0.35, 0.50), ("0.50-0.80%", 0.50, 0.80), (">0.80%", 0.80, 999)]
-            sl_gap_trades = [o for o in sl_trades if o.entry_gap is not None]
-            for rng, lo, hi in sl_gap_ranges:
-                for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in sl_gap_trades if lo <= o.entry_gap < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "Entry Gap", rng, direction)
-                    if row:
-                        signal_lost_deep_dive.append(row)
-
-            for reason_key in ["STOP_LOSS", "STOP_LOSS_WIDE", "MOMENTUM_EXIT", "SIGNAL_LOST", "BREAKEVEN_SL"]:
-                for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in sl_trades if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "Close Reason", reason_key, direction)
-                    if row:
-                        signal_lost_deep_dive.append(row)
-    except Exception as e:
-        logger.error(f"[PERF] Error computing Signal Lost deep dive: {e}\n{traceback.format_exc()}")
-
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -1706,7 +1633,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "winning_trades_drawdown": winning_trades_drawdown,
         "rsi_adx_crosstab": rsi_adx_crosstab,
         "never_positive_deep_dive": never_positive_deep_dive,
-        "signal_lost_deep_dive": signal_lost_deep_dive,
         "performance_over_time": _compute_time_buckets(orders)
     }
 

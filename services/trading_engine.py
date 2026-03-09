@@ -765,11 +765,6 @@ class TradingEngine:
                     })
                 continue
 
-            # Track signal loss moment (once) for analytics, regardless of exit setting
-            if pair_data and pair_data.signal != order.direction and order.signal_lost_at is None:
-                order.signal_lost_at = datetime.utcnow()
-                order.pnl_at_signal_loss = round(pnl_pct, 4)
-
             # SIGNAL_LOST: full signal no longer matches entry direction while in small profit
             signal_lost_enabled = getattr(config.trading_config.thresholds, 'signal_lost_exit_enabled', True)
             if signal_lost_enabled and pair_data and pair_data.signal != order.direction:

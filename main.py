@@ -1287,7 +1287,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "signal_active": sig_active,
                 "signal_inactive": sig_inactive,
                 "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
-                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None
+                "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+                "avg_duration": calc_avg_duration(data["trades"])
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
@@ -1309,6 +1310,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         sl_orders = [o for o in orders if o.close_reason and (o.pnl or 0) <= 0 and (
             o.close_reason.startswith("STOP_LOSS") or
             o.close_reason.startswith("MOMENTUM_EXIT") or
+            o.close_reason.startswith("SLOPE_EXIT") or
             o.close_reason.startswith("SIGNAL_LOST") or
             o.close_reason.startswith("BREAKEVEN_SL")
         )]
@@ -1575,7 +1577,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            for reason_key in ["STOP_LOSS", "STOP_LOSS_WIDE", "MOMENTUM_EXIT", "SIGNAL_LOST"]:
+            for reason_key in ["STOP_LOSS", "STOP_LOSS_WIDE", "MOMENTUM_EXIT", "SLOPE_EXIT", "SIGNAL_LOST"]:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_trades if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction]
                     row = _np_bucket_stats(bucket, "Close Reason", reason_key, direction)

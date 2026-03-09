@@ -726,44 +726,47 @@ class TradingEngine:
             _notional = order.entry_price * order.quantity if order.quantity > 0 else 1
             pnl_pct = (_net_pnl / _notional) * 100
 
-            # MOMENTUM_EXIT: P&L trailing (primary) + slope reversal (fallback)
-            ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
-            should_exit_momentum = False
-            exit_reason_detail = ""
-
-            # Primary: P&L trailing stop
+            # MOMENTUM_EXIT: P&L trailing stop
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
             if pnl_trigger > 0 and pnl_ratio > 0 and realtime_peak >= pnl_trigger:
                 pnl_exit_level = realtime_peak * pnl_ratio
                 if pnl_pct <= pnl_exit_level:
-                    should_exit_momentum = True
-                    exit_reason_detail = f"P&L trailing: pnl={pnl_pct:.4f}% <= peak={realtime_peak:.4f}%*{pnl_ratio}={pnl_exit_level:.4f}%"
+                    tp_level = order.current_tp_level or 1
+                    logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: P&L trailing: pnl={pnl_pct:.4f}% <= peak={realtime_peak:.4f}%*{pnl_ratio}={pnl_exit_level:.4f}%")
+                    closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
+                    if closed_order:
+                        updates.append({
+                            "order_id": closed_order.id,
+                            "pair": closed_order.pair,
+                            "action": "CLOSED",
+                            "reason": f"MOMENTUM_EXIT L{tp_level}",
+                            "pnl": closed_order.pnl,
+                            "tp_level": tp_level
+                        })
+                    continue
 
-            # Fallback: EMA5 slope reversal
-            if not should_exit_momentum and ema5_slope_enabled and pair_data and pair_data.ema5 is not None:
+            # SLOPE_EXIT: EMA5 slope reversal
+            ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
+            if ema5_slope_enabled and pair_data and pair_data.ema5 is not None:
                 if pair_data.ema5_prev3 is not None and pair_data.ema5_prev3 != 0:
                     ema5_slope_pct = ((pair_data.ema5 - pair_data.ema5_prev3) / pair_data.ema5_prev3) * 100
                     slope_threshold = getattr(config.trading_config.thresholds, 'ema5_slope_threshold', 0.0)
                     if (order.direction == "LONG" and ema5_slope_pct <= slope_threshold) or \
                        (order.direction == "SHORT" and ema5_slope_pct >= -slope_threshold):
-                        should_exit_momentum = True
-                        exit_reason_detail = f"slope reversal: slope={ema5_slope_pct:.4f}% (threshold={slope_threshold}%)"
-
-            if should_exit_momentum:
-                tp_level = order.current_tp_level or 1
-                logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: {exit_reason_detail}")
-                closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
-                if closed_order:
-                    updates.append({
-                        "order_id": closed_order.id,
-                        "pair": closed_order.pair,
-                        "action": "CLOSED",
-                        "reason": f"MOMENTUM_EXIT L{tp_level}",
-                        "pnl": closed_order.pnl,
-                        "tp_level": tp_level
-                    })
-                continue
+                        tp_level = order.current_tp_level or 1
+                        logger.info(f"[SLOPE_EXIT] {order.pair} {order.direction} L{tp_level}: slope={ema5_slope_pct:.4f}% (threshold={slope_threshold}%)")
+                        closed_order = await self.close_position(db, order, current_price, f"SLOPE_EXIT L{tp_level}")
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id,
+                                "pair": closed_order.pair,
+                                "action": "CLOSED",
+                                "reason": f"SLOPE_EXIT L{tp_level}",
+                                "pnl": closed_order.pnl,
+                                "tp_level": tp_level
+                            })
+                        continue
 
             # SIGNAL_LOST: full signal no longer matches entry direction while in small profit
             signal_lost_enabled = getattr(config.trading_config.thresholds, 'signal_lost_exit_enabled', True)

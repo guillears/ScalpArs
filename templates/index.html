@@ -420,11 +420,12 @@
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
                                         <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price (comparable to pullback_trigger)">Avg Pullback %</th>
                                         <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                        <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
                                         <th class="px-3 py-2 font-medium text-center" title="Was the entry signal still active when trade closed?">Signal</th>
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -636,6 +637,38 @@
                             </thead>
                             <tbody id="never-positive-deep-dive-body" class="divide-y divide-white/5">
                                 <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Signal Lost Deep Dive -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Signal Lost Deep Dive</h3>
+                    <p class="text-xs text-gray-500 mb-3">All trades where the entry signal was lost — compare peak P&L, P&L at signal loss, and final close P&L to tune exit triggers</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Dimension</th>
+                                    <th class="px-3 py-2 font-medium">Value</th>
+                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Peak%</th>
+                                    <th class="px-3 py-2 font-medium text-right">P&L@SigLoss</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Close%</th>
+                                    <th class="px-3 py-2 font-medium text-right">Pullback%</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap 5-8</th>
+                                    <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="signal-lost-deep-dive-body" class="divide-y divide-white/5">
+                                <tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1957,14 +1990,14 @@
                 // --- CLOSING REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)}`);
                 for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
                     const gapStr = r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-';
                     const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
-                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -2033,6 +2066,18 @@
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
                         lines.push(`${(r.dimension||'').padEnd(16)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
+                    }
+                }
+
+                // --- SIGNAL LOST DEEP DIVE ---
+                if (perf.signal_lost_deep_dive && perf.signal_lost_deep_dive.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Signal Lost Deep Dive\n');
+                    lines.push(`${'Dimension'.padEnd(16)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Peak%'.padEnd(10)} ${'@SigLoss'.padEnd(10)} ${'Close%'.padEnd(10)} ${'Pullback'.padEnd(10)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(12)}`);
+                    for (const r of perf.signal_lost_deep_dive) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        const sigLossStr = r.avg_pnl_at_signal_loss != null ? (r.avg_pnl_at_signal_loss.toFixed(4) + '%') : '-';
+                        lines.push(`${(r.dimension||'').padEnd(16)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${((r.avg_peak_pnl||0).toFixed(4)+'%').padStart(9)} ${sigLossStr.padStart(9)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${((r.avg_pullback||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(12)}`);
                     }
                 }
 
@@ -2347,12 +2392,13 @@
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${stats.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(stats.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center text-gray-400 text-xs">${stats.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center text-xs">${(stats.signal_active || 0) + (stats.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${stats.signal_active || 0}</span>/<span class="text-red-400">${stats.signal_inactive || 0}</span>` : '-'}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap
@@ -2589,6 +2635,58 @@
                     }).join('');
                 } else {
                     npBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
+                // Signal Lost Deep Dive
+                const slBody = document.getElementById('signal-lost-deep-dive-body');
+                if (data.signal_lost_deep_dive && data.signal_lost_deep_dive.length > 0) {
+                    const slConfColors = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    const slDimColors = {
+                        'Direction': 'text-cyan-400', 'Confidence': 'text-pink-400', 'ADX': 'text-orange-400',
+                        'RSI': 'text-purple-400', 'EMA5-EMA8 Gap': 'text-yellow-400', 'Entry Gap': 'text-emerald-400',
+                        'Close Reason': 'text-red-400'
+                    };
+                    let slLastDim = '';
+                    slBody.innerHTML = data.signal_lost_deep_dive.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const peakClass = r.avg_peak_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const sigLossClass = r.avg_pnl_at_signal_loss != null ? (r.avg_pnl_at_signal_loss >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
+                        const closeClass = r.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pullbackClass = r.avg_pullback > 0 ? 'text-red-400' : 'text-emerald-400';
+                        const totalClass = r.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const dimColor = slDimColors[r.dimension] || 'text-gray-300';
+                        const showDim = r.dimension !== slLastDim;
+                        slLastDim = r.dimension;
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${slConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
+                        const separator = showDim ? 'border-t border-white/10' : '';
+                        return `
+                            <tr class="hover:bg-white/5 ${separator}">
+                                <td class="px-3 py-2 font-medium ${dimColor}">${showDim ? r.dimension : ''}</td>
+                                <td class="px-3 py-2 font-medium text-white">${r.value}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction || '-'}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-right ${peakClass}">${r.avg_peak_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${sigLossClass}">${r.avg_pnl_at_signal_loss != null ? r.avg_pnl_at_signal_loss.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${closeClass}">${r.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${pullbackClass}">${r.avg_pullback.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_adx != null ? r.avg_entry_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_entry_gap58 != null ? r.avg_entry_gap58.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center text-gray-400">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    slBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Performance Over Time Chart

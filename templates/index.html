@@ -1649,8 +1649,8 @@
                 <!-- Run button -->
                 <div class="flex items-center space-x-4">
                     <button id="bt-run-btn" onclick="btRunBacktest()" class="px-6 py-2.5 rounded-lg font-semibold bg-cyan-500 hover:bg-cyan-600 text-white transition flex items-center space-x-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
-                        <span>Run Backtest</span>
+                        <span id="bt-btn-icon"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg></span>
+                        <span id="bt-btn-text">Run Backtest</span>
                     </button>
                     <span id="bt-status" class="text-sm text-gray-500"></span>
                 </div>
@@ -1659,7 +1659,10 @@
                 <div id="bt-results" class="hidden space-y-5">
                     <!-- Comparison table -->
                     <div>
-                        <h3 class="text-sm font-semibold text-gray-300 mb-2">Strategy Comparison</h3>
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-semibold text-gray-300">Strategy Comparison</h3>
+                            <button id="bt-copy-btn" onclick="btCopyResults()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded transition-colors">Copy Backtest Results</button>
+                        </div>
                         <div class="overflow-x-auto scrollbar-thin">
                             <table class="w-full text-sm">
                                 <thead class="bg-white/5">
@@ -1722,6 +1725,7 @@
             loadOpenOrders();
             loadClosedOrders();
             loadConfig();
+            btLoadLiveConfig();
 
             // Auto-refresh every 10 seconds
             setInterval(() => {
@@ -3570,13 +3574,39 @@
         // ========== Backtest Engine ==========
         let btStrategyCount = 0;
         let btEquityChart = null;
+        let btLastResults = null;
+        let btLastMeta = null;
+        let btLiveConfig = null;
         const BT_COLORS = ['#06b6d4','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
+
+        async function btLoadLiveConfig() {
+            try {
+                const res = await fetch(`${API_BASE}/api/config`);
+                btLiveConfig = await res.json();
+            } catch (e) { console.error('Failed to load config for backtest placeholders', e); }
+        }
+
+        function btGetPlaceholder(p) {
+            if (!btLiveConfig) return '';
+            if (p.section === 'thresholds') {
+                const v = (btLiveConfig.thresholds || {})[p.key];
+                return v !== undefined ? v : '';
+            }
+            if (p.section === 'confidence_levels' && p.per_conf) {
+                const first = Object.values(btLiveConfig.confidence_levels || {}).find(c => c.enabled);
+                if (first) { const v = first[p.key]; return v !== undefined ? v : ''; }
+            }
+            return '';
+        }
 
         const BT_PARAMS = [
             { key: 'stop_loss', label: 'Stop Loss %', section: 'confidence_levels', per_conf: true, step: 0.01 },
             { key: 'signal_active_sl', label: 'Signal SL %', section: 'confidence_levels', per_conf: true, step: 0.01 },
             { key: 'breakeven_trigger', label: 'BE Trigger %', section: 'confidence_levels', per_conf: true, step: 0.01 },
             { key: 'breakeven_offset', label: 'BE Offset %', section: 'confidence_levels', per_conf: true, step: 0.01 },
+            { key: 'tp_min', label: 'TP Min %', section: 'confidence_levels', per_conf: true, step: 0.05 },
+            { key: 'pullback_trigger', label: 'Pullback %', section: 'confidence_levels', per_conf: true, step: 0.01 },
+            { key: 'tp_trailing_enabled', label: 'TP Trailing', section: 'confidence_levels', per_conf: true, type: 'select' },
             { key: 'pnl_trailing_trigger', label: 'PnL Trail Trigger', section: 'thresholds', step: 0.01 },
             { key: 'pnl_trailing_ratio', label: 'PnL Ratio (no sig)', section: 'thresholds', step: 0.05 },
             { key: 'pnl_trailing_ratio_signal_active', label: 'PnL Ratio (sig)', section: 'thresholds', step: 0.05 },
@@ -3585,52 +3615,59 @@
             { key: 'momentum_adx_max', label: 'ADX Max', section: 'thresholds', step: 5 },
         ];
 
-        function btAddStrategy() {
+        function btAddStrategy(presetName, presetValues) {
             btStrategyCount++;
             const idx = btStrategyCount;
+            const name = presetName || `Strategy ${idx}`;
+            const vals = presetValues || {};
             const div = document.createElement('div');
             div.id = `bt-strat-${idx}`;
             div.className = 'glass rounded-lg p-4';
+
             const paramInputs = BT_PARAMS.map(p => {
-                if (p.per_conf) {
+                const ph = btGetPlaceholder(p);
+                const preset = vals[p.key];
+                if (p.type === 'select') {
+                    const phLabel = ph !== '' ? (ph ? 'on' : 'off') : '';
+                    const selVal = preset !== undefined ? (preset ? '1' : '0') : '';
                     return `<div class="col-span-1">
                         <label class="text-[10px] text-gray-500 block">${p.label}</label>
-                        <input type="number" step="${p.step}" placeholder="base" data-param="${p.key}" data-section="${p.section}" class="bt-param w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white">
+                        <select data-param="${p.key}" data-section="${p.section}" data-type="bool" class="bt-param w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white">
+                            <option value="" ${selVal===''?'selected':''}>${phLabel ? phLabel : 'base'}</option>
+                            <option value="1" ${selVal==='1'?'selected':''}>on</option>
+                            <option value="0" ${selVal==='0'?'selected':''}>off</option>
+                        </select>
                     </div>`;
                 }
+                const presetVal = preset !== undefined ? preset : '';
                 return `<div class="col-span-1">
                     <label class="text-[10px] text-gray-500 block">${p.label}</label>
-                    <input type="number" step="${p.step}" placeholder="base" data-param="${p.key}" data-section="${p.section}" class="bt-param w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white">
+                    <input type="number" step="${p.step}" placeholder="${ph}" value="${presetVal}" data-param="${p.key}" data-section="${p.section}" class="bt-param w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white placeholder-gray-600">
                 </div>`;
             }).join('');
 
+            const isBaseline = name === 'Baseline' && Object.keys(vals).length === 0;
+
             div.innerHTML = `
                 <div class="flex items-center justify-between mb-2">
-                    <input type="text" value="Strategy ${idx}" class="bt-strat-name bg-transparent text-sm font-medium text-white border-b border-white/20 focus:border-cyan-400 outline-none w-48 px-1">
+                    <input type="text" value="${name}" class="bt-strat-name bg-transparent text-sm font-medium text-white border-b border-white/20 focus:border-cyan-400 outline-none w-48 px-1">
                     <button onclick="document.getElementById('bt-strat-${idx}').remove()" class="text-gray-500 hover:text-red-400 text-xs">Remove</button>
                 </div>
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
-                    ${paramInputs}
-                </div>
-                <p class="text-[10px] text-gray-600 mt-1">Empty fields use current live config values</p>
+                ${isBaseline ? '<p class="text-[10px] text-gray-500 mb-1">Uses current live config (no overrides)</p>' : `<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">${paramInputs}</div><p class="text-[10px] text-gray-600 mt-1">Empty fields use current live config values</p>`}
             `;
             document.getElementById('bt-strategies').appendChild(div);
         }
 
-        // Pre-add one "Baseline" strategy
-        (function() {
-            btStrategyCount++;
-            const div = document.createElement('div');
-            div.id = 'bt-strat-1';
-            div.className = 'glass rounded-lg p-4';
-            div.innerHTML = `
-                <div class="flex items-center justify-between mb-2">
-                    <input type="text" value="Baseline" class="bt-strat-name bg-transparent text-sm font-medium text-white border-b border-white/20 focus:border-cyan-400 outline-none w-48 px-1">
-                    <span class="text-[10px] text-gray-500">Uses current live config (no overrides)</span>
-                </div>
-            `;
-            document.getElementById('bt-strategies').appendChild(div);
-        })();
+        function btInitDefaultStrategies() {
+            btAddStrategy('Baseline', {});
+            btAddStrategy('Tighter SL -0.20', { stop_loss: -0.20, signal_active_sl: -0.30 });
+            btAddStrategy('Fast Breakeven', { breakeven_trigger: 0.06, breakeven_offset: 0.01 });
+            btAddStrategy('TP Trailing On', { tp_trailing_enabled: true, tp_min: 0.25, pullback_trigger: 0.05 });
+            btAddStrategy('Wider PNL Trail', { pnl_trailing_trigger: 0.15, pnl_trailing_ratio: 0.4, pnl_trailing_ratio_signal_active: 0.2 });
+            btAddStrategy('Strict ADX Entry', { momentum_adx_max: 40, ema_gap_threshold: 0.03 });
+            btAddStrategy('Combined Best', { stop_loss: -0.25, breakeven_trigger: 0.06, breakeven_offset: 0.01, tp_trailing_enabled: true, pnl_trailing_trigger: 0.15, pnl_trailing_ratio_signal_active: 0.2 });
+        }
+        btInitDefaultStrategies();
 
         function btCollectStrategies() {
             const strats = [];
@@ -3641,8 +3678,9 @@
                     if (input.value === '') return;
                     const section = input.dataset.section;
                     const param = input.dataset.param;
-                    const val = parseFloat(input.value);
-                    if (isNaN(val)) return;
+                    const isBool = input.dataset.type === 'bool';
+                    const val = isBool ? (input.value === '1') : parseFloat(input.value);
+                    if (!isBool && isNaN(val)) return;
                     if (!overrides[section]) overrides[section] = {};
                     if (section === 'confidence_levels') {
                         ['VERY_STRONG','STRONG_BUY','LOW','MEDIUM','HIGH','EXTREME'].forEach(lv => {
@@ -3670,8 +3708,10 @@
             if (strategies.length === 0) { showToast('Add at least one strategy', 'error'); return; }
 
             btn.disabled = true;
-            btn.classList.add('opacity-50');
-            status.textContent = `Running backtest (${days}d, ${pairs.length} pairs, ${strategies.length} strategies)...`;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            document.getElementById('bt-btn-icon').innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>';
+            document.getElementById('bt-btn-text').textContent = 'Running...';
+            status.textContent = `Fetching data & running backtest (${days}d, ${pairs.length} pairs, ${strategies.length} strategies)...`;
 
             try {
                 const res = await fetch(`${API_BASE}/api/backtest`, {
@@ -3684,8 +3724,10 @@
                     throw new Error(err.detail || 'Backtest failed');
                 }
                 const data = await res.json();
+                btLastResults = data.results;
+                btLastMeta = { pairs, days, balance, strategies: strategies.map(s => s.name) };
                 btRenderResults(data.results, balance);
-                status.textContent = `Completed in ${strategies.length} strategy run(s)`;
+                status.textContent = `Completed — ${strategies.length} strategy run(s)`;
                 showToast('Backtest completed');
             } catch (e) {
                 console.error(e);
@@ -3693,7 +3735,9 @@
                 showToast('Backtest failed: ' + e.message, 'error');
             } finally {
                 btn.disabled = false;
-                btn.classList.remove('opacity-50');
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                document.getElementById('bt-btn-icon').innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>';
+                document.getElementById('bt-btn-text').textContent = 'Run Backtest';
             }
         }
 
@@ -3742,6 +3786,11 @@
                     </div>
                     ${btDirectionTable(r.by_direction)}
                     ${btConfidenceTable(r.by_confidence)}
+                    ${btReasonByDirTable(r.close_reason_by_direction)}
+                    ${btRangeTable('Entry RSI Performance', r.rsi_performance)}
+                    ${btRangeTable('Entry ADX Performance', r.adx_performance)}
+                    ${btRangeTable('Entry Gap Performance', r.gap_performance)}
+                    ${btSlDeepDive(r.sl_deep_dive)}
                 </div>
             `).join('');
         }
@@ -3805,6 +3854,75 @@
                 </tr></thead><tbody>${rows}</tbody></table>`;
         }
 
+        function btReasonByDirTable(data) {
+            if (!data || data.length === 0) return '';
+            const rows = data.map(r => {
+                const c = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                return `<tr class="border-b border-white/5">
+                    <td class="px-3 py-1.5 font-medium">${r.reason}</td>
+                    <td class="px-3 py-1.5">${r.direction}</td>
+                    <td class="px-3 py-1.5 text-right">${r.trades}</td>
+                    <td class="px-3 py-1.5 text-right">${r.win_rate}%</td>
+                    <td class="px-3 py-1.5 text-right ${c}">${r.avg_pnl_pct.toFixed(4)}%</td>
+                    <td class="px-3 py-1.5 text-right ${c}">$${r.total_pnl.toFixed(2)}</td>
+                    <td class="px-3 py-1.5 text-right">${r.avg_duration}</td>
+                </tr>`;
+            }).join('');
+            return `<h4 class="text-xs font-semibold text-gray-400 mt-3 mb-1">Close Reason by Direction</h4>
+                <div class="overflow-x-auto scrollbar-thin"><table class="w-full text-xs"><thead class="bg-white/5"><tr class="text-gray-400 text-left">
+                    <th class="px-3 py-1">Reason</th><th class="px-3 py-1">Dir</th>
+                    <th class="px-3 py-1 text-right">Trades</th><th class="px-3 py-1 text-right">Win%</th>
+                    <th class="px-3 py-1 text-right">Avg P&L%</th><th class="px-3 py-1 text-right">Total P&L</th>
+                    <th class="px-3 py-1 text-right">Avg Dur</th>
+                </tr></thead><tbody>${rows}</tbody></table></div>`;
+        }
+
+        function btRangeTable(title, data) {
+            if (!data || data.length === 0) return '';
+            const rows = data.map(r => {
+                const c = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                return `<tr class="border-b border-white/5">
+                    <td class="px-3 py-1.5 font-medium">${r.range}</td>
+                    <td class="px-3 py-1.5">${r.direction}</td>
+                    <td class="px-3 py-1.5 text-right">${r.count}</td>
+                    <td class="px-3 py-1.5 text-right">${r.win_rate}%</td>
+                    <td class="px-3 py-1.5 text-right ${c}">$${r.avg_pnl.toFixed(2)}</td>
+                    <td class="px-3 py-1.5 text-right ${c}">$${r.total_pnl.toFixed(2)}</td>
+                </tr>`;
+            }).join('');
+            return `<h4 class="text-xs font-semibold text-gray-400 mt-3 mb-1">${title}</h4>
+                <div class="overflow-x-auto scrollbar-thin"><table class="w-full text-xs"><thead class="bg-white/5"><tr class="text-gray-400 text-left">
+                    <th class="px-3 py-1">Range</th><th class="px-3 py-1">Dir</th>
+                    <th class="px-3 py-1 text-right">Trades</th><th class="px-3 py-1 text-right">Win%</th>
+                    <th class="px-3 py-1 text-right">Avg P&L</th><th class="px-3 py-1 text-right">Total P&L</th>
+                </tr></thead><tbody>${rows}</tbody></table></div>`;
+        }
+
+        function btSlDeepDive(sl) {
+            if (!sl || sl.total_sl_trades === 0) return '';
+            const g = (group, label) => {
+                if (!group || group.count === 0) return '';
+                const c = group.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                return `<div class="glass rounded-lg p-3">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wide">${label}</p>
+                    <p class="text-lg font-bold text-white">${group.count}</p>
+                    <p class="text-[10px] text-gray-400">Avg Peak: ${(group.avg_peak_pnl||0).toFixed(4)}% | Avg Close: ${(group.avg_close_pnl||0).toFixed(4)}%</p>
+                    <p class="text-[10px] ${c}">P&L: $${(group.total_pnl||0).toFixed(2)}</p>
+                </div>`;
+            };
+            return `<h4 class="text-xs font-semibold text-gray-400 mt-3 mb-1">Stop Loss Deep Dive</h4>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div class="glass rounded-lg p-3">
+                        <p class="text-[10px] text-gray-500 uppercase tracking-wide">Total SL Trades</p>
+                        <p class="text-lg font-bold text-white">${sl.total_sl_trades}</p>
+                        <p class="text-[10px] text-gray-400">Avg Peak P&L: ${(sl.avg_peak_all_sl||0).toFixed(4)}%</p>
+                    </div>
+                    ${g(sl.be_was_active, 'BE Was Active')}
+                    ${g(sl.positive_no_be, 'Positive, No BE')}
+                    ${g(sl.never_positive, 'Never Positive')}
+                </div>`;
+        }
+
         function btRenderEquityChart(results) {
             const ctx = document.getElementById('bt-equity-chart').getContext('2d');
             if (btEquityChart) btEquityChart.destroy();
@@ -3852,6 +3970,113 @@
                     }
                 }
             });
+        }
+
+        async function btCopyResults() {
+            if (!btLastResults || !btLastMeta) { showToast('No backtest results to copy', 'error'); return; }
+            const btn = document.getElementById('bt-copy-btn');
+            btn.textContent = 'Copying...';
+            try {
+                const lines = [];
+                const hr = '='.repeat(80);
+                const hr2 = '-'.repeat(60);
+                const m = btLastMeta;
+
+                lines.push(hr);
+                lines.push('BACKTEST REPORT');
+                lines.push(`Generated: ${new Date().toISOString()}`);
+                lines.push(`Period: ${m.days} days  |  Pairs: ${m.pairs.join(', ')}  |  Initial Balance: $${m.balance}`);
+                lines.push(hr);
+
+                // Strategy Comparison
+                lines.push('\n## STRATEGY COMPARISON\n');
+                lines.push(`${'Strategy'.padEnd(20)} ${'Trades'.padStart(7)} ${'Win%'.padStart(7)} ${'Total P&L'.padStart(12)} ${'P&L%'.padStart(8)} ${'Avg P&L%'.padStart(10)} ${'Duration'.padStart(10)} ${'Final Bal'.padStart(12)}`);
+                lines.push(hr2);
+                for (const r of btLastResults) {
+                    lines.push(`${(r.name||'').padEnd(20)} ${String(r.total_trades).padStart(7)} ${(r.win_rate+'%').padStart(7)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${(r.total_pnl_pct.toFixed(2)+'%').padStart(8)} ${(r.avg_pnl_pct.toFixed(4)+'%').padStart(10)} ${(r.avg_duration||'-').padStart(10)} ${('$'+r.final_balance.toFixed(2)).padStart(12)}`);
+                }
+
+                // Per-strategy detail
+                for (const r of btLastResults) {
+                    lines.push(`\n${hr}`);
+                    lines.push(`## ${r.name}\n`);
+
+                    // Close reason
+                    lines.push('Closing Reason Summary:');
+                    lines.push(`  ${'Reason'.padEnd(20)} ${'Trades'.padStart(7)} ${'Avg P&L%'.padStart(10)} ${'Total P&L'.padStart(12)} ${'Duration'.padStart(10)} ${'Signal'.padStart(8)} ${'Direction'.padStart(12)}`);
+                    lines.push('  ' + hr2);
+                    for (const [reason, s] of Object.entries(r.by_close_reason || {})) {
+                        const dirs = Object.entries(s.by_direction||{}).map(([d,n])=>`${d[0]}:${n}`).join(' ');
+                        lines.push(`  ${reason.padEnd(20)} ${String(s.trades).padStart(7)} ${(s.avg_pnl_pct.toFixed(4)+'%').padStart(10)} ${('$'+s.total_pnl.toFixed(2)).padStart(12)} ${(s.avg_duration||'-').padStart(10)} ${(s.signal_active+'/'+s.signal_inactive).padStart(8)} ${dirs.padStart(12)}`);
+                    }
+
+                    // Direction
+                    if (r.by_direction && Object.keys(r.by_direction).length) {
+                        lines.push('\nBy Direction:');
+                        for (const [d, s] of Object.entries(r.by_direction)) {
+                            lines.push(`  ${d}: ${s.trades} trades, Win ${s.win_rate}%, P&L $${s.total_pnl.toFixed(2)}, Avg ${s.avg_pnl_pct.toFixed(4)}%`);
+                        }
+                    }
+
+                    // Confidence
+                    if (r.by_confidence && Object.keys(r.by_confidence).length) {
+                        lines.push('\nBy Confidence:');
+                        for (const [c, s] of Object.entries(r.by_confidence)) {
+                            lines.push(`  ${c}: ${s.trades} trades, Win ${s.win_rate}%, P&L $${s.total_pnl.toFixed(2)}`);
+                        }
+                    }
+
+                    // Close Reason by Direction
+                    if (r.close_reason_by_direction && r.close_reason_by_direction.length) {
+                        lines.push('\nClose Reason by Direction:');
+                        lines.push(`  ${'Reason'.padEnd(20)} ${'Dir'.padEnd(6)} ${'Trades'.padStart(7)} ${'Win%'.padStart(7)} ${'Avg P&L%'.padStart(10)} ${'Total P&L'.padStart(12)} ${'Avg Dur'.padStart(10)}`);
+                        lines.push('  ' + hr2);
+                        for (const x of r.close_reason_by_direction) {
+                            lines.push(`  ${x.reason.padEnd(20)} ${x.direction.padEnd(6)} ${String(x.trades).padStart(7)} ${(x.win_rate+'%').padStart(7)} ${(x.avg_pnl_pct.toFixed(4)+'%').padStart(10)} ${('$'+x.total_pnl.toFixed(2)).padStart(12)} ${(x.avg_duration||'-').padStart(10)}`);
+                        }
+                    }
+
+                    // Range performance helper
+                    const copyRange = (title, data) => {
+                        if (!data || !data.length) return;
+                        lines.push(`\n${title}:`);
+                        lines.push(`  ${'Range'.padEnd(12)} ${'Dir'.padEnd(6)} ${'Trades'.padStart(7)} ${'Win%'.padStart(7)} ${'Avg P&L'.padStart(10)} ${'Total P&L'.padStart(12)}`);
+                        lines.push('  ' + hr2);
+                        for (const x of data) {
+                            lines.push(`  ${x.range.padEnd(12)} ${x.direction.padEnd(6)} ${String(x.count).padStart(7)} ${(x.win_rate+'%').padStart(7)} ${('$'+x.avg_pnl.toFixed(2)).padStart(10)} ${('$'+x.total_pnl.toFixed(2)).padStart(12)}`);
+                        }
+                    };
+                    copyRange('Entry RSI Performance', r.rsi_performance);
+                    copyRange('Entry ADX Performance', r.adx_performance);
+                    copyRange('Entry Gap Performance', r.gap_performance);
+
+                    // SL Deep Dive
+                    if (r.sl_deep_dive && r.sl_deep_dive.total_sl_trades > 0) {
+                        const sl = r.sl_deep_dive;
+                        lines.push('\nStop Loss Deep Dive:');
+                        lines.push(`  Total SL trades: ${sl.total_sl_trades}, Avg Peak P&L: ${(sl.avg_peak_all_sl||0).toFixed(4)}%`);
+                        const slg = (g, label) => {
+                            if (g && g.count > 0) lines.push(`  ${label}: ${g.count} trades, Avg Peak ${(g.avg_peak_pnl||0).toFixed(4)}%, Avg Close ${(g.avg_close_pnl||0).toFixed(4)}%, P&L $${(g.total_pnl||0).toFixed(2)}`);
+                        };
+                        slg(sl.be_was_active, 'BE Was Active');
+                        slg(sl.positive_no_be, 'Positive No BE');
+                        slg(sl.never_positive, 'Never Positive');
+                    }
+                }
+
+                const text = lines.join('\n');
+                await navigator.clipboard.writeText(text);
+                btn.textContent = 'Copied!';
+                btn.classList.add('bg-emerald-600');
+                showToast('Backtest results copied to clipboard');
+                setTimeout(() => { btn.textContent = 'Copy Backtest Results'; btn.classList.remove('bg-emerald-600'); }, 2000);
+            } catch (err) {
+                console.error('Copy backtest failed:', err);
+                btn.textContent = 'Failed!';
+                btn.classList.add('bg-red-600');
+                showToast('Failed to copy results', 'error');
+                setTimeout(() => { btn.textContent = 'Copy Backtest Results'; btn.classList.remove('bg-red-600'); }, 2000);
+            }
         }
     </script>
 </body>

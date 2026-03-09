@@ -434,6 +434,11 @@ def _aggregate(trades: List[dict], initial_bal: float, final_bal: float) -> Dict
         "final_balance": round(final_bal, 2),
         "by_close_reason": {}, "by_direction": {}, "by_confidence": {},
         "equity_curve": [],
+        "close_reason_by_direction": [], "rsi_performance": [],
+        "adx_performance": [], "gap_performance": [],
+        "sl_deep_dive": {"total_sl_trades": 0, "avg_peak_all_sl": 0,
+                         "be_was_active": {"count": 0}, "never_positive": {"count": 0},
+                         "positive_no_be": {"count": 0}},
     }
     if not trades:
         return empty
@@ -507,6 +512,98 @@ def _aggregate(trades: List[dict], initial_bal: float, final_bal: float) -> Dict
         cum += t["pnl"]
         eq.append({"ts": t["closed_at"], "pnl": round(cum, 2)})
 
+    # Close reason split by LONG / SHORT
+    reason_by_dir: Dict[str, dict] = {}
+    for t in trades:
+        rk = (t["close_reason"] or "UNKNOWN").split(" L")[0]
+        d = t["direction"]
+        key = f"{rk}|{d}"
+        if key not in reason_by_dir:
+            reason_by_dir[key] = {"reason": rk, "direction": d, "n": 0, "pnl": 0.0,
+                                  "pcts": [], "durs": [], "wins": 0}
+        g = reason_by_dir[key]
+        g["n"] += 1
+        g["pnl"] += t["pnl"]
+        g["pcts"].append(t["pnl_pct"])
+        g["durs"].append((t["closed_at"] - t["opened_at"]) / 60_000)
+        if t["pnl"] > 0:
+            g["wins"] += 1
+    close_reason_by_direction = []
+    for g in reason_by_dir.values():
+        close_reason_by_direction.append({
+            "reason": g["reason"], "direction": g["direction"], "trades": g["n"],
+            "win_rate": round(g["wins"] / g["n"] * 100, 1),
+            "avg_pnl_pct": round(sum(g["pcts"]) / len(g["pcts"]), 4),
+            "total_pnl": round(g["pnl"], 2),
+            "avg_duration": _fmt_dur(sum(g["durs"]) / len(g["durs"])),
+        })
+
+    # Range-based performance helper
+    def _range_perf(field, ranges):
+        out = []
+        valid = [t for t in trades if t.get(field) is not None]
+        for name, lo, hi in ranges:
+            bucket = [t for t in valid if lo <= t[field] < hi]
+            if not bucket:
+                continue
+            for d in ("LONG", "SHORT"):
+                dt = [t for t in bucket if t["direction"] == d]
+                if not dt:
+                    continue
+                w = len([t for t in dt if t["pnl"] > 0])
+                p = sum(t["pnl"] for t in dt)
+                out.append({
+                    "range": name, "direction": d, "count": len(dt),
+                    "win_rate": round(w / len(dt) * 100, 1),
+                    "avg_pnl": round(p / len(dt), 2),
+                    "total_pnl": round(p, 2),
+                })
+        return out
+
+    rsi_ranges = [
+        ("20-30", 20, 30), ("30-35", 30, 35), ("35-40", 35, 40),
+        ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55),
+        ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70-80", 70, 80),
+    ]
+    adx_ranges = [
+        ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
+        ("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40),
+        ("40-50", 40, 50), (">50", 50, 999),
+    ]
+    gap_ranges = [
+        ("0.12-0.15", 0.12, 0.15), ("0.15-0.20", 0.15, 0.20), ("0.20-0.25", 0.20, 0.25),
+        ("0.25-0.30", 0.25, 0.30), ("0.30-0.40", 0.30, 0.40), ("0.40-0.50", 0.40, 0.50),
+        ("0.50-0.70", 0.50, 0.70), (">0.70", 0.70, 999),
+    ]
+    rsi_performance = _range_perf("entry_rsi", rsi_ranges)
+    adx_performance = _range_perf("entry_adx", adx_ranges)
+    gap_performance = _range_perf("entry_gap", gap_ranges)
+
+    # Stop Loss Deep Dive
+    sl_prefixes = ("STOP_LOSS", "BREAKEVEN_SL", "STOP_LOSS_WIDE", "PNL_TRAILING", "MOMENTUM_EXIT", "SLOPE_EXIT")
+    sl_trades = [t for t in trades if any((t["close_reason"] or "").startswith(p) for p in sl_prefixes)]
+    be_trades = [t for t in sl_trades if (t["close_reason"] or "").startswith("BREAKEVEN_SL")]
+    never_pos = [t for t in sl_trades if t["peak_pnl"] <= 0]
+    pos_no_be = [t for t in sl_trades if t["peak_pnl"] > 0 and not (t["close_reason"] or "").startswith("BREAKEVEN_SL")]
+
+    def _sl_group(grp):
+        if not grp:
+            return {"count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl": 0}
+        return {
+            "count": len(grp),
+            "avg_peak_pnl": round(sum(t["peak_pnl"] for t in grp) / len(grp), 4),
+            "avg_close_pnl": round(sum(t["pnl_pct"] for t in grp) / len(grp), 4),
+            "total_pnl": round(sum(t["pnl"] for t in grp), 2),
+        }
+
+    sl_deep_dive = {
+        "total_sl_trades": len(sl_trades),
+        "avg_peak_all_sl": round(sum(t["peak_pnl"] for t in sl_trades) / len(sl_trades), 4) if sl_trades else 0,
+        "be_was_active": _sl_group(be_trades),
+        "never_positive": _sl_group(never_pos),
+        "positive_no_be": _sl_group(pos_no_be),
+    }
+
     return {
         "total_trades": total,
         "winning": len(wins),
@@ -521,4 +618,9 @@ def _aggregate(trades: List[dict], initial_bal: float, final_bal: float) -> Dict
         "by_direction": by_dir,
         "by_confidence": by_conf,
         "equity_curve": eq,
+        "close_reason_by_direction": close_reason_by_direction,
+        "rsi_performance": rsi_performance,
+        "adx_performance": adx_performance,
+        "gap_performance": gap_performance,
+        "sl_deep_dive": sl_deep_dive,
     }

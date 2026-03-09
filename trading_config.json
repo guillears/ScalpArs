@@ -45,7 +45,7 @@
     "momentum_short_rsi_min": 35.0,
     "momentum_adx_max": 50.0,
     "btc_global_filter_enabled": true,
-    "signal_lost_exit_enabled": true,
+    "signal_lost_exit_enabled": false,
     "signal_lost_min_profit": -0.35,
     "ema5_slope_exit_enabled": false,
     "ema5_slope_lookback": 3,

@@ -236,19 +236,28 @@ class Settings(BaseSettings):
 # Global settings instance
 settings = Settings()
 
-# Config file path
-CONFIG_FILE = "trading_config.json"
+# Config file path -- use __file__-relative so it works regardless of working directory
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(_BASE_DIR, "trading_config.json")
 
 
 def load_trading_config() -> TradingConfig:
-    """Load trading configuration from file or return defaults"""
+    """Load trading configuration from file. Crashes loudly on parse errors."""
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
                 data = json.load(f)
-                return TradingConfig(**data)
+                cfg = TradingConfig(**data)
+                enabled = [k for k, v in cfg.confidence_levels.items() if v.enabled]
+                print(f"[CONFIG] Loaded {CONFIG_FILE} OK — paper={cfg.paper_trading}, "
+                      f"balance={cfg.paper_balance}, enabled={enabled}, "
+                      f"SL(VS)={cfg.confidence_levels.get('VERY_STRONG', ConfidenceConfig()).stop_loss}")
+                return cfg
         except Exception as e:
-            print(f"Error loading config: {e}")
+            print(f"[CONFIG] FATAL: trading_config.json exists but failed to parse: {e}")
+            raise RuntimeError(f"Cannot parse {CONFIG_FILE}: {e}") from e
+    else:
+        print(f"[CONFIG] WARNING: {CONFIG_FILE} not found! Using hardcoded defaults.")
     return TradingConfig()
 
 
@@ -259,7 +268,7 @@ def save_trading_config(config: TradingConfig) -> bool:
             json.dump(config.model_dump(), f, indent=2)
         return True
     except Exception as e:
-        print(f"Error saving config: {e}")
+        print(f"[CONFIG] Error saving config: {e}")
         return False
 
 

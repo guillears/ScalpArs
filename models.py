@@ -143,8 +143,8 @@ class BotState(Base):
     total_runtime_seconds = Column(Integer, nullable=False, default=0)
     last_pause_at = Column(DateTime, nullable=True)
     
-    # Paper trading balance
-    paper_balance = Column(Float, nullable=False, default=10000.0)
+    # Paper trading balance (must match config.py TradingConfig.paper_balance default)
+    paper_balance = Column(Float, nullable=False, default=2000.0)
     
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)

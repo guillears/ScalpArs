@@ -709,6 +709,81 @@ async def close_order(request: ManualCloseRequest, db: AsyncSession = Depends(ge
     return {"status": "closed", "pnl": closed_order.pnl}
 
 
+# ----- Backtest -----
+
+class BacktestRequest(BaseModel):
+    pairs: List[str] = ["BTC", "ETH", "SOL", "DOGE", "HYPE", "BNB", "XRP"]
+    days: int = 30
+    initial_balance: float = 2000.0
+    strategies: List[dict] = []
+
+
+@app.post("/api/backtest")
+async def run_backtest_endpoint(req: BacktestRequest):
+    """Run backtest with multiple strategy configurations."""
+    import logging
+    from services.backtester import (
+        fetch_historical_candles, precompute_indicators, run_backtest,
+        PAIR_SYMBOLS,
+    )
+    bt_logger = logging.getLogger("backtester")
+
+    if req.days < 1 or req.days > 90:
+        raise HTTPException(400, "days must be 1-90")
+    if not req.strategies:
+        raise HTTPException(400, "at least one strategy is required")
+
+    # Fetch candles (shared across all strategies)
+    raw_candles = await fetch_historical_candles(
+        binance_service, req.pairs, req.days
+    )
+
+    # Pre-compute indicators (config-independent)
+    indicators_by_pair: Dict[str, list] = {}
+    btc_sym = PAIR_SYMBOLS["BTC"]
+    btc_indicators = precompute_indicators(raw_candles.get(btc_sym, []))
+
+    for key in req.pairs:
+        sym = PAIR_SYMBOLS.get(key, f"{key}/USDT:USDT")
+        candles = raw_candles.get(sym, [])
+        if candles:
+            indicators_by_pair[sym] = precompute_indicators(candles)
+
+    if not indicators_by_pair:
+        raise HTTPException(500, "No indicator data could be computed")
+
+    # Run each strategy
+    results = []
+    base_cfg = config.trading_config
+
+    for strat in req.strategies:
+        name = strat.get("name", "Unnamed")
+        overrides = strat.get("overrides", {})
+
+        cfg_dict = base_cfg.model_dump()
+        for section, vals in overrides.items():
+            if section in cfg_dict and isinstance(cfg_dict[section], dict) and isinstance(vals, dict):
+                for k, v in vals.items():
+                    if isinstance(v, dict) and isinstance(cfg_dict[section].get(k), dict):
+                        cfg_dict[section][k].update(v)
+                    else:
+                        cfg_dict[section][k] = v
+            else:
+                cfg_dict[section] = vals
+
+        strat_cfg = TradingConfig(**cfg_dict)
+
+        bt_logger.info(f"[BACKTEST] Running strategy '{name}' ...")
+        result = run_backtest(
+            indicators_by_pair, btc_indicators, strat_cfg, req.initial_balance
+        )
+        result["name"] = name
+        results.append(result)
+        bt_logger.info(f"[BACKTEST] '{name}': {result['total_trades']} trades, P&L ${result['total_pnl']}")
+
+    return {"results": results}
+
+
 # ----- Performance Metrics -----
 
 @app.get("/api/performance")

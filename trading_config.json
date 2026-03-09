@@ -47,7 +47,7 @@
     "btc_global_filter_enabled": true,
     "signal_lost_exit_enabled": true,
     "signal_lost_min_profit": -0.35,
-    "ema5_slope_exit_enabled": true,
+    "ema5_slope_exit_enabled": false,
     "ema5_slope_lookback": 3,
     "ema5_slope_threshold": -0.02,
     "price_ema5_exit_ratio": 0,

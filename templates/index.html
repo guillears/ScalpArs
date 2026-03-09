@@ -1599,6 +1599,99 @@
                 </div>
             </div>
         </section>
+
+        <!-- Backtest Engine -->
+        <section>
+            <h2 class="text-lg font-semibold text-gray-300 mb-4 flex items-center space-x-2">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                <span>Backtest Engine</span>
+            </h2>
+            <div class="glass rounded-xl p-6 space-y-6">
+                <!-- Controls row -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Period (days)</label>
+                        <select id="bt-days" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white">
+                            <option value="7">7 days</option>
+                            <option value="14">14 days</option>
+                            <option value="30" selected>30 days</option>
+                            <option value="60">60 days</option>
+                            <option value="90">90 days</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Initial Balance ($)</label>
+                        <input id="bt-balance" type="number" value="2000" step="100" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-400 mb-1">Pairs</label>
+                        <div class="flex flex-wrap gap-2 pt-1">
+                            <label class="text-xs text-gray-300 flex items-center space-x-1"><input type="checkbox" class="bt-pair rounded" value="BTC" checked><span>BTC</span></label>
+                            <label class="text-xs text-gray-300 flex items-center space-x-1"><input type="checkbox" class="bt-pair rounded" value="ETH" checked><span>ETH</span></label>
+                            <label class="text-xs text-gray-300 flex items-center space-x-1"><input type="checkbox" class="bt-pair rounded" value="SOL" checked><span>SOL</span></label>
+                            <label class="text-xs text-gray-300 flex items-center space-x-1"><input type="checkbox" class="bt-pair rounded" value="DOGE" checked><span>DOGE</span></label>
+                            <label class="text-xs text-gray-300 flex items-center space-x-1"><input type="checkbox" class="bt-pair rounded" value="HYPE" checked><span>HYPE</span></label>
+                            <label class="text-xs text-gray-300 flex items-center space-x-1"><input type="checkbox" class="bt-pair rounded" value="BNB" checked><span>BNB</span></label>
+                            <label class="text-xs text-gray-300 flex items-center space-x-1"><input type="checkbox" class="bt-pair rounded" value="XRP" checked><span>XRP</span></label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Strategy Presets -->
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-semibold text-gray-300">Strategies</h3>
+                        <button onclick="btAddStrategy()" class="text-xs px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition">+ Add Strategy</button>
+                    </div>
+                    <div id="bt-strategies" class="space-y-3"></div>
+                </div>
+
+                <!-- Run button -->
+                <div class="flex items-center space-x-4">
+                    <button id="bt-run-btn" onclick="btRunBacktest()" class="px-6 py-2.5 rounded-lg font-semibold bg-cyan-500 hover:bg-cyan-600 text-white transition flex items-center space-x-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                        <span>Run Backtest</span>
+                    </button>
+                    <span id="bt-status" class="text-sm text-gray-500"></span>
+                </div>
+
+                <!-- Results -->
+                <div id="bt-results" class="hidden space-y-5">
+                    <!-- Comparison table -->
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-300 mb-2">Strategy Comparison</h3>
+                        <div class="overflow-x-auto scrollbar-thin">
+                            <table class="w-full text-sm">
+                                <thead class="bg-white/5">
+                                    <tr class="text-gray-400 text-left">
+                                        <th class="px-4 py-2 font-medium">Strategy</th>
+                                        <th class="px-4 py-2 font-medium text-right">Trades</th>
+                                        <th class="px-4 py-2 font-medium text-right">Win Rate</th>
+                                        <th class="px-4 py-2 font-medium text-right">Total P&L</th>
+                                        <th class="px-4 py-2 font-medium text-right">P&L %</th>
+                                        <th class="px-4 py-2 font-medium text-right">Avg P&L %</th>
+                                        <th class="px-4 py-2 font-medium text-right">Avg Duration</th>
+                                        <th class="px-4 py-2 font-medium text-right">Final Balance</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bt-comparison-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- P&L Chart -->
+                    <div>
+                        <h3 class="text-sm font-semibold text-gray-300 mb-2">Equity Curves</h3>
+                        <div class="glass rounded-xl p-4" style="height:320px;">
+                            <canvas id="bt-equity-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Drill-down (expanded per strategy) -->
+                    <div id="bt-drilldown" class="space-y-4"></div>
+                </div>
+            </div>
+        </section>
     </main>
 
     <!-- Footer -->
@@ -3472,6 +3565,293 @@
                 console.error('Error saving config:', e);
                 showToast('Error saving configuration', 'error');
             }
+        }
+
+        // ========== Backtest Engine ==========
+        let btStrategyCount = 0;
+        let btEquityChart = null;
+        const BT_COLORS = ['#06b6d4','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6'];
+
+        const BT_PARAMS = [
+            { key: 'stop_loss', label: 'Stop Loss %', section: 'confidence_levels', per_conf: true, step: 0.01 },
+            { key: 'signal_active_sl', label: 'Signal SL %', section: 'confidence_levels', per_conf: true, step: 0.01 },
+            { key: 'breakeven_trigger', label: 'BE Trigger %', section: 'confidence_levels', per_conf: true, step: 0.01 },
+            { key: 'breakeven_offset', label: 'BE Offset %', section: 'confidence_levels', per_conf: true, step: 0.01 },
+            { key: 'pnl_trailing_trigger', label: 'PnL Trail Trigger', section: 'thresholds', step: 0.01 },
+            { key: 'pnl_trailing_ratio', label: 'PnL Ratio (no sig)', section: 'thresholds', step: 0.05 },
+            { key: 'pnl_trailing_ratio_signal_active', label: 'PnL Ratio (sig)', section: 'thresholds', step: 0.05 },
+            { key: 'signal_lost_min_profit', label: 'Signal Lost Min P&L', section: 'thresholds', step: 0.05 },
+            { key: 'ema_gap_threshold', label: 'EMA Gap Threshold', section: 'thresholds', step: 0.5 },
+            { key: 'momentum_adx_max', label: 'ADX Max', section: 'thresholds', step: 5 },
+        ];
+
+        function btAddStrategy() {
+            btStrategyCount++;
+            const idx = btStrategyCount;
+            const div = document.createElement('div');
+            div.id = `bt-strat-${idx}`;
+            div.className = 'glass rounded-lg p-4';
+            const paramInputs = BT_PARAMS.map(p => {
+                if (p.per_conf) {
+                    return `<div class="col-span-1">
+                        <label class="text-[10px] text-gray-500 block">${p.label}</label>
+                        <input type="number" step="${p.step}" placeholder="base" data-param="${p.key}" data-section="${p.section}" class="bt-param w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white">
+                    </div>`;
+                }
+                return `<div class="col-span-1">
+                    <label class="text-[10px] text-gray-500 block">${p.label}</label>
+                    <input type="number" step="${p.step}" placeholder="base" data-param="${p.key}" data-section="${p.section}" class="bt-param w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white">
+                </div>`;
+            }).join('');
+
+            div.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <input type="text" value="Strategy ${idx}" class="bt-strat-name bg-transparent text-sm font-medium text-white border-b border-white/20 focus:border-cyan-400 outline-none w-48 px-1">
+                    <button onclick="document.getElementById('bt-strat-${idx}').remove()" class="text-gray-500 hover:text-red-400 text-xs">Remove</button>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+                    ${paramInputs}
+                </div>
+                <p class="text-[10px] text-gray-600 mt-1">Empty fields use current live config values</p>
+            `;
+            document.getElementById('bt-strategies').appendChild(div);
+        }
+
+        // Pre-add one "Baseline" strategy
+        (function() {
+            btStrategyCount++;
+            const div = document.createElement('div');
+            div.id = 'bt-strat-1';
+            div.className = 'glass rounded-lg p-4';
+            div.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <input type="text" value="Baseline" class="bt-strat-name bg-transparent text-sm font-medium text-white border-b border-white/20 focus:border-cyan-400 outline-none w-48 px-1">
+                    <span class="text-[10px] text-gray-500">Uses current live config (no overrides)</span>
+                </div>
+            `;
+            document.getElementById('bt-strategies').appendChild(div);
+        })();
+
+        function btCollectStrategies() {
+            const strats = [];
+            document.querySelectorAll('[id^="bt-strat-"]').forEach(el => {
+                const name = el.querySelector('.bt-strat-name')?.value || 'Unnamed';
+                const overrides = {};
+                el.querySelectorAll('.bt-param').forEach(input => {
+                    if (input.value === '') return;
+                    const section = input.dataset.section;
+                    const param = input.dataset.param;
+                    const val = parseFloat(input.value);
+                    if (isNaN(val)) return;
+                    if (!overrides[section]) overrides[section] = {};
+                    if (section === 'confidence_levels') {
+                        ['VERY_STRONG','STRONG_BUY','LOW','MEDIUM','HIGH','EXTREME'].forEach(lv => {
+                            if (!overrides[section][lv]) overrides[section][lv] = {};
+                            overrides[section][lv][param] = val;
+                        });
+                    } else {
+                        overrides[section][param] = val;
+                    }
+                });
+                strats.push({ name, overrides });
+            });
+            return strats;
+        }
+
+        async function btRunBacktest() {
+            const btn = document.getElementById('bt-run-btn');
+            const status = document.getElementById('bt-status');
+            const pairs = [...document.querySelectorAll('.bt-pair:checked')].map(c => c.value);
+            const days = parseInt(document.getElementById('bt-days').value);
+            const balance = parseFloat(document.getElementById('bt-balance').value);
+            const strategies = btCollectStrategies();
+
+            if (pairs.length === 0) { showToast('Select at least one pair', 'error'); return; }
+            if (strategies.length === 0) { showToast('Add at least one strategy', 'error'); return; }
+
+            btn.disabled = true;
+            btn.classList.add('opacity-50');
+            status.textContent = `Running backtest (${days}d, ${pairs.length} pairs, ${strategies.length} strategies)...`;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/backtest`, {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ pairs, days, initial_balance: balance, strategies })
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Backtest failed');
+                }
+                const data = await res.json();
+                btRenderResults(data.results, balance);
+                status.textContent = `Completed in ${strategies.length} strategy run(s)`;
+                showToast('Backtest completed');
+            } catch (e) {
+                console.error(e);
+                status.textContent = 'Error: ' + e.message;
+                showToast('Backtest failed: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove('opacity-50');
+            }
+        }
+
+        function btRenderResults(results, initialBalance) {
+            document.getElementById('bt-results').classList.remove('hidden');
+
+            // Comparison table
+            const tbody = document.getElementById('bt-comparison-body');
+            tbody.innerHTML = results.map((r, i) => {
+                const color = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                return `<tr class="border-b border-white/5 hover:bg-white/5 cursor-pointer" onclick="btToggleDrilldown(${i})">
+                    <td class="px-4 py-2 font-medium"><span class="inline-block w-2 h-2 rounded-full mr-2" style="background:${BT_COLORS[i % BT_COLORS.length]}"></span>${r.name}</td>
+                    <td class="px-4 py-2 text-right">${r.total_trades}</td>
+                    <td class="px-4 py-2 text-right">${r.win_rate}%</td>
+                    <td class="px-4 py-2 text-right ${color}">$${r.total_pnl.toFixed(2)}</td>
+                    <td class="px-4 py-2 text-right ${color}">${r.total_pnl_pct.toFixed(2)}%</td>
+                    <td class="px-4 py-2 text-right">${r.avg_pnl_pct.toFixed(4)}%</td>
+                    <td class="px-4 py-2 text-right">${r.avg_duration}</td>
+                    <td class="px-4 py-2 text-right font-medium">$${r.final_balance.toFixed(2)}</td>
+                </tr>`;
+            }).join('');
+
+            // Equity chart
+            btRenderEquityChart(results);
+
+            // Prepare drilldown containers
+            const dd = document.getElementById('bt-drilldown');
+            dd.innerHTML = results.map((r, i) => `
+                <div id="bt-dd-${i}" class="hidden glass rounded-xl p-4">
+                    <h4 class="text-sm font-semibold text-gray-300 mb-2">${r.name} — Closing Reason Summary</h4>
+                    <div class="overflow-x-auto scrollbar-thin">
+                        <table class="w-full text-xs">
+                            <thead class="bg-white/5">
+                                <tr class="text-gray-400 text-left">
+                                    <th class="px-3 py-2">Reason</th>
+                                    <th class="px-3 py-2 text-right">Trades</th>
+                                    <th class="px-3 py-2 text-right">Avg P&L%</th>
+                                    <th class="px-3 py-2 text-right">Total P&L</th>
+                                    <th class="px-3 py-2 text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 text-right">Signal</th>
+                                    <th class="px-3 py-2 text-right">Direction</th>
+                                </tr>
+                            </thead>
+                            <tbody>${btReasonRows(r.by_close_reason)}</tbody>
+                        </table>
+                    </div>
+                    ${btDirectionTable(r.by_direction)}
+                    ${btConfidenceTable(r.by_confidence)}
+                </div>
+            `).join('');
+        }
+
+        function btToggleDrilldown(idx) {
+            const el = document.getElementById(`bt-dd-${idx}`);
+            if (el) el.classList.toggle('hidden');
+        }
+
+        function btReasonRows(byReason) {
+            return Object.entries(byReason).map(([reason, s]) => {
+                const c = s.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const dirs = Object.entries(s.by_direction || {}).map(([d,n]) => `${d[0]}:${n}`).join(' ');
+                return `<tr class="border-b border-white/5">
+                    <td class="px-3 py-1.5 font-medium">${reason}</td>
+                    <td class="px-3 py-1.5 text-right">${s.trades}</td>
+                    <td class="px-3 py-1.5 text-right ${c}">${s.avg_pnl_pct.toFixed(4)}%</td>
+                    <td class="px-3 py-1.5 text-right ${c}">$${s.total_pnl.toFixed(2)}</td>
+                    <td class="px-3 py-1.5 text-right">${s.avg_duration}</td>
+                    <td class="px-3 py-1.5 text-right">${s.signal_active}/${s.signal_inactive}</td>
+                    <td class="px-3 py-1.5 text-right text-gray-400">${dirs}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function btDirectionTable(byDir) {
+            if (!byDir || Object.keys(byDir).length === 0) return '';
+            const rows = Object.entries(byDir).map(([d, s]) => {
+                const c = s.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                return `<tr class="border-b border-white/5">
+                    <td class="px-3 py-1.5 font-medium">${d}</td>
+                    <td class="px-3 py-1.5 text-right">${s.trades}</td>
+                    <td class="px-3 py-1.5 text-right">${s.win_rate}%</td>
+                    <td class="px-3 py-1.5 text-right ${c}">$${s.total_pnl.toFixed(2)}</td>
+                    <td class="px-3 py-1.5 text-right ${c}">${s.avg_pnl_pct.toFixed(4)}%</td>
+                </tr>`;
+            }).join('');
+            return `<h4 class="text-xs font-semibold text-gray-400 mt-3 mb-1">By Direction</h4>
+                <table class="w-full text-xs"><thead class="bg-white/5"><tr class="text-gray-400 text-left">
+                    <th class="px-3 py-1">Dir</th><th class="px-3 py-1 text-right">Trades</th>
+                    <th class="px-3 py-1 text-right">Win Rate</th><th class="px-3 py-1 text-right">P&L</th>
+                    <th class="px-3 py-1 text-right">Avg P&L%</th>
+                </tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        function btConfidenceTable(byConf) {
+            if (!byConf || Object.keys(byConf).length === 0) return '';
+            const rows = Object.entries(byConf).map(([c, s]) => {
+                const cl = s.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                return `<tr class="border-b border-white/5">
+                    <td class="px-3 py-1.5 font-medium">${c}</td>
+                    <td class="px-3 py-1.5 text-right">${s.trades}</td>
+                    <td class="px-3 py-1.5 text-right">${s.win_rate}%</td>
+                    <td class="px-3 py-1.5 text-right ${cl}">$${s.total_pnl.toFixed(2)}</td>
+                </tr>`;
+            }).join('');
+            return `<h4 class="text-xs font-semibold text-gray-400 mt-3 mb-1">By Confidence</h4>
+                <table class="w-full text-xs"><thead class="bg-white/5"><tr class="text-gray-400 text-left">
+                    <th class="px-3 py-1">Level</th><th class="px-3 py-1 text-right">Trades</th>
+                    <th class="px-3 py-1 text-right">Win Rate</th><th class="px-3 py-1 text-right">P&L</th>
+                </tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        function btRenderEquityChart(results) {
+            const ctx = document.getElementById('bt-equity-chart').getContext('2d');
+            if (btEquityChart) btEquityChart.destroy();
+
+            const datasets = results.map((r, i) => ({
+                label: r.name,
+                data: r.equity_curve.map(p => ({ x: p.ts, y: p.pnl })),
+                borderColor: BT_COLORS[i % BT_COLORS.length],
+                backgroundColor: BT_COLORS[i % BT_COLORS.length] + '20',
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.3,
+                fill: false,
+            }));
+
+            btEquityChart = new Chart(ctx, {
+                type: 'line',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                        tooltip: {
+                            callbacks: {
+                                title: items => new Date(items[0].raw.x).toLocaleDateString(),
+                                label: item => `${item.dataset.label}: $${item.raw.y.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            ticks: {
+                                color: '#6b7280', font: { size: 10 },
+                                callback: v => new Date(v).toLocaleDateString(undefined, {month:'short',day:'numeric'})
+                            },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        },
+                        y: {
+                            ticks: { color: '#6b7280', font: { size: 10 }, callback: v => '$' + v.toFixed(0) },
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        }
+                    }
+                }
+            });
         }
     </script>
 </body>

@@ -942,9 +942,6 @@ class TradingEngine:
                     logger.debug(f"[SKIP] {pair}: ADX is null (insufficient price data)")
                     continue
 
-                regime_ema50 = btc_ema50 if btc_global_enabled else indicators.get('ema50')
-                regime_ema50_prev12 = btc_ema50_prev12 if btc_global_enabled else indicators.get('ema50_prev12')
-
                 signal, confidence = get_signal(
                     ema5=indicators.get('ema5'),
                     ema8=indicators.get('ema8'),
@@ -956,12 +953,33 @@ class TradingEngine:
                     avg_volume=indicators.get('avg_volume'),
                     price=indicators.get('price'),
                     ema20_prev6=indicators.get('ema20_prev6'),
-                    ema50=regime_ema50,
-                    ema50_prev12=regime_ema50_prev12
+                    ema50=indicators.get('ema50'),
+                    ema50_prev12=indicators.get('ema50_prev12')
                 )
 
                 if signal in ["LONG", "SHORT"]:
                     logger.info(f"[SIGNAL-FOUND] {pair}: {signal} {confidence} - RSI={indicators.get('rsi'):.1f}, ADX={indicators.get('adx')}")
+
+                if signal in ["LONG", "SHORT"] and btc_global_enabled:
+                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                    pair_regime = determine_macro_regime(
+                        indicators.get('ema50'), indicators.get('ema50_prev12'), flat_th
+                    )
+                    neutral_mode = getattr(config.trading_config.thresholds, 'macro_trend_neutral_mode', 'both')
+                    btc_blocks = False
+                    if btc_regime == "NEUTRAL" and neutral_mode != "both":
+                        btc_blocks = True
+                    elif btc_regime == "BULLISH" and signal != "LONG":
+                        btc_blocks = True
+                    elif btc_regime == "BEARISH" and signal != "SHORT":
+                        btc_blocks = True
+
+                    pair_blocks = (pair_regime != btc_regime)
+
+                    if btc_blocks or pair_blocks:
+                        reason = f"BTC={btc_regime}" if btc_blocks else f"pair={pair_regime} vs BTC={btc_regime}"
+                        logger.info(f"[BTC-GATE] {pair}: {signal} blocked — regime mismatch ({reason})")
+                        signal = "NO_TRADE"
 
                 await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
 

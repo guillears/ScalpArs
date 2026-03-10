@@ -38,7 +38,7 @@
     "momentum_ema20_slope_filter_short": true,
     "macro_trend_filter_enabled": true,
     "macro_trend_neutral_mode": "none",
-    "macro_trend_flat_threshold": 0.02,
+    "macro_trend_flat_threshold": 0.07,
     "momentum_long_rsi_min": 45.0,
     "momentum_long_rsi_max": 65.0,
     "momentum_short_rsi_max": 55.0,
@@ -54,7 +54,7 @@
     "min_peak_ema5_gap_pct": 0.15,
     "pnl_trailing_trigger": 0.1,
     "pnl_trailing_ratio": 0.6,
-    "pnl_trailing_ratio_signal_active": 0.3
+    "pnl_trailing_ratio_signal_active": 0.8
   },
   "confidence_levels": {
     "LOW": {
@@ -130,8 +130,8 @@
       "trade_mode": "both",
       "leverage": 20.0,
       "investment_multiplier": 1.0,
-      "stop_loss": -0.35,
-      "signal_active_sl": -0.5,
+      "stop_loss": -0.25,
+      "signal_active_sl": -0.25,
       "tp_min": 0.25,
       "pullback_trigger": 0.05,
       "gap_min": 0.15,
@@ -139,7 +139,7 @@
       "gap_enabled": true,
       "max_ema5_stretch": 0.14,
       "breakeven_trigger": 0.1,
-      "breakeven_offset": 0.05,
+      "breakeven_offset": 0.08,
       "tp_trailing_enabled": false
     },
     "STRONG_BUY": {
@@ -147,8 +147,8 @@
       "trade_mode": "both",
       "leverage": 20.0,
       "investment_multiplier": 1.0,
-      "stop_loss": -0.35,
-      "signal_active_sl": -0.5,
+      "stop_loss": -0.25,
+      "signal_active_sl": -0.25,
       "tp_min": 0.25,
       "pullback_trigger": 0.05,
       "gap_min": 0.15,
@@ -156,7 +156,7 @@
       "gap_enabled": true,
       "max_ema5_stretch": 0.14,
       "breakeven_trigger": 0.1,
-      "breakeven_offset": 0.05,
+      "breakeven_offset": 0.08,
       "tp_trailing_enabled": false
     }
   }

@@ -57,7 +57,7 @@ def calculate_indicators(ohlcv: List) -> Dict:
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
         'ema20_prev6': float(ema20.iloc[-7]) if len(ema20) >= 7 and not pd.isna(ema20.iloc[-7]) else None,
         'ema50': float(ema50.iloc[-1]) if not pd.isna(ema50.iloc[-1]) else None,
-        'ema50_prev6': float(ema50.iloc[-7]) if len(ema50) >= 7 and not pd.isna(ema50.iloc[-7]) else None,
+        'ema50_prev12': float(ema50.iloc[-13]) if len(ema50) >= 13 and not pd.isna(ema50.iloc[-13]) else None,
         'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'volume': float(df['volume'].iloc[-1]),
@@ -65,14 +65,14 @@ def calculate_indicators(ohlcv: List) -> Dict:
     }
 
 
-def determine_macro_regime(ema50: float, ema50_prev6: float, flat_threshold: float = 0.02) -> str:
+def determine_macro_regime(ema50: float, ema50_prev12: float, flat_threshold: float = 0.07) -> str:
     """
     Determine macro trend regime from EMA50 slope.
     Returns "BULLISH", "BEARISH", or "NEUTRAL".
     """
-    if ema50 is None or ema50_prev6 is None or ema50_prev6 == 0:
+    if ema50 is None or ema50_prev12 is None or ema50_prev12 == 0:
         return "NEUTRAL"
-    pct_change = ((ema50 - ema50_prev6) / ema50_prev6) * 100
+    pct_change = ((ema50 - ema50_prev12) / ema50_prev12) * 100
     if pct_change > flat_threshold:
         return "BULLISH"
     elif pct_change < -flat_threshold:
@@ -93,7 +93,7 @@ def get_signal(
     config: Optional[Dict] = None,
     ema20_prev6: float = None,
     ema50: float = None,
-    ema50_prev6: float = None
+    ema50_prev12: float = None
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -180,7 +180,7 @@ def get_signal(
     macro_filter_enabled = getattr(th, 'macro_trend_filter_enabled', True)
     neutral_mode = getattr(th, 'macro_trend_neutral_mode', 'both')
     flat_threshold = getattr(th, 'macro_trend_flat_threshold', 0.02)
-    regime = determine_macro_regime(ema50, ema50_prev6, flat_threshold)
+    regime = determine_macro_regime(ema50, ema50_prev12, flat_threshold)
     
     def regime_allows(direction: str) -> bool:
         if not macro_filter_enabled:
@@ -205,7 +205,7 @@ def get_signal(
     if ema8 and ema8 > 0:
         if ema5 > ema8:
             if not regime_allows("LONG"):
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev6={ema50_prev6}")
+                logger.debug(f"[MOMENTUM] LONG skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev12={ema50_prev12}")
             elif ema20_filter_long and (price is None or price <= ema20):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_long and (ema20_prev6 is None or ema20 <= ema20_prev6):
@@ -233,7 +233,7 @@ def get_signal(
                             return "LONG", "STRONG_BUY"
         elif ema5 < ema8 and ema5 > 0:
             if not regime_allows("SHORT"):
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev6={ema50_prev6}")
+                logger.debug(f"[MOMENTUM] SHORT skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev12={ema50_prev12}")
             elif ema20_filter_short and (price is None or price >= ema20):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_short and (ema20_prev6 is None or ema20 >= ema20_prev6):

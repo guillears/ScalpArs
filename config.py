@@ -72,7 +72,7 @@ class SignalThresholds(BaseModel):
     momentum_ema20_slope_filter_short: bool = True
     macro_trend_filter_enabled: bool = True
     macro_trend_neutral_mode: str = "both"  # "both" or "none"
-    macro_trend_flat_threshold: float = 0.02  # % change below which EMA50 is considered neutral
+    macro_trend_flat_threshold: float = 0.07  # % change below which EMA50 is considered neutral
     momentum_long_rsi_min: float = 55.0  # Min RSI for momentum LONG (0 = disabled)
     momentum_long_rsi_max: float = 100.0  # Max RSI for momentum LONG (100 = disabled)
     momentum_short_rsi_max: float = 50.0  # Max RSI for momentum SHORT (100 = disabled)

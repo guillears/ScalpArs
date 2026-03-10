@@ -1910,12 +1910,14 @@
             try {
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
-                const [perfRes, cfgRes] = await Promise.all([
+                const [perfRes, cfgRes, logRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance${regimeParam}`),
-                    fetch(`${API_BASE}/api/config`)
+                    fetch(`${API_BASE}/api/config`),
+                    fetch(`${API_BASE}/api/config/changelog?limit=50`)
                 ]);
                 const perf = await perfRes.json();
                 const cfg = await cfgRes.json();
+                const changelog = logRes.ok ? await logRes.json() : [];
                 const lines = [];
                 const hr = '='.repeat(80);
                 const hr2 = '-'.repeat(60);
@@ -1949,6 +1951,18 @@
                 for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
                     if (!c.enabled) continue;
                     lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  ${c.breakeven_trigger}%   ${c.breakeven_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+                }
+
+                // --- CONFIG CHANGE LOG ---
+                if (changelog.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## CONFIG CHANGE LOG\n');
+                    lines.push(`${'Time'.padEnd(20)} ${'Field'.padEnd(40)} ${'Old'.padEnd(15)} New`);
+                    for (const ch of changelog) {
+                        const t = ch.changed_at ? new Date(ch.changed_at).toLocaleString('en-GB', {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}) : '?';
+                        const field = ch.field.length > 38 ? ch.field.slice(-38) : ch.field;
+                        lines.push(`${t.padEnd(20)} ${field.padEnd(40)} ${(ch.old_value||'').padEnd(15)} ${ch.new_value||''}`);
+                    }
                 }
 
                 // --- OVERALL PERFORMANCE ---
@@ -2157,14 +2171,20 @@
         }
 
         // Load performance metrics
+        let _lastPotHash = null;
+
         async function loadPerformance() {
             try {
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
                 const badge = document.getElementById('regime-filter-badge');
                 badge.textContent = regimeFilter ? `Showing ${regimeFilter} trades only` : '';
-                const res = await fetch(`${API_BASE}/api/performance${regimeParam}`);
+                const [res, balRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/performance${regimeParam}`),
+                    fetch(`${API_BASE}/api/balance`)
+                ]);
                 const data = await res.json();
+                const balData = balRes.ok ? await balRes.json() : null;
                 
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
                 document.getElementById('perf-total-longs').textContent = data.total_longs;
@@ -2624,97 +2644,126 @@
                     npBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
-                // Performance Over Time Chart
+                // Performance Over Time Chart - only rebuild if data changed
                 const potCanvas = document.getElementById('performance-over-time-chart');
                 const potEmpty = document.getElementById('performance-over-time-empty');
                 const potData = data.performance_over_time;
-                if (window._potChart) { window._potChart.destroy(); window._potChart = null; }
-                if (potData && potData.length > 0) {
-                    potEmpty.style.display = 'none';
-                    potCanvas.style.display = 'block';
-                    const labels = potData.map(b => b.time);
-                    const pnlValues = potData.map(b => b.pnl || 0);
-                    const cumValues = potData.map(b => b.cumulative_pnl || 0);
-                    const barColors = pnlValues.map(v => v >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)');
-                    window._potChart = new Chart(potCanvas, {
-                        type: 'bar',
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                {
-                                    label: 'Bucket P&L',
-                                    data: pnlValues,
-                                    backgroundColor: barColors,
-                                    borderColor: barColors,
-                                    borderWidth: 1,
-                                    yAxisID: 'y',
-                                    order: 2
-                                },
-                                {
-                                    label: 'Cumulative P&L',
-                                    data: cumValues,
-                                    type: 'line',
-                                    borderColor: 'rgba(96, 165, 250, 1)',
-                                    backgroundColor: 'rgba(96, 165, 250, 0.1)',
-                                    borderWidth: 2,
-                                    pointRadius: 2,
-                                    pointHoverRadius: 5,
-                                    fill: true,
-                                    tension: 0.3,
-                                    yAxisID: 'y1',
-                                    order: 1
-                                }
-                            ]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            interaction: { mode: 'index', intersect: false },
-                            plugins: {
-                                legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
-                                tooltip: {
-                                    backgroundColor: 'rgba(17, 24, 39, 0.95)',
-                                    titleColor: '#e5e7eb',
-                                    bodyColor: '#d1d5db',
-                                    borderColor: 'rgba(255,255,255,0.1)',
-                                    borderWidth: 1,
-                                    callbacks: {
-                                        afterBody: function(ctx) {
-                                            const i = ctx[0].dataIndex;
-                                            const b = potData[i];
-                                            const lines = [];
-                                            lines.push(`Trades: ${b.trades} (${b.longs}L/${b.shorts}S)`);
-                                            lines.push(`Win Rate: ${b.win_rate}%`);
-                                            lines.push(`Avg P&L: $${(b.avg_pnl||0).toFixed(2)}`);
-                                            if (b.avg_rsi != null) lines.push(`Avg RSI: ${b.avg_rsi.toFixed(1)}`);
-                                            if (b.avg_adx != null) lines.push(`Avg ADX: ${b.avg_adx.toFixed(1)}`);
-                                            if (b.avg_gap != null) lines.push(`Avg Gap: ${b.avg_gap.toFixed(2)}%`);
-                                            if (b.avg_gap58 != null) lines.push(`EMA5-8: ${b.avg_gap58.toFixed(4)}%`);
-                                            return lines;
+                const potHash = JSON.stringify(potData || []);
+                if (potHash !== _lastPotHash) {
+                    _lastPotHash = potHash;
+                    if (window._potChart) { window._potChart.destroy(); window._potChart = null; }
+                    if (potData && potData.length > 0) {
+                        potEmpty.style.display = 'none';
+                        potCanvas.style.display = 'block';
+                        const labels = potData.map(b => b.time);
+                        const pnlValues = potData.map(b => b.pnl || 0);
+                        const cumValues = potData.map(b => b.cumulative_pnl || 0);
+                        const barColors = pnlValues.map(v => v >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)');
+
+                        const startingBalance = (balData && data.total_pnl != null)
+                            ? (balData.usdt_balance || 0) + (balData.usdt_in_orders || 0) - (data.total_pnl || 0)
+                            : null;
+                        const portfolioValues = startingBalance != null
+                            ? cumValues.map(v => startingBalance + v)
+                            : null;
+
+                        const datasets = [
+                            {
+                                label: 'Bucket P&L',
+                                data: pnlValues,
+                                backgroundColor: barColors,
+                                borderColor: barColors,
+                                borderWidth: 1,
+                                yAxisID: 'y',
+                                order: 3
+                            }
+                        ];
+
+                        if (portfolioValues) {
+                            datasets.push({
+                                label: 'Starting Balance',
+                                data: labels.map(() => startingBalance),
+                                type: 'line',
+                                borderColor: 'rgba(255, 255, 255, 0.25)',
+                                borderWidth: 1,
+                                borderDash: [6, 4],
+                                pointRadius: 0,
+                                pointHoverRadius: 0,
+                                fill: false,
+                                yAxisID: 'y1',
+                                order: 2
+                            });
+                            datasets.push({
+                                label: 'Portfolio Value',
+                                data: portfolioValues,
+                                type: 'line',
+                                borderColor: 'rgba(96, 165, 250, 1)',
+                                backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                                borderWidth: 2,
+                                pointRadius: 2,
+                                pointHoverRadius: 5,
+                                fill: true,
+                                tension: 0.3,
+                                yAxisID: 'y1',
+                                order: 1
+                            });
+                        }
+
+                        window._potChart = new Chart(potCanvas, {
+                            type: 'bar',
+                            data: { labels, datasets },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { mode: 'index', intersect: false },
+                                plugins: {
+                                    legend: { labels: { color: '#9ca3af', font: { size: 11 }, filter: item => item.text !== 'Starting Balance' } },
+                                    tooltip: {
+                                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                        titleColor: '#e5e7eb',
+                                        bodyColor: '#d1d5db',
+                                        borderColor: 'rgba(255,255,255,0.1)',
+                                        borderWidth: 1,
+                                        filter: item => item.dataset.label !== 'Starting Balance',
+                                        callbacks: {
+                                            afterBody: function(ctx) {
+                                                const i = ctx[0].dataIndex;
+                                                const b = potData[i];
+                                                const lines = [];
+                                                lines.push(`Cumulative P&L: $${(b.cumulative_pnl||0).toFixed(2)}`);
+                                                lines.push(`Trades: ${b.trades} (${b.longs}L/${b.shorts}S)`);
+                                                lines.push(`Win Rate: ${b.win_rate}%`);
+                                                lines.push(`Avg P&L: $${(b.avg_pnl||0).toFixed(2)}`);
+                                                if (b.avg_rsi != null) lines.push(`Avg RSI: ${b.avg_rsi.toFixed(1)}`);
+                                                if (b.avg_adx != null) lines.push(`Avg ADX: ${b.avg_adx.toFixed(1)}`);
+                                                if (b.avg_gap != null) lines.push(`Avg Gap: ${b.avg_gap.toFixed(2)}%`);
+                                                if (b.avg_gap58 != null) lines.push(`EMA5-8: ${b.avg_gap58.toFixed(4)}%`);
+                                                return lines;
+                                            }
                                         }
                                     }
-                                }
-                            },
-                            scales: {
-                                x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                                y: {
-                                    position: 'left',
-                                    title: { display: true, text: 'Bucket P&L ($)', color: '#9ca3af', font: { size: 11 } },
-                                    ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
-                                    grid: { color: 'rgba(255,255,255,0.05)' }
                                 },
-                                y1: {
-                                    position: 'right',
-                                    title: { display: true, text: 'Cumulative P&L ($)', color: '#60a5fa', font: { size: 11 } },
-                                    ticks: { color: '#60a5fa', callback: v => '$' + v.toFixed(0) },
-                                    grid: { drawOnChartArea: false }
+                                scales: {
+                                    x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    y: {
+                                        position: 'left',
+                                        title: { display: true, text: 'Bucket P&L ($)', color: '#9ca3af', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                        grid: { color: 'rgba(255,255,255,0.05)' }
+                                    },
+                                    y1: {
+                                        position: 'right',
+                                        title: { display: true, text: 'Portfolio Value ($)', color: '#60a5fa', font: { size: 11 } },
+                                        ticks: { color: '#60a5fa', callback: v => '$' + v.toFixed(0) },
+                                        grid: { drawOnChartArea: false }
+                                    }
                                 }
                             }
-                        }
-                    });
-                } else {
-                    potEmpty.style.display = 'block';
-                    potCanvas.style.display = 'none';
+                        });
+                    } else {
+                        potEmpty.style.display = 'block';
+                        potCanvas.style.display = 'none';
+                    }
                 }
 
                 // Stop Loss Deep Dive

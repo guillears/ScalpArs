@@ -153,6 +153,17 @@ class BotState(Base):
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
 
 
+class ConfigChangeLog(Base):
+    """Log of configuration changes"""
+    __tablename__ = "config_change_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    field = Column(String(100), nullable=False)
+    old_value = Column(String(200), nullable=True)
+    new_value = Column(String(200), nullable=True)
+    changed_at = Column(DateTime, nullable=False, default=func.now())
+
+
 class PairData(Base):
     """Cached pair data with indicators"""
     __tablename__ = "pair_data"

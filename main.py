@@ -19,7 +19,7 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal
-from models import Order, Transaction, BotState, PairData
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -1682,15 +1682,67 @@ async def update_config(config_update: ConfigUpdate):
     new_config_data.update(update_data)
     new_config = TradingConfig(**new_config_data)
     
+    # Detect changes between old and new config
+    def flatten_config(cfg_dict, prefix=""):
+        flat = {}
+        for k, v in cfg_dict.items():
+            key = f"{prefix}{k}" if prefix else k
+            if isinstance(v, dict):
+                flat.update(flatten_config(v, f"{key}."))
+            else:
+                flat[key] = v
+        return flat
+
+    old_flat = flatten_config(current_config.model_dump())
+    new_flat = flatten_config(new_config.model_dump())
+    changes = []
+    for key in set(old_flat) | set(new_flat):
+        old_val = old_flat.get(key)
+        new_val = new_flat.get(key)
+        if old_val != new_val:
+            changes.append({"field": key, "old": str(old_val), "new": str(new_val)})
+
     # Save
     if save_trading_config(new_config):
-        # Reload global config - need to update the module-level variable
+        # Log changes to DB
+        if changes:
+            try:
+                async with AsyncSessionLocal() as db:
+                    for ch in changes:
+                        db.add(ConfigChangeLog(
+                            field=ch["field"],
+                            old_value=ch["old"],
+                            new_value=ch["new"]
+                        ))
+                    await db.commit()
+                print(f"Config updated with {len(changes)} change(s) logged.")
+            except Exception as e:
+                print(f"Config saved but failed to log changes: {e}")
+
+        # Reload global config
         import config
         config.trading_config = new_config
-        print(f"Config updated. LOW enabled: {new_config.confidence_levels['LOW'].enabled}")
-        return {"status": "success", "message": "Configuration saved"}
+        return {"status": "success", "message": f"Configuration saved ({len(changes)} change(s))"}
     else:
         raise HTTPException(status_code=500, detail="Failed to save configuration")
+
+
+@app.get("/api/config/changelog")
+async def get_config_changelog(limit: int = 50):
+    """Get recent config change history"""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(ConfigChangeLog)
+            .order_by(ConfigChangeLog.changed_at.desc())
+            .limit(limit)
+        )
+        rows = result.scalars().all()
+        return [{
+            "field": r.field,
+            "old_value": r.old_value,
+            "new_value": r.new_value,
+            "changed_at": r.changed_at.isoformat() if r.changed_at else None
+        } for r in rows]
 
 
 @app.put("/api/config/pairs-limit")

@@ -58,6 +58,10 @@ async def init_db():
                 pd_columns = [c['name'] for c in inspector.get_columns('pair_data')]
                 if 'ema5_prev3' not in pd_columns:
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN ema5_prev3 FLOAT"))
+                if 'rsi_prev1' not in pd_columns:
+                    connection.execute(text("ALTER TABLE pair_data ADD COLUMN rsi_prev1 FLOAT"))
+                if 'rsi_prev2' not in pd_columns:
+                    connection.execute(text("ALTER TABLE pair_data ADD COLUMN rsi_prev2 FLOAT"))
         
         await conn.run_sync(_migrate)
 

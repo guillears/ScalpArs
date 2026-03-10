@@ -731,7 +731,35 @@ class TradingEngine:
             _notional = order.entry_price * order.quantity if order.quantity > 0 else 1
             pnl_pct = (_net_pnl / _notional) * 100
 
-            # P&L trailing stop: PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
+            # RSI Momentum Exit: two consecutive RSI drops (LONG) or rises (SHORT) while in profit
+            rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
+            rsi_exit_min_profit = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)
+            if rsi_exit_enabled and pair_data and pnl_pct > rsi_exit_min_profit:
+                _rsi = pair_data.rsi
+                _rsi1 = pair_data.rsi_prev1
+                _rsi2 = pair_data.rsi_prev2
+                if _rsi is not None and _rsi1 is not None and _rsi2 is not None:
+                    rsi_fading = False
+                    if order.direction == "LONG" and _rsi < _rsi1 < _rsi2:
+                        rsi_fading = True
+                    elif order.direction == "SHORT" and _rsi > _rsi1 > _rsi2:
+                        rsi_fading = True
+                    if rsi_fading:
+                        tp_level = order.current_tp_level or 1
+                        logger.info(f"[RSI_MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: RSI fading ({_rsi2:.1f}->{_rsi1:.1f}->{_rsi:.1f}), pnl={pnl_pct:.4f}% > min={rsi_exit_min_profit}%")
+                        closed_order = await self.close_position(db, order, current_price, f"RSI_MOMENTUM_EXIT L{tp_level}")
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id,
+                                "pair": closed_order.pair,
+                                "action": "CLOSED",
+                                "reason": f"RSI_MOMENTUM_EXIT L{tp_level}",
+                                "pnl": closed_order.pnl,
+                                "tp_level": tp_level
+                            })
+                        continue
+
+            # P&L trailing stop (safety net): PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
             pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
@@ -1073,6 +1101,8 @@ class TradingEngine:
             pair_data.ema13 = indicators.get('ema13')
             pair_data.ema20 = indicators.get('ema20')
             pair_data.rsi = indicators.get('rsi')
+            pair_data.rsi_prev1 = indicators.get('rsi_prev1')
+            pair_data.rsi_prev2 = indicators.get('rsi_prev2')
             pair_data.adx = indicators.get('adx')
             pair_data.volume_24h = actual_volume_24h
             pair_data.avg_volume = indicators.get('avg_volume')
@@ -1090,6 +1120,8 @@ class TradingEngine:
                 ema13=indicators.get('ema13'),
                 ema20=indicators.get('ema20'),
                 rsi=indicators.get('rsi'),
+                rsi_prev1=indicators.get('rsi_prev1'),
+                rsi_prev2=indicators.get('rsi_prev2'),
                 adx=indicators.get('adx'),
                 volume_24h=actual_volume_24h,
                 avg_volume=indicators.get('avg_volume'),
@@ -1242,7 +1274,46 @@ class TradingEngine:
             if pnl_pct < cached_trough_pnl:
                 order_info['trough_pnl'] = pnl_pct
 
-            # Real-time P&L trailing stop: PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
+            # Real-time RSI Momentum Exit: two consecutive RSI drops/rises while in profit
+            rt_rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
+            rt_rsi_exit_min = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)
+            if rt_rsi_exit_enabled and pnl_pct > rt_rsi_exit_min:
+                _rt_rsi = order_info.get('rsi')
+                _rt_rsi1 = order_info.get('rsi_prev1')
+                _rt_rsi2 = order_info.get('rsi_prev2')
+                if _rt_rsi is not None and _rt_rsi1 is not None and _rt_rsi2 is not None:
+                    rt_rsi_fading = False
+                    if direction == "LONG" and _rt_rsi < _rt_rsi1 < _rt_rsi2:
+                        rt_rsi_fading = True
+                    elif direction == "SHORT" and _rt_rsi > _rt_rsi1 > _rt_rsi2:
+                        rt_rsi_fading = True
+                    if rt_rsi_fading:
+                        tp_level = order_info.get('current_tp_level', 1)
+                        logger.warning(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: RSI fading ({_rt_rsi2:.1f}->{_rt_rsi1:.1f}->{_rt_rsi:.1f}), pnl={pnl_pct:.4f}% > min={rt_rsi_exit_min}% - CLOSING NOW!")
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(
+                                        and_(Order.id == order_id, Order.status == "OPEN")
+                                    )
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    await self.close_position(
+                                        db, order, current_price,
+                                        f"RSI_MOMENTUM_EXIT L{tp_level}"
+                                    )
+                                    logger.info(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [
+                                            o for o in _open_orders_cache.get(pair, [])
+                                            if o['id'] != order_id
+                                        ]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_RSI_MOMENTUM_EXIT] Error closing {pair}: {e}")
+                        continue
+
+            # Real-time P&L trailing stop (safety net): PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
             pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
@@ -1347,12 +1418,14 @@ class TradingEngine:
         pair_ema5s: Dict[str, float] = {}
         if pair_names:
             sig_result = await db.execute(
-                select(PairData.pair, PairData.ema5, PairData.ema8, PairData.ema20, PairData.price).where(PairData.pair.in_(pair_names))
+                select(PairData.pair, PairData.ema5, PairData.ema8, PairData.ema20, PairData.price,
+                       PairData.rsi, PairData.rsi_prev1, PairData.rsi_prev2).where(PairData.pair.in_(pair_names))
             )
             for row in sig_result:
                 pair_emas[row.pair] = {
                     'ema5': row.ema5, 'ema8': row.ema8,
-                    'ema20': row.ema20, 'price': row.price
+                    'ema20': row.ema20, 'price': row.price,
+                    'rsi': row.rsi, 'rsi_prev1': row.rsi_prev1, 'rsi_prev2': row.rsi_prev2
                 }
                 if row.ema5 is not None:
                     pair_ema5s[row.pair] = row.ema5
@@ -1391,7 +1464,10 @@ class TradingEngine:
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'cached_ema5': pair_ema5s.get(order.pair),
-                'peak_ema5_gap': order.peak_ema5_gap or 0.0
+                'peak_ema5_gap': order.peak_ema5_gap or 0.0,
+                'rsi': pair_emas.get(order.pair, {}).get('rsi'),
+                'rsi_prev1': pair_emas.get(order.pair, {}).get('rsi_prev1'),
+                'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2')
             }
             
             if order.pair not in new_cache:

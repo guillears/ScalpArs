@@ -174,6 +174,8 @@ class PairData(Base):
     
     # Indicators
     rsi = Column(Float, nullable=True)
+    rsi_prev1 = Column(Float, nullable=True)
+    rsi_prev2 = Column(Float, nullable=True)
     adx = Column(Float, nullable=True)
     
     # Signal

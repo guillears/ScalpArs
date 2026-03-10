@@ -976,8 +976,22 @@
                                         <span class="ml-1">%</span>
                                     </label>
                                 </div>
+                                <div class="flex items-center gap-4">
+                                    <label class="flex items-center cursor-pointer">
+                                        <input type="checkbox" id="config-rsi-momentum-exit-enabled" class="sr-only peer" checked>
+                                        <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                            <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                        </div>
+                                        <span class="ml-2 text-sm text-gray-300">RSI Momentum Exit</span>
+                                    </label>
+                                    <label class="flex items-center text-sm text-gray-400">
+                                        Min Profit
+                                        <input type="number" step="0.01" min="0" id="config-rsi-momentum-exit-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                        <span class="ml-1">%</span>
+                                    </label>
+                                </div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">P&L Trigger: min peak P&L % to activate trailing | Ratio (no signal): MOMENTUM_EXIT, tighter | Ratio (signal): PNL_TRAILING, wider | Slope: EMA5 reversal exit</p>
+                            <p class="text-xs text-gray-500 mt-1">P&L Trailing: safety net (wide ratio) | RSI Momentum Exit: close when RSI shows 2 consecutive drops (LONG) or rises (SHORT) above min profit | Slope: EMA5 reversal exit</p>
                         </div>
                     </div>
                 </div>
@@ -1928,6 +1942,7 @@
                 lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
                 lines.push(`  P&L Trigger: ${th.pnl_trailing_trigger}%  |  Ratio (no signal): ${th.pnl_trailing_ratio}  |  Ratio (signal): ${th.pnl_trailing_ratio_signal_active}`);
                 lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Min Profit: ${th.signal_lost_min_profit}%`);
+                lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Min Profit: ${th.rsi_momentum_exit_min_profit}%  (close on 2 consecutive RSI drops/rises)`);
 
                 lines.push('\nConfidence Levels:');
                 lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   BE Trig  BE Off  GapMin  GapMax  Gap?   Stretch  TP Trail`);
@@ -3312,6 +3327,8 @@
                 document.getElementById('config-pnl-trailing-trigger').value = config.thresholds.pnl_trailing_trigger !== undefined ? config.thresholds.pnl_trailing_trigger : 0.1;
                 document.getElementById('config-pnl-trailing-ratio').value = config.thresholds.pnl_trailing_ratio !== undefined ? config.thresholds.pnl_trailing_ratio : 0.5;
                 document.getElementById('config-pnl-trailing-ratio-signal').value = config.thresholds.pnl_trailing_ratio_signal_active !== undefined ? config.thresholds.pnl_trailing_ratio_signal_active : 0.3;
+                document.getElementById('config-rsi-momentum-exit-enabled').checked = config.thresholds.rsi_momentum_exit_enabled !== undefined ? config.thresholds.rsi_momentum_exit_enabled : true;
+                document.getElementById('config-rsi-momentum-exit-min-profit').value = config.thresholds.rsi_momentum_exit_min_profit !== undefined ? config.thresholds.rsi_momentum_exit_min_profit : 0.05;
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -3443,7 +3460,9 @@
                     ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value),
                     pnl_trailing_trigger: safeFloat(document.getElementById('config-pnl-trailing-trigger').value),
                     pnl_trailing_ratio: safeFloat(document.getElementById('config-pnl-trailing-ratio').value),
-                    pnl_trailing_ratio_signal_active: safeFloat(document.getElementById('config-pnl-trailing-ratio-signal').value)
+                    pnl_trailing_ratio_signal_active: safeFloat(document.getElementById('config-pnl-trailing-ratio-signal').value),
+                    rsi_momentum_exit_enabled: document.getElementById('config-rsi-momentum-exit-enabled').checked,
+                    rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value)
                 },
                 confidence_levels: {}
             };

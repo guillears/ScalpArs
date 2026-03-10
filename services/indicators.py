@@ -59,6 +59,8 @@ def calculate_indicators(ohlcv: List) -> Dict:
         'ema50': float(ema50.iloc[-1]) if not pd.isna(ema50.iloc[-1]) else None,
         'ema50_prev12': float(ema50.iloc[-13]) if len(ema50) >= 13 and not pd.isna(ema50.iloc[-13]) else None,
         'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None,
+        'rsi_prev1': float(rsi.iloc[-2]) if len(rsi) >= 2 and not pd.isna(rsi.iloc[-2]) else None,
+        'rsi_prev2': float(rsi.iloc[-3]) if len(rsi) >= 3 and not pd.isna(rsi.iloc[-3]) else None,
         'rsi_prev3': float(rsi.iloc[-4]) if len(rsi) >= 4 and not pd.isna(rsi.iloc[-4]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'volume': float(df['volume'].iloc[-1]),

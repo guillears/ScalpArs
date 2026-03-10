@@ -759,32 +759,31 @@ class TradingEngine:
                             })
                         continue
 
-            # P&L trailing stop (safety net): PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
+            # P&L trailing stop: only MOMENTUM_EXIT (signal lost). Skipped when signal active + RSI exit enabled.
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
-            pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
             if pnl_trigger > 0 and pnl_ratio > 0 and realtime_peak >= pnl_trigger:
                 signal_active = pair_data and is_signal_direction_active(
                     order.direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
                 )
-                effective_ratio = pnl_ratio_active if signal_active else pnl_ratio
-                pnl_exit_level = realtime_peak * effective_ratio
-                if pnl_pct <= pnl_exit_level:
-                    tp_level = order.current_tp_level or 1
-                    exit_reason = "PNL_TRAILING" if signal_active else "MOMENTUM_EXIT"
-                    ratio_tag = f"{effective_ratio}({'signal' if signal_active else 'no-signal'})"
-                    logger.info(f"[{exit_reason}] {order.pair} {order.direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={realtime_peak:.4f}%*{ratio_tag}={pnl_exit_level:.4f}%")
-                    closed_order = await self.close_position(db, order, current_price, f"{exit_reason} L{tp_level}")
-                    if closed_order:
-                        updates.append({
-                            "order_id": closed_order.id,
-                            "pair": closed_order.pair,
-                            "action": "CLOSED",
-                            "reason": f"{exit_reason} L{tp_level}",
-                            "pnl": closed_order.pnl,
-                            "tp_level": tp_level
-                        })
-                    continue
+                if signal_active and rsi_exit_enabled:
+                    pass  # RSI momentum exit handles signal-active exits
+                else:
+                    pnl_exit_level = realtime_peak * pnl_ratio
+                    if pnl_pct <= pnl_exit_level:
+                        tp_level = order.current_tp_level or 1
+                        logger.info(f"[MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={realtime_peak:.4f}%*{pnl_ratio}(no-signal)={pnl_exit_level:.4f}%")
+                        closed_order = await self.close_position(db, order, current_price, f"MOMENTUM_EXIT L{tp_level}")
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id,
+                                "pair": closed_order.pair,
+                                "action": "CLOSED",
+                                "reason": f"MOMENTUM_EXIT L{tp_level}",
+                                "pnl": closed_order.pnl,
+                                "tp_level": tp_level
+                            })
+                        continue
 
             # SLOPE_EXIT: EMA5 slope reversal
             ema5_slope_enabled = getattr(config.trading_config.thresholds, 'ema5_slope_exit_enabled', False)
@@ -1313,41 +1312,40 @@ class TradingEngine:
                             logger.error(f"[REALTIME_RSI_MOMENTUM_EXIT] Error closing {pair}: {e}")
                         continue
 
-            # Real-time P&L trailing stop (safety net): PNL_TRAILING (signal active) / MOMENTUM_EXIT (signal lost)
+            # Real-time P&L trailing: only MOMENTUM_EXIT (signal lost). Skipped when signal active + RSI exit enabled.
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
-            pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
             if pnl_trigger > 0 and pnl_ratio > 0 and cached_peak_pnl >= pnl_trigger:
                 rt_signal_active = order_info.get('signal_active', False)
-                rt_effective_ratio = pnl_ratio_active if rt_signal_active else pnl_ratio
-                pnl_exit_level = cached_peak_pnl * rt_effective_ratio
-                if pnl_pct <= pnl_exit_level:
-                    tp_level = order_info.get('current_tp_level', 1)
-                    rt_exit_reason = "PNL_TRAILING" if rt_signal_active else "MOMENTUM_EXIT"
-                    rt_ratio_tag = f"{rt_effective_ratio}({'signal' if rt_signal_active else 'no-signal'})"
-                    logger.warning(f"[REALTIME_{rt_exit_reason}] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={cached_peak_pnl:.4f}%*{rt_ratio_tag}={pnl_exit_level:.4f}%, price={current_price:.6f} - CLOSING NOW!")
-                    try:
-                        async with AsyncSessionLocal() as db:
-                            result = await db.execute(
-                                select(Order).where(
-                                    and_(Order.id == order_id, Order.status == "OPEN")
+                if rt_signal_active and rt_rsi_exit_enabled:
+                    pass  # RSI momentum exit handles signal-active exits
+                else:
+                    pnl_exit_level = cached_peak_pnl * pnl_ratio
+                    if pnl_pct <= pnl_exit_level:
+                        tp_level = order_info.get('current_tp_level', 1)
+                        logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% <= peak={cached_peak_pnl:.4f}%*{pnl_ratio}(no-signal)={pnl_exit_level:.4f}%, price={current_price:.6f} - CLOSING NOW!")
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(
+                                        and_(Order.id == order_id, Order.status == "OPEN")
+                                    )
                                 )
-                            )
-                            order = result.scalar_one_or_none()
-                            if order:
-                                await self.close_position(
-                                    db, order, current_price,
-                                    f"{rt_exit_reason} L{tp_level}"
-                                )
-                                logger.info(f"[REALTIME_{rt_exit_reason}] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%, peak was {cached_peak_pnl:.4f}%")
-                                async with _cache_lock:
-                                    _open_orders_cache[pair] = [
-                                        o for o in _open_orders_cache.get(pair, [])
-                                        if o['id'] != order_id
-                                    ]
-                    except Exception as e:
-                        logger.error(f"[REALTIME_{rt_exit_reason}] Error closing {pair}: {e}")
-                    continue
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    await self.close_position(
+                                        db, order, current_price,
+                                        f"MOMENTUM_EXIT L{tp_level}"
+                                    )
+                                    logger.info(f"[REALTIME_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%, peak was {cached_peak_pnl:.4f}%")
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [
+                                            o for o in _open_orders_cache.get(pair, [])
+                                            if o['id'] != order_id
+                                        ]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_MOMENTUM_EXIT] Error closing {pair}: {e}")
+                        continue
             
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled)
             if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', True):

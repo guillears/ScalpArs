@@ -59,6 +59,7 @@ def calculate_indicators(ohlcv: List) -> Dict:
         'ema50': float(ema50.iloc[-1]) if not pd.isna(ema50.iloc[-1]) else None,
         'ema50_prev12': float(ema50.iloc[-13]) if len(ema50) >= 13 and not pd.isna(ema50.iloc[-13]) else None,
         'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None,
+        'rsi_prev3': float(rsi.iloc[-4]) if len(rsi) >= 4 and not pd.isna(rsi.iloc[-4]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'volume': float(df['volume'].iloc[-1]),
         'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None
@@ -76,14 +77,14 @@ def is_signal_direction_active(direction: str, ema5: float, ema8: float, ema20: 
     return False
 
 
-def determine_macro_regime(ema50: float, ema50_prev12: float, flat_threshold: float = 0.07) -> str:
+def determine_macro_regime(ema_current: float, ema_prev: float, flat_threshold: float = 0.07) -> str:
     """
-    Determine macro trend regime from EMA50 slope.
+    Determine macro trend regime from EMA slope (EMA20 by default).
     Returns "BULLISH", "BEARISH", or "NEUTRAL".
     """
-    if ema50 is None or ema50_prev12 is None or ema50_prev12 == 0:
+    if ema_current is None or ema_prev is None or ema_prev == 0:
         return "NEUTRAL"
-    pct_change = ((ema50 - ema50_prev12) / ema50_prev12) * 100
+    pct_change = ((ema_current - ema_prev) / ema_prev) * 100
     if pct_change > flat_threshold:
         return "BULLISH"
     elif pct_change < -flat_threshold:
@@ -104,7 +105,8 @@ def get_signal(
     config: Optional[Dict] = None,
     ema20_prev6: float = None,
     ema50: float = None,
-    ema50_prev12: float = None
+    ema50_prev12: float = None,
+    rsi_prev3: float = None
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -187,11 +189,11 @@ def get_signal(
         
         return True
     
-    # --- Macro trend regime (EMA50) ---
+    # --- Macro trend regime (EMA20 slope) ---
     macro_filter_enabled = getattr(th, 'macro_trend_filter_enabled', True)
     neutral_mode = getattr(th, 'macro_trend_neutral_mode', 'both')
     flat_threshold = getattr(th, 'macro_trend_flat_threshold', 0.02)
-    regime = determine_macro_regime(ema50, ema50_prev12, flat_threshold)
+    regime = determine_macro_regime(ema20, ema20_prev6, flat_threshold)
     
     def regime_allows(direction: str) -> bool:
         if not macro_filter_enabled:
@@ -213,14 +215,18 @@ def get_signal(
     short_rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
     short_rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
     adx_max = getattr(th, 'momentum_adx_max', 100)
+    rsi_momentum_enabled = getattr(th, 'rsi_momentum_filter_enabled', True)
+
     if ema8 and ema8 > 0:
         if ema5 > ema8:
             if not regime_allows("LONG"):
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev12={ema50_prev12}")
+                logger.debug(f"[MOMENTUM] LONG skipped: regime={regime}, ema20={ema20}, ema20_prev6={ema20_prev6}")
             elif ema20_filter_long and (price is None or price <= ema20):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_long and (ema20_prev6 is None or ema20 <= ema20_prev6):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
+            elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi < rsi_prev3:
+                logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against LONG")
             elif long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} < min {long_rsi_min}")
             elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:
@@ -244,11 +250,13 @@ def get_signal(
                             return "LONG", "STRONG_BUY"
         elif ema5 < ema8 and ema5 > 0:
             if not regime_allows("SHORT"):
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA50 regime={regime}, ema50={ema50}, ema50_prev12={ema50_prev12}")
+                logger.debug(f"[MOMENTUM] SHORT skipped: regime={regime}, ema20={ema20}, ema20_prev6={ema20_prev6}")
             elif ema20_filter_short and (price is None or price >= ema20):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_short and (ema20_prev6 is None or ema20 >= ema20_prev6):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
+            elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi > rsi_prev3:
+                logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against SHORT")
             elif short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} > max {short_rsi_max}")
             elif short_rsi_min > 0 and rsi is not None and rsi < short_rsi_min:

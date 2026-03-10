@@ -912,19 +912,19 @@ class TradingEngine:
         
         # BTC global regime filter: fetch BTC data once before processing all pairs
         btc_global_enabled = getattr(config.trading_config.thresholds, 'btc_global_filter_enabled', False)
-        btc_ema50 = None
-        btc_ema50_prev12 = None
+        btc_ema20 = None
+        btc_ema20_prev6 = None
         btc_regime = "NEUTRAL"
         if btc_global_enabled:
             btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
             if btc_ohlcv:
                 btc_indicators = calculate_indicators(btc_ohlcv)
                 if btc_indicators:
-                    btc_ema50 = btc_indicators.get('ema50')
-                    btc_ema50_prev12 = btc_indicators.get('ema50_prev12')
+                    btc_ema20 = btc_indicators.get('ema20')
+                    btc_ema20_prev6 = btc_indicators.get('ema20_prev6')
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
-                    btc_regime = determine_macro_regime(btc_ema50, btc_ema50_prev12, flat_th)
-            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema50={btc_ema50}, prev6={btc_ema50_prev12})")
+                    btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
+            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev6})")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
@@ -966,7 +966,8 @@ class TradingEngine:
                     price=indicators.get('price'),
                     ema20_prev6=indicators.get('ema20_prev6'),
                     ema50=indicators.get('ema50'),
-                    ema50_prev12=indicators.get('ema50_prev12')
+                    ema50_prev12=indicators.get('ema50_prev12'),
+                    rsi_prev3=indicators.get('rsi_prev3')
                 )
 
                 if signal in ["LONG", "SHORT"]:
@@ -975,7 +976,7 @@ class TradingEngine:
                 if signal in ["LONG", "SHORT"] and btc_global_enabled:
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                     pair_regime = determine_macro_regime(
-                        indicators.get('ema50'), indicators.get('ema50_prev12'), flat_th
+                        indicators.get('ema20'), indicators.get('ema20_prev6'), flat_th
                     )
                     neutral_mode = getattr(config.trading_config.thresholds, 'macro_trend_neutral_mode', 'both')
                     btc_blocks = False
@@ -1010,7 +1011,7 @@ class TradingEngine:
                     else:
                         flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                         entry_regime = determine_macro_regime(
-                            indicators.get('ema50'), indicators.get('ema50_prev12'), flat_th
+                            indicators.get('ema20'), indicators.get('ema20_prev6'), flat_th
                         )
                     order = await self.open_position(
                         db=db,
@@ -1061,7 +1062,7 @@ class TradingEngine:
         
         flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
         regime = determine_macro_regime(
-            indicators.get('ema50'), indicators.get('ema50_prev12'), flat_th
+            indicators.get('ema20'), indicators.get('ema20_prev6'), flat_th
         )
         
         if pair_data:

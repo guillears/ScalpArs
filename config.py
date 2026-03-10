@@ -72,7 +72,7 @@ class SignalThresholds(BaseModel):
     momentum_ema20_slope_filter_short: bool = True
     macro_trend_filter_enabled: bool = True
     macro_trend_neutral_mode: str = "both"  # "both" or "none"
-    macro_trend_flat_threshold: float = 0.07  # % change below which EMA50 is considered neutral
+    macro_trend_flat_threshold: float = 0.07  # % change below which EMA20 slope is considered neutral
     momentum_long_rsi_min: float = 55.0  # Min RSI for momentum LONG (0 = disabled)
     momentum_long_rsi_max: float = 100.0  # Max RSI for momentum LONG (100 = disabled)
     momentum_short_rsi_max: float = 50.0  # Max RSI for momentum SHORT (100 = disabled)
@@ -89,6 +89,7 @@ class SignalThresholds(BaseModel):
     pnl_trailing_trigger: float = 0.1  # Min peak P&L % to activate P&L trailing exit (0 = disabled)
     pnl_trailing_ratio: float = 0.5  # Ratio when signal lost (MOMENTUM_EXIT) -- tighter
     pnl_trailing_ratio_signal_active: float = 0.3  # Ratio when signal active (PNL_TRAILING) -- wider
+    rsi_momentum_filter_enabled: bool = True  # Block LONG if RSI falling, block SHORT if RSI rising (vs 3 candles ago)
 
 
 class InvestmentConfig(BaseModel):

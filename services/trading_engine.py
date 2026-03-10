@@ -13,7 +13,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active
 from services.websocket_tracker import websocket_tracker
 
 logger = logging.getLogger(__name__)
@@ -524,10 +524,15 @@ class TradingEngine:
 
         try:
             pair_data_result = await db.execute(
-                select(PairData.signal).where(PairData.pair == order.pair)
+                select(PairData).where(PairData.pair == order.pair)
             )
-            current_signal = pair_data_result.scalar_one_or_none()
-            order.signal_active_at_close = (current_signal == order.direction) if current_signal else None
+            pd = pair_data_result.scalar_one_or_none()
+            if pd:
+                order.signal_active_at_close = is_signal_direction_active(
+                    order.direction, pd.ema5, pd.ema8, pd.ema20, pd.price
+                )
+            else:
+                order.signal_active_at_close = None
         except Exception:
             order.signal_active_at_close = None
 
@@ -731,7 +736,9 @@ class TradingEngine:
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
             pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
             if pnl_trigger > 0 and pnl_ratio > 0 and realtime_peak >= pnl_trigger:
-                signal_active = pair_data and pair_data.signal == order.direction
+                signal_active = pair_data and is_signal_direction_active(
+                    order.direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
+                )
                 effective_ratio = pnl_ratio_active if signal_active else pnl_ratio
                 pnl_exit_level = realtime_peak * effective_ratio
                 if pnl_pct <= pnl_exit_level:
@@ -775,7 +782,10 @@ class TradingEngine:
 
             # SIGNAL_LOST: full signal no longer matches entry direction while in small profit
             signal_lost_enabled = getattr(config.trading_config.thresholds, 'signal_lost_exit_enabled', True)
-            if signal_lost_enabled and pair_data and pair_data.signal != order.direction:
+            signal_dir_active = pair_data and is_signal_direction_active(
+                order.direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
+            )
+            if signal_lost_enabled and pair_data and not signal_dir_active:
                 signal_lost_min = getattr(config.trading_config.thresholds, 'signal_lost_min_profit', 0.03)
                 if order.direction == "LONG":
                     sl_raw_pnl = (current_price - order.entry_price) * order.quantity
@@ -803,7 +813,9 @@ class TradingEngine:
                     continue
 
             # Check exit conditions (including fees for accurate SL/TP)
-            is_signal_active = (pair_data.signal == order.direction) if pair_data else False
+            is_signal_active = (pair_data and is_signal_direction_active(
+                order.direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
+            )) if pair_data else False
             exit_conf_config = config.trading_config.confidence_levels.get(order.confidence)
             exit_result = check_exit_conditions(
                 direction=order.direction,
@@ -1171,7 +1183,7 @@ class TradingEngine:
             
             # Apply break-even logic ONLY in pre-TP zone (trailing stop not active)
             effective_sl = stop_loss_pct
-            signal_still_active = (direction == order_info.get('pair_signal'))
+            signal_still_active = order_info.get('signal_active', False)
             breakeven_active = False
             
             if current_peak >= breakeven_trigger:
@@ -1234,7 +1246,7 @@ class TradingEngine:
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
             pnl_ratio_active = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio_signal_active', 0.3)
             if pnl_trigger > 0 and pnl_ratio > 0 and cached_peak_pnl >= pnl_trigger:
-                rt_signal_active = order_info.get('pair_signal') == direction
+                rt_signal_active = order_info.get('signal_active', False)
                 rt_effective_ratio = pnl_ratio_active if rt_signal_active else pnl_ratio
                 pnl_exit_level = cached_peak_pnl * rt_effective_ratio
                 if pnl_pct <= pnl_exit_level:
@@ -1328,16 +1340,19 @@ class TradingEngine:
         )
         orders = result.scalars().all()
         
-        # Fetch current signal and EMA5 for each pair with open orders
+        # Fetch current EMA values for each pair with open orders
         pair_names = list({o.pair for o in orders})
-        pair_signals: Dict[str, str] = {}
+        pair_emas: Dict[str, Dict] = {}
         pair_ema5s: Dict[str, float] = {}
         if pair_names:
             sig_result = await db.execute(
-                select(PairData.pair, PairData.signal, PairData.ema5).where(PairData.pair.in_(pair_names))
+                select(PairData.pair, PairData.ema5, PairData.ema8, PairData.ema20, PairData.price).where(PairData.pair.in_(pair_names))
             )
             for row in sig_result:
-                pair_signals[row.pair] = row.signal
+                pair_emas[row.pair] = {
+                    'ema5': row.ema5, 'ema8': row.ema8,
+                    'ema20': row.ema20, 'price': row.price
+                }
                 if row.ema5 is not None:
                     pair_ema5s[row.pair] = row.ema5
         
@@ -1358,7 +1373,13 @@ class TradingEngine:
                 'confidence': order.confidence,
                 'stop_loss': conf_config.stop_loss,
                 'signal_active_sl': conf_config.signal_active_sl,
-                'pair_signal': pair_signals.get(order.pair),
+                'signal_active': is_signal_direction_active(
+                    order.direction,
+                    pair_emas.get(order.pair, {}).get('ema5'),
+                    pair_emas.get(order.pair, {}).get('ema8'),
+                    pair_emas.get(order.pair, {}).get('ema20'),
+                    pair_emas.get(order.pair, {}).get('price')
+                ),
                 'current_tp_level': order.current_tp_level,
                 'peak_pnl': order.peak_pnl or 0.0,
                 'trough_pnl': order.trough_pnl or 0.0,

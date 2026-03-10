@@ -65,6 +65,17 @@ def calculate_indicators(ohlcv: List) -> Dict:
     }
 
 
+def is_signal_direction_active(direction: str, ema5: float, ema8: float, ema20: float, price: float) -> bool:
+    """Check if the core directional momentum still holds (ignoring entry filters)."""
+    if not all([ema5, ema8, ema20, price]):
+        return False
+    if direction == "LONG":
+        return ema5 > ema8 and price > ema20
+    elif direction == "SHORT":
+        return ema5 < ema8 and price < ema20
+    return False
+
+
 def determine_macro_regime(ema50: float, ema50_prev12: float, flat_threshold: float = 0.07) -> str:
     """
     Determine macro trend regime from EMA50 slope.

@@ -432,8 +432,12 @@ class TradingEngine:
                 'current_tp_level': 1,
                 'peak_pnl': 0.0,
                 'trough_pnl': 0.0,
-                'breakeven_trigger': conf_config.breakeven_trigger,
-                'breakeven_offset': conf_config.breakeven_offset,
+                'be_level1_trigger': conf_config.be_level1_trigger,
+                'be_level1_offset': conf_config.be_level1_offset,
+                'be_level2_trigger': conf_config.be_level2_trigger,
+                'be_level2_offset': conf_config.be_level2_offset,
+                'be_level3_trigger': conf_config.be_level3_trigger,
+                'be_level3_offset': conf_config.be_level3_offset,
                 'high_price': actual_price,
                 'low_price': actual_price,
                 'pullback_trigger': conf_config.pullback_trigger
@@ -692,8 +696,8 @@ class TradingEngine:
                 if age_minutes >= no_exp_minutes:
                     conf_config = config.trading_config.confidence_levels.get(order.confidence)
                     if conf_config:
-                        be_trigger = conf_config.breakeven_trigger
-                        be_offset = conf_config.breakeven_offset
+                        be_l1_trigger = conf_config.be_level1_trigger
+                        be_l1_offset = conf_config.be_level1_offset
                         if order.direction == "LONG":
                             raw_pnl = (current_price - order.entry_price) * order.quantity
                         else:
@@ -702,13 +706,13 @@ class TradingEngine:
                         net_pnl = raw_pnl - (order.entry_fee or 0) - est_exit_fee
                         entry_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
                         cur_pnl_pct = (net_pnl / entry_notional) * 100
-                        if realtime_peak < be_trigger and cur_pnl_pct < be_offset:
+                        if realtime_peak < be_l1_trigger and cur_pnl_pct < be_l1_offset:
                             # Re-check if buy signal is still active before closing
                             if pair_data and pair_data.signal == order.direction:
                                 order.no_expansion_last_check = datetime.now(timezone.utc)
                                 logger.info(f"[NO_EXPANSION_RESET] {order.pair} {order.direction}: signal still {order.direction}, resetting timer (was {age_minutes:.0f}min)")
                                 continue
-                            logger.info(f"[NO_EXPANSION] {order.pair} {order.direction}: {age_minutes:.0f}min, peak={realtime_peak:.4f}% < BE_trig={be_trigger}%, cur={cur_pnl_pct:.4f}% < BE_off={be_offset}%")
+                            logger.info(f"[NO_EXPANSION] {order.pair} {order.direction}: {age_minutes:.0f}min, peak={realtime_peak:.4f}% < BE_L1={be_l1_trigger}%, cur={cur_pnl_pct:.4f}% < BE_L1_off={be_l1_offset}%")
                             closed_order = await self.close_position(db, order, current_price, "NO_EXPANSION")
                             if closed_order:
                                 updates.append({
@@ -1162,8 +1166,12 @@ class TradingEngine:
             entry_fee = order_info['entry_fee']
             cached_peak_pnl = order_info.get('peak_pnl', 0.0)
             cached_trough_pnl = order_info.get('trough_pnl', 0.0)
-            breakeven_trigger = order_info.get('breakeven_trigger', 999)
-            breakeven_offset = order_info.get('breakeven_offset', 0.0)
+            be_l1_trigger = order_info.get('be_level1_trigger', 999)
+            be_l1_offset = order_info.get('be_level1_offset', 0.0)
+            be_l2_trigger = order_info.get('be_level2_trigger', 999)
+            be_l2_offset = order_info.get('be_level2_offset', 0.0)
+            be_l3_trigger = order_info.get('be_level3_trigger', 999)
+            be_l3_offset = order_info.get('be_level3_offset', 0.0)
             pullback_trigger = order_info.get('pullback_trigger', 0.04)
             
             # Skip if entry data is invalid
@@ -1213,17 +1221,23 @@ class TradingEngine:
             # Trailing stop activates once peak reaches TP target or at L2+.
             trailing_stop_would_be_active = current_peak >= effective_tp_target or tp_level >= 2
             
-            # Apply break-even logic ONLY in pre-TP zone (trailing stop not active)
+            # Apply 3-level break-even logic (highest level wins)
             effective_sl = stop_loss_pct
             signal_still_active = order_info.get('signal_active', False)
             breakeven_active = False
-            
-            if current_peak >= breakeven_trigger:
+
+            if current_peak >= be_l3_trigger:
                 breakeven_active = True
-                effective_sl = breakeven_offset
+                effective_sl = be_l3_offset
+            elif current_peak >= be_l2_trigger:
+                breakeven_active = True
+                effective_sl = be_l2_offset
+            elif current_peak >= be_l1_trigger:
+                breakeven_active = True
+                effective_sl = be_l1_offset
             elif signal_still_active:
                 effective_sl = order_info.get('signal_active_sl', stop_loss_pct)
-            
+
             # Check if stop loss triggered
             if pnl_pct <= effective_sl:
                 if breakeven_active:
@@ -1455,8 +1469,12 @@ class TradingEngine:
                 'current_tp_level': order.current_tp_level,
                 'peak_pnl': order.peak_pnl or 0.0,
                 'trough_pnl': order.trough_pnl or 0.0,
-                'breakeven_trigger': conf_config.breakeven_trigger,
-                'breakeven_offset': conf_config.breakeven_offset,
+                'be_level1_trigger': conf_config.be_level1_trigger,
+                'be_level1_offset': conf_config.be_level1_offset,
+                'be_level2_trigger': conf_config.be_level2_trigger,
+                'be_level2_offset': conf_config.be_level2_offset,
+                'be_level3_trigger': conf_config.be_level3_trigger,
+                'be_level3_offset': conf_config.be_level3_offset,
                 'high_price': order.high_price_since_entry or order.entry_price,
                 'low_price': order.low_price_since_entry or order.entry_price,
                 'pullback_trigger': conf_config.pullback_trigger,

@@ -430,14 +430,17 @@ def check_exit_conditions(
     stop_loss = conf_config.stop_loss
     tp_min = conf_config.tp_min
     pullback_trigger = conf_config.pullback_trigger
-    breakeven_trigger = conf_config.breakeven_trigger
-    breakeven_offset = conf_config.breakeven_offset
-    
+    be_l1_trigger = conf_config.be_level1_trigger
+    be_l1_offset = conf_config.be_level1_offset
+    be_l2_trigger = conf_config.be_level2_trigger
+    be_l2_offset = conf_config.be_level2_offset
+    be_l3_trigger = conf_config.be_level3_trigger
+    be_l3_offset = conf_config.be_level3_offset
+
     # Use dynamic_tp_target if set, otherwise use tp_min
     effective_tp_target = dynamic_tp_target if dynamic_tp_target is not None else tp_min
     
     # ALWAYS track maximum P&L seen BEFORE stop loss check (so break-even uses latest peak)
-    # This ensures we don't lose the peak when price drops after TP extension
     if pnl_pct > 0:
         peak_pnl = max(peak_pnl, pnl_pct)
     if pnl_pct < 0:
@@ -446,14 +449,21 @@ def check_exit_conditions(
     # Trailing stop (pullback from peak price) activates once peak reaches TP target or at L2+.
     trailing_stop_active = peak_pnl >= effective_tp_target or current_tp_level >= 2
     
-    # Break-even stop loss: applies when trailing stop is NOT active (L1 and pre-TP zone).
-    # At L2+ the pullback trailing provides tighter protection so BE is not needed.
+    # 3-Level break-even stop loss (highest level wins)
     effective_stop_loss = stop_loss
     breakeven_active = False
-    if peak_pnl >= breakeven_trigger:
+    if peak_pnl >= be_l3_trigger:
         breakeven_active = True
-        effective_stop_loss = breakeven_offset
-        logger.debug(f"[BREAKEVEN] {direction} L{current_tp_level}: Active! peak_pnl={peak_pnl:.4f}% >= trigger={breakeven_trigger}%, SL moved from {stop_loss}% to {breakeven_offset}%")
+        effective_stop_loss = be_l3_offset
+        logger.debug(f"[BREAKEVEN_L3] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L3={be_l3_trigger}%, SL={be_l3_offset}%")
+    elif peak_pnl >= be_l2_trigger:
+        breakeven_active = True
+        effective_stop_loss = be_l2_offset
+        logger.debug(f"[BREAKEVEN_L2] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L2={be_l2_trigger}%, SL={be_l2_offset}%")
+    elif peak_pnl >= be_l1_trigger:
+        breakeven_active = True
+        effective_stop_loss = be_l1_offset
+        logger.debug(f"[BREAKEVEN_L1] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L1={be_l1_trigger}%, SL={be_l1_offset}%")
     elif signal_active:
         effective_stop_loss = conf_config.signal_active_sl
         logger.debug(f"[SIGNAL_ACTIVE_SL] {direction} L{current_tp_level}: Signal still active, SL widened from {stop_loss}% to {effective_stop_loss}%")
@@ -466,7 +476,7 @@ def check_exit_conditions(
             reason_prefix = "STOP_LOSS_WIDE"
         else:
             reason_prefix = "STOP_LOSS"
-        logger.info(f"[{reason_prefix}] {direction} L{current_tp_level} triggered: pnl_pct={pnl_pct:.4f}% <= effective_sl={effective_stop_loss}% (original_sl={stop_loss}%, peak={peak_pnl:.4f}%, be_trigger={breakeven_trigger}%)")
+        logger.info(f"[{reason_prefix}] {direction} L{current_tp_level} triggered: pnl_pct={pnl_pct:.4f}% <= effective_sl={effective_stop_loss}% (original_sl={stop_loss}%, peak={peak_pnl:.4f}%)")
         return {
             "should_close": True,
             "reason": f"{reason_prefix} L{current_tp_level}",

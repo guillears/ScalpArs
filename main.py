@@ -1049,14 +1049,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     
     # Outcome Distribution - trades grouped by P&L percentage ranges
     outcome_ranges = [
-        ("> +0.8%", lambda pct: pct > 0.8),
-        ("+0.4% to +0.8%", lambda pct: 0.4 < pct <= 0.8),
-        ("0% to +0.4%", lambda pct: 0 < pct <= 0.4),
-        ("-0.8% to 0%", lambda pct: -0.8 < pct <= 0),
-        ("-1% to -0.8%", lambda pct: -1 < pct <= -0.8),
-        ("-1.2% to -1%", lambda pct: -1.2 < pct <= -1),
-        ("-1.5% to -1.2%", lambda pct: -1.5 < pct <= -1.2),
-        ("< -1.5%", lambda pct: pct <= -1.5)
+        ("> +1.0%", lambda pct: pct > 1.0),
+        ("+0.5% to +1.0%", lambda pct: 0.5 < pct <= 1.0),
+        ("+0.3% to +0.5%", lambda pct: 0.3 < pct <= 0.5),
+        ("+0.15% to +0.3%", lambda pct: 0.15 < pct <= 0.3),
+        ("0% to +0.15%", lambda pct: 0 < pct <= 0.15),
+        ("-0.25% to 0%", lambda pct: -0.25 < pct <= 0),
+        ("-0.40% to -0.25%", lambda pct: -0.40 < pct <= -0.25),
+        ("< -0.40%", lambda pct: pct <= -0.40)
     ]
     
     outcome_distribution = []
@@ -1323,7 +1323,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         for o in sl_orders:
             conf = o.confidence or "LOW"
             conf_config = tc.confidence_levels.get(conf, tc.confidence_levels.get("LOW"))
-            trigger = conf_config.breakeven_trigger
+            trigger = conf_config.be_level1_trigger
             peak = o.peak_pnl or 0
             
             if peak >= trigger:
@@ -1490,7 +1490,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     try:
         np_trades = never_positive_trades
         if np_trades:
-            def _np_bucket_stats(bucket_orders, label, dimension_value, direction=None):
+            def _np_bucket_stats(bucket_orders, label, dimension_value, direction=None, total_in_range=0):
                 count = len(bucket_orders)
                 if count == 0:
                     return None
@@ -1510,11 +1510,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     by_reason[r] = by_reason.get(r, 0) + 1
                 sig_active = sum(1 for o in bucket_orders if o.signal_active_at_close is True)
                 sig_inactive = sum(1 for o in bucket_orders if o.signal_active_at_close is False)
+                pct = round(count / total_in_range * 100, 1) if total_in_range > 0 else 0
                 return {
                     "dimension": label,
                     "value": dimension_value,
                     "direction": direction,
                     "count": count,
+                    "total_in_range": total_in_range,
+                    "pct_of_total": pct,
                     "avg_close_pnl": round(avg_close, 4),
                     "total_pnl_usd": round(total_pnl, 2),
                     "avg_pnl_usd": round(total_pnl / count, 2),
@@ -1531,57 +1534,68 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
             for direction in ["LONG", "SHORT"]:
                 dir_trades = [o for o in np_trades if (o.direction or "LONG") == direction]
-                row = _np_bucket_stats(dir_trades, "Direction", direction, direction)
+                all_dir = len([o for o in orders if (o.direction or "LONG") == direction])
+                row = _np_bucket_stats(dir_trades, "Direction", direction, direction, all_dir)
                 if row:
                     never_positive_deep_dive.append(row)
 
             for conf in ["VERY_STRONG", "STRONG_BUY"]:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_trades if (o.confidence or "LOW") == conf and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "Confidence", conf, direction)
+                    all_in = len([o for o in orders if (o.confidence or "LOW") == conf and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "Confidence", conf, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 
             np_adx_ranges = [("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-50", 40, 50)]
             np_adx_trades = [o for o in np_trades if o.entry_adx is not None]
+            all_adx_trades = [o for o in orders if o.entry_adx is not None]
             for rng, lo, hi in np_adx_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_adx_trades if lo <= o.entry_adx < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "ADX", rng, direction)
+                    all_in = len([o for o in all_adx_trades if lo <= o.entry_adx < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "ADX", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 
             np_rsi_ranges = [("30-40", 30, 40), ("40-50", 40, 50), ("50-60", 50, 60), ("60-70", 60, 70), ("70-80", 70, 80)]
             np_rsi_trades = [o for o in np_trades if o.entry_rsi is not None]
+            all_rsi_trades = [o for o in orders if o.entry_rsi is not None]
             for rng, lo, hi in np_rsi_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_rsi_trades if lo <= o.entry_rsi < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "RSI", rng, direction)
+                    all_in = len([o for o in all_rsi_trades if lo <= o.entry_rsi < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "RSI", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 
             np_gap58_ranges = [("0.02-0.05%", 0.02, 0.05), ("0.05-0.10%", 0.05, 0.10), ("0.10-0.20%", 0.10, 0.20), (">0.20%", 0.20, 999)]
             np_gap58_trades = [o for o in np_trades if o.entry_ema_gap_5_8 is not None]
+            all_gap58_trades = [o for o in orders if o.entry_ema_gap_5_8 is not None]
             for rng, lo, hi in np_gap58_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_gap58_trades if lo <= o.entry_ema_gap_5_8 < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "EMA5-EMA8 Gap", rng, direction)
+                    all_in = len([o for o in all_gap58_trades if lo <= o.entry_ema_gap_5_8 < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "EMA5-EMA8 Gap", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 
             np_gap_ranges = [("0.15-0.25%", 0.15, 0.25), ("0.25-0.35%", 0.25, 0.35), ("0.35-0.50%", 0.35, 0.50), ("0.50-0.80%", 0.50, 0.80), (">0.80%", 0.80, 999)]
             np_gap_trades = [o for o in np_trades if o.entry_gap is not None]
+            all_gap_trades = [o for o in orders if o.entry_gap is not None]
             for rng, lo, hi in np_gap_ranges:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_gap_trades if lo <= o.entry_gap < hi and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "Entry Gap", rng, direction)
+                    all_in = len([o for o in all_gap_trades if lo <= o.entry_gap < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "Entry Gap", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 
             for reason_key in ["STOP_LOSS", "STOP_LOSS_WIDE", "MOMENTUM_EXIT", "PNL_TRAILING", "SLOPE_EXIT", "SIGNAL_LOST"]:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_trades if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction]
-                    row = _np_bucket_stats(bucket, "Close Reason", reason_key, direction)
+                    all_in = len([o for o in orders if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "Close Reason", reason_key, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
     except Exception as e:

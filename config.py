@@ -31,10 +31,13 @@ class ConfidenceConfig(BaseModel):
     gap_max: float = 0.40  # % maximum gap allowed (filters overextended entries)
     gap_enabled: bool = True  # Whether to enforce gap requirement
     max_ema5_stretch: float = 0.12  # % max distance from EMA5 allowed for entry
-    # Break-even stop loss: once peak P&L reaches breakeven_trigger,
-    # the effective stop loss moves from stop_loss to breakeven_offset
-    breakeven_trigger: float = 0.15  # P&L % that activates break-even protection
-    breakeven_offset: float = -0.05  # New effective SL once break-even is active (slightly negative for fees/slippage)
+    # 3-Level Trailing Break-Even: progressive SL tightening as trade moves in favor
+    be_level1_trigger: float = 0.08  # P&L % to activate Level 1 (micro-protection)
+    be_level1_offset: float = -0.15  # SL once Level 1 active (reduce max loss)
+    be_level2_trigger: float = 0.18  # P&L % to activate Level 2 (profit lock)
+    be_level2_offset: float = 0.05   # SL once Level 2 active (small profit locked)
+    be_level3_trigger: float = 0.25  # P&L % to activate Level 3 (full protection)
+    be_level3_offset: float = 0.15   # SL once Level 3 active (meaningful profit locked)
     tp_trailing_enabled: bool = True  # Enable TP extension and trailing stop logic
 
 
@@ -148,8 +151,6 @@ class TradingConfig(BaseModel):
             gap_min=0.08,
             gap_max=0.40,
             gap_enabled=True,
-            breakeven_trigger=0.15,
-            breakeven_offset=-0.05
         ),
         "MEDIUM": ConfidenceConfig(
             enabled=True,
@@ -162,8 +163,6 @@ class TradingConfig(BaseModel):
             gap_min=0.08,
             gap_max=0.40,
             gap_enabled=True,
-            breakeven_trigger=0.20,
-            breakeven_offset=-0.05
         ),
         "HIGH": ConfidenceConfig(
             enabled=True,
@@ -176,8 +175,6 @@ class TradingConfig(BaseModel):
             gap_min=0.08,
             gap_max=0.40,
             gap_enabled=False,
-            breakeven_trigger=0.25,
-            breakeven_offset=-0.03
         ),
         "EXTREME": ConfidenceConfig(
             enabled=True,
@@ -190,8 +187,6 @@ class TradingConfig(BaseModel):
             gap_min=0.08,
             gap_max=0.40,
             gap_enabled=False,
-            breakeven_trigger=0.30,
-            breakeven_offset=-0.02
         ),
         "VERY_STRONG": ConfidenceConfig(
             enabled=True,
@@ -204,8 +199,6 @@ class TradingConfig(BaseModel):
             gap_min=0.12,
             gap_max=0.30,
             gap_enabled=True,
-            breakeven_trigger=0.18,
-            breakeven_offset=0.10
         ),
         "STRONG_BUY": ConfidenceConfig(
             enabled=True,
@@ -218,8 +211,6 @@ class TradingConfig(BaseModel):
             gap_min=0.12,
             gap_max=0.30,
             gap_enabled=True,
-            breakeven_trigger=0.18,
-            breakeven_offset=0.10
         )
     }
 

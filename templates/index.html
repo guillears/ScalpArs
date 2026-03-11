@@ -442,6 +442,7 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Category</th>
                                     <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">%</th>
                                     <th class="px-3 py-2 font-medium text-center">Direction</th>
                                     <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
@@ -455,7 +456,7 @@
                                 </tr>
                             </thead>
                             <tbody id="sl-deep-dive-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
+                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -623,6 +624,7 @@
                                     <th class="px-3 py-2 font-medium">Value</th>
                                     <th class="px-3 py-2 font-medium text-center">Dir</th>
                                     <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">% of Total</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
@@ -919,7 +921,7 @@
                                 <input type="number" id="config-no-expansion" min="0" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="15">
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">min</span>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Close if peak &lt; BE Trig &amp; current &lt; BE Off (0 = disabled)</p>
+                            <p class="text-xs text-gray-500 mt-1">Close if peak &lt; BE L1 Trig &amp; current &lt; BE L1 Off (0 = disabled)</p>
                         </div>
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Signal Lost Exit</label>
@@ -1272,8 +1274,12 @@
                                     <th class="px-3 py-3 font-medium text-center" title="Maximum gap % allowed (filters overextended entries)">Gap Max</th>
                                     <th class="px-3 py-3 font-medium text-center">Gap?</th>
                                     <th class="px-3 py-3 font-medium text-center text-cyan-400" title="Max EMA5 Stretch %: max distance from EMA5 allowed for entry">Stretch</th>
-                                    <th class="px-3 py-3 font-medium text-center text-amber-400" title="Break-even trigger: once peak P&L reaches this %, SL moves to BE Offset">BE Trig</th>
-                                    <th class="px-3 py-3 font-medium text-center text-amber-400" title="Break-even offset: new effective stop loss once break-even is active">BE Off</th>
+                                    <th class="px-3 py-3 font-medium text-center text-amber-400" title="BE Level 1: micro-protection trigger">L1 Trig</th>
+                                    <th class="px-3 py-3 font-medium text-center text-amber-400" title="BE Level 1: SL offset once L1 active">L1 Off</th>
+                                    <th class="px-3 py-3 font-medium text-center text-yellow-400" title="BE Level 2: profit lock trigger">L2 Trig</th>
+                                    <th class="px-3 py-3 font-medium text-center text-yellow-400" title="BE Level 2: SL offset once L2 active">L2 Off</th>
+                                    <th class="px-3 py-3 font-medium text-center text-emerald-400" title="BE Level 3: full protection trigger">L3 Trig</th>
+                                    <th class="px-3 py-3 font-medium text-center text-emerald-400" title="BE Level 3: SL offset once L3 active">L3 Off</th>
                                     <th class="px-3 py-3 font-medium text-center text-sky-400" title="Enable TP extension and trailing stop logic">TP/Trail</th>
                                 </tr>
                             </thead>
@@ -1324,10 +1330,22 @@
                                         <input type="number" step="0.01" id="config-low-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-low-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.15">
+                                        <input type="number" step="0.01" id="config-low-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-low-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.05">
+                                        <input type="number" step="0.01" id="config-low-be-l1-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="-0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l2-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l2-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l3-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-low-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1379,10 +1397,22 @@
                                         <input type="number" step="0.01" id="config-medium-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-medium-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.20">
+                                        <input type="number" step="0.01" id="config-medium-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-medium-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.05">
+                                        <input type="number" step="0.01" id="config-medium-be-l1-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="-0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l2-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l2-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l3-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-medium-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1434,10 +1464,22 @@
                                         <input type="number" step="0.01" id="config-high-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-high-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.25">
+                                        <input type="number" step="0.01" id="config-high-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-high-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.03">
+                                        <input type="number" step="0.01" id="config-high-be-l1-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="-0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l2-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l2-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l3-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-high-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1489,10 +1531,22 @@
                                         <input type="number" step="0.01" id="config-extreme-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-extreme-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.30">
+                                        <input type="number" step="0.01" id="config-extreme-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-extreme-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="-0.02">
+                                        <input type="number" step="0.01" id="config-extreme-be-l1-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="-0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l2-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l2-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l3-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-extreme-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1544,10 +1598,22 @@
                                         <input type="number" step="0.01" id="config-very_strong-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-very_strong-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.18">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-very_strong-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.10">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l1-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="-0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l2-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l2-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l3-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-very_strong-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1599,10 +1665,22 @@
                                         <input type="number" step="0.01" id="config-strong_buy-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-strong_buy-be-trigger" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.18">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-strong_buy-be-offset" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.10">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l1-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="-0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l2-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.18">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l2-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.05">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l3-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-strong_buy-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1947,10 +2025,10 @@
                 lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Min Profit: ${th.rsi_momentum_exit_min_profit}%  (close on 2 consecutive RSI drops/rises)`);
 
                 lines.push('\nConfidence Levels:');
-                lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   BE Trig  BE Off  GapMin  GapMax  Gap?   Stretch  TP Trail`);
+                lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
                 for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
                     if (!c.enabled) continue;
-                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  ${c.breakeven_trigger}%   ${c.breakeven_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
                 }
 
                 // --- CONFIG CHANGE LOG ---
@@ -2030,15 +2108,17 @@
                     ['Positive, No BE', sld.positive_no_be],
                     ['Never Positive', sld.never_positive]
                 ];
-                lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                const slTotal = sld.total_sl_trades || 0;
                 for (const [name, d] of slCats) {
                     if (!d || d.count === 0) continue;
                     const dirStr = `${(d.by_direction||{}).LONG||0}L/${(d.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(d.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${d.signal_active||0}/${d.signal_inactive||0}`;
-                    lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                    const pctStr = slTotal > 0 ? (d.count / slTotal * 100).toFixed(1) + '%' : '-';
+                    lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
                 }
-                lines.push(`${'All SL Trades'.padEnd(18)} ${String(sld.total_sl_trades||0).padEnd(5)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'}`);
+                lines.push(`${'All SL Trades'.padEnd(18)} ${String(slTotal).padEnd(5)} ${'100%'.padEnd(7)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'}`);
 
                 // --- WINNING TRADES DRAWDOWN ---
                 lines.push(`\n${hr2}`);
@@ -2074,11 +2154,12 @@
                 if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Never Positive Deep Dive\n');
-                    lines.push(`${'Dimension'.padEnd(16)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
+                    lines.push(`${'Dimension'.padEnd(16)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
                     for (const r of perf.never_positive_deep_dive) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
-                        lines.push(`${(r.dimension||'').padEnd(16)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
+                        const pctStr = r.pct_of_total != null ? r.pct_of_total.toFixed(1)+'%' : '-';
+                        lines.push(`${(r.dimension||'').padEnd(16)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
                     }
                 }
 
@@ -2627,6 +2708,7 @@
                                 <td class="px-3 py-2 font-medium text-white">${r.value}</td>
                                 <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction || '-'}</td>
                                 <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${r.pct_of_total >= 50 ? 'text-red-400 font-medium' : 'text-yellow-400'}">${r.pct_of_total != null ? r.pct_of_total.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass}">${r.avg_close_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass}">${formatUSD(r.avg_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.total_pnl_usd)}</td>
@@ -2641,7 +2723,7 @@
                         `;
                     }).join('');
                 } else {
-                    npBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    npBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Performance Over Time Chart - only rebuild if data changed
@@ -2674,7 +2756,7 @@
                                 backgroundColor: barColors,
                                 borderColor: barColors,
                                 borderWidth: 1,
-                                yAxisID: 'y',
+                                yAxisID: 'y1',
                                 order: 3
                             }
                         ];
@@ -2690,7 +2772,7 @@
                                 pointRadius: 0,
                                 pointHoverRadius: 0,
                                 fill: false,
-                                yAxisID: 'y1',
+                                yAxisID: 'y',
                                 order: 2
                             });
                             datasets.push({
@@ -2704,7 +2786,7 @@
                                 pointHoverRadius: 5,
                                 fill: true,
                                 tension: 0.3,
-                                yAxisID: 'y1',
+                                yAxisID: 'y',
                                 order: 1
                             });
                         }
@@ -2747,14 +2829,14 @@
                                     x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
                                     y: {
                                         position: 'left',
-                                        title: { display: true, text: 'Bucket P&L ($)', color: '#9ca3af', font: { size: 11 } },
-                                        ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                        title: { display: true, text: 'Portfolio Value ($)', color: '#60a5fa', font: { size: 11 } },
+                                        ticks: { color: '#60a5fa', callback: v => '$' + v.toFixed(0) },
                                         grid: { color: 'rgba(255,255,255,0.05)' }
                                     },
                                     y1: {
                                         position: 'right',
-                                        title: { display: true, text: 'Portfolio Value ($)', color: '#60a5fa', font: { size: 11 } },
-                                        ticks: { color: '#60a5fa', callback: v => '$' + v.toFixed(0) },
+                                        title: { display: true, text: 'Bucket P&L ($)', color: '#9ca3af', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
                                         grid: { drawOnChartArea: false }
                                     }
                                 }
@@ -2785,8 +2867,8 @@
                 
                 if (sld && sld.total_sl_trades > 0) {
                     const categories = [
-                        { name: 'BE Was Active', data: sld.be_was_active, color: 'text-orange-400', desc: 'Reached BE trigger, still hit SL' },
-                        { name: 'Positive, No BE', data: sld.positive_no_be, color: 'text-yellow-400', desc: 'Went positive but never reached BE trigger' },
+                        { name: 'BE Was Active', data: sld.be_was_active, color: 'text-orange-400', desc: 'Reached BE L1 trigger, still hit SL' },
+                        { name: 'Positive, No BE', data: sld.positive_no_be, color: 'text-yellow-400', desc: 'Went positive but never reached BE L1 trigger' },
                         { name: 'Never Positive', data: sld.never_positive, color: 'text-red-400', desc: 'Went straight to SL' }
                     ];
                     
@@ -2799,6 +2881,7 @@
                             <tr class="hover:bg-white/5" title="${c.desc}">
                                 <td class="px-3 py-2 font-medium ${c.color}">${c.name}</td>
                                 <td class="px-3 py-2 text-center">${c.data.count}</td>
+                                <td class="px-3 py-2 text-center text-gray-400">${sld.total_sl_trades > 0 ? (c.data.count / sld.total_sl_trades * 100).toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-center">${slDirLabel(c.data.by_direction)}</td>
                                 <td class="px-3 py-2 text-center">${slConfBadges(c.data.by_confidence)}</td>
                                 <td class="px-3 py-2 text-right text-cyan-400">${c.data.avg_entry_gap != null ? c.data.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
@@ -2817,6 +2900,7 @@
                         <tr class="border-t border-white/10 hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-gray-300">All SL Trades</td>
                             <td class="px-3 py-2 text-center font-medium">${sld.total_sl_trades}</td>
+                            <td class="px-3 py-2 text-center text-gray-400">100%</td>
                             <td class="px-3 py-2 text-center">${slDirLabel(sld.all_by_direction)}</td>
                             <td class="px-3 py-2 text-center">${slConfBadges(sld.all_by_confidence)}</td>
                             <td class="px-3 py-2 text-right text-cyan-400">${sld.all_avg_entry_gap != null ? sld.all_avg_entry_gap.toFixed(2) + '%' : '-'}</td>
@@ -2832,7 +2916,7 @@
                     
                     slBody.innerHTML = rows;
                 } else {
-                    slBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                    slBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
                 // Winning Trades Drawdown
@@ -3394,8 +3478,12 @@
                         document.getElementById(`config-${level}-gap-max`).value = cfg.gap_max !== undefined ? cfg.gap_max : 0.40;
                         document.getElementById(`config-${level}-gap-enabled`).checked = cfg.gap_enabled !== false;
                         document.getElementById(`config-${level}-stretch`).value = cfg.max_ema5_stretch !== undefined ? cfg.max_ema5_stretch : 0.12;
-                        document.getElementById(`config-${level}-be-trigger`).value = cfg.breakeven_trigger !== undefined ? cfg.breakeven_trigger : 0.15;
-                        document.getElementById(`config-${level}-be-offset`).value = cfg.breakeven_offset !== undefined ? cfg.breakeven_offset : -0.05;
+                        document.getElementById(`config-${level}-be-l1-trigger`).value = cfg.be_level1_trigger !== undefined ? cfg.be_level1_trigger : 0.08;
+                        document.getElementById(`config-${level}-be-l1-offset`).value = cfg.be_level1_offset !== undefined ? cfg.be_level1_offset : -0.15;
+                        document.getElementById(`config-${level}-be-l2-trigger`).value = cfg.be_level2_trigger !== undefined ? cfg.be_level2_trigger : 0.18;
+                        document.getElementById(`config-${level}-be-l2-offset`).value = cfg.be_level2_offset !== undefined ? cfg.be_level2_offset : 0.05;
+                        document.getElementById(`config-${level}-be-l3-trigger`).value = cfg.be_level3_trigger !== undefined ? cfg.be_level3_trigger : 0.25;
+                        document.getElementById(`config-${level}-be-l3-offset`).value = cfg.be_level3_offset !== undefined ? cfg.be_level3_offset : 0.15;
                         document.getElementById(`config-${level}-tp-trailing`).checked = cfg.tp_trailing_enabled !== undefined ? cfg.tp_trailing_enabled : true;
                     }
                 });
@@ -3531,8 +3619,12 @@
                     gap_max: safeFloat(document.getElementById(`config-${level}-gap-max`).value),
                     gap_enabled: document.getElementById(`config-${level}-gap-enabled`).checked,
                     max_ema5_stretch: safeFloat(document.getElementById(`config-${level}-stretch`).value),
-                    breakeven_trigger: safeFloat(document.getElementById(`config-${level}-be-trigger`).value),
-                    breakeven_offset: safeFloat(document.getElementById(`config-${level}-be-offset`).value),
+                    be_level1_trigger: safeFloat(document.getElementById(`config-${level}-be-l1-trigger`).value),
+                    be_level1_offset: safeFloat(document.getElementById(`config-${level}-be-l1-offset`).value),
+                    be_level2_trigger: safeFloat(document.getElementById(`config-${level}-be-l2-trigger`).value),
+                    be_level2_offset: safeFloat(document.getElementById(`config-${level}-be-l2-offset`).value),
+                    be_level3_trigger: safeFloat(document.getElementById(`config-${level}-be-l3-trigger`).value),
+                    be_level3_offset: safeFloat(document.getElementById(`config-${level}-be-l3-offset`).value),
                     tp_trailing_enabled: document.getElementById(`config-${level}-tp-trailing`).checked
                 };
             });

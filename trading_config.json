@@ -46,7 +46,7 @@
     "momentum_adx_max": 35.0,
     "btc_global_filter_enabled": true,
     "signal_lost_exit_enabled": true,
-    "signal_lost_min_profit": -0.25,
+    "signal_lost_min_profit": -0.35,
     "ema5_slope_exit_enabled": false,
     "ema5_slope_lookback": 3,
     "ema5_slope_threshold": -0.02,
@@ -55,6 +55,7 @@
     "pnl_trailing_trigger": 0.15,
     "pnl_trailing_ratio": 0.5,
     "pnl_trailing_ratio_signal_active": 0.4,
+    "ema_gap_expanding_filter": true,
     "rsi_momentum_filter_enabled": true,
     "rsi_momentum_exit_enabled": true,
     "rsi_momentum_exit_min_profit": 0.05

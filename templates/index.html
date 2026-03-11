@@ -472,6 +472,7 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Close Reason</th>
                                     <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">%</th>
                                     <th class="px-3 py-2 font-medium text-center">Direction</th>
                                     <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
@@ -486,7 +487,7 @@
                                 </tr>
                             </thead>
                             <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                                <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1246,6 +1247,17 @@
                             </label>
                         </div>
                         <p class="text-xs text-gray-500 mt-1">Block LONG if RSI is falling (vs 3 candles ago). Block SHORT if RSI is rising. Prevents entries against RSI momentum direction.</p>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
+                        <span class="text-sm text-gray-300">EMA Gap Expanding Filter</span>
+                        <div class="flex items-center gap-6 mt-1">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-ema-gap-expanding-filter" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Block entry if EMA5-EMA8 gap is compressing (current gap &le; previous candle). Only enter when momentum is expanding.</p>
                     </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
@@ -2017,6 +2029,7 @@
                 lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
                 lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}`);
                 lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
+                lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA8 gap compressing vs prev candle)`);
 
                 lines.push('\nMomentum Exit:');
                 lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
@@ -2123,15 +2136,17 @@
                 // --- WINNING TRADES DRAWDOWN ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Winning Trades Drawdown\n');
-                lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
                 const wdAll = perf.winning_trades_drawdown || [];
+                const wdTotalCount = wdAll.reduce((sum, w) => sum + (w.count || 0), 0);
                 let allWinCount = 0, allWinTrough = 0, allWinClose = 0, allWinDrop = 0, allWinTotal = 0, allWinWorst = 0;
                 let allWinLong = 0, allWinShort = 0, allWinSigA = 0, allWinSigI = 0;
                 for (const w of wdAll) {
                     const dirStr = `${(w.by_direction||{}).LONG||0}L/${(w.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(w.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${w.signal_active||0}/${w.signal_inactive||0}`;
-                    lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                    const wdPctStr = wdTotalCount > 0 ? (w.count / wdTotalCount * 100).toFixed(1) + '%' : '-';
+                    lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
                     const n = w.count || 0;
                     allWinCount += n;
                     allWinTrough += (w.avg_trough_pnl||0) * n;
@@ -2147,7 +2162,7 @@
                 if (allWinCount > 0) {
                     const awDir = `${allWinLong}L/${allWinShort}S`;
                     const awSig = `${allWinSigA}/${allWinSigI}`;
-                    lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
+                    lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
                 }
 
                 // --- NEVER POSITIVE DEEP DIVE ---
@@ -2925,6 +2940,7 @@
                 const wdConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400' };
                 
                 if (wdd && wdd.length > 0) {
+                    const winTotalCount = wdd.reduce((sum, w) => sum + (w.count || 0), 0);
                     let totalCount = 0, totalPnl = 0;
                     let allTroughs = [];
                     let allClosePnls = [];
@@ -2976,6 +2992,7 @@
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${w.close_reason}</td>
                                 <td class="px-3 py-2 text-center">${w.count}</td>
+                                <td class="px-3 py-2 text-center text-gray-400">${winTotalCount > 0 ? (w.count / winTotalCount * 100).toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-center">${dirLabel}</td>
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
                                 <td class="px-3 py-2 text-right">${wdGapVal}</td>
@@ -3007,6 +3024,7 @@
                         <tr class="border-t border-white/10 hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-gray-300">All Winners</td>
                             <td class="px-3 py-2 text-center font-medium">${totalCount}</td>
+                            <td class="px-3 py-2 text-center text-gray-400">100%</td>
                             <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${allDir.LONG}L</span> / <span class="text-red-400 text-xs">${allDir.SHORT}S</span></td>
                             <td class="px-3 py-2 text-center">${Object.entries(allConf).filter(([,v]) => v > 0).sort((a,b) => b[1] - a[1]).map(([c,n]) => `<span class="${wdConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ') || '-'}</td>
                             <td class="px-3 py-2 text-right">${allAvgGap}</td>
@@ -3023,7 +3041,7 @@
                     
                     wdBody.innerHTML = rows;
                 } else {
-                    wdBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
+                    wdBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);
@@ -3447,6 +3465,7 @@
                 document.getElementById('config-momentum-short-rsi-min').value = config.thresholds.momentum_short_rsi_min !== undefined ? config.thresholds.momentum_short_rsi_min : 30;
                 document.getElementById('config-momentum-adx-max').value = config.thresholds.momentum_adx_max !== undefined ? config.thresholds.momentum_adx_max : 100;
                 document.getElementById('config-rsi-momentum-filter-enabled').checked = config.thresholds.rsi_momentum_filter_enabled !== undefined ? config.thresholds.rsi_momentum_filter_enabled : true;
+                document.getElementById('config-ema-gap-expanding-filter').checked = config.thresholds.ema_gap_expanding_filter !== undefined ? config.thresholds.ema_gap_expanding_filter : true;
                 document.getElementById('config-ema-gap-5-8-max').value = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
                 // Sync mirror elements for STRONG_BUY row
                 document.getElementById('config-adx-max-mirror').textContent = document.getElementById('config-momentum-adx-max').value;
@@ -3589,6 +3608,7 @@
                     momentum_short_rsi_min: safeFloat(document.getElementById('config-momentum-short-rsi-min').value),
                     momentum_adx_max: safeFloat(document.getElementById('config-momentum-adx-max').value),
                     rsi_momentum_filter_enabled: document.getElementById('config-rsi-momentum-filter-enabled').checked,
+                    ema_gap_expanding_filter: document.getElementById('config-ema-gap-expanding-filter').checked,
                     ema_gap_5_8_max: safeFloat(document.getElementById('config-ema-gap-5-8-max').value),
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),

@@ -51,8 +51,10 @@ def calculate_indicators(ohlcv: List) -> Dict:
     return {
         'price': float(df['close'].iloc[-1]),
         'ema5': float(ema5.iloc[-1]) if not pd.isna(ema5.iloc[-1]) else None,
+        'ema5_prev1': float(ema5.iloc[-2]) if len(ema5) >= 2 and not pd.isna(ema5.iloc[-2]) else None,
         'ema5_prev3': float(ema5.iloc[-4]) if len(ema5) >= 4 and not pd.isna(ema5.iloc[-4]) else None,
         'ema8': float(ema8.iloc[-1]) if not pd.isna(ema8.iloc[-1]) else None,
+        'ema8_prev1': float(ema8.iloc[-2]) if len(ema8) >= 2 and not pd.isna(ema8.iloc[-2]) else None,
         'ema13': float(ema13.iloc[-1]) if not pd.isna(ema13.iloc[-1]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
         'ema20_prev6': float(ema20.iloc[-7]) if len(ema20) >= 7 and not pd.isna(ema20.iloc[-7]) else None,
@@ -108,7 +110,9 @@ def get_signal(
     ema20_prev6: float = None,
     ema50: float = None,
     ema50_prev12: float = None,
-    rsi_prev3: float = None
+    rsi_prev3: float = None,
+    ema5_prev1: float = None,
+    ema8_prev1: float = None
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -218,6 +222,7 @@ def get_signal(
     short_rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
     adx_max = getattr(th, 'momentum_adx_max', 100)
     rsi_momentum_enabled = getattr(th, 'rsi_momentum_filter_enabled', True)
+    gap_expanding_enabled = getattr(th, 'ema_gap_expanding_filter', True)
 
     if ema8 and ema8 > 0:
         if ema5 > ema8:
@@ -237,9 +242,12 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] LONG skipped: ADX {adx:.1f} > max {adx_max}")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
+                prev_gap_pct = ((ema5_prev1 - ema8_prev1) / ema8_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema8_prev1 > 0 else None
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
-                if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
+                if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
+                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                 elif gap_threshold_met:
                     if adx > th.adx_very_strong:
@@ -267,9 +275,12 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] SHORT skipped: ADX {adx:.1f} > max {adx_max}")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
+                prev_gap_pct = ((ema8_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema5_prev1 > 0 else None
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
                 gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
-                if ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
+                if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
+                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                 elif gap_threshold_met:
                     if adx > th.adx_very_strong:

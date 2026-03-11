@@ -998,7 +998,9 @@ class TradingEngine:
                     ema20_prev6=indicators.get('ema20_prev6'),
                     ema50=indicators.get('ema50'),
                     ema50_prev12=indicators.get('ema50_prev12'),
-                    rsi_prev3=indicators.get('rsi_prev3')
+                    rsi_prev3=indicators.get('rsi_prev3'),
+                    ema5_prev1=indicators.get('ema5_prev1'),
+                    ema8_prev1=indicators.get('ema8_prev1')
                 )
 
                 if signal in ["LONG", "SHORT"]:

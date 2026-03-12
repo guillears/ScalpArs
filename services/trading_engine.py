@@ -1227,15 +1227,19 @@ class TradingEngine:
             effective_sl = stop_loss_pct
             signal_still_active = order_info.get('signal_active', False)
             breakeven_active = False
+            be_level = 0
 
             if current_peak >= be_l3_trigger:
                 breakeven_active = True
+                be_level = 3
                 effective_sl = be_l3_offset
             elif current_peak >= be_l2_trigger:
                 breakeven_active = True
+                be_level = 2
                 effective_sl = be_l2_offset
             elif current_peak >= be_l1_trigger:
                 breakeven_active = True
+                be_level = 1
                 effective_sl = be_l1_offset
             elif signal_still_active:
                 effective_sl = order_info.get('signal_active_sl', stop_loss_pct)
@@ -1243,13 +1247,13 @@ class TradingEngine:
             # Check if stop loss triggered
             if pnl_pct <= effective_sl:
                 if breakeven_active:
-                    reason_prefix = "BREAKEVEN_SL"
+                    close_reason = f"BREAKEVEN_SL_L{be_level}"
                 elif signal_still_active:
-                    reason_prefix = "STOP_LOSS_WIDE"
+                    close_reason = f"STOP_LOSS_WIDE L{tp_level}"
                 else:
-                    reason_prefix = "STOP_LOSS"
+                    close_reason = f"STOP_LOSS L{tp_level}"
                 
-                logger.warning(f"[REALTIME_{reason_prefix}] {pair} {direction}: pnl={pnl_pct:.4f}% <= effective_sl={effective_sl}% (original_sl={stop_loss_pct}%, peak={current_peak:.4f}%) - CLOSING NOW!")
+                logger.warning(f"[REALTIME_{close_reason}] {pair} {direction}: pnl={pnl_pct:.4f}% <= effective_sl={effective_sl}% (original_sl={stop_loss_pct}%, peak={current_peak:.4f}%) - CLOSING NOW!")
                 
                 # Close the order immediately using a new database session
                 try:
@@ -1266,9 +1270,9 @@ class TradingEngine:
                             # Close the order
                             await self.close_position(
                                 db, order, current_price, 
-                                f"{reason_prefix} L{order.current_tp_level}"
+                                close_reason
                             )
-                            logger.info(f"[REALTIME_{reason_prefix}] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                            logger.info(f"[REALTIME_{close_reason}] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
                             
                             # Remove from cache
                             async with _cache_lock:

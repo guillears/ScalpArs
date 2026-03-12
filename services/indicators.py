@@ -463,16 +463,20 @@ def check_exit_conditions(
     # 3-Level break-even stop loss (highest level wins)
     effective_stop_loss = stop_loss
     breakeven_active = False
+    be_level = 0
     if peak_pnl >= be_l3_trigger:
         breakeven_active = True
+        be_level = 3
         effective_stop_loss = be_l3_offset
         logger.debug(f"[BREAKEVEN_L3] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L3={be_l3_trigger}%, SL={be_l3_offset}%")
     elif peak_pnl >= be_l2_trigger:
         breakeven_active = True
+        be_level = 2
         effective_stop_loss = be_l2_offset
         logger.debug(f"[BREAKEVEN_L2] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L2={be_l2_trigger}%, SL={be_l2_offset}%")
     elif peak_pnl >= be_l1_trigger:
         breakeven_active = True
+        be_level = 1
         effective_stop_loss = be_l1_offset
         logger.debug(f"[BREAKEVEN_L1] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L1={be_l1_trigger}%, SL={be_l1_offset}%")
     elif signal_active:
@@ -482,15 +486,15 @@ def check_exit_conditions(
     # Check Stop Loss (P&L based, with break-even adjustment in pre-TP zone only)
     if pnl_pct <= effective_stop_loss:
         if breakeven_active:
-            reason_prefix = "BREAKEVEN_SL"
+            close_reason = f"BREAKEVEN_SL_L{be_level}"
         elif signal_active:
-            reason_prefix = "STOP_LOSS_WIDE"
+            close_reason = f"STOP_LOSS_WIDE L{current_tp_level}"
         else:
-            reason_prefix = "STOP_LOSS"
-        logger.info(f"[{reason_prefix}] {direction} L{current_tp_level} triggered: pnl_pct={pnl_pct:.4f}% <= effective_sl={effective_stop_loss}% (original_sl={stop_loss}%, peak={peak_pnl:.4f}%)")
+            close_reason = f"STOP_LOSS L{current_tp_level}"
+        logger.info(f"[{close_reason}] {direction} triggered: pnl_pct={pnl_pct:.4f}% <= effective_sl={effective_stop_loss}% (original_sl={stop_loss}%, peak={peak_pnl:.4f}%)")
         return {
             "should_close": True,
-            "reason": f"{reason_prefix} L{current_tp_level}",
+            "reason": close_reason,
             "peak_pnl": peak_pnl,
             "trough_pnl": trough_pnl,
             "tp_level": current_tp_level

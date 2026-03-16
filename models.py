@@ -94,6 +94,9 @@ class Order(Base):
     # Close reason
     close_reason = Column(String(20), nullable=True)
     
+    # Entry order type: MAKER, TAKER, or TAKER_FALLBACK
+    entry_order_type = Column(String(15), nullable=True, default="TAKER")
+    
     # Paper trading flag
     is_paper = Column(Boolean, nullable=False, default=True)
     
@@ -120,6 +123,9 @@ class Transaction(Base):
     leverage = Column(Float, nullable=False)
     notional_value = Column(Float, nullable=False)
     fee = Column(Float, nullable=False, default=0.0)
+    
+    # Order type: MAKER or TAKER
+    order_type = Column(String(15), nullable=True, default="TAKER")
     
     # Timestamp
     timestamp = Column(DateTime, nullable=False, default=func.now())

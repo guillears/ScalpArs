@@ -253,6 +253,11 @@ templates = Jinja2Templates(directory="templates")
 
 class ConfigUpdate(BaseModel):
     trading_fee: Optional[float] = None
+    maker_fee: Optional[float] = None
+    taker_fee: Optional[float] = None
+    maker_entry_enabled: Optional[bool] = None
+    maker_timeout_seconds: Optional[int] = None
+    maker_offset_ticks: Optional[int] = None
     paper_trading: Optional[bool] = None
     paper_balance: Optional[float] = None
     investment: Optional[Dict] = None
@@ -538,7 +543,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             # Estimate exit fee based on current notional value
             current_notional = current_price * o.quantity
             entry_notional = o.entry_price * o.quantity
-            estimated_exit_fee = current_notional * config.trading_config.trading_fee
+            estimated_exit_fee = current_notional * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
             total_fees = o.entry_fee + estimated_exit_fee
             
             if o.direction == "LONG":
@@ -595,7 +600,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "opened_at": o.opened_at.isoformat(),
             # Dynamic TP tracking
             "tp_level": o.current_tp_level or 1,
-            "tp_target": o.dynamic_tp_target or 0
+            "tp_target": o.dynamic_tp_target or 0,
+            "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER"
         })
     
     return orders_data
@@ -642,7 +648,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "opened_at": o.opened_at.isoformat(),
             "closed_at": o.closed_at.isoformat() if o.closed_at else None,
             # TP Level reached
-            "tp_level": o.current_tp_level or 1
+            "tp_level": o.current_tp_level or 1,
+            "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER"
         })
     
     return orders_data
@@ -675,6 +682,7 @@ async def get_transactions(db: AsyncSession = Depends(get_db)):
         "leverage": t.leverage,
         "notional_value": round(t.notional_value, 2),
         "fee": round(t.fee, 4),
+        "order_type": getattr(t, 'order_type', None) or "TAKER",
         "timestamp": t.timestamp.isoformat(),
         "confidence": confidence
     } for t, confidence in rows]
@@ -747,6 +755,49 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "performance_over_time": [],
             "_error": str(e)
         }
+
+
+def _compute_entry_type_stats(orders):
+    """Compute performance breakdown by entry order type (MAKER / TAKER / TAKER_FALLBACK)."""
+    taker_fee_rate = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+    groups = {}
+    for o in orders:
+        etype = getattr(o, 'entry_order_type', None) or "TAKER"
+        if etype not in groups:
+            groups[etype] = {"trades": [], "pnl_sum": 0, "fee_sum": 0, "wins": 0}
+        groups[etype]["trades"].append(o)
+        groups[etype]["pnl_sum"] += (o.pnl or 0)
+        groups[etype]["fee_sum"] += (o.total_fee or 0)
+        if (o.pnl or 0) > 0:
+            groups[etype]["wins"] += 1
+
+    total_trades = len(orders)
+    result = {}
+    for etype, data in groups.items():
+        count = len(data["trades"])
+        avg_entry_fee = sum(o.entry_fee or 0 for o in data["trades"]) / count if count else 0
+        # Fee savings: difference vs what fees would be if entry was also taker
+        if etype == "MAKER":
+            hypothetical_taker_entry_fees = sum(
+                (o.entry_price * o.quantity * taker_fee_rate) for o in data["trades"]
+            )
+            actual_entry_fees = sum(o.entry_fee or 0 for o in data["trades"])
+            fee_savings = hypothetical_taker_entry_fees - actual_entry_fees
+        else:
+            fee_savings = 0
+
+        result[etype] = {
+            "trades": count,
+            "pct_of_total": round(count / total_trades * 100, 1) if total_trades else 0,
+            "win_rate": round(data["wins"] / count * 100, 1) if count else 0,
+            "avg_pnl_pct": round(sum(o.pnl_percentage or 0 for o in data["trades"]) / count, 2) if count else 0,
+            "avg_pnl_usd": round(data["pnl_sum"] / count, 2) if count else 0,
+            "total_pnl": round(data["pnl_sum"], 2),
+            "avg_entry_fee": round(avg_entry_fee, 4),
+            "total_fees": round(data["fee_sum"], 2),
+            "fee_savings": round(fee_savings, 2),
+        }
+    return result
 
 
 def _compute_time_buckets(orders, bucket_minutes=15):
@@ -1650,7 +1701,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "winning_trades_drawdown": winning_trades_drawdown,
         "rsi_adx_crosstab": rsi_adx_crosstab,
         "never_positive_deep_dive": never_positive_deep_dive,
-        "performance_over_time": _compute_time_buckets(orders)
+        "performance_over_time": _compute_time_buckets(orders),
+        "by_entry_type": _compute_entry_type_stats(orders)
     }
 
 

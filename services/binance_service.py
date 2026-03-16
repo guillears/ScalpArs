@@ -314,6 +314,102 @@ class BinanceService:
             logger.error(f"[BINANCE] Error creating order for {symbol}: {e}")
             return None
     
+    async def get_tick_size(self, symbol: str) -> float:
+        """Get the minimum price increment (tick size) for a symbol"""
+        try:
+            await self.load_markets()
+            market = self.exchange.market(symbol)
+            tick = market.get('precision', {}).get('price')
+            if tick is not None:
+                if isinstance(tick, int):
+                    return 10 ** (-tick)
+                return float(tick)
+            return 0.01
+        except Exception as e:
+            logger.error(f"[BINANCE] Error getting tick size for {symbol}: {e}")
+            return 0.01
+
+    async def fetch_orderbook(self, symbol: str, limit: int = 5) -> Optional[Dict]:
+        """Get best bid/ask from orderbook"""
+        try:
+            await self.load_markets()
+            ob = await self.exchange.fetch_order_book(symbol, limit)
+            if ob and ob.get('bids') and ob.get('asks'):
+                return {
+                    'best_bid': float(ob['bids'][0][0]),
+                    'best_ask': float(ob['asks'][0][0]),
+                    'bid_qty': float(ob['bids'][0][1]),
+                    'ask_qty': float(ob['asks'][0][1]),
+                }
+            return None
+        except Exception as e:
+            logger.error(f"[BINANCE] Error fetching orderbook for {symbol}: {e}")
+            return None
+
+    async def create_limit_order(
+        self,
+        symbol: str,
+        side: str,
+        amount: float,
+        price: float,
+        leverage: int = 1
+    ) -> Optional[Dict]:
+        """Place a limit (maker) order"""
+        try:
+            await self.load_markets()
+            await self.set_leverage(symbol, leverage)
+
+            order = await self.exchange.create_order(
+                symbol=symbol,
+                type='limit',
+                side=side,
+                amount=amount,
+                price=price
+            )
+
+            return {
+                'id': order['id'],
+                'symbol': symbol,
+                'side': side,
+                'amount': float(order.get('amount', amount)),
+                'price': float(order.get('price', price)),
+                'status': order.get('status', 'open'),
+                'filled': float(order.get('filled', 0)),
+                'remaining': float(order.get('remaining', amount)),
+                'fee': float(order.get('fee', {}).get('cost', 0)),
+                'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
+            }
+        except Exception as e:
+            logger.error(f"[BINANCE] Error creating limit order for {symbol}: {e}")
+            return None
+
+    async def fetch_order_status(self, symbol: str, order_id: str) -> Optional[Dict]:
+        """Check the fill status of an order"""
+        try:
+            await self.load_markets()
+            order = await self.exchange.fetch_order(order_id, symbol)
+            return {
+                'id': order['id'],
+                'status': order.get('status', 'unknown'),
+                'filled': float(order.get('filled', 0)),
+                'remaining': float(order.get('remaining', 0)),
+                'average': float(order.get('average', order.get('price', 0))),
+                'fee': float(order.get('fee', {}).get('cost', 0)),
+            }
+        except Exception as e:
+            logger.error(f"[BINANCE] Error fetching order status {order_id} for {symbol}: {e}")
+            return None
+
+    async def cancel_order(self, symbol: str, order_id: str) -> bool:
+        """Cancel an unfilled or partially filled order"""
+        try:
+            await self.load_markets()
+            await self.exchange.cancel_order(order_id, symbol)
+            return True
+        except Exception as e:
+            logger.error(f"[BINANCE] Error cancelling order {order_id} for {symbol}: {e}")
+            return False
+
     async def close_position(self, symbol: str, side: str, amount: float) -> Optional[Dict]:
         """Close a position"""
         # To close a LONG, we sell. To close a SHORT, we buy.

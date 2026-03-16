@@ -429,7 +429,7 @@ def check_exit_conditions(
     
     # Calculate estimated exit fee
     current_notional = current_price * quantity
-    estimated_exit_fee = current_notional * tc.trading_fee
+    estimated_exit_fee = current_notional * getattr(tc, 'taker_fee', tc.trading_fee)
     total_fees = entry_fee + estimated_exit_fee
     
     # P&L after fees

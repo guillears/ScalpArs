@@ -242,7 +242,172 @@ class TradingEngine:
         leverage = conf_level.leverage
         
         return investment, leverage
-    
+
+    async def _try_maker_entry(
+        self, symbol: str, side: str, amount: float, leverage: int,
+        direction: str, pair: str, notional_value: float,
+        maker_fee_rate: float, taker_fee_rate: float
+    ) -> Optional[Dict]:
+        """Attempt a maker (limit) entry, falling back to taker (market) on timeout."""
+        tc = config.trading_config
+        timeout = getattr(tc, 'maker_timeout_seconds', 15)
+        offset_ticks = getattr(tc, 'maker_offset_ticks', 2)
+
+        ob = await binance_service.fetch_orderbook(symbol)
+        if not ob:
+            logger.warning(f"[MAKER_ENTRY] {pair}: Orderbook unavailable, falling back to taker")
+            result = await binance_service.create_market_order(symbol, side, amount, leverage)
+            if not result:
+                return None
+            return {
+                'id': result['id'], 'price': result['price'],
+                'amount': result.get('amount', amount),
+                'entry_fee': result.get('fee', notional_value * taker_fee_rate),
+                'entry_order_type': 'TAKER_FALLBACK',
+            }
+
+        tick_size = await binance_service.get_tick_size(symbol)
+        if direction == 'LONG':
+            limit_price = ob['best_bid'] - (offset_ticks * tick_size)
+        else:
+            limit_price = ob['best_ask'] + (offset_ticks * tick_size)
+
+        limit_price = round(limit_price / tick_size) * tick_size
+
+        logger.info(f"[MAKER_ENTRY] {pair}: Placing limit {side} @ {limit_price} "
+                     f"(bid={ob['best_bid']}, ask={ob['best_ask']}, offset={offset_ticks} ticks)")
+
+        limit_result = await binance_service.create_limit_order(
+            symbol=symbol, side=side, amount=amount, price=limit_price, leverage=leverage
+        )
+        if not limit_result:
+            logger.warning(f"[MAKER_ENTRY] {pair}: Limit order failed, falling back to taker")
+            result = await binance_service.create_market_order(symbol, side, amount, leverage)
+            if not result:
+                return None
+            return {
+                'id': result['id'], 'price': result['price'],
+                'amount': result.get('amount', amount),
+                'entry_fee': result.get('fee', notional_value * taker_fee_rate),
+                'entry_order_type': 'TAKER_FALLBACK',
+            }
+
+        order_id = limit_result['id']
+        polls = max(1, timeout // 2)
+        filled = False
+
+        for i in range(polls):
+            await asyncio.sleep(2)
+            status = await binance_service.fetch_order_status(symbol, order_id)
+            if not status:
+                continue
+            if status['status'] == 'closed':
+                filled = True
+                fill_price = status['average'] or limit_price
+                fill_amount = status['filled'] or amount
+                fill_fee = status.get('fee', 0) or (fill_amount * fill_price * maker_fee_rate)
+                logger.info(f"[MAKER_ENTRY] {pair}: Limit FILLED @ {fill_price} after {(i+1)*2}s")
+                return {
+                    'id': order_id, 'price': fill_price,
+                    'amount': fill_amount, 'entry_fee': fill_fee,
+                    'entry_order_type': 'MAKER',
+                }
+
+        # Timeout -- cancel and check for partial fill
+        logger.info(f"[MAKER_ENTRY] {pair}: Timeout after {timeout}s, cancelling limit order")
+        await binance_service.cancel_order(symbol, order_id)
+        await asyncio.sleep(0.5)
+
+        final_status = await binance_service.fetch_order_status(symbol, order_id)
+        filled_qty = final_status['filled'] if final_status else 0
+
+        if filled_qty and filled_qty > 0:
+            fill_price = final_status['average'] or limit_price
+            fill_fee = final_status.get('fee', 0) or (filled_qty * fill_price * maker_fee_rate)
+            logger.info(f"[MAKER_ENTRY] {pair}: Partial fill {filled_qty}/{amount} @ {fill_price}")
+            return {
+                'id': order_id, 'price': fill_price,
+                'amount': filled_qty, 'entry_fee': fill_fee,
+                'entry_order_type': 'MAKER',
+            }
+
+        # No fill at all -- fall back to market order
+        logger.info(f"[MAKER_ENTRY] {pair}: No fill, falling back to market order")
+        result = await binance_service.create_market_order(symbol, side, amount, leverage)
+        if not result:
+            return None
+        return {
+            'id': result['id'], 'price': result['price'],
+            'amount': result.get('amount', amount),
+            'entry_fee': result.get('fee', notional_value * taker_fee_rate),
+            'entry_order_type': 'TAKER_FALLBACK',
+        }
+
+    async def _simulate_maker_entry_paper(
+        self, pair: str, direction: str, current_price: float,
+        notional_value: float, maker_fee_rate: float, taker_fee_rate: float
+    ) -> Dict:
+        """Simulate maker entry for paper trading using WebSocket prices."""
+        tc = config.trading_config
+        timeout = getattr(tc, 'maker_timeout_seconds', 15)
+        offset_ticks = getattr(tc, 'maker_offset_ticks', 2)
+
+        # Estimate tick size from price magnitude
+        if current_price >= 10000:
+            tick_size = 0.10
+        elif current_price >= 100:
+            tick_size = 0.01
+        elif current_price >= 1:
+            tick_size = 0.001
+        else:
+            tick_size = 0.0001
+
+        if direction == 'LONG':
+            limit_price = current_price - (offset_ticks * tick_size)
+        else:
+            limit_price = current_price + (offset_ticks * tick_size)
+
+        limit_price = round(limit_price / tick_size) * tick_size
+
+        logger.info(f"[MAKER_PAPER] {pair}: Simulating limit {direction} @ {limit_price} "
+                     f"(current={current_price}, offset={offset_ticks} ticks)")
+
+        # Monitor WebSocket prices for the timeout window
+        polls = max(1, timeout // 2)
+        for i in range(polls):
+            await asyncio.sleep(2)
+            tracker = websocket_tracker.get_tracker(pair)
+            if not tracker or not tracker.last_price:
+                continue
+
+            ws_price = tracker.last_price
+            if direction == 'LONG' and ws_price <= limit_price:
+                logger.info(f"[MAKER_PAPER] {pair}: Simulated FILL @ {limit_price} after {(i+1)*2}s "
+                             f"(ws_price={ws_price})")
+                return {
+                    'price': limit_price,
+                    'entry_fee': notional_value * maker_fee_rate,
+                    'entry_order_type': 'MAKER',
+                }
+            elif direction == 'SHORT' and ws_price >= limit_price:
+                logger.info(f"[MAKER_PAPER] {pair}: Simulated FILL @ {limit_price} after {(i+1)*2}s "
+                             f"(ws_price={ws_price})")
+                return {
+                    'price': limit_price,
+                    'entry_fee': notional_value * maker_fee_rate,
+                    'entry_order_type': 'MAKER',
+                }
+
+        # No fill -- fallback to current price as taker
+        tracker = websocket_tracker.get_tracker(pair)
+        fallback_price = tracker.last_price if tracker and tracker.last_price else current_price
+        logger.info(f"[MAKER_PAPER] {pair}: No fill after {timeout}s, taker fallback @ {fallback_price}")
+        return {
+            'price': fallback_price,
+            'entry_fee': notional_value * taker_fee_rate,
+            'entry_order_type': 'TAKER_FALLBACK',
+        }
+
     async def open_position(
         self,
         db: AsyncSession,
@@ -331,32 +496,63 @@ class TradingEngine:
         notional_value = investment * leverage
         quantity = notional_value / current_price
         
-        # Calculate entry fee
-        entry_fee = notional_value * config.trading_config.trading_fee
+        # Determine fee rate and entry type
+        tc = config.trading_config
+        maker_enabled = tc.maker_entry_enabled
+        maker_fee_rate = getattr(tc, 'maker_fee', tc.trading_fee)
+        taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
+
+        entry_order_type = "TAKER"
+        entry_fee = notional_value * taker_fee_rate
         
         # Execute trade
         binance_order_id = None
         actual_price = current_price
         
         if not self.is_paper_mode:
-            # Real trade
             symbol = pair.replace('USDT', '/USDT:USDT')
             side = 'buy' if direction == 'LONG' else 'sell'
-            
-            result = await binance_service.create_market_order(
-                symbol=symbol,
-                side=side,
-                amount=quantity,
-                leverage=int(leverage)
-            )
-            
-            if result:
-                binance_order_id = result['id']
-                actual_price = result['price']
-                entry_fee = result.get('fee', entry_fee)
+
+            if maker_enabled:
+                # --- Maker entry flow ---
+                result = await self._try_maker_entry(
+                    symbol=symbol, side=side, amount=quantity,
+                    leverage=int(leverage), direction=direction, pair=pair,
+                    notional_value=notional_value,
+                    maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate
+                )
+                if result:
+                    binance_order_id = result['id']
+                    actual_price = result['price']
+                    entry_fee = result['entry_fee']
+                    entry_order_type = result['entry_order_type']
+                    quantity = result.get('amount', quantity)
+                else:
+                    logger.error(f"[MAKER_ENTRY] {pair}: Both maker and fallback failed")
+                    return None
+            else:
+                result = await binance_service.create_market_order(
+                    symbol=symbol, side=side, amount=quantity, leverage=int(leverage)
+                )
+                if result:
+                    binance_order_id = result['id']
+                    actual_price = result['price']
+                    entry_fee = result.get('fee', entry_fee)
+                    entry_order_type = "TAKER"
         else:
-            # Paper trade - balance will be recalculated from DB after commit
-            pass
+            # Paper trade -- simulate maker fill if enabled
+            if maker_enabled:
+                result = await self._simulate_maker_entry_paper(
+                    pair=pair, direction=direction, current_price=current_price,
+                    notional_value=notional_value,
+                    maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate
+                )
+                actual_price = result['price']
+                entry_fee = result['entry_fee']
+                entry_order_type = result['entry_order_type']
+                quantity = notional_value / actual_price
+            else:
+                entry_order_type = "TAKER"
         
         # Create order record
         order = Order(
@@ -377,6 +573,7 @@ class TradingEngine:
             entry_adx=entry_adx,
             entry_macro_trend=entry_macro_trend,
             entry_fee=entry_fee,
+            entry_order_type=entry_order_type,
             peak_pnl=0.0,
             trough_pnl=0.0,
             high_price_since_entry=actual_price if direction == "LONG" else None,
@@ -401,6 +598,7 @@ class TradingEngine:
             leverage=leverage,
             notional_value=notional_value,
             fee=entry_fee,
+            order_type="MAKER" if entry_order_type == "MAKER" else "TAKER",
             is_paper=self.is_paper_mode
         )
         db.add(transaction)
@@ -486,9 +684,9 @@ class TradingEngine:
             logger.error(f"[CLOSE_BLOCKED] {order.pair}: Attempted to close with invalid price={current_price}, reason={reason}")
             return None
         
-        # Calculate exit fee
+        # Calculate exit fee (exits are always taker/market orders)
         notional_at_close = order.quantity * current_price
-        exit_fee = notional_at_close * config.trading_config.trading_fee
+        exit_fee = notional_at_close * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
         total_fee = order.entry_fee + exit_fee
         
         # Calculate P&L
@@ -552,6 +750,7 @@ class TradingEngine:
             leverage=order.leverage,
             notional_value=notional_at_close,
             fee=exit_fee,
+            order_type="TAKER",
             is_paper=order.is_paper
         )
         db.add(transaction)
@@ -702,7 +901,7 @@ class TradingEngine:
                             raw_pnl = (current_price - order.entry_price) * order.quantity
                         else:
                             raw_pnl = (order.entry_price - current_price) * order.quantity
-                        est_exit_fee = current_price * order.quantity * config.trading_config.trading_fee
+                        est_exit_fee = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
                         net_pnl = raw_pnl - (order.entry_fee or 0) - est_exit_fee
                         entry_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
                         cur_pnl_pct = (net_pnl / entry_notional) * 100
@@ -730,7 +929,7 @@ class TradingEngine:
                 _raw_pnl = (current_price - order.entry_price) * order.quantity
             else:
                 _raw_pnl = (order.entry_price - current_price) * order.quantity
-            _est_fee = current_price * order.quantity * config.trading_config.trading_fee
+            _est_fee = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
             _net_pnl = _raw_pnl - (order.entry_fee or 0) - _est_fee
             _notional = order.entry_price * order.quantity if order.quantity > 0 else 1
             pnl_pct = (_net_pnl / _notional) * 100
@@ -822,7 +1021,7 @@ class TradingEngine:
                     sl_raw_pnl = (current_price - order.entry_price) * order.quantity
                 else:
                     sl_raw_pnl = (order.entry_price - current_price) * order.quantity
-                sl_exit_fee = current_price * order.quantity * config.trading_config.trading_fee
+                sl_exit_fee = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
                 sl_net_pnl = sl_raw_pnl - (order.entry_fee or 0) - sl_exit_fee
                 sl_notional = order.entry_price * order.quantity if order.quantity > 0 else 1
                 sl_pnl_pct = (sl_net_pnl / sl_notional) * 100
@@ -1196,7 +1395,7 @@ class TradingEngine:
             # Calculate current P&L with fees
             entry_notional = entry_price * quantity
             current_notional = current_price * quantity
-            exit_fee = current_notional * config.trading_config.trading_fee
+            exit_fee = current_notional * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
             total_fees = entry_fee + exit_fee
             
             if direction == "LONG":

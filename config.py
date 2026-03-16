@@ -124,9 +124,17 @@ class InvestmentConfig(BaseModel):
 
 class TradingConfig(BaseModel):
     """Main trading configuration"""
-    # Trading fee per side (Binance futures taker fee)
-    # Applied to both entry and exit orders (total fee = 2 * trading_fee)
-    trading_fee: float = 0.0004  # 0.04% per side
+    # Trading fee per side (legacy field, kept for backward compatibility)
+    trading_fee: float = 0.00045  # 0.045% per side (taker default)
+    
+    # Independent fee rates
+    maker_fee: float = 0.00018  # 0.018% per side (limit order fills)
+    taker_fee: float = 0.00045  # 0.045% per side (market order fills)
+    
+    # Maker entry settings
+    maker_entry_enabled: bool = False
+    maker_timeout_seconds: int = 15
+    maker_offset_ticks: int = 2
     
     # Paper trading
     paper_trading: bool = True

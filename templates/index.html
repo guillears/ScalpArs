@@ -432,6 +432,33 @@
                     </div>
                 </div>
                 
+                <!-- Entry Type Performance -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3">Maker vs Taker entry breakdown and fee savings</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Entry Type</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">%</th>
+                                    <th class="px-3 py-2 font-medium text-center">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Entry Fee</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total Fees</th>
+                                    <th class="px-3 py-2 font-medium text-right text-emerald-400">Fee Savings</th>
+                                </tr>
+                            </thead>
+                            <tbody id="entry-type-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Stop Loss Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Stop Loss Deep Dive</h3>
@@ -733,6 +760,7 @@
                                 <th class="px-4 py-3 font-medium">Pair</th>
                                 <th class="px-4 py-3 font-medium">Confidence</th>
                                 <th class="px-4 py-3 font-medium">Action</th>
+                                <th class="px-4 py-3 font-medium text-center">Type</th>
                                 <th class="px-4 py-3 font-medium text-right">Quantity</th>
                                 <th class="px-4 py-3 font-medium text-right">Price</th>
                                 <th class="px-4 py-3 font-medium text-right">Investment</th>
@@ -743,7 +771,7 @@
                         </thead>
                         <tbody id="transactions-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="11" class="px-4 py-8 text-center text-gray-500">No transactions yet</td>
+                                <td colspan="12" class="px-4 py-8 text-center text-gray-500">No transactions yet</td>
                             </tr>
                         </tbody>
                     </table>
@@ -760,6 +788,7 @@
                                 <th class="px-4 py-3 font-medium">Pair</th>
                                 <th class="px-4 py-3 font-medium">Confidence</th>
                                 <th class="px-4 py-3 font-medium">Direction</th>
+                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
                                 <th class="px-4 py-3 font-medium text-right">Investment</th>
                                 <th class="px-4 py-3 font-medium text-right">Leverage</th>
                                 <th class="px-4 py-3 font-medium text-right">Notional</th>
@@ -776,7 +805,7 @@
                         </thead>
                         <tbody id="open-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="16" class="px-4 py-8 text-center text-gray-500">No open orders</td>
+                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No open orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -794,6 +823,7 @@
                                 <th class="px-4 py-3 font-medium">Pair</th>
                                 <th class="px-4 py-3 font-medium">Confidence</th>
                                 <th class="px-4 py-3 font-medium">Direction</th>
+                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
                                 <th class="px-4 py-3 font-medium text-right">Investment</th>
                                 <th class="px-4 py-3 font-medium text-right">Leverage</th>
                                 <th class="px-4 py-3 font-medium text-right">Entry</th>
@@ -807,7 +837,7 @@
                         </thead>
                         <tbody id="closed-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="14" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
+                                <td colspan="15" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -845,12 +875,43 @@
                             </div>
                         </div>
                         <div>
-                            <label class="block text-sm text-gray-400 mb-2">Trading Fee (per side)</label>
+                            <label class="block text-sm text-gray-400 mb-2">Taker Fee (per side)</label>
                             <div class="flex">
-                                <input type="number" id="config-trading-fee" step="0.0001" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="0.0004">
+                                <input type="number" id="config-taker-fee" step="0.001" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="0.045">
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">%</span>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Applied to both entry & exit (total: 2x)</p>
+                            <p class="text-xs text-gray-500 mt-1">Market orders (exit always taker)</p>
+                        </div>
+                    </div>
+                    <!-- Maker Entry Section -->
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mt-4">
+                        <div class="flex items-center gap-3">
+                            <label class="block text-sm text-gray-400">Maker Entry</label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-maker-entry-enabled" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Maker Fee</label>
+                            <div class="flex">
+                                <input type="number" id="config-maker-fee" step="0.001" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="0.018">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">%</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Timeout</label>
+                            <div class="flex">
+                                <input type="number" id="config-maker-timeout" min="5" max="60" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="15">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">sec</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Offset Ticks</label>
+                            <input type="number" id="config-maker-offset-ticks" min="1" max="10" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="2">
+                        </div>
+                        <div class="flex items-end">
+                            <p class="text-xs text-gray-500">Roundtrip: <span id="maker-roundtrip-display" class="text-emerald-400 font-medium">0.063%</span></p>
                         </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
@@ -2036,6 +2097,11 @@
                 lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
                 lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA8 gap compressing vs prev candle)`);
 
+                lines.push(`\nFee & Maker Entry:`);
+                lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee || 0.00018) * 100).toFixed(3)}%`);
+                lines.push(`  Maker Entry: ${cfg.maker_entry_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_timeout_seconds || 15}s  |  Offset: ${cfg.maker_offset_ticks || 2} ticks`);
+                lines.push(`  Roundtrip (maker): ${(((cfg.maker_fee || 0.00018) + (cfg.taker_fee || cfg.trading_fee)) * 100).toFixed(3)}%  |  Roundtrip (taker): ${((cfg.taker_fee || cfg.trading_fee) * 200).toFixed(3)}%`);
+
                 lines.push('\nMomentum Exit:');
                 lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
                 lines.push(`  P&L Trigger: ${th.pnl_trailing_trigger}%  |  Ratio (no signal): ${th.pnl_trailing_ratio}  |  Ratio (signal): ${th.pnl_trailing_ratio_signal_active}`);
@@ -2107,6 +2173,14 @@
                     const gapStr = r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-';
                     const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
                     lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
+                }
+
+                // --- ENTRY TYPE PERFORMANCE ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Entry Type Performance\n');
+                lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)}`);
+                for (const [etype, e] of Object.entries(perf.by_entry_type || {})) {
+                    lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_entry_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -2868,6 +2942,53 @@
                     }
                 }
 
+                // Entry Type Performance
+                const etBody = document.getElementById('entry-type-perf-body');
+                if (data.by_entry_type && Object.keys(data.by_entry_type).length > 0) {
+                    const etColors = { 'MAKER': 'text-emerald-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400' };
+                    const etOrder = ['MAKER', 'TAKER', 'TAKER_FALLBACK'];
+                    const sortedTypes = etOrder.filter(t => data.by_entry_type[t]);
+                    let totalTrades = 0, totalPnl = 0, totalFees = 0, totalSavings = 0;
+                    const rows = sortedTypes.map(etype => {
+                        const e = data.by_entry_type[etype];
+                        totalTrades += e.trades;
+                        totalPnl += e.total_pnl;
+                        totalFees += e.total_fees;
+                        totalSavings += e.fee_savings;
+                        const wrClass = e.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlClass = e.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const savClass = e.fee_savings > 0 ? 'text-emerald-400' : 'text-gray-500';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-3 py-2 ${etColors[etype] || 'text-gray-400'} font-medium">${etype}</td>
+                            <td class="px-3 py-2 text-center">${e.trades}</td>
+                            <td class="px-3 py-2 text-center">${e.pct_of_total}%</td>
+                            <td class="px-3 py-2 text-center ${wrClass}">${e.win_rate}%</td>
+                            <td class="px-3 py-2 text-right">${e.avg_pnl_pct.toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-right">${formatUSD(e.avg_pnl_usd)}</td>
+                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(e.total_pnl)}</td>
+                            <td class="px-3 py-2 text-right">${formatUSD(e.avg_entry_fee)}</td>
+                            <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(e.total_fees)}</td>
+                            <td class="px-3 py-2 text-right ${savClass} font-medium">${e.fee_savings > 0 ? '+' : ''}${formatUSD(e.fee_savings)}</td>
+                        </tr>`;
+                    }).join('');
+                    const totalPnlClass = totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const totalSavClass = totalSavings > 0 ? 'text-emerald-400' : 'text-gray-500';
+                    etBody.innerHTML = rows + `<tr class="border-t border-white/20 font-medium">
+                        <td class="px-3 py-2 text-white">TOTAL</td>
+                        <td class="px-3 py-2 text-center">${totalTrades}</td>
+                        <td class="px-3 py-2 text-center">100%</td>
+                        <td class="px-3 py-2 text-center">-</td>
+                        <td class="px-3 py-2 text-right">-</td>
+                        <td class="px-3 py-2 text-right">-</td>
+                        <td class="px-3 py-2 text-right ${totalPnlClass}">${formatUSD(totalPnl)}</td>
+                        <td class="px-3 py-2 text-right">-</td>
+                        <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(totalFees)}</td>
+                        <td class="px-3 py-2 text-right ${totalSavClass}">${totalSavings > 0 ? '+' : ''}${formatUSD(totalSavings)}</td>
+                    </tr>`;
+                } else {
+                    etBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
                 // Stop Loss Deep Dive
                 const slBody = document.getElementById('sl-deep-dive-body');
                 const sld = data.stop_loss_deep_dive;
@@ -3250,13 +3371,17 @@
                 const tbody = document.getElementById('transactions-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="11" class="px-4 py-8 text-center text-gray-500">No transactions yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="12" class="px-4 py-8 text-center text-gray-500">No transactions yet</td></tr>';
                     return;
                 }
                 
                 tbody.innerHTML = data.map(t => {
                     const actionClass = t.action.includes('LONG') ? 'text-emerald-400' : 'text-red-400';
                     const confClass = getConfidenceClass(t.confidence);
+                    const ot = t.order_type || 'TAKER';
+                    const otBadge = ot === 'MAKER'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">M</span>'
+                        : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">T</span>';
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(t.timestamp)}</td>
@@ -3264,6 +3389,7 @@
                             <td class="px-4 py-3 font-medium">${t.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${t.confidence || '-'}</td>
                             <td class="px-4 py-3 ${actionClass} font-medium">${t.action}</td>
+                            <td class="px-4 py-3 text-center">${otBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${t.quantity.toFixed(6)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(t.price)}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(t.investment)}</td>
@@ -3287,7 +3413,7 @@
                 const tbody = document.getElementById('open-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="16" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="17" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>';
                     return;
                 }
                 
@@ -3301,13 +3427,21 @@
                     const tpLevel = o.tp_level || 1;
                     const tpTarget = o.tp_target || 0;
                     const tpLevelClass = tpLevel > 1 ? 'text-emerald-400 font-medium' : 'text-gray-400';
-                    
+
+                    const eot = o.entry_order_type || 'TAKER';
+                    const eotBadge = eot === 'MAKER'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">MAKER</span>'
+                        : eot === 'TAKER_FALLBACK'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">FALLBACK</span>'
+                        : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">TAKER</span>';
+
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
+                            <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.notional_value)}</td>
@@ -3341,7 +3475,7 @@
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="14" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
                     return;
                 }
                 
@@ -3353,7 +3487,14 @@
                     // TP Level display
                     const tpLevel = o.tp_level || 1;
                     const tpLevelClass = tpLevel > 1 ? 'text-emerald-400 font-medium' : 'text-gray-400';
-                    
+
+                    const eot = o.entry_order_type || 'TAKER';
+                    const eotBadge = eot === 'MAKER'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">MAKER</span>'
+                        : eot === 'TAKER_FALLBACK'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">FALLBACK</span>'
+                        : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">TAKER</span>';
+
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
@@ -3361,6 +3502,7 @@
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
+                            <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
@@ -3421,8 +3563,16 @@
                 } else {
                     document.getElementById('config-investment-value').value = '';
                 }
-                // Display fee as percentage (multiply by 100)
-                document.getElementById('config-trading-fee').value = (config.trading_fee * 100).toFixed(4);
+                // Fee settings
+                document.getElementById('config-taker-fee').value = ((config.taker_fee || config.trading_fee) * 100).toFixed(3);
+                document.getElementById('config-maker-fee').value = ((config.maker_fee || 0.00018) * 100).toFixed(3);
+                document.getElementById('config-maker-entry-enabled').checked = config.maker_entry_enabled || false;
+                document.getElementById('config-maker-timeout').value = config.maker_timeout_seconds || 15;
+                document.getElementById('config-maker-offset-ticks').value = config.maker_offset_ticks || 2;
+                // Update roundtrip display
+                const makerPct = (config.maker_fee || 0.00018) * 100;
+                const takerPct = (config.taker_fee || config.trading_fee) * 100;
+                document.getElementById('maker-roundtrip-display').textContent = (makerPct + takerPct).toFixed(3) + '%';
                 document.getElementById('config-reserve-mode').value = config.investment.reserve_mode;
                 document.getElementById('config-reserve-value').value = config.investment.reserve_mode === 'percentage' ? config.investment.reserve_percentage : config.investment.reserve_fixed;
                 document.getElementById('config-paper-balance').value = config.paper_balance;
@@ -3570,8 +3720,14 @@
             const resMode = document.getElementById('config-reserve-mode').value;
             const resValue = safeFloat(document.getElementById('config-reserve-value').value);
             
+            const takerFeeVal = safeFloat(document.getElementById('config-taker-fee').value) / 100;
             const config = {
-                trading_fee: safeFloat(document.getElementById('config-trading-fee').value) / 100,
+                trading_fee: takerFeeVal,
+                taker_fee: takerFeeVal,
+                maker_fee: safeFloat(document.getElementById('config-maker-fee').value) / 100,
+                maker_entry_enabled: document.getElementById('config-maker-entry-enabled').checked,
+                maker_timeout_seconds: parseInt(document.getElementById('config-maker-timeout').value) || 15,
+                maker_offset_ticks: parseInt(document.getElementById('config-maker-offset-ticks').value) || 2,
                 paper_balance: safeFloat(document.getElementById('config-paper-balance').value),
                 investment: {
                     mode: invMode,

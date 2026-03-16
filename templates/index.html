@@ -1284,7 +1284,7 @@
                                     </td>
                                     <td class="px-4 py-3 text-xs text-gray-400">gap &ge; L/S min &amp; &le; max + ADX &gt; very_strong</td>
                                 </tr>
-                                <tr class="hidden">
+                                <tr>
                                     <td class="px-4 py-3">
                                         <span class="flex items-center">
                                             <span class="w-3 h-3 rounded-full bg-pink-500 mr-2"></span>
@@ -1787,7 +1787,7 @@
                                         <input type="checkbox" id="config-very_strong-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
-                                <tr class="hidden">
+                                <tr>
                                     <td class="px-3 py-3">
                                         <span class="flex items-center">
                                             <span class="w-3 h-3 rounded-full bg-pink-500 mr-2"></span>
@@ -2562,7 +2562,7 @@
                         'STRONG_BUY': 'text-pink-400'
                     };
                     
-                    confBody.innerHTML = ['VERY_STRONG'].map(conf => {
+                    confBody.innerHTML = ['VERY_STRONG', 'STRONG_BUY'].map(conf => {
                         const c = data.by_confidence[conf];
                         if (!c || c.total_trades === 0) {
                             return `

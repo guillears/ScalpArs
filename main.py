@@ -546,7 +546,11 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             # Estimate exit fee based on current notional value
             current_notional = current_price * o.quantity
             entry_notional = o.entry_price * o.quantity
-            estimated_exit_fee = current_notional * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+            if getattr(config.trading_config, 'maker_exit_enabled', False):
+                exit_fee_rate = getattr(config.trading_config, 'maker_fee', config.trading_config.trading_fee)
+            else:
+                exit_fee_rate = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+            estimated_exit_fee = current_notional * exit_fee_rate
             total_fees = o.entry_fee + estimated_exit_fee
             
             if o.direction == "LONG":

@@ -1579,7 +1579,11 @@ class TradingEngine:
             # Calculate current P&L with fees
             entry_notional = entry_price * quantity
             current_notional = current_price * quantity
-            exit_fee = current_notional * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+            if getattr(config.trading_config, 'maker_exit_enabled', False):
+                exit_fee_rate = getattr(config.trading_config, 'maker_fee', config.trading_config.trading_fee)
+            else:
+                exit_fee_rate = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+            exit_fee = current_notional * exit_fee_rate
             total_fees = entry_fee + exit_fee
             
             if direction == "LONG":

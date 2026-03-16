@@ -2188,11 +2188,11 @@
                 lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA8 gap compressing vs prev candle)`);
 
                 lines.push(`\nFee & Maker Orders:`);
-                lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee || 0.00018) * 100).toFixed(3)}%`);
+                lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee ?? 0.00018) * 100).toFixed(3)}%`);
                 lines.push(`  Maker Entry: ${cfg.maker_entry_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_timeout_seconds || 15}s  |  Offset: ${cfg.maker_offset_ticks || 2} ticks`);
                 lines.push(`  Maker Exit: ${cfg.maker_exit_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_exit_timeout_seconds || 10}s  |  Offset: ${cfg.maker_exit_offset_ticks || 2} ticks`);
-                const entryF = cfg.maker_entry_enabled ? (cfg.maker_fee || 0.00018) : (cfg.taker_fee || cfg.trading_fee);
-                const exitF = cfg.maker_exit_enabled ? (cfg.maker_fee || 0.00018) : (cfg.taker_fee || cfg.trading_fee);
+                const entryF = cfg.maker_entry_enabled ? (cfg.maker_fee ?? 0.00018) : (cfg.taker_fee || cfg.trading_fee);
+                const exitF = cfg.maker_exit_enabled ? (cfg.maker_fee ?? 0.00018) : (cfg.taker_fee || cfg.trading_fee);
                 lines.push(`  Roundtrip: ${((entryF + exitF) * 100).toFixed(3)}%  |  Full taker: ${((cfg.taker_fee || cfg.trading_fee) * 200).toFixed(3)}%`);
 
                 lines.push('\nMomentum Exit:');
@@ -3778,7 +3778,7 @@
                 }
                 // Fee settings
                 document.getElementById('config-taker-fee').value = ((config.taker_fee || config.trading_fee) * 100).toFixed(3);
-                document.getElementById('config-maker-fee').value = ((config.maker_fee || 0.00018) * 100).toFixed(3);
+                document.getElementById('config-maker-fee').value = ((config.maker_fee ?? 0.00018) * 100).toFixed(3);
                 document.getElementById('config-maker-entry-enabled').checked = config.maker_entry_enabled || false;
                 document.getElementById('config-maker-timeout').value = config.maker_timeout_seconds || 15;
                 document.getElementById('config-maker-offset-ticks').value = config.maker_offset_ticks || 2;
@@ -3786,7 +3786,7 @@
                 document.getElementById('config-maker-exit-timeout').value = config.maker_exit_timeout_seconds || 10;
                 document.getElementById('config-maker-exit-offset-ticks').value = config.maker_exit_offset_ticks || 2;
                 // Update roundtrip display
-                const makerPct = (config.maker_fee || 0.00018) * 100;
+                const makerPct = (config.maker_fee ?? 0.00018) * 100;
                 const takerPct = (config.taker_fee || config.trading_fee) * 100;
                 const entryFee = (config.maker_entry_enabled) ? makerPct : takerPct;
                 const exitFee = (config.maker_exit_enabled) ? makerPct : takerPct;

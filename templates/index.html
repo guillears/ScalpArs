@@ -1008,8 +1008,8 @@
                         Signal Thresholds
                     </h3>
                     
-                    <!-- RSI Thresholds Table -->
-                    <div class="overflow-x-auto mb-6">
+                    <!-- Legacy RSI Thresholds Table (EMA Stacked signals - hidden, kept for config compatibility) -->
+                    <div class="overflow-x-auto mb-6 hidden">
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
@@ -1096,8 +1096,8 @@
                             </tbody>
                         </table>
                     </div>
-                    <p class="text-xs text-gray-500">LONG signals require RSI at or below threshold (oversold). SHORT signals require RSI at or above threshold (overbought). EMA stacking is always required.</p>
-                    <p class="text-xs text-gray-500 mt-1">EMA Stacked for LONG: EMA5 &gt; EMA8 &gt; EMA13 &gt; EMA20 (bullish). EMA Stacked for SHORT: EMA5 &lt; EMA8 &lt; EMA13 &lt; EMA20 (bearish).</p>
+                    <p class="text-xs text-gray-500 hidden">LONG signals require RSI at or below threshold (oversold). SHORT signals require RSI at or above threshold (overbought). EMA stacking is always required.</p>
+                    <p class="text-xs text-gray-500 mt-1 hidden">EMA Stacked for LONG: EMA5 &gt; EMA8 &gt; EMA13 &gt; EMA20 (bullish). EMA Stacked for SHORT: EMA5 &lt; EMA8 &lt; EMA13 &lt; EMA20 (bearish).</p>
                     
                     <!-- Momentum Signal Thresholds -->
                     <h4 class="text-sm font-semibold text-purple-400 mt-6 mb-3">Momentum Signals (EMA5/EMA8 Gap)</h4>
@@ -1124,12 +1124,14 @@
                                         &le; <input type="number" step="1" id="config-momentum-adx-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
                                     </td>
                                     <td class="px-4 py-3 text-center">
-                                        <span class="text-xs text-gray-500">Min</span>
-                                        <input type="number" step="0.01" id="config-ema-gap-threshold" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
-                                        <span class="text-xs text-gray-500 ml-2">Max</span>
-                                        <input type="number" step="0.01" id="config-ema-gap-5-8-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                        <span class="text-xs text-gray-500">L Min</span>
+                                        <input type="number" step="0.01" id="config-ema-gap-threshold-long" class="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
+                                        <span class="text-xs text-gray-500 ml-1">S Min</span>
+                                        <input type="number" step="0.01" id="config-ema-gap-threshold-short" class="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                        <span class="text-xs text-gray-500 ml-1">Max</span>
+                                        <input type="number" step="0.01" id="config-ema-gap-5-8-max" class="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; min &amp; &le; max + ADX &gt; very_strong</td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; L/S min &amp; &le; max + ADX &gt; very_strong</td>
                                 </tr>
                                 <tr>
                                     <td class="px-4 py-3">
@@ -1143,12 +1145,14 @@
                                         &le; <span class="text-sm text-gray-400" id="config-adx-max-mirror"></span>
                                     </td>
                                     <td class="px-4 py-3 text-center">
-                                        <span class="text-xs text-gray-500">Min</span>
-                                        <span class="text-sm text-gray-400" id="config-ema-gap-min-mirror"></span>
-                                        <span class="text-xs text-gray-500 ml-2">Max</span>
+                                        <span class="text-xs text-gray-500">L Min</span>
+                                        <span class="text-sm text-gray-400" id="config-ema-gap-min-long-mirror"></span>
+                                        <span class="text-xs text-gray-500 ml-1">S Min</span>
+                                        <span class="text-sm text-gray-400" id="config-ema-gap-min-short-mirror"></span>
+                                        <span class="text-xs text-gray-500 ml-1">Max</span>
                                         <span class="text-sm text-gray-400" id="config-ema-gap-max-mirror"></span>
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; min &amp; &le; max + ADX strong..very_strong</td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; L/S min &amp; &le; max + ADX strong..very_strong</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1296,7 +1300,8 @@
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-white/5">
-                                <tr>
+                                <!-- Legacy confidence levels (LOW/MEDIUM/HIGH/EXTREME) hidden - kept for config compatibility -->
+                                <tr class="hidden">
                                     <td class="px-3 py-3">
                                         <span class="flex items-center">
                                             <span class="w-3 h-3 rounded-full bg-yellow-400 mr-2"></span>
@@ -1363,7 +1368,7 @@
                                         <input type="checkbox" id="config-low-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
-                                <tr>
+                                <tr class="hidden">
                                     <td class="px-3 py-3">
                                         <span class="flex items-center">
                                             <span class="w-3 h-3 rounded-full bg-orange-400 mr-2"></span>
@@ -1430,7 +1435,7 @@
                                         <input type="checkbox" id="config-medium-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
-                                <tr>
+                                <tr class="hidden">
                                     <td class="px-3 py-3">
                                         <span class="flex items-center">
                                             <span class="w-3 h-3 rounded-full bg-emerald-400 mr-2"></span>
@@ -1497,7 +1502,7 @@
                                         <input type="checkbox" id="config-high-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
-                                <tr>
+                                <tr class="hidden">
                                     <td class="px-3 py-3">
                                         <span class="flex items-center">
                                             <span class="w-3 h-3 rounded-full bg-blue-400 mr-2"></span>
@@ -2022,7 +2027,7 @@
                 lines.push('\n## CONFIGURATION\n');
                 const th = cfg.thresholds || {};
                 lines.push('Signal Thresholds:');
-                lines.push(`  EMA Gap Threshold: ${th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
+                lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
                 lines.push(`  ADX Very Strong: >${th.adx_very_strong}  |  ADX Strong: >${th.adx_strong}  |  ADX Max: ${th.momentum_adx_max}`);
                 lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
                 lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
@@ -3448,7 +3453,8 @@
                 document.getElementById('config-adx-high').value = config.thresholds.adx_high;
                 document.getElementById('config-adx-extreme').value = config.thresholds.adx_extreme;
                 document.getElementById('config-volume-mult').value = config.thresholds.volume_multiplier;
-                document.getElementById('config-ema-gap-threshold').value = config.thresholds.ema_gap_threshold !== undefined ? config.thresholds.ema_gap_threshold : 3.0;
+                document.getElementById('config-ema-gap-threshold-long').value = config.thresholds.ema_gap_threshold_long !== undefined ? config.thresholds.ema_gap_threshold_long : (config.thresholds.ema_gap_threshold || 0.02);
+                document.getElementById('config-ema-gap-threshold-short').value = config.thresholds.ema_gap_threshold_short !== undefined ? config.thresholds.ema_gap_threshold_short : (config.thresholds.ema_gap_threshold || 0.02);
                 document.getElementById('config-adx-strong').value = config.thresholds.adx_strong !== undefined ? config.thresholds.adx_strong : 16.0;
                 document.getElementById('config-adx-very-strong').value = config.thresholds.adx_very_strong !== undefined ? config.thresholds.adx_very_strong : 30.0;
                 document.getElementById('config-momentum-ema20-filter-long').checked = config.thresholds.momentum_ema20_filter_long !== undefined ? config.thresholds.momentum_ema20_filter_long : true;
@@ -3469,7 +3475,8 @@
                 document.getElementById('config-ema-gap-5-8-max').value = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
                 // Sync mirror elements for STRONG_BUY row
                 document.getElementById('config-adx-max-mirror').textContent = document.getElementById('config-momentum-adx-max').value;
-                document.getElementById('config-ema-gap-min-mirror').textContent = document.getElementById('config-ema-gap-threshold').value;
+                document.getElementById('config-ema-gap-min-long-mirror').textContent = document.getElementById('config-ema-gap-threshold-long').value;
+                document.getElementById('config-ema-gap-min-short-mirror').textContent = document.getElementById('config-ema-gap-threshold-short').value;
                 document.getElementById('config-ema-gap-max-mirror').textContent = document.getElementById('config-ema-gap-5-8-max').value;
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
@@ -3540,8 +3547,11 @@
         document.getElementById('config-momentum-adx-max').addEventListener('input', function() {
             document.getElementById('config-adx-max-mirror').textContent = this.value;
         });
-        document.getElementById('config-ema-gap-threshold').addEventListener('input', function() {
-            document.getElementById('config-ema-gap-min-mirror').textContent = this.value;
+        document.getElementById('config-ema-gap-threshold-long').addEventListener('input', function() {
+            document.getElementById('config-ema-gap-min-long-mirror').textContent = this.value;
+        });
+        document.getElementById('config-ema-gap-threshold-short').addEventListener('input', function() {
+            document.getElementById('config-ema-gap-min-short-mirror').textContent = this.value;
         });
         document.getElementById('config-ema-gap-5-8-max').addEventListener('input', function() {
             document.getElementById('config-ema-gap-max-mirror').textContent = this.value;
@@ -3591,7 +3601,9 @@
                     adx_high: safeFloat(document.getElementById('config-adx-high').value),
                     adx_extreme: safeFloat(document.getElementById('config-adx-extreme').value),
                     volume_multiplier: safeFloat(document.getElementById('config-volume-mult').value),
-                    ema_gap_threshold: safeFloat(document.getElementById('config-ema-gap-threshold').value),
+                    ema_gap_threshold: safeFloat(document.getElementById('config-ema-gap-threshold-long').value),
+                    ema_gap_threshold_long: safeFloat(document.getElementById('config-ema-gap-threshold-long').value),
+                    ema_gap_threshold_short: safeFloat(document.getElementById('config-ema-gap-threshold-short').value),
                     adx_strong: safeFloat(document.getElementById('config-adx-strong').value),
                     adx_very_strong: safeFloat(document.getElementById('config-adx-very-strong').value),
                     momentum_ema20_filter_long: document.getElementById('config-momentum-ema20-filter-long').checked,

@@ -244,7 +244,8 @@ def get_signal(
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
                 prev_gap_pct = ((ema5_prev1 - ema8_prev1) / ema8_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema8_prev1 > 0 else None
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
-                gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
+                long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
+                gap_threshold_met = ema_gap_pct >= long_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
@@ -277,7 +278,8 @@ def get_signal(
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
                 prev_gap_pct = ((ema8_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema5_prev1 > 0 else None
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
-                gap_threshold_met = ema_gap_pct >= th.ema_gap_threshold
+                short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
+                gap_threshold_met = ema_gap_pct >= short_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:

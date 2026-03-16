@@ -2377,7 +2377,7 @@
                         'STRONG_BUY': 'text-pink-400'
                     };
                     
-                    confBody.innerHTML = ['VERY_STRONG', 'STRONG_BUY', 'LOW', 'MEDIUM', 'HIGH', 'EXTREME'].map(conf => {
+                    confBody.innerHTML = ['VERY_STRONG', 'STRONG_BUY'].map(conf => {
                         const c = data.by_confidence[conf];
                         if (!c || c.total_trades === 0) {
                             return `

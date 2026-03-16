@@ -53,6 +53,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema_gap_5_8 FLOAT"))
                 if 'peak_ema5_gap' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN peak_ema5_gap FLOAT DEFAULT 0.0"))
+                if 'entry_ema5_stretch' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema5_stretch FLOAT"))
                 if 'entry_order_type' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_order_type VARCHAR(15) DEFAULT 'TAKER'"))
 

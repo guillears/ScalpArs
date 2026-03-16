@@ -417,6 +417,7 @@ class TradingEngine:
         current_price: float,
         entry_gap: float = None,
         entry_ema_gap_5_8: float = None,
+        entry_ema5_stretch: float = None,
         entry_rsi: float = None,
         entry_adx: float = None,
         entry_macro_trend: str = None
@@ -569,6 +570,7 @@ class TradingEngine:
             confidence=confidence,
             entry_gap=entry_gap,
             entry_ema_gap_5_8=entry_ema_gap_5_8,
+            entry_ema5_stretch=entry_ema5_stretch,
             entry_rsi=entry_rsi,
             entry_adx=entry_adx,
             entry_macro_trend=entry_macro_trend,
@@ -1236,6 +1238,9 @@ class TradingEngine:
                     entry_ema_gap_5_8 = None
                     if indicators.get('ema5') and indicators.get('ema8') and indicators['ema8'] > 0:
                         entry_ema_gap_5_8 = round(abs((indicators['ema5'] - indicators['ema8']) / indicators['ema8'] * 100), 4)
+                    entry_ema5_stretch = None
+                    if indicators.get('ema5') and indicators['price'] > 0:
+                        entry_ema5_stretch = round(abs(indicators['price'] - indicators['ema5']) / indicators['price'] * 100, 4)
                     entry_rsi = indicators.get('rsi')
                     entry_adx = indicators.get('adx')
                     if btc_global_enabled:
@@ -1253,6 +1258,7 @@ class TradingEngine:
                         current_price=indicators['price'],
                         entry_gap=entry_gap,
                         entry_ema_gap_5_8=entry_ema_gap_5_8,
+                        entry_ema5_stretch=entry_ema5_stretch,
                         entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
                         entry_adx=round(entry_adx, 1) if entry_adx is not None else None,
                         entry_macro_trend=entry_regime

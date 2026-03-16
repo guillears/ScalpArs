@@ -98,6 +98,8 @@ class Order(Base):
     
     # Entry order type: MAKER, TAKER, or TAKER_FALLBACK
     entry_order_type = Column(String(15), nullable=True, default="TAKER")
+    # Exit order type: MAKER, TAKER, or TAKER_FALLBACK
+    exit_order_type = Column(String(15), nullable=True, default="TAKER")
     
     # Paper trading flag
     is_paper = Column(Boolean, nullable=False, default=True)

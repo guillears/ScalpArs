@@ -136,6 +136,11 @@ class TradingConfig(BaseModel):
     maker_timeout_seconds: int = 15
     maker_offset_ticks: int = 2
     
+    # Maker exit settings
+    maker_exit_enabled: bool = False
+    maker_exit_timeout_seconds: int = 10
+    maker_exit_offset_ticks: int = 2
+    
     # Paper trading
     paper_trading: bool = True
     paper_balance: float = 2000.0  # Starting balance for paper trading

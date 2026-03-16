@@ -408,6 +408,158 @@ class TradingEngine:
             'entry_order_type': 'TAKER_FALLBACK',
         }
 
+    async def _try_maker_exit(
+        self, symbol: str, side: str, amount: float,
+        pair: str, direction: str, current_price: float
+    ) -> Dict:
+        """Attempt a maker (limit) exit, falling back to taker (market) on timeout.
+        For LONG exits: sell at best_ask + offset (higher = better).
+        For SHORT exits: buy at best_bid - offset (lower = better)."""
+        tc = config.trading_config
+        timeout = getattr(tc, 'maker_exit_timeout_seconds', 10)
+        offset_ticks = getattr(tc, 'maker_exit_offset_ticks', 2)
+        maker_fee_rate = getattr(tc, 'maker_fee', 0.00018)
+        taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
+        close_side = 'sell' if direction == 'LONG' else 'buy'
+
+        ob = await binance_service.fetch_orderbook(symbol)
+        if not ob:
+            logger.warning(f"[MAKER_EXIT] {pair}: Orderbook unavailable, falling back to taker")
+            result = await binance_service.close_position(symbol, direction, amount)
+            if not result:
+                return {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER'}
+            return {
+                'price': result['price'], 'fee_rate': taker_fee_rate,
+                'exit_order_type': 'TAKER_FALLBACK',
+            }
+
+        tick_size = await binance_service.get_tick_size(symbol)
+        if direction == 'LONG':
+            limit_price = ob['best_ask'] + (offset_ticks * tick_size)
+        else:
+            limit_price = ob['best_bid'] - (offset_ticks * tick_size)
+
+        limit_price = round(limit_price / tick_size) * tick_size
+
+        logger.info(f"[MAKER_EXIT] {pair}: Placing limit {close_side} @ {limit_price} "
+                     f"(bid={ob['best_bid']}, ask={ob['best_ask']}, offset={offset_ticks} ticks)")
+
+        limit_result = await binance_service.create_limit_order(
+            symbol=symbol, side=close_side, amount=amount, price=limit_price, leverage=1
+        )
+        if not limit_result:
+            logger.warning(f"[MAKER_EXIT] {pair}: Limit order failed, falling back to taker")
+            result = await binance_service.close_position(symbol, direction, amount)
+            if not result:
+                return {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER'}
+            return {
+                'price': result['price'], 'fee_rate': taker_fee_rate,
+                'exit_order_type': 'TAKER_FALLBACK',
+            }
+
+        order_id = limit_result['id']
+        polls = max(1, timeout // 2)
+
+        for i in range(polls):
+            await asyncio.sleep(2)
+            status = await binance_service.fetch_order_status(symbol, order_id)
+            if not status:
+                continue
+            if status['status'] == 'closed':
+                fill_price = status['average'] or limit_price
+                logger.info(f"[MAKER_EXIT] {pair}: Limit FILLED @ {fill_price} after {(i+1)*2}s")
+                return {
+                    'price': fill_price, 'fee_rate': maker_fee_rate,
+                    'exit_order_type': 'MAKER',
+                }
+
+        logger.info(f"[MAKER_EXIT] {pair}: Timeout after {timeout}s, cancelling limit order")
+        await binance_service.cancel_order(symbol, order_id)
+        await asyncio.sleep(0.5)
+
+        final_status = await binance_service.fetch_order_status(symbol, order_id)
+        filled_qty = final_status['filled'] if final_status else 0
+
+        if filled_qty and filled_qty > 0:
+            fill_price = final_status['average'] or limit_price
+            logger.info(f"[MAKER_EXIT] {pair}: Partial fill {filled_qty}/{amount} @ {fill_price}, market closing remainder")
+            remainder = amount - filled_qty
+            if remainder > 0:
+                await binance_service.close_position(symbol, direction, remainder)
+            return {
+                'price': fill_price, 'fee_rate': maker_fee_rate,
+                'exit_order_type': 'MAKER',
+            }
+
+        logger.info(f"[MAKER_EXIT] {pair}: No fill, falling back to market order")
+        result = await binance_service.close_position(symbol, direction, amount)
+        if not result:
+            return {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER'}
+        return {
+            'price': result['price'], 'fee_rate': taker_fee_rate,
+            'exit_order_type': 'TAKER_FALLBACK',
+        }
+
+    async def _simulate_maker_exit_paper(
+        self, pair: str, direction: str, current_price: float
+    ) -> Dict:
+        """Simulate maker exit for paper trading using WebSocket prices."""
+        tc = config.trading_config
+        timeout = getattr(tc, 'maker_exit_timeout_seconds', 10)
+        offset_ticks = getattr(tc, 'maker_exit_offset_ticks', 2)
+        maker_fee_rate = getattr(tc, 'maker_fee', 0.00018)
+        taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
+
+        if current_price >= 10000:
+            tick_size = 0.10
+        elif current_price >= 100:
+            tick_size = 0.01
+        elif current_price >= 1:
+            tick_size = 0.001
+        else:
+            tick_size = 0.0001
+
+        if direction == 'LONG':
+            limit_price = current_price + (offset_ticks * tick_size)
+        else:
+            limit_price = current_price - (offset_ticks * tick_size)
+
+        limit_price = round(limit_price / tick_size) * tick_size
+
+        logger.info(f"[MAKER_EXIT_PAPER] {pair}: Simulating limit exit {direction} @ {limit_price} "
+                     f"(current={current_price}, offset={offset_ticks} ticks)")
+
+        polls = max(1, timeout // 2)
+        for i in range(polls):
+            await asyncio.sleep(2)
+            tracker = websocket_tracker.get_tracker(pair)
+            if not tracker or not tracker.last_price:
+                continue
+
+            ws_price = tracker.last_price
+            if direction == 'LONG' and ws_price >= limit_price:
+                logger.info(f"[MAKER_EXIT_PAPER] {pair}: Simulated FILL @ {limit_price} after {(i+1)*2}s "
+                             f"(ws_price={ws_price})")
+                return {
+                    'price': limit_price, 'fee_rate': maker_fee_rate,
+                    'exit_order_type': 'MAKER',
+                }
+            elif direction == 'SHORT' and ws_price <= limit_price:
+                logger.info(f"[MAKER_EXIT_PAPER] {pair}: Simulated FILL @ {limit_price} after {(i+1)*2}s "
+                             f"(ws_price={ws_price})")
+                return {
+                    'price': limit_price, 'fee_rate': maker_fee_rate,
+                    'exit_order_type': 'MAKER',
+                }
+
+        tracker = websocket_tracker.get_tracker(pair)
+        fallback_price = tracker.last_price if tracker and tracker.last_price else current_price
+        logger.info(f"[MAKER_EXIT_PAPER] {pair}: No fill after {timeout}s, taker fallback @ {fallback_price}")
+        return {
+            'price': fallback_price, 'fee_rate': taker_fee_rate,
+            'exit_order_type': 'TAKER_FALLBACK',
+        }
+
     async def open_position(
         self,
         db: AsyncSession,
@@ -686,41 +838,67 @@ class TradingEngine:
             logger.error(f"[CLOSE_BLOCKED] {order.pair}: Attempted to close with invalid price={current_price}, reason={reason}")
             return None
         
-        # Calculate exit fee (exits are always taker/market orders)
-        notional_at_close = order.quantity * current_price
-        exit_fee = notional_at_close * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+        # Attempt maker exit if enabled, otherwise use taker
+        tc = config.trading_config
+        maker_exit_enabled = getattr(tc, 'maker_exit_enabled', False)
+        taker_fee_rate = getattr(tc, 'taker_fee', tc.trading_fee)
+        exit_order_type = 'TAKER'
+        actual_exit_price = current_price
+
+        if maker_exit_enabled:
+            if not self.is_paper_mode:
+                symbol = order.pair.replace('USDT', '/USDT:USDT')
+                exit_result = await self._try_maker_exit(
+                    symbol=symbol, side=order.direction, amount=order.quantity,
+                    pair=order.pair, direction=order.direction, current_price=current_price
+                )
+                actual_exit_price = exit_result['price']
+                exit_fee_rate = exit_result['fee_rate']
+                exit_order_type = exit_result['exit_order_type']
+            else:
+                exit_result = await self._simulate_maker_exit_paper(
+                    pair=order.pair, direction=order.direction, current_price=current_price
+                )
+                actual_exit_price = exit_result['price']
+                exit_fee_rate = exit_result['fee_rate']
+                exit_order_type = exit_result['exit_order_type']
+
+            notional_at_close = order.quantity * actual_exit_price
+            exit_fee = notional_at_close * exit_fee_rate
+        else:
+            # Standard taker exit
+            notional_at_close = order.quantity * current_price
+            exit_fee = notional_at_close * taker_fee_rate
+
+            if not self.is_paper_mode:
+                symbol = order.pair.replace('USDT', '/USDT:USDT')
+                result = await binance_service.close_position(
+                    symbol=symbol,
+                    side=order.direction,
+                    amount=order.quantity
+                )
+                if not result:
+                    return None
+
         total_fee = order.entry_fee + exit_fee
-        
+
         # Calculate P&L
         pnl_data = calculate_pnl(
             direction=order.direction,
             entry_price=order.entry_price,
-            current_price=current_price,
+            current_price=actual_exit_price,
             quantity=order.quantity,
             leverage=order.leverage,
             entry_fee=order.entry_fee,
             exit_fee=exit_fee
         )
-        
-        # Execute trade
-        if not self.is_paper_mode:
-            symbol = order.pair.replace('USDT', '/USDT:USDT')
-            result = await binance_service.close_position(
-                symbol=symbol,
-                side=order.direction,
-                amount=order.quantity
-            )
-            if not result:
-                return None
-        else:
-            # Paper trade - will recalculate from DB after commit
-            pass
-        
+
         # Update order
         order.status = "CLOSED"
-        order.exit_price = current_price
+        order.exit_price = actual_exit_price
         order.exit_fee = exit_fee
         order.total_fee = total_fee
+        order.exit_order_type = exit_order_type
         order.pnl = pnl_data['pnl']
         order.pnl_percentage = pnl_data['pnl_percentage']
         order.closed_at = datetime.utcnow()

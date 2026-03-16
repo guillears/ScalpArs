@@ -258,6 +258,9 @@ class ConfigUpdate(BaseModel):
     maker_entry_enabled: Optional[bool] = None
     maker_timeout_seconds: Optional[int] = None
     maker_offset_ticks: Optional[int] = None
+    maker_exit_enabled: Optional[bool] = None
+    maker_exit_timeout_seconds: Optional[int] = None
+    maker_exit_offset_ticks: Optional[int] = None
     paper_trading: Optional[bool] = None
     paper_balance: Optional[float] = None
     investment: Optional[Dict] = None
@@ -601,9 +604,10 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             # Dynamic TP tracking
             "tp_level": o.current_tp_level or 1,
             "tp_target": o.dynamic_tp_target or 0,
-            "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER"
+            "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
+            "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER"
         })
-    
+
     return orders_data
 
 
@@ -649,9 +653,10 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "closed_at": o.closed_at.isoformat() if o.closed_at else None,
             # TP Level reached
             "tp_level": o.current_tp_level or 1,
-            "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER"
+            "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
+            "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER"
         })
-    
+
     return orders_data
 
 
@@ -796,6 +801,51 @@ def _compute_entry_type_stats(orders):
             "avg_entry_fee": round(avg_entry_fee, 4),
             "total_fees": round(data["fee_sum"], 2),
             "fee_savings": round(fee_savings, 2),
+        }
+    return result
+
+
+def _compute_exit_type_stats(orders):
+    """Compute performance breakdown by exit order type (MAKER / TAKER / TAKER_FALLBACK) with close reason."""
+    taker_fee_rate = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+    groups = {}
+    for o in orders:
+        etype = getattr(o, 'exit_order_type', None) or "TAKER"
+        if etype not in groups:
+            groups[etype] = {"trades": [], "pnl_sum": 0, "fee_sum": 0, "wins": 0, "close_reasons": {}}
+        groups[etype]["trades"].append(o)
+        groups[etype]["pnl_sum"] += (o.pnl or 0)
+        groups[etype]["fee_sum"] += (o.total_fee or 0)
+        if (o.pnl or 0) > 0:
+            groups[etype]["wins"] += 1
+        cr = (o.close_reason or "UNKNOWN").split(" ")[0]
+        groups[etype]["close_reasons"][cr] = groups[etype]["close_reasons"].get(cr, 0) + 1
+
+    total_trades = len(orders)
+    result = {}
+    for etype, data in groups.items():
+        count = len(data["trades"])
+        avg_exit_fee = sum(o.exit_fee or 0 for o in data["trades"]) / count if count else 0
+        if etype == "MAKER":
+            hypothetical_taker_exit_fees = sum(
+                ((o.exit_price or o.entry_price) * o.quantity * taker_fee_rate) for o in data["trades"]
+            )
+            actual_exit_fees = sum(o.exit_fee or 0 for o in data["trades"])
+            fee_savings = hypothetical_taker_exit_fees - actual_exit_fees
+        else:
+            fee_savings = 0
+
+        result[etype] = {
+            "trades": count,
+            "pct_of_total": round(count / total_trades * 100, 1) if total_trades else 0,
+            "win_rate": round(data["wins"] / count * 100, 1) if count else 0,
+            "avg_pnl_pct": round(sum(o.pnl_percentage or 0 for o in data["trades"]) / count, 2) if count else 0,
+            "avg_pnl_usd": round(data["pnl_sum"] / count, 2) if count else 0,
+            "total_pnl": round(data["pnl_sum"], 2),
+            "avg_exit_fee": round(avg_exit_fee, 4),
+            "total_fees": round(data["fee_sum"], 2),
+            "fee_savings": round(fee_savings, 2),
+            "by_close_reason": data["close_reasons"],
         }
     return result
 
@@ -1742,7 +1792,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "rsi_adx_crosstab": rsi_adx_crosstab,
         "never_positive_deep_dive": never_positive_deep_dive,
         "performance_over_time": _compute_time_buckets(orders),
-        "by_entry_type": _compute_entry_type_stats(orders)
+        "by_entry_type": _compute_entry_type_stats(orders),
+        "by_exit_type": _compute_exit_type_stats(orders)
     }
 
 

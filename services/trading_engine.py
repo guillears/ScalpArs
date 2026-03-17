@@ -572,7 +572,9 @@ class TradingEngine:
         entry_ema5_stretch: float = None,
         entry_rsi: float = None,
         entry_adx: float = None,
-        entry_macro_trend: str = None
+        entry_macro_trend: str = None,
+        entry_ema20_slope: float = None,
+        entry_btc_ema20_slope: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -726,6 +728,8 @@ class TradingEngine:
             entry_rsi=entry_rsi,
             entry_adx=entry_adx,
             entry_macro_trend=entry_macro_trend,
+            entry_ema20_slope=entry_ema20_slope,
+            entry_btc_ema20_slope=entry_btc_ema20_slope,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -1325,6 +1329,7 @@ class TradingEngine:
         btc_ema20 = None
         btc_ema20_prev6 = None
         btc_regime = "NEUTRAL"
+        btc_ema20_slope_pct = None
         if btc_global_enabled:
             btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
             if btc_ohlcv:
@@ -1334,6 +1339,8 @@ class TradingEngine:
                     btc_ema20_prev6 = btc_indicators.get('ema20_prev6')
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                     btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
+                    if btc_ema20 and btc_ema20_prev6 and btc_ema20_prev6 != 0:
+                        btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev6) / btc_ema20_prev6) * 100, 4)
             logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev6})")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
@@ -1428,6 +1435,11 @@ class TradingEngine:
                         entry_regime = determine_macro_regime(
                             indicators.get('ema20'), indicators.get('ema20_prev6'), flat_th
                         )
+                    pair_ema20_slope_pct = None
+                    pair_ema20 = indicators.get('ema20')
+                    pair_ema20_prev6 = indicators.get('ema20_prev6')
+                    if pair_ema20 and pair_ema20_prev6 and pair_ema20_prev6 != 0:
+                        pair_ema20_slope_pct = round(((pair_ema20 - pair_ema20_prev6) / pair_ema20_prev6) * 100, 4)
                     order = await self.open_position(
                         db=db,
                         pair=pair,
@@ -1439,7 +1451,9 @@ class TradingEngine:
                         entry_ema5_stretch=entry_ema5_stretch,
                         entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
                         entry_adx=round(entry_adx, 1) if entry_adx is not None else None,
-                        entry_macro_trend=entry_regime
+                        entry_macro_trend=entry_regime,
+                        entry_ema20_slope=pair_ema20_slope_pct,
+                        entry_btc_ema20_slope=btc_ema20_slope_pct
                     )
 
                     if order:

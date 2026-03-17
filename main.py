@@ -773,6 +773,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "adx_performance": [], "stretch_performance": [],
+            "pair_slope_performance": [], "btc_slope_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
@@ -1032,6 +1033,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "rsi_performance": [],
             "adx_performance": [],
             "stretch_performance": [],
+            "pair_slope_performance": [],
+            "btc_slope_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
@@ -1204,6 +1207,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     rsi_performance = []
     adx_performance = []
     stretch_performance = []
+    pair_slope_performance = []
+    btc_slope_performance = []
     try:
         gap_ranges = [
             ("0.12 - 0.15%", 0.12, 0.15),
@@ -1394,6 +1399,85 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "by_confidence": conf_breakdown
                 })
 
+        # Performance by Pair EMA20 Slope (absolute value, 0.02% buckets)
+        slope_ranges = [
+            ("0.00 - 0.02%", 0.00, 0.02),
+            ("0.02 - 0.04%", 0.02, 0.04),
+            ("0.04 - 0.06%", 0.04, 0.06),
+            ("0.06 - 0.08%", 0.06, 0.08),
+            ("0.08 - 0.10%", 0.08, 0.10),
+            ("0.10 - 0.12%", 0.10, 0.12),
+            ("0.12 - 0.14%", 0.12, 0.14),
+            ("0.14 - 0.16%", 0.14, 0.16),
+            ("0.16 - 0.18%", 0.16, 0.18),
+            ("0.18 - 0.20%", 0.18, 0.20),
+            ("> 0.20%", 0.20, 999),
+        ]
+        pair_slope_orders = [o for o in orders if o.entry_ema20_slope is not None]
+        for range_name, s_min, s_max in slope_ranges:
+            range_orders = [o for o in pair_slope_orders if s_min <= abs(o.entry_ema20_slope) < s_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
+                avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
+                avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                pair_slope_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown,
+                    "avg_rsi": avg_rsi,
+                    "avg_adx": avg_adx,
+                    "avg_gap": avg_gap
+                })
+
+        # Performance by BTC EMA20 Slope (absolute value, 0.02% buckets)
+        btc_slope_orders = [o for o in orders if o.entry_btc_ema20_slope is not None]
+        for range_name, s_min, s_max in slope_ranges:
+            range_orders = [o for o in btc_slope_orders if s_min <= abs(o.entry_btc_ema20_slope) < s_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
+                avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
+                avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                btc_slope_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown,
+                    "avg_rsi": avg_rsi,
+                    "avg_adx": avg_adx,
+                    "avg_gap": avg_gap
+                })
+
     except Exception as e:
         logger.error(f"[PERF] Error computing gap/rsi/adx/stretch performance: {e}\n{traceback.format_exc()}")
         gap_performance = []
@@ -1401,6 +1485,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         rsi_performance = []
         adx_performance = []
         stretch_performance = []
+        pair_slope_performance = []
+        btc_slope_performance = []
     
     # By Close Reason - group by reason with L4+ aggregation
     by_close_reason = {}
@@ -1826,6 +1912,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "rsi_performance": rsi_performance,
         "adx_performance": adx_performance,
         "stretch_performance": stretch_performance,
+        "pair_slope_performance": pair_slope_performance,
+        "btc_slope_performance": btc_slope_performance,
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown,

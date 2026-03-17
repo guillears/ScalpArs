@@ -505,6 +505,8 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Peak P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Trough %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Worst Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price">Avg Pullback %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L USD</th>
@@ -513,7 +515,7 @@
                                 </tr>
                             </thead>
                             <tbody id="sl-deep-dive-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
+                                <tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2312,7 +2314,7 @@
                     ['Positive, No BE', sld.positive_no_be],
                     ['Never Positive', sld.never_positive]
                 ];
-                lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Peak%'.padEnd(11)} ${'AvgTrough%'.padEnd(11)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
                 const slTotal = sld.total_sl_trades || 0;
                 for (const [name, d] of slCats) {
                     if (!d || d.count === 0) continue;
@@ -2320,7 +2322,7 @@
                     const confStr = Object.entries(d.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${d.signal_active||0}/${d.signal_inactive||0}`;
                     const pctStr = slTotal > 0 ? (d.count / slTotal * 100).toFixed(1) + '%' : '-';
-                    lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                    lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_trough_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
                 }
                 lines.push(`${'All SL Trades'.padEnd(18)} ${String(slTotal).padEnd(5)} ${'100%'.padEnd(7)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'}`);
 
@@ -3244,6 +3246,8 @@
                     
                     let rows = categories.filter(c => c.data.count > 0).map(c => {
                         const peakClass = c.data.avg_peak_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const troughClass = c.data.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const worstTroughClass = c.data.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const closeClass = c.data.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = c.data.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const slDropVal = c.data.avg_price_drop || 0;
@@ -3257,6 +3261,8 @@
                                 <td class="px-3 py-2 text-right text-cyan-400">${c.data.avg_entry_gap != null ? c.data.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-purple-400">${c.data.avg_entry_rsi != null ? c.data.avg_entry_rsi.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${c.data.avg_peak_pnl >= 0 ? '+' : ''}${c.data.avg_peak_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${troughClass} font-medium">${c.data.avg_trough_pnl >= 0 ? '+' : ''}${(c.data.avg_trough_pnl || 0).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${worstTroughClass} font-medium">${c.data.worst_trough_pnl >= 0 ? '+' : ''}${(c.data.worst_trough_pnl || 0).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${c.data.avg_close_pnl >= 0 ? '+' : ''}${c.data.avg_close_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${slDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(c.data.total_pnl_usd)}</td>
@@ -3276,6 +3282,8 @@
                             <td class="px-3 py-2 text-right text-cyan-400">${sld.all_avg_entry_gap != null ? sld.all_avg_entry_gap.toFixed(2) + '%' : '-'}</td>
                             <td class="px-3 py-2 text-right text-purple-400">${sld.all_avg_entry_rsi != null ? sld.all_avg_entry_rsi.toFixed(1) : '-'}</td>
                             <td class="px-3 py-2 text-right ${sld.avg_peak_all_sl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.avg_peak_all_sl >= 0 ? '+' : ''}${sld.avg_peak_all_sl.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${(sld.all_avg_trough_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(sld.all_avg_trough_pnl || 0) >= 0 ? '+' : ''}${(sld.all_avg_trough_pnl || 0).toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${(sld.all_worst_trough_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(sld.all_worst_trough_pnl || 0) >= 0 ? '+' : ''}${(sld.all_worst_trough_pnl || 0).toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${sld.all_avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.all_avg_close_pnl >= 0 ? '+' : ''}${sld.all_avg_close_pnl.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-amber-400 font-medium">${(sld.all_avg_price_drop || 0).toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${sld.all_total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${formatUSD(sld.all_total_pnl_usd)}</td>
@@ -3286,7 +3294,7 @@
                     
                     slBody.innerHTML = rows;
                 } else {
-                    slBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                    slBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
                 // Winning Trades Drawdown

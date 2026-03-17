@@ -1502,7 +1502,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         def _sl_group_stats(group_orders):
             count = len(group_orders)
             empty = {
-                "count": 0, "avg_peak_pnl": 0, "avg_close_pnl": 0, "total_pnl_usd": 0,
+                "count": 0, "avg_peak_pnl": 0, "avg_trough_pnl": 0, "worst_trough_pnl": 0,
+                "avg_close_pnl": 0, "total_pnl_usd": 0,
                 "by_confidence": {}, "by_direction": {"LONG": 0, "SHORT": 0},
                 "avg_entry_gap": None, "avg_entry_rsi": None, "avg_price_drop": 0,
                 "avg_duration": "00:00:00",
@@ -1511,6 +1512,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             if count == 0:
                 return empty
             avg_peak = sum(o.peak_pnl or 0 for o in group_orders) / count
+            troughs = [o.trough_pnl or 0 for o in group_orders]
+            avg_trough = sum(troughs) / count
+            worst_trough = min(troughs)
             avg_close = sum(o.pnl_percentage or 0 for o in group_orders) / count
             total_pnl = sum(o.pnl or 0 for o in group_orders)
             drops = [_price_drop_pct_sl(o) for o in group_orders]
@@ -1530,6 +1534,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             return {
                 "count": count,
                 "avg_peak_pnl": round(avg_peak, 4),
+                "avg_trough_pnl": round(avg_trough, 4),
+                "worst_trough_pnl": round(worst_trough, 4),
                 "avg_close_pnl": round(avg_close, 4),
                 "total_pnl_usd": round(total_pnl, 2),
                 "by_confidence": by_conf,
@@ -1561,6 +1567,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "positive_no_be": _sl_group_stats(positive_no_be_trades),
             "never_positive": _sl_group_stats(never_positive_trades),
             "avg_peak_all_sl": round(sum(o.peak_pnl or 0 for o in sl_orders) / all_sl_count, 4) if sl_orders else 0,
+            "all_avg_trough_pnl": round(sum(o.trough_pnl or 0 for o in sl_orders) / all_sl_count, 4) if sl_orders else 0,
+            "all_worst_trough_pnl": round(min((o.trough_pnl or 0) for o in sl_orders), 4) if sl_orders else 0,
             "all_avg_close_pnl": round(sum(o.pnl_percentage or 0 for o in sl_orders) / all_sl_count, 4) if sl_orders else 0,
             "all_avg_price_drop": round(sum(all_sl_drops) / all_sl_count, 4) if sl_orders else 0,
             "all_total_pnl_usd": round(sum(o.pnl or 0 for o in sl_orders), 2),

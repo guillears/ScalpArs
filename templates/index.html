@@ -407,7 +407,7 @@
                     <!-- Closing Reason Summary -->
                     <div class="lg:col-span-5">
                         <h3 class="text-sm font-semibold text-gray-300 mb-4">Closing Reason Summary</h3>
-                        <p class="text-xs text-gray-500 mb-3">Performance by close reason (L = TP Level reached)</p>
+                        <p class="text-xs text-gray-500 mb-3">Performance by close reason (L = BE Level reached)</p>
                         <div class="overflow-x-auto">
                             <table class="w-full text-sm">
                                 <thead>
@@ -852,7 +852,7 @@
                                 <th class="px-4 py-3 font-medium text-right">High/Low</th>
                                 <th class="px-4 py-3 font-medium text-right">Drop %</th>
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
-                                <th class="px-4 py-3 font-medium text-center">TP Level</th>
+                                <th class="px-4 py-3 font-medium text-center">BE Level</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium text-center">Action</th>
                             </tr>
@@ -885,7 +885,7 @@
                                 <th class="px-4 py-3 font-medium text-right">Exit</th>
                                 <th class="px-4 py-3 font-medium text-right">Total Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
-                                <th class="px-4 py-3 font-medium text-center">TP Level</th>
+                                <th class="px-4 py-3 font-medium text-center">BE Level</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium">Reason</th>
                             </tr>
@@ -3652,10 +3652,18 @@
                     const confClass = getConfidenceClass(o.confidence);
                     const highLow = o.direction === 'LONG' ? o.high_since_entry : o.low_since_entry;
                     
-                    // TP Level display
-                    const tpLevel = o.tp_level || 1;
-                    const tpTarget = o.tp_target || 0;
-                    const tpLevelClass = tpLevel > 1 ? 'text-emerald-400 font-medium' : 'text-gray-400';
+                    const beLvl = o.be_level || 0;
+                    const beStop = o.be_stop || 0;
+                    let beBadge;
+                    if (beLvl === 0) {
+                        beBadge = '<span class="text-gray-500">--</span>';
+                    } else if (beLvl === 1) {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">L1 (${beStop.toFixed(2)}%)</span>`;
+                    } else if (beLvl === 2) {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">L2 (${beStop.toFixed(2)}%)</span>`;
+                    } else {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-sky-500/20 text-sky-400">L3 (${beStop.toFixed(2)}%)</span>`;
+                    }
 
                     const eot = o.entry_order_type || 'TAKER';
                     const eotBadge = eot === 'MAKER'
@@ -3680,7 +3688,7 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(highLow)}</td>
                             <td class="px-4 py-3 text-right">${o.drop_from_peak.toFixed(2)}%</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
-                            <td class="px-4 py-3 text-center ${tpLevelClass}">L${tpLevel} (${tpTarget.toFixed(2)}%)</td>
+                            <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-center">
                                 <button onclick="closeOrder(${o.id})" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
@@ -3713,9 +3721,18 @@
                     const pnlClass = o.pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const confClass = getConfidenceClass(o.confidence);
                     
-                    // TP Level display
-                    const tpLevel = o.tp_level || 1;
-                    const tpLevelClass = tpLevel > 1 ? 'text-emerald-400 font-medium' : 'text-gray-400';
+                    const beLvl = o.be_level || 0;
+                    const beStop = o.be_stop || 0;
+                    let beBadge;
+                    if (beLvl === 0) {
+                        beBadge = '<span class="text-gray-500">--</span>';
+                    } else if (beLvl === 1) {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">L1 (${beStop.toFixed(2)}%)</span>`;
+                    } else if (beLvl === 2) {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">L2 (${beStop.toFixed(2)}%)</span>`;
+                    } else {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-sky-500/20 text-sky-400">L3 (${beStop.toFixed(2)}%)</span>`;
+                    }
 
                     const eot = o.entry_order_type || 'TAKER';
                     const eotBadge = eot === 'MAKER'
@@ -3746,7 +3763,7 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.exit_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fee)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
-                            <td class="px-4 py-3 text-center ${tpLevelClass}">L${tpLevel}</td>
+                            <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-xs">${o.close_reason}</td>
                         </tr>

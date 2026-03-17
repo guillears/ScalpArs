@@ -518,6 +518,26 @@ async def refresh_pairs(db: AsyncSession = Depends(get_db)):
     return {"status": "refreshed", "count": len(top_pairs)}
 
 
+def _compute_be_level(order) -> dict:
+    """Determine which BE protection tier is active based on peak P&L and confidence config."""
+    tc = config.trading_config
+    conf = order.confidence or "LOW"
+    conf_config = tc.confidence_levels.get(conf, tc.confidence_levels.get("LOW"))
+
+    peak = order.peak_pnl or 0
+    l3_trigger = getattr(conf_config, 'be_level3_trigger', 999)
+    l2_trigger = getattr(conf_config, 'be_level2_trigger', 999)
+    l1_trigger = getattr(conf_config, 'be_level1_trigger', 999)
+
+    if peak >= l3_trigger:
+        return {"be_level": 3, "be_stop": getattr(conf_config, 'be_level3_offset', 0)}
+    elif peak >= l2_trigger:
+        return {"be_level": 2, "be_stop": getattr(conf_config, 'be_level2_offset', 0)}
+    elif peak >= l1_trigger:
+        return {"be_level": 1, "be_stop": getattr(conf_config, 'be_level1_offset', 0)}
+    return {"be_level": 0, "be_stop": 0}
+
+
 # ----- Orders -----
 
 @app.get("/api/orders/open")
@@ -601,9 +621,9 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "duration_seconds": duration_seconds,
             "opened_at": o.opened_at.isoformat(),
-            # Dynamic TP tracking
             "tp_level": o.current_tp_level or 1,
             "tp_target": o.dynamic_tp_target or 0,
+            **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
             "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER"
         })
@@ -651,8 +671,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "opened_at": o.opened_at.isoformat(),
             "closed_at": o.closed_at.isoformat() if o.closed_at else None,
-            # TP Level reached
             "tp_level": o.current_tp_level or 1,
+            **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
             "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER"
         })

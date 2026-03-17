@@ -1216,7 +1216,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ("0.50 - 0.60%", 0.50, 0.60),
             ("0.60 - 0.70%", 0.60, 0.70),
             ("0.70 - 0.80%", 0.70, 0.80),
-            ("> 0.80%", 0.80, 999),
+            ("0.80 - 1.00%", 0.80, 1.00),
+            ("1.00 - 1.25%", 1.00, 1.25),
+            ("1.25 - 1.50%", 1.25, 1.50),
+            ("> 1.50%", 1.50, 999),
         ]
         gap_orders = [o for o in orders if o.entry_gap is not None]
         for range_name, gap_min, gap_max in gap_ranges:
@@ -1251,7 +1254,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ("0.02 - 0.05%", 0.02, 0.05),
             ("0.05 - 0.10%", 0.05, 0.10),
             ("0.10 - 0.20%", 0.10, 0.20),
-            ("> 0.20%", 0.20, 999),
+            ("0.20 - 0.30%", 0.20, 0.30),
+            ("0.30 - 0.40%", 0.30, 0.40),
+            ("> 0.40%", 0.40, 999),
         ]
         ema58_gap_orders = [o for o in orders if o.entry_ema_gap_5_8 is not None]
         for range_name, gap_min, gap_max in ema58_ranges:
@@ -1360,7 +1365,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ("0.12 - 0.16%", 0.12, 0.16),
             ("0.16 - 0.20%", 0.16, 0.20),
             ("0.20 - 0.25%", 0.20, 0.25),
-            ("> 0.25%", 0.25, 999),
+            ("0.25 - 0.30%", 0.25, 0.30),
+            ("> 0.30%", 0.30, 999),
         ]
         stretch_orders = [o for o in orders if o.entry_ema5_stretch is not None]
         for range_name, s_min, s_max in stretch_ranges:

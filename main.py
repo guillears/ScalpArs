@@ -769,12 +769,14 @@ def _compute_entry_type_stats(orders):
     for o in orders:
         etype = getattr(o, 'entry_order_type', None) or "TAKER"
         if etype not in groups:
-            groups[etype] = {"trades": [], "pnl_sum": 0, "fee_sum": 0, "wins": 0}
+            groups[etype] = {"trades": [], "pnl_sum": 0, "fee_sum": 0, "wins": 0, "by_confidence": {}}
         groups[etype]["trades"].append(o)
         groups[etype]["pnl_sum"] += (o.pnl or 0)
         groups[etype]["fee_sum"] += (o.total_fee or 0)
         if (o.pnl or 0) > 0:
             groups[etype]["wins"] += 1
+        conf = getattr(o, 'confidence', 'UNKNOWN') or 'UNKNOWN'
+        groups[etype]["by_confidence"][conf] = groups[etype]["by_confidence"].get(conf, 0) + 1
 
     total_trades = len(orders)
     result = {}
@@ -801,6 +803,7 @@ def _compute_entry_type_stats(orders):
             "avg_entry_fee": round(avg_entry_fee, 4),
             "total_fees": round(data["fee_sum"], 2),
             "fee_savings": round(fee_savings, 2),
+            "by_confidence": data["by_confidence"],
         }
     return result
 
@@ -812,7 +815,7 @@ def _compute_exit_type_stats(orders):
     for o in orders:
         etype = getattr(o, 'exit_order_type', None) or "TAKER"
         if etype not in groups:
-            groups[etype] = {"trades": [], "pnl_sum": 0, "fee_sum": 0, "wins": 0, "close_reasons": {}}
+            groups[etype] = {"trades": [], "pnl_sum": 0, "fee_sum": 0, "wins": 0, "close_reasons": {}, "by_confidence": {}}
         groups[etype]["trades"].append(o)
         groups[etype]["pnl_sum"] += (o.pnl or 0)
         groups[etype]["fee_sum"] += (o.total_fee or 0)
@@ -820,6 +823,8 @@ def _compute_exit_type_stats(orders):
             groups[etype]["wins"] += 1
         cr = (o.close_reason or "UNKNOWN").split(" ")[0]
         groups[etype]["close_reasons"][cr] = groups[etype]["close_reasons"].get(cr, 0) + 1
+        conf = getattr(o, 'confidence', 'UNKNOWN') or 'UNKNOWN'
+        groups[etype]["by_confidence"][conf] = groups[etype]["by_confidence"].get(conf, 0) + 1
 
     total_trades = len(orders)
     result = {}
@@ -846,6 +851,7 @@ def _compute_exit_type_stats(orders):
             "total_fees": round(data["fee_sum"], 2),
             "fee_savings": round(fee_savings, 2),
             "by_close_reason": data["close_reasons"],
+            "by_confidence": data["by_confidence"],
         }
     return result
 

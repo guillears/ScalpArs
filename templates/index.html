@@ -450,10 +450,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Entry Fee</th>
                                     <th class="px-3 py-2 font-medium text-right">Total Fees</th>
                                     <th class="px-3 py-2 font-medium text-right text-emerald-400">Fee Savings</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                 </tr>
                             </thead>
                             <tbody id="entry-type-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -477,11 +478,12 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Exit Fee</th>
                                     <th class="px-3 py-2 font-medium text-right">Total Fees</th>
                                     <th class="px-3 py-2 font-medium text-right text-sky-400">Fee Savings</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                     <th class="px-3 py-2 font-medium text-center">Close Reasons</th>
                                 </tr>
                             </thead>
                             <tbody id="exit-type-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2187,6 +2189,12 @@
                 lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
                 lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA8 gap compressing vs prev candle)`);
 
+                const inv = cfg.investment || {};
+                lines.push(`\nGeneral Settings:`);
+                lines.push(`  Paper Trading: ${cfg.paper_trading ? 'ON' : 'OFF'}  |  Paper Balance: $${cfg.paper_balance || 0}`);
+                lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
+                lines.push(`  Cooldown After Loss: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
+
                 lines.push(`\nFee & Maker Orders:`);
                 lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee ?? 0.00018) * 100).toFixed(3)}%`);
                 lines.push(`  Maker Entry: ${cfg.maker_entry_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_timeout_seconds || 15}s  |  Offset: ${cfg.maker_offset_ticks || 2} ticks`);
@@ -2271,18 +2279,20 @@
                 // --- ENTRY TYPE PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Type Performance\n');
-                lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)}`);
+                lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
                 for (const [etype, e] of Object.entries(perf.by_entry_type || {})) {
-                    lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_entry_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)}`);
+                    const confStr = Object.entries(e.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                    lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_entry_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr}`);
                 }
 
                 // --- EXIT TYPE PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Exit Type Performance\n');
-                lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgExitFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Close Reasons'}`);
+                lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgExitFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'.padEnd(15)} ${'Close Reasons'}`);
                 for (const [etype, e] of Object.entries(perf.by_exit_type || {})) {
+                    const confStr = Object.entries(e.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
                     const crStr = Object.entries(e.by_close_reason || {}).map(([r,n]) => `${r}:${n}`).join(' ');
-                    lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_exit_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${crStr}`);
+                    lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_exit_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr.padEnd(14)} ${crStr}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -3098,6 +3108,7 @@
                 const etBody = document.getElementById('entry-type-perf-body');
                 if (data.by_entry_type && Object.keys(data.by_entry_type).length > 0) {
                     const etColors = { 'MAKER': 'text-emerald-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400' };
+                    const etConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
                     const etOrder = ['MAKER', 'TAKER', 'TAKER_FALLBACK'];
                     const sortedTypes = etOrder.filter(t => data.by_entry_type[t]);
                     let totalTrades = 0, totalPnl = 0, totalFees = 0, totalSavings = 0;
@@ -3110,6 +3121,10 @@
                         const wrClass = e.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
                         const pnlClass = e.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const savClass = e.fee_savings > 0 ? 'text-emerald-400' : 'text-gray-500';
+                        const confBadges = Object.entries(e.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${etConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
                         return `<tr class="hover:bg-white/5">
                             <td class="px-3 py-2 ${etColors[etype] || 'text-gray-400'} font-medium">${etype}</td>
                             <td class="px-3 py-2 text-center">${e.trades}</td>
@@ -3121,6 +3136,7 @@
                             <td class="px-3 py-2 text-right">${formatUSD(e.avg_entry_fee)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(e.total_fees)}</td>
                             <td class="px-3 py-2 text-right ${savClass} font-medium">${e.fee_savings > 0 ? '+' : ''}${formatUSD(e.fee_savings)}</td>
+                            <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
                         </tr>`;
                     }).join('');
                     const totalPnlClass = totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -3136,15 +3152,17 @@
                         <td class="px-3 py-2 text-right">-</td>
                         <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(totalFees)}</td>
                         <td class="px-3 py-2 text-right ${totalSavClass}">${totalSavings > 0 ? '+' : ''}${formatUSD(totalSavings)}</td>
+                        <td class="px-3 py-2 text-center">-</td>
                     </tr>`;
                 } else {
-                    etBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    etBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Exit Type Performance
                 const extBody = document.getElementById('exit-type-perf-body');
                 if (data.by_exit_type && Object.keys(data.by_exit_type).length > 0) {
                     const extColors = { 'MAKER': 'text-sky-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400' };
+                    const extConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
                     const extOrder = ['MAKER', 'TAKER', 'TAKER_FALLBACK'];
                     const sortedExitTypes = extOrder.filter(t => data.by_exit_type[t]);
                     let extTotalTrades = 0, extTotalPnl = 0, extTotalFees = 0, extTotalSavings = 0;
@@ -3157,6 +3175,10 @@
                         const wrClass = e.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
                         const pnlClass = e.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const savClass = e.fee_savings > 0 ? 'text-sky-400' : 'text-gray-500';
+                        const confBadges = Object.entries(e.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${extConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
                         const crBadges = Object.entries(e.by_close_reason || {})
                             .sort((a, b) => b[1] - a[1])
                             .map(([r, n]) => `<span class="text-xs text-gray-400">${r}:${n}</span>`)
@@ -3172,6 +3194,7 @@
                             <td class="px-3 py-2 text-right">${formatUSD(e.avg_exit_fee)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(e.total_fees)}</td>
                             <td class="px-3 py-2 text-right ${savClass} font-medium">${e.fee_savings > 0 ? '+' : ''}${formatUSD(e.fee_savings)}</td>
+                            <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
                             <td class="px-3 py-2 text-center">${crBadges || '-'}</td>
                         </tr>`;
                     }).join('');
@@ -3189,9 +3212,10 @@
                         <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(extTotalFees)}</td>
                         <td class="px-3 py-2 text-right ${extTotalSavClass}">${extTotalSavings > 0 ? '+' : ''}${formatUSD(extTotalSavings)}</td>
                         <td class="px-3 py-2 text-center">-</td>
+                        <td class="px-3 py-2 text-center">-</td>
                     </tr>`;
                 } else {
-                    extBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    extBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Stop Loss Deep Dive

@@ -40,6 +40,7 @@ class TradingEngine:
         self._monitor_task: Optional[asyncio.Task] = None
         self._last_scan_time: float = 0
         self._initialized = False
+        self._post_exit_tracking: Dict[int, dict] = {}
     
     async def initialize(self, db: AsyncSession):
         """Initialize engine state from database (only on first call)"""
@@ -794,6 +795,10 @@ class TradingEngine:
                 'be_level2_offset': conf_config.be_level2_offset,
                 'be_level3_trigger': conf_config.be_level3_trigger,
                 'be_level3_offset': conf_config.be_level3_offset,
+                'be_level4_trigger': conf_config.be_level4_trigger,
+                'be_level4_offset': conf_config.be_level4_offset,
+                'be_level5_trigger': conf_config.be_level5_trigger,
+                'be_level5_offset': conf_config.be_level5_offset,
                 'high_price': actual_price,
                 'low_price': actual_price,
                 'pullback_trigger': conf_config.pullback_trigger
@@ -949,9 +954,82 @@ class TradingEngine:
         
         # Keep WebSocket subscription active for all top pairs (real-time price display)
         # Pairs are subscribed in scan_and_trade() and stay subscribed
+
+        self._register_post_exit_tracking(order, reason)
         
         return order
-    
+
+    def _register_post_exit_tracking(self, order: Order, reason: str):
+        """Register a BE-exit trade for post-exit price tracking (regret metric)."""
+        tc = config.trading_config
+        if not getattr(tc, 'post_exit_tracking_enabled', False):
+            return
+        if not reason.startswith("BREAKEVEN_SL"):
+            return
+        minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
+        tracker = websocket_tracker.get_tracker(order.pair)
+        initial_price = tracker.last_price if tracker else order.exit_price
+        self._post_exit_tracking[order.id] = {
+            "order_id": order.id,
+            "pair": order.pair,
+            "entry_price": order.entry_price,
+            "direction": order.direction,
+            "exit_time": datetime.utcnow(),
+            "tracking_until": datetime.utcnow() + timedelta(minutes=minutes),
+            "post_high": initial_price or order.exit_price,
+            "post_low": initial_price or order.exit_price,
+        }
+        logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
+
+    async def update_post_exit_tracking(self, db: AsyncSession):
+        """Check prices for recently closed BE trades and update peak/trough. Called from monitor loop."""
+        if not self._post_exit_tracking:
+            return
+
+        now = datetime.utcnow()
+        completed = []
+
+        for order_id, info in self._post_exit_tracking.items():
+            tracker = websocket_tracker.get_tracker(info["pair"])
+            if not tracker or not tracker.last_price or tracker.last_price <= 0:
+                continue
+
+            price = tracker.last_price
+            info["post_high"] = max(info["post_high"], price)
+            info["post_low"] = min(info["post_low"], price)
+
+            if now >= info["tracking_until"]:
+                entry = info["entry_price"]
+                if info["direction"] == "LONG":
+                    peak_pnl = ((info["post_high"] - entry) / entry) * 100
+                    trough_pnl = ((info["post_low"] - entry) / entry) * 100
+                else:
+                    peak_pnl = ((entry - info["post_low"]) / entry) * 100
+                    trough_pnl = ((entry - info["post_high"]) / entry) * 100
+
+                try:
+                    await db.execute(
+                        update(Order)
+                        .where(Order.id == order_id)
+                        .values(
+                            post_exit_peak_pnl=round(peak_pnl, 4),
+                            post_exit_trough_pnl=round(trough_pnl, 4)
+                        )
+                    )
+                    await db.commit()
+                    logger.info(
+                        f"[POST_EXIT] {info['pair']} order {order_id}: "
+                        f"peak={peak_pnl:.4f}% trough={trough_pnl:.4f}% "
+                        f"(tracked {getattr(config.trading_config, 'post_exit_tracking_minutes', 45)}min)"
+                    )
+                except Exception as e:
+                    logger.error(f"[POST_EXIT] Error saving order {order_id}: {e}")
+
+                completed.append(order_id)
+
+        for order_id in completed:
+            del self._post_exit_tracking[order_id]
+
     async def update_open_positions(self, db: AsyncSession) -> List[Dict]:
         """Update all open positions with current prices and check exit conditions"""
         result = await db.execute(
@@ -1571,6 +1649,10 @@ class TradingEngine:
             be_l2_offset = order_info.get('be_level2_offset', 0.0)
             be_l3_trigger = order_info.get('be_level3_trigger', 999)
             be_l3_offset = order_info.get('be_level3_offset', 0.0)
+            be_l4_trigger = order_info.get('be_level4_trigger', 999)
+            be_l4_offset = order_info.get('be_level4_offset', 0.0)
+            be_l5_trigger = order_info.get('be_level5_trigger', 999)
+            be_l5_offset = order_info.get('be_level5_offset', 0.0)
             pullback_trigger = order_info.get('pullback_trigger', 0.04)
             
             # Skip if entry data is invalid
@@ -1626,7 +1708,15 @@ class TradingEngine:
             breakeven_active = False
             be_level = 0
 
-            if current_peak >= be_l3_trigger:
+            if current_peak >= be_l5_trigger:
+                breakeven_active = True
+                be_level = 5
+                effective_sl = be_l5_offset
+            elif current_peak >= be_l4_trigger:
+                breakeven_active = True
+                be_level = 4
+                effective_sl = be_l4_offset
+            elif current_peak >= be_l3_trigger:
                 breakeven_active = True
                 be_level = 3
                 effective_sl = be_l3_offset
@@ -1878,6 +1968,10 @@ class TradingEngine:
                 'be_level2_offset': conf_config.be_level2_offset,
                 'be_level3_trigger': conf_config.be_level3_trigger,
                 'be_level3_offset': conf_config.be_level3_offset,
+                'be_level4_trigger': conf_config.be_level4_trigger,
+                'be_level4_offset': conf_config.be_level4_offset,
+                'be_level5_trigger': conf_config.be_level5_trigger,
+                'be_level5_offset': conf_config.be_level5_offset,
                 'high_price': order.high_price_since_entry or order.entry_price,
                 'low_price': order.low_price_since_entry or order.entry_price,
                 'pullback_trigger': conf_config.pullback_trigger,

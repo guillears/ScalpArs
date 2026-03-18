@@ -63,6 +63,7 @@ async def monitor_loop():
                 await trading_engine.initialize(db)
                 await trading_engine.update_open_positions(db)
                 await trading_engine.update_orders_cache(db)
+                await trading_engine.update_post_exit_tracking(db)
         except Exception as e:
             logger.error(f"[ERROR] Error in monitor loop: {e}")
             import traceback
@@ -525,11 +526,17 @@ def _compute_be_level(order) -> dict:
     conf_config = tc.confidence_levels.get(conf, tc.confidence_levels.get("LOW"))
 
     peak = order.peak_pnl or 0
+    l5_trigger = getattr(conf_config, 'be_level5_trigger', 999)
+    l4_trigger = getattr(conf_config, 'be_level4_trigger', 999)
     l3_trigger = getattr(conf_config, 'be_level3_trigger', 999)
     l2_trigger = getattr(conf_config, 'be_level2_trigger', 999)
     l1_trigger = getattr(conf_config, 'be_level1_trigger', 999)
 
-    if peak >= l3_trigger:
+    if peak >= l5_trigger:
+        return {"be_level": 5, "be_stop": getattr(conf_config, 'be_level5_offset', 0)}
+    elif peak >= l4_trigger:
+        return {"be_level": 4, "be_stop": getattr(conf_config, 'be_level4_offset', 0)}
+    elif peak >= l3_trigger:
         return {"be_level": 3, "be_stop": getattr(conf_config, 'be_level3_offset', 0)}
     elif peak >= l2_trigger:
         return {"be_level": 2, "be_stop": getattr(conf_config, 'be_level2_offset', 0)}
@@ -667,6 +674,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "total_fee": round(o.total_fee or 0, 4),
             "pnl": round(o.pnl or 0, 2),
             "pnl_percentage": round(o.pnl_percentage or 0, 2),
+            "peak_pnl": round(o.peak_pnl or 0, 2),
             "close_reason": o.close_reason,
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "opened_at": o.opened_at.isoformat(),
@@ -1500,8 +1508,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 base_reason = parts[0]
                 try:
                     level = int(parts[1].replace("+", ""))
-                    if level >= 4:
-                        reason = f"{base_reason} L4+"
+                    if level >= 6:
+                        reason = f"{base_reason} L6+"
                 except ValueError:
                     pass
             
@@ -1530,10 +1538,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             count = len(data["trades"])
             drops = [_price_drop_pct(o) for o in data["trades"]]
             avg_drop = sum(drops) / count if count > 0 else 0
+            peaks = [o.peak_pnl or 0 for o in data["trades"]]
+            avg_peak = sum(peaks) / count if count > 0 else 0
             sig_active = sum(1 for o in data["trades"] if o.signal_active_at_close is True)
             sig_inactive = sum(1 for o in data["trades"] if o.signal_active_at_close is False)
             gaps = [o.entry_gap for o in data["trades"] if o.entry_gap is not None]
             rsis = [o.entry_rsi for o in data["trades"] if o.entry_rsi is not None]
+            post_exit_peaks = [o.post_exit_peak_pnl for o in data["trades"] if o.post_exit_peak_pnl is not None]
+            post_exit_troughs = [o.post_exit_trough_pnl for o in data["trades"] if o.post_exit_trough_pnl is not None]
             by_close_reason[reason] = {
                 "trades": count,
                 "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
@@ -1542,6 +1554,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "by_confidence": data["by_confidence"],
                 "by_direction": data["by_direction"],
                 "avg_price_drop": round(avg_drop, 4),
+                "avg_peak_pnl_pct": round(avg_peak, 4),
+                "avg_post_exit_peak_pnl": round(sum(post_exit_peaks) / len(post_exit_peaks), 4) if post_exit_peaks else None,
+                "avg_post_exit_trough_pnl": round(sum(post_exit_troughs) / len(post_exit_troughs), 4) if post_exit_troughs else None,
                 "signal_active": sig_active,
                 "signal_inactive": sig_inactive,
                 "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
@@ -1686,6 +1701,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             troughs = [o.trough_pnl or 0 for o in group]
             avg_trough = sum(troughs) / count
             worst_trough = min(troughs)
+            peaks = [o.peak_pnl or 0 for o in group]
+            avg_peak = sum(peaks) / count
             avg_close_pnl = sum(o.pnl_percentage or 0 for o in group) / count
             total_pnl_usd = sum(o.pnl or 0 for o in group)
             by_dir = {"LONG": 0, "SHORT": 0}
@@ -1701,6 +1718,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
             sig_active = sum(1 for o in group if o.signal_active_at_close is True)
             sig_inactive = sum(1 for o in group if o.signal_active_at_close is False)
+            post_exit_peaks = [o.post_exit_peak_pnl for o in group if o.post_exit_peak_pnl is not None]
+            post_exit_troughs = [o.post_exit_trough_pnl for o in group if o.post_exit_trough_pnl is not None]
             winning_trades_drawdown.append({
                 "close_reason": reason,
                 "count": count,
@@ -1710,12 +1729,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                 "avg_trough_pnl": round(avg_trough, 4),
                 "worst_trough_pnl": round(worst_trough, 4),
+                "avg_peak_pnl": round(avg_peak, 4),
                 "avg_close_pnl": round(avg_close_pnl, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
                 "avg_price_drop": round(avg_drop, 4),
                 "avg_duration": calc_avg_duration(group),
                 "signal_active": sig_active,
-                "signal_inactive": sig_inactive
+                "signal_inactive": sig_inactive,
+                "avg_post_exit_peak_pnl": round(sum(post_exit_peaks) / len(post_exit_peaks), 4) if post_exit_peaks else None,
+                "avg_post_exit_trough_pnl": round(sum(post_exit_troughs) / len(post_exit_troughs), 4) if post_exit_troughs else None
             })
     except Exception as e:
         logger.error(f"[PERF] Error computing SL deep dive / winning drawdown: {e}\n{traceback.format_exc()}")
@@ -1723,8 +1745,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     rsi_adx_crosstab = []
     try:
         ct_rsi_ranges = [
-            ("20-30", 20, 30), ("30-40", 30, 40), ("40-50", 40, 50),
-            ("50-60", 50, 60), ("60-70", 60, 70), ("70-80", 70, 80),
+            ("20-30", 20, 30), ("30-35", 30, 35), ("35-40", 35, 40),
+            ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55),
+            ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70-80", 70, 80),
         ]
         ct_adx_ranges = [
             ("10-20", 10, 20), ("20-30", 20, 30), ("30-40", 30, 40), ("40+", 40, 999),
@@ -1824,7 +1847,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_rsi_ranges = [("30-40", 30, 40), ("40-50", 40, 50), ("50-60", 50, 60), ("60-70", 60, 70), ("70-80", 70, 80)]
+            np_rsi_ranges = [("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70-80", 70, 80)]
             np_rsi_trades = [o for o in np_trades if o.entry_rsi is not None]
             all_rsi_trades = [o for o in orders if o.entry_rsi is not None]
             for rng, lo, hi in np_rsi_ranges:

@@ -418,14 +418,17 @@
                                         <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                        <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Average peak P&L % reached before exit">Avg Peak %</th>
                                         <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price (comparable to pullback_trigger)">Avg Pullback %</th>
+                                        <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Post-exit: avg best hypothetical P&L if trade stayed open 45min after close">Post Peak %</th>
+                                        <th class="px-3 py-2 font-medium text-right text-orange-400" title="Post-exit: avg worst hypothetical P&L if trade stayed open 45min after close">Post Trough %</th>
                                         <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                         <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
                                         <th class="px-3 py-2 font-medium text-center" title="Was the entry signal still active when trade closed?">Signal</th>
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -538,15 +541,18 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Worst Trough %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Average peak P&L % reached before exit">Avg Peak %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price">Avg Pullback %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Post-exit: avg best hypothetical P&L if trade stayed open 45min after close">Post Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-orange-400" title="Post-exit: avg worst hypothetical P&L if trade stayed open 45min after close">Post Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Entry signal still active at close (Active/Inactive)">Signal</th>
                                 </tr>
                             </thead>
                             <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                                <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -906,7 +912,7 @@
                                 <th class="px-4 py-3 font-medium text-right">Current</th>
                                 <th class="px-4 py-3 font-medium text-right">Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">High/Low</th>
-                                <th class="px-4 py-3 font-medium text-right">Drop %</th>
+                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
                                 <th class="px-4 py-3 font-medium text-center">BE Level</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
@@ -941,6 +947,7 @@
                                 <th class="px-4 py-3 font-medium text-right">Exit</th>
                                 <th class="px-4 py-3 font-medium text-right">Total Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
+                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
                                 <th class="px-4 py-3 font-medium text-center">BE Level</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium">Reason</th>
@@ -948,7 +955,7 @@
                         </thead>
                         <tbody id="closed-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="16" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
+                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1505,6 +1512,10 @@
                                     <th class="px-3 py-3 font-medium text-center text-yellow-400" title="BE Level 2: SL offset once L2 active">L2 Off</th>
                                     <th class="px-3 py-3 font-medium text-center text-emerald-400" title="BE Level 3: full protection trigger">L3 Trig</th>
                                     <th class="px-3 py-3 font-medium text-center text-emerald-400" title="BE Level 3: SL offset once L3 active">L3 Off</th>
+                                    <th class="px-3 py-3 font-medium text-center text-purple-400" title="BE Level 4: runner protection trigger">L4 Trig</th>
+                                    <th class="px-3 py-3 font-medium text-center text-purple-400" title="BE Level 4: SL offset once L4 active">L4 Off</th>
+                                    <th class="px-3 py-3 font-medium text-center text-pink-400" title="BE Level 5: deep runner protection trigger">L5 Trig</th>
+                                    <th class="px-3 py-3 font-medium text-center text-pink-400" title="BE Level 5: SL offset once L5 active">L5 Off</th>
                                     <th class="px-3 py-3 font-medium text-center text-sky-400" title="Enable TP extension and trailing stop logic">TP/Trail</th>
                                 </tr>
                             </thead>
@@ -1574,6 +1585,18 @@
                                         <input type="number" step="0.01" id="config-low-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l4-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l4-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l5-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.60">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-low-be-l5-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-low-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
@@ -1639,6 +1662,18 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-medium-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l4-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l4-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l5-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.60">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-medium-be-l5-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-medium-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1708,6 +1743,18 @@
                                         <input type="number" step="0.01" id="config-high-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l4-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l4-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l5-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.60">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-high-be-l5-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-high-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
@@ -1773,6 +1820,18 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-extreme-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l4-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l4-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l5-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.60">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-extreme-be-l5-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-extreme-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -1842,6 +1901,18 @@
                                         <input type="number" step="0.01" id="config-very_strong-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l4-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l4-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l5-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.60">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-very_strong-be-l5-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-very_strong-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
                                     </td>
                                 </tr>
@@ -1907,6 +1978,18 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-be-l3-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.15">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l4-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l4-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.25">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l5-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.60">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="number" step="0.01" id="config-strong_buy-be-l5-offset" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.40">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-strong_buy-tp-trailing" class="w-4 h-4 rounded bg-white/10 border-white/20 text-sky-500 focus:ring-sky-500" checked>
@@ -2266,10 +2349,10 @@
                 lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Min Profit: ${th.rsi_momentum_exit_min_profit}%  (close on 2 consecutive RSI drops/rises)`);
 
                 lines.push('\nConfidence Levels:');
-                lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
+                lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
                 for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
                     if (!c.enabled) continue;
-                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
                 }
 
                 // --- CONFIG CHANGE LOG ---
@@ -2322,14 +2405,16 @@
                 // --- CLOSING REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)}`);
                 for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
                     const gapStr = r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-';
                     const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
-                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
+                    const postPeakStr = r.avg_post_exit_peak_pnl != null ? (r.avg_post_exit_peak_pnl.toFixed(4) + '%') : '-';
+                    const postTroughStr = r.avg_post_exit_trough_pnl != null ? (r.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)}`);
                 }
 
                 // --- ENTRY TYPE PERFORMANCE ---
@@ -2383,20 +2468,23 @@
                 // --- WINNING TRADES DRAWDOWN ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Winning Trades Drawdown\n');
-                lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
                 const wdAll = perf.winning_trades_drawdown || [];
                 const wdTotalCount = wdAll.reduce((sum, w) => sum + (w.count || 0), 0);
-                let allWinCount = 0, allWinTrough = 0, allWinClose = 0, allWinDrop = 0, allWinTotal = 0, allWinWorst = 0;
+                let allWinCount = 0, allWinTrough = 0, allWinPeak = 0, allWinClose = 0, allWinDrop = 0, allWinTotal = 0, allWinWorst = 0;
                 let allWinLong = 0, allWinShort = 0, allWinSigA = 0, allWinSigI = 0;
                 for (const w of wdAll) {
                     const dirStr = `${(w.by_direction||{}).LONG||0}L/${(w.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(w.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${w.signal_active||0}/${w.signal_inactive||0}`;
                     const wdPctStr = wdTotalCount > 0 ? (w.count / wdTotalCount * 100).toFixed(1) + '%' : '-';
-                    lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                    const postPeakStr = w.avg_post_exit_peak_pnl != null ? (w.avg_post_exit_peak_pnl.toFixed(4) + '%') : '-';
+                    const postTroughStr = w.avg_post_exit_trough_pnl != null ? (w.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
+                    lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
                     const n = w.count || 0;
                     allWinCount += n;
                     allWinTrough += (w.avg_trough_pnl||0) * n;
+                    allWinPeak += (w.avg_peak_pnl||0) * n;
                     allWinClose += (w.avg_close_pnl||0) * n;
                     allWinDrop += (w.avg_price_drop||0) * n;
                     allWinTotal += w.total_pnl_usd || 0;
@@ -2409,7 +2497,7 @@
                 if (allWinCount > 0) {
                     const awDir = `${allWinLong}L/${allWinShort}S`;
                     const awSig = `${allWinSigA}/${allWinSigI}`;
-                    lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
+                    lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinPeak/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${'-'.padStart(9)} ${'-'.padStart(10)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
                 }
 
                 // --- NEVER POSITIVE DEEP DIVE ---
@@ -2765,6 +2853,12 @@
                         const dirBadges = dirParts.length > 0 ? dirParts.join(' ') : '-';
                         
                         const dropVal = stats.avg_price_drop || 0;
+                        const peakVal = stats.avg_peak_pnl_pct || 0;
+                        const peakClass = peakVal >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const postPeakVal = stats.avg_post_exit_peak_pnl;
+                        const postTroughVal = stats.avg_post_exit_trough_pnl;
+                        const postPeakStr = postPeakVal != null ? `<span class="${postPeakVal >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${postPeakVal >= 0 ? '+' : ''}${postPeakVal.toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
+                        const postTroughStr = postTroughVal != null ? `<span class="${postTroughVal >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${postTroughVal >= 0 ? '+' : ''}${postTroughVal.toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${reasonClass}">${reason}</td>
@@ -2773,7 +2867,10 @@
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
                                 <td class="px-3 py-2 text-right ${pnlPctClass}">${stats.avg_pnl_pct >= 0 ? '+' : ''}${stats.avg_pnl_pct.toFixed(2)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${peakVal >= 0 ? '+' : ''}${peakVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right">${postPeakStr}</td>
+                                <td class="px-3 py-2 text-right">${postTroughStr}</td>
                                 <td class="px-3 py-2 text-right ${stats.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(stats.total_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-center text-gray-400 text-xs">${stats.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center text-xs">${(stats.signal_active || 0) + (stats.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${stats.signal_active || 0}</span>/<span class="text-red-400">${stats.signal_inactive || 0}</span>` : '-'}</td>
@@ -2781,7 +2878,7 @@
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap
@@ -3448,6 +3545,7 @@
                     const winTotalCount = wdd.reduce((sum, w) => sum + (w.count || 0), 0);
                     let totalCount = 0, totalPnl = 0;
                     let allTroughs = [];
+                    let allPeaks = [];
                     let allClosePnls = [];
                     let allDrops = [];
                     let allGaps = [];
@@ -3461,6 +3559,7 @@
                         totalCount += w.count;
                         totalPnl += w.total_pnl_usd;
                         allTroughs.push(...Array(w.count).fill(w.avg_trough_pnl));
+                        allPeaks.push(...Array(w.count).fill(w.avg_peak_pnl || 0));
                         allClosePnls.push(...Array(w.count).fill(w.avg_close_pnl));
                         allDrops.push(...Array(w.count).fill(w.avg_price_drop || 0));
                         if (w.avg_entry_gap != null) allGaps.push(...Array(w.count).fill(w.avg_entry_gap));
@@ -3481,6 +3580,8 @@
 
                         const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wdPeakVal = w.avg_peak_pnl || 0;
+                        const wdPeakClass = wdPeakVal >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const closeClass = w.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         
                         const dirLabel = w.by_direction ? `<span class="text-emerald-400 text-xs">${w.by_direction.LONG || 0}L</span> / <span class="text-red-400 text-xs">${w.by_direction.SHORT || 0}S</span>` : '-';
@@ -3493,6 +3594,10 @@
                         const wdDropVal = w.avg_price_drop || 0;
                         const wdGapVal = w.avg_entry_gap != null ? w.avg_entry_gap.toFixed(2) + '%' : '-';
                         const wdRsiVal = w.avg_entry_rsi != null ? w.avg_entry_rsi.toFixed(1) : '-';
+                        const wdPostPeakVal = w.avg_post_exit_peak_pnl;
+                        const wdPostTroughVal = w.avg_post_exit_trough_pnl;
+                        const wdPostPeakStr = wdPostPeakVal != null ? `<span class="${wdPostPeakVal >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${wdPostPeakVal >= 0 ? '+' : ''}${wdPostPeakVal.toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
+                        const wdPostTroughStr = wdPostTroughVal != null ? `<span class="${wdPostTroughVal >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${wdPostTroughVal >= 0 ? '+' : ''}${wdPostTroughVal.toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${w.close_reason}</td>
@@ -3504,8 +3609,11 @@
                                 <td class="px-3 py-2 text-right">${wdRsiVal}</td>
                                 <td class="px-3 py-2 text-right ${troughClass} font-medium">${w.avg_trough_pnl >= 0 ? '+' : ''}${w.avg_trough_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${worstClass} font-medium">${w.worst_trough_pnl >= 0 ? '+' : ''}${w.worst_trough_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${wdPeakClass} font-medium">${wdPeakVal >= 0 ? '+' : ''}${wdPeakVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${w.avg_close_pnl >= 0 ? '+' : ''}${w.avg_close_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${wdDropVal.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right">${wdPostPeakStr}</td>
+                                <td class="px-3 py-2 text-right">${wdPostTroughStr}</td>
                                 <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(w.total_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right text-gray-400">${w.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center text-xs">${(w.signal_active || 0) + (w.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${w.signal_active || 0}</span>/<span class="text-red-400">${w.signal_inactive || 0}</span>` : '-'}</td>
@@ -3515,6 +3623,7 @@
                     
                     const avgTrough = totalCount > 0 ? allTroughs.reduce((a,b) => a + b, 0) / totalCount : 0;
                     const worstOverall = allTroughs.length > 0 ? Math.min(...wdd.map(w => w.worst_trough_pnl)) : 0;
+                    const avgPeakAll = totalCount > 0 ? allPeaks.reduce((a,b) => a + b, 0) / totalCount : 0;
                     const avgClose = totalCount > 0 ? allClosePnls.reduce((a,b) => a + b, 0) / totalCount : 0;
                     const avgDrop = totalCount > 0 ? allDrops.reduce((a,b) => a + b, 0) / totalCount : 0;
                     const allAvgGap = allGaps.length > 0 ? (allGaps.reduce((a,b) => a + b, 0) / allGaps.length).toFixed(2) + '%' : '-';
@@ -3536,8 +3645,11 @@
                             <td class="px-3 py-2 text-right">${allAvgRsi}</td>
                             <td class="px-3 py-2 text-right ${avgTrough >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgTrough >= 0 ? '+' : ''}${avgTrough.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${worstOverall >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${worstOverall >= 0 ? '+' : ''}${worstOverall.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${avgPeakAll >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgPeakAll >= 0 ? '+' : ''}${avgPeakAll.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${avgClose >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgClose >= 0 ? '+' : ''}${avgClose.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-amber-400 font-medium">${avgDrop.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right"><span class="text-gray-600">-</span></td>
+                            <td class="px-3 py-2 text-right"><span class="text-gray-600">-</span></td>
                             <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(totalPnl)}</td>
                             <td class="px-3 py-2 text-right text-gray-400">${allAvgDur}</td>
                             <td class="px-3 py-2 text-center text-xs">${allSigActive + allSigInactive > 0 ? `<span class="text-emerald-400">${allSigActive}</span>/<span class="text-red-400">${allSigInactive}</span>` : '-'}</td>
@@ -3546,7 +3658,7 @@
                     
                     wdBody.innerHTML = rows;
                 } else {
-                    wdBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
+                    wdBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);
@@ -3811,8 +3923,12 @@
                         beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">L1 (${beStop.toFixed(2)}%)</span>`;
                     } else if (beLvl === 2) {
                         beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">L2 (${beStop.toFixed(2)}%)</span>`;
-                    } else {
+                    } else if (beLvl === 3) {
                         beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-sky-500/20 text-sky-400">L3 (${beStop.toFixed(2)}%)</span>`;
+                    } else if (beLvl === 4) {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400">L4 (${beStop.toFixed(2)}%)</span>`;
+                    } else {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-pink-500/20 text-pink-400">L5 (${beStop.toFixed(2)}%)</span>`;
                     }
 
                     const eot = o.entry_order_type || 'TAKER';
@@ -3836,7 +3952,7 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(highLow)}</td>
-                            <td class="px-4 py-3 text-right">${o.drop_from_peak.toFixed(2)}%</td>
+                            <td class="px-4 py-3 text-right ${o.peak_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
@@ -3862,7 +3978,7 @@
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="17" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
                     return;
                 }
                 
@@ -3880,8 +3996,12 @@
                         beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">L1 (${beStop.toFixed(2)}%)</span>`;
                     } else if (beLvl === 2) {
                         beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">L2 (${beStop.toFixed(2)}%)</span>`;
-                    } else {
+                    } else if (beLvl === 3) {
                         beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-sky-500/20 text-sky-400">L3 (${beStop.toFixed(2)}%)</span>`;
+                    } else if (beLvl === 4) {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400">L4 (${beStop.toFixed(2)}%)</span>`;
+                    } else {
+                        beBadge = `<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-pink-500/20 text-pink-400">L5 (${beStop.toFixed(2)}%)</span>`;
                     }
 
                     const eot = o.entry_order_type || 'TAKER';
@@ -3913,6 +4033,7 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.exit_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fee)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
+                            <td class="px-4 py-3 text-right ${(o.peak_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(o.peak_pnl || 0) >= 0 ? '+' : ''}${(o.peak_pnl || 0).toFixed(2)}%</td>
                             <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-xs">${o.close_reason}</td>
@@ -4069,6 +4190,10 @@
                         document.getElementById(`config-${level}-be-l2-offset`).value = cfg.be_level2_offset !== undefined ? cfg.be_level2_offset : 0.05;
                         document.getElementById(`config-${level}-be-l3-trigger`).value = cfg.be_level3_trigger !== undefined ? cfg.be_level3_trigger : 0.25;
                         document.getElementById(`config-${level}-be-l3-offset`).value = cfg.be_level3_offset !== undefined ? cfg.be_level3_offset : 0.15;
+                        document.getElementById(`config-${level}-be-l4-trigger`).value = cfg.be_level4_trigger !== undefined ? cfg.be_level4_trigger : 0.40;
+                        document.getElementById(`config-${level}-be-l4-offset`).value = cfg.be_level4_offset !== undefined ? cfg.be_level4_offset : 0.25;
+                        document.getElementById(`config-${level}-be-l5-trigger`).value = cfg.be_level5_trigger !== undefined ? cfg.be_level5_trigger : 0.60;
+                        document.getElementById(`config-${level}-be-l5-offset`).value = cfg.be_level5_offset !== undefined ? cfg.be_level5_offset : 0.40;
                         document.getElementById(`config-${level}-tp-trailing`).checked = cfg.tp_trailing_enabled !== undefined ? cfg.tp_trailing_enabled : true;
                     }
                 });
@@ -4225,6 +4350,10 @@
                     be_level2_offset: safeFloat(document.getElementById(`config-${level}-be-l2-offset`).value),
                     be_level3_trigger: safeFloat(document.getElementById(`config-${level}-be-l3-trigger`).value),
                     be_level3_offset: safeFloat(document.getElementById(`config-${level}-be-l3-offset`).value),
+                    be_level4_trigger: safeFloat(document.getElementById(`config-${level}-be-l4-trigger`).value),
+                    be_level4_offset: safeFloat(document.getElementById(`config-${level}-be-l4-offset`).value),
+                    be_level5_trigger: safeFloat(document.getElementById(`config-${level}-be-l5-trigger`).value),
+                    be_level5_offset: safeFloat(document.getElementById(`config-${level}-be-l5-offset`).value),
                     tp_trailing_enabled: document.getElementById(`config-${level}-tp-trailing`).checked
                 };
             });

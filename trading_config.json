@@ -70,6 +70,8 @@
     "rsi_momentum_exit_enabled": true,
     "rsi_momentum_exit_min_profit": 0.05
   },
+  "post_exit_tracking_enabled": true,
+  "post_exit_tracking_minutes": 45,
   "confidence_levels": {
     "LOW": {
       "enabled": false,
@@ -90,6 +92,10 @@
       "be_level2_offset": 0.05,
       "be_level3_trigger": 0.25,
       "be_level3_offset": 0.15,
+      "be_level4_trigger": 0.40,
+      "be_level4_offset": 0.25,
+      "be_level5_trigger": 0.60,
+      "be_level5_offset": 0.40,
       "tp_trailing_enabled": false
     },
     "MEDIUM": {
@@ -111,6 +117,10 @@
       "be_level2_offset": 0.05,
       "be_level3_trigger": 0.25,
       "be_level3_offset": 0.15,
+      "be_level4_trigger": 0.40,
+      "be_level4_offset": 0.25,
+      "be_level5_trigger": 0.60,
+      "be_level5_offset": 0.40,
       "tp_trailing_enabled": false
     },
     "HIGH": {
@@ -132,6 +142,10 @@
       "be_level2_offset": 0.05,
       "be_level3_trigger": 0.25,
       "be_level3_offset": 0.15,
+      "be_level4_trigger": 0.40,
+      "be_level4_offset": 0.25,
+      "be_level5_trigger": 0.60,
+      "be_level5_offset": 0.40,
       "tp_trailing_enabled": false
     },
     "EXTREME": {
@@ -153,6 +167,10 @@
       "be_level2_offset": 0.05,
       "be_level3_trigger": 0.25,
       "be_level3_offset": 0.15,
+      "be_level4_trigger": 0.40,
+      "be_level4_offset": 0.25,
+      "be_level5_trigger": 0.60,
+      "be_level5_offset": 0.40,
       "tp_trailing_enabled": false
     },
     "VERY_STRONG": {
@@ -174,6 +192,10 @@
       "be_level2_offset": 0.08,
       "be_level3_trigger": 0.25,
       "be_level3_offset": 0.15,
+      "be_level4_trigger": 0.40,
+      "be_level4_offset": 0.25,
+      "be_level5_trigger": 0.60,
+      "be_level5_offset": 0.40,
       "tp_trailing_enabled": false
     },
     "STRONG_BUY": {
@@ -195,6 +217,10 @@
       "be_level2_offset": 0.08,
       "be_level3_trigger": 0.25,
       "be_level3_offset": 0.15,
+      "be_level4_trigger": 0.40,
+      "be_level4_offset": 0.25,
+      "be_level5_trigger": 0.60,
+      "be_level5_offset": 0.40,
       "tp_trailing_enabled": false
     }
   }

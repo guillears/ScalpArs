@@ -92,6 +92,10 @@ class Order(Base):
 
     # Whether the entry signal was still active when the order was closed
     signal_active_at_close = Column(Boolean, nullable=True)
+
+    # Post-exit regret tracking: hypothetical P&L if the trade had stayed open for N minutes after close
+    post_exit_peak_pnl = Column(Float, nullable=True)
+    post_exit_trough_pnl = Column(Float, nullable=True)
     
     # Timestamps
     opened_at = Column(DateTime, nullable=False, default=func.now())

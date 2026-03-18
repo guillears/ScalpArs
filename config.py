@@ -38,6 +38,10 @@ class ConfidenceConfig(BaseModel):
     be_level2_offset: float = 0.05   # SL once Level 2 active (small profit locked)
     be_level3_trigger: float = 0.25  # P&L % to activate Level 3 (full protection)
     be_level3_offset: float = 0.15   # SL once Level 3 active (meaningful profit locked)
+    be_level4_trigger: float = 0.40  # P&L % to activate Level 4 (runner protection)
+    be_level4_offset: float = 0.25   # SL once Level 4 active
+    be_level5_trigger: float = 0.60  # P&L % to activate Level 5 (deep runner protection)
+    be_level5_offset: float = 0.40   # SL once Level 5 active
     tp_trailing_enabled: bool = True  # Enable TP extension and trailing stop logic
 
 
@@ -154,6 +158,10 @@ class TradingConfig(BaseModel):
     # Signal thresholds
     thresholds: SignalThresholds = SignalThresholds()
     
+    # Post-exit regret tracking
+    post_exit_tracking_enabled: bool = True
+    post_exit_tracking_minutes: int = 45
+
     # Confidence levels configuration
     confidence_levels: Dict[str, ConfidenceConfig] = {
         "LOW": ConfidenceConfig(

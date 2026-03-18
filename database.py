@@ -59,6 +59,28 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_order_type VARCHAR(15) DEFAULT 'TAKER'"))
                 if 'exit_order_type' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_order_type VARCHAR(15) DEFAULT 'TAKER'"))
+                if 'entry_ema20_slope' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema20_slope FLOAT"))
+                if 'entry_btc_ema20_slope' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_ema20_slope FLOAT"))
+                if 'post_exit_peak_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_peak_pnl FLOAT"))
+                if 'post_exit_trough_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_trough_pnl FLOAT"))
+                if 'post_exit_peak_minutes' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_peak_minutes FLOAT"))
+                if 'post_exit_trough_minutes' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_trough_minutes FLOAT"))
+                if 'post_exit_signal_lost_minutes' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_signal_lost_minutes FLOAT"))
+                if 'post_exit_pnl_at_signal_lost' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_signal_lost FLOAT"))
+                if 'post_exit_final_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_final_pnl FLOAT"))
+                if 'post_exit_peak_before_signal_lost' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_peak_before_signal_lost FLOAT"))
+                if 'signal_active_at_close' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN signal_active_at_close BOOLEAN"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

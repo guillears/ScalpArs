@@ -988,14 +988,19 @@ class TradingEngine:
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
 
     async def update_post_exit_tracking(self, db: AsyncSession):
-        """Check prices for recently closed BE trades and update peak/trough/timing. Called from monitor loop."""
+        """Check prices for recently closed BE trades and update peak/trough/timing. Called from monitor loop.
+
+        Uses isolated DB sessions for all queries and writes so that failures
+        never corrupt the shared monitor-loop session / connection pool.
+        """
         if not self._post_exit_tracking:
             return
 
         now = datetime.utcnow()
         completed = []
 
-        for order_id, info in self._post_exit_tracking.items():
+        for order_id in list(self._post_exit_tracking.keys()):
+            info = self._post_exit_tracking[order_id]
             tracker = websocket_tracker.get_tracker(info["pair"])
             if not tracker or not tracker.last_price or tracker.last_price <= 0:
                 continue
@@ -1011,13 +1016,14 @@ class TradingEngine:
                 info["post_low"] = price
                 info["trough_at"] = now
 
-            # Check signal status for signal-lost timing
+            # Check signal status for signal-lost timing (isolated session)
             if info["signal_lost_at"] is None:
                 try:
-                    pd_result = await db.execute(
-                        select(PairData).where(PairData.pair == info["pair"])
-                    )
-                    pair_data = pd_result.scalar_one_or_none()
+                    async with AsyncSessionLocal() as pe_read_db:
+                        pd_result = await pe_read_db.execute(
+                            select(PairData).where(PairData.pair == info["pair"])
+                        )
+                        pair_data = pd_result.scalar_one_or_none()
                     if pair_data and not is_signal_direction_active(
                         direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
                     ):
@@ -1056,21 +1062,22 @@ class TradingEngine:
                     sig_lost_minutes = (info["signal_lost_at"] - exit_time).total_seconds() / 60.0
 
                 try:
-                    await db.execute(
-                        update(Order)
-                        .where(Order.id == order_id)
-                        .values(
-                            post_exit_peak_pnl=round(peak_pnl, 4),
-                            post_exit_trough_pnl=round(trough_pnl, 4),
-                            post_exit_peak_minutes=round(peak_minutes, 2),
-                            post_exit_trough_minutes=round(trough_minutes, 2),
-                            post_exit_signal_lost_minutes=round(sig_lost_minutes, 2) if sig_lost_minutes is not None else None,
-                            post_exit_pnl_at_signal_lost=round(info["pnl_at_signal_lost"], 4) if info["pnl_at_signal_lost"] is not None else None,
-                            post_exit_final_pnl=round(final_pnl, 4),
-                            post_exit_peak_before_signal_lost=round(info["peak_before_signal_lost"], 4) if info["signal_lost_at"] is not None else None,
+                    async with AsyncSessionLocal() as pe_write_db:
+                        await pe_write_db.execute(
+                            update(Order)
+                            .where(Order.id == order_id)
+                            .values(
+                                post_exit_peak_pnl=round(peak_pnl, 4),
+                                post_exit_trough_pnl=round(trough_pnl, 4),
+                                post_exit_peak_minutes=round(peak_minutes, 2),
+                                post_exit_trough_minutes=round(trough_minutes, 2),
+                                post_exit_signal_lost_minutes=round(sig_lost_minutes, 2) if sig_lost_minutes is not None else None,
+                                post_exit_pnl_at_signal_lost=round(info["pnl_at_signal_lost"], 4) if info["pnl_at_signal_lost"] is not None else None,
+                                post_exit_final_pnl=round(final_pnl, 4),
+                                post_exit_peak_before_signal_lost=round(info["peak_before_signal_lost"], 4) if info["signal_lost_at"] is not None else None,
+                            )
                         )
-                    )
-                    await db.commit()
+                        await pe_write_db.commit()
                     sig_info = f", sig_lost={sig_lost_minutes:.1f}min" if sig_lost_minutes is not None else ""
                     logger.info(
                         f"[POST_EXIT] {info['pair']} order {order_id}: "

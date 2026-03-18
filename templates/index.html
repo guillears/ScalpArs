@@ -2695,7 +2695,8 @@
                 ]);
                 const data = await res.json();
                 const balData = balRes.ok ? await balRes.json() : null;
-                
+                if (data._error) console.warn('[Performance API error]', data._error);
+
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
                 document.getElementById('perf-total-longs').textContent = data.total_longs;
                 document.getElementById('perf-total-shorts').textContent = data.total_shorts;

@@ -9,7 +9,7 @@
   "maker_exit_timeout_seconds": 20,
   "maker_exit_offset_ticks": 1,
   "paper_trading": true,
-  "paper_balance": 2000.0,
+  "paper_balance": 5000.0,
   "trading_pairs_limit": 50,
   "investment": {
     "mode": "equal_split",
@@ -71,7 +71,7 @@
     "rsi_momentum_exit_min_profit": 0.05
   },
   "post_exit_tracking_enabled": true,
-  "post_exit_tracking_minutes": 45,
+  "post_exit_tracking_minutes": 30,
   "confidence_levels": {
     "LOW": {
       "enabled": false,

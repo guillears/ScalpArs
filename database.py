@@ -95,6 +95,13 @@ async def init_db():
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN rsi_prev1 FLOAT"))
                 if 'rsi_prev2' not in pd_columns:
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN rsi_prev2 FLOAT"))
+                if 'macro_regime' not in pd_columns:
+                    connection.execute(text("ALTER TABLE pair_data ADD COLUMN macro_regime VARCHAR(10)"))
+
+            if 'bot_state' in inspector.get_table_names():
+                bs_columns = [c['name'] for c in inspector.get_columns('bot_state')]
+                if 'ban_until' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN ban_until FLOAT DEFAULT 0.0"))
         
         await conn.run_sync(_migrate)
 

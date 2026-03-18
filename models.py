@@ -96,6 +96,12 @@ class Order(Base):
     # Post-exit regret tracking: hypothetical P&L if the trade had stayed open for N minutes after close
     post_exit_peak_pnl = Column(Float, nullable=True)
     post_exit_trough_pnl = Column(Float, nullable=True)
+    post_exit_peak_minutes = Column(Float, nullable=True)
+    post_exit_trough_minutes = Column(Float, nullable=True)
+    post_exit_signal_lost_minutes = Column(Float, nullable=True)
+    post_exit_pnl_at_signal_lost = Column(Float, nullable=True)
+    post_exit_final_pnl = Column(Float, nullable=True)
+    post_exit_peak_before_signal_lost = Column(Float, nullable=True)
     
     # Timestamps
     opened_at = Column(DateTime, nullable=False, default=func.now())

@@ -969,20 +969,26 @@ class TradingEngine:
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
         initial_price = tracker.last_price if tracker else order.exit_price
+        now = datetime.utcnow()
         self._post_exit_tracking[order.id] = {
             "order_id": order.id,
             "pair": order.pair,
             "entry_price": order.entry_price,
             "direction": order.direction,
-            "exit_time": datetime.utcnow(),
-            "tracking_until": datetime.utcnow() + timedelta(minutes=minutes),
+            "exit_time": now,
+            "tracking_until": now + timedelta(minutes=minutes),
             "post_high": initial_price or order.exit_price,
             "post_low": initial_price or order.exit_price,
+            "peak_at": now,
+            "trough_at": now,
+            "signal_lost_at": None,
+            "pnl_at_signal_lost": None,
+            "peak_before_signal_lost": 0.0,
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
 
     async def update_post_exit_tracking(self, db: AsyncSession):
-        """Check prices for recently closed BE trades and update peak/trough. Called from monitor loop."""
+        """Check prices for recently closed BE trades and update peak/trough/timing. Called from monitor loop."""
         if not self._post_exit_tracking:
             return
 
@@ -995,17 +1001,59 @@ class TradingEngine:
                 continue
 
             price = tracker.last_price
-            info["post_high"] = max(info["post_high"], price)
-            info["post_low"] = min(info["post_low"], price)
+            entry = info["entry_price"]
+            direction = info["direction"]
+
+            if price > info["post_high"]:
+                info["post_high"] = price
+                info["peak_at"] = now
+            if price < info["post_low"]:
+                info["post_low"] = price
+                info["trough_at"] = now
+
+            # Check signal status for signal-lost timing
+            if info["signal_lost_at"] is None:
+                try:
+                    pd_result = await db.execute(
+                        select(PairData).where(PairData.pair == info["pair"])
+                    )
+                    pair_data = pd_result.scalar_one_or_none()
+                    if pair_data and not is_signal_direction_active(
+                        direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
+                    ):
+                        info["signal_lost_at"] = now
+                        if direction == "LONG":
+                            info["pnl_at_signal_lost"] = ((price - entry) / entry) * 100
+                        else:
+                            info["pnl_at_signal_lost"] = ((entry - price) / entry) * 100
+                except Exception:
+                    pass
+
+            # Track reachable peak (best P&L while signal still active)
+            if info["signal_lost_at"] is None:
+                if direction == "LONG":
+                    current_pnl = ((price - entry) / entry) * 100
+                else:
+                    current_pnl = ((entry - price) / entry) * 100
+                if current_pnl > info["peak_before_signal_lost"]:
+                    info["peak_before_signal_lost"] = current_pnl
 
             if now >= info["tracking_until"]:
-                entry = info["entry_price"]
-                if info["direction"] == "LONG":
+                if direction == "LONG":
                     peak_pnl = ((info["post_high"] - entry) / entry) * 100
                     trough_pnl = ((info["post_low"] - entry) / entry) * 100
+                    final_pnl = ((price - entry) / entry) * 100
                 else:
                     peak_pnl = ((entry - info["post_low"]) / entry) * 100
                     trough_pnl = ((entry - info["post_high"]) / entry) * 100
+                    final_pnl = ((entry - price) / entry) * 100
+
+                exit_time = info["exit_time"]
+                peak_minutes = (info["peak_at"] - exit_time).total_seconds() / 60.0
+                trough_minutes = (info["trough_at"] - exit_time).total_seconds() / 60.0
+                sig_lost_minutes = None
+                if info["signal_lost_at"]:
+                    sig_lost_minutes = (info["signal_lost_at"] - exit_time).total_seconds() / 60.0
 
                 try:
                     await db.execute(
@@ -1013,14 +1061,21 @@ class TradingEngine:
                         .where(Order.id == order_id)
                         .values(
                             post_exit_peak_pnl=round(peak_pnl, 4),
-                            post_exit_trough_pnl=round(trough_pnl, 4)
+                            post_exit_trough_pnl=round(trough_pnl, 4),
+                            post_exit_peak_minutes=round(peak_minutes, 2),
+                            post_exit_trough_minutes=round(trough_minutes, 2),
+                            post_exit_signal_lost_minutes=round(sig_lost_minutes, 2) if sig_lost_minutes is not None else None,
+                            post_exit_pnl_at_signal_lost=round(info["pnl_at_signal_lost"], 4) if info["pnl_at_signal_lost"] is not None else None,
+                            post_exit_final_pnl=round(final_pnl, 4),
+                            post_exit_peak_before_signal_lost=round(info["peak_before_signal_lost"], 4) if info["signal_lost_at"] is not None else None,
                         )
                     )
                     await db.commit()
+                    sig_info = f", sig_lost={sig_lost_minutes:.1f}min" if sig_lost_minutes is not None else ""
                     logger.info(
                         f"[POST_EXIT] {info['pair']} order {order_id}: "
-                        f"peak={peak_pnl:.4f}% trough={trough_pnl:.4f}% "
-                        f"(tracked {getattr(config.trading_config, 'post_exit_tracking_minutes', 45)}min)"
+                        f"peak={peak_pnl:.4f}%@{peak_minutes:.1f}min trough={trough_pnl:.4f}%@{trough_minutes:.1f}min "
+                        f"final={final_pnl:.4f}%{sig_info}"
                     )
                 except Exception as e:
                     logger.error(f"[POST_EXIT] Error saving order {order_id}: {e}")

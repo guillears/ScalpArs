@@ -682,7 +682,11 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "tp_level": o.current_tp_level or 1,
             **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
-            "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER"
+            "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER",
+            "post_exit_peak_minutes": o.post_exit_peak_minutes,
+            "post_exit_trough_minutes": o.post_exit_trough_minutes,
+            "post_exit_final_pnl": o.post_exit_final_pnl,
+            "post_exit_signal_lost_minutes": o.post_exit_signal_lost_minutes,
         })
 
     return orders_data
@@ -787,6 +791,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "winning_trades_drawdown": [],
             "never_positive_deep_dive": [],
             "performance_over_time": [],
+            "post_exit_regret_deep_dive": [],
             "_error": str(e)
         }
 
@@ -1047,7 +1052,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [],
             "never_positive_deep_dive": [],
-            "performance_over_time": []
+            "performance_over_time": [],
+            "post_exit_regret_deep_dive": []
         }
     
     # Separate longs and shorts
@@ -1890,6 +1896,62 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Never Positive deep dive: {e}\n{traceback.format_exc()}")
 
+    # Post-Exit Regret Deep Dive
+    post_exit_regret_deep_dive = []
+    try:
+        pe_orders = [o for o in orders if o.post_exit_peak_pnl is not None and o.close_reason and o.close_reason.startswith("BREAKEVEN_SL")]
+        if pe_orders:
+            reason_groups = {}
+            for o in pe_orders:
+                reason_groups.setdefault(o.close_reason, []).append(o)
+
+            for reason in sorted(reason_groups.keys()):
+                group = reason_groups[reason]
+                count = len(group)
+                longs = sum(1 for o in group if o.direction == "LONG")
+                shorts = count - longs
+
+                avg_duration_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in group if o.closed_at) / count if count > 0 else 0
+                dur_h, dur_m, dur_s = int(avg_duration_secs // 3600), int((avg_duration_secs % 3600) // 60), int(avg_duration_secs % 60)
+
+                avg_close_pnl = sum(o.pnl_percentage or 0 for o in group) / count
+                avg_post_peak = sum(o.post_exit_peak_pnl or 0 for o in group) / count
+                avg_peak_min = sum(o.post_exit_peak_minutes or 0 for o in group) / count
+                avg_post_trough = sum(o.post_exit_trough_pnl or 0 for o in group) / count
+                avg_trough_min = sum(o.post_exit_trough_minutes or 0 for o in group) / count
+                avg_final = sum(o.post_exit_final_pnl or 0 for o in group) / count
+
+                peak_first_count = sum(1 for o in group if (o.post_exit_peak_minutes or 0) < (o.post_exit_trough_minutes or 0))
+                peak_first_pct = round(peak_first_count / count * 100, 1) if count > 0 else 0
+
+                sig_lost_orders = [o for o in group if o.post_exit_signal_lost_minutes is not None]
+                sig_lost_pct = round(len(sig_lost_orders) / count * 100, 1) if count > 0 else 0
+                avg_sig_lost_min = sum(o.post_exit_signal_lost_minutes for o in sig_lost_orders) / len(sig_lost_orders) if sig_lost_orders else None
+                avg_pnl_at_sig_lost = sum(o.post_exit_pnl_at_signal_lost or 0 for o in sig_lost_orders) / len(sig_lost_orders) if sig_lost_orders else None
+                reachable_peak_orders = [o for o in group if o.post_exit_peak_before_signal_lost is not None]
+                avg_reachable_peak = sum(o.post_exit_peak_before_signal_lost for o in reachable_peak_orders) / len(reachable_peak_orders) if reachable_peak_orders else None
+
+                post_exit_regret_deep_dive.append({
+                    "reason": reason,
+                    "count": count,
+                    "longs": longs,
+                    "shorts": shorts,
+                    "avg_duration": f"{dur_h:02d}:{dur_m:02d}:{dur_s:02d}",
+                    "avg_close_pnl": round(avg_close_pnl, 4),
+                    "avg_post_peak": round(avg_post_peak, 4),
+                    "avg_peak_min": round(avg_peak_min, 1),
+                    "avg_post_trough": round(avg_post_trough, 4),
+                    "avg_trough_min": round(avg_trough_min, 1),
+                    "peak_first_pct": peak_first_pct,
+                    "avg_final_pnl": round(avg_final, 4),
+                    "sig_lost_pct": sig_lost_pct,
+                    "avg_sig_lost_min": round(avg_sig_lost_min, 1) if avg_sig_lost_min is not None else None,
+                    "avg_pnl_at_sig_lost": round(avg_pnl_at_sig_lost, 4) if avg_pnl_at_sig_lost is not None else None,
+                    "avg_reachable_peak": round(avg_reachable_peak, 4) if avg_reachable_peak is not None else None,
+                })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -1944,7 +2006,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "never_positive_deep_dive": never_positive_deep_dive,
         "performance_over_time": _compute_time_buckets(orders),
         "by_entry_type": _compute_entry_type_stats(orders),
-        "by_exit_type": _compute_exit_type_stats(orders)
+        "by_exit_type": _compute_exit_type_stats(orders),
+        "post_exit_regret_deep_dive": post_exit_regret_deep_dive
     }
 
 

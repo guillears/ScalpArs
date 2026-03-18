@@ -558,6 +558,38 @@
                     </div>
                 </div>
                 
+                <!-- Post-Exit Regret Deep Dive -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Post-Exit Regret Deep Dive</h3>
+                    <p class="text-xs text-gray-500 mb-3">What happened to price after BE exits (45min tracking window). All times measured from exit.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Reason</th>
+                                    <th class="px-3 py-2 font-medium text-center">#</th>
+                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center">Avg Close %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400">Avg Post Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400">Peak Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-red-400">Avg Post Trough %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-red-400">Trough Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-yellow-400">Peak First %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-sky-400">Avg Final %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-orange-400">Sig Lost %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-orange-400">Sig Lost Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-orange-400">P&L @ Sig Lost</th>
+                                    <th class="px-3 py-2 font-medium text-center text-purple-400">Reachable Peak %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="post-exit-regret-body" class="divide-y divide-white/5">
+                                <tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Entry Gap -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap</h3>
@@ -2500,6 +2532,20 @@
                     lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinPeak/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${'-'.padStart(9)} ${'-'.padStart(10)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
                 }
 
+                // --- POST-EXIT REGRET DEEP DIVE ---
+                if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Post-Exit Regret Deep Dive\n');
+                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)}`);
+                    for (const r of perf.post_exit_regret_deep_dive) {
+                        const dirStr = `${r.longs}L/${r.shorts}S`;
+                        const slMin = r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) : '-';
+                        const slPnl = r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? '+' : '') + r.avg_pnl_at_sig_lost.toFixed(4) + '%' : '-';
+                        const reachPk = r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? '+' : '') + r.avg_reachable_peak.toFixed(4) + '%' : '-';
+                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)}`);
+                    }
+                }
+
                 // --- NEVER POSITIVE DEEP DIVE ---
                 if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -3660,6 +3706,43 @@
                 } else {
                     wdBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
+
+                // Post-Exit Regret Deep Dive
+                const peBody = document.getElementById('post-exit-regret-body');
+                const perd = data.post_exit_regret_deep_dive;
+                if (perd && perd.length > 0) {
+                    let peRows = perd.map(r => {
+                        const closeClass = r.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const peakClass = r.avg_post_peak >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const troughClass = r.avg_post_trough >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const finalClass = r.avg_final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const peakFirstClass = r.peak_first_pct >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const sigLostPnlClass = r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        const reachClass = r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${r.reason}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${r.longs}L</span> / <span class="text-red-400 text-xs">${r.shorts}S</span></td>
+                                <td class="px-3 py-2 text-center text-gray-400">${r.avg_duration}</td>
+                                <td class="px-3 py-2 text-right ${closeClass} font-medium">${r.avg_close_pnl >= 0 ? '+' : ''}${r.avg_close_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${r.avg_post_peak >= 0 ? '+' : ''}${r.avg_post_peak.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-emerald-400">${r.avg_peak_min.toFixed(1)}m</td>
+                                <td class="px-3 py-2 text-right ${troughClass} font-medium">${r.avg_post_trough >= 0 ? '+' : ''}${r.avg_post_trough.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-red-400">${r.avg_trough_min.toFixed(1)}m</td>
+                                <td class="px-3 py-2 text-right ${peakFirstClass} font-medium">${r.peak_first_pct.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${finalClass} font-medium">${r.avg_final_pnl >= 0 ? '+' : ''}${r.avg_final_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-orange-400">${r.sig_lost_pct.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right text-orange-400">${r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${sigLostPnlClass} font-medium">${r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? '+' : '') + r.avg_pnl_at_sig_lost.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${reachClass} font-medium">${r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? '+' : '') + r.avg_reachable_peak.toFixed(4) + '%' : '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                    peBody.innerHTML = peRows;
+                } else {
+                    peBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                }
             } catch (e) {
                 console.error('Error loading performance:', e);
             }
@@ -4036,7 +4119,17 @@
                             <td class="px-4 py-3 text-right ${(o.peak_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(o.peak_pnl || 0) >= 0 ? '+' : ''}${(o.peak_pnl || 0).toFixed(2)}%</td>
                             <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
-                            <td class="px-4 py-3 text-xs">${o.close_reason}</td>
+                            <td class="px-4 py-3 text-xs">${(() => {
+                                const peakMin = o.post_exit_peak_minutes;
+                                const troughMin = o.post_exit_trough_minutes;
+                                const finalPnl = o.post_exit_final_pnl;
+                                const sigLostMin = o.post_exit_signal_lost_minutes;
+                                if (peakMin != null) {
+                                    const tip = `Post-exit (45min): Peak@${peakMin.toFixed(1)}m | Trough@${troughMin != null ? troughMin.toFixed(1) : '?'}m | Final: ${finalPnl != null ? (finalPnl >= 0 ? '+' : '') + finalPnl.toFixed(4) + '%' : '?'}${sigLostMin != null ? ' | SigLost@' + sigLostMin.toFixed(1) + 'm' : ''}`;
+                                    return `<span title="${tip}" class="cursor-help border-b border-dotted border-gray-500">${o.close_reason}</span>`;
+                                }
+                                return o.close_reason;
+                            })()}</td>
                         </tr>
                     `;
                 }).join('');

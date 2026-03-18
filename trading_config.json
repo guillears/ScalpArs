@@ -40,7 +40,7 @@
     "ema_gap_threshold_long": 0.02,
     "ema_gap_threshold_short": 0.02,
     "ema_gap_5_8_max": 0.35,
-    "adx_strong": 25.0,
+    "adx_strong": 20.0,
     "adx_very_strong": 30.0,
     "momentum_ema20_filter_long": true,
     "momentum_ema20_filter_short": true,

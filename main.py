@@ -1908,8 +1908,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             for reason in sorted(reason_groups.keys()):
                 group = reason_groups[reason]
                 count = len(group)
-                longs = sum(1 for o in group if o.direction == "LONG")
-                shorts = count - longs
+                pe_longs = sum(1 for o in group if o.direction == "LONG")
+                pe_shorts = count - pe_longs
 
                 avg_duration_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in group if o.closed_at) / count if count > 0 else 0
                 dur_h, dur_m, dur_s = int(avg_duration_secs // 3600), int((avg_duration_secs % 3600) // 60), int(avg_duration_secs % 60)
@@ -1934,8 +1934,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 post_exit_regret_deep_dive.append({
                     "reason": reason,
                     "count": count,
-                    "longs": longs,
-                    "shorts": shorts,
+                    "longs": pe_longs,
+                    "shorts": pe_shorts,
                     "avg_duration": f"{dur_h:02d}:{dur_m:02d}:{dur_s:02d}",
                     "avg_close_pnl": round(avg_close_pnl, 4),
                     "avg_post_peak": round(avg_post_peak, 4),

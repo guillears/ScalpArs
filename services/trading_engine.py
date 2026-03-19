@@ -41,6 +41,7 @@ class TradingEngine:
         self._last_scan_time: float = 0
         self._initialized = False
         self._post_exit_tracking: Dict[int, dict] = {}
+        self._rsi3_history: Dict[int, list] = {}  # per-order RSI history for 3-drop detection
     
     async def initialize(self, db: AsyncSession):
         """Initialize engine state from database (only on first call)"""
@@ -956,7 +957,8 @@ class TradingEngine:
         # Pairs are subscribed in scan_and_trade() and stay subscribed
 
         self._register_post_exit_tracking(order, reason)
-        
+        self._rsi3_history.pop(order.id, None)
+
         return order
 
     def _register_post_exit_tracking(self, order: Order, reason: str):
@@ -1308,6 +1310,43 @@ class TradingEngine:
             _net_pnl = _raw_pnl - (order.entry_fee or 0) - _est_fee
             _notional = order.entry_price * order.quantity if order.quantity > 0 else 1
             pnl_pct = (_net_pnl / _notional) * 100
+
+            # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
+            if pair_data and pair_data.rsi is not None:
+                _trk_rsi = pair_data.rsi
+                _trk_rsi1 = pair_data.rsi_prev1
+                _trk_rsi2 = pair_data.rsi_prev2
+                from datetime import timezone as _tz
+                _trk_opened = order.opened_at.replace(tzinfo=_tz.utc) if order.opened_at and order.opened_at.tzinfo is None else order.opened_at
+                _trk_age = (datetime.now(_tz.utc) - _trk_opened).total_seconds() / 60 if _trk_opened else 0
+
+                # 2-drop detection
+                if order.first_rsi2_pnl is None and _trk_rsi1 is not None and _trk_rsi2 is not None:
+                    rsi2_fired = False
+                    if order.direction == "LONG" and _trk_rsi < _trk_rsi1 < _trk_rsi2:
+                        rsi2_fired = True
+                    elif order.direction == "SHORT" and _trk_rsi > _trk_rsi1 > _trk_rsi2:
+                        rsi2_fired = True
+                    if rsi2_fired:
+                        order.first_rsi2_pnl = round(pnl_pct, 4)
+                        order.first_rsi2_minutes = round(_trk_age, 2)
+
+                # 3-drop detection via rolling history buffer
+                oid = order.id
+                if oid not in self._rsi3_history:
+                    self._rsi3_history[oid] = []
+                hist = self._rsi3_history[oid]
+                if not hist or hist[-1] != _trk_rsi:
+                    hist.append(_trk_rsi)
+                    if len(hist) > 4:
+                        hist.pop(0)
+                if order.first_rsi3_pnl is None and len(hist) >= 4:
+                    if order.direction == "LONG" and hist[-1] < hist[-2] < hist[-3] < hist[-4]:
+                        order.first_rsi3_pnl = round(pnl_pct, 4)
+                        order.first_rsi3_minutes = round(_trk_age, 2)
+                    elif order.direction == "SHORT" and hist[-1] > hist[-2] > hist[-3] > hist[-4]:
+                        order.first_rsi3_pnl = round(pnl_pct, 4)
+                        order.first_rsi3_minutes = round(_trk_age, 2)
 
             # RSI Momentum Exit: two consecutive RSI drops (LONG) or rises (SHORT) while in profit
             rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)

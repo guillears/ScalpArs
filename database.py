@@ -89,6 +89,14 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_rsi3_exit_minutes FLOAT"))
                 if 'post_exit_rsi3_exit_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_rsi3_exit_pnl FLOAT"))
+                if 'first_rsi2_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_rsi2_pnl FLOAT"))
+                if 'first_rsi2_minutes' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_rsi2_minutes FLOAT"))
+                if 'first_rsi3_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_rsi3_pnl FLOAT"))
+                if 'first_rsi3_minutes' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_rsi3_minutes FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

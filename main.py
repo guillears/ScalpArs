@@ -1552,6 +1552,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             rsis = [o.entry_rsi for o in data["trades"] if o.entry_rsi is not None]
             post_exit_peaks = [o.post_exit_peak_pnl for o in data["trades"] if o.post_exit_peak_pnl is not None]
             post_exit_troughs = [o.post_exit_trough_pnl for o in data["trades"] if o.post_exit_trough_pnl is not None]
+
+            rsi2_fired = [o for o in data["trades"] if o.first_rsi2_pnl is not None]
+            rsi3_fired = [o for o in data["trades"] if o.first_rsi3_pnl is not None]
+
             by_close_reason[reason] = {
                 "trades": count,
                 "avg_pnl_pct": round(data["pnl_pct_sum"] / count, 2) if count > 0 else 0,
@@ -1567,7 +1571,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "signal_inactive": sig_inactive,
                 "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
                 "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
-                "avg_duration": calc_avg_duration(data["trades"])
+                "avg_duration": calc_avg_duration(data["trades"]),
+                "rsi2_fire_pct": round(len(rsi2_fired) / count * 100, 1) if count > 0 else 0,
+                "avg_rsi2_pnl": round(sum(o.first_rsi2_pnl for o in rsi2_fired) / len(rsi2_fired), 4) if rsi2_fired else None,
+                "avg_rsi2_min": round(sum(o.first_rsi2_minutes for o in rsi2_fired) / len(rsi2_fired), 1) if rsi2_fired else None,
+                "rsi3_fire_pct": round(len(rsi3_fired) / count * 100, 1) if count > 0 else 0,
+                "avg_rsi3_pnl": round(sum(o.first_rsi3_pnl for o in rsi3_fired) / len(rsi3_fired), 4) if rsi3_fired else None,
+                "avg_rsi3_min": round(sum(o.first_rsi3_minutes for o in rsi3_fired) / len(rsi3_fired), 1) if rsi3_fired else None,
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")

@@ -106,6 +106,12 @@ class Order(Base):
     post_exit_rsi_exit_pnl = Column(Float, nullable=True)
     post_exit_rsi3_exit_minutes = Column(Float, nullable=True)
     post_exit_rsi3_exit_pnl = Column(Float, nullable=True)
+
+    # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
+    first_rsi2_pnl = Column(Float, nullable=True)
+    first_rsi2_minutes = Column(Float, nullable=True)
+    first_rsi3_pnl = Column(Float, nullable=True)
+    first_rsi3_minutes = Column(Float, nullable=True)
     
     # Timestamps
     opened_at = Column(DateTime, nullable=False, default=func.now())

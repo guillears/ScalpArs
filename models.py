@@ -102,6 +102,8 @@ class Order(Base):
     post_exit_pnl_at_signal_lost = Column(Float, nullable=True)
     post_exit_final_pnl = Column(Float, nullable=True)
     post_exit_peak_before_signal_lost = Column(Float, nullable=True)
+    post_exit_rsi_exit_minutes = Column(Float, nullable=True)
+    post_exit_rsi_exit_pnl = Column(Float, nullable=True)
     
     # Timestamps
     opened_at = Column(DateTime, nullable=False, default=func.now())

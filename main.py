@@ -1931,6 +1931,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 reachable_peak_orders = [o for o in group if o.post_exit_peak_before_signal_lost is not None]
                 avg_reachable_peak = sum(o.post_exit_peak_before_signal_lost for o in reachable_peak_orders) / len(reachable_peak_orders) if reachable_peak_orders else None
 
+                rsi_exit_orders = [o for o in group if o.post_exit_rsi_exit_minutes is not None]
+                rsi_exit_pct = round(len(rsi_exit_orders) / count * 100, 1) if count > 0 else 0
+                avg_rsi_exit_min = sum(o.post_exit_rsi_exit_minutes for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
+                avg_rsi_exit_pnl = sum(o.post_exit_rsi_exit_pnl or 0 for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
+
                 post_exit_regret_deep_dive.append({
                     "reason": reason,
                     "count": count,
@@ -1948,6 +1953,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_sig_lost_min": round(avg_sig_lost_min, 1) if avg_sig_lost_min is not None else None,
                     "avg_pnl_at_sig_lost": round(avg_pnl_at_sig_lost, 4) if avg_pnl_at_sig_lost is not None else None,
                     "avg_reachable_peak": round(avg_reachable_peak, 4) if avg_reachable_peak is not None else None,
+                    "rsi_exit_pct": rsi_exit_pct,
+                    "avg_rsi_exit_min": round(avg_rsi_exit_min, 1) if avg_rsi_exit_min is not None else None,
+                    "avg_rsi_exit_pnl": round(avg_rsi_exit_pnl, 4) if avg_rsi_exit_pnl is not None else None,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")

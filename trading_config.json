@@ -71,7 +71,7 @@
     "rsi_momentum_exit_min_profit": 0.05
   },
   "post_exit_tracking_enabled": true,
-  "post_exit_tracking_minutes": 30,
+  "post_exit_tracking_minutes": 45,
   "confidence_levels": {
     "LOW": {
       "enabled": false,

@@ -581,10 +581,13 @@
                                     <th class="px-3 py-2 font-medium text-center text-orange-400">Sig Lost Min</th>
                                     <th class="px-3 py-2 font-medium text-center text-orange-400">P&L @ Sig Lost</th>
                                     <th class="px-3 py-2 font-medium text-center text-purple-400">Reachable Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit P&L</th>
                                 </tr>
                             </thead>
                             <tbody id="post-exit-regret-body" class="divide-y divide-white/5">
-                                <tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
+                                <tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2536,13 +2539,16 @@
                 if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Post-Exit Regret Deep Dive\n');
-                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)}`);
+                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)}`);
                     for (const r of perf.post_exit_regret_deep_dive) {
                         const dirStr = `${r.longs}L/${r.shorts}S`;
                         const slMin = r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) : '-';
                         const slPnl = r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? '+' : '') + r.avg_pnl_at_sig_lost.toFixed(4) + '%' : '-';
                         const reachPk = r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? '+' : '') + r.avg_reachable_peak.toFixed(4) + '%' : '-';
-                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)}`);
+                        const rsiExPct = r.rsi_exit_pct != null ? r.rsi_exit_pct.toFixed(1) + '%' : '-';
+                        const rsiExMin = r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) : '-';
+                        const rsiExPnl = r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? '+' : '') + r.avg_rsi_exit_pnl.toFixed(4) + '%' : '-';
+                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)}`);
                     }
                 }
 
@@ -3720,6 +3726,7 @@
                         const peakFirstClass = r.peak_first_pct >= 50 ? 'text-emerald-400' : 'text-red-400';
                         const sigLostPnlClass = r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
                         const reachClass = r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        const rsiPnlClass = r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${r.reason}</td>
@@ -3737,12 +3744,15 @@
                                 <td class="px-3 py-2 text-right text-orange-400">${r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) + 'm' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${sigLostPnlClass} font-medium">${r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? '+' : '') + r.avg_pnl_at_sig_lost.toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${reachClass} font-medium">${r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? '+' : '') + r.avg_reachable_peak.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${r.rsi_exit_pct != null ? r.rsi_exit_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${rsiPnlClass} font-medium">${r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? '+' : '') + r.avg_rsi_exit_pnl.toFixed(4) + '%' : '-'}</td>
                             </tr>
                         `;
                     }).join('');
                     peBody.innerHTML = peRows;
                 } else {
-                    peBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                    peBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);
@@ -4036,7 +4046,7 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(highLow)}</td>
-                            <td class="px-4 py-3 text-right ${o.peak_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
+                            <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-center">${beBadge}</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>

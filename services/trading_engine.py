@@ -984,6 +984,8 @@ class TradingEngine:
             "signal_lost_at": None,
             "pnl_at_signal_lost": None,
             "peak_before_signal_lost": 0.0,
+            "rsi_exit_at": None,
+            "rsi_exit_pnl": None,
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
 
@@ -1016,31 +1018,49 @@ class TradingEngine:
                 info["post_low"] = price
                 info["trough_at"] = now
 
-            # Check signal status for signal-lost timing (isolated session)
-            if info["signal_lost_at"] is None:
+            # Current P&L for tracking calculations
+            if direction == "LONG":
+                current_pnl = ((price - entry) / entry) * 100
+            else:
+                current_pnl = ((entry - price) / entry) * 100
+
+            # Read pair_data for signal-lost and RSI momentum checks (isolated session)
+            pair_data = None
+            if info["signal_lost_at"] is None or info["rsi_exit_at"] is None:
                 try:
                     async with AsyncSessionLocal() as pe_read_db:
                         pd_result = await pe_read_db.execute(
                             select(PairData).where(PairData.pair == info["pair"])
                         )
                         pair_data = pd_result.scalar_one_or_none()
-                    if pair_data and not is_signal_direction_active(
-                        direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
-                    ):
-                        info["signal_lost_at"] = now
-                        if direction == "LONG":
-                            info["pnl_at_signal_lost"] = ((price - entry) / entry) * 100
-                        else:
-                            info["pnl_at_signal_lost"] = ((entry - price) / entry) * 100
                 except Exception:
                     pass
 
+            # Signal-lost detection
+            if info["signal_lost_at"] is None and pair_data:
+                if not is_signal_direction_active(
+                    direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
+                ):
+                    info["signal_lost_at"] = now
+                    info["pnl_at_signal_lost"] = current_pnl
+
+            # RSI momentum exit simulation
+            if info["rsi_exit_at"] is None and pair_data:
+                _rsi = pair_data.rsi
+                _rsi1 = pair_data.rsi_prev1
+                _rsi2 = pair_data.rsi_prev2
+                if _rsi is not None and _rsi1 is not None and _rsi2 is not None:
+                    rsi_triggered = False
+                    if direction == "LONG" and _rsi < _rsi1 < _rsi2:
+                        rsi_triggered = True
+                    elif direction == "SHORT" and _rsi > _rsi1 > _rsi2:
+                        rsi_triggered = True
+                    if rsi_triggered:
+                        info["rsi_exit_at"] = now
+                        info["rsi_exit_pnl"] = current_pnl
+
             # Track reachable peak (best P&L while signal still active)
             if info["signal_lost_at"] is None:
-                if direction == "LONG":
-                    current_pnl = ((price - entry) / entry) * 100
-                else:
-                    current_pnl = ((entry - price) / entry) * 100
                 if current_pnl > info["peak_before_signal_lost"]:
                     info["peak_before_signal_lost"] = current_pnl
 
@@ -1060,6 +1080,9 @@ class TradingEngine:
                 sig_lost_minutes = None
                 if info["signal_lost_at"]:
                     sig_lost_minutes = (info["signal_lost_at"] - exit_time).total_seconds() / 60.0
+                rsi_exit_minutes = None
+                if info["rsi_exit_at"]:
+                    rsi_exit_minutes = (info["rsi_exit_at"] - exit_time).total_seconds() / 60.0
 
                 try:
                     async with AsyncSessionLocal() as pe_write_db:
@@ -1075,14 +1098,17 @@ class TradingEngine:
                                 post_exit_pnl_at_signal_lost=round(info["pnl_at_signal_lost"], 4) if info["pnl_at_signal_lost"] is not None else None,
                                 post_exit_final_pnl=round(final_pnl, 4),
                                 post_exit_peak_before_signal_lost=round(info["peak_before_signal_lost"], 4) if info["signal_lost_at"] is not None else None,
+                                post_exit_rsi_exit_minutes=round(rsi_exit_minutes, 2) if rsi_exit_minutes is not None else None,
+                                post_exit_rsi_exit_pnl=round(info["rsi_exit_pnl"], 4) if info["rsi_exit_pnl"] is not None else None,
                             )
                         )
                         await pe_write_db.commit()
                     sig_info = f", sig_lost={sig_lost_minutes:.1f}min" if sig_lost_minutes is not None else ""
+                    rsi_info = f", rsi_exit={rsi_exit_minutes:.1f}min@{info['rsi_exit_pnl']:.4f}%" if rsi_exit_minutes is not None else ""
                     logger.info(
                         f"[POST_EXIT] {info['pair']} order {order_id}: "
                         f"peak={peak_pnl:.4f}%@{peak_minutes:.1f}min trough={trough_pnl:.4f}%@{trough_minutes:.1f}min "
-                        f"final={final_pnl:.4f}%{sig_info}"
+                        f"final={final_pnl:.4f}%{sig_info}{rsi_info}"
                     )
                 except Exception as e:
                     logger.error(f"[POST_EXIT] Error saving order {order_id}: {e}")

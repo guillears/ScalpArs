@@ -1936,6 +1936,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi_exit_min = sum(o.post_exit_rsi_exit_minutes for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
                 avg_rsi_exit_pnl = sum(o.post_exit_rsi_exit_pnl or 0 for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
 
+                rsi3_exit_orders = [o for o in group if o.post_exit_rsi3_exit_minutes is not None]
+                rsi3_exit_pct = round(len(rsi3_exit_orders) / count * 100, 1) if count > 0 else 0
+                avg_rsi3_exit_min = sum(o.post_exit_rsi3_exit_minutes for o in rsi3_exit_orders) / len(rsi3_exit_orders) if rsi3_exit_orders else None
+                avg_rsi3_exit_pnl = sum(o.post_exit_rsi3_exit_pnl or 0 for o in rsi3_exit_orders) / len(rsi3_exit_orders) if rsi3_exit_orders else None
+
                 post_exit_regret_deep_dive.append({
                     "reason": reason,
                     "count": count,
@@ -1956,6 +1961,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "rsi_exit_pct": rsi_exit_pct,
                     "avg_rsi_exit_min": round(avg_rsi_exit_min, 1) if avg_rsi_exit_min is not None else None,
                     "avg_rsi_exit_pnl": round(avg_rsi_exit_pnl, 4) if avg_rsi_exit_pnl is not None else None,
+                    "rsi3_exit_pct": rsi3_exit_pct,
+                    "avg_rsi3_exit_min": round(avg_rsi3_exit_min, 1) if avg_rsi3_exit_min is not None else None,
+                    "avg_rsi3_exit_pnl": round(avg_rsi3_exit_pnl, 4) if avg_rsi3_exit_pnl is not None else None,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")

@@ -70,7 +70,7 @@
     "rsi_momentum_filter_enabled": true,
     "rsi_momentum_exit_enabled": true,
     "rsi_momentum_exit_min_profit": 0.05,
-    "tick_momentum_exit_enabled": false,
+    "tick_momentum_exit_enabled": true,
     "tick_momentum_exit_min_profit": 0.05,
     "tick_momentum_exit_min_delta": 0.05,
     "tick_momentum_exit_windows": "15,30,60"

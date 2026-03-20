@@ -968,7 +968,7 @@ class TradingEngine:
         tc = config.trading_config
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
-        if not (reason.startswith("BREAKEVEN_SL") or reason.startswith("SIGNAL_LOST")):
+        if not (reason.startswith("BREAKEVEN_SL") or reason.startswith("SIGNAL_LOST") or reason.startswith("TICK_MOMENTUM_EXIT")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)

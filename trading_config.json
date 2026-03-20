@@ -63,7 +63,7 @@
     "ema5_slope_threshold": -0.02,
     "price_ema5_exit_ratio": 0,
     "min_peak_ema5_gap_pct": 0.15,
-    "pnl_trailing_trigger": 0.15,
+    "pnl_trailing_trigger": 0,
     "pnl_trailing_ratio": 0.5,
     "pnl_trailing_ratio_signal_active": 0.4,
     "ema_gap_expanding_filter": true,

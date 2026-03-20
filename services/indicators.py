@@ -466,17 +466,18 @@ def check_exit_conditions(
     effective_stop_loss = stop_loss
     breakeven_active = False
     be_level = 0
-    if peak_pnl >= be_l3_trigger:
+    be_enabled = getattr(conf_config, 'be_levels_enabled', True)
+    if be_enabled and peak_pnl >= be_l3_trigger:
         breakeven_active = True
         be_level = 3
         effective_stop_loss = be_l3_offset
         logger.debug(f"[BREAKEVEN_L3] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L3={be_l3_trigger}%, SL={be_l3_offset}%")
-    elif peak_pnl >= be_l2_trigger:
+    elif be_enabled and peak_pnl >= be_l2_trigger:
         breakeven_active = True
         be_level = 2
         effective_stop_loss = be_l2_offset
         logger.debug(f"[BREAKEVEN_L2] {direction} L{current_tp_level}: peak={peak_pnl:.4f}% >= L2={be_l2_trigger}%, SL={be_l2_offset}%")
-    elif peak_pnl >= be_l1_trigger:
+    elif be_enabled and peak_pnl >= be_l1_trigger:
         breakeven_active = True
         be_level = 1
         effective_stop_loss = be_l1_offset

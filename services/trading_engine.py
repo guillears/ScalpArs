@@ -614,7 +614,7 @@ class TradingEngine:
             logger.info(f"[SKIP] {pair}: Already have open position")
             return None  # Already have position
         
-        # Check cooldown - don't re-enter same pair too quickly after a LOSING close
+        # Check cooldown - don't re-enter same pair too quickly after any close
         cooldown_minutes = config.trading_config.investment.cooldown_after_loss_minutes
         if cooldown_minutes > 0:
             cooldown_threshold = datetime.utcnow() - timedelta(minutes=cooldown_minutes)
@@ -624,15 +624,14 @@ class TradingEngine:
                         Order.pair == pair,
                         Order.status == "CLOSED",
                         Order.is_paper == self.is_paper_mode,
-                        Order.closed_at >= cooldown_threshold,
-                        Order.pnl <= 0
+                        Order.closed_at >= cooldown_threshold
                     )
                 ).order_by(desc(Order.closed_at)).limit(1)
             )
-            recent_loss = result.scalar_one_or_none()
-            if recent_loss:
-                time_since_close = (datetime.utcnow() - recent_loss.closed_at).total_seconds() / 60
-                logger.info(f"[COOLDOWN] {pair}: Recent loss {time_since_close:.1f} mins ago (pnl={recent_loss.pnl:.2f}), waiting {cooldown_minutes} mins")
+            recent_close = result.scalar_one_or_none()
+            if recent_close:
+                time_since_close = (datetime.utcnow() - recent_close.closed_at).total_seconds() / 60
+                logger.info(f"[COOLDOWN] {pair}: Recent exit {time_since_close:.1f} mins ago (pnl={recent_close.pnl:.2f}), waiting {cooldown_minutes} mins")
                 return None
         
         # Calculate position size
@@ -790,6 +789,7 @@ class TradingEngine:
                 'current_tp_level': 1,
                 'peak_pnl': 0.0,
                 'trough_pnl': 0.0,
+                'be_levels_enabled': getattr(conf_config, 'be_levels_enabled', True),
                 'be_level1_trigger': conf_config.be_level1_trigger,
                 'be_level1_offset': conf_config.be_level1_offset,
                 'be_level2_trigger': conf_config.be_level2_trigger,
@@ -962,11 +962,11 @@ class TradingEngine:
         return order
 
     def _register_post_exit_tracking(self, order: Order, reason: str):
-        """Register a BE-exit trade for post-exit price tracking (regret metric)."""
+        """Register a BE or Signal Lost exit trade for post-exit price tracking (regret metric)."""
         tc = config.trading_config
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
-        if not reason.startswith("BREAKEVEN_SL"):
+        if not (reason.startswith("BREAKEVEN_SL") or reason.startswith("SIGNAL_LOST")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -1431,6 +1431,7 @@ class TradingEngine:
             )
             if signal_lost_enabled and pair_data and not signal_dir_active:
                 signal_lost_min = getattr(config.trading_config.thresholds, 'signal_lost_min_profit', 0.03)
+                signal_lost_max = getattr(config.trading_config.thresholds, 'signal_lost_max_profit', 999.0)
                 if order.direction == "LONG":
                     sl_raw_pnl = (current_price - order.entry_price) * order.quantity
                 else:
@@ -1441,7 +1442,7 @@ class TradingEngine:
                 sl_pnl_pct = (sl_net_pnl / sl_notional) * 100
                 conf_config = config.trading_config.confidence_levels.get(order.confidence)
                 sl_tp_target = order.dynamic_tp_target if order.dynamic_tp_target is not None else (conf_config.tp_min if conf_config else 0.2)
-                if sl_pnl_pct >= signal_lost_min and sl_pnl_pct < sl_tp_target:
+                if sl_pnl_pct >= signal_lost_min and sl_pnl_pct <= signal_lost_max and sl_pnl_pct < sl_tp_target:
                     tp_level = order.current_tp_level or 1
                     logger.info(f"[SIGNAL_LOST] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% >= min {signal_lost_min}%, signal now '{pair_data.signal}' != '{order.direction}'")
                     closed_order = await self.close_position(db, order, current_price, f"SIGNAL_LOST L{tp_level}")
@@ -1513,6 +1514,13 @@ class TradingEngine:
                 # NOTE: Do NOT reset high/low tracking when extending TP!
                 # We want to keep the best price ever seen for trailing stop calculation.
                 # Otherwise, if price reverses after extension, we lose the profit reference.
+                
+                # Sync cache so real-time WebSocket exits use the correct level
+                async with _cache_lock:
+                    for cached_order in _open_orders_cache.get(order.pair, []):
+                        if cached_order['id'] == order.id:
+                            cached_order['current_tp_level'] = new_tp_level
+                            break
                 
                 await db.commit()
                 
@@ -1859,24 +1867,25 @@ class TradingEngine:
             signal_still_active = order_info.get('signal_active', False)
             breakeven_active = False
             be_level = 0
+            be_enabled = order_info.get('be_levels_enabled', True)
 
-            if current_peak >= be_l5_trigger:
+            if be_enabled and current_peak >= be_l5_trigger:
                 breakeven_active = True
                 be_level = 5
                 effective_sl = be_l5_offset
-            elif current_peak >= be_l4_trigger:
+            elif be_enabled and current_peak >= be_l4_trigger:
                 breakeven_active = True
                 be_level = 4
                 effective_sl = be_l4_offset
-            elif current_peak >= be_l3_trigger:
+            elif be_enabled and current_peak >= be_l3_trigger:
                 breakeven_active = True
                 be_level = 3
                 effective_sl = be_l3_offset
-            elif current_peak >= be_l2_trigger:
+            elif be_enabled and current_peak >= be_l2_trigger:
                 breakeven_active = True
                 be_level = 2
                 effective_sl = be_l2_offset
-            elif current_peak >= be_l1_trigger:
+            elif be_enabled and current_peak >= be_l1_trigger:
                 breakeven_active = True
                 be_level = 1
                 effective_sl = be_l1_offset
@@ -2114,6 +2123,7 @@ class TradingEngine:
                 'current_tp_level': order.current_tp_level,
                 'peak_pnl': order.peak_pnl or 0.0,
                 'trough_pnl': order.trough_pnl or 0.0,
+                'be_levels_enabled': getattr(conf_config, 'be_levels_enabled', True),
                 'be_level1_trigger': conf_config.be_level1_trigger,
                 'be_level1_offset': conf_config.be_level1_offset,
                 'be_level2_trigger': conf_config.be_level2_trigger,

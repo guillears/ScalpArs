@@ -567,7 +567,7 @@
                 <!-- Post-Exit Regret Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Post-Exit Regret Deep Dive</h3>
-                    <p class="text-xs text-gray-500 mb-3">What happened to price after BE exits (45min tracking window). All times measured from exit.</p>
+                    <p class="text-xs text-gray-500 mb-3">What happened to price after BE &amp; Signal Lost exits (45min tracking window). All times measured from exit.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -1136,12 +1136,12 @@
                             </div>
                         </div>
                         <div>
-                            <label class="block text-sm text-gray-400 mb-2">Pair Cooldown (losses only)</label>
+                            <label class="block text-sm text-gray-400 mb-2">Pair Cooldown (after any exit)</label>
                             <div class="flex">
                                 <input type="number" id="config-cooldown-loss" min="0" max="60" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="5">
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">min</span>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Wait before re-entering same pair after a losing trade (wins bypass cooldown)</p>
+                            <p class="text-xs text-gray-500 mt-1">Wait before re-entering same pair after any trade exit</p>
                         </div>
                     </div>
                     
@@ -1196,11 +1196,16 @@
                                 </label>
                                 <label class="flex items-center text-sm text-gray-400">
                                     Min P&L
-                                    <input type="number" step="0.01" min="0" id="config-signal-lost-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                    <input type="number" step="0.01" id="config-signal-lost-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-1.0">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Max P&L
+                                    <input type="number" step="0.01" id="config-signal-lost-max-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-0.45">
                                     <span class="ml-1">%</span>
                                 </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Close when EMA5/EMA8 momentum reverses while P&L is above min % (pre-TP only)</p>
+                            <p class="text-xs text-gray-500 mt-1">Close when EMA5/EMA8 momentum reverses while P&L is within range [min, max] (pre-TP only)</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Momentum Exit</label>
@@ -1550,6 +1555,7 @@
                                     <th class="px-3 py-3 font-medium text-center" title="Maximum gap % allowed (filters overextended entries)">Gap Max</th>
                                     <th class="px-3 py-3 font-medium text-center">Gap?</th>
                                     <th class="px-3 py-3 font-medium text-center text-cyan-400" title="Max EMA5 Stretch %: max distance from EMA5 allowed for entry">Stretch</th>
+                                    <th class="px-3 py-3 font-medium text-center text-amber-400" title="Enable/disable break-even levels">BE?</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="BE Level 1: micro-protection trigger">L1 Trig</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="BE Level 1: SL offset once L1 active">L1 Off</th>
                                     <th class="px-3 py-3 font-medium text-center text-yellow-400" title="BE Level 2: profit lock trigger">L2 Trig</th>
@@ -1609,6 +1615,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-low-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-low-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-low-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
@@ -1690,6 +1699,9 @@
                                         <input type="number" step="0.01" id="config-medium-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-medium-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-medium-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -1767,6 +1779,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-high-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-high-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-high-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
@@ -1848,6 +1863,9 @@
                                         <input type="number" step="0.01" id="config-extreme-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-extreme-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-extreme-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -1927,6 +1945,9 @@
                                         <input type="number" step="0.01" id="config-very_strong-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
                                     </td>
                                     <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-very_strong-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-very_strong-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -2004,6 +2025,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
+                                    </td>
+                                    <td class="px-3 py-3 text-center">
+                                        <input type="checkbox" id="config-strong_buy-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-be-l1-trigger" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-1 text-white text-center text-xs" value="0.08">
@@ -2376,7 +2400,7 @@
                 lines.push(`\nGeneral Settings:`);
                 lines.push(`  Paper Trading: ${cfg.paper_trading ? 'ON' : 'OFF'}  |  Paper Balance: $${cfg.paper_balance || 0}`);
                 lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
-                lines.push(`  Cooldown After Loss: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
+                lines.push(`  Cooldown After Exit: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
 
                 lines.push(`\nFee & Maker Orders:`);
                 lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee ?? 0.00018) * 100).toFixed(3)}%`);
@@ -2389,14 +2413,14 @@
                 lines.push('\nMomentum Exit:');
                 lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
                 lines.push(`  P&L Trigger: ${th.pnl_trailing_trigger}%  |  Ratio (no signal): ${th.pnl_trailing_ratio}  |  Ratio (signal): ${th.pnl_trailing_ratio_signal_active}`);
-                lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Min Profit: ${th.signal_lost_min_profit}%`);
+                lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
                 lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Min Profit: ${th.rsi_momentum_exit_min_profit}%  (close on 2 consecutive RSI drops/rises)`);
 
                 lines.push('\nConfidence Levels:');
                 lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
                 for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
                     if (!c.enabled) continue;
-                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  BE:${c.be_levels_enabled !== false ? 'Y' : 'N'}  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
                 }
 
                 // --- CONFIG CHANGE LOG ---
@@ -4292,6 +4316,7 @@
                 document.getElementById('config-ema-gap-max-mirror').textContent = document.getElementById('config-ema-gap-5-8-max').value;
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
+                document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
                 document.getElementById('config-ema5-slope-enabled').checked = config.thresholds.ema5_slope_exit_enabled !== undefined ? config.thresholds.ema5_slope_exit_enabled : true;
                 document.getElementById('config-ema5-slope-lookback').value = config.thresholds.ema5_slope_lookback !== undefined ? config.thresholds.ema5_slope_lookback : 3;
                 document.getElementById('config-ema5-slope-threshold').value = config.thresholds.ema5_slope_threshold !== undefined ? config.thresholds.ema5_slope_threshold : 0;
@@ -4316,6 +4341,7 @@
                         document.getElementById(`config-${level}-gap-max`).value = cfg.gap_max !== undefined ? cfg.gap_max : 0.40;
                         document.getElementById(`config-${level}-gap-enabled`).checked = cfg.gap_enabled !== false;
                         document.getElementById(`config-${level}-stretch`).value = cfg.max_ema5_stretch !== undefined ? cfg.max_ema5_stretch : 0.12;
+                        document.getElementById(`config-${level}-be-enabled`).checked = cfg.be_levels_enabled !== undefined ? cfg.be_levels_enabled : true;
                         document.getElementById(`config-${level}-be-l1-trigger`).value = cfg.be_level1_trigger !== undefined ? cfg.be_level1_trigger : 0.08;
                         document.getElementById(`config-${level}-be-l1-offset`).value = cfg.be_level1_offset !== undefined ? cfg.be_level1_offset : -0.15;
                         document.getElementById(`config-${level}-be-l2-trigger`).value = cfg.be_level2_trigger !== undefined ? cfg.be_level2_trigger : 0.18;
@@ -4449,6 +4475,7 @@
                     ema_gap_5_8_max: safeFloat(document.getElementById('config-ema-gap-5-8-max').value),
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
+                    signal_lost_max_profit: safeFloat(document.getElementById('config-signal-lost-max-profit').value),
                     ema5_slope_exit_enabled: document.getElementById('config-ema5-slope-enabled').checked,
                     ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3,
                     ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value),
@@ -4476,6 +4503,7 @@
                     gap_max: safeFloat(document.getElementById(`config-${level}-gap-max`).value),
                     gap_enabled: document.getElementById(`config-${level}-gap-enabled`).checked,
                     max_ema5_stretch: safeFloat(document.getElementById(`config-${level}-stretch`).value),
+                    be_levels_enabled: document.getElementById(`config-${level}-be-enabled`).checked,
                     be_level1_trigger: safeFloat(document.getElementById(`config-${level}-be-l1-trigger`).value),
                     be_level1_offset: safeFloat(document.getElementById(`config-${level}-be-l1-offset`).value),
                     be_level2_trigger: safeFloat(document.getElementById(`config-${level}-be-l2-trigger`).value),

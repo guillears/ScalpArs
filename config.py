@@ -31,6 +31,7 @@ class ConfidenceConfig(BaseModel):
     gap_max: float = 0.40  # % maximum gap allowed (filters overextended entries)
     gap_enabled: bool = True  # Whether to enforce gap requirement
     max_ema5_stretch: float = 0.12  # % max distance from EMA5 allowed for entry
+    be_levels_enabled: bool = True  # Master toggle for break-even trailing stop levels
     # 3-Level Trailing Break-Even: progressive SL tightening as trade moves in favor
     be_level1_trigger: float = 0.08  # P&L % to activate Level 1 (micro-protection)
     be_level1_offset: float = -0.15  # SL once Level 1 active (reduce max loss)
@@ -90,6 +91,7 @@ class SignalThresholds(BaseModel):
     btc_global_filter_enabled: bool = True  # Use BTC regime to gate all pairs (overrides per-pair regime)
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit
     signal_lost_min_profit: float = 0.05  # Min P&L % (notional) to trigger signal-lost exit
+    signal_lost_max_profit: float = 999.0  # Max P&L % for signal-lost exit (creates a range with min)
     ema5_slope_exit_enabled: bool = True  # Exit when EMA5 slope decelerates (momentum loss)
     ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
     ema5_slope_threshold: float = 0.01  # Min EMA5 slope % to stay in trade (0 = original behavior)

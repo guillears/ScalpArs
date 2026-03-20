@@ -1225,6 +1225,34 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Close when RSI shows 2 consecutive drops (LONG) or rises (SHORT) above min profit threshold</p>
                         </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Tick Momentum Exit</label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-tick-momentum-exit-enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Min Profit
+                                    <input type="number" step="0.01" min="0" id="config-tick-momentum-exit-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Min Delta
+                                    <input type="number" step="0.01" min="0" id="config-tick-momentum-exit-min-delta" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Windows
+                                    <input type="text" id="config-tick-momentum-exit-windows" class="w-28 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="15,30,60">
+                                    <span class="ml-1">sec</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Real-time exit when price declines across all rolling windows (WebSocket tick-based, faster than RSI)</p>
+                        </div>
                     </div>
                 </div>
 
@@ -2377,6 +2405,7 @@
                 lines.push('\nExit Settings:');
                 lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
                 lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Min Profit: ${th.rsi_momentum_exit_min_profit}%  (close on 2 consecutive RSI drops/rises)`);
+                lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Delta: ${th.tick_momentum_exit_min_delta !== undefined ? th.tick_momentum_exit_min_delta : 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
 
                 lines.push('\nConfidence Levels:');
                 lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
@@ -4281,6 +4310,10 @@
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
                 document.getElementById('config-rsi-momentum-exit-enabled').checked = config.thresholds.rsi_momentum_exit_enabled !== undefined ? config.thresholds.rsi_momentum_exit_enabled : true;
                 document.getElementById('config-rsi-momentum-exit-min-profit').value = config.thresholds.rsi_momentum_exit_min_profit !== undefined ? config.thresholds.rsi_momentum_exit_min_profit : 0.05;
+                document.getElementById('config-tick-momentum-exit-enabled').checked = config.thresholds.tick_momentum_exit_enabled !== undefined ? config.thresholds.tick_momentum_exit_enabled : false;
+                document.getElementById('config-tick-momentum-exit-min-profit').value = config.thresholds.tick_momentum_exit_min_profit !== undefined ? config.thresholds.tick_momentum_exit_min_profit : 0.05;
+                document.getElementById('config-tick-momentum-exit-min-delta').value = config.thresholds.tick_momentum_exit_min_delta !== undefined ? config.thresholds.tick_momentum_exit_min_delta : 0.05;
+                document.getElementById('config-tick-momentum-exit-windows').value = config.thresholds.tick_momentum_exit_windows !== undefined ? config.thresholds.tick_momentum_exit_windows : '15,30,60';
 
                 // Confidence levels
                 ['low', 'medium', 'high', 'extreme', 'very_strong', 'strong_buy'].forEach(level => {
@@ -4439,7 +4472,11 @@
                     pnl_trailing_ratio: 0.5,
                     pnl_trailing_ratio_signal_active: 0.4,
                     rsi_momentum_exit_enabled: document.getElementById('config-rsi-momentum-exit-enabled').checked,
-                    rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value)
+                    rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value),
+                    tick_momentum_exit_enabled: document.getElementById('config-tick-momentum-exit-enabled').checked,
+                    tick_momentum_exit_min_profit: safeFloat(document.getElementById('config-tick-momentum-exit-min-profit').value),
+                    tick_momentum_exit_min_delta: safeFloat(document.getElementById('config-tick-momentum-exit-min-delta').value),
+                    tick_momentum_exit_windows: document.getElementById('config-tick-momentum-exit-windows').value.trim()
                 },
                 confidence_levels: {}
             };

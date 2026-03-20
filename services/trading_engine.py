@@ -3,6 +3,7 @@ SCALPARS Trading Platform - Trading Engine
 """
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, desc, func
@@ -802,7 +803,8 @@ class TradingEngine:
                 'be_level5_offset': conf_config.be_level5_offset,
                 'high_price': actual_price,
                 'low_price': actual_price,
-                'pullback_trigger': conf_config.pullback_trigger
+                'pullback_trigger': conf_config.pullback_trigger,
+                'tick_prices': []
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -1980,6 +1982,92 @@ class TradingEngine:
                             logger.error(f"[REALTIME_RSI_MOMENTUM_EXIT] Error closing {pair}: {e}")
                         continue
 
+            # Real-time Tick Momentum Exit: multi-window price velocity check
+            tick_exit_enabled = getattr(config.trading_config.thresholds, 'tick_momentum_exit_enabled', False)
+            tick_exit_min_profit = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_profit', 0.05)
+            if tick_exit_enabled and pnl_pct > tick_exit_min_profit:
+                now = time.time()
+                tick_buf = order_info.get('tick_prices', [])
+                tick_buf.append((now, current_price))
+
+                tick_min_delta = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_delta', 0.05)
+                windows_str = getattr(config.trading_config.thresholds, 'tick_momentum_exit_windows', '15,30,60')
+                try:
+                    windows = [int(w.strip()) for w in windows_str.split(',') if w.strip()]
+                except (ValueError, AttributeError):
+                    windows = [15, 30, 60]
+                max_window = max(windows) if windows else 60
+
+                cutoff = now - max_window - 10
+                tick_buf[:] = [(t, p) for t, p in tick_buf if t >= cutoff]
+                order_info['tick_prices'] = tick_buf
+
+                if len(tick_buf) >= 5 and (now - tick_buf[0][0]) >= min(windows):
+                    smooth_cutoff = now - 5.0
+                    smooth_prices = [p for t, p in tick_buf if t >= smooth_cutoff]
+                    smoothed = sum(smooth_prices) / len(smooth_prices) if smooth_prices else current_price
+
+                    all_windows_confirm = True
+                    for w in windows:
+                        target_time = now - w
+                        best_tick = None
+                        best_diff = float('inf')
+                        for t, p in tick_buf:
+                            diff = abs(t - target_time)
+                            if diff < best_diff:
+                                best_diff = diff
+                                best_tick = p
+                        if best_tick is None or best_diff > w * 0.5:
+                            all_windows_confirm = False
+                            break
+
+                        price_change_pct = ((smoothed - best_tick) / best_tick) * 100
+                        if direction == "LONG" and price_change_pct > -tick_min_delta:
+                            all_windows_confirm = False
+                            break
+                        elif direction == "SHORT" and price_change_pct < tick_min_delta:
+                            all_windows_confirm = False
+                            break
+
+                    if all_windows_confirm:
+                        tp_level = order_info.get('current_tp_level', 1)
+                        logger.warning(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: tick momentum fading across {windows}s windows, pnl={pnl_pct:.4f}% > min={tick_exit_min_profit}% - CLOSING NOW!")
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(
+                                        and_(Order.id == order_id, Order.status == "OPEN")
+                                    )
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    await self.close_position(
+                                        db, order, current_price,
+                                        f"TICK_MOMENTUM_EXIT L{tp_level}"
+                                    )
+                                    logger.info(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [
+                                            o for o in _open_orders_cache.get(pair, [])
+                                            if o['id'] != order_id
+                                        ]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_TICK_MOMENTUM_EXIT] Error closing {pair}: {e}")
+                        continue
+            else:
+                tick_buf = order_info.get('tick_prices', [])
+                if tick_buf is not None:
+                    now_t = time.time()
+                    tick_buf.append((now_t, current_price))
+                    windows_str = getattr(config.trading_config.thresholds, 'tick_momentum_exit_windows', '15,30,60')
+                    try:
+                        max_w = max(int(w.strip()) for w in windows_str.split(',') if w.strip())
+                    except (ValueError, AttributeError):
+                        max_w = 60
+                    cutoff_t = now_t - max_w - 10
+                    tick_buf[:] = [(t, p) for t, p in tick_buf if t >= cutoff_t]
+                    order_info['tick_prices'] = tick_buf
+
             # Real-time P&L trailing: only MOMENTUM_EXIT (signal lost). Skipped when signal active + RSI exit enabled.
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
             pnl_ratio = getattr(config.trading_config.thresholds, 'pnl_trailing_ratio', 0.0)
@@ -2142,7 +2230,8 @@ class TradingEngine:
                 'peak_ema5_gap': order.peak_ema5_gap or 0.0,
                 'rsi': pair_emas.get(order.pair, {}).get('rsi'),
                 'rsi_prev1': pair_emas.get(order.pair, {}).get('rsi_prev1'),
-                'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2')
+                'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2'),
+                'tick_prices': []
             }
             
             if order.pair not in new_cache:
@@ -2165,6 +2254,7 @@ class TradingEngine:
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:
                                 new_info['low_price'] = min(new_info['low_price'], old_info.get('low_price', float('inf')))
+                            new_info['tick_prices'] = old_info.get('tick_prices', [])
                             break
             _open_orders_cache = new_cache
         

@@ -1208,58 +1208,22 @@
                             <p class="text-xs text-gray-500 mt-1">Close when EMA5/EMA8 momentum reverses while P&L is within range [min, max] (pre-TP only)</p>
                         </div>
                         <div class="md:col-span-2">
-                            <label class="block text-sm text-gray-400 mb-2">Momentum Exit</label>
-                            <div class="space-y-2">
-                                <div class="flex items-center gap-4">
-                                    <label class="flex items-center cursor-pointer">
-                                        <input type="checkbox" id="config-ema5-slope-enabled" class="sr-only peer" checked>
-                                        <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
-                                            <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
-                                        </div>
-                                        <span class="ml-2 text-sm text-gray-300">Enabled</span>
-                                    </label>
-                                    <label class="flex items-center text-sm text-gray-400">
-                                        P&L Trigger
-                                        <input type="number" step="0.01" min="0" id="config-pnl-trailing-trigger" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.1">
-                                        <span class="ml-1">%</span>
-                                    </label>
-                                    <label class="flex items-center text-sm text-gray-400">
-                                        Ratio (no signal)
-                                        <input type="number" step="0.05" min="0" max="1" id="config-pnl-trailing-ratio" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
-                                    </label>
-                                    <label class="flex items-center text-sm text-gray-400">
-                                        Ratio (signal)
-                                        <input type="number" step="0.05" min="0" max="1" id="config-pnl-trailing-ratio-signal" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.3">
-                                    </label>
-                                </div>
-                                <div class="flex items-center gap-4">
-                                    <label class="flex items-center text-sm text-gray-400">
-                                        Slope Lookback
-                                        <input type="number" step="1" min="1" max="10" id="config-ema5-slope-lookback" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3">
-                                        <span class="ml-1">candles</span>
-                                    </label>
-                                    <label class="flex items-center text-sm text-gray-400">
-                                        Slope Min
-                                        <input type="number" step="0.005" min="0" id="config-ema5-slope-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
-                                        <span class="ml-1">%</span>
-                                    </label>
-                                </div>
-                                <div class="flex items-center gap-4">
-                                    <label class="flex items-center cursor-pointer">
-                                        <input type="checkbox" id="config-rsi-momentum-exit-enabled" class="sr-only peer" checked>
-                                        <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
-                                            <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
-                                        </div>
-                                        <span class="ml-2 text-sm text-gray-300">RSI Momentum Exit</span>
-                                    </label>
-                                    <label class="flex items-center text-sm text-gray-400">
-                                        Min Profit
-                                        <input type="number" step="0.01" min="0" id="config-rsi-momentum-exit-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
-                                        <span class="ml-1">%</span>
-                                    </label>
-                                </div>
+                            <label class="block text-sm text-gray-400 mb-2">RSI Momentum Exit</label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-rsi-momentum-exit-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Min Profit
+                                    <input type="number" step="0.01" min="0" id="config-rsi-momentum-exit-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                    <span class="ml-1">%</span>
+                                </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">P&L Trailing: safety net (wide ratio) | RSI Momentum Exit: close when RSI shows 2 consecutive drops (LONG) or rises (SHORT) above min profit | Slope: EMA5 reversal exit</p>
+                            <p class="text-xs text-gray-500 mt-1">Close when RSI shows 2 consecutive drops (LONG) or rises (SHORT) above min profit threshold</p>
                         </div>
                     </div>
                 </div>
@@ -2410,9 +2374,7 @@
                 const exitF = cfg.maker_exit_enabled ? (cfg.maker_fee ?? 0.00018) : (cfg.taker_fee || cfg.trading_fee);
                 lines.push(`  Roundtrip: ${((entryF + exitF) * 100).toFixed(3)}%  |  Full taker: ${((cfg.taker_fee || cfg.trading_fee) * 200).toFixed(3)}%`);
 
-                lines.push('\nMomentum Exit:');
-                lines.push(`  EMA5 Slope Exit: ${th.ema5_slope_exit_enabled}  |  Lookback: ${th.ema5_slope_lookback}  |  Threshold: ${th.ema5_slope_threshold}%`);
-                lines.push(`  P&L Trigger: ${th.pnl_trailing_trigger}%  |  Ratio (no signal): ${th.pnl_trailing_ratio}  |  Ratio (signal): ${th.pnl_trailing_ratio_signal_active}`);
+                lines.push('\nExit Settings:');
                 lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
                 lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Min Profit: ${th.rsi_momentum_exit_min_profit}%  (close on 2 consecutive RSI drops/rises)`);
 
@@ -4317,12 +4279,6 @@
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
-                document.getElementById('config-ema5-slope-enabled').checked = config.thresholds.ema5_slope_exit_enabled !== undefined ? config.thresholds.ema5_slope_exit_enabled : true;
-                document.getElementById('config-ema5-slope-lookback').value = config.thresholds.ema5_slope_lookback !== undefined ? config.thresholds.ema5_slope_lookback : 3;
-                document.getElementById('config-ema5-slope-threshold').value = config.thresholds.ema5_slope_threshold !== undefined ? config.thresholds.ema5_slope_threshold : 0;
-                document.getElementById('config-pnl-trailing-trigger').value = config.thresholds.pnl_trailing_trigger !== undefined ? config.thresholds.pnl_trailing_trigger : 0.1;
-                document.getElementById('config-pnl-trailing-ratio').value = config.thresholds.pnl_trailing_ratio !== undefined ? config.thresholds.pnl_trailing_ratio : 0.5;
-                document.getElementById('config-pnl-trailing-ratio-signal').value = config.thresholds.pnl_trailing_ratio_signal_active !== undefined ? config.thresholds.pnl_trailing_ratio_signal_active : 0.3;
                 document.getElementById('config-rsi-momentum-exit-enabled').checked = config.thresholds.rsi_momentum_exit_enabled !== undefined ? config.thresholds.rsi_momentum_exit_enabled : true;
                 document.getElementById('config-rsi-momentum-exit-min-profit').value = config.thresholds.rsi_momentum_exit_min_profit !== undefined ? config.thresholds.rsi_momentum_exit_min_profit : 0.05;
 
@@ -4476,12 +4432,12 @@
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     signal_lost_max_profit: safeFloat(document.getElementById('config-signal-lost-max-profit').value),
-                    ema5_slope_exit_enabled: document.getElementById('config-ema5-slope-enabled').checked,
-                    ema5_slope_lookback: parseInt(document.getElementById('config-ema5-slope-lookback').value) || 3,
-                    ema5_slope_threshold: safeFloat(document.getElementById('config-ema5-slope-threshold').value),
-                    pnl_trailing_trigger: safeFloat(document.getElementById('config-pnl-trailing-trigger').value),
-                    pnl_trailing_ratio: safeFloat(document.getElementById('config-pnl-trailing-ratio').value),
-                    pnl_trailing_ratio_signal_active: safeFloat(document.getElementById('config-pnl-trailing-ratio-signal').value),
+                    ema5_slope_exit_enabled: false,
+                    ema5_slope_lookback: 3,
+                    ema5_slope_threshold: -0.02,
+                    pnl_trailing_trigger: 0.15,
+                    pnl_trailing_ratio: 0.5,
+                    pnl_trailing_ratio_signal_active: 0.4,
                     rsi_momentum_exit_enabled: document.getElementById('config-rsi-momentum-exit-enabled').checked,
                     rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value)
                 },

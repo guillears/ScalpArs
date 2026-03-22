@@ -65,6 +65,7 @@ def calculate_indicators(ohlcv: List) -> Dict:
         'rsi_prev2': float(rsi.iloc[-3]) if len(rsi) >= 3 and not pd.isna(rsi.iloc[-3]) else None,
         'rsi_prev3': float(rsi.iloc[-4]) if len(rsi) >= 4 and not pd.isna(rsi.iloc[-4]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
+        'adx_prev1': float(adx.iloc[-2]) if len(adx) >= 2 and not pd.isna(adx.iloc[-2]) else None,
         'volume': float(df['volume'].iloc[-1]),
         'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None
     }

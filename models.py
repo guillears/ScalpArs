@@ -60,6 +60,8 @@ class Order(Base):
     entry_rsi = Column(Float, nullable=True)
     # ADX(14) value at time of entry
     entry_adx = Column(Float, nullable=True)
+    # ADX(14) value one candle prior (for ADX direction analysis)
+    entry_adx_prev = Column(Float, nullable=True)
     # EMA5 stretch: abs(price - ema5) / price * 100 at time of entry
     entry_ema5_stretch = Column(Float, nullable=True)
     # Macro trend regime at time of entry (BULLISH, BEARISH, NEUTRAL)

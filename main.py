@@ -784,7 +784,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "avg_leverage": 0, "return_multiple": 0, "daily_compound_return": 0,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
-            "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "adx_performance": [], "stretch_performance": [],
+            "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
@@ -1220,6 +1220,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     ema58_gap_performance = []
     rsi_performance = []
     adx_performance = []
+    adx_direction_performance = []
     stretch_performance = []
     pair_slope_performance = []
     btc_slope_performance = []
@@ -1376,6 +1377,38 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
+        # Performance by ADX Direction (Rising vs Falling at entry)
+        adx_dir_orders = [o for o in orders if o.entry_adx is not None and o.entry_adx_prev is not None]
+        for adx_dir_label in ["Rising", "Falling"]:
+            if adx_dir_label == "Rising":
+                dir_pool = [o for o in adx_dir_orders if o.entry_adx > o.entry_adx_prev]
+            else:
+                dir_pool = [o for o in adx_dir_orders if o.entry_adx <= o.entry_adx_prev]
+            if not dir_pool:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                d_orders = [o for o in dir_pool if (o.direction or "LONG") == direction]
+                count = len(d_orders)
+                if count == 0:
+                    continue
+                d_wins = len([o for o in d_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in d_orders)
+                avg_dur_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in d_orders if o.closed_at) / count if count > 0 else 0
+                dur_h, dur_m, dur_s = int(avg_dur_secs // 3600), int((avg_dur_secs % 3600) // 60), int(avg_dur_secs % 60)
+                conf_breakdown = {}
+                for o in d_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                adx_direction_performance.append({
+                    "adx_direction": adx_dir_label,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(d_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "avg_duration": f"{dur_h:02d}:{dur_m:02d}:{dur_s:02d}",
+                    "by_confidence": conf_breakdown
+                })
         # Performance by Entry EMA5 Stretch
         stretch_ranges = [
             ("0.00 - 0.04%", 0.00, 0.04),
@@ -1502,6 +1535,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         ema58_gap_performance = []
         rsi_performance = []
         adx_performance = []
+        adx_direction_performance = []
         stretch_performance = []
         pair_slope_performance = []
         btc_slope_performance = []
@@ -2048,6 +2082,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "ema58_gap_performance": ema58_gap_performance,
         "rsi_performance": rsi_performance,
         "adx_performance": adx_performance,
+        "adx_direction_performance": adx_direction_performance,
         "stretch_performance": stretch_performance,
         "pair_slope_performance": pair_slope_performance,
         "btc_slope_performance": btc_slope_performance,

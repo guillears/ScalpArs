@@ -698,6 +698,31 @@
                     </div>
                 </div>
 
+                <!-- Performance by ADX Direction -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by ADX Direction at Entry</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by whether ADX was rising or falling at entry (ADX vs previous candle)</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">ADX Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adx-direction-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by EMA5 Stretch -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by EMA5 Stretch</h3>
@@ -2647,6 +2672,17 @@
                     lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
                 }
 
+                // --- ADX DIRECTION PERFORMANCE ---
+                if (perf.adx_direction_performance && perf.adx_direction_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by ADX Direction at Entry\n');
+                    lines.push(`${'ADX Dir'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf.adx_direction_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.adx_direction||'').padEnd(10)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
                 // --- STRETCH PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by EMA5 Stretch\n');
@@ -3135,6 +3171,46 @@
                     }).join('');
                 } else {
                     adxBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry ADX)</td></tr>';
+                }
+
+                // Performance by ADX Direction
+                const adxDirBody = document.getElementById('adx-direction-performance-body');
+                if (data.adx_direction_performance && data.adx_direction_performance.length > 0) {
+                    const confBadgeColorsAdxDir = {
+                        'LOW': 'text-yellow-400',
+                        'MEDIUM': 'text-orange-400',
+                        'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400',
+                        'VERY_STRONG': 'text-purple-400',
+                        'STRONG_BUY': 'text-pink-400'
+                    };
+                    adxDirBody.innerHTML = data.adx_direction_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const adxDirColor = r.adx_direction === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confBadgeColorsAdxDir[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${adxDirColor}">${r.adx_direction}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    adxDirBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction)</td></tr>';
                 }
 
                 // Performance by EMA5 Stretch

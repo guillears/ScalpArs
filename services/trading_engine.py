@@ -575,6 +575,7 @@ class TradingEngine:
         entry_ema5_stretch: float = None,
         entry_rsi: float = None,
         entry_adx: float = None,
+        entry_adx_prev: float = None,
         entry_macro_trend: str = None,
         entry_ema20_slope: float = None,
         entry_btc_ema20_slope: float = None
@@ -729,6 +730,7 @@ class TradingEngine:
             entry_ema5_stretch=entry_ema5_stretch,
             entry_rsi=entry_rsi,
             entry_adx=entry_adx,
+            entry_adx_prev=entry_adx_prev,
             entry_macro_trend=entry_macro_trend,
             entry_ema20_slope=entry_ema20_slope,
             entry_btc_ema20_slope=entry_btc_ema20_slope,
@@ -1668,6 +1670,7 @@ class TradingEngine:
                         entry_ema5_stretch = round(abs(indicators['price'] - indicators['ema5']) / indicators['price'] * 100, 4)
                     entry_rsi = indicators.get('rsi')
                     entry_adx = indicators.get('adx')
+                    entry_adx_prev = indicators.get('adx_prev1')
                     if btc_global_enabled:
                         entry_regime = btc_regime
                     else:
@@ -1691,6 +1694,7 @@ class TradingEngine:
                         entry_ema5_stretch=entry_ema5_stretch,
                         entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
                         entry_adx=round(entry_adx, 1) if entry_adx is not None else None,
+                        entry_adx_prev=round(entry_adx_prev, 1) if entry_adx_prev is not None else None,
                         entry_macro_trend=entry_regime,
                         entry_ema20_slope=pair_ema20_slope_pct,
                         entry_btc_ema20_slope=btc_ema20_slope_pct

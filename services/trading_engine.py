@@ -1994,12 +1994,25 @@ class TradingEngine:
                 tick_buf = order_info.get('tick_prices', [])
                 tick_buf.append((now, current_price))
 
-                tick_min_delta = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_delta', 0.05)
+                tick_min_delta_fallback = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_delta', 0.05)
+                deltas_str = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_deltas', '')
                 windows_str = getattr(config.trading_config.thresholds, 'tick_momentum_exit_windows', '15,30,60')
                 try:
                     windows = [int(w.strip()) for w in windows_str.split(',') if w.strip()]
                 except (ValueError, AttributeError):
                     windows = [15, 30, 60]
+
+                per_window_deltas = None
+                if deltas_str and deltas_str.strip():
+                    try:
+                        parsed = [float(d.strip()) for d in deltas_str.split(',') if d.strip()]
+                        if len(parsed) == len(windows):
+                            per_window_deltas = parsed
+                    except (ValueError, AttributeError):
+                        pass
+                if per_window_deltas is None:
+                    per_window_deltas = [tick_min_delta_fallback] * len(windows)
+
                 max_window = max(windows) if windows else 60
 
                 cutoff = now - max_window - 10
@@ -2012,7 +2025,7 @@ class TradingEngine:
                     smoothed = sum(smooth_prices) / len(smooth_prices) if smooth_prices else current_price
 
                     all_windows_confirm = True
-                    for w in windows:
+                    for w, delta in zip(windows, per_window_deltas):
                         target_time = now - w
                         best_tick = None
                         best_diff = float('inf')
@@ -2026,16 +2039,17 @@ class TradingEngine:
                             break
 
                         price_change_pct = ((smoothed - best_tick) / best_tick) * 100
-                        if direction == "LONG" and price_change_pct > -tick_min_delta:
+                        if direction == "LONG" and price_change_pct > -delta:
                             all_windows_confirm = False
                             break
-                        elif direction == "SHORT" and price_change_pct < tick_min_delta:
+                        elif direction == "SHORT" and price_change_pct < delta:
                             all_windows_confirm = False
                             break
 
                     if all_windows_confirm:
                         tp_level = order_info.get('current_tp_level', 1)
-                        logger.warning(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: tick momentum fading across {windows}s windows, pnl={pnl_pct:.4f}% > min={tick_exit_min_profit}% - CLOSING NOW!")
+                        deltas_info = '/'.join(f"{d:.2f}" for d in per_window_deltas)
+                        logger.warning(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: tick momentum fading across {windows}s windows (deltas={deltas_info}%), pnl={pnl_pct:.4f}% > min={tick_exit_min_profit}% - CLOSING NOW!")
                         try:
                             async with AsyncSessionLocal() as db:
                                 result = await db.execute(

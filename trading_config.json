@@ -20,7 +20,8 @@
     "reserve_percentage": 0.0,
     "cooldown_after_loss_minutes": 5,
     "max_open_positions": 5,
-    "no_expansion_minutes": 120
+    "max_holding_time_minutes": 300,
+    "no_expansion_minutes": 300
   },
   "thresholds": {
     "long_rsi_extreme": 45.0,
@@ -55,9 +56,9 @@
     "momentum_short_rsi_min": 30.0,
     "momentum_adx_max": 35.0,
     "btc_global_filter_enabled": true,
-    "signal_lost_exit_enabled": true,
+    "signal_lost_exit_enabled": false,
     "signal_lost_min_profit": -1.0,
-    "signal_lost_max_profit": -0.5,
+    "signal_lost_max_profit": -0.45,
     "ema5_slope_exit_enabled": false,
     "ema5_slope_lookback": 3,
     "ema5_slope_threshold": -0.02,
@@ -71,9 +72,10 @@
     "rsi_momentum_exit_enabled": false,
     "rsi_momentum_exit_min_profit": 0.05,
     "tick_momentum_exit_enabled": true,
-    "tick_momentum_exit_min_profit": 0.03,
+    "tick_momentum_exit_min_profit": -0.50,
     "tick_momentum_exit_min_delta": 0.12,
-    "tick_momentum_exit_windows": "15,30,60"
+    "tick_momentum_exit_min_deltas": "0.06,0.10,0.15",
+    "tick_momentum_exit_windows": "15,30,45"
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

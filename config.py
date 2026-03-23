@@ -106,7 +106,8 @@ class SignalThresholds(BaseModel):
     rsi_momentum_exit_min_profit: float = 0.05  # Min P&L % (notional) to trigger RSI momentum exit
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
-    tick_momentum_exit_min_delta: float = 0.05  # Min % price drop across each window to confirm fade
+    tick_momentum_exit_min_delta: float = 0.05  # Min % price drop across each window to confirm fade (fallback)
+    tick_momentum_exit_min_deltas: str = ""  # Per-window deltas, comma-separated (overrides min_delta when set)
     tick_momentum_exit_windows: str = "15,30,60"  # Comma-separated rolling window sizes in seconds
 
 

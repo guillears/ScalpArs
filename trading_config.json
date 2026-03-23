@@ -72,7 +72,7 @@
     "rsi_momentum_exit_enabled": false,
     "rsi_momentum_exit_min_profit": 0.05,
     "tick_momentum_exit_enabled": true,
-    "tick_momentum_exit_min_profit": 0.03,
+    "tick_momentum_exit_min_profit": -0.50,
     "tick_momentum_exit_min_delta": 0.12,
     "tick_momentum_exit_min_deltas": "",
     "tick_momentum_exit_windows": "15,30,45"

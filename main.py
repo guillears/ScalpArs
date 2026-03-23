@@ -278,7 +278,8 @@ class ManualCloseRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """Serve main page"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    with open("templates/index.html", "r") as f:
+        return HTMLResponse(content=f.read())
 
 
 # ----- Bot Status -----

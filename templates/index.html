@@ -1244,7 +1244,12 @@
                                 </label>
                                 <label class="flex items-center text-sm text-gray-400">
                                     Min Profit
-                                    <input type="number" step="0.01" min="0" id="config-rsi-momentum-exit-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
+                                    <input type="number" step="0.01" id="config-rsi-momentum-exit-min-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-0.50">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Max Profit
+                                    <input type="number" step="0.01" id="config-rsi-momentum-exit-max-profit" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.0">
                                     <span class="ml-1">%</span>
                                 </label>
                             </div>
@@ -2429,7 +2434,7 @@
 
                 lines.push('\nExit Settings:');
                 lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
-                lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Min Profit: ${th.rsi_momentum_exit_min_profit}%  (close on 2 consecutive RSI drops/rises)`);
+                lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Range: [${th.rsi_momentum_exit_min_profit}%, ${th.rsi_momentum_exit_max_profit !== undefined ? th.rsi_momentum_exit_max_profit : 999}%]  (close on 2 consecutive RSI drops/rises)`);
                 lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Deltas: ${th.tick_momentum_exit_min_deltas || th.tick_momentum_exit_min_delta || 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
 
                 lines.push('\nConfidence Levels:');
@@ -4386,6 +4391,7 @@
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
                 document.getElementById('config-rsi-momentum-exit-enabled').checked = config.thresholds.rsi_momentum_exit_enabled !== undefined ? config.thresholds.rsi_momentum_exit_enabled : true;
                 document.getElementById('config-rsi-momentum-exit-min-profit').value = config.thresholds.rsi_momentum_exit_min_profit !== undefined ? config.thresholds.rsi_momentum_exit_min_profit : 0.05;
+                document.getElementById('config-rsi-momentum-exit-max-profit').value = config.thresholds.rsi_momentum_exit_max_profit !== undefined ? config.thresholds.rsi_momentum_exit_max_profit : 999;
                 document.getElementById('config-tick-momentum-exit-enabled').checked = config.thresholds.tick_momentum_exit_enabled !== undefined ? config.thresholds.tick_momentum_exit_enabled : false;
                 document.getElementById('config-tick-momentum-exit-min-profit').value = config.thresholds.tick_momentum_exit_min_profit !== undefined ? config.thresholds.tick_momentum_exit_min_profit : 0.05;
                 document.getElementById('config-tick-momentum-exit-min-deltas').value = config.thresholds.tick_momentum_exit_min_deltas !== undefined ? config.thresholds.tick_momentum_exit_min_deltas : '';
@@ -4549,6 +4555,7 @@
                     pnl_trailing_ratio_signal_active: 0.4,
                     rsi_momentum_exit_enabled: document.getElementById('config-rsi-momentum-exit-enabled').checked,
                     rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value),
+                    rsi_momentum_exit_max_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-max-profit').value),
                     tick_momentum_exit_enabled: document.getElementById('config-tick-momentum-exit-enabled').checked,
                     tick_momentum_exit_min_profit: safeFloat(document.getElementById('config-tick-momentum-exit-min-profit').value),
                     tick_momentum_exit_min_deltas: document.getElementById('config-tick-momentum-exit-min-deltas').value.trim(),

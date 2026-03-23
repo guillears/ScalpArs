@@ -1352,10 +1352,11 @@ class TradingEngine:
                         order.first_rsi3_pnl = round(pnl_pct, 4)
                         order.first_rsi3_minutes = round(_trk_age, 2)
 
-            # RSI Momentum Exit: two consecutive RSI drops (LONG) or rises (SHORT) while in profit
+            # RSI Momentum Exit: two consecutive RSI drops (LONG) or rises (SHORT) within P&L range
             rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
             rsi_exit_min_profit = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)
-            if rsi_exit_enabled and pair_data and pnl_pct > rsi_exit_min_profit:
+            rsi_exit_max_profit = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_max_profit', 999.0)
+            if rsi_exit_enabled and pair_data and pnl_pct > rsi_exit_min_profit and pnl_pct < rsi_exit_max_profit:
                 _rsi = pair_data.rsi
                 _rsi1 = pair_data.rsi_prev1
                 _rsi2 = pair_data.rsi_prev2
@@ -1367,7 +1368,7 @@ class TradingEngine:
                         rsi_fading = True
                     if rsi_fading:
                         tp_level = order.current_tp_level or 1
-                        logger.info(f"[RSI_MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: RSI fading ({_rsi2:.1f}->{_rsi1:.1f}->{_rsi:.1f}), pnl={pnl_pct:.4f}% > min={rsi_exit_min_profit}%")
+                        logger.info(f"[RSI_MOMENTUM_EXIT] {order.pair} {order.direction} L{tp_level}: RSI fading ({_rsi2:.1f}->{_rsi1:.1f}->{_rsi:.1f}), pnl={pnl_pct:.4f}% (range {rsi_exit_min_profit}% to {rsi_exit_max_profit}%)")
                         closed_order = await self.close_position(db, order, current_price, f"RSI_MOMENTUM_EXIT L{tp_level}")
                         if closed_order:
                             updates.append({
@@ -1947,10 +1948,11 @@ class TradingEngine:
             if pnl_pct < cached_trough_pnl:
                 order_info['trough_pnl'] = pnl_pct
 
-            # Real-time RSI Momentum Exit: two consecutive RSI drops/rises while in profit
+            # Real-time RSI Momentum Exit: two consecutive RSI drops/rises within P&L range
             rt_rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
             rt_rsi_exit_min = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)
-            if rt_rsi_exit_enabled and pnl_pct > rt_rsi_exit_min:
+            rt_rsi_exit_max = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_max_profit', 999.0)
+            if rt_rsi_exit_enabled and pnl_pct > rt_rsi_exit_min and pnl_pct < rt_rsi_exit_max:
                 _rt_rsi = order_info.get('rsi')
                 _rt_rsi1 = order_info.get('rsi_prev1')
                 _rt_rsi2 = order_info.get('rsi_prev2')
@@ -1962,7 +1964,7 @@ class TradingEngine:
                         rt_rsi_fading = True
                     if rt_rsi_fading:
                         tp_level = order_info.get('current_tp_level', 1)
-                        logger.warning(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: RSI fading ({_rt_rsi2:.1f}->{_rt_rsi1:.1f}->{_rt_rsi:.1f}), pnl={pnl_pct:.4f}% > min={rt_rsi_exit_min}% - CLOSING NOW!")
+                        logger.warning(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: RSI fading ({_rt_rsi2:.1f}->{_rt_rsi1:.1f}->{_rt_rsi:.1f}), pnl={pnl_pct:.4f}% (range {rt_rsi_exit_min}% to {rt_rsi_exit_max}%) - CLOSING NOW!")
                         try:
                             async with AsyncSessionLocal() as db:
                                 result = await db.execute(

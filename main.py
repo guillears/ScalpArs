@@ -1584,19 +1584,19 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 bucket = [o for o in ct_orders if sr_min <= abs(o.entry_btc_ema20_slope) < sr_max and ar_min <= o.entry_btc_adx < ar_max]
                 if not bucket:
                     continue
-                wins = len([o for o in bucket if (o.pnl or 0) > 0])
-                pnl_sum = sum(o.pnl or 0 for o in bucket)
-                count = len(bucket)
-                long_count = len([o for o in bucket if (o.direction or "LONG") == "LONG"])
-                short_count = count - long_count
+                ct_wins = len([o for o in bucket if (o.pnl or 0) > 0])
+                ct_pnl_sum = sum(o.pnl or 0 for o in bucket)
+                ct_count = len(bucket)
+                ct_long_count = len([o for o in bucket if (o.direction or "LONG") == "LONG"])
+                ct_short_count = ct_count - ct_long_count
                 btc_slope_adx_crosstab.append({
                     "slope_range": sr_name,
                     "adx_range": ar_name,
-                    "trades": count,
-                    "direction": f"{long_count}L/{short_count}S",
-                    "win_rate": round(wins / count * 100, 1),
-                    "avg_pnl": round(pnl_sum / count, 2),
-                    "total_pnl": round(pnl_sum, 2),
+                    "trades": ct_count,
+                    "direction": f"{ct_long_count}L/{ct_short_count}S",
+                    "win_rate": round(ct_wins / ct_count * 100, 1),
+                    "avg_pnl": round(ct_pnl_sum / ct_count, 2),
+                    "total_pnl": round(ct_pnl_sum, 2),
                 })
 
     except Exception as e:

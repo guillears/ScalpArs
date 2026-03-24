@@ -134,6 +134,10 @@
                 <span id="btc-regime-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-500/20 text-gray-400">--</span>
                 <span class="text-gray-500">(BTC)</span>
                 <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
+                <span class="text-gray-500">|</span>
+                <span class="text-gray-400 font-medium">BTC ADX:</span>
+                <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
+                <span id="btc-adx-low-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase tracking-wide">ADX LOW</span>
             </div>
             <div class="flex items-center space-x-4">
                 <span id="regime-pair-count" class="text-gray-500">--</span>
@@ -4058,7 +4062,10 @@
                     if (r === 'BULLISH') bulls++;
                     else if (r === 'BEARISH') bears++;
                     else neutrals++;
-                    if (p.pair === 'BTCUSDT') btcRegime = r;
+                    if (p.pair === 'BTCUSDT') {
+                        btcRegime = r;
+                        var btcAdxVal = p.adx;
+                    }
                 });
                 const badge = document.getElementById('btc-regime-badge');
                 if (btcRegime === 'BULLISH') {
@@ -4078,6 +4085,19 @@
                 const globalTag = document.getElementById('btc-global-tag');
                 const btcGlobalOn = document.getElementById('config-btc-global-filter-enabled');
                 if (globalTag) globalTag.classList.toggle('hidden', !(btcGlobalOn && btcGlobalOn.checked));
+
+                const adxValueEl = document.getElementById('btc-adx-value');
+                const adxLowTag = document.getElementById('btc-adx-low-tag');
+                const minBtcAdxEl = document.getElementById('config-macro-trend-min-btc-adx');
+                const minBtcAdx = minBtcAdxEl ? parseFloat(minBtcAdxEl.value) || 0 : 0;
+                if (adxValueEl && btcAdxVal != null) {
+                    adxValueEl.textContent = btcAdxVal.toFixed(1);
+                    const isLow = minBtcAdx > 0 && btcAdxVal < minBtcAdx;
+                    adxValueEl.className = isLow
+                        ? 'text-red-400 font-bold'
+                        : 'text-emerald-400 font-bold';
+                    if (adxLowTag) adxLowTag.classList.toggle('hidden', !isLow);
+                }
             } catch (e) {
                 console.error('Error loading pairs:', e);
             }

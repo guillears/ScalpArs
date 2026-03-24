@@ -786,7 +786,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_slope_adx_crosstab": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -1049,7 +1049,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "stretch_performance": [],
             "pair_slope_performance": [],
             "btc_slope_performance": [],
-            "btc_adx_performance": [],
+            "btc_adx_performance": [], "btc_slope_adx_crosstab": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -1227,6 +1227,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     pair_slope_performance = []
     btc_slope_performance = []
     btc_adx_performance = []
+    btc_slope_adx_crosstab = []
     try:
         gap_ranges = [
             ("0.12 - 0.15%", 0.12, 0.15),
@@ -1569,6 +1570,35 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_gap": avg_gap
                 })
 
+        # BTC Slope x BTC ADX Cross-Tab
+        ct_slope_ranges = [
+            ("<0.06%", 0.00, 0.06), ("0.06-0.10%", 0.06, 0.10), ("0.10-0.16%", 0.10, 0.16),
+            ("0.16-0.25%", 0.16, 0.25), ("0.25-0.40%", 0.25, 0.40), (">0.40%", 0.40, 999),
+        ]
+        ct_adx_ranges_bt = [
+            ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
+        ]
+        ct_orders = [o for o in orders if o.entry_btc_ema20_slope is not None and o.entry_btc_adx is not None]
+        for sr_name, sr_min, sr_max in ct_slope_ranges:
+            for ar_name, ar_min, ar_max in ct_adx_ranges_bt:
+                bucket = [o for o in ct_orders if sr_min <= abs(o.entry_btc_ema20_slope) < sr_max and ar_min <= o.entry_btc_adx < ar_max]
+                if not bucket:
+                    continue
+                wins = len([o for o in bucket if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in bucket)
+                count = len(bucket)
+                long_count = len([o for o in bucket if (o.direction or "LONG") == "LONG"])
+                short_count = count - long_count
+                btc_slope_adx_crosstab.append({
+                    "slope_range": sr_name,
+                    "adx_range": ar_name,
+                    "trades": count,
+                    "direction": f"{long_count}L/{short_count}S",
+                    "win_rate": round(wins / count * 100, 1),
+                    "avg_pnl": round(pnl_sum / count, 2),
+                    "total_pnl": round(pnl_sum, 2),
+                })
+
     except Exception as e:
         logger.error(f"[PERF] Error computing gap/rsi/adx/stretch performance: {e}\n{traceback.format_exc()}")
         gap_performance = []
@@ -1580,6 +1610,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         pair_slope_performance = []
         btc_slope_performance = []
         btc_adx_performance = []
+        btc_slope_adx_crosstab = []
     
     # By Close Reason - group by reason with L4+ aggregation
     by_close_reason = {}
@@ -2169,6 +2200,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "pair_slope_performance": pair_slope_performance,
         "btc_slope_performance": btc_slope_performance,
         "btc_adx_performance": btc_adx_performance,
+        "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown,

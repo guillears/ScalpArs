@@ -859,6 +859,30 @@
                     </div>
                 </div>
 
+                <!-- BTC Slope x BTC ADX Cross-Tab -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">BTC Slope x BTC ADX Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">How BTC trend strength (slope) and BTC trend conviction (ADX) interact — find the macro sweet spot</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">BTC Slope</th>
+                                    <th class="px-3 py-2 font-medium">BTC ADX</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="btc-slope-adx-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- RSI x ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by RSI x ADX</h3>
@@ -2806,6 +2830,16 @@
                     lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)}`);
                 }
 
+                // --- BTC Slope x BTC ADX CROSS-TAB ---
+                if (perf.btc_slope_adx_crosstab && perf.btc_slope_adx_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## BTC Slope x BTC ADX Cross-Tab\n');
+                    lines.push(`${'Slope'.padEnd(12)} ${'ADX'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                    for (const r of perf.btc_slope_adx_crosstab) {
+                        lines.push(`${(r.slope_range||'').padEnd(12)} ${(r.adx_range||'').padEnd(8)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(10)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)}`);
+                    }
+                }
+
                 // --- RSI x ADX CROSS-TAB ---
                 if (perf.rsi_adx_crosstab && perf.rsi_adx_crosstab.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -3438,6 +3472,28 @@
                     }).join('');
                 } else {
                     btcAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX)</td></tr>';
+                }
+
+                // BTC Slope x BTC ADX Cross-Tab
+                const btcSlopeAdxBody = document.getElementById('btc-slope-adx-crosstab-body');
+                if (data.btc_slope_adx_crosstab && data.btc_slope_adx_crosstab.length > 0) {
+                    btcSlopeAdxBody.innerHTML = data.btc_slope_adx_crosstab.map(r => {
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : r.win_rate >= 25 ? 'text-yellow-400' : 'text-red-400';
+                        const totalClass = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgClass = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${r.slope_range}</td>
+                                <td class="px-3 py-2 font-medium text-purple-400">${r.adx_range}</td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-center text-gray-300">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right ${avgClass} font-medium">${formatUSD(r.avg_pnl || 0)}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcSlopeAdxBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
 
                 // RSI x ADX Cross-Tab

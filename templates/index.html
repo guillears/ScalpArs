@@ -4057,6 +4057,7 @@
                 // Update regime bar
                 let bulls = 0, bears = 0, neutrals = 0;
                 let btcRegime = null;
+                let btcAdxVal = null;
                 data.forEach(p => {
                     const r = p.macro_regime || 'NEUTRAL';
                     if (r === 'BULLISH') bulls++;
@@ -4064,7 +4065,7 @@
                     else neutrals++;
                     if (p.pair === 'BTCUSDT') {
                         btcRegime = r;
-                        var btcAdxVal = p.adx;
+                        btcAdxVal = p.adx;
                     }
                 });
                 const badge = document.getElementById('btc-regime-badge');

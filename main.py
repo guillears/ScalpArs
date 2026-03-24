@@ -1805,7 +1805,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70-80", 70, 80),
         ]
         ct_adx_ranges = [
-            ("10-20", 10, 20), ("20-30", 20, 30), ("30-40", 30, 40), ("40+", 40, 999),
+            ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
+            ("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40),
+            ("40-50", 40, 50), ("50+", 50, 999),
         ]
         ct_orders = [o for o in orders if o.entry_rsi is not None and o.entry_adx is not None]
         for direction in ["LONG", "SHORT"]:

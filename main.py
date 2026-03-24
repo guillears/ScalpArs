@@ -789,7 +789,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
-            "winning_trades_drawdown": [],
+            "winning_trades_drawdown": [], "trough_recovery": [],
             "never_positive_deep_dive": [],
             "performance_over_time": [],
             "post_exit_regret_deep_dive": [],
@@ -1052,7 +1052,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "btc_adx_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
-            "winning_trades_drawdown": [],
+            "winning_trades_drawdown": [], "trough_recovery": [],
             "never_positive_deep_dive": [],
             "performance_over_time": [],
             "post_exit_regret_deep_dive": []
@@ -1836,7 +1836,46 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             })
     except Exception as e:
         logger.error(f"[PERF] Error computing SL deep dive / winning drawdown: {e}\n{traceback.format_exc()}")
-    
+
+    # Trough Recovery Analysis: cumulative — for each depth, how many trades dipped that far and recovered?
+    trough_recovery = []
+    try:
+        trough_levels = [-0.05, -0.10, -0.15, -0.20, -0.25, -0.30, -0.40, -0.50]
+        for level in trough_levels:
+            reached = [o for o in orders if (o.trough_pnl or 0) <= level]
+            count = len(reached)
+            if count == 0:
+                continue
+            recovered = [o for o in reached if (o.pnl or 0) > 0]
+            rec_count = len(recovered)
+            avg_final_pct = sum(o.pnl_percentage or 0 for o in reached) / count
+            avg_final_usd = sum(o.pnl or 0 for o in reached) / count
+            sig_active = sum(1 for o in reached if o.signal_active_at_close is True)
+            sig_inactive = sum(1 for o in reached if o.signal_active_at_close is False)
+            by_dir = {"LONG": 0, "SHORT": 0}
+            for o in reached:
+                by_dir[o.direction or "LONG"] += 1
+            reason_counts = {}
+            for o in reached:
+                r = (o.close_reason or "UNKNOWN").split(" L")[0]
+                reason_counts[r] = reason_counts.get(r, 0) + 1
+            top_reason = max(reason_counts, key=reason_counts.get) if reason_counts else "-"
+            top_reason_n = reason_counts.get(top_reason, 0)
+            trough_recovery.append({
+                "level": level,
+                "count": count,
+                "recovered": rec_count,
+                "recovery_pct": round(rec_count / count * 100, 1),
+                "avg_final_pct": round(avg_final_pct, 4),
+                "avg_final_usd": round(avg_final_usd, 2),
+                "signal_active_pct": round(sig_active / count * 100, 1) if count > 0 else 0,
+                "by_direction": by_dir,
+                "top_reason": f"{top_reason} ({top_reason_n})",
+                "avg_duration": calc_avg_duration(reached)
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing trough recovery: {e}\n{traceback.format_exc()}")
+
     rsi_adx_crosstab = []
     try:
         ct_rsi_ranges = [
@@ -2133,6 +2172,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown,
+        "trough_recovery": trough_recovery,
         "rsi_adx_crosstab": rsi_adx_crosstab,
         "never_positive_deep_dive": never_positive_deep_dive,
         "performance_over_time": _compute_time_buckets(orders),

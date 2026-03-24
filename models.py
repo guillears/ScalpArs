@@ -70,6 +70,8 @@ class Order(Base):
     entry_ema20_slope = Column(Float, nullable=True)
     # EMA20 slope % of BTC at entry
     entry_btc_ema20_slope = Column(Float, nullable=True)
+    # BTC ADX(14) value at entry
+    entry_btc_adx = Column(Float, nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

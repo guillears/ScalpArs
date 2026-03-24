@@ -801,6 +801,33 @@
                     </div>
                 </div>
 
+                <!-- Performance by BTC ADX -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC ADX</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by BTC ADX(14) value at entry — higher ADX = stronger BTC trend</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">ADX Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                </tr>
+                            </thead>
+                            <tbody id="btc-adx-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- RSI x ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by RSI x ADX</h3>
@@ -1503,8 +1530,12 @@
                                 <input type="number" step="0.01" id="config-macro-trend-flat-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Min BTC ADX:
+                                <input type="number" step="1" min="0" id="config-macro-trend-min-btc-adx" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                            </label>
                         </div>
-                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment)</p>
+                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC ADX >= min)</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI &amp; ADX Filter</span>
@@ -2412,7 +2443,7 @@
                 lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
                 lines.push(`  ADX Very Strong: >${th.adx_very_strong}  |  ADX Strong: >${th.adx_strong}  |  ADX Max: ${th.momentum_adx_max}`);
                 lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
-                lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
+                lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}  |  Min BTC ADX: ${th.macro_trend_min_btc_adx !== undefined ? th.macro_trend_min_btc_adx : 0}`);
                 lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
                 lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}`);
                 lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
@@ -2714,6 +2745,18 @@
                 lines.push('## Performance by BTC EMA20 Slope (abs)\n');
                 lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
                 for (const r of (perf.btc_slope_performance || [])) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                    const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                    const gapStr = r.avg_gap != null ? (r.avg_gap.toFixed(2)+'%') : '-';
+                    lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)}`);
+                }
+
+                // --- BTC ADX ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC ADX\n');
+                lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
+                for (const r of (perf.btc_adx_performance || [])) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
                     const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
@@ -3321,6 +3364,38 @@
                     }).join('');
                 } else {
                     btcSlopeBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC EMA20 slope)</td></tr>';
+                }
+
+                // Performance by BTC ADX
+                const btcAdxBody = document.getElementById('btc-adx-performance-body');
+                if (data.btc_adx_performance && data.btc_adx_performance.length > 0) {
+                    const confColorsBA = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    btcAdxBody.innerHTML = data.btc_adx_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${confColorsBA[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${r.range}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_adx != null ? r.avg_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX)</td></tr>';
                 }
 
                 // RSI x ADX Cross-Tab
@@ -4373,6 +4448,7 @@
                 document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
                 document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
+                document.getElementById('config-macro-trend-min-btc-adx').value = config.thresholds.macro_trend_min_btc_adx !== undefined ? config.thresholds.macro_trend_min_btc_adx : 0;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-long-rsi-max').value = config.thresholds.momentum_long_rsi_max !== undefined ? config.thresholds.momentum_long_rsi_max : 100;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
@@ -4536,6 +4612,7 @@
                     btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
                     macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
+                    macro_trend_min_btc_adx: safeFloat(document.getElementById('config-macro-trend-min-btc-adx').value),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_long_rsi_max: safeFloat(document.getElementById('config-momentum-long-rsi-max').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),

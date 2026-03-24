@@ -578,7 +578,8 @@ class TradingEngine:
         entry_adx_prev: float = None,
         entry_macro_trend: str = None,
         entry_ema20_slope: float = None,
-        entry_btc_ema20_slope: float = None
+        entry_btc_ema20_slope: float = None,
+        entry_btc_adx: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -734,6 +735,7 @@ class TradingEngine:
             entry_macro_trend=entry_macro_trend,
             entry_ema20_slope=entry_ema20_slope,
             entry_btc_ema20_slope=entry_btc_ema20_slope,
+            entry_btc_adx=entry_btc_adx,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -1573,6 +1575,7 @@ class TradingEngine:
         btc_ema20_prev6 = None
         btc_regime = "NEUTRAL"
         btc_ema20_slope_pct = None
+        btc_adx = None
         if btc_global_enabled:
             btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
             if btc_ohlcv:
@@ -1580,11 +1583,12 @@ class TradingEngine:
                 if btc_indicators:
                     btc_ema20 = btc_indicators.get('ema20')
                     btc_ema20_prev6 = btc_indicators.get('ema20_prev6')
+                    btc_adx = btc_indicators.get('adx')
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                     btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
                     if btc_ema20 and btc_ema20_prev6 and btc_ema20_prev6 != 0:
                         btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev6) / btc_ema20_prev6) * 100, 4)
-            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev6})")
+            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev6}, adx={btc_adx})")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
@@ -1651,9 +1655,19 @@ class TradingEngine:
 
                     pair_blocks = (pair_regime != btc_regime)
 
-                    if btc_blocks or pair_blocks:
-                        reason = f"BTC={btc_regime}" if btc_blocks else f"pair={pair_regime} vs BTC={btc_regime}"
-                        logger.info(f"[BTC-GATE] {pair}: {signal} blocked — regime mismatch ({reason})")
+                    min_btc_adx = getattr(config.trading_config.thresholds, 'macro_trend_min_btc_adx', 0)
+                    btc_adx_blocks = False
+                    if min_btc_adx > 0 and btc_adx is not None and btc_adx < min_btc_adx:
+                        btc_adx_blocks = True
+
+                    if btc_blocks or pair_blocks or btc_adx_blocks:
+                        if btc_adx_blocks:
+                            reason = f"BTC ADX {btc_adx:.1f} < min {min_btc_adx}"
+                        elif btc_blocks:
+                            reason = f"BTC={btc_regime}"
+                        else:
+                            reason = f"pair={pair_regime} vs BTC={btc_regime}"
+                        logger.info(f"[BTC-GATE] {pair}: {signal} blocked — {reason}")
                         signal = "NO_TRADE"
 
                 await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
@@ -1698,7 +1712,8 @@ class TradingEngine:
                         entry_adx_prev=round(entry_adx_prev, 1) if entry_adx_prev is not None else None,
                         entry_macro_trend=entry_regime,
                         entry_ema20_slope=pair_ema20_slope_pct,
-                        entry_btc_ema20_slope=btc_ema20_slope_pct
+                        entry_btc_ema20_slope=btc_ema20_slope_pct,
+                        entry_btc_adx=round(btc_adx, 1) if btc_adx is not None else None
                     )
 
                     if order:

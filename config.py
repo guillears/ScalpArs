@@ -89,6 +89,7 @@ class SignalThresholds(BaseModel):
     momentum_adx_max: float = 100.0  # Max ADX for momentum entries (100 = disabled)
     momentum_short_rsi_min: float = 30.0  # Min RSI for momentum SHORT - avoid shorting oversold (0 = disabled)
     btc_global_filter_enabled: bool = True  # Use BTC regime to gate all pairs (overrides per-pair regime)
+    macro_trend_min_btc_adx: float = 0  # Min BTC ADX to allow entries (0 = disabled)
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit
     signal_lost_min_profit: float = 0.05  # Min P&L % (notional) to trigger signal-lost exit
     signal_lost_max_profit: float = 999.0  # Max P&L % for signal-lost exit (creates a range with min)

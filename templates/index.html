@@ -418,6 +418,7 @@
                                     <tr class="text-gray-400 text-left border-b border-white/10">
                                         <th class="px-3 py-2 font-medium">Close Reason</th>
                                         <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                        <th class="px-3 py-2 font-medium text-center">%</th>
                                         <th class="px-3 py-2 font-medium text-center">Direction</th>
                                         <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
@@ -438,7 +439,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="19" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -2629,7 +2630,8 @@
                 // --- CLOSING REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)} ${'RSI3%'.padStart(7)} ${'RSI3P&L'.padStart(9)} ${'RSI3Min'.padStart(8)}`);
+                const crCopyTotal = Object.values(perf.by_close_reason || {}).reduce((s, r) => s + (r.trades || 0), 0);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)} ${'RSI3%'.padStart(7)} ${'RSI3P&L'.padStart(9)} ${'RSI3Min'.padStart(8)}`);
                 for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -2644,7 +2646,8 @@
                     const rsi3PctStr = r.rsi3_fire_pct != null ? r.rsi3_fire_pct.toFixed(1) + '%' : '-';
                     const rsi3PnlStr = r.avg_rsi3_pnl != null ? (r.avg_rsi3_pnl >= 0 ? '+' : '') + r.avg_rsi3_pnl.toFixed(4) + '%' : '-';
                     const rsi3MinStr = r.avg_rsi3_min != null ? r.avg_rsi3_min.toFixed(1) : '-';
-                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${rsi3PctStr.padStart(7)} ${rsi3PnlStr.padStart(9)} ${rsi3MinStr.padStart(8)}`);
+                    const crPctStr = crCopyTotal > 0 ? (r.trades / crCopyTotal * 100).toFixed(1) + '%' : '-';
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${rsi3PctStr.padStart(7)} ${rsi3PnlStr.padStart(9)} ${rsi3MinStr.padStart(8)}`);
                 }
 
                 // --- ENTRY TYPE PERFORMANCE ---
@@ -3138,6 +3141,8 @@
                     const sortedReasons = Object.entries(data.by_close_reason)
                         .sort((a, b) => sortOrder(a[0]) - sortOrder(b[0]));
                     
+                    const crTotalTrades = sortedReasons.reduce((sum, [, s]) => sum + (s.trades || 0), 0);
+
                     const confBadgeColors = {
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
@@ -3179,6 +3184,7 @@
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${reasonClass}">${reason}</td>
                                 <td class="px-3 py-2 text-center">${stats.trades}</td>
+                                <td class="px-3 py-2 text-center text-gray-400">${crTotalTrades > 0 ? (stats.trades / crTotalTrades * 100).toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-center">${dirBadges}</td>
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
                                 <td class="px-3 py-2 text-right ${pnlPctClass}">${stats.avg_pnl_pct >= 0 ? '+' : ''}${stats.avg_pnl_pct.toFixed(2)}%</td>
@@ -3200,7 +3206,7 @@
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="19" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap

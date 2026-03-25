@@ -1,0 +1,68 @@
+---
+description: Semi-conclusions from trading strategy analysis at 188 trades (March 2026)
+alwaysApply: false
+globs:
+  - services/trading_engine.py
+  - main.py
+  - trading_config.json
+---
+
+# Trading Strategy Analysis - Semi-Conclusions (188 trades, March 2026)
+
+## EXIT OPTIMIZATION
+
+### Key Findings
+
+1. **RSI Momentum Exit is the strongest exit signal**: Post-Exit Regret simulation shows replacing all BE exits with unrestricted RSI Momentum would swing overall P&L from -$1,409 to ~+$536 (est. +$1,945 improvement on BE trades alone).
+
+2. **Signal Lost is the dominant loss driver**: 38 trades at avg -$65.70 each = -$2,496 total. Many of these would have been caught earlier by RSI Momentum (RSI fading precedes full signal reversal). Lowering RSI Momentum min profit could recover significant losses here.
+
+3. **BE Level performance varies by level**:
+   - L1/L2: performing close to what RSI Momentum would deliver — current offsets are reasonable as safety nets.
+   - L3/L4/L5: leaving significant money on the table vs RSI exit. Consider raising offsets so BE acts as a floor below RSI's natural exit, not competing with it.
+
+4. **RSI Momentum triggers reliably**: 79-100% trigger rate across all BE levels within the 45-min post-exit window.
+
+### Exit Optimization Levers (to test at 300-400 trades)
+
+- **Lever 1**: Lower RSI Momentum Exit `min_profit` to catch losing trades earlier (before Signal Lost). Test values: -0.5%, -1.0%, or fully unrestricted.
+- **Lever 2**: Adjust BE Level offsets (especially L3-L5) so they don't cut runners prematurely before RSI can trigger a smarter exit.
+
+### Exit Caveats
+
+- RSI Exit P&L in Post-Exit Regret is measured *after* BE close, not during trade — real results may differ slightly.
+- Small samples for higher levels: L3=23, L4=10, L5=5. Need more data.
+- Simulation assumes trades where RSI doesn't trigger exit at 45-min Final P&L, which is a snapshot not a real exit.
+
+---
+
+## ENTRY OPTIMIZATION
+
+### Key Findings
+
+1. **EMA5-EMA8 Gap is the strongest entry quality predictor**:
+   - SHORT 0.02-0.05%: 39% WR, -$481 (41 trades — biggest loss bucket)
+   - SHORT 0.05-0.10%: 54.1% WR, -$338 (moderate)
+   - SHORT 0.10-0.20%: **67.5% WR, +$248** (only profitable bucket)
+   - Weak momentum entries (low gap) are the primary source of Signal Lost trades. Never Positive confirms: 8/15 never-positive trades had 0.02-0.05% gap.
+
+2. **ADX sweet spot is 20-25, not higher**:
+   - SHORT 20-25: 56.4% WR, +$102 (only profitable ADX range)
+   - SHORT 25-30: 51.3% WR, -$415
+   - SHORT 30-35: 47.8% WR, -$263
+   - Higher ADX in choppy markets may mean overextended moves that snap back into Signal Lost.
+
+3. **EMA20 Slope**: moderate slopes (0.08-0.12%) perform best for shorts. Very steep slopes (>0.20%) are marginal — move may already be extended.
+
+4. **Longs underperform overall** (34.78% vs 53.52% WR) but this is partly regime-driven (choppy bearish market during this sample). RSI-based tightening may not generalize across regimes.
+
+### Entry Optimization Levers (to test at 300-400 trades)
+
+- **Lever 1 (high conviction)**: Raise EMA5-EMA8 minimum gap from 0.02% to 0.05% or higher. Directly filters weak-momentum entries that become Signal Lost. Would have prevented ~41 losing short trades.
+- **Lever 2 (moderate conviction)**: Cap ADX max at 30 instead of 35. ADX 30+ underperforms in both directions in choppy conditions.
+
+### Entry Caveats
+
+- 188 trades in a single choppy bearish regime — patterns may shift in trending or bullish markets.
+- RSI range observations may be regime-specific; momentum strength (EMA5-8 gap, EMA20 slope) is likely more universal.
+- Longs sample is small (46 trades) — hard to draw strong conclusions on long-specific filters.

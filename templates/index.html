@@ -174,6 +174,169 @@
             </div>
         </section>
 
+        <!-- Top 50 Pairs Table -->
+        <section>
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <h2 class="text-lg font-semibold text-gray-300">Top Pairs by Volume</h2>
+                    <select id="top-pairs-limit" onchange="updateTradingPairsLimit()" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm">
+                        <option value="5">Top 5</option>
+                        <option value="10">Top 10</option>
+                        <option value="20" selected>Top 20</option>
+                        <option value="50">Top 50</option>
+                        <option value="100">Top 100</option>
+                    </select>
+                    <span class="text-xs text-yellow-400/80 ml-2">← Only these pairs can open trades</span>
+                </div>
+                <div class="flex items-center space-x-2 text-sm text-gray-500">
+                    <span>Auto-refresh: 10s</span>
+                    <button id="refresh-btn" onclick="refreshPairs()" class="px-3 py-1 glass rounded-lg hover:bg-white/10 transition">
+                        Refresh Now
+                    </button>
+                </div>
+            </div>
+            <div class="glass rounded-xl overflow-hidden">
+                <div class="overflow-x-auto scrollbar-thin max-h-96 overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-white/5 sticky top-0">
+                            <tr class="text-gray-400 text-left">
+                                <th class="px-4 py-3 font-medium">Pair</th>
+                                <th class="px-4 py-3 font-medium text-right">Volume 24h</th>
+                                <th class="px-4 py-3 font-medium text-right">Price</th>
+                                <th class="px-4 py-3 font-medium text-right">EMA5</th>
+                                <th class="px-4 py-3 font-medium text-right">EMA8</th>
+                                <th class="px-4 py-3 font-medium text-right">EMA13</th>
+                                <th class="px-4 py-3 font-medium text-right">EMA20</th>
+                                <th class="px-4 py-3 font-medium text-right">Gap %</th>
+                                <th class="px-4 py-3 font-medium text-right">RSI(12)</th>
+                                <th class="px-4 py-3 font-medium text-right">ADX</th>
+                                <th class="px-4 py-3 font-medium text-center">Confidence</th>
+                                <th class="px-4 py-3 font-medium text-center">Signal</th>
+                                <th class="px-4 py-3 font-medium text-center">Open Positions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pairs-table-body" class="divide-y divide-white/5">
+                            <tr>
+                                <td colspan="13" class="px-4 py-8 text-center text-gray-500">Loading pairs data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Orders Tabs -->
+        <section>
+            <div class="flex items-center space-x-8 border-b border-white/10 mb-4">
+                <button onclick="switchOrdersTab('transactions')" id="tab-transactions" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition tab-active">
+                    Transactions
+                </button>
+                <button onclick="switchOrdersTab('open')" id="tab-open" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
+                    Open Orders
+                </button>
+                <button onclick="switchOrdersTab('closed')" id="tab-closed" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
+                    Closed Orders
+                </button>
+            </div>
+            
+            <!-- Transactions Tab -->
+            <div id="content-transactions" class="glass rounded-xl overflow-hidden">
+                <div class="overflow-x-auto scrollbar-thin max-h-80 overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-white/5 sticky top-0">
+                            <tr class="text-gray-400 text-left">
+                                <th class="px-4 py-3 font-medium">Time</th>
+                                <th class="px-4 py-3 font-medium">Order ID</th>
+                                <th class="px-4 py-3 font-medium">Pair</th>
+                                <th class="px-4 py-3 font-medium">Confidence</th>
+                                <th class="px-4 py-3 font-medium">Action</th>
+                                <th class="px-4 py-3 font-medium text-center">Type</th>
+                                <th class="px-4 py-3 font-medium text-right">Quantity</th>
+                                <th class="px-4 py-3 font-medium text-right">Price</th>
+                                <th class="px-4 py-3 font-medium text-right">Investment</th>
+                                <th class="px-4 py-3 font-medium text-right">Leverage</th>
+                                <th class="px-4 py-3 font-medium text-right">Notional</th>
+                                <th class="px-4 py-3 font-medium text-right">Fee</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-table-body" class="divide-y divide-white/5">
+                            <tr>
+                                <td colspan="12" class="px-4 py-8 text-center text-gray-500">No transactions yet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Open Orders Tab -->
+            <div id="content-open" class="glass rounded-xl overflow-hidden hidden">
+                <div class="overflow-x-auto scrollbar-thin max-h-80 overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-white/5 sticky top-0">
+                            <tr class="text-gray-400 text-left">
+                                <th class="px-4 py-3 font-medium">Time</th>
+                                <th class="px-4 py-3 font-medium">Pair</th>
+                                <th class="px-4 py-3 font-medium">Confidence</th>
+                                <th class="px-4 py-3 font-medium">Direction</th>
+                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
+                                <th class="px-4 py-3 font-medium text-right">Investment</th>
+                                <th class="px-4 py-3 font-medium text-right">Leverage</th>
+                                <th class="px-4 py-3 font-medium text-right">Notional</th>
+                                <th class="px-4 py-3 font-medium text-right">Entry</th>
+                                <th class="px-4 py-3 font-medium text-right">Current</th>
+                                <th class="px-4 py-3 font-medium text-right">Fee</th>
+                                <th class="px-4 py-3 font-medium text-right">High/Low</th>
+                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
+                                <th class="px-4 py-3 font-medium text-right">P&L</th>
+                                <th class="px-4 py-3 font-medium text-center">BE Level</th>
+                                <th class="px-4 py-3 font-medium text-right">Duration</th>
+                                <th class="px-4 py-3 font-medium text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="open-orders-table-body" class="divide-y divide-white/5">
+                            <tr>
+                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No open orders</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Closed Orders Tab -->
+            <div id="content-closed" class="glass rounded-xl overflow-hidden hidden">
+                <div class="overflow-x-auto scrollbar-thin max-h-80 overflow-y-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-white/5 sticky top-0">
+                            <tr class="text-gray-400 text-left">
+                                <th class="px-4 py-3 font-medium">Opened</th>
+                                <th class="px-4 py-3 font-medium">Closed</th>
+                                <th class="px-4 py-3 font-medium">Pair</th>
+                                <th class="px-4 py-3 font-medium">Confidence</th>
+                                <th class="px-4 py-3 font-medium">Direction</th>
+                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
+                                <th class="px-4 py-3 font-medium text-center">Exit Type</th>
+                                <th class="px-4 py-3 font-medium text-right">Investment</th>
+                                <th class="px-4 py-3 font-medium text-right">Leverage</th>
+                                <th class="px-4 py-3 font-medium text-right">Entry</th>
+                                <th class="px-4 py-3 font-medium text-right">Exit</th>
+                                <th class="px-4 py-3 font-medium text-right">Total Fee</th>
+                                <th class="px-4 py-3 font-medium text-right">P&L</th>
+                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
+                                <th class="px-4 py-3 font-medium text-center">BE Level</th>
+                                <th class="px-4 py-3 font-medium text-right">Duration</th>
+                                <th class="px-4 py-3 font-medium">Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody id="closed-orders-table-body" class="divide-y divide-white/5">
+                            <tr>
+                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
         <!-- Performance Metrics -->
         <section>
             <h2 class="text-lg font-semibold text-gray-300 mb-4">Closed Orders Performance</h2>
@@ -1028,169 +1191,6 @@
                         <canvas id="performance-over-time-chart"></canvas>
                     </div>
                     <p id="performance-over-time-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- Top 50 Pairs Table -->
-        <section>
-            <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center space-x-3">
-                    <h2 class="text-lg font-semibold text-gray-300">Top Pairs by Volume</h2>
-                    <select id="top-pairs-limit" onchange="updateTradingPairsLimit()" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm">
-                        <option value="5">Top 5</option>
-                        <option value="10">Top 10</option>
-                        <option value="20" selected>Top 20</option>
-                        <option value="50">Top 50</option>
-                        <option value="100">Top 100</option>
-                    </select>
-                    <span class="text-xs text-yellow-400/80 ml-2">← Only these pairs can open trades</span>
-                </div>
-                <div class="flex items-center space-x-2 text-sm text-gray-500">
-                    <span>Auto-refresh: 10s</span>
-                    <button id="refresh-btn" onclick="refreshPairs()" class="px-3 py-1 glass rounded-lg hover:bg-white/10 transition">
-                        Refresh Now
-                    </button>
-                </div>
-            </div>
-            <div class="glass rounded-xl overflow-hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-96 overflow-y-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-white/5 sticky top-0">
-                            <tr class="text-gray-400 text-left">
-                                <th class="px-4 py-3 font-medium">Pair</th>
-                                <th class="px-4 py-3 font-medium text-right">Volume 24h</th>
-                                <th class="px-4 py-3 font-medium text-right">Price</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA5</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA8</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA13</th>
-                                <th class="px-4 py-3 font-medium text-right">EMA20</th>
-                                <th class="px-4 py-3 font-medium text-right">Gap %</th>
-                                <th class="px-4 py-3 font-medium text-right">RSI(12)</th>
-                                <th class="px-4 py-3 font-medium text-right">ADX</th>
-                                <th class="px-4 py-3 font-medium text-center">Confidence</th>
-                                <th class="px-4 py-3 font-medium text-center">Signal</th>
-                                <th class="px-4 py-3 font-medium text-center">Open Positions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="pairs-table-body" class="divide-y divide-white/5">
-                            <tr>
-                                <td colspan="13" class="px-4 py-8 text-center text-gray-500">Loading pairs data...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <!-- Orders Tabs -->
-        <section>
-            <div class="flex items-center space-x-8 border-b border-white/10 mb-4">
-                <button onclick="switchOrdersTab('transactions')" id="tab-transactions" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition tab-active">
-                    Transactions
-                </button>
-                <button onclick="switchOrdersTab('open')" id="tab-open" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
-                    Open Orders
-                </button>
-                <button onclick="switchOrdersTab('closed')" id="tab-closed" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
-                    Closed Orders
-                </button>
-            </div>
-            
-            <!-- Transactions Tab -->
-            <div id="content-transactions" class="glass rounded-xl overflow-hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-80 overflow-y-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-white/5 sticky top-0">
-                            <tr class="text-gray-400 text-left">
-                                <th class="px-4 py-3 font-medium">Time</th>
-                                <th class="px-4 py-3 font-medium">Order ID</th>
-                                <th class="px-4 py-3 font-medium">Pair</th>
-                                <th class="px-4 py-3 font-medium">Confidence</th>
-                                <th class="px-4 py-3 font-medium">Action</th>
-                                <th class="px-4 py-3 font-medium text-center">Type</th>
-                                <th class="px-4 py-3 font-medium text-right">Quantity</th>
-                                <th class="px-4 py-3 font-medium text-right">Price</th>
-                                <th class="px-4 py-3 font-medium text-right">Investment</th>
-                                <th class="px-4 py-3 font-medium text-right">Leverage</th>
-                                <th class="px-4 py-3 font-medium text-right">Notional</th>
-                                <th class="px-4 py-3 font-medium text-right">Fee</th>
-                            </tr>
-                        </thead>
-                        <tbody id="transactions-table-body" class="divide-y divide-white/5">
-                            <tr>
-                                <td colspan="12" class="px-4 py-8 text-center text-gray-500">No transactions yet</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Open Orders Tab -->
-            <div id="content-open" class="glass rounded-xl overflow-hidden hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-80 overflow-y-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-white/5 sticky top-0">
-                            <tr class="text-gray-400 text-left">
-                                <th class="px-4 py-3 font-medium">Time</th>
-                                <th class="px-4 py-3 font-medium">Pair</th>
-                                <th class="px-4 py-3 font-medium">Confidence</th>
-                                <th class="px-4 py-3 font-medium">Direction</th>
-                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
-                                <th class="px-4 py-3 font-medium text-right">Investment</th>
-                                <th class="px-4 py-3 font-medium text-right">Leverage</th>
-                                <th class="px-4 py-3 font-medium text-right">Notional</th>
-                                <th class="px-4 py-3 font-medium text-right">Entry</th>
-                                <th class="px-4 py-3 font-medium text-right">Current</th>
-                                <th class="px-4 py-3 font-medium text-right">Fee</th>
-                                <th class="px-4 py-3 font-medium text-right">High/Low</th>
-                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
-                                <th class="px-4 py-3 font-medium text-right">P&L</th>
-                                <th class="px-4 py-3 font-medium text-center">BE Level</th>
-                                <th class="px-4 py-3 font-medium text-right">Duration</th>
-                                <th class="px-4 py-3 font-medium text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="open-orders-table-body" class="divide-y divide-white/5">
-                            <tr>
-                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No open orders</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            
-            <!-- Closed Orders Tab -->
-            <div id="content-closed" class="glass rounded-xl overflow-hidden hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-80 overflow-y-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-white/5 sticky top-0">
-                            <tr class="text-gray-400 text-left">
-                                <th class="px-4 py-3 font-medium">Opened</th>
-                                <th class="px-4 py-3 font-medium">Closed</th>
-                                <th class="px-4 py-3 font-medium">Pair</th>
-                                <th class="px-4 py-3 font-medium">Confidence</th>
-                                <th class="px-4 py-3 font-medium">Direction</th>
-                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
-                                <th class="px-4 py-3 font-medium text-center">Exit Type</th>
-                                <th class="px-4 py-3 font-medium text-right">Investment</th>
-                                <th class="px-4 py-3 font-medium text-right">Leverage</th>
-                                <th class="px-4 py-3 font-medium text-right">Entry</th>
-                                <th class="px-4 py-3 font-medium text-right">Exit</th>
-                                <th class="px-4 py-3 font-medium text-right">Total Fee</th>
-                                <th class="px-4 py-3 font-medium text-right">P&L</th>
-                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
-                                <th class="px-4 py-3 font-medium text-center">BE Level</th>
-                                <th class="px-4 py-3 font-medium text-right">Duration</th>
-                                <th class="px-4 py-3 font-medium">Reason</th>
-                            </tr>
-                        </thead>
-                        <tbody id="closed-orders-table-body" class="divide-y divide-white/5">
-                            <tr>
-                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
-                            </tr>
-                        </tbody>
-                    </table>
                 </div>
             </div>
         </section>

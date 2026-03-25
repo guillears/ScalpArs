@@ -884,6 +884,30 @@
                     </div>
                 </div>
 
+                <!-- Pair ADX Dir x BTC ADX Dir Cross-Tab -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Pair ADX Dir x BTC ADX Dir Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Performance by combination of pair ADX direction and BTC ADX direction at entry (Rising vs Falling)</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">Pair ADX Dir</th>
+                                    <th class="px-3 py-2 font-medium text-left">BTC ADX Dir</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-left">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adx-dir-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- BTC Slope x BTC ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">BTC Slope x BTC ADX Cross-Tab</h3>
@@ -2866,6 +2890,16 @@
                     }
                 }
 
+                // --- PAIR ADX DIR x BTC ADX DIR CROSS-TAB ---
+                if (perf.adx_dir_crosstab && perf.adx_dir_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Pair ADX Dir x BTC ADX Dir Cross-Tab\n');
+                    lines.push(`${'PairADX'.padEnd(10)} ${'BtcADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)}`);
+                    for (const r of perf.adx_dir_crosstab) {
+                        lines.push(`${(r.pair_adx_dir||'').padEnd(10)} ${(r.btc_adx_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)}`);
+                    }
+                }
+
                 // --- BTC Slope x BTC ADX CROSS-TAB ---
                 if (perf.btc_slope_adx_crosstab && perf.btc_slope_adx_crosstab.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -3543,6 +3577,31 @@
                     }).join('');
                 } else {
                     btcAdxDirBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX direction)</td></tr>';
+                }
+
+                // Pair ADX Dir x BTC ADX Dir Cross-Tab
+                const adxDirCtBody = document.getElementById('adx-dir-crosstab-body');
+                if (data.adx_dir_crosstab && data.adx_dir_crosstab.length > 0) {
+                    adxDirCtBody.innerHTML = data.adx_dir_crosstab.map(r => {
+                        const pairDirColor = r.pair_adx_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const btcDirColor = r.btc_adx_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${pairDirColor}">${r.pair_adx_dir}</td>
+                                <td class="px-3 py-2 font-medium ${btcDirColor}">${r.btc_adx_dir}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    adxDirCtBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>';
                 }
 
                 // BTC Slope x BTC ADX Cross-Tab

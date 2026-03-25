@@ -793,6 +793,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "never_positive_deep_dive": [],
             "performance_over_time": [],
             "post_exit_regret_deep_dive": [],
+            "hold_time_expectancy": [],
             "_error": str(e)
         }
 
@@ -1055,7 +1056,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "winning_trades_drawdown": [], "trough_recovery": [],
             "never_positive_deep_dive": [],
             "performance_over_time": [],
-            "post_exit_regret_deep_dive": []
+            "post_exit_regret_deep_dive": [],
+            "hold_time_expectancy": []
         }
     
     # Separate longs and shorts
@@ -2279,6 +2281,53 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")
 
+    # Hold-Time Expectancy
+    hold_time_expectancy = []
+    try:
+        ht_buckets = [
+            ("<3m", 0, 3), ("3-8m", 3, 8), ("8-15m", 8, 15),
+            ("15-30m", 15, 30), ("30-60m", 30, 60), ("60m+", 60, 999999),
+        ]
+        ht_orders = [o for o in orders if o.opened_at and o.closed_at]
+        for label, lo_min, hi_min in ht_buckets:
+            bucket = [o for o in ht_orders
+                      if lo_min <= (o.closed_at - o.opened_at).total_seconds() / 60.0 < hi_min]
+            ht_count = len(bucket)
+            if ht_count == 0:
+                continue
+            ht_longs = sum(1 for o in bucket if o.direction == "LONG")
+            ht_shorts = ht_count - ht_longs
+            ht_winners = [o for o in bucket if (o.pnl or 0) > 0]
+            ht_losers = [o for o in bucket if (o.pnl or 0) <= 0]
+            ht_wr = len(ht_winners) / ht_count
+            ht_avg_win = sum(o.pnl or 0 for o in ht_winners) / len(ht_winners) if ht_winners else 0
+            ht_avg_loss = sum(o.pnl or 0 for o in ht_losers) / len(ht_losers) if ht_losers else 0
+            ht_expectancy = ht_wr * ht_avg_win + (1 - ht_wr) * ht_avg_loss
+            ht_peaks = [o.peak_pnl for o in bucket if o.peak_pnl is not None]
+            ht_avg_peak = sum(ht_peaks) / len(ht_peaks) if ht_peaks else 0
+            ht_avg_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket) / ht_count
+            ht_total_pnl = sum(o.pnl or 0 for o in bucket)
+            ht_conf = {}
+            for o in bucket:
+                c = o.confidence or "UNKNOWN"
+                ht_conf[c] = ht_conf.get(c, 0) + 1
+            hold_time_expectancy.append({
+                "duration": label,
+                "trades": ht_count,
+                "longs": ht_longs,
+                "shorts": ht_shorts,
+                "win_rate": round(ht_wr * 100, 1),
+                "avg_win": round(ht_avg_win, 2),
+                "avg_loss": round(ht_avg_loss, 2),
+                "expectancy": round(ht_expectancy, 2),
+                "avg_peak_pct": round(ht_avg_peak, 4),
+                "avg_pnl_pct": round(ht_avg_pnl_pct, 4),
+                "total_pnl": round(ht_total_pnl, 2),
+                "by_confidence": ht_conf,
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing Hold-Time Expectancy: {e}\n{traceback.format_exc()}")
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -2340,7 +2389,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "performance_over_time": _compute_time_buckets(orders),
         "by_entry_type": _compute_entry_type_stats(orders),
         "by_exit_type": _compute_exit_type_stats(orders),
-        "post_exit_regret_deep_dive": post_exit_regret_deep_dive
+        "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
+        "hold_time_expectancy": hold_time_expectancy
     }
 
 

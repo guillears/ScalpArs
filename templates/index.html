@@ -636,6 +636,34 @@
                     </div>
                 </div>
 
+                <!-- Hold-Time Expectancy -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Hold-Time Expectancy</h3>
+                    <p class="text-xs text-gray-500 mb-3">Trade performance by holding duration — identifies at what hold time the edge disappears</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">Duration</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Win $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Loss $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Expectancy $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L $</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="hold-time-expectancy-body" class="divide-y divide-white/5">
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Entry Gap -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap</h3>
@@ -2768,6 +2796,18 @@
                     }
                 }
 
+                // --- HOLD-TIME EXPECTANCY ---
+                if (perf.hold_time_expectancy && perf.hold_time_expectancy.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Hold-Time Expectancy\n');
+                    lines.push(`${'Duration'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(8)} ${'Win%'.padEnd(7)} ${'AvgWin$'.padStart(10)} ${'AvgLoss$'.padStart(10)} ${'Expect$'.padStart(10)} ${'AvgPeak%'.padStart(10)} ${'AvgP&L%'.padStart(10)} ${'Total$'.padStart(12)} ${'Confidence'.padEnd(20)}`);
+                    for (const r of perf.hold_time_expectancy) {
+                        const dirStr = `${r.longs}L/${r.shorts}S`;
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${r.duration.padEnd(10)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(8)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${('$' + r.avg_win.toFixed(2)).padStart(10)} ${('$' + r.avg_loss.toFixed(2)).padStart(10)} ${('$' + r.expectancy.toFixed(2)).padStart(10)} ${((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%').padStart(10)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%').padStart(10)} ${('$' + r.total_pnl.toFixed(2)).padStart(12)} ${confStr}`);
+                    }
+                }
+
                 // --- NEVER POSITIVE DEEP DIVE ---
                 if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -4229,6 +4269,39 @@
                     peBody.innerHTML = peRows;
                 } else {
                     peBody.innerHTML = '<tr><td colspan="23" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                }
+
+                // Hold-Time Expectancy
+                const htConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                const htBody = document.getElementById('hold-time-expectancy-body');
+                if (data.hold_time_expectancy && data.hold_time_expectancy.length > 0) {
+                    htBody.innerHTML = data.hold_time_expectancy.map(r => {
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const expClass = r.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const peakClass = r.avg_peak_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${htConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-sky-400">${r.duration}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${r.longs}L</span> / <span class="text-red-400 text-xs">${r.shorts}S</span></td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right text-emerald-400 font-medium">${formatUSD(r.avg_win)}</td>
+                                <td class="px-3 py-2 text-right text-red-400 font-medium">${formatUSD(r.avg_loss)}</td>
+                                <td class="px-3 py-2 text-right ${expClass} font-medium">${formatUSD(r.expectancy)}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${r.avg_peak_pct >= 0 ? '+' : ''}${r.avg_peak_pct.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    htBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);

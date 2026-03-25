@@ -1622,6 +1622,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         continue
                     dc_wins = len([o for o in dc_orders if (o.pnl or 0) > 0])
                     dc_pnl = sum(o.pnl or 0 for o in dc_orders)
+                    dc_conf = {}
+                    for o in dc_orders:
+                        c = o.confidence or "UNKNOWN"
+                        dc_conf[c] = dc_conf.get(c, 0) + 1
                     adx_dir_crosstab.append({
                         "pair_adx_dir": pair_dir,
                         "btc_adx_dir": btc_dir,
@@ -1630,6 +1634,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "win_rate": round(dc_wins / dc_count * 100, 1),
                         "avg_pnl": round(dc_pnl / dc_count, 2),
                         "total_pnl": round(dc_pnl, 2),
+                        "by_confidence": dc_conf,
                     })
 
         # BTC Slope x BTC ADX Cross-Tab
@@ -2130,6 +2135,60 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     bucket = [o for o in np_slope_trades if lo <= abs(o.entry_ema20_slope) < hi and (o.direction or "LONG") == direction]
                     all_in = len([o for o in all_slope_trades if lo <= abs(o.entry_ema20_slope) < hi and (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "EMA20 Slope", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            np_btc_slope_ranges = [("0.06-0.10%", 0.06, 0.10), ("0.10-0.14%", 0.10, 0.14), ("0.14-0.18%", 0.14, 0.18), ("0.18-0.25%", 0.18, 0.25), (">0.25%", 0.25, 999)]
+            np_btc_slope_trades = [o for o in np_trades if o.entry_btc_ema20_slope is not None]
+            all_btc_slope_trades = [o for o in orders if o.entry_btc_ema20_slope is not None]
+            for rng, lo, hi in np_btc_slope_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_btc_slope_trades if lo <= abs(o.entry_btc_ema20_slope) < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_btc_slope_trades if lo <= abs(o.entry_btc_ema20_slope) < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "BTC EMA20 Slope", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            np_btc_adx_ranges = [("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999)]
+            np_btc_adx_trades = [o for o in np_trades if o.entry_btc_adx is not None]
+            all_btc_adx_trades = [o for o in orders if o.entry_btc_adx is not None]
+            for rng, lo, hi in np_btc_adx_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_btc_adx_trades if lo <= o.entry_btc_adx < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_btc_adx_trades if lo <= o.entry_btc_adx < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "BTC ADX", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            for np_adx_dir_label in ["Rising", "Falling"]:
+                np_adx_dir_trades = [o for o in np_trades if o.entry_adx is not None and o.entry_adx_prev is not None]
+                all_adx_dir_trades = [o for o in orders if o.entry_adx is not None and o.entry_adx_prev is not None]
+                if np_adx_dir_label == "Rising":
+                    np_adx_dir_pool = [o for o in np_adx_dir_trades if o.entry_adx > o.entry_adx_prev]
+                    all_adx_dir_pool = [o for o in all_adx_dir_trades if o.entry_adx > o.entry_adx_prev]
+                else:
+                    np_adx_dir_pool = [o for o in np_adx_dir_trades if o.entry_adx <= o.entry_adx_prev]
+                    all_adx_dir_pool = [o for o in all_adx_dir_trades if o.entry_adx <= o.entry_adx_prev]
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_adx_dir_pool if (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_adx_dir_pool if (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "ADX Direction", np_adx_dir_label, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            for np_btc_dir_label in ["Rising", "Falling"]:
+                np_btc_dir_trades = [o for o in np_trades if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
+                all_btc_dir_trades = [o for o in orders if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
+                if np_btc_dir_label == "Rising":
+                    np_btc_dir_pool = [o for o in np_btc_dir_trades if o.entry_btc_adx > o.entry_btc_adx_prev]
+                    all_btc_dir_pool = [o for o in all_btc_dir_trades if o.entry_btc_adx > o.entry_btc_adx_prev]
+                else:
+                    np_btc_dir_pool = [o for o in np_btc_dir_trades if o.entry_btc_adx <= o.entry_btc_adx_prev]
+                    all_btc_dir_pool = [o for o in all_btc_dir_trades if o.entry_btc_adx <= o.entry_btc_adx_prev]
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_btc_dir_pool if (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_btc_dir_pool if (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "BTC ADX Direction", np_btc_dir_label, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 

@@ -900,10 +900,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Win Rate</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
                                 </tr>
                             </thead>
                             <tbody id="adx-dir-crosstab-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2253,6 +2254,7 @@
         let timerInterval = null;
         let runtimeSeconds = 0;
         let currentTab = 'transactions';
+        let _lastClosedCount = -1;
 
         // API Base
         const API_BASE = '';
@@ -2261,7 +2263,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadStatus();
             loadBalance();
-            loadPerformance();
             loadPairs();
             loadTransactions();
             loadOpenOrders();
@@ -2274,7 +2275,6 @@
                 loadPairs();
                 loadOpenOrders();
                 loadClosedOrders();
-                loadPerformance();  // Update dashboard when orders close
                 if (currentTab === 'transactions') loadTransactions();
             }, 10000);
 
@@ -2768,12 +2768,12 @@
                 if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Never Positive Deep Dive\n');
-                    lines.push(`${'Dimension'.padEnd(16)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
+                    lines.push(`${'Dimension'.padEnd(18)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
                     for (const r of perf.never_positive_deep_dive) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
                         const pctStr = r.pct_of_total != null ? r.pct_of_total.toFixed(1)+'%' : '-';
-                        lines.push(`${(r.dimension||'').padEnd(16)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
+                        lines.push(`${(r.dimension||'').padEnd(18)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
                     }
                 }
 
@@ -2897,9 +2897,10 @@
                 if (perf.adx_dir_crosstab && perf.adx_dir_crosstab.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Pair ADX Dir x BTC ADX Dir Cross-Tab\n');
-                    lines.push(`${'PairADX'.padEnd(10)} ${'BtcADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)}`);
+                    lines.push(`${'PairADX'.padEnd(10)} ${'BtcADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Confidence'.padEnd(20)}`);
                     for (const r of perf.adx_dir_crosstab) {
-                        lines.push(`${(r.pair_adx_dir||'').padEnd(10)} ${(r.btc_adx_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)}`);
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.pair_adx_dir||'').padEnd(10)} ${(r.btc_adx_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${confStr}`);
                     }
                 }
 
@@ -3587,6 +3588,7 @@
 
                 // Pair ADX Dir x BTC ADX Dir Cross-Tab
                 const adxDirCtBody = document.getElementById('adx-dir-crosstab-body');
+                const adxCtConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
                 if (data.adx_dir_crosstab && data.adx_dir_crosstab.length > 0) {
                     adxDirCtBody.innerHTML = data.adx_dir_crosstab.map(r => {
                         const pairDirColor = r.pair_adx_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
@@ -3595,6 +3597,10 @@
                         const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
                         const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${adxCtConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium ${pairDirColor}">${r.pair_adx_dir}</td>
@@ -3604,10 +3610,11 @@
                                 <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
                                 <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
                             </tr>`;
                     }).join('');
                 } else {
-                    adxDirCtBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>';
+                    adxDirCtBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>';
                 }
 
                 // BTC Slope x BTC ADX Cross-Tab
@@ -3666,6 +3673,8 @@
                     const dimColors = {
                         'Direction': 'text-cyan-400', 'Confidence': 'text-pink-400', 'ADX': 'text-orange-400',
                         'RSI': 'text-purple-400', 'EMA5-EMA8 Gap': 'text-yellow-400', 'Entry Gap': 'text-emerald-400',
+                        'BTC EMA20 Slope': 'text-sky-400', 'BTC ADX': 'text-amber-400',
+                        'ADX Direction': 'text-teal-400', 'BTC ADX Direction': 'text-indigo-400',
                         'Close Reason': 'text-red-400'
                     };
                     let lastDim = '';
@@ -4547,6 +4556,12 @@
                 const res = await fetch(`${API_BASE}/api/orders/closed`);
                 const data = await res.json();
                 
+                const newCount = (data && data.length) || 0;
+                if (newCount !== _lastClosedCount) {
+                    _lastClosedCount = newCount;
+                    loadPerformance();
+                }
+
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {

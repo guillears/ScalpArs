@@ -2247,6 +2247,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi3_exit_min = sum(o.post_exit_rsi3_exit_minutes for o in rsi3_exit_orders) / len(rsi3_exit_orders) if rsi3_exit_orders else None
                 avg_rsi3_exit_pnl = sum(o.post_exit_rsi3_exit_pnl or 0 for o in rsi3_exit_orders) / len(rsi3_exit_orders) if rsi3_exit_orders else None
 
+                rec_005 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= 0.05)
+                rec_010 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= 0.10)
+
                 post_exit_regret_deep_dive.append({
                     "reason": reason,
                     "count": count,
@@ -2270,6 +2273,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "rsi3_exit_pct": rsi3_exit_pct,
                     "avg_rsi3_exit_min": round(avg_rsi3_exit_min, 1) if avg_rsi3_exit_min is not None else None,
                     "avg_rsi3_exit_pnl": round(avg_rsi3_exit_pnl, 4) if avg_rsi3_exit_pnl is not None else None,
+                    "recovery_005_pct": round(rec_005 / count * 100, 1),
+                    "recovery_010_pct": round(rec_010 / count * 100, 1),
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")

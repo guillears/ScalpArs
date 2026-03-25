@@ -786,7 +786,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_slope_adx_crosstab": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_slope_adx_crosstab": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -1049,7 +1049,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "stretch_performance": [],
             "pair_slope_performance": [],
             "btc_slope_performance": [],
-            "btc_adx_performance": [], "btc_slope_adx_crosstab": [],
+            "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_slope_adx_crosstab": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -1227,6 +1227,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     pair_slope_performance = []
     btc_slope_performance = []
     btc_adx_performance = []
+    btc_adx_direction_performance = []
     btc_slope_adx_crosstab = []
     try:
         gap_ranges = [
@@ -1570,6 +1571,39 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_gap": avg_gap
                 })
 
+        # Performance by BTC ADX Direction (Rising vs Falling at entry)
+        btc_adx_dir_orders = [o for o in orders if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
+        for btc_dir_label in ["Rising", "Falling"]:
+            if btc_dir_label == "Rising":
+                btc_dir_pool = [o for o in btc_adx_dir_orders if o.entry_btc_adx > o.entry_btc_adx_prev]
+            else:
+                btc_dir_pool = [o for o in btc_adx_dir_orders if o.entry_btc_adx <= o.entry_btc_adx_prev]
+            if not btc_dir_pool:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                bd_orders = [o for o in btc_dir_pool if (o.direction or "LONG") == direction]
+                bd_count = len(bd_orders)
+                if bd_count == 0:
+                    continue
+                bd_wins = len([o for o in bd_orders if (o.pnl or 0) > 0])
+                bd_pnl_sum = sum(o.pnl or 0 for o in bd_orders)
+                bd_avg_dur = sum((o.closed_at - o.opened_at).total_seconds() for o in bd_orders if o.closed_at) / bd_count if bd_count > 0 else 0
+                bd_h, bd_m, bd_s = int(bd_avg_dur // 3600), int((bd_avg_dur % 3600) // 60), int(bd_avg_dur % 60)
+                bd_conf = {}
+                for o in bd_orders:
+                    c = o.confidence or "UNKNOWN"
+                    bd_conf[c] = bd_conf.get(c, 0) + 1
+                btc_adx_direction_performance.append({
+                    "btc_adx_direction": btc_dir_label,
+                    "direction": direction,
+                    "count": bd_count,
+                    "win_rate": round(bd_wins / bd_count * 100, 1),
+                    "avg_pnl_usd": round(bd_pnl_sum / bd_count, 2),
+                    "total_pnl_usd": round(bd_pnl_sum, 2),
+                    "avg_duration": f"{bd_h:02d}:{bd_m:02d}:{bd_s:02d}",
+                    "by_confidence": bd_conf
+                })
+
         # BTC Slope x BTC ADX Cross-Tab
         ct_slope_ranges = [
             ("<0.06%", 0.00, 0.06), ("0.06-0.10%", 0.06, 0.10), ("0.10-0.16%", 0.10, 0.16),
@@ -1610,6 +1644,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         pair_slope_performance = []
         btc_slope_performance = []
         btc_adx_performance = []
+        btc_adx_direction_performance = []
         btc_slope_adx_crosstab = []
     
     # By Close Reason - group by reason with L4+ aggregation
@@ -2200,6 +2235,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "pair_slope_performance": pair_slope_performance,
         "btc_slope_performance": btc_slope_performance,
         "btc_adx_performance": btc_adx_performance,
+        "btc_adx_direction_performance": btc_adx_direction_performance,
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,

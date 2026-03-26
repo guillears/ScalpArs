@@ -689,11 +689,10 @@
                                     <th class="px-3 py-2 font-medium text-right">Total Fees</th>
                                     <th class="px-3 py-2 font-medium text-right text-sky-400">Fee Savings</th>
                                     <th class="px-3 py-2 font-medium text-center">Confidence</th>
-                                    <th class="px-3 py-2 font-medium text-center">Close Reasons</th>
                                 </tr>
                             </thead>
                             <tbody id="exit-type-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2774,11 +2773,10 @@
                 // --- EXIT TYPE PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Exit Type Performance\n');
-                lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgExitFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'.padEnd(15)} ${'Close Reasons'}`);
+                lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgExitFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
                 for (const [etype, e] of Object.entries(perf.by_exit_type || {})) {
                     const confStr = Object.entries(e.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
-                    const crStr = Object.entries(e.by_close_reason || {}).map(([r,n]) => `${r}:${n}`).join(' ');
-                    lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_exit_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr.padEnd(14)} ${crStr}`);
+                    lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_exit_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr}`);
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -4089,10 +4087,6 @@
                             .sort((a, b) => b[1] - a[1])
                             .map(([c, n]) => `<span class="${extConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
                             .join(' ');
-                        const crBadges = Object.entries(e.by_close_reason || {})
-                            .sort((a, b) => b[1] - a[1])
-                            .map(([r, n]) => `<span class="text-xs text-gray-400">${r}:${n}</span>`)
-                            .join(' ');
                         return `<tr class="hover:bg-white/5">
                             <td class="px-3 py-2 ${extColors[etype] || 'text-gray-400'} font-medium">${etype}</td>
                             <td class="px-3 py-2 text-center">${e.trades}</td>
@@ -4105,7 +4099,6 @@
                             <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(e.total_fees)}</td>
                             <td class="px-3 py-2 text-right ${savClass} font-medium">${e.fee_savings > 0 ? '+' : ''}${formatUSD(e.fee_savings)}</td>
                             <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
-                            <td class="px-3 py-2 text-center">${crBadges || '-'}</td>
                         </tr>`;
                     }).join('');
                     const extTotalPnlClass = extTotalPnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -4121,7 +4114,6 @@
                         <td class="px-3 py-2 text-right">-</td>
                         <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(extTotalFees)}</td>
                         <td class="px-3 py-2 text-right ${extTotalSavClass}">${extTotalSavings > 0 ? '+' : ''}${formatUSD(extTotalSavings)}</td>
-                        <td class="px-3 py-2 text-center">-</td>
                         <td class="px-3 py-2 text-center">-</td>
                     </tr>`;
                 } else {

@@ -608,6 +608,40 @@
                     </div>
                 </div>
                 
+                <!-- Entry Conditions by Close Reason -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Conditions by Close Reason</h3>
+                    <p class="text-xs text-gray-500 mb-3">Average entry indicator values grouped by exit reason — fingerprint what entries lead to each outcome</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Reason</th>
+                                    <th class="px-3 py-2 font-medium text-center">#</th>
+                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgRSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgADX</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="ADX Direction at entry: Rising/Falling count">ADXDir</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average EMA20 gap at entry">AvgGap</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average EMA5-EMA8 gap at entry">Gap5-8</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average EMA5 stretch (price-to-EMA5 distance)">Stretch</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average absolute EMA20 slope">EMA20Slp</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average absolute BTC EMA20 slope">BTCSlp</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average BTC ADX at entry">BTCADX</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="BTC ADX Direction at entry: Rising/Falling count">BTCADXDir</th>
+                                    <th class="px-3 py-2 font-medium text-right text-cyan-400">AvgPeak%</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgP&L%</th>
+                                    <th class="px-3 py-2 font-medium text-center">Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="entry-conditions-reason-body" class="divide-y divide-white/5">
+                                <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -2689,6 +2723,28 @@
                     lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${rsi3PctStr.padStart(7)} ${rsi3PnlStr.padStart(9)} ${rsi3MinStr.padStart(8)}`);
                 }
 
+                // --- ENTRY CONDITIONS BY CLOSE REASON ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Entry Conditions by Close Reason\n');
+                lines.push(`${'Reason'.padEnd(22)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Duration'}`);
+                for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
+                    const dirStr = `${r.longs}L/${r.shorts}S`;
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                    const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
+                    const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
+                    const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
+                    const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
+                    const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
+                    const slopeStr = r.avg_ema20_slope != null ? r.avg_ema20_slope.toFixed(2) + '%' : '-';
+                    const btcSlopeStr = r.avg_btc_slope != null ? r.avg_btc_slope.toFixed(2) + '%' : '-';
+                    const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                    const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                    const btcAdxStr = r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-';
+                    const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
+                    const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
+                    lines.push(`${r.reason.padEnd(22)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${r.avg_duration || '-'}`);
+                }
+
                 // --- ENTRY TYPE PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Type Performance\n');
@@ -3262,7 +3318,52 @@
                 } else {
                     reasonBody.innerHTML = '<tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
-                
+
+                // Entry Conditions by Close Reason
+                const ecrBody = document.getElementById('entry-conditions-reason-body');
+                if (data.entry_conditions_by_reason && data.entry_conditions_by_reason.length > 0) {
+                    const ecrConfColors = {
+                        'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400',
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400',
+                        'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400'
+                    };
+                    ecrBody.innerHTML = data.entry_conditions_by_reason
+                        .sort((a, b) => b.trades - a.trades)
+                        .map(r => {
+                            const pnlClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const peakClass = r.avg_peak_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const dirStr = `<span class="text-emerald-400 text-xs">${r.longs}L</span>/<span class="text-red-400 text-xs">${r.shorts}S</span>`;
+                            const confBadges = Object.entries(r.by_confidence || {})
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([c, n]) => `<span class="${ecrConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                                .join(' ') || '-';
+                            const adxDirStr = `<span class="text-emerald-400 text-xs">${r.adx_rising}R</span>/<span class="text-red-400 text-xs">${r.adx_falling}F</span>`;
+                            const btcAdxDirStr = `<span class="text-emerald-400 text-xs">${r.btc_adx_rising}R</span>/<span class="text-red-400 text-xs">${r.btc_adx_falling}F</span>`;
+                            return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium">${r.reason}</td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-center">${dirStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_adx != null ? r.avg_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-center">${adxDirStr}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_ema20_slope != null ? r.avg_ema20_slope.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_slope != null ? r.avg_btc_slope.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-center">${btcAdxDirStr}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${r.avg_peak_pct >= 0 ? '+' : ''}${r.avg_peak_pct.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.avg_duration || '-'}</td>
+                            </tr>`;
+                        }).join('');
+                } else {
+                    ecrBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
                 // Performance by Entry Gap
                 const gapBody = document.getElementById('gap-performance-body');
                 if (data.gap_performance && data.gap_performance.length > 0) {

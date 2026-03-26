@@ -794,6 +794,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "performance_over_time": [],
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
+            "entry_conditions_by_reason": [],
             "_error": str(e)
         }
 
@@ -1057,7 +1058,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "never_positive_deep_dive": [],
             "performance_over_time": [],
             "post_exit_regret_deep_dive": [],
-            "hold_time_expectancy": []
+            "hold_time_expectancy": [],
+            "entry_conditions_by_reason": []
         }
     
     # Separate longs and shorts
@@ -1764,6 +1766,84 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
         by_close_reason = {}
     
+    # Entry Conditions by Close Reason
+    entry_conditions_by_reason = []
+    try:
+        ecr_groups = {}
+        for o in orders:
+            reason = o.close_reason or "UNKNOWN"
+            if " L" in reason:
+                parts = reason.split(" L")
+                base_reason = parts[0]
+                try:
+                    level = int(parts[1].replace("+", ""))
+                    if level >= 6:
+                        reason = f"{base_reason} L6+"
+                except ValueError:
+                    pass
+            ecr_groups.setdefault(reason, []).append(o)
+
+        for reason in sorted(ecr_groups.keys()):
+            group = ecr_groups[reason]
+            count = len(group)
+            if count == 0:
+                continue
+
+            ec_longs = sum(1 for o in group if o.direction == "LONG")
+            ec_shorts = count - ec_longs
+
+            ec_conf = {}
+            for o in group:
+                c = o.confidence or "UNKNOWN"
+                ec_conf[c] = ec_conf.get(c, 0) + 1
+
+            rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
+            adxs = [o.entry_adx for o in group if o.entry_adx is not None]
+            gaps = [o.entry_gap for o in group if o.entry_gap is not None]
+            gaps58 = [o.entry_ema_gap_5_8 for o in group if o.entry_ema_gap_5_8 is not None]
+            stretches = [o.entry_ema5_stretch for o in group if o.entry_ema5_stretch is not None]
+            slopes = [abs(o.entry_ema20_slope) for o in group if o.entry_ema20_slope is not None]
+            btc_slopes = [abs(o.entry_btc_ema20_slope) for o in group if o.entry_btc_ema20_slope is not None]
+            btc_adxs = [o.entry_btc_adx for o in group if o.entry_btc_adx is not None]
+
+            adx_rising = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx > o.entry_adx_prev)
+            adx_falling = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx <= o.entry_adx_prev)
+            btc_adx_rising = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx > o.entry_btc_adx_prev)
+            btc_adx_falling = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx <= o.entry_btc_adx_prev)
+
+            peaks = [o.peak_pnl or 0 for o in group]
+            pnls = [o.pnl_percentage or 0 for o in group]
+
+            avg_dur_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in group if o.closed_at and o.opened_at) / count
+            hours, remainder = divmod(int(avg_dur_secs), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            avg_dur_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+            entry_conditions_by_reason.append({
+                "reason": reason,
+                "trades": count,
+                "longs": ec_longs,
+                "shorts": ec_shorts,
+                "by_confidence": ec_conf,
+                "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+                "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,
+                "adx_rising": adx_rising,
+                "adx_falling": adx_falling,
+                "avg_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
+                "avg_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
+                "avg_stretch": round(sum(stretches) / len(stretches), 4) if stretches else None,
+                "avg_ema20_slope": round(sum(slopes) / len(slopes), 4) if slopes else None,
+                "avg_btc_slope": round(sum(btc_slopes) / len(btc_slopes), 4) if btc_slopes else None,
+                "avg_btc_adx": round(sum(btc_adxs) / len(btc_adxs), 1) if btc_adxs else None,
+                "btc_adx_rising": btc_adx_rising,
+                "btc_adx_falling": btc_adx_falling,
+                "avg_peak_pct": round(sum(peaks) / count, 4),
+                "avg_pnl_pct": round(sum(pnls) / count, 4),
+                "avg_duration": avg_dur_str,
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing entry conditions by reason: {e}\n{traceback.format_exc()}")
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -2390,7 +2470,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "by_entry_type": _compute_entry_type_stats(orders),
         "by_exit_type": _compute_exit_type_stats(orders),
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
-        "hold_time_expectancy": hold_time_expectancy
+        "hold_time_expectancy": hold_time_expectancy,
+        "entry_conditions_by_reason": entry_conditions_by_reason
     }
 
 

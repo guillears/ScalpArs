@@ -20,7 +20,7 @@
     "reserve_percentage": 0.0,
     "cooldown_after_loss_minutes": 5,
     "max_open_positions": 5,
-    "max_holding_time_minutes": 300,
+    "max_holding_time_minutes": 600,
     "no_expansion_minutes": 300
   },
   "thresholds": {

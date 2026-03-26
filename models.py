@@ -112,6 +112,8 @@ class Order(Base):
     post_exit_rsi_exit_pnl = Column(Float, nullable=True)
     post_exit_rsi3_exit_minutes = Column(Float, nullable=True)
     post_exit_rsi3_exit_pnl = Column(Float, nullable=True)
+    post_exit_signal_regained_minutes = Column(Float, nullable=True)
+    post_exit_pnl_at_signal_regained = Column(Float, nullable=True)
 
     # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
     first_rsi2_pnl = Column(Float, nullable=True)

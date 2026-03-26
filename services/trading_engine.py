@@ -999,6 +999,9 @@ class TradingEngine:
             "rsi3_exit_at": None,
             "rsi3_exit_pnl": None,
             "rsi_history": [],
+            "signal_regained_at": None,
+            "pnl_at_signal_regained": None,
+            "close_reason": reason,
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
 
@@ -1037,9 +1040,9 @@ class TradingEngine:
             else:
                 current_pnl = ((entry - price) / entry) * 100
 
-            # Read pair_data for signal-lost and RSI momentum checks (isolated session)
+            # Read pair_data for signal-lost, signal-regained, and RSI momentum checks (isolated session)
             pair_data = None
-            if info["signal_lost_at"] is None or info["rsi_exit_at"] is None:
+            if info["signal_lost_at"] is None or info["signal_regained_at"] is None or info["rsi_exit_at"] is None:
                 try:
                     async with AsyncSessionLocal() as pe_read_db:
                         pd_result = await pe_read_db.execute(
@@ -1056,6 +1059,14 @@ class TradingEngine:
                 ):
                     info["signal_lost_at"] = now
                     info["pnl_at_signal_lost"] = current_pnl
+
+            # Signal-regained detection (for SIGNAL_LOST exits: did the signal come back?)
+            if info["signal_regained_at"] is None and pair_data and info.get("close_reason", "").startswith("SIGNAL_LOST"):
+                if is_signal_direction_active(
+                    direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
+                ):
+                    info["signal_regained_at"] = now
+                    info["pnl_at_signal_regained"] = current_pnl
 
             # RSI momentum exit simulation (2-drop and 3-drop)
             if pair_data and pair_data.rsi is not None:
@@ -1115,6 +1126,9 @@ class TradingEngine:
                 rsi3_exit_minutes = None
                 if info["rsi3_exit_at"]:
                     rsi3_exit_minutes = (info["rsi3_exit_at"] - exit_time).total_seconds() / 60.0
+                sig_regained_minutes = None
+                if info["signal_regained_at"]:
+                    sig_regained_minutes = (info["signal_regained_at"] - exit_time).total_seconds() / 60.0
 
                 try:
                     async with AsyncSessionLocal() as pe_write_db:
@@ -1134,6 +1148,8 @@ class TradingEngine:
                                 post_exit_rsi_exit_pnl=round(info["rsi_exit_pnl"], 4) if info["rsi_exit_pnl"] is not None else None,
                                 post_exit_rsi3_exit_minutes=round(rsi3_exit_minutes, 2) if rsi3_exit_minutes is not None else None,
                                 post_exit_rsi3_exit_pnl=round(info["rsi3_exit_pnl"], 4) if info["rsi3_exit_pnl"] is not None else None,
+                                post_exit_signal_regained_minutes=round(sig_regained_minutes, 2) if sig_regained_minutes is not None else None,
+                                post_exit_pnl_at_signal_regained=round(info["pnl_at_signal_regained"], 4) if info["pnl_at_signal_regained"] is not None else None,
                             )
                         )
                         await pe_write_db.commit()

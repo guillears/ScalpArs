@@ -77,7 +77,8 @@
     "tick_momentum_exit_min_profit": 0.03,
     "tick_momentum_exit_min_delta": 0.12,
     "tick_momentum_exit_min_deltas": "",
-    "tick_momentum_exit_windows": "15,30,45"
+    "tick_momentum_exit_windows": "15,30,45",
+    "regime_change_exit_enabled": true
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

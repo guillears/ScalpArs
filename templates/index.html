@@ -1409,6 +1409,19 @@
                             <p class="text-xs text-gray-500 mt-1">Close if peak &lt; BE L1 Trig &amp; current &lt; BE L1 Off (0 = disabled)</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-regime-change-exit-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Close positions when BTC macro regime flips against trade direction (BULLISH closes SHORTs, BEARISH closes LONGs)</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Signal Lost Exit</label>
                             <div class="flex items-center gap-4">
                                 <label class="flex items-center cursor-pointer">
@@ -2645,6 +2658,7 @@
                 lines.push(`  Roundtrip: ${((entryF + exitF) * 100).toFixed(3)}%  |  Full taker: ${((cfg.taker_fee || cfg.trading_fee) * 200).toFixed(3)}%`);
 
                 lines.push('\nExit Settings:');
+                lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
                 lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
                 lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Range: [${th.rsi_momentum_exit_min_profit}%, ${th.rsi_momentum_exit_max_profit !== undefined ? th.rsi_momentum_exit_max_profit : 999}%]  (close on 2 consecutive RSI drops/rises)`);
                 lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Deltas: ${th.tick_momentum_exit_min_deltas || th.tick_momentum_exit_min_delta || 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
@@ -4957,6 +4971,7 @@
                 document.getElementById('config-ema-gap-min-long-mirror').textContent = document.getElementById('config-ema-gap-threshold-long').value;
                 document.getElementById('config-ema-gap-min-short-mirror').textContent = document.getElementById('config-ema-gap-threshold-short').value;
                 document.getElementById('config-ema-gap-max-mirror').textContent = document.getElementById('config-ema-gap-5-8-max').value;
+                document.getElementById('config-regime-change-exit-enabled').checked = config.thresholds.regime_change_exit_enabled !== undefined ? config.thresholds.regime_change_exit_enabled : true;
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
@@ -5116,6 +5131,7 @@
                     rsi_momentum_filter_enabled: document.getElementById('config-rsi-momentum-filter-enabled').checked,
                     ema_gap_expanding_filter: document.getElementById('config-ema-gap-expanding-filter').checked,
                     ema_gap_5_8_max: safeFloat(document.getElementById('config-ema-gap-5-8-max').value),
+                    regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     signal_lost_max_profit: safeFloat(document.getElementById('config-signal-lost-max-profit').value),

@@ -111,6 +111,7 @@ class SignalThresholds(BaseModel):
     tick_momentum_exit_min_delta: float = 0.05  # Min % price drop across each window to confirm fade (fallback)
     tick_momentum_exit_min_deltas: str = ""  # Per-window deltas, comma-separated (overrides min_delta when set)
     tick_momentum_exit_windows: str = "15,30,60"  # Comma-separated rolling window sizes in seconds
+    regime_change_exit_enabled: bool = True  # Close positions when BTC macro regime flips against trade direction
 
 
 class InvestmentConfig(BaseModel):

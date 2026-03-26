@@ -27,6 +27,9 @@ _open_orders_cache: Dict[str, List[Dict]] = {}  # pair -> list of order info
 _cache_lock = asyncio.Lock()
 _close_lock = asyncio.Lock()
 
+# Current BTC macro regime, updated by scan_and_trade, read by update_open_positions
+_current_btc_regime: str = "NEUTRAL"
+
 
 class TradingEngine:
     """Main trading engine that manages positions and executes trades"""
@@ -989,7 +992,7 @@ class TradingEngine:
         tc = config.trading_config
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
-        if not (reason.startswith("BREAKEVEN_SL") or reason.startswith("SIGNAL_LOST") or reason.startswith("TICK_MOMENTUM_EXIT") or reason.startswith("RSI_MOMENTUM_EXIT") or reason.startswith("STOP_LOSS")):
+        if not (reason.startswith("BREAKEVEN_SL") or reason.startswith("SIGNAL_LOST") or reason.startswith("TICK_MOMENTUM_EXIT") or reason.startswith("RSI_MOMENTUM_EXIT") or reason.startswith("STOP_LOSS") or reason.startswith("REGIME_CHANGE")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -1387,6 +1390,28 @@ class TradingEngine:
                         order.first_rsi3_pnl = round(pnl_pct, 4)
                         order.first_rsi3_minutes = round(_trk_age, 2)
 
+            # REGIME_CHANGE: close when BTC macro regime flips against trade direction
+            regime_exit_enabled = getattr(config.trading_config.thresholds, 'regime_change_exit_enabled', True)
+            if regime_exit_enabled and _current_btc_regime != "NEUTRAL":
+                regime_conflicts = (
+                    (order.direction == "LONG" and _current_btc_regime == "BEARISH") or
+                    (order.direction == "SHORT" and _current_btc_regime == "BULLISH")
+                )
+                if regime_conflicts:
+                    tp_level = order.current_tp_level or 1
+                    logger.info(f"[REGIME_CHANGE] {order.pair} {order.direction} L{tp_level}: BTC regime now {_current_btc_regime}, closing (pnl={pnl_pct:.4f}%)")
+                    closed_order = await self.close_position(db, order, current_price, f"REGIME_CHANGE L{tp_level}")
+                    if closed_order:
+                        updates.append({
+                            "order_id": closed_order.id,
+                            "pair": closed_order.pair,
+                            "action": "CLOSED",
+                            "reason": f"REGIME_CHANGE L{tp_level}",
+                            "pnl": closed_order.pnl,
+                            "tp_level": tp_level
+                        })
+                    continue
+
             # RSI Momentum Exit: two consecutive RSI drops (LONG) or rises (SHORT) within P&L range
             rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
             rsi_exit_min_profit = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)
@@ -1623,6 +1648,8 @@ class TradingEngine:
                     btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
                     if btc_ema20 and btc_ema20_prev6 and btc_ema20_prev6 != 0:
                         btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev6) / btc_ema20_prev6) * 100, 4)
+            global _current_btc_regime
+            _current_btc_regime = btc_regime
             logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev6}, adx={btc_adx})")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):

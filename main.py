@@ -795,6 +795,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
+            "be_shadow_tracking": [],
             "_error": str(e)
         }
 
@@ -1059,7 +1060,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "performance_over_time": [],
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
-            "entry_conditions_by_reason": []
+            "entry_conditions_by_reason": [],
+            "be_shadow_tracking": []
         }
     
     # Separate longs and shorts
@@ -2416,6 +2418,55 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Hold-Time Expectancy: {e}\n{traceback.format_exc()}")
 
+    # BE Shadow Tracking
+    be_shadow_tracking = []
+    try:
+        for level, orig_trigger, orig_offset in [(1, 0.50, 0.20), (2, 1.00, 0.50)]:
+            trig_field = f'phantom_be_l{level}_triggered_at'
+            exit_field = f'phantom_be_l{level}_would_exit_pnl'
+
+            triggered = [o for o in orders if getattr(o, trig_field, None) is not None]
+            would_exit = [o for o in triggered if getattr(o, exit_field, None) is not None]
+            passed_through = [o for o in triggered if getattr(o, exit_field, None) is None]
+
+            if not triggered:
+                continue
+
+            avg_phantom_pnl = orig_offset
+            avg_actual_pnl_exit = sum(o.pnl_percentage or 0 for o in would_exit) / len(would_exit) if would_exit else None
+            avg_actual_pnl_pass = sum(o.pnl_percentage or 0 for o in passed_through) / len(passed_through) if passed_through else None
+            avg_actual_pnl_all = sum(o.pnl_percentage or 0 for o in triggered) / len(triggered)
+
+            reason_counts = {}
+            for o in would_exit:
+                r = o.close_reason or "UNKNOWN"
+                reason_counts[r] = reason_counts.get(r, 0) + 1
+            reason_str = " ".join(f"{r}:{c}" for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]))
+
+            pass_reason_counts = {}
+            for o in passed_through:
+                r = o.close_reason or "UNKNOWN"
+                pass_reason_counts[r] = pass_reason_counts.get(r, 0) + 1
+            pass_reason_str = " ".join(f"{r}:{c}" for r, c in sorted(pass_reason_counts.items(), key=lambda x: -x[1]))
+
+            be_shadow_tracking.append({
+                "level": level,
+                "orig_trigger": orig_trigger,
+                "orig_offset": orig_offset,
+                "triggered_count": len(triggered),
+                "would_exit_count": len(would_exit),
+                "passed_through_count": len(passed_through),
+                "avg_phantom_pnl": round(avg_phantom_pnl, 4),
+                "avg_actual_pnl_exit": round(avg_actual_pnl_exit, 4) if avg_actual_pnl_exit is not None else None,
+                "delta": round(avg_actual_pnl_exit - avg_phantom_pnl, 4) if avg_actual_pnl_exit is not None else None,
+                "avg_actual_pnl_pass": round(avg_actual_pnl_pass, 4) if avg_actual_pnl_pass is not None else None,
+                "avg_actual_pnl_all": round(avg_actual_pnl_all, 4),
+                "exit_reasons": reason_str,
+                "pass_reasons": pass_reason_str,
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing BE Shadow Tracking: {e}\n{traceback.format_exc()}")
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -2479,7 +2530,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "by_exit_type": _compute_exit_type_stats(orders),
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
         "hold_time_expectancy": hold_time_expectancy,
-        "entry_conditions_by_reason": entry_conditions_by_reason
+        "entry_conditions_by_reason": entry_conditions_by_reason,
+        "be_shadow_tracking": be_shadow_tracking
     }
 
 

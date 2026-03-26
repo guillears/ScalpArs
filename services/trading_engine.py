@@ -810,7 +810,13 @@ class TradingEngine:
                 'high_price': actual_price,
                 'low_price': actual_price,
                 'pullback_trigger': conf_config.pullback_trigger,
-                'tick_prices': []
+                'tick_prices': [],
+                'phantom_be_l1_triggered': False,
+                'phantom_be_l1_triggered_at': None,
+                'phantom_be_l1_would_exit_pnl': None,
+                'phantom_be_l2_triggered': False,
+                'phantom_be_l2_triggered_at': None,
+                'phantom_be_l2_would_exit_pnl': None,
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -921,6 +927,15 @@ class TradingEngine:
         order.pnl_percentage = pnl_data['pnl_percentage']
         order.closed_at = datetime.utcnow()
         order.close_reason = reason
+
+        # Persist phantom BE shadow data from real-time cache
+        for cached in _open_orders_cache.get(order.pair, []):
+            if cached['id'] == order.id:
+                order.phantom_be_l1_triggered_at = cached.get('phantom_be_l1_triggered_at')
+                order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
+                order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
+                order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
+                break
 
         try:
             pair_data_result = await db.execute(
@@ -1895,6 +1910,18 @@ class TradingEngine:
             current_trough = min(cached_trough_pnl, pnl_pct) if pnl_pct < 0 else cached_trough_pnl
             order_info['trough_pnl'] = current_trough
             
+            # Shadow BE tracking: record phantom triggers using original L1/L2 values
+            _SHADOW_BE = [(1, 0.50, 0.20), (2, 1.00, 0.50)]
+            for _sl, _strig, _soff in _SHADOW_BE:
+                _tk = f'phantom_be_l{_sl}_triggered'
+                _ek = f'phantom_be_l{_sl}_would_exit_pnl'
+                _ak = f'phantom_be_l{_sl}_triggered_at'
+                if not order_info.get(_tk) and current_peak >= _strig:
+                    order_info[_tk] = True
+                    order_info[_ak] = datetime.utcnow()
+                if order_info.get(_tk) and order_info.get(_ek) is None and pnl_pct <= _soff:
+                    order_info[_ek] = pnl_pct
+
             # Get TP target to determine if trailing stop would be active
             tp_level = order_info.get('current_tp_level', 1)
             conf = config.trading_config.confidence_levels.get(
@@ -2287,7 +2314,13 @@ class TradingEngine:
                 'rsi': pair_emas.get(order.pair, {}).get('rsi'),
                 'rsi_prev1': pair_emas.get(order.pair, {}).get('rsi_prev1'),
                 'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2'),
-                'tick_prices': []
+                'tick_prices': [],
+                'phantom_be_l1_triggered': order.phantom_be_l1_triggered_at is not None,
+                'phantom_be_l1_triggered_at': order.phantom_be_l1_triggered_at,
+                'phantom_be_l1_would_exit_pnl': order.phantom_be_l1_would_exit_pnl,
+                'phantom_be_l2_triggered': order.phantom_be_l2_triggered_at is not None,
+                'phantom_be_l2_triggered_at': order.phantom_be_l2_triggered_at,
+                'phantom_be_l2_would_exit_pnl': order.phantom_be_l2_would_exit_pnl,
             }
             
             if order.pair not in new_cache:

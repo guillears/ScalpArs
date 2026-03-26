@@ -808,6 +808,33 @@
                     </div>
                 </div>
 
+                <!-- BE Shadow Tracking -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">BE Shadow Tracking</h3>
+                    <p class="text-xs text-gray-500 mb-3">Phantom comparison: what would BE L1/L2 have done vs actual outcome (BE L1/L2 disabled, shadow-tracked)</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">BE Level</th>
+                                    <th class="px-3 py-2 font-medium text-right">Triggered</th>
+                                    <th class="px-3 py-2 font-medium text-right">Would Exit</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="P&L% at which BE would have stopped the trade">Phantom P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Actual avg P&L% for trades that would have been stopped">Actual P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Actual - Phantom (green = disabling better)">Delta</th>
+                                    <th class="px-3 py-2 font-medium text-left" title="What actually closed these trades">Exit Reasons</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades that triggered BE but never pulled back to offset">Passed Thru</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L% for trades that passed through without hitting phantom stop">Pass P&L</th>
+                                    <th class="px-3 py-2 font-medium text-left" title="Close reasons for passed-through trades">Pass Reasons</th>
+                                </tr>
+                            </thead>
+                            <tbody id="be-shadow-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Hold-Time Expectancy -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Hold-Time Expectancy</h3>
@@ -2829,6 +2856,21 @@
                     }
                 }
 
+                // --- BE SHADOW TRACKING ---
+                if (perf.be_shadow_tracking && perf.be_shadow_tracking.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## BE Shadow Tracking\n');
+                    lines.push(`${'Level'.padEnd(22)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
+                    for (const r of perf.be_shadow_tracking) {
+                        const phantomStr = ('+' + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11);
+                        const actualStr = r.avg_actual_pnl_exit !== null ? ((r.avg_actual_pnl_exit >= 0 ? '+' : '') + r.avg_actual_pnl_exit.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                        const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                        const passPnlStr = r.avg_actual_pnl_pass !== null ? ((r.avg_actual_pnl_pass >= 0 ? '+' : '') + r.avg_actual_pnl_pass.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                        const levelStr = `L${r.level} (${r.orig_trigger}%→${r.orig_offset}%)`;
+                        lines.push(`${levelStr.padEnd(22)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
+                    }
+                }
+
                 // --- HOLD-TIME EXPECTANCY ---
                 if (perf.hold_time_expectancy && perf.hold_time_expectancy.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -4322,6 +4364,33 @@
                     peBody.innerHTML = peRows;
                 } else {
                     peBody.innerHTML = '<tr><td colspan="23" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                }
+
+                // BE Shadow Tracking
+                const bsBody = document.getElementById('be-shadow-body');
+                if (data.be_shadow_tracking && data.be_shadow_tracking.length > 0) {
+                    bsBody.innerHTML = data.be_shadow_tracking.map(r => {
+                        const deltaClass = r.delta !== null ? (r.delta > 0 ? 'text-emerald-400' : r.delta < 0 ? 'text-red-400' : 'text-gray-400') : 'text-gray-500';
+                        const deltaStr = r.delta !== null ? `${r.delta > 0 ? '+' : ''}${r.delta.toFixed(4)}%` : '-';
+                        const actualPnlClass = r.avg_actual_pnl_exit !== null ? (r.avg_actual_pnl_exit >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
+                        const actualPnlStr = r.avg_actual_pnl_exit !== null ? `${r.avg_actual_pnl_exit >= 0 ? '+' : ''}${r.avg_actual_pnl_exit.toFixed(4)}%` : '-';
+                        const passPnlClass = r.avg_actual_pnl_pass !== null ? (r.avg_actual_pnl_pass >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
+                        const passPnlStr = r.avg_actual_pnl_pass !== null ? `${r.avg_actual_pnl_pass >= 0 ? '+' : ''}${r.avg_actual_pnl_pass.toFixed(4)}%` : '-';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-3 py-2 font-medium text-yellow-400">L${r.level} <span class="text-gray-500 text-[10px]">(${r.orig_trigger}%→${r.orig_offset}%)</span></td>
+                            <td class="px-3 py-2 text-right">${r.triggered_count}</td>
+                            <td class="px-3 py-2 text-right">${r.would_exit_count}</td>
+                            <td class="px-3 py-2 text-right text-gray-400">+${r.avg_phantom_pnl.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${actualPnlClass}">${actualPnlStr}</td>
+                            <td class="px-3 py-2 text-right font-medium ${deltaClass}">${deltaStr}</td>
+                            <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.exit_reasons || '-'}</td>
+                            <td class="px-3 py-2 text-right">${r.passed_through_count}</td>
+                            <td class="px-3 py-2 text-right ${passPnlClass}">${passPnlStr}</td>
+                            <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.pass_reasons || '-'}</td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    bsBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>';
                 }
 
                 // Hold-Time Expectancy

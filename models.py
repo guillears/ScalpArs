@@ -115,6 +115,12 @@ class Order(Base):
     post_exit_signal_regained_minutes = Column(Float, nullable=True)
     post_exit_pnl_at_signal_regained = Column(Float, nullable=True)
 
+    # Phantom BE shadow tracking: what would have happened if BE L1/L2 were active
+    phantom_be_l1_triggered_at = Column(DateTime, nullable=True)
+    phantom_be_l1_would_exit_pnl = Column(Float, nullable=True)
+    phantom_be_l2_triggered_at = Column(DateTime, nullable=True)
+    phantom_be_l2_would_exit_pnl = Column(Float, nullable=True)
+
     # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
     first_rsi2_pnl = Column(Float, nullable=True)
     first_rsi2_minutes = Column(Float, nullable=True)

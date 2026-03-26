@@ -765,33 +765,6 @@
                     </div>
                 </div>
                 
-                <!-- Trough Recovery Analysis -->
-                <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Trough Recovery Analysis</h3>
-                    <p class="text-xs text-gray-500 mb-3">Cumulative: for each depth level, how many trades dipped that far and what % recovered to profit. Helps find optimal stop loss.</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
-                            <thead>
-                                <tr class="text-gray-400 text-left border-b border-white/10">
-                                    <th class="px-3 py-2 font-medium">Trough Level</th>
-                                    <th class="px-3 py-2 font-medium text-center"># Reached</th>
-                                    <th class="px-3 py-2 font-medium text-center"># Recovered</th>
-                                    <th class="px-3 py-2 font-medium text-right">Recovery %</th>
-                                    <th class="px-3 py-2 font-medium text-right">Avg Final P&L%</th>
-                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
-                                    <th class="px-3 py-2 font-medium text-center">Signal Active %</th>
-                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
-                                    <th class="px-3 py-2 font-medium text-center">Top Close Reason</th>
-                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
-                                </tr>
-                            </thead>
-                            <tbody id="trough-recovery-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
                 <!-- Post-Exit Regret Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Post-Exit Regret Deep Dive</h3>
@@ -2828,17 +2801,6 @@
                     lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinPeak/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${'-'.padStart(9)} ${'-'.padStart(10)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
                 }
 
-                // --- TROUGH RECOVERY ANALYSIS ---
-                if (perf.trough_recovery && perf.trough_recovery.length > 0) {
-                    lines.push(`\n${hr2}`);
-                    lines.push('## Trough Recovery Analysis\n');
-                    lines.push(`${'Trough'.padEnd(10)} ${'#Reach'.padEnd(7)} ${'#Recov'.padEnd(7)} ${'Recov%'.padEnd(8)} ${'AvgPnl%'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'SigAct%'.padEnd(8)} ${'Dir'.padEnd(10)} ${'TopReason'.padEnd(24)} ${'Duration'.padEnd(10)}`);
-                    for (const r of perf.trough_recovery) {
-                        const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
-                        lines.push(`${(r.level.toFixed(2)+'%').padEnd(10)} ${String(r.count).padEnd(7)} ${String(r.recovered).padEnd(7)} ${(r.recovery_pct.toFixed(1)+'%').padEnd(8)} ${(r.avg_final_pct.toFixed(4)+'%').padStart(11)} ${('$'+r.avg_final_usd.toFixed(2)).padStart(9)} ${(r.signal_active_pct.toFixed(0)+'%').padEnd(8)} ${dirStr.padEnd(10)} ${(r.top_reason||'-').padEnd(24)} ${(r.avg_duration||'-').padEnd(10)}`);
-                    }
-                }
-
                 // --- POST-EXIT REGRET DEEP DIVE ---
                 if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -4304,34 +4266,6 @@
                     wdBody.innerHTML = rows;
                 } else {
                     wdBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
-                }
-
-                // Trough Recovery Analysis
-                const trBody = document.getElementById('trough-recovery-body');
-                if (data.trough_recovery && data.trough_recovery.length > 0) {
-                    trBody.innerHTML = data.trough_recovery.map(r => {
-                        const recClass = r.recovery_pct >= 30 ? 'text-emerald-400' : r.recovery_pct >= 15 ? 'text-yellow-400' : 'text-red-400';
-                        const pnlClass = r.avg_final_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const pctClass = r.avg_final_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
-                        const isPointOfNoReturn = r.recovery_pct === 0;
-                        const rowBg = isPointOfNoReturn ? 'bg-red-500/10' : 'hover:bg-white/5';
-                        return `
-                            <tr class="${rowBg}">
-                                <td class="px-3 py-2 font-medium text-cyan-400">${r.level.toFixed(2)}%</td>
-                                <td class="px-3 py-2 text-center">${r.count}</td>
-                                <td class="px-3 py-2 text-center">${r.recovered}</td>
-                                <td class="px-3 py-2 text-right ${recClass} font-bold">${r.recovery_pct.toFixed(1)}%</td>
-                                <td class="px-3 py-2 text-right ${pctClass}">${r.avg_final_pct.toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${pnlClass}">${formatUSD(r.avg_final_usd)}</td>
-                                <td class="px-3 py-2 text-center">${r.signal_active_pct.toFixed(0)}%</td>
-                                <td class="px-3 py-2 text-center text-gray-300">${dirStr}</td>
-                                <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.top_reason || '-'}</td>
-                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
-                            </tr>`;
-                    }).join('');
-                } else {
-                    trBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Post-Exit Regret Deep Dive

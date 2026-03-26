@@ -2298,6 +2298,16 @@
             loadClosedOrders();
             loadConfig();
 
+            function updateRoundtripDisplay() {
+                const makerPct = parseFloat(document.getElementById('config-maker-fee').value) || 0.018;
+                const takerPct = parseFloat(document.getElementById('config-taker-fee').value) || 0.045;
+                const entryFee = document.getElementById('config-maker-entry-enabled').checked ? makerPct : takerPct;
+                const exitFee = document.getElementById('config-maker-exit-enabled').checked ? makerPct : takerPct;
+                document.getElementById('maker-roundtrip-display').textContent = (entryFee + exitFee).toFixed(3) + '%';
+            }
+            document.getElementById('config-maker-entry-enabled').addEventListener('change', updateRoundtripDisplay);
+            document.getElementById('config-maker-exit-enabled').addEventListener('change', updateRoundtripDisplay);
+
             // Auto-refresh every 10 seconds
             setInterval(() => {
                 loadBalance();

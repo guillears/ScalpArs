@@ -642,7 +642,6 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Reason</th>
                                     <th class="px-3 py-2 font-medium text-center">#</th>
-                                    <th class="px-3 py-2 font-medium text-center">Dir</th>
                                     <th class="px-3 py-2 font-medium text-center">Conf</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgRSI</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgADX</th>
@@ -660,7 +659,7 @@
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-reason-body" class="divide-y divide-white/5">
-                                <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2829,9 +2828,9 @@
                 // --- ENTRY CONDITIONS BY CLOSE REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Close Reason\n');
-                lines.push(`${'Reason'.padEnd(22)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Duration'}`);
+                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Duration'}`);
                 for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
-                    const dirStr = `${r.longs}L/${r.shorts}S`;
+                    const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
                     const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
                     const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
@@ -2845,7 +2844,7 @@
                     const btcAdxStr = r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-';
                     const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                     const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
-                    lines.push(`${r.reason.padEnd(22)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${r.avg_duration || '-'}`);
+                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${r.avg_duration || '-'}`);
                 }
 
                 // --- ENTRY TYPE PERFORMANCE ---
@@ -3485,7 +3484,8 @@
                         .map(r => {
                             const pnlClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const peakClass = r.avg_peak_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const dirStr = `<span class="text-emerald-400 text-xs">${r.longs}L</span>/<span class="text-red-400 text-xs">${r.shorts}S</span>`;
+                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                            const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
                             const confBadges = Object.entries(r.by_confidence || {})
                                 .sort((a, b) => b[1] - a[1])
                                 .map(([c, n]) => `<span class="${ecrConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
@@ -3494,9 +3494,8 @@
                             const btcAdxDirStr = `<span class="text-emerald-400 text-xs">${r.btc_adx_rising}R</span>/<span class="text-red-400 text-xs">${r.btc_adx_falling}F</span>`;
                             return `
                             <tr class="hover:bg-white/5">
-                                <td class="px-3 py-2 font-medium">${r.reason}</td>
+                                <td class="px-3 py-2 font-medium">${r.reason} <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
                                 <td class="px-3 py-2 text-center">${r.trades}</td>
-                                <td class="px-3 py-2 text-center">${dirStr}</td>
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_adx != null ? r.avg_adx.toFixed(1) : '-'}</td>
@@ -3514,7 +3513,7 @@
                             </tr>`;
                         }).join('');
                 } else {
-                    ecrBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ecrBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap

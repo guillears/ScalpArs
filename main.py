@@ -1838,16 +1838,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         reason = f"{base_reason} L6+"
                 except ValueError:
                     pass
-            ecr_groups.setdefault(reason, []).append(o)
+            direction = o.direction or "UNKNOWN"
+            ecr_groups.setdefault((reason, direction), []).append(o)
 
-        for reason in sorted(ecr_groups.keys()):
-            group = ecr_groups[reason]
+        for (reason, direction) in sorted(ecr_groups.keys()):
+            group = ecr_groups[(reason, direction)]
             count = len(group)
             if count == 0:
                 continue
-
-            ec_longs = sum(1 for o in group if o.direction == "LONG")
-            ec_shorts = count - ec_longs
 
             ec_conf = {}
             for o in group:
@@ -1878,9 +1876,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
             entry_conditions_by_reason.append({
                 "reason": reason,
+                "direction": direction,
                 "trades": count,
-                "longs": ec_longs,
-                "shorts": ec_shorts,
                 "by_confidence": ec_conf,
                 "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                 "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,

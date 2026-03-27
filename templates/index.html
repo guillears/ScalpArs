@@ -2781,7 +2781,7 @@
                         const pnlInvStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
                         const pnlNotStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
                         const pfStr = r.count > 0 ? (r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)) : '-';
-                        const feesStr = '$' + r.total_fees.toFixed(2);
+                        const feesStr = '$' + Math.round(r.total_fees).toLocaleString('en-US');
                         lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)}`);
                     }
                 }
@@ -3228,7 +3228,7 @@
                             <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlInvStr}</td>
                             <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlNotStr}</td>
                             <td class="px-3 py-2 text-right ${pfClass} font-medium">${r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)}</td>
-                            <td class="px-3 py-2 text-right text-yellow-400">$${r.total_fees.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-right text-yellow-400">$${fmtNum(r.total_fees)}</td>
                         </tr>`;
                     }).join('');
                 } else {

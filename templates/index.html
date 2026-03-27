@@ -856,10 +856,11 @@
                                     <th class="px-3 py-2 font-medium text-right" title="Trades that triggered BE but never pulled back to offset">Passed Thru</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg P&L% for trades that passed through without hitting phantom stop">Pass P&L</th>
                                     <th class="px-3 py-2 font-medium text-left" title="Close reasons for passed-through trades">Pass Reasons</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average entry ADX for triggered trades">Avg ADX</th>
                                 </tr>
                             </thead>
                             <tbody id="be-shadow-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2962,14 +2963,16 @@
                 if (perf.be_shadow_tracking && perf.be_shadow_tracking.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## BE Shadow Tracking\n');
-                    lines.push(`${'Level'.padEnd(22)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
+                    lines.push(`${'Level'.padEnd(26)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'AvgADX'.padStart(7)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
                     for (const r of perf.be_shadow_tracking) {
                         const phantomStr = ('+' + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11);
                         const actualStr = r.avg_actual_pnl_exit !== null ? ((r.avg_actual_pnl_exit >= 0 ? '+' : '') + r.avg_actual_pnl_exit.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
                         const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
                         const passPnlStr = r.avg_actual_pnl_pass !== null ? ((r.avg_actual_pnl_pass >= 0 ? '+' : '') + r.avg_actual_pnl_pass.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
-                        const levelStr = `L${r.level} (${r.orig_trigger}%→${r.orig_offset}%)`;
-                        lines.push(`${levelStr.padEnd(22)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
+                        const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
+                        const levelStr = `L${r.level} (${r.orig_trigger}%→${r.orig_offset}%)${dirSuffix}`;
+                        const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                        lines.push(`${levelStr.padEnd(26)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${adxStr.padStart(7)} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
                     }
                 }
 
@@ -4516,8 +4519,10 @@
                         const actualPnlStr = r.avg_actual_pnl_exit !== null ? `${r.avg_actual_pnl_exit >= 0 ? '+' : ''}${r.avg_actual_pnl_exit.toFixed(4)}%` : '-';
                         const passPnlClass = r.avg_actual_pnl_pass !== null ? (r.avg_actual_pnl_pass >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
                         const passPnlStr = r.avg_actual_pnl_pass !== null ? `${r.avg_actual_pnl_pass >= 0 ? '+' : ''}${r.avg_actual_pnl_pass.toFixed(4)}%` : '-';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
                         return `<tr class="hover:bg-white/5">
-                            <td class="px-3 py-2 font-medium text-yellow-400">L${r.level} <span class="text-gray-500 text-[10px]">(${r.orig_trigger}%→${r.orig_offset}%)</span></td>
+                            <td class="px-3 py-2 font-medium text-yellow-400">L${r.level} <span class="text-gray-500 text-[10px]">(${r.orig_trigger}%→${r.orig_offset}%)</span> <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
                             <td class="px-3 py-2 text-right">${r.triggered_count}</td>
                             <td class="px-3 py-2 text-right">${r.would_exit_count}</td>
                             <td class="px-3 py-2 text-right text-gray-400">+${r.avg_phantom_pnl.toFixed(4)}%</td>
@@ -4527,10 +4532,11 @@
                             <td class="px-3 py-2 text-right">${r.passed_through_count}</td>
                             <td class="px-3 py-2 text-right ${passPnlClass}">${passPnlStr}</td>
                             <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.pass_reasons || '-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_adx != null ? r.avg_adx.toFixed(1) : '-'}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    bsBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>';
+                    bsBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>';
                 }
 
                 // Hold-Time Expectancy

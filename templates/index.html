@@ -2777,7 +2777,7 @@
                         const invStr = '$' + Math.round(r.total_investment).toLocaleString('en-US');
                         const notStr = '$' + Math.round(r.total_notional).toLocaleString('en-US');
                         const pnlSign = r.total_pnl >= 0 ? '+' : '-';
-                        const pnlAbs = Math.abs(r.total_pnl).toFixed(2);
+                        const pnlAbs = Math.round(Math.abs(r.total_pnl)).toLocaleString('en-US');
                         const pnlInvStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
                         const pnlNotStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
                         const pfStr = r.count > 0 ? (r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)) : '-';
@@ -3214,8 +3214,8 @@
                         const avgClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const pfClass = r.profit_factor >= 1.5 ? 'text-emerald-400' : r.profit_factor >= 1.0 ? 'text-amber-400' : 'text-red-400';
                         const fmtNum = n => Math.round(n).toLocaleString('en-US');
-                        const pnlInvStr = `${r.total_pnl >= 0 ? '+' : '-'}$${Math.abs(r.total_pnl).toFixed(2)} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
-                        const pnlNotStr = `${r.total_pnl >= 0 ? '+' : '-'}$${Math.abs(r.total_pnl).toFixed(2)} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
+                        const pnlInvStr = `${r.total_pnl >= 0 ? '+' : '-'}$${fmtNum(Math.abs(r.total_pnl))} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
+                        const pnlNotStr = `${r.total_pnl >= 0 ? '+' : '-'}$${fmtNum(Math.abs(r.total_pnl))} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
                         const isTotal = r.period === 'Total';
                         const rowClass = isTotal ? 'border-t border-white/20 font-semibold' : 'hover:bg-white/5';
                         return `<tr class="${rowClass}">

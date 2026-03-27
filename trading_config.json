@@ -59,7 +59,7 @@
     "momentum_short_rsi_min": 30.0,
     "momentum_adx_max": 35.0,
     "btc_global_filter_enabled": true,
-    "macro_trend_min_btc_adx": 18,
+    "macro_trend_min_btc_adx": 15,
     "signal_lost_exit_enabled": true,
     "signal_lost_min_profit": -0.90,
     "signal_lost_max_profit": -0.50,

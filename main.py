@@ -2340,7 +2340,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     # Post-Exit Regret Deep Dive
     post_exit_regret_deep_dive = []
     try:
-        pe_orders = [o for o in orders if o.post_exit_peak_pnl is not None and o.close_reason and (o.close_reason.startswith("BREAKEVEN_SL") or o.close_reason.startswith("SIGNAL_LOST") or o.close_reason.startswith("TICK_MOMENTUM_EXIT") or o.close_reason.startswith("RSI_MOMENTUM_EXIT") or o.close_reason.startswith("STOP_LOSS"))]
+        pe_orders = [o for o in orders if o.post_exit_peak_pnl is not None and o.close_reason and (o.close_reason.startswith("BREAKEVEN_SL") or o.close_reason.startswith("SIGNAL_LOST") or o.close_reason.startswith("TICK_MOMENTUM_EXIT") or o.close_reason.startswith("RSI_MOMENTUM_EXIT") or o.close_reason.startswith("STOP_LOSS") or o.close_reason.startswith("REGIME_CHANGE"))]
         if pe_orders:
             reason_groups = {}
             for o in pe_orders:

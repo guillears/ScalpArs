@@ -797,6 +797,9 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "entry_conditions_by_reason": [],
             "be_shadow_tracking": [],
             "period_performance": [],
+            "equity_curve": [],
+            "pnl_distribution": [],
+            "hourly_performance": [],
             "_error": str(e)
         }
 
@@ -956,6 +959,107 @@ def _period_stats(label, trades):
         "total_investment": total_investment, "total_notional": total_notional,
         "pnl_over_inv": pnl_over_inv, "pnl_over_not": pnl_over_not,
     }
+
+
+def _compute_equity_curve(orders):
+    """Compute cumulative P&L curve trade by trade."""
+    from datetime import timezone
+    UTC_MINUS_3 = timezone(timedelta(hours=-3))
+    timed = [(o, o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at.tzinfo is None else o.closed_at)
+             for o in orders if o.closed_at is not None]
+    if not timed:
+        return []
+    timed.sort(key=lambda x: x[1])
+    result = []
+    cum_all = 0
+    cum_long = 0
+    cum_short = 0
+    for i, (o, ct) in enumerate(timed):
+        pnl = o.pnl or 0
+        cum_all += pnl
+        if o.direction == "LONG":
+            cum_long += pnl
+        else:
+            cum_short += pnl
+        local_time = ct.astimezone(UTC_MINUS_3)
+        result.append({
+            "trade_num": i + 1,
+            "pnl": round(pnl, 2),
+            "cumulative": round(cum_all, 2),
+            "cum_long": round(cum_long, 2),
+            "cum_short": round(cum_short, 2),
+            "direction": o.direction,
+            "timestamp": local_time.strftime("%m/%d %H:%M"),
+        })
+    return result
+
+
+def _compute_pnl_distribution(orders):
+    """Compute histogram of trade P&L percentages."""
+    closed = [o for o in orders if o.pnl_percentage is not None]
+    if not closed:
+        return []
+    edges = [-1.5, -1.0, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1.0, 1.5]
+    buckets = []
+    for i in range(len(edges) - 1):
+        lo, hi = edges[i], edges[i + 1]
+        label = f"{lo:+.2f}%"
+        in_bucket = [o for o in closed if lo <= (o.pnl_percentage or 0) < hi]
+        buckets.append({
+            "label": label,
+            "lo": lo, "hi": hi,
+            "count": len(in_bucket),
+            "count_long": sum(1 for o in in_bucket if o.direction == "LONG"),
+            "count_short": sum(1 for o in in_bucket if o.direction == "SHORT"),
+        })
+    below = [o for o in closed if (o.pnl_percentage or 0) < edges[0]]
+    above = [o for o in closed if (o.pnl_percentage or 0) >= edges[-1]]
+    if below:
+        buckets.insert(0, {
+            "label": f"<{edges[0]:+.1f}%", "lo": -999, "hi": edges[0],
+            "count": len(below),
+            "count_long": sum(1 for o in below if o.direction == "LONG"),
+            "count_short": sum(1 for o in below if o.direction == "SHORT"),
+        })
+    if above:
+        buckets.append({
+            "label": f"≥{edges[-1]:+.1f}%", "lo": edges[-1], "hi": 999,
+            "count": len(above),
+            "count_long": sum(1 for o in above if o.direction == "LONG"),
+            "count_short": sum(1 for o in above if o.direction == "SHORT"),
+        })
+    return buckets
+
+
+def _compute_hourly_performance(orders):
+    """Compute win rate and avg P&L by hour of day (UTC-3)."""
+    from datetime import timezone
+    UTC_MINUS_3 = timezone(timedelta(hours=-3))
+    hourly = {h: [] for h in range(24)}
+    for o in orders:
+        if o.closed_at is None:
+            continue
+        ct = o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at.tzinfo is None else o.closed_at
+        hour = ct.astimezone(UTC_MINUS_3).hour
+        hourly[hour].append(o)
+    result = []
+    for h in range(24):
+        trades = hourly[h]
+        count = len(trades)
+        if count == 0:
+            result.append({"hour": h, "label": f"{h:02d}:00", "trades": 0, "wins": 0,
+                           "win_rate": 0, "avg_pnl_pct": 0, "longs": 0, "shorts": 0})
+            continue
+        wins = sum(1 for o in trades if (o.pnl or 0) > 0)
+        longs = sum(1 for o in trades if o.direction == "LONG")
+        avg_pnl = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
+        result.append({
+            "hour": h, "label": f"{h:02d}:00", "trades": count, "wins": wins,
+            "win_rate": round(wins / count * 100, 1),
+            "avg_pnl_pct": avg_pnl,
+            "longs": longs, "shorts": count - longs,
+        })
+    return result
 
 
 def _compute_time_buckets(orders, bucket_minutes=15):
@@ -1127,8 +1231,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "entry_conditions_by_reason": [],
             "be_shadow_tracking": [],
             "period_performance": [],
+            "equity_curve": [],
+            "pnl_distribution": [],
+            "hourly_performance": [],
         }
-    
+
     # Separate longs and shorts
     longs = [o for o in orders if o.direction == "LONG"]
     shorts = [o for o in orders if o.direction == "SHORT"]
@@ -2604,6 +2711,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "entry_conditions_by_reason": entry_conditions_by_reason,
         "be_shadow_tracking": be_shadow_tracking,
         "period_performance": _compute_period_performance(orders),
+        "equity_curve": _compute_equity_curve(orders),
+        "pnl_distribution": _compute_pnl_distribution(orders),
+        "hourly_performance": _compute_hourly_performance(orders),
     }
 
 

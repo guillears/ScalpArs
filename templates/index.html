@@ -1259,6 +1259,36 @@
                     </div>
                     <p id="performance-over-time-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
                 </div>
+
+                <!-- Cumulative P&L (Equity Curve) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Cumulative P&L (Equity Curve)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Running total P&L trade by trade — separate lines for LONG and SHORT</p>
+                    <div style="height: 320px; position: relative;">
+                        <canvas id="equity-curve-chart"></canvas>
+                    </div>
+                    <p id="equity-curve-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
+                </div>
+
+                <!-- P&L Distribution -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">P&L Distribution</h3>
+                    <p class="text-xs text-gray-500 mb-3">Histogram of trade P&L % — right tail longer than left = asymmetric payoff</p>
+                    <div style="height: 320px; position: relative;">
+                        <canvas id="pnl-distribution-chart"></canvas>
+                    </div>
+                    <p id="pnl-distribution-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
+                </div>
+
+                <!-- Performance by Hour -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Hour (UTC-3)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows</p>
+                    <div style="height: 320px; position: relative;">
+                        <canvas id="hourly-performance-chart"></canvas>
+                    </div>
+                    <p id="hourly-performance-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
+                </div>
             </div>
         </section>
 
@@ -3179,6 +3209,9 @@
 
         // Load performance metrics
         let _lastPotHash = null;
+        let _lastEqHash = null;
+        let _lastDistHash = null;
+        let _lastHourlyHash = null;
 
         async function loadPerformance() {
             try {
@@ -4143,6 +4176,253 @@
                     } else {
                         potEmpty.style.display = 'block';
                         potCanvas.style.display = 'none';
+                    }
+                }
+
+                // Equity Curve Chart
+                const eqCanvas = document.getElementById('equity-curve-chart');
+                const eqEmpty = document.getElementById('equity-curve-empty');
+                const eqData = data.equity_curve;
+                const eqHash = JSON.stringify(eqData || []);
+                if (eqHash !== _lastEqHash) {
+                    _lastEqHash = eqHash;
+                    if (window._eqChart) { window._eqChart.destroy(); window._eqChart = null; }
+                    if (eqData && eqData.length > 0) {
+                        eqEmpty.style.display = 'none';
+                        eqCanvas.style.display = 'block';
+                        window._eqChart = new Chart(eqCanvas, {
+                            type: 'line',
+                            data: {
+                                labels: eqData.map(d => d.timestamp),
+                                datasets: [
+                                    {
+                                        label: 'Total P&L',
+                                        data: eqData.map(d => d.cumulative),
+                                        borderColor: 'rgba(96, 165, 250, 1)',
+                                        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                                        borderWidth: 2,
+                                        pointRadius: 2,
+                                        pointHoverRadius: 5,
+                                        fill: true,
+                                        tension: 0.3,
+                                    },
+                                    {
+                                        label: 'LONG P&L',
+                                        data: eqData.map(d => d.cum_long),
+                                        borderColor: 'rgba(52, 211, 153, 0.8)',
+                                        borderWidth: 1.5,
+                                        pointRadius: 0,
+                                        pointHoverRadius: 4,
+                                        fill: false,
+                                        tension: 0.3,
+                                        borderDash: [4, 2],
+                                    },
+                                    {
+                                        label: 'SHORT P&L',
+                                        data: eqData.map(d => d.cum_short),
+                                        borderColor: 'rgba(248, 113, 113, 0.8)',
+                                        borderWidth: 1.5,
+                                        pointRadius: 0,
+                                        pointHoverRadius: 4,
+                                        fill: false,
+                                        tension: 0.3,
+                                        borderDash: [4, 2],
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { mode: 'index', intersect: false },
+                                plugins: {
+                                    legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                                    tooltip: {
+                                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                        titleColor: '#e5e7eb',
+                                        bodyColor: '#d1d5db',
+                                        borderColor: 'rgba(255,255,255,0.1)',
+                                        borderWidth: 1,
+                                        callbacks: {
+                                            afterBody: function(ctx) {
+                                                const i = ctx[0].dataIndex;
+                                                const d = eqData[i];
+                                                return [`Trade #${d.trade_num} (${d.direction})`, `This trade: $${d.pnl.toFixed(2)}`];
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: { ticks: { color: '#6b7280', font: { size: 9 }, maxRotation: 45, maxTicksLimit: 20 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    y: {
+                                        title: { display: true, text: 'Cumulative P&L ($)', color: '#60a5fa', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
+                                        grid: { color: 'rgba(255,255,255,0.05)' }
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        eqEmpty.style.display = 'block';
+                        eqCanvas.style.display = 'none';
+                    }
+                }
+
+                // P&L Distribution Chart
+                const distCanvas = document.getElementById('pnl-distribution-chart');
+                const distEmpty = document.getElementById('pnl-distribution-empty');
+                const distData = data.pnl_distribution;
+                const distHash = JSON.stringify(distData || []);
+                if (distHash !== _lastDistHash) {
+                    _lastDistHash = distHash;
+                    if (window._distChart) { window._distChart.destroy(); window._distChart = null; }
+                    if (distData && distData.length > 0) {
+                        distEmpty.style.display = 'none';
+                        distCanvas.style.display = 'block';
+                        window._distChart = new Chart(distCanvas, {
+                            type: 'bar',
+                            data: {
+                                labels: distData.map(d => d.label),
+                                datasets: [
+                                    {
+                                        label: 'LONG',
+                                        data: distData.map(d => d.count_long),
+                                        backgroundColor: 'rgba(52, 211, 153, 0.7)',
+                                        borderColor: 'rgba(52, 211, 153, 1)',
+                                        borderWidth: 1,
+                                    },
+                                    {
+                                        label: 'SHORT',
+                                        data: distData.map(d => d.count_short),
+                                        backgroundColor: 'rgba(248, 113, 113, 0.7)',
+                                        borderColor: 'rgba(248, 113, 113, 1)',
+                                        borderWidth: 1,
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                                    tooltip: {
+                                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                        titleColor: '#e5e7eb',
+                                        bodyColor: '#d1d5db',
+                                        borderColor: 'rgba(255,255,255,0.1)',
+                                        borderWidth: 1,
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        stacked: true,
+                                        ticks: { color: '#6b7280', font: { size: 10 } },
+                                        grid: { color: 'rgba(255,255,255,0.05)' },
+                                        title: { display: true, text: 'P&L %', color: '#9ca3af', font: { size: 11 } }
+                                    },
+                                    y: {
+                                        stacked: true,
+                                        title: { display: true, text: '# Trades', color: '#9ca3af', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', stepSize: 1 },
+                                        grid: { color: 'rgba(255,255,255,0.05)' }
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        distEmpty.style.display = 'block';
+                        distCanvas.style.display = 'none';
+                    }
+                }
+
+                // Hourly Performance Chart
+                const hourCanvas = document.getElementById('hourly-performance-chart');
+                const hourEmpty = document.getElementById('hourly-performance-empty');
+                const hourData = data.hourly_performance;
+                const hourHash = JSON.stringify(hourData || []);
+                if (hourHash !== _lastHourlyHash) {
+                    _lastHourlyHash = hourHash;
+                    if (window._hourChart) { window._hourChart.destroy(); window._hourChart = null; }
+                    if (hourData && hourData.some(h => h.trades > 0)) {
+                        hourEmpty.style.display = 'none';
+                        hourCanvas.style.display = 'block';
+                        const barColors = hourData.map(h => {
+                            if (h.trades === 0) return 'rgba(107, 114, 128, 0.3)';
+                            return h.win_rate >= 50 ? 'rgba(52, 211, 153, 0.7)' : 'rgba(248, 113, 113, 0.7)';
+                        });
+                        window._hourChart = new Chart(hourCanvas, {
+                            type: 'bar',
+                            data: {
+                                labels: hourData.map(h => h.label),
+                                datasets: [
+                                    {
+                                        label: 'Win Rate %',
+                                        data: hourData.map(h => h.win_rate),
+                                        backgroundColor: barColors,
+                                        borderColor: barColors.map(c => c.replace('0.7', '1').replace('0.3', '0.5')),
+                                        borderWidth: 1,
+                                        yAxisID: 'y',
+                                        order: 2,
+                                    },
+                                    {
+                                        label: 'Avg P&L %',
+                                        data: hourData.map(h => h.avg_pnl_pct),
+                                        type: 'line',
+                                        borderColor: 'rgba(96, 165, 250, 1)',
+                                        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                                        borderWidth: 2,
+                                        pointRadius: 3,
+                                        pointHoverRadius: 6,
+                                        pointBackgroundColor: hourData.map(h => h.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
+                                        fill: false,
+                                        tension: 0.3,
+                                        yAxisID: 'y1',
+                                        order: 1,
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { mode: 'index', intersect: false },
+                                plugins: {
+                                    legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                                    tooltip: {
+                                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                        titleColor: '#e5e7eb',
+                                        bodyColor: '#d1d5db',
+                                        borderColor: 'rgba(255,255,255,0.1)',
+                                        borderWidth: 1,
+                                        callbacks: {
+                                            afterBody: function(ctx) {
+                                                const i = ctx[0].dataIndex;
+                                                const h = hourData[i];
+                                                return [`Trades: ${h.trades} (${h.longs}L/${h.shorts}S)`, `Wins: ${h.wins}/${h.trades}`];
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    y: {
+                                        position: 'left',
+                                        title: { display: true, text: 'Win Rate %', color: '#9ca3af', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', callback: v => v + '%' },
+                                        grid: { color: 'rgba(255,255,255,0.05)' },
+                                        min: 0,
+                                        max: 100,
+                                    },
+                                    y1: {
+                                        position: 'right',
+                                        title: { display: true, text: 'Avg P&L %', color: '#60a5fa', font: { size: 11 } },
+                                        ticks: { color: '#60a5fa', callback: v => v.toFixed(2) + '%' },
+                                        grid: { drawOnChartArea: false },
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        hourEmpty.style.display = 'block';
+                        hourCanvas.style.display = 'none';
                     }
                 }
 

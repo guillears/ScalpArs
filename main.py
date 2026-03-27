@@ -932,21 +932,29 @@ def _period_stats(label, trades):
     count = len(trades)
     if count == 0:
         return {"period": label, "count": 0, "longs": 0, "shorts": 0,
-                "win_rate": 0, "avg_pnl_pct": 0, "total_pnl": 0, "profit_factor": 0, "total_fees": 0}
+                "win_rate": 0, "avg_pnl_pct": 0, "total_pnl": 0, "profit_factor": 0,
+                "total_fees": 0, "total_investment": 0, "total_notional": 0,
+                "pnl_over_inv": 0, "pnl_over_not": 0}
     longs = sum(1 for o in trades if o.direction == "LONG")
     shorts = count - longs
     wins = [o for o in trades if (o.pnl or 0) > 0]
     win_rate = round(len(wins) / count * 100, 1)
     avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
     total_pnl = round(sum(o.pnl or 0 for o in trades), 2)
-    total_fees = round(sum(o.total_fees or 0 for o in trades), 2)
+    total_fees = round(sum(o.total_fee or 0 for o in trades), 2)
+    total_investment = round(sum(o.investment or 0 for o in trades), 2)
+    total_notional = round(sum(o.notional_value or 0 for o in trades), 2)
+    pnl_over_inv = round(total_pnl / total_investment * 100, 2) if total_investment > 0 else 0
+    pnl_over_not = round(total_pnl / total_notional * 100, 4) if total_notional > 0 else 0
     total_wins_usd = sum(o.pnl for o in trades if (o.pnl or 0) > 0)
     total_losses_usd = abs(sum(o.pnl for o in trades if (o.pnl or 0) < 0))
     profit_factor = round(total_wins_usd / total_losses_usd, 2) if total_losses_usd > 0 else (999 if total_wins_usd > 0 else 0)
     return {
         "period": label, "count": count, "longs": longs, "shorts": shorts,
-        "win_rate": win_rate, "avg_pnl_pct": avg_pnl_pct,
-        "total_pnl": total_pnl, "profit_factor": profit_factor, "total_fees": total_fees,
+        "win_rate": win_rate, "avg_pnl_pct": avg_pnl_pct, "total_pnl": total_pnl,
+        "profit_factor": profit_factor, "total_fees": total_fees,
+        "total_investment": total_investment, "total_notional": total_notional,
+        "pnl_over_inv": pnl_over_inv, "pnl_over_not": pnl_over_not,
     }
 
 

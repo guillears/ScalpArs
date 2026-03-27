@@ -353,13 +353,16 @@
                                     <th class="px-3 py-2 font-medium text-center"># Trades</th>
                                     <th class="px-3 py-2 font-medium text-center">Win Rate</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
-                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">Profit Factor</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Sum of margin/investment across trades">Tot Inv</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Sum of notional value (investment × leverage)">Tot Not</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="P&L as $ and % of total investment">P&L / Inv</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="P&L as $ and % of total notional">P&L / Not</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">PF</th>
                                     <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total fees paid (entry + exit)">Fees</th>
                                 </tr>
                             </thead>
                             <tbody id="period-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2766,15 +2769,20 @@
                 if (perf.period_performance && perf.period_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Period Performance\n');
-                    lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotalP&L'.padEnd(14)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)}`);
+                    lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)}`);
                     for (const r of perf.period_performance) {
                         const dirStr = `${r.longs}L/${r.shorts}S`;
                         const wrStr = r.count > 0 ? r.win_rate.toFixed(1) + '%' : '-';
                         const avgStr = r.count > 0 ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%' : '-';
-                        const totalStr = (r.total_pnl >= 0 ? '+$' : '-$') + Math.abs(r.total_pnl).toFixed(2);
+                        const invStr = '$' + r.total_investment.toFixed(2);
+                        const notStr = '$' + r.total_notional.toFixed(2);
+                        const pnlSign = r.total_pnl >= 0 ? '+' : '-';
+                        const pnlAbs = Math.abs(r.total_pnl).toFixed(2);
+                        const pnlInvStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
+                        const pnlNotStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(4)}%)`;
                         const pfStr = r.count > 0 ? (r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)) : '-';
                         const feesStr = '$' + r.total_fees.toFixed(2);
-                        lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${totalStr.padEnd(14)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)}`);
+                        lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)}`);
                     }
                 }
 
@@ -3193,7 +3201,10 @@
                                 <td class="px-3 py-2 text-center">0</td>
                                 <td class="px-3 py-2 text-center">-</td>
                                 <td class="px-3 py-2 text-right">-</td>
-                                <td class="px-3 py-2 text-right">$0.00</td>
+                                <td class="px-3 py-2 text-right">-</td>
+                                <td class="px-3 py-2 text-right">-</td>
+                                <td class="px-3 py-2 text-right">$0.00 (0%)</td>
+                                <td class="px-3 py-2 text-right">$0.00 (0%)</td>
                                 <td class="px-3 py-2 text-right">-</td>
                                 <td class="px-3 py-2 text-right text-yellow-400">$0.00</td>
                             </tr>`;
@@ -3202,6 +3213,8 @@
                         const pnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const avgClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const pfClass = r.profit_factor >= 1.5 ? 'text-emerald-400' : r.profit_factor >= 1.0 ? 'text-amber-400' : 'text-red-400';
+                        const pnlInvStr = `${r.total_pnl >= 0 ? '+' : '-'}$${Math.abs(r.total_pnl).toFixed(2)} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
+                        const pnlNotStr = `${r.total_pnl >= 0 ? '+' : '-'}$${Math.abs(r.total_pnl).toFixed(2)} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(4)}%)`;
                         const isTotal = r.period === 'Total';
                         const rowClass = isTotal ? 'border-t border-white/20 font-semibold' : 'hover:bg-white/5';
                         return `<tr class="${rowClass}">
@@ -3209,13 +3222,16 @@
                             <td class="px-3 py-2 text-center">${r.count} <span class="text-xs text-gray-500">(${r.longs}L/${r.shorts}S)</span></td>
                             <td class="px-3 py-2 text-center ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-3 py-2 text-right ${avgClass} font-medium">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(4)}%</td>
-                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${r.total_pnl >= 0 ? '+' : ''}$${r.total_pnl.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-right text-gray-300">$${r.total_investment.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-right text-gray-300">$${r.total_notional.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlInvStr}</td>
+                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlNotStr}</td>
                             <td class="px-3 py-2 text-right ${pfClass} font-medium">${r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">$${r.total_fees.toFixed(2)}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    ppBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ppBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 document.getElementById('perf-total-trades').textContent = data.total_trades;

@@ -796,6 +796,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "be_shadow_tracking": [],
+            "period_performance": [],
             "_error": str(e)
         }
 
@@ -892,6 +893,60 @@ def _compute_exit_type_stats(orders):
             "by_confidence": data["by_confidence"],
         }
     return result
+
+
+def _compute_period_performance(orders):
+    """Compute performance summary for rolling time periods."""
+    from datetime import timezone
+    now = datetime.utcnow().replace(tzinfo=timezone.utc)
+
+    periods = [
+        ("Last 6h", timedelta(hours=6)),
+        ("Last 12h", timedelta(hours=12)),
+        ("1 Day", timedelta(days=1)),
+        ("2 Days", timedelta(days=2)),
+        ("3 Days", timedelta(days=3)),
+        ("5 Days", timedelta(days=5)),
+        ("7 Days", timedelta(days=7)),
+        ("15 Days", timedelta(days=15)),
+        ("30 Days", timedelta(days=30)),
+    ]
+
+    timed = []
+    for o in orders:
+        if o.closed_at:
+            ca = o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at.tzinfo is None else o.closed_at
+            timed.append((o, ca))
+
+    result = []
+    for label, delta in periods:
+        cutoff = now - delta
+        bucket = [o for o, ca in timed if ca >= cutoff]
+        result.append(_period_stats(label, bucket))
+
+    result.append(_period_stats("Total", [o for o, _ in timed]))
+    return result
+
+
+def _period_stats(label, trades):
+    count = len(trades)
+    if count == 0:
+        return {"period": label, "count": 0, "longs": 0, "shorts": 0,
+                "win_rate": 0, "avg_pnl_pct": 0, "total_pnl": 0, "profit_factor": 0}
+    longs = sum(1 for o in trades if o.direction == "LONG")
+    shorts = count - longs
+    wins = [o for o in trades if (o.pnl or 0) > 0]
+    win_rate = round(len(wins) / count * 100, 1)
+    avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
+    total_pnl = round(sum(o.pnl or 0 for o in trades), 2)
+    total_wins_usd = sum(o.pnl for o in trades if (o.pnl or 0) > 0)
+    total_losses_usd = abs(sum(o.pnl for o in trades if (o.pnl or 0) < 0))
+    profit_factor = round(total_wins_usd / total_losses_usd, 2) if total_losses_usd > 0 else (999 if total_wins_usd > 0 else 0)
+    return {
+        "period": label, "count": count, "longs": longs, "shorts": shorts,
+        "win_rate": win_rate, "avg_pnl_pct": avg_pnl_pct,
+        "total_pnl": total_pnl, "profit_factor": profit_factor,
+    }
 
 
 def _compute_time_buckets(orders, bucket_minutes=15):
@@ -1061,7 +1116,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
-            "be_shadow_tracking": []
+            "be_shadow_tracking": [],
+            "period_performance": [],
         }
     
     # Separate longs and shorts
@@ -2532,7 +2588,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
-        "be_shadow_tracking": be_shadow_tracking
+        "be_shadow_tracking": be_shadow_tracking,
+        "period_performance": _compute_period_performance(orders),
     }
 
 

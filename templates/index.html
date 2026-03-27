@@ -341,7 +341,29 @@
             <h2 class="text-lg font-semibold text-gray-300 mb-4">Closed Orders Performance</h2>
             <div class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
-                
+
+                <!-- Period Performance Summary -->
+                <div class="mb-6">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-3">Period Performance</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Period</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">Profit Factor</th>
+                                </tr>
+                            </thead>
+                            <tbody id="period-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-6">
                     <!-- Row 1 -->
                     <div>
@@ -2739,6 +2761,21 @@
                 lines.push(`Daily Compound Return: ${perf.daily_compound_return}%  |  Runtime: ${perf.runtime_days} days`);
                 lines.push(`Investment L:$${perf.total_investment_long_value} S:$${perf.total_investment_short_value}`);
 
+                // --- PERIOD PERFORMANCE ---
+                if (perf.period_performance && perf.period_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Period Performance\n');
+                    lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotalP&L'.padEnd(14)} ${'PF'.padEnd(6)}`);
+                    for (const r of perf.period_performance) {
+                        const dirStr = `${r.longs}L/${r.shorts}S`;
+                        const wrStr = r.count > 0 ? r.win_rate.toFixed(1) + '%' : '-';
+                        const avgStr = r.count > 0 ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%' : '-';
+                        const totalStr = (r.total_pnl >= 0 ? '+$' : '-$') + Math.abs(r.total_pnl).toFixed(2);
+                        const pfStr = r.count > 0 ? (r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)) : '-';
+                        lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${totalStr.padEnd(14)} ${pfStr.padEnd(6)}`);
+                    }
+                }
+
                 // --- BY MACRO TREND ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Macro Trend\n');
@@ -3144,6 +3181,39 @@
                 const balData = balRes.ok ? await balRes.json() : null;
                 if (data._error) console.warn('[Performance API error]', data._error);
                 
+                // Period Performance table
+                const ppBody = document.getElementById('period-performance-body');
+                if (data.period_performance && data.period_performance.length > 0) {
+                    ppBody.innerHTML = data.period_performance.map(r => {
+                        if (r.count === 0) {
+                            return `<tr class="hover:bg-white/5 text-gray-500">
+                                <td class="px-3 py-2 font-medium ${r.period === 'Total' ? 'text-white' : ''}">${r.period}</td>
+                                <td class="px-3 py-2 text-center">0</td>
+                                <td class="px-3 py-2 text-center">-</td>
+                                <td class="px-3 py-2 text-right">-</td>
+                                <td class="px-3 py-2 text-right">$0.00</td>
+                                <td class="px-3 py-2 text-right">-</td>
+                            </tr>`;
+                        }
+                        const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pfClass = r.profit_factor >= 1.5 ? 'text-emerald-400' : r.profit_factor >= 1.0 ? 'text-amber-400' : 'text-red-400';
+                        const isTotal = r.period === 'Total';
+                        const rowClass = isTotal ? 'border-t border-white/20 font-semibold' : 'hover:bg-white/5';
+                        return `<tr class="${rowClass}">
+                            <td class="px-3 py-2 font-medium ${isTotal ? 'text-white' : ''}">${r.period}</td>
+                            <td class="px-3 py-2 text-center">${r.count} <span class="text-xs text-gray-500">(${r.longs}L/${r.shorts}S)</span></td>
+                            <td class="px-3 py-2 text-center ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-3 py-2 text-right ${avgClass} font-medium">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${r.total_pnl >= 0 ? '+' : ''}$${r.total_pnl.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-right ${pfClass} font-medium">${r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)}</td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    ppBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
                 document.getElementById('perf-total-longs').textContent = data.total_longs;
                 document.getElementById('perf-total-shorts').textContent = data.total_shorts;

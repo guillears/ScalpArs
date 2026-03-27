@@ -97,6 +97,26 @@ def determine_macro_regime(ema_current: float, ema_prev: float, flat_threshold: 
     return "NEUTRAL"
 
 
+def _passes_rsi_adx_filter(direction: str, rsi: float, adx: float, th) -> bool:
+    """Check RSI x ADX cross-filter rules. Returns True if the entry is allowed."""
+    key = 'rsi_adx_filter_long' if direction == 'LONG' else 'rsi_adx_filter_short'
+    filter_str = getattr(th, key, '')
+    if not filter_str or not filter_str.strip():
+        return True
+    for rule in filter_str.split(','):
+        rule = rule.strip()
+        if not rule or ':' not in rule:
+            continue
+        try:
+            rsi_part, min_adx_str = rule.split(':')
+            rsi_min, rsi_max = map(float, rsi_part.split('-'))
+            if rsi_min <= rsi < rsi_max:
+                return adx >= float(min_adx_str)
+        except (ValueError, TypeError):
+            continue
+    return True
+
+
 def get_signal(
     ema5: float,
     ema8: float,
@@ -254,7 +274,11 @@ def get_signal(
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
-                elif gap_threshold_met:
+                elif not gap_threshold_met:
+                    pass
+                elif not _passes_rsi_adx_filter("LONG", rsi, adx, th):
+                    logger.debug(f"[MOMENTUM] LONG skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")
+                else:
                     if adx > adx_vs_long:
                         if check_gap_and_mode("LONG", "VERY_STRONG"):
                             logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
@@ -288,7 +312,11 @@ def get_signal(
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
-                elif gap_threshold_met:
+                elif not gap_threshold_met:
+                    pass
+                elif not _passes_rsi_adx_filter("SHORT", rsi, adx, th):
+                    logger.debug(f"[MOMENTUM] SHORT skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")
+                else:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "VERY_STRONG"):
                             logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}")

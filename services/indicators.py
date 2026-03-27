@@ -222,6 +222,9 @@ def get_signal(
     short_rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
     short_rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
     adx_max = getattr(th, 'momentum_adx_max', 100)
+    adx_s_long = getattr(th, 'adx_strong_long', th.adx_strong)
+    adx_vs_long = getattr(th, 'adx_very_strong_long', th.adx_very_strong)
+    adx_max_long = getattr(th, 'momentum_adx_max_long', adx_max)
     rsi_momentum_enabled = getattr(th, 'rsi_momentum_filter_enabled', True)
     gap_expanding_enabled = getattr(th, 'ema_gap_expanding_filter', True)
 
@@ -239,8 +242,8 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} < min {long_rsi_min}")
             elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} > max {long_rsi_max}")
-            elif adx_max < 100 and adx > adx_max:
-                logger.debug(f"[MOMENTUM] LONG skipped: ADX {adx:.1f} > max {adx_max}")
+            elif adx_max_long < 100 and adx > adx_max_long:
+                logger.debug(f"[MOMENTUM] LONG skipped: ADX {adx:.1f} > max_long {adx_max_long}")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
                 prev_gap_pct = ((ema5_prev1 - ema8_prev1) / ema8_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema8_prev1 > 0 else None
@@ -252,11 +255,11 @@ def get_signal(
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                 elif gap_threshold_met:
-                    if adx > th.adx_very_strong:
+                    if adx > adx_vs_long:
                         if check_gap_and_mode("LONG", "VERY_STRONG"):
                             logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
                             return "LONG", "VERY_STRONG"
-                    if adx > th.adx_strong and adx <= th.adx_very_strong:
+                    if adx > adx_s_long and adx <= adx_vs_long:
                         if check_gap_and_mode("LONG", "STRONG_BUY"):
                             logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
                             return "LONG", "STRONG_BUY"

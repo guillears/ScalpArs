@@ -1618,8 +1618,14 @@
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-center">
-                                        &gt; <input type="number" id="config-adx-very-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
-                                        &le; <input type="number" step="1" id="config-momentum-adx-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
+                                        <div class="flex items-center justify-center gap-3 flex-wrap">
+                                            <span class="text-xs text-emerald-400">L</span>
+                                            &gt; <input type="number" id="config-adx-very-strong-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="25">
+                                            &le; <input type="number" step="1" id="config-momentum-adx-max-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
+                                            <span class="text-xs text-red-400 ml-2">S</span>
+                                            &gt; <input type="number" id="config-adx-very-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
+                                            &le; <input type="number" step="1" id="config-momentum-adx-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3 text-center">
                                         <span class="text-xs text-gray-500">L Min</span>
@@ -1639,8 +1645,14 @@
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-center">
-                                        &gt; <input type="number" id="config-adx-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="16">
-                                        &le; <span class="text-sm text-gray-400" id="config-adx-max-mirror"></span>
+                                        <div class="flex items-center justify-center gap-3 flex-wrap">
+                                            <span class="text-xs text-emerald-400">L</span>
+                                            &gt; <input type="number" id="config-adx-strong-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="18">
+                                            &le; <span class="text-sm text-gray-400" id="config-adx-max-mirror-long"></span>
+                                            <span class="text-xs text-red-400 ml-2">S</span>
+                                            &gt; <input type="number" id="config-adx-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="16">
+                                            &le; <span class="text-sm text-gray-400" id="config-adx-max-mirror"></span>
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3 text-center">
                                         <span class="text-xs text-gray-500">L Min</span>
@@ -2634,7 +2646,7 @@
                 const th = cfg.thresholds || {};
                 lines.push('Signal Thresholds:');
                 lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
-                lines.push(`  ADX Very Strong: >${th.adx_very_strong}  |  ADX Strong: >${th.adx_strong}  |  ADX Max: ${th.momentum_adx_max}`);
+                lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
                 lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
                 lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}  |  Min BTC ADX: ${th.macro_trend_min_btc_adx !== undefined ? th.macro_trend_min_btc_adx : 0}`);
                 lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
@@ -4941,6 +4953,9 @@
                 document.getElementById('config-ema-gap-threshold-short').value = config.thresholds.ema_gap_threshold_short !== undefined ? config.thresholds.ema_gap_threshold_short : (config.thresholds.ema_gap_threshold || 0.02);
                 document.getElementById('config-adx-strong').value = config.thresholds.adx_strong !== undefined ? config.thresholds.adx_strong : 16.0;
                 document.getElementById('config-adx-very-strong').value = config.thresholds.adx_very_strong !== undefined ? config.thresholds.adx_very_strong : 30.0;
+                document.getElementById('config-adx-strong-long').value = config.thresholds.adx_strong_long !== undefined ? config.thresholds.adx_strong_long : config.thresholds.adx_strong;
+                document.getElementById('config-adx-very-strong-long').value = config.thresholds.adx_very_strong_long !== undefined ? config.thresholds.adx_very_strong_long : config.thresholds.adx_very_strong;
+                document.getElementById('config-momentum-adx-max-long').value = config.thresholds.momentum_adx_max_long !== undefined ? config.thresholds.momentum_adx_max_long : (config.thresholds.momentum_adx_max || 100);
                 document.getElementById('config-momentum-ema20-filter-long').checked = config.thresholds.momentum_ema20_filter_long !== undefined ? config.thresholds.momentum_ema20_filter_long : true;
                 document.getElementById('config-momentum-ema20-filter-short').checked = config.thresholds.momentum_ema20_filter_short !== undefined ? config.thresholds.momentum_ema20_filter_short : true;
                 document.getElementById('config-momentum-ema20-slope-filter-long').checked = config.thresholds.momentum_ema20_slope_filter_long !== undefined ? config.thresholds.momentum_ema20_slope_filter_long : true;
@@ -4959,7 +4974,8 @@
                 document.getElementById('config-ema-gap-expanding-filter').checked = config.thresholds.ema_gap_expanding_filter !== undefined ? config.thresholds.ema_gap_expanding_filter : true;
                 document.getElementById('config-ema-gap-5-8-max').value = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
                 // Sync mirror elements for STRONG_BUY row
-                document.getElementById('config-adx-max-mirror').textContent = document.getElementById('config-momentum-adx-max').value;
+                document.getElementById('config-adx-max-mirror').textContent = document.getElementById('config-adx-very-strong').value;
+                document.getElementById('config-adx-max-mirror-long').textContent = document.getElementById('config-adx-very-strong-long').value;
                 document.getElementById('config-ema-gap-min-long-mirror').textContent = document.getElementById('config-ema-gap-threshold-long').value;
                 document.getElementById('config-ema-gap-min-short-mirror').textContent = document.getElementById('config-ema-gap-threshold-short').value;
                 document.getElementById('config-ema-gap-max-mirror').textContent = document.getElementById('config-ema-gap-5-8-max').value;
@@ -5035,8 +5051,11 @@
         document.getElementById('config-reserve-mode').addEventListener('change', updateReserveUnit);
 
         // Sync mirror elements in STRONG_BUY row when primary inputs change
-        document.getElementById('config-momentum-adx-max').addEventListener('input', function() {
+        document.getElementById('config-adx-very-strong').addEventListener('input', function() {
             document.getElementById('config-adx-max-mirror').textContent = this.value;
+        });
+        document.getElementById('config-adx-very-strong-long').addEventListener('input', function() {
+            document.getElementById('config-adx-max-mirror-long').textContent = this.value;
         });
         document.getElementById('config-ema-gap-threshold-long').addEventListener('input', function() {
             document.getElementById('config-ema-gap-min-long-mirror').textContent = this.value;
@@ -5106,6 +5125,9 @@
                     ema_gap_threshold_short: safeFloat(document.getElementById('config-ema-gap-threshold-short').value),
                     adx_strong: safeFloat(document.getElementById('config-adx-strong').value),
                     adx_very_strong: safeFloat(document.getElementById('config-adx-very-strong').value),
+                    adx_strong_long: safeFloat(document.getElementById('config-adx-strong-long').value),
+                    adx_very_strong_long: safeFloat(document.getElementById('config-adx-very-strong-long').value),
+                    momentum_adx_max_long: safeFloat(document.getElementById('config-momentum-adx-max-long').value),
                     momentum_ema20_filter_long: document.getElementById('config-momentum-ema20-filter-long').checked,
                     momentum_ema20_filter_short: document.getElementById('config-momentum-ema20-filter-short').checked,
                     momentum_ema20_slope_filter_long: document.getElementById('config-momentum-ema20-slope-filter-long').checked,

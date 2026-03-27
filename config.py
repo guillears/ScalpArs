@@ -74,8 +74,11 @@ class SignalThresholds(BaseModel):
     ema_gap_threshold_long: float = 0.02  # Min EMA5-EMA8 gap for LONG entries
     ema_gap_threshold_short: float = 0.05  # Min EMA5-EMA8 gap for SHORT entries
     ema_gap_5_8_max: float = 0.0  # Max EMA5-EMA8 gap % for entry (0 = disabled)
-    adx_strong: float = 16.0  # ADX threshold for STRONG_BUY
-    adx_very_strong: float = 30.0  # ADX threshold for VERY_STRONG
+    adx_strong: float = 16.0  # ADX threshold for STRONG_BUY (SHORT)
+    adx_very_strong: float = 30.0  # ADX threshold for VERY_STRONG (SHORT)
+    adx_strong_long: float = 16.0  # ADX threshold for STRONG_BUY (LONG)
+    adx_very_strong_long: float = 30.0  # ADX threshold for VERY_STRONG (LONG)
+    momentum_adx_max_long: float = 100.0  # Max ADX for LONG entries (100 = disabled)
     momentum_ema20_filter_long: bool = True
     momentum_ema20_filter_short: bool = True
     momentum_ema20_slope_filter_long: bool = True

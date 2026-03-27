@@ -595,13 +595,10 @@
                                         <th class="px-3 py-2 font-medium text-center text-cyan-400" title="% of trades where RSI 2-drop fired during the trade">RSI2 %</th>
                                         <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Avg P&L when RSI 2-drop first fired">RSI2 P&L</th>
                                         <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Avg minutes into trade when RSI 2-drop first fired">RSI2 Min</th>
-                                        <th class="px-3 py-2 font-medium text-center text-violet-400" title="% of trades where RSI 3-drop fired during the trade">RSI3 %</th>
-                                        <th class="px-3 py-2 font-medium text-right text-violet-400" title="Avg P&L when RSI 3-drop first fired">RSI3 P&L</th>
-                                        <th class="px-3 py-2 font-medium text-right text-violet-400" title="Avg minutes into trade when RSI 3-drop first fired">RSI3 Min</th>
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -790,11 +787,11 @@
                                     <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit %</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit Min</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit P&L</th>
-                                    <th class="px-3 py-2 font-medium text-center text-violet-400">RSI3 Ex%</th>
-                                    <th class="px-3 py-2 font-medium text-center text-violet-400">RSI3 Min</th>
-                                    <th class="px-3 py-2 font-medium text-center text-violet-400">RSI3 P&L</th>
-                                    <th class="px-3 py-2 font-medium text-center text-amber-400">Rec 0.05%</th>
-                                    <th class="px-3 py-2 font-medium text-center text-amber-400">Rec 0.10%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.20% P&L if held">Rec -0.20%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.10% P&L if held">Rec -0.10%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.05% P&L if held">Rec -0.05%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades where post-exit price moved +0.05% from exit">Rec 0.05%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades where post-exit price moved +0.10% from exit">Rec 0.10%</th>
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="% of trades where the entry signal came back within 45min after exit">SigReg%</th>
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="Avg minutes until signal regained">RegMin</th>
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="Avg P&L% when signal was regained">RegP&L</th>
@@ -2757,7 +2754,7 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
                 const crCopyTotal = Object.values(perf.by_close_reason || {}).reduce((s, r) => s + (r.trades || 0), 0);
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)} ${'RSI3%'.padStart(7)} ${'RSI3P&L'.padStart(9)} ${'RSI3Min'.padStart(8)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)}`);
                 for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -2769,11 +2766,8 @@
                     const rsi2PctStr = r.rsi2_fire_pct != null ? r.rsi2_fire_pct.toFixed(1) + '%' : '-';
                     const rsi2PnlStr = r.avg_rsi2_pnl != null ? (r.avg_rsi2_pnl >= 0 ? '+' : '') + r.avg_rsi2_pnl.toFixed(4) + '%' : '-';
                     const rsi2MinStr = r.avg_rsi2_min != null ? r.avg_rsi2_min.toFixed(1) : '-';
-                    const rsi3PctStr = r.rsi3_fire_pct != null ? r.rsi3_fire_pct.toFixed(1) + '%' : '-';
-                    const rsi3PnlStr = r.avg_rsi3_pnl != null ? (r.avg_rsi3_pnl >= 0 ? '+' : '') + r.avg_rsi3_pnl.toFixed(4) + '%' : '-';
-                    const rsi3MinStr = r.avg_rsi3_min != null ? r.avg_rsi3_min.toFixed(1) : '-';
                     const crPctStr = crCopyTotal > 0 ? (r.trades / crCopyTotal * 100).toFixed(1) + '%' : '-';
-                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${rsi3PctStr.padStart(7)} ${rsi3PnlStr.padStart(9)} ${rsi3MinStr.padStart(8)}`);
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)}`);
                 }
 
                 // --- ENTRY CONDITIONS BY CLOSE REASON ---
@@ -2884,7 +2878,7 @@
                 if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Post-Exit Regret Deep Dive\n');
-                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'RSI3%'.padStart(7)} ${'RSI3Min'.padStart(8)} ${'RSI3P&L'.padStart(9)} ${'Rec.05%'.padStart(8)} ${'Rec.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)}`);
+                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)}`);
                     for (const r of perf.post_exit_regret_deep_dive) {
                         const dirStr = `${r.longs}L/${r.shorts}S`;
                         const slMin = r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) : '-';
@@ -2893,15 +2887,15 @@
                         const rsiExPct = r.rsi_exit_pct != null ? r.rsi_exit_pct.toFixed(1) + '%' : '-';
                         const rsiExMin = r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) : '-';
                         const rsiExPnl = r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? '+' : '') + r.avg_rsi_exit_pnl.toFixed(4) + '%' : '-';
-                        const rsi3ExPct = r.rsi3_exit_pct != null ? r.rsi3_exit_pct.toFixed(1) + '%' : '-';
-                        const rsi3ExMin = r.avg_rsi3_exit_min != null ? r.avg_rsi3_exit_min.toFixed(1) : '-';
-                        const rsi3ExPnl = r.avg_rsi3_exit_pnl != null ? (r.avg_rsi3_exit_pnl >= 0 ? '+' : '') + r.avg_rsi3_exit_pnl.toFixed(4) + '%' : '-';
+                        const recNeg020 = r.recovery_neg020_pct != null ? r.recovery_neg020_pct.toFixed(1) + '%' : '-';
+                        const recNeg010 = r.recovery_neg010_pct != null ? r.recovery_neg010_pct.toFixed(1) + '%' : '-';
+                        const recNeg005 = r.recovery_neg005_pct != null ? r.recovery_neg005_pct.toFixed(1) + '%' : '-';
                         const rec005 = r.recovery_005_pct != null ? r.recovery_005_pct.toFixed(1) + '%' : '-';
                         const rec010 = r.recovery_010_pct != null ? r.recovery_010_pct.toFixed(1) + '%' : '-';
                         const sigRegPct = r.sig_regained_pct != null ? r.sig_regained_pct.toFixed(1) + '%' : '-';
                         const sigRegMin = r.avg_sig_regained_min != null ? r.avg_sig_regained_min.toFixed(1) : '-';
                         const sigRegPnl = r.avg_pnl_at_sig_regained != null ? (r.avg_pnl_at_sig_regained >= 0 ? '+' : '') + r.avg_pnl_at_sig_regained.toFixed(4) + '%' : '-';
-                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${rsi3ExPct.padStart(7)} ${rsi3ExMin.padStart(8)} ${rsi3ExPnl.padStart(9)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)}`);
+                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)}`);
                     }
                 }
 
@@ -3368,14 +3362,11 @@
                                 <td class="px-3 py-2 text-center text-cyan-400">${stats.rsi2_fire_pct != null ? stats.rsi2_fire_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${stats.avg_rsi2_pnl != null ? (stats.avg_rsi2_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${stats.avg_rsi2_pnl != null ? (stats.avg_rsi2_pnl >= 0 ? '+' : '') + stats.avg_rsi2_pnl.toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-cyan-400">${stats.avg_rsi2_min != null ? stats.avg_rsi2_min.toFixed(1) + 'm' : '-'}</td>
-                                <td class="px-3 py-2 text-center text-violet-400">${stats.rsi3_fire_pct != null ? stats.rsi3_fire_pct.toFixed(1) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${stats.avg_rsi3_pnl != null ? (stats.avg_rsi3_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${stats.avg_rsi3_pnl != null ? (stats.avg_rsi3_pnl >= 0 ? '+' : '') + stats.avg_rsi3_pnl.toFixed(4) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-violet-400">${stats.avg_rsi3_min != null ? stats.avg_rsi3_min.toFixed(1) + 'm' : '-'}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Entry Conditions by Close Reason
@@ -4372,7 +4363,6 @@
                         const sigLostPnlClass = r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
                         const reachClass = r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
                         const rsiPnlClass = r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
-                        const rsi3PnlClass = r.avg_rsi3_exit_pnl != null ? (r.avg_rsi3_exit_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${r.reason}</td>
@@ -4393,9 +4383,9 @@
                                 <td class="px-3 py-2 text-right text-cyan-400">${r.rsi_exit_pct != null ? r.rsi_exit_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-cyan-400">${r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) + 'm' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${rsiPnlClass} font-medium">${r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? '+' : '') + r.avg_rsi_exit_pnl.toFixed(4) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-violet-400">${r.rsi3_exit_pct != null ? r.rsi3_exit_pct.toFixed(1) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-violet-400">${r.avg_rsi3_exit_min != null ? r.avg_rsi3_exit_min.toFixed(1) + 'm' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${rsi3PnlClass} font-medium">${r.avg_rsi3_exit_pnl != null ? (r.avg_rsi3_exit_pnl >= 0 ? '+' : '') + r.avg_rsi3_exit_pnl.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_neg020_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg020_pct != null ? r.recovery_neg020_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_neg010_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg010_pct != null ? r.recovery_neg010_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.recovery_neg005_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg005_pct != null ? r.recovery_neg005_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right font-medium ${r.recovery_005_pct >= 44 ? 'text-emerald-400' : 'text-red-400'}">${r.recovery_005_pct != null ? r.recovery_005_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right font-medium ${r.recovery_010_pct >= 44 ? 'text-emerald-400' : 'text-red-400'}">${r.recovery_010_pct != null ? r.recovery_010_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right font-medium ${r.sig_regained_pct > 0 ? 'text-emerald-400' : 'text-gray-500'}">${r.sig_regained_pct != null ? r.sig_regained_pct.toFixed(1) + '%' : '-'}</td>

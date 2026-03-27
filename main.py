@@ -1733,7 +1733,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             post_exit_troughs = [o.post_exit_trough_pnl for o in data["trades"] if o.post_exit_trough_pnl is not None]
 
             rsi2_fired = [o for o in data["trades"] if o.first_rsi2_pnl is not None]
-            rsi3_fired = [o for o in data["trades"] if o.first_rsi3_pnl is not None]
 
             by_close_reason[reason] = {
                 "trades": count,
@@ -1754,9 +1753,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "rsi2_fire_pct": round(len(rsi2_fired) / count * 100, 1) if count > 0 else 0,
                 "avg_rsi2_pnl": round(sum(o.first_rsi2_pnl for o in rsi2_fired) / len(rsi2_fired), 4) if rsi2_fired else None,
                 "avg_rsi2_min": round(sum(o.first_rsi2_minutes for o in rsi2_fired) / len(rsi2_fired), 1) if rsi2_fired else None,
-                "rsi3_fire_pct": round(len(rsi3_fired) / count * 100, 1) if count > 0 else 0,
-                "avg_rsi3_pnl": round(sum(o.first_rsi3_pnl for o in rsi3_fired) / len(rsi3_fired), 4) if rsi3_fired else None,
-                "avg_rsi3_min": round(sum(o.first_rsi3_minutes for o in rsi3_fired) / len(rsi3_fired), 1) if rsi3_fired else None,
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
@@ -2319,11 +2315,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi_exit_min = sum(o.post_exit_rsi_exit_minutes for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
                 avg_rsi_exit_pnl = sum(o.post_exit_rsi_exit_pnl or 0 for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
 
-                rsi3_exit_orders = [o for o in group if o.post_exit_rsi3_exit_minutes is not None]
-                rsi3_exit_pct = round(len(rsi3_exit_orders) / count * 100, 1) if count > 0 else 0
-                avg_rsi3_exit_min = sum(o.post_exit_rsi3_exit_minutes for o in rsi3_exit_orders) / len(rsi3_exit_orders) if rsi3_exit_orders else None
-                avg_rsi3_exit_pnl = sum(o.post_exit_rsi3_exit_pnl or 0 for o in rsi3_exit_orders) / len(rsi3_exit_orders) if rsi3_exit_orders else None
-
+                rec_neg020 = sum(1 for o in group if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.20)
+                rec_neg010 = sum(1 for o in group if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.10)
+                rec_neg005 = sum(1 for o in group if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.05)
                 rec_005 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= 0.05)
                 rec_010 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= 0.10)
 
@@ -2352,9 +2346,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "rsi_exit_pct": rsi_exit_pct,
                     "avg_rsi_exit_min": round(avg_rsi_exit_min, 1) if avg_rsi_exit_min is not None else None,
                     "avg_rsi_exit_pnl": round(avg_rsi_exit_pnl, 4) if avg_rsi_exit_pnl is not None else None,
-                    "rsi3_exit_pct": rsi3_exit_pct,
-                    "avg_rsi3_exit_min": round(avg_rsi3_exit_min, 1) if avg_rsi3_exit_min is not None else None,
-                    "avg_rsi3_exit_pnl": round(avg_rsi3_exit_pnl, 4) if avg_rsi3_exit_pnl is not None else None,
+                    "recovery_neg020_pct": round(rec_neg020 / count * 100, 1),
+                    "recovery_neg010_pct": round(rec_neg010 / count * 100, 1),
+                    "recovery_neg005_pct": round(rec_neg005 / count * 100, 1),
                     "recovery_005_pct": round(rec_005 / count * 100, 1),
                     "recovery_010_pct": round(rec_010 / count * 100, 1),
                     "sig_regained_pct": sig_regained_pct,

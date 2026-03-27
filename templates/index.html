@@ -694,7 +694,7 @@
                         </table>
                     </div>
                 </div>
-
+                
                 <!-- Stop Loss Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Stop Loss Deep Dive</h3>
@@ -795,10 +795,14 @@
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="% of trades where the entry signal came back within 45min after exit">SigReg%</th>
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="Avg minutes until signal regained">RegMin</th>
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="Avg P&L% when signal was regained">RegP&L</th>
+                                    <th class="px-3 py-2 font-medium text-center text-rose-400" title="Avg deepest P&L% reached before signal was regained (floor before recovery)">Floor@SigReg</th>
+                                    <th class="px-3 py-2 font-medium text-center text-pink-400" title="% of trades WITHOUT signal regain that recovered to -0.20% P&L">NR -0.20%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-pink-400" title="% of trades WITHOUT signal regain that recovered to -0.10% P&L">NR -0.10%</th>
+                                    <th class="px-3 py-2 font-medium text-center text-pink-400" title="% of trades WITHOUT signal regain that recovered to -0.05% P&L">NR -0.05%</th>
                                 </tr>
                             </thead>
                             <tbody id="post-exit-regret-body" class="divide-y divide-white/5">
-                                <tr><td colspan="26" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
+                                <tr><td colspan="30" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -858,7 +862,7 @@
                         </table>
                     </div>
                 </div>
-
+                
                 <!-- Performance by Entry Gap -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap</h3>
@@ -1001,7 +1005,7 @@
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry EMA5 stretch)</td></tr>
                             </tbody>
                         </table>
-                    </div>
+                </div>
                 </div>
 
                 <!-- Performance by Pair EMA20 Slope -->
@@ -1009,7 +1013,7 @@
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Pair EMA20 Slope</h3>
                     <p class="text-xs text-gray-500 mb-3">Win rate and P&L by pair EMA20 trend strength (absolute slope %) at entry</p>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Slope Range</th>
@@ -1022,8 +1026,8 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
-                                </tr>
-                            </thead>
+                            </tr>
+                        </thead>
                             <tbody id="pair-slope-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting pair EMA20 slope)</td></tr>
                             </tbody>
@@ -1049,14 +1053,14 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
-                                </tr>
+                            </tr>
                             </thead>
                             <tbody id="btc-slope-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC EMA20 slope)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                        </tbody>
+                    </table>
                 </div>
+            </div>
 
                 <!-- Performance by BTC ADX -->
                 <div class="mt-6 pt-6 border-t border-white/10">
@@ -1083,14 +1087,14 @@
                             </tbody>
                         </table>
                     </div>
-                </div>
-
+            </div>
+            
                 <!-- Performance by BTC ADX Direction -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC ADX Direction at Entry</h3>
                     <p class="text-xs text-gray-500 mb-3">Win rate and P&L by whether BTC ADX was rising or falling at entry (BTC ADX vs previous candle)</p>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">BTC ADX Dir</th>
@@ -1101,8 +1105,8 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
                                     <th class="px-3 py-2 font-medium text-right">Confidence</th>
-                                </tr>
-                            </thead>
+                            </tr>
+                        </thead>
                             <tbody id="btc-adx-direction-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX direction)</td></tr>
                             </tbody>
@@ -1126,21 +1130,21 @@
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Confidence</th>
-                                </tr>
+                            </tr>
                             </thead>
                             <tbody id="adx-dir-crosstab-body" class="divide-y divide-white/5">
                                 <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                        </tbody>
+                    </table>
                 </div>
-
+            </div>
+            
                 <!-- BTC Slope x BTC ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">BTC Slope x BTC ADX Cross-Tab</h3>
                     <p class="text-xs text-gray-500 mb-3">How BTC trend strength (slope) and BTC trend conviction (ADX) interact — find the macro sweet spot</p>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">BTC Slope</th>
@@ -1150,21 +1154,21 @@
                                     <th class="px-3 py-2 font-medium text-right">Win Rate</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
-                                </tr>
-                            </thead>
+                            </tr>
+                        </thead>
                             <tbody id="btc-slope-adx-crosstab-body" class="divide-y divide-white/5">
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                        </tbody>
+                    </table>
                 </div>
-
+            </div>
+            
                 <!-- RSI x ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by RSI x ADX</h3>
                     <p class="text-xs text-gray-500 mb-3">Cross-tabulation: how RSI and ADX ranges interact per direction</p>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Direction</th>
@@ -1174,8 +1178,8 @@
                                     <th class="px-3 py-2 font-medium text-right">Win Rate</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
-                                </tr>
-                            </thead>
+                            </tr>
+                        </thead>
                             <tbody id="rsi-adx-crosstab-body" class="divide-y divide-white/5">
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
@@ -1206,12 +1210,12 @@
                                     <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
                                     <th class="px-3 py-2 font-medium text-center">Signal</th>
                                     <th class="px-3 py-2 font-medium text-center">Confidence</th>
-                                </tr>
+                            </tr>
                             </thead>
                             <tbody id="never-positive-deep-dive-body" class="divide-y divide-white/5">
                                 <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
-                            </tbody>
-                        </table>
+                        </tbody>
+                    </table>
                     </div>
                 </div>
 
@@ -1620,7 +1624,7 @@
                                             &gt; <input type="number" id="config-adx-very-strong-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="25">
                                             &le; <input type="number" step="1" id="config-momentum-adx-max-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
                                             <span class="text-xs text-red-400 ml-2">S</span>
-                                            &gt; <input type="number" id="config-adx-very-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
+                                        &gt; <input type="number" id="config-adx-very-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
                                             &le; <input type="number" step="1" id="config-momentum-adx-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
                                         </div>
                                     </td>
@@ -1647,7 +1651,7 @@
                                             &gt; <input type="number" id="config-adx-strong-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="18">
                                             &le; <span class="text-sm text-gray-400" id="config-adx-max-mirror-long"></span>
                                             <span class="text-xs text-red-400 ml-2">S</span>
-                                            &gt; <input type="number" id="config-adx-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="16">
+                                        &gt; <input type="number" id="config-adx-strong" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="16">
                                             &le; <span class="text-sm text-gray-400" id="config-adx-max-mirror"></span>
                                         </div>
                                     </td>
@@ -2878,7 +2882,7 @@
                 if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Post-Exit Regret Deep Dive\n');
-                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)}`);
+                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)}`);
                     for (const r of perf.post_exit_regret_deep_dive) {
                         const dirStr = `${r.longs}L/${r.shorts}S`;
                         const slMin = r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) : '-';
@@ -2895,7 +2899,11 @@
                         const sigRegPct = r.sig_regained_pct != null ? r.sig_regained_pct.toFixed(1) + '%' : '-';
                         const sigRegMin = r.avg_sig_regained_min != null ? r.avg_sig_regained_min.toFixed(1) : '-';
                         const sigRegPnl = r.avg_pnl_at_sig_regained != null ? (r.avg_pnl_at_sig_regained >= 0 ? '+' : '') + r.avg_pnl_at_sig_regained.toFixed(4) + '%' : '-';
-                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)}`);
+                        const flrSR = r.avg_floor_before_sig_regain != null ? r.avg_floor_before_sig_regain.toFixed(4) + '%' : '-';
+                        const nrNeg020 = r.nr_rec_neg020_pct != null ? r.nr_rec_neg020_pct.toFixed(1) + '%' : '-';
+                        const nrNeg010 = r.nr_rec_neg010_pct != null ? r.nr_rec_neg010_pct.toFixed(1) + '%' : '-';
+                        const nrNeg005 = r.nr_rec_neg005_pct != null ? r.nr_rec_neg005_pct.toFixed(1) + '%' : '-';
+                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)}`);
                     }
                 }
 
@@ -3131,7 +3139,7 @@
                 const data = await res.json();
                 const balData = balRes.ok ? await balRes.json() : null;
                 if (data._error) console.warn('[Performance API error]', data._error);
-
+                
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
                 document.getElementById('perf-total-longs').textContent = data.total_longs;
                 document.getElementById('perf-total-shorts').textContent = data.total_shorts;
@@ -3305,7 +3313,7 @@
                         .sort((a, b) => sortOrder(a[0]) - sortOrder(b[0]));
                     
                     const crTotalTrades = sortedReasons.reduce((sum, [, s]) => sum + (s.trades || 0), 0);
-
+                    
                     const confBadgeColors = {
                         'LOW': 'text-yellow-400',
                         'MEDIUM': 'text-orange-400',
@@ -3413,7 +3421,7 @@
                 } else {
                     ecrBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
-
+                
                 // Performance by Entry Gap
                 const gapBody = document.getElementById('gap-performance-body');
                 if (data.gap_performance && data.gap_performance.length > 0) {
@@ -3495,7 +3503,7 @@
                 } else {
                     ema58Body.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting EMA5-EMA8 gaps)</td></tr>';
                 }
-
+                
                 // Performance by Entry RSI
                 const rsiBody = document.getElementById('rsi-performance-body');
                 if (data.rsi_performance && data.rsi_performance.length > 0) {
@@ -4391,12 +4399,16 @@
                                 <td class="px-3 py-2 text-right font-medium ${r.sig_regained_pct > 0 ? 'text-emerald-400' : 'text-gray-500'}">${r.sig_regained_pct != null ? r.sig_regained_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-emerald-400">${r.avg_sig_regained_min != null ? r.avg_sig_regained_min.toFixed(1) + 'm' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${r.avg_pnl_at_sig_regained != null ? (r.avg_pnl_at_sig_regained >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${r.avg_pnl_at_sig_regained != null ? (r.avg_pnl_at_sig_regained >= 0 ? '+' : '') + r.avg_pnl_at_sig_regained.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_floor_before_sig_regain != null ? 'text-rose-400' : 'text-gray-500'} font-medium">${r.avg_floor_before_sig_regain != null ? r.avg_floor_before_sig_regain.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.nr_rec_neg020_pct != null && r.nr_rec_neg020_pct >= 44 ? 'text-emerald-400' : 'text-pink-400'}">${r.nr_rec_neg020_pct != null ? r.nr_rec_neg020_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.nr_rec_neg010_pct != null && r.nr_rec_neg010_pct >= 44 ? 'text-emerald-400' : 'text-pink-400'}">${r.nr_rec_neg010_pct != null ? r.nr_rec_neg010_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.nr_rec_neg005_pct != null && r.nr_rec_neg005_pct >= 44 ? 'text-emerald-400' : 'text-pink-400'}">${r.nr_rec_neg005_pct != null ? r.nr_rec_neg005_pct.toFixed(1) + '%' : '-'}</td>
                             </tr>
                         `;
                     }).join('');
                     peBody.innerHTML = peRows;
                 } else {
-                    peBody.innerHTML = '<tr><td colspan="23" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                    peBody.innerHTML = '<tr><td colspan="30" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
                 }
 
                 // BE Shadow Tracking
@@ -4752,7 +4764,7 @@
                         : eot === 'TAKER_FALLBACK'
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">FALLBACK</span>'
                         : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">TAKER</span>';
-
+                    
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
@@ -4795,7 +4807,7 @@
                     _lastClosedCount = newCount;
                     loadPerformance();
                 }
-
+                
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {
@@ -4838,7 +4850,7 @@
                         : exot === 'TAKER_FALLBACK'
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">FALLBACK</span>'
                         : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">TAKER</span>';
-
+                    
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>

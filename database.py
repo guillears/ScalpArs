@@ -103,6 +103,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_signal_regained_minutes FLOAT"))
                 if 'post_exit_pnl_at_signal_regained' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_signal_regained FLOAT"))
+                if 'post_exit_floor_before_signal_regain' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_floor_before_signal_regain FLOAT"))
                 if 'phantom_be_l1_triggered_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_be_l1_triggered_at DATETIME"))
                 if 'phantom_be_l1_would_exit_pnl' not in columns:

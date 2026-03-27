@@ -1019,6 +1019,8 @@ class TradingEngine:
             "rsi_history": [],
             "signal_regained_at": None,
             "pnl_at_signal_regained": None,
+            "running_min_pnl": None,
+            "floor_before_signal_regain": None,
             "close_reason": reason,
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
@@ -1058,6 +1060,10 @@ class TradingEngine:
             else:
                 current_pnl = ((entry - price) / entry) * 100
 
+            # Track running minimum P&L (from entry) for floor-before-recovery analysis
+            if info["running_min_pnl"] is None or current_pnl < info["running_min_pnl"]:
+                info["running_min_pnl"] = current_pnl
+
             # Read pair_data for signal-lost, signal-regained, and RSI momentum checks (isolated session)
             pair_data = None
             if info["signal_lost_at"] is None or info["signal_regained_at"] is None or info["rsi_exit_at"] is None:
@@ -1085,6 +1091,7 @@ class TradingEngine:
                 ):
                     info["signal_regained_at"] = now
                     info["pnl_at_signal_regained"] = current_pnl
+                    info["floor_before_signal_regain"] = info["running_min_pnl"]
 
             # RSI momentum exit simulation (2-drop and 3-drop)
             if pair_data and pair_data.rsi is not None:
@@ -1168,6 +1175,7 @@ class TradingEngine:
                                 post_exit_rsi3_exit_pnl=round(info["rsi3_exit_pnl"], 4) if info["rsi3_exit_pnl"] is not None else None,
                                 post_exit_signal_regained_minutes=round(sig_regained_minutes, 2) if sig_regained_minutes is not None else None,
                                 post_exit_pnl_at_signal_regained=round(info["pnl_at_signal_regained"], 4) if info["pnl_at_signal_regained"] is not None else None,
+                                post_exit_floor_before_signal_regain=round(info["floor_before_signal_regain"], 4) if info["floor_before_signal_regain"] is not None else None,
                             )
                         )
                         await pe_write_db.commit()

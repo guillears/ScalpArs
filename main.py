@@ -2326,6 +2326,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_sig_regained_min = sum(o.post_exit_signal_regained_minutes for o in sig_regained_orders) / len(sig_regained_orders) if sig_regained_orders else None
                 avg_pnl_at_sig_regained = sum(o.post_exit_pnl_at_signal_regained or 0 for o in sig_regained_orders) / len(sig_regained_orders) if sig_regained_orders else None
 
+                floor_orders = [o for o in sig_regained_orders if o.post_exit_floor_before_signal_regain is not None]
+                avg_floor_before_sig_regain = sum(o.post_exit_floor_before_signal_regain for o in floor_orders) / len(floor_orders) if floor_orders else None
+
+                no_regain = [o for o in group if o.post_exit_signal_regained_minutes is None]
+                nr_count = len(no_regain)
+                nr_rec_neg020 = sum(1 for o in no_regain if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.20) if nr_count else 0
+                nr_rec_neg010 = sum(1 for o in no_regain if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.10) if nr_count else 0
+                nr_rec_neg005 = sum(1 for o in no_regain if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.05) if nr_count else 0
+
                 post_exit_regret_deep_dive.append({
                     "reason": reason,
                     "count": count,
@@ -2354,6 +2363,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "sig_regained_pct": sig_regained_pct,
                     "avg_sig_regained_min": round(avg_sig_regained_min, 1) if avg_sig_regained_min is not None else None,
                     "avg_pnl_at_sig_regained": round(avg_pnl_at_sig_regained, 4) if avg_pnl_at_sig_regained is not None else None,
+                    "avg_floor_before_sig_regain": round(avg_floor_before_sig_regain, 4) if avg_floor_before_sig_regain is not None else None,
+                    "nr_count": nr_count,
+                    "nr_rec_neg020_pct": round(nr_rec_neg020 / nr_count * 100, 1) if nr_count > 0 else None,
+                    "nr_rec_neg010_pct": round(nr_rec_neg010 / nr_count * 100, 1) if nr_count > 0 else None,
+                    "nr_rec_neg005_pct": round(nr_rec_neg005 / nr_count * 100, 1) if nr_count > 0 else None,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")

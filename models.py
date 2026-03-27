@@ -114,6 +114,7 @@ class Order(Base):
     post_exit_rsi3_exit_pnl = Column(Float, nullable=True)
     post_exit_signal_regained_minutes = Column(Float, nullable=True)
     post_exit_pnl_at_signal_regained = Column(Float, nullable=True)
+    post_exit_floor_before_signal_regain = Column(Float, nullable=True)
 
     # Phantom BE shadow tracking: what would have happened if BE L1/L2 were active
     phantom_be_l1_triggered_at = Column(DateTime, nullable=True)

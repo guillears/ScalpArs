@@ -30,11 +30,15 @@ _close_lock = asyncio.Lock()
 # Current BTC macro regime, updated by scan_and_trade, read by update_open_positions
 _current_btc_regime: str = "NEUTRAL"
 
-# Phantom Tick Momentum shadow configs: (label, windows, delta)
+# Phantom Tick Momentum shadow configs: (label, windows, delta_or_deltas)
+# delta_or_deltas: float = uniform delta for all windows, list = per-window deltas
 _SHADOW_TICK_CONFIGS = [
     ('a', [15, 30, 45], 0.15),
     ('b', [30, 45, 60], 0.12),
     ('c', [30, 45, 60], 0.15),
+    ('d', [30, 60, 90], 0.12),
+    ('e', [30, 60, 90], 0.15),
+    ('f', [30, 60, 90], [0.08, 0.12, 0.18]),
 ]
 
 
@@ -867,6 +871,15 @@ class TradingEngine:
                 'phantom_tick_c_triggered': False,
                 'phantom_tick_c_triggered_at': None,
                 'phantom_tick_c_pnl': None,
+                'phantom_tick_d_triggered': False,
+                'phantom_tick_d_triggered_at': None,
+                'phantom_tick_d_pnl': None,
+                'phantom_tick_e_triggered': False,
+                'phantom_tick_e_triggered_at': None,
+                'phantom_tick_e_pnl': None,
+                'phantom_tick_f_triggered': False,
+                'phantom_tick_f_triggered_at': None,
+                'phantom_tick_f_pnl': None,
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -985,7 +998,7 @@ class TradingEngine:
                 order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
                 order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
                 order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
-                for _lbl in ['a', 'b', 'c']:
+                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
                     setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
                     setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
                 break
@@ -1054,7 +1067,7 @@ class TradingEngine:
         for cached in _open_orders_cache.get(order.pair, []):
             if cached['id'] == order.id:
                 cached_tick_buf = cached.get('tick_prices', [])
-                for _lbl in ['a', 'b', 'c']:
+                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
                     phantom_tick_states[f'phantom_tick_{_lbl}_triggered'] = cached.get(f'phantom_tick_{_lbl}_triggered', False)
                     phantom_tick_states[f'phantom_tick_{_lbl}_triggered_at'] = cached.get(f'phantom_tick_{_lbl}_triggered_at')
                     phantom_tick_states[f'phantom_tick_{_lbl}_pnl'] = cached.get(f'phantom_tick_{_lbl}_pnl')
@@ -1204,7 +1217,7 @@ class TradingEngine:
                     for _lbl, _swin, _sdelta in _SHADOW_TICK_CONFIGS:
                         _tk = f'phantom_tick_{_lbl}_triggered'
                         if not info.get(_tk):
-                            _sdeltas = [_sdelta] * len(_swin)
+                            _sdeltas = _sdelta if isinstance(_sdelta, list) else [_sdelta] * len(_swin)
                             if _check_tick_momentum_fade(pe_tick_buf, now_ts, _swin, _sdeltas, direction):
                                 info[_tk] = True
                                 info[f'phantom_tick_{_lbl}_triggered_at'] = now
@@ -1263,6 +1276,12 @@ class TradingEngine:
                                 phantom_tick_b_pnl=round(info["phantom_tick_b_pnl"], 4) if info.get("phantom_tick_b_pnl") is not None else None,
                                 phantom_tick_c_triggered_at=info.get("phantom_tick_c_triggered_at"),
                                 phantom_tick_c_pnl=round(info["phantom_tick_c_pnl"], 4) if info.get("phantom_tick_c_pnl") is not None else None,
+                                phantom_tick_d_triggered_at=info.get("phantom_tick_d_triggered_at"),
+                                phantom_tick_d_pnl=round(info["phantom_tick_d_pnl"], 4) if info.get("phantom_tick_d_pnl") is not None else None,
+                                phantom_tick_e_triggered_at=info.get("phantom_tick_e_triggered_at"),
+                                phantom_tick_e_pnl=round(info["phantom_tick_e_pnl"], 4) if info.get("phantom_tick_e_pnl") is not None else None,
+                                phantom_tick_f_triggered_at=info.get("phantom_tick_f_triggered_at"),
+                                phantom_tick_f_pnl=round(info["phantom_tick_f_pnl"], 4) if info.get("phantom_tick_f_pnl") is not None else None,
                             )
                         )
                         await pe_write_db.commit()
@@ -2212,7 +2231,7 @@ class TradingEngine:
                 for _lbl, _swin, _sdelta in _SHADOW_TICK_CONFIGS:
                     _tk = f'phantom_tick_{_lbl}_triggered'
                     if not order_info.get(_tk):
-                        _sdeltas = [_sdelta] * len(_swin)
+                        _sdeltas = _sdelta if isinstance(_sdelta, list) else [_sdelta] * len(_swin)
                         if _check_tick_momentum_fade(tick_buf, now, _swin, _sdeltas, direction):
                             order_info[_tk] = True
                             order_info[f'phantom_tick_{_lbl}_triggered_at'] = datetime.utcnow()
@@ -2424,6 +2443,15 @@ class TradingEngine:
                 'phantom_tick_c_triggered': order.phantom_tick_c_triggered_at is not None,
                 'phantom_tick_c_triggered_at': order.phantom_tick_c_triggered_at,
                 'phantom_tick_c_pnl': order.phantom_tick_c_pnl,
+                'phantom_tick_d_triggered': order.phantom_tick_d_triggered_at is not None,
+                'phantom_tick_d_triggered_at': order.phantom_tick_d_triggered_at,
+                'phantom_tick_d_pnl': order.phantom_tick_d_pnl,
+                'phantom_tick_e_triggered': order.phantom_tick_e_triggered_at is not None,
+                'phantom_tick_e_triggered_at': order.phantom_tick_e_triggered_at,
+                'phantom_tick_e_pnl': order.phantom_tick_e_pnl,
+                'phantom_tick_f_triggered': order.phantom_tick_f_triggered_at is not None,
+                'phantom_tick_f_triggered_at': order.phantom_tick_f_triggered_at,
+                'phantom_tick_f_pnl': order.phantom_tick_f_pnl,
             }
             
             if order.pair not in new_cache:
@@ -2451,7 +2479,7 @@ class TradingEngine:
                                 for _key in [f'phantom_be_l{_lvl}_triggered', f'phantom_be_l{_lvl}_triggered_at', f'phantom_be_l{_lvl}_would_exit_pnl']:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]
-                            for _lbl in ['a', 'b', 'c']:
+                            for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
                                 for _key in [f'phantom_tick_{_lbl}_triggered', f'phantom_tick_{_lbl}_triggered_at', f'phantom_tick_{_lbl}_pnl']:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]

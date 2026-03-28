@@ -2738,6 +2738,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ('a', '15,30,45s', '0.15%', [15, 30, 45], 0.15),
             ('b', '30,45,60s', '0.12%', [30, 45, 60], 0.12),
             ('c', '30,45,60s', '0.15%', [30, 45, 60], 0.15),
+            ('d', '30,60,90s', '0.12%', [30, 60, 90], 0.12),
+            ('e', '30,60,90s', '0.15%', [30, 60, 90], 0.15),
+            ('f', '30,60,90s', '0.08/0.12/0.18%', [30, 60, 90], [0.08, 0.12, 0.18]),
         ]
         for lbl, win_str, delta_str, _wins, _delta in _SHADOW_TICK_LABELS:
             trig_field = f'phantom_tick_{lbl}_triggered_at'

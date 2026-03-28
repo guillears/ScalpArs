@@ -127,6 +127,18 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_c_pnl FLOAT"))
                 if 'entry_btc_rsi' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi FLOAT"))
+                if 'phantom_tick_d_triggered_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_d_triggered_at DATETIME"))
+                if 'phantom_tick_d_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_d_pnl FLOAT"))
+                if 'phantom_tick_e_triggered_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_e_triggered_at DATETIME"))
+                if 'phantom_tick_e_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_e_pnl FLOAT"))
+                if 'phantom_tick_f_triggered_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_f_triggered_at DATETIME"))
+                if 'phantom_tick_f_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_f_pnl FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

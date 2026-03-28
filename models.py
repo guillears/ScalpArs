@@ -74,6 +74,8 @@ class Order(Base):
     entry_btc_adx = Column(Float, nullable=True)
     # BTC ADX(14) value one candle prior (for BTC ADX direction analysis)
     entry_btc_adx_prev = Column(Float, nullable=True)
+    # BTC RSI(14) value at entry
+    entry_btc_rsi = Column(Float, nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

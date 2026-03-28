@@ -787,6 +787,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "btc_slope_adx_crosstab": [],
+            "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -1222,6 +1223,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "pair_slope_performance": [],
             "btc_slope_performance": [],
             "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "btc_slope_adx_crosstab": [],
+            "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -1410,6 +1412,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     btc_adx_direction_performance = []
     adx_dir_crosstab = []
     btc_slope_adx_crosstab = []
+    btc_rsi_performance = []
+    btc_rsi_adx_crosstab = []
     try:
         gap_ranges = [
             ("0.12 - 0.15%", 0.12, 0.15),
@@ -1840,6 +1844,72 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "total_pnl": round(ct_pnl_sum, 2),
                 })
 
+        # Performance by BTC Entry RSI
+        btc_rsi_ranges = [
+            ("30-40", 30, 40), ("40-45", 40, 45), ("45-50", 45, 50),
+            ("50-55", 50, 55), ("55-60", 55, 60), ("60-70", 60, 70), ("70-80", 70, 80),
+        ]
+        btc_rsi_orders = [o for o in orders if o.entry_btc_rsi is not None]
+        for range_name, r_min, r_max in btc_rsi_ranges:
+            range_orders = [o for o in btc_rsi_orders if r_min <= o.entry_btc_rsi < r_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
+                avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
+                avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                btc_rsi_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown,
+                    "avg_rsi": avg_rsi,
+                    "avg_adx": avg_adx,
+                    "avg_gap": avg_gap
+                })
+
+        # BTC RSI x BTC ADX Cross-Tab
+        ct_btc_rsi_ranges = [
+            ("30-40", 30, 40), ("40-50", 40, 50), ("50-55", 50, 55),
+            ("55-60", 55, 60), ("60-70", 60, 70), ("70+", 70, 999),
+        ]
+        ct_btc_adx_ranges = [
+            ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
+        ]
+        ct_btc_rsi_orders = [o for o in orders if o.entry_btc_rsi is not None and o.entry_btc_adx is not None]
+        for direction in ["LONG", "SHORT"]:
+            dir_ct = [o for o in ct_btc_rsi_orders if (o.direction or "LONG") == direction]
+            for rsi_name, rsi_lo, rsi_hi in ct_btc_rsi_ranges:
+                for adx_name, adx_lo, adx_hi in ct_btc_adx_ranges:
+                    bucket = [o for o in dir_ct if rsi_lo <= o.entry_btc_rsi < rsi_hi and adx_lo <= o.entry_btc_adx < adx_hi]
+                    if not bucket:
+                        continue
+                    ct_wins = len([o for o in bucket if (o.pnl or 0) > 0])
+                    ct_pnl_sum = sum(o.pnl or 0 for o in bucket)
+                    ct_count = len(bucket)
+                    btc_rsi_adx_crosstab.append({
+                        "direction": direction,
+                        "btc_rsi_range": rsi_name,
+                        "btc_adx_range": adx_name,
+                        "trades": ct_count,
+                        "win_rate": round(ct_wins / ct_count * 100, 1),
+                        "avg_pnl": round(ct_pnl_sum / ct_count, 2),
+                        "total_pnl": round(ct_pnl_sum, 2),
+                    })
+
     except Exception as e:
         logger.error(f"[PERF] Error computing gap/rsi/adx/stretch performance: {e}\n{traceback.format_exc()}")
         gap_performance = []
@@ -1854,6 +1924,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         btc_adx_direction_performance = []
         adx_dir_crosstab = []
         btc_slope_adx_crosstab = []
+        btc_rsi_performance = []
+        btc_rsi_adx_crosstab = []
     
     # By Close Reason - group by reason with L4+ aggregation
     by_close_reason = {}
@@ -2404,6 +2476,17 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
+            np_btc_rsi_ranges = [("30-40", 30, 40), ("40-50", 40, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-70", 60, 70), ("70+", 70, 999)]
+            np_btc_rsi_trades = [o for o in np_trades if o.entry_btc_rsi is not None]
+            all_btc_rsi_trades = [o for o in orders if o.entry_btc_rsi is not None]
+            for rng, lo, hi in np_btc_rsi_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_btc_rsi_trades if lo <= o.entry_btc_rsi < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_btc_rsi_trades if lo <= o.entry_btc_rsi < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "BTC RSI", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
             for np_adx_dir_label in ["Rising", "Falling"]:
                 np_adx_dir_trades = [o for o in np_trades if o.entry_adx is not None and o.entry_adx_prev is not None]
                 all_adx_dir_trades = [o for o in orders if o.entry_adx is not None and o.entry_adx_prev is not None]
@@ -2757,6 +2840,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "btc_adx_direction_performance": btc_adx_direction_performance,
         "adx_dir_crosstab": adx_dir_crosstab,
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
+        "btc_rsi_performance": btc_rsi_performance,
+        "btc_rsi_adx_crosstab": btc_rsi_adx_crosstab,
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown,

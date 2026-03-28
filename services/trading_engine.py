@@ -619,7 +619,8 @@ class TradingEngine:
         entry_ema20_slope: float = None,
         entry_btc_ema20_slope: float = None,
         entry_btc_adx: float = None,
-        entry_btc_adx_prev: float = None
+        entry_btc_adx_prev: float = None,
+        entry_btc_rsi: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -777,6 +778,7 @@ class TradingEngine:
             entry_btc_ema20_slope=entry_btc_ema20_slope,
             entry_btc_adx=entry_btc_adx,
             entry_btc_adx_prev=entry_btc_adx_prev,
+            entry_btc_rsi=entry_btc_rsi,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -1728,6 +1730,7 @@ class TradingEngine:
         btc_ema20_slope_pct = None
         btc_adx = None
         btc_adx_prev = None
+        btc_rsi = None
         if btc_global_enabled:
             btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
             if btc_ohlcv:
@@ -1737,6 +1740,7 @@ class TradingEngine:
                     btc_ema20_prev6 = btc_indicators.get('ema20_prev6')
                     btc_adx = btc_indicators.get('adx')
                     btc_adx_prev = btc_indicators.get('adx_prev1')
+                    btc_rsi = btc_indicators.get('rsi')
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                     btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
                     if btc_ema20 and btc_ema20_prev6 and btc_ema20_prev6 != 0:
@@ -1869,7 +1873,8 @@ class TradingEngine:
                         entry_ema20_slope=pair_ema20_slope_pct,
                         entry_btc_ema20_slope=btc_ema20_slope_pct,
                         entry_btc_adx=round(btc_adx, 1) if btc_adx is not None else None,
-                        entry_btc_adx_prev=round(btc_adx_prev, 1) if btc_adx_prev is not None else None
+                        entry_btc_adx_prev=round(btc_adx_prev, 1) if btc_adx_prev is not None else None,
+                        entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None
                     )
 
                     if order:

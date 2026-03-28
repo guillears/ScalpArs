@@ -21,7 +21,7 @@
     "cooldown_after_loss_minutes": 5,
     "max_open_positions": 5,
     "max_holding_time_minutes": 600,
-    "no_expansion_minutes": 300
+    "no_expansion_minutes": 180
   },
   "thresholds": {
     "long_rsi_extreme": 45.0,

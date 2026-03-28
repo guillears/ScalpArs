@@ -2484,9 +2484,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi_exit_min = sum(o.post_exit_rsi_exit_minutes for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
                 avg_rsi_exit_pnl = sum(o.post_exit_rsi_exit_pnl or 0 for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
 
-                rec_neg020 = sum(1 for o in group if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.20)
-                rec_neg010 = sum(1 for o in group if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.10)
-                rec_neg005 = sum(1 for o in group if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.05)
+                rec_neg020 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.20)
+                rec_neg010 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.10)
+                rec_neg005 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.05)
                 rec_005 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= 0.05)
                 rec_010 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= 0.10)
 
@@ -2500,9 +2500,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
                 no_regain = [o for o in group if o.post_exit_signal_regained_minutes is None]
                 nr_count = len(no_regain)
-                nr_rec_neg020 = sum(1 for o in no_regain if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.20) if nr_count else 0
-                nr_rec_neg010 = sum(1 for o in no_regain if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.10) if nr_count else 0
-                nr_rec_neg005 = sum(1 for o in no_regain if ((o.pnl_percentage or 0) + (o.post_exit_peak_pnl or 0)) >= -0.05) if nr_count else 0
+                nr_rec_neg020 = sum(1 for o in no_regain if (o.post_exit_peak_pnl or 0) >= -0.20) if nr_count else 0
+                nr_rec_neg010 = sum(1 for o in no_regain if (o.post_exit_peak_pnl or 0) >= -0.10) if nr_count else 0
+                nr_rec_neg005 = sum(1 for o in no_regain if (o.post_exit_peak_pnl or 0) >= -0.05) if nr_count else 0
 
                 post_exit_regret_deep_dive.append({
                     "reason": reason,

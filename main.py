@@ -2316,7 +2316,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_adx_ranges = [("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-50", 40, 50)]
+            np_adx_ranges = [("15-20", 15, 20), ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40+", 40, 999)]
             np_adx_trades = [o for o in np_trades if o.entry_adx is not None]
             all_adx_trades = [o for o in orders if o.entry_adx is not None]
             for rng, lo, hi in np_adx_ranges:

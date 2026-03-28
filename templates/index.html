@@ -520,6 +520,7 @@
                     </select>
                     <span id="regime-filter-badge" class="text-xs text-gray-500"></span>
                     <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
+                    <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                 </div>
 
                 <!-- Performance by Macro Trend -->
@@ -861,6 +862,33 @@
                             </thead>
                             <tbody id="be-shadow-body" class="divide-y divide-white/5">
                                 <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tick Momentum Shadow Tracking -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Tick Momentum Shadow</h3>
+                    <p class="text-xs text-gray-500 mb-3">Phantom comparison: what would alternative tick momentum configs have done vs the real exit (Real: 15,30,45s / 0.12%)</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">Config</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom triggered">Triggered</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L% at phantom trigger point">Phantom P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg actual close P&L% for triggered trades">Actual P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Phantom - Actual (green = phantom better)">Delta</th>
+                                    <th class="px-3 py-2 font-medium text-left" title="Close reasons for triggered trades">Exit Reasons</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom never triggered">Not Trig</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg close P&L% for non-triggered trades">NT P&L</th>
+                                    <th class="px-3 py-2 font-medium text-left" title="Close reasons for non-triggered trades">NT Reasons</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tick-momentum-shadow-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2699,6 +2727,452 @@
             }
         }
 
+        function _buildPerfLines(perf, hr, hr2) {
+            const lines = [];
+            lines.push(`\n${hr}`);
+            lines.push('## OVERALL PERFORMANCE\n');
+            lines.push(`Total Trades: ${perf.total_trades}  (${perf.total_longs}L / ${perf.total_shorts}S)`);
+            lines.push(`Wins: ${perf.total_wins}  |  Losses: ${perf.total_losses}  |  Win Rate: ${perf.win_rate}%`);
+            lines.push(`Win Rate Longs: ${perf.win_rate_longs}%  |  Shorts: ${perf.win_rate_shorts}%`);
+            lines.push(`Avg Win: $${perf.avg_win}  (L:$${perf.avg_win_long} S:$${perf.avg_win_short})`);
+            lines.push(`Avg Loss: $${perf.avg_loss}  (L:$${perf.avg_loss_long} S:$${perf.avg_loss_short})`);
+            lines.push(`Expectancy: $${perf.expectancy}/trade`);
+            lines.push(`Best Win L:$${perf.best_win_long} S:$${perf.best_win_short}  |  Worst Loss L:$${perf.worst_loss_long} S:$${perf.worst_loss_short}`);
+            lines.push(`Total P&L: $${perf.total_pnl} (${perf.total_pnl_percentage}%)  |  Fees: $${perf.total_fees}`);
+            lines.push(`Avg Duration: ${perf.avg_duration} (L:${perf.avg_duration_long} S:${perf.avg_duration_short})`);
+            lines.push(`Avg Leverage: ${perf.avg_leverage}x  |  Return Multiple: ${perf.return_multiple}x`);
+            lines.push(`Daily Compound Return: ${perf.daily_compound_return}%  |  Runtime: ${perf.runtime_days} days`);
+            lines.push(`Investment L:$${perf.total_investment_long_value} S:$${perf.total_investment_short_value}`);
+
+            if (perf.period_performance && perf.period_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Period Performance\n');
+                lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)}`);
+                for (const r of perf.period_performance) {
+                    const dirStr = `${r.longs}L/${r.shorts}S`;
+                    const wrStr = r.count > 0 ? r.win_rate.toFixed(1) + '%' : '-';
+                    const avgStr = r.count > 0 ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-';
+                    const invStr = '$' + Math.round(r.total_investment).toLocaleString('en-US');
+                    const notStr = '$' + Math.round(r.total_notional).toLocaleString('en-US');
+                    const pnlSign = r.total_pnl >= 0 ? '+' : '-';
+                    const pnlAbs = Math.round(Math.abs(r.total_pnl)).toLocaleString('en-US');
+                    const pnlInvStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
+                    const pnlNotStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
+                    const pfStr = r.count > 0 ? (r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)) : '-';
+                    const feesStr = '$' + Math.round(r.total_fees).toLocaleString('en-US');
+                    lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)}`);
+                }
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by Macro Trend\n');
+            lines.push(`${'Trend'.padEnd(10)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Long P&L'.padEnd(12)} ${'L Win%'.padEnd(8)} ${'Short P&L'.padEnd(12)} ${'S Win%'.padEnd(8)}`);
+            for (const [trend, t] of Object.entries(perf.by_macro_trend || {})) {
+                const trades = `${t.long_trades||0}L/${t.short_trades||0}S`;
+                lines.push(`${trend.padEnd(10)} ${trades.padEnd(18)} ${(t.total_win_rate||0)+'%'.padEnd(6)} ${(t.risk_reward||0).toString().padEnd(6)} $${(t.long_pnl||0).toFixed(2).padStart(10)} ${((t.long_win_rate||0)+'%').padEnd(8)} $${(t.short_pnl||0).toFixed(2).padStart(10)} ${((t.short_win_rate||0)+'%').padEnd(8)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by Confidence Level\n');
+            lines.push(`${'Confidence'.padEnd(14)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Total P&L'.padEnd(12)} ${'L P&L'.padEnd(10)} ${'S P&L'.padEnd(10)} ${'Avg Gap'.padEnd(8)}`);
+            for (const [conf, c] of Object.entries(perf.by_confidence || {})) {
+                if (c.total_trades === 0) continue;
+                const trades = `${c.long_trades||0}L/${c.short_trades||0}S`;
+                lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Closing Reason Summary\n');
+            const crCopyTotal = Object.values(perf.by_close_reason || {}).reduce((s, r) => s + (r.trades || 0), 0);
+            lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)}`);
+            for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
+                const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
+                const gapStr = r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-';
+                const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
+                const postPeakStr = r.avg_post_exit_peak_pnl != null ? (r.avg_post_exit_peak_pnl.toFixed(4) + '%') : '-';
+                const postTroughStr = r.avg_post_exit_trough_pnl != null ? (r.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
+                const rsi2PctStr = r.rsi2_fire_pct != null ? r.rsi2_fire_pct.toFixed(1) + '%' : '-';
+                const rsi2PnlStr = r.avg_rsi2_pnl != null ? (r.avg_rsi2_pnl >= 0 ? '+' : '') + r.avg_rsi2_pnl.toFixed(4) + '%' : '-';
+                const rsi2MinStr = r.avg_rsi2_min != null ? r.avg_rsi2_min.toFixed(1) : '-';
+                const crPctStr = crCopyTotal > 0 ? (r.trades / crCopyTotal * 100).toFixed(1) + '%' : '-';
+                lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Entry Conditions by Close Reason\n');
+            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Duration'}`);
+            for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
+                const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
+                const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
+                const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
+                const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
+                const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
+                const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
+                const slopeStr = r.avg_ema20_slope != null ? r.avg_ema20_slope.toFixed(2) + '%' : '-';
+                const btcSlopeStr = r.avg_btc_slope != null ? r.avg_btc_slope.toFixed(2) + '%' : '-';
+                const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                const btcAdxStr = r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-';
+                const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
+                const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
+                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${r.avg_duration || '-'}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Entry Type Performance\n');
+            lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
+            for (const [etype, e] of Object.entries(perf.by_entry_type || {})) {
+                const confStr = Object.entries(e.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_entry_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Exit Type Performance\n');
+            lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgExitFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
+            for (const [etype, e] of Object.entries(perf.by_exit_type || {})) {
+                const confStr = Object.entries(e.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_exit_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Trade Outcome Distribution\n');
+            lines.push(`${'Range'.padEnd(18)} ${'#'.padEnd(5)} ${'Avg P&L'.padEnd(10)}`);
+            for (const o of (perf.outcome_distribution || [])) {
+                lines.push(`${o.range.padEnd(18)} ${String(o.count).padEnd(5)} $${(o.avg_pnl_usd||0).toFixed(2)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Stop Loss Deep Dive\n');
+            const sld = perf.stop_loss_deep_dive || {};
+            const slCats = [
+                ['BE Was Active', sld.be_was_active],
+                ['Positive, No BE', sld.positive_no_be],
+                ['Never Positive', sld.never_positive]
+            ];
+            lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Peak%'.padEnd(11)} ${'AvgTrough%'.padEnd(11)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+            const slTotal = sld.total_sl_trades || 0;
+            for (const [name, d] of slCats) {
+                if (!d || d.count === 0) continue;
+                const dirStr = `${(d.by_direction||{}).LONG||0}L/${(d.by_direction||{}).SHORT||0}S`;
+                const confStr = Object.entries(d.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const sigStr = `${d.signal_active||0}/${d.signal_inactive||0}`;
+                const pctStr = slTotal > 0 ? (d.count / slTotal * 100).toFixed(1) + '%' : '-';
+                lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_trough_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+            }
+            lines.push(`${'All SL Trades'.padEnd(18)} ${String(slTotal).padEnd(5)} ${'100%'.padEnd(7)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'}`);
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Winning Trades Drawdown\n');
+            lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+            const wdAll = perf.winning_trades_drawdown || [];
+            const wdTotalCount = wdAll.reduce((sum, w) => sum + (w.count || 0), 0);
+            let allWinCount = 0, allWinTrough = 0, allWinPeak = 0, allWinClose = 0, allWinDrop = 0, allWinTotal = 0, allWinWorst = 0;
+            let allWinLong = 0, allWinShort = 0, allWinSigA = 0, allWinSigI = 0;
+            for (const w of wdAll) {
+                const dirStr = `${(w.by_direction||{}).LONG||0}L/${(w.by_direction||{}).SHORT||0}S`;
+                const confStr = Object.entries(w.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const sigStr = `${w.signal_active||0}/${w.signal_inactive||0}`;
+                const wdPctStr = wdTotalCount > 0 ? (w.count / wdTotalCount * 100).toFixed(1) + '%' : '-';
+                const postPeakStr = w.avg_post_exit_peak_pnl != null ? (w.avg_post_exit_peak_pnl.toFixed(4) + '%') : '-';
+                const postTroughStr = w.avg_post_exit_trough_pnl != null ? (w.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
+                lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                const n = w.count || 0;
+                allWinCount += n;
+                allWinTrough += (w.avg_trough_pnl||0) * n;
+                allWinPeak += (w.avg_peak_pnl||0) * n;
+                allWinClose += (w.avg_close_pnl||0) * n;
+                allWinDrop += (w.avg_price_drop||0) * n;
+                allWinTotal += w.total_pnl_usd || 0;
+                if ((w.worst_trough_pnl||0) < allWinWorst) allWinWorst = w.worst_trough_pnl;
+                allWinLong += (w.by_direction||{}).LONG||0;
+                allWinShort += (w.by_direction||{}).SHORT||0;
+                allWinSigA += w.signal_active||0;
+                allWinSigI += w.signal_inactive||0;
+            }
+            if (allWinCount > 0) {
+                const awDir = `${allWinLong}L/${allWinShort}S`;
+                const awSig = `${allWinSigA}/${allWinSigI}`;
+                lines.push(`${'ALL WINNERS'.padEnd(18)} ${String(allWinCount).padEnd(5)} ${'100%'.padEnd(7)} ${awDir.padEnd(10)} ${''.padEnd(14)} ${((allWinTrough/allWinCount).toFixed(4)+'%').padStart(11)} ${(allWinWorst.toFixed(4)+'%').padStart(9)} ${((allWinPeak/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinClose/allWinCount).toFixed(4)+'%').padStart(10)} ${((allWinDrop/allWinCount).toFixed(4)+'%').padStart(9)} ${'-'.padStart(9)} ${'-'.padStart(10)} ${('$'+(allWinTotal.toFixed(2))).padStart(11)} ${''.padEnd(10)} ${awSig.padEnd(8)}`);
+            }
+
+            if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Post-Exit Regret Deep Dive\n');
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)}`);
+                for (const r of perf.post_exit_regret_deep_dive) {
+                    const dirStr = `${r.longs}L/${r.shorts}S`;
+                    const slMin = r.avg_sig_lost_min != null ? r.avg_sig_lost_min.toFixed(1) : '-';
+                    const slPnl = r.avg_pnl_at_sig_lost != null ? (r.avg_pnl_at_sig_lost >= 0 ? '+' : '') + r.avg_pnl_at_sig_lost.toFixed(4) + '%' : '-';
+                    const reachPk = r.avg_reachable_peak != null ? (r.avg_reachable_peak >= 0 ? '+' : '') + r.avg_reachable_peak.toFixed(4) + '%' : '-';
+                    const rsiExPct = r.rsi_exit_pct != null ? r.rsi_exit_pct.toFixed(1) + '%' : '-';
+                    const rsiExMin = r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) : '-';
+                    const rsiExPnl = r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? '+' : '') + r.avg_rsi_exit_pnl.toFixed(4) + '%' : '-';
+                    const recNeg020 = r.recovery_neg020_pct != null ? r.recovery_neg020_pct.toFixed(1) + '%' : '-';
+                    const recNeg010 = r.recovery_neg010_pct != null ? r.recovery_neg010_pct.toFixed(1) + '%' : '-';
+                    const recNeg005 = r.recovery_neg005_pct != null ? r.recovery_neg005_pct.toFixed(1) + '%' : '-';
+                    const rec005 = r.recovery_005_pct != null ? r.recovery_005_pct.toFixed(1) + '%' : '-';
+                    const rec010 = r.recovery_010_pct != null ? r.recovery_010_pct.toFixed(1) + '%' : '-';
+                    const sigRegPct = r.sig_regained_pct != null ? r.sig_regained_pct.toFixed(1) + '%' : '-';
+                    const sigRegMin = r.avg_sig_regained_min != null ? r.avg_sig_regained_min.toFixed(1) : '-';
+                    const sigRegPnl = r.avg_pnl_at_sig_regained != null ? (r.avg_pnl_at_sig_regained >= 0 ? '+' : '') + r.avg_pnl_at_sig_regained.toFixed(4) + '%' : '-';
+                    const flrSR = r.avg_floor_before_sig_regain != null ? r.avg_floor_before_sig_regain.toFixed(4) + '%' : '-';
+                    const nrNeg020 = r.nr_rec_neg020_pct != null ? r.nr_rec_neg020_pct.toFixed(1) + '%' : '-';
+                    const nrNeg010 = r.nr_rec_neg010_pct != null ? r.nr_rec_neg010_pct.toFixed(1) + '%' : '-';
+                    const nrNeg005 = r.nr_rec_neg005_pct != null ? r.nr_rec_neg005_pct.toFixed(1) + '%' : '-';
+                    lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${((r.avg_close_pnl >= 0 ? '+' : '') + r.avg_close_pnl.toFixed(4) + '%').padStart(9)} ${((r.avg_post_peak >= 0 ? '+' : '') + r.avg_post_peak.toFixed(4) + '%').padStart(10)} ${(r.avg_peak_min.toFixed(1) + 'm').padStart(8)} ${((r.avg_post_trough >= 0 ? '+' : '') + r.avg_post_trough.toFixed(4) + '%').padStart(10)} ${(r.avg_trough_min.toFixed(1) + 'm').padStart(8)} ${(r.peak_first_pct.toFixed(1) + '%').padStart(9)} ${((r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%').padStart(9)} ${(r.sig_lost_pct.toFixed(1) + '%').padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)}`);
+                }
+            }
+
+            if (perf.be_shadow_tracking && perf.be_shadow_tracking.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## BE Shadow Tracking\n');
+                lines.push(`${'Level'.padEnd(26)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'AvgADX'.padStart(7)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
+                for (const r of perf.be_shadow_tracking) {
+                    const phantomStr = ('+' + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11);
+                    const actualStr = r.avg_actual_pnl_exit !== null ? ((r.avg_actual_pnl_exit >= 0 ? '+' : '') + r.avg_actual_pnl_exit.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                    const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                    const passPnlStr = r.avg_actual_pnl_pass !== null ? ((r.avg_actual_pnl_pass >= 0 ? '+' : '') + r.avg_actual_pnl_pass.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                    const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
+                    const levelStr = `L${r.level} (${r.orig_trigger}%→${r.orig_offset}%)${dirSuffix}`;
+                    const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                    lines.push(`${levelStr.padEnd(26)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${adxStr.padStart(7)} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
+                }
+            }
+
+            if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Tick Momentum Shadow\n');
+                lines.push(`${'Config'.padEnd(28)} ${'Total'.padStart(5)} ${'Trig'.padStart(5)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'NotTrig'.padStart(8)} ${'NTP&L'.padStart(10)} ${'Exit Reasons'.padEnd(40)} ${'NT Reasons'.padEnd(30)}`);
+                for (const r of perf.tick_momentum_shadow) {
+                    const phantomStr = r.avg_phantom_pnl !== null ? ((r.avg_phantom_pnl >= 0 ? '+' : '') + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
+                    const actualStr = r.avg_actual_pnl !== null ? ((r.avg_actual_pnl >= 0 ? '+' : '') + r.avg_actual_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                    const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                    const ntStr = r.avg_nt_pnl !== null ? ((r.avg_nt_pnl >= 0 ? '+' : '') + r.avg_nt_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                    const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
+                    const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
+                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(5)} ${String(r.triggered_count).padStart(5)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.not_triggered_count).padStart(8)} ${ntStr} ${(r.exit_reasons || '-').padEnd(40)} ${(r.nt_exit_reasons || '-').padEnd(30)}`);
+                }
+            }
+
+            if (perf.hold_time_expectancy && perf.hold_time_expectancy.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Hold-Time Expectancy\n');
+                lines.push(`${'Duration'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(8)} ${'Win%'.padEnd(7)} ${'AvgWin$'.padStart(10)} ${'AvgLoss$'.padStart(10)} ${'Expect$'.padStart(10)} ${'AvgPeak%'.padStart(10)} ${'AvgP&L%'.padStart(10)} ${'Total$'.padStart(12)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.hold_time_expectancy) {
+                    const dirStr = `${r.longs}L/${r.shorts}S`;
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${r.duration.padEnd(10)} ${String(r.trades).padEnd(5)} ${dirStr.padEnd(8)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${('$' + r.avg_win.toFixed(2)).padStart(10)} ${('$' + r.avg_loss.toFixed(2)).padStart(10)} ${('$' + r.expectancy.toFixed(2)).padStart(10)} ${((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%').padStart(10)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%').padStart(10)} ${('$' + r.total_pnl.toFixed(2)).padStart(12)} ${confStr}`);
+                }
+            }
+
+            if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Never Positive Deep Dive\n');
+                lines.push(`${'Dimension'.padEnd(18)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
+                for (const r of perf.never_positive_deep_dive) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
+                    const pctStr = r.pct_of_total != null ? r.pct_of_total.toFixed(1)+'%' : '-';
+                    lines.push(`${(r.dimension||'').padEnd(18)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
+                }
+            }
+
+            if (perf.performance_over_time && perf.performance_over_time.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance Over Time (15min buckets)\n');
+                lines.push(`${'Time'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(8)} ${'P&L'.padEnd(12)} ${'AvgP&L'.padEnd(10)} ${'Cumulative'.padEnd(12)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'EMA5-8'.padEnd(8)}`);
+                for (const b of perf.performance_over_time) {
+                    const dirStr = `${b.longs}L/${b.shorts}S`;
+                    const gapStr = b.avg_gap != null ? b.avg_gap.toFixed(2) + '%' : '-';
+                    const gap58Str = b.avg_gap58 != null ? b.avg_gap58.toFixed(4) + '%' : '-';
+                    lines.push(`${(b.time||'').padEnd(8)} ${String(b.trades).padEnd(5)} ${dirStr.padEnd(10)} ${(b.win_rate+'%').padEnd(8)} ${('$'+(b.pnl||0).toFixed(2)).padStart(11)} ${('$'+(b.avg_pnl||0).toFixed(2)).padStart(9)} ${('$'+(b.cumulative_pnl||0).toFixed(2)).padStart(11)} ${(b.avg_rsi!=null?b.avg_rsi.toFixed(1):'-').padStart(7)} ${(b.avg_adx!=null?b.avg_adx.toFixed(1):'-').padStart(7)} ${gapStr.padStart(7)} ${gap58Str.padStart(8)}`);
+                }
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by Entry Gap (EMA20)\n');
+            lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+            for (const g of (perf.gap_performance || [])) {
+                const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                lines.push(`${(g.range||'').padEnd(16)} ${String(g.count).padEnd(5)} ${(g.direction||'').padEnd(7)} ${(g.win_rate+'%').padEnd(6)} ${('$'+((g.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((g.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by Entry Gap EMA5-EMA8\n');
+            lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+            for (const g of (perf.ema58_gap_performance || [])) {
+                const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                lines.push(`${(g.range||'').padEnd(16)} ${String(g.count).padEnd(5)} ${(g.direction||'').padEnd(7)} ${(g.win_rate+'%').padEnd(6)} ${('$'+((g.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((g.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by Entry RSI\n');
+            lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+            for (const r of (perf.rsi_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by Entry ADX\n');
+            lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+            for (const r of (perf.adx_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+            }
+
+            if (perf.adx_direction_performance && perf.adx_direction_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by ADX Direction at Entry\n');
+                lines.push(`${'ADX Dir'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.adx_direction_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.adx_direction||'').padEnd(10)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by EMA5 Stretch\n');
+            lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+            for (const r of (perf.stretch_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by Pair EMA20 Slope (abs)\n');
+            lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
+            for (const r of (perf.pair_slope_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                const gapStr = r.avg_gap != null ? (r.avg_gap.toFixed(2)+'%') : '-';
+                lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by BTC EMA20 Slope (abs)\n');
+            lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
+            for (const r of (perf.btc_slope_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                const gapStr = r.avg_gap != null ? (r.avg_gap.toFixed(2)+'%') : '-';
+                lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)}`);
+            }
+
+            lines.push(`\n${hr2}`);
+            lines.push('## Performance by BTC ADX\n');
+            lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
+            for (const r of (perf.btc_adx_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                const gapStr = r.avg_gap != null ? (r.avg_gap.toFixed(2)+'%') : '-';
+                lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)}`);
+            }
+
+            if (perf.btc_adx_direction_performance && perf.btc_adx_direction_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC ADX Direction at Entry\n');
+                lines.push(`${'BTC ADX Dir'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.btc_adx_direction_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_adx_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
+            if (perf.adx_dir_crosstab && perf.adx_dir_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Pair ADX Dir x BTC ADX Dir Cross-Tab\n');
+                lines.push(`${'PairADX'.padEnd(10)} ${'BtcADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.adx_dir_crosstab) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.pair_adx_dir||'').padEnd(10)} ${(r.btc_adx_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${confStr}`);
+                }
+            }
+
+            if (perf.btc_slope_adx_crosstab && perf.btc_slope_adx_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## BTC Slope x BTC ADX Cross-Tab\n');
+                lines.push(`${'Slope'.padEnd(12)} ${'ADX'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(10)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                for (const r of perf.btc_slope_adx_crosstab) {
+                    lines.push(`${(r.slope_range||'').padEnd(12)} ${(r.adx_range||'').padEnd(8)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(10)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)}`);
+                }
+            }
+
+            if (perf.rsi_adx_crosstab && perf.rsi_adx_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by RSI x ADX\n');
+                lines.push(`${'Dir'.padEnd(7)} ${'RSI'.padEnd(7)} ${'ADX'.padEnd(7)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                for (const r of perf.rsi_adx_crosstab) {
+                    lines.push(`${(r.direction||'').padEnd(7)} ${(r.rsi_range||'').padEnd(7)} ${(r.adx_range||'').padEnd(7)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)}`);
+                }
+            }
+
+            return lines;
+        }
+
+        function _buildConfigLines(cfg, changelog, hr, hr2) {
+            const lines = [];
+            lines.push('\n## CONFIGURATION\n');
+            const th = cfg.thresholds || {};
+            lines.push('Signal Thresholds:');
+            lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
+            lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
+            lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
+            const rsiAdxL = th.rsi_adx_filter_long || '(none)';
+            const rsiAdxS = th.rsi_adx_filter_short || '(none)';
+            lines.push(`  RSI x ADX Filter L: ${rsiAdxL}  |  S: ${rsiAdxS}`);
+            lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}  |  Min BTC ADX: ${th.macro_trend_min_btc_adx !== undefined ? th.macro_trend_min_btc_adx : 0}`);
+            lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
+            lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}`);
+            lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
+            lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA8 gap compressing vs prev candle)`);
+
+            const inv = cfg.investment || {};
+            lines.push(`\nGeneral Settings:`);
+            lines.push(`  Paper Trading: ${cfg.paper_trading ? 'ON' : 'OFF'}  |  Paper Balance: $${cfg.paper_balance || 0}`);
+            lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
+            lines.push(`  Cooldown After Exit: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
+
+            lines.push(`\nFee & Maker Orders:`);
+            lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee ?? 0.00018) * 100).toFixed(3)}%`);
+            lines.push(`  Maker Entry: ${cfg.maker_entry_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_timeout_seconds || 15}s  |  Offset: ${cfg.maker_offset_ticks || 2} ticks`);
+            lines.push(`  Maker Exit: ${cfg.maker_exit_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_exit_timeout_seconds || 10}s  |  Offset: ${cfg.maker_exit_offset_ticks || 2} ticks`);
+            const entryF = cfg.maker_entry_enabled ? (cfg.maker_fee ?? 0.00018) : (cfg.taker_fee || cfg.trading_fee);
+            const exitF = cfg.maker_exit_enabled ? (cfg.maker_fee ?? 0.00018) : (cfg.taker_fee || cfg.trading_fee);
+            lines.push(`  Roundtrip: ${((entryF + exitF) * 100).toFixed(3)}%  |  Full taker: ${((cfg.taker_fee || cfg.trading_fee) * 200).toFixed(3)}%`);
+
+            lines.push('\nExit Settings:');
+            lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
+            lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
+            lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Range: [${th.rsi_momentum_exit_min_profit}%, ${th.rsi_momentum_exit_max_profit !== undefined ? th.rsi_momentum_exit_max_profit : 999}%]  (close on 2 consecutive RSI drops/rises)`);
+            lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Deltas: ${th.tick_momentum_exit_min_deltas || th.tick_momentum_exit_min_delta || 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
+
+            lines.push('\nConfidence Levels:');
+            lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
+            for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
+                if (!c.enabled) continue;
+                lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  BE:${c.be_levels_enabled !== false ? 'Y' : 'N'}  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+            }
+
+            if (changelog.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## CONFIG CHANGE LOG\n');
+                lines.push(`${'Time'.padEnd(20)} ${'Field'.padEnd(40)} ${'Old'.padEnd(15)} New`);
+                for (const ch of changelog) {
+                    const t = ch.changed_at ? new Date(ch.changed_at).toLocaleString('en-GB', {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}) : '?';
+                    const field = ch.field.length > 38 ? ch.field.slice(-38) : ch.field;
+                    lines.push(`${t.padEnd(20)} ${field.padEnd(40)} ${(ch.old_value||'').padEnd(15)} ${ch.new_value||''}`);
+                }
+            }
+            return lines;
+        }
+
         // Copy Analytics to clipboard
         async function copyAnalytics() {
             const btn = document.getElementById('copy-analytics-btn');
@@ -2725,60 +3199,7 @@
                 if (regimeFilter) lines.push(`Filter: ${regimeFilter} trades only`);
                 lines.push(hr);
 
-                // --- CONFIG ---
-                lines.push('\n## CONFIGURATION\n');
-                const th = cfg.thresholds || {};
-                lines.push('Signal Thresholds:');
-                lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
-                lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
-                lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
-                const rsiAdxL = th.rsi_adx_filter_long || '(none)';
-                const rsiAdxS = th.rsi_adx_filter_short || '(none)';
-                lines.push(`  RSI x ADX Filter L: ${rsiAdxL}  |  S: ${rsiAdxS}`);
-                lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}  |  Min BTC ADX: ${th.macro_trend_min_btc_adx !== undefined ? th.macro_trend_min_btc_adx : 0}`);
-                lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
-                lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}`);
-                lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
-                lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA8 gap compressing vs prev candle)`);
-
-                const inv = cfg.investment || {};
-                lines.push(`\nGeneral Settings:`);
-                lines.push(`  Paper Trading: ${cfg.paper_trading ? 'ON' : 'OFF'}  |  Paper Balance: $${cfg.paper_balance || 0}`);
-                lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
-                lines.push(`  Cooldown After Exit: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
-
-                lines.push(`\nFee & Maker Orders:`);
-                lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee ?? 0.00018) * 100).toFixed(3)}%`);
-                lines.push(`  Maker Entry: ${cfg.maker_entry_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_timeout_seconds || 15}s  |  Offset: ${cfg.maker_offset_ticks || 2} ticks`);
-                lines.push(`  Maker Exit: ${cfg.maker_exit_enabled ? 'ON' : 'OFF'}  |  Timeout: ${cfg.maker_exit_timeout_seconds || 10}s  |  Offset: ${cfg.maker_exit_offset_ticks || 2} ticks`);
-                const entryF = cfg.maker_entry_enabled ? (cfg.maker_fee ?? 0.00018) : (cfg.taker_fee || cfg.trading_fee);
-                const exitF = cfg.maker_exit_enabled ? (cfg.maker_fee ?? 0.00018) : (cfg.taker_fee || cfg.trading_fee);
-                lines.push(`  Roundtrip: ${((entryF + exitF) * 100).toFixed(3)}%  |  Full taker: ${((cfg.taker_fee || cfg.trading_fee) * 200).toFixed(3)}%`);
-
-                lines.push('\nExit Settings:');
-                lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
-                lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
-                lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Range: [${th.rsi_momentum_exit_min_profit}%, ${th.rsi_momentum_exit_max_profit !== undefined ? th.rsi_momentum_exit_max_profit : 999}%]  (close on 2 consecutive RSI drops/rises)`);
-                lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Deltas: ${th.tick_momentum_exit_min_deltas || th.tick_momentum_exit_min_delta || 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
-
-                lines.push('\nConfidence Levels:');
-                lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
-                for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
-                    if (!c.enabled) continue;
-                    lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  BE:${c.be_levels_enabled !== false ? 'Y' : 'N'}  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
-                }
-
-                // --- CONFIG CHANGE LOG ---
-                if (changelog.length > 0) {
-                    lines.push(`\n${hr2}`);
-                    lines.push('## CONFIG CHANGE LOG\n');
-                    lines.push(`${'Time'.padEnd(20)} ${'Field'.padEnd(40)} ${'Old'.padEnd(15)} New`);
-                    for (const ch of changelog) {
-                        const t = ch.changed_at ? new Date(ch.changed_at).toLocaleString('en-GB', {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}) : '?';
-                        const field = ch.field.length > 38 ? ch.field.slice(-38) : ch.field;
-                        lines.push(`${t.padEnd(20)} ${field.padEnd(40)} ${(ch.old_value||'').padEnd(15)} ${ch.new_value||''}`);
-                    }
-                }
+                lines.push(..._buildConfigLines(cfg, changelog, hr, hr2));
 
                 // --- OVERALL PERFORMANCE ---
                 lines.push(`\n${hr}`);
@@ -3006,6 +3427,22 @@
                     }
                 }
 
+                // --- TICK MOMENTUM SHADOW ---
+                if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Tick Momentum Shadow\n');
+                    lines.push(`${'Config'.padEnd(28)} ${'Total'.padStart(5)} ${'Trig'.padStart(5)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'NotTrig'.padStart(8)} ${'NTP&L'.padStart(10)} ${'Exit Reasons'.padEnd(40)} ${'NT Reasons'.padEnd(30)}`);
+                    for (const r of perf.tick_momentum_shadow) {
+                        const phantomStr = r.avg_phantom_pnl !== null ? ((r.avg_phantom_pnl >= 0 ? '+' : '') + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
+                        const actualStr = r.avg_actual_pnl !== null ? ((r.avg_actual_pnl >= 0 ? '+' : '') + r.avg_actual_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                        const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                        const ntStr = r.avg_nt_pnl !== null ? ((r.avg_nt_pnl >= 0 ? '+' : '') + r.avg_nt_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                        const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
+                        const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
+                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(5)} ${String(r.triggered_count).padStart(5)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.not_triggered_count).padStart(8)} ${ntStr} ${(r.exit_reasons || '-').padEnd(40)} ${(r.nt_exit_reasons || '-').padEnd(30)}`);
+                    }
+                }
+
                 // --- HOLD-TIME EXPECTANCY ---
                 if (perf.hold_time_expectancy && perf.hold_time_expectancy.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -3202,6 +3639,72 @@
                     btn.textContent = 'Copy Analytics';
                     btn.classList.remove('bg-red-600');
                     btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
+                    btn.disabled = false;
+                }, 2000);
+            }
+        }
+
+        async function copySplitReport() {
+            const btn = document.getElementById('copy-split-btn');
+            btn.textContent = 'Loading...';
+            btn.disabled = true;
+            try {
+                const [perfBullRes, perfBearRes, cfgRes, logRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/performance?regime=BULLISH`),
+                    fetch(`${API_BASE}/api/performance?regime=BEARISH`),
+                    fetch(`${API_BASE}/api/config`),
+                    fetch(`${API_BASE}/api/config/changelog?limit=50`)
+                ]);
+                const perfBull = await perfBullRes.json();
+                const perfBear = await perfBearRes.json();
+                const cfg = await cfgRes.json();
+                const changelog = logRes.ok ? await logRes.json() : [];
+                const lines = [];
+                const hr = '='.repeat(80);
+                const hr2 = '-'.repeat(60);
+                const sectionHr = '#'.repeat(80);
+
+                lines.push(hr);
+                lines.push('TRADING BOT SPLIT ANALYTICS REPORT');
+                lines.push(`Generated: ${new Date().toISOString()}`);
+                lines.push(hr);
+
+                lines.push(..._buildConfigLines(cfg, changelog, hr, hr2));
+
+                lines.push(`\n${sectionHr}`);
+                lines.push('### BULLISH REGIME');
+                lines.push(sectionHr);
+                lines.push(..._buildPerfLines(perfBull, hr, hr2));
+
+                lines.push(`\n${sectionHr}`);
+                lines.push('### BEARISH REGIME');
+                lines.push(sectionHr);
+                lines.push(..._buildPerfLines(perfBear, hr, hr2));
+
+                lines.push(`\n${hr}`);
+                lines.push('END OF SPLIT REPORT');
+                lines.push(hr);
+
+                const text = lines.join('\n');
+                await navigator.clipboard.writeText(text);
+                btn.textContent = 'Copied!';
+                btn.classList.remove('bg-purple-600', 'hover:bg-purple-500');
+                btn.classList.add('bg-emerald-600');
+                setTimeout(() => {
+                    btn.textContent = 'Copy Split Report';
+                    btn.classList.remove('bg-emerald-600');
+                    btn.classList.add('bg-purple-600', 'hover:bg-purple-500');
+                    btn.disabled = false;
+                }, 2000);
+            } catch (err) {
+                console.error('Copy split report failed:', err);
+                btn.textContent = 'Failed!';
+                btn.classList.remove('bg-purple-600', 'hover:bg-purple-500');
+                btn.classList.add('bg-red-600');
+                setTimeout(() => {
+                    btn.textContent = 'Copy Split Report';
+                    btn.classList.remove('bg-red-600');
+                    btn.classList.add('bg-purple-600', 'hover:bg-purple-500');
                     btn.disabled = false;
                 }, 2000);
             }
@@ -4817,6 +5320,37 @@
                     }).join('');
                 } else {
                     bsBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>';
+                }
+
+                // Tick Momentum Shadow Tracking
+                const tmsBody = document.getElementById('tick-momentum-shadow-body');
+                if (data.tick_momentum_shadow && data.tick_momentum_shadow.length > 0) {
+                    tmsBody.innerHTML = data.tick_momentum_shadow.map(r => {
+                        const phantomClass = r.avg_phantom_pnl !== null ? (r.avg_phantom_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
+                        const phantomStr = r.avg_phantom_pnl !== null ? `${r.avg_phantom_pnl >= 0 ? '+' : ''}${r.avg_phantom_pnl.toFixed(4)}%` : '-';
+                        const actualClass = r.avg_actual_pnl !== null ? (r.avg_actual_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
+                        const actualStr = r.avg_actual_pnl !== null ? `${r.avg_actual_pnl >= 0 ? '+' : ''}${r.avg_actual_pnl.toFixed(4)}%` : '-';
+                        const deltaClass = r.delta !== null ? (r.delta > 0 ? 'text-emerald-400' : r.delta < 0 ? 'text-red-400' : 'text-gray-400') : 'text-gray-500';
+                        const deltaStr = r.delta !== null ? `${r.delta > 0 ? '+' : ''}${r.delta.toFixed(4)}%` : '-';
+                        const ntClass = r.avg_nt_pnl !== null ? (r.avg_nt_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
+                        const ntStr = r.avg_nt_pnl !== null ? `${r.avg_nt_pnl >= 0 ? '+' : ''}${r.avg_nt_pnl.toFixed(4)}%` : '-';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-3 py-2 font-medium text-cyan-400">${r.label} <span class="text-gray-500 text-[10px]">(${r.windows} / ${r.delta_threshold})</span> <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
+                            <td class="px-3 py-2 text-right">${r.total}</td>
+                            <td class="px-3 py-2 text-right">${r.triggered_count}</td>
+                            <td class="px-3 py-2 text-right ${phantomClass}">${phantomStr}</td>
+                            <td class="px-3 py-2 text-right ${actualClass}">${actualStr}</td>
+                            <td class="px-3 py-2 text-right font-medium ${deltaClass}">${deltaStr}</td>
+                            <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.exit_reasons || '-'}</td>
+                            <td class="px-3 py-2 text-right">${r.not_triggered_count}</td>
+                            <td class="px-3 py-2 text-right ${ntClass}">${ntStr}</td>
+                            <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.nt_exit_reasons || '-'}</td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    tmsBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
                 }
 
                 // Hold-Time Expectancy

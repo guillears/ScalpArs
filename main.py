@@ -796,6 +796,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "be_shadow_tracking": [],
+            "tick_momentum_shadow": [],
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
@@ -1230,6 +1231,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "be_shadow_tracking": [],
+            "tick_momentum_shadow": [],
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
@@ -2645,6 +2647,64 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing BE Shadow Tracking: {e}\n{traceback.format_exc()}")
 
+    # Tick Momentum Shadow Tracking
+    tick_momentum_shadow = []
+    try:
+        _SHADOW_TICK_LABELS = [
+            ('a', '15,30,45s', '0.15%', [15, 30, 45], 0.15),
+            ('b', '30,45,60s', '0.12%', [30, 45, 60], 0.12),
+            ('c', '30,45,60s', '0.15%', [30, 45, 60], 0.15),
+        ]
+        for lbl, win_str, delta_str, _wins, _delta in _SHADOW_TICK_LABELS:
+            trig_field = f'phantom_tick_{lbl}_triggered_at'
+            pnl_field = f'phantom_tick_{lbl}_pnl'
+
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in orders if o.direction == direction]
+                if not dir_orders:
+                    continue
+
+                triggered = [o for o in dir_orders if getattr(o, trig_field, None) is not None]
+                not_triggered = [o for o in dir_orders if getattr(o, trig_field, None) is None]
+
+                if not triggered and not not_triggered:
+                    continue
+
+                avg_phantom_pnl = sum(getattr(o, pnl_field) or 0 for o in triggered) / len(triggered) if triggered else None
+                avg_actual_pnl = sum(o.pnl_percentage or 0 for o in triggered) / len(triggered) if triggered else None
+                delta = round(avg_phantom_pnl - avg_actual_pnl, 4) if avg_phantom_pnl is not None and avg_actual_pnl is not None else None
+                avg_nt_pnl = sum(o.pnl_percentage or 0 for o in not_triggered) / len(not_triggered) if not_triggered else None
+
+                reason_counts = {}
+                for o in triggered:
+                    r = o.close_reason or "UNKNOWN"
+                    reason_counts[r] = reason_counts.get(r, 0) + 1
+                reason_str = " ".join(f"{r}:{c}" for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]))
+
+                nt_reason_counts = {}
+                for o in not_triggered:
+                    r = o.close_reason or "UNKNOWN"
+                    nt_reason_counts[r] = nt_reason_counts.get(r, 0) + 1
+                nt_reason_str = " ".join(f"{r}:{c}" for r, c in sorted(nt_reason_counts.items(), key=lambda x: -x[1]))
+
+                tick_momentum_shadow.append({
+                    "label": lbl.upper(),
+                    "windows": win_str,
+                    "delta_threshold": delta_str,
+                    "direction": direction,
+                    "total": len(dir_orders),
+                    "triggered_count": len(triggered),
+                    "avg_phantom_pnl": round(avg_phantom_pnl, 4) if avg_phantom_pnl is not None else None,
+                    "avg_actual_pnl": round(avg_actual_pnl, 4) if avg_actual_pnl is not None else None,
+                    "delta": delta,
+                    "not_triggered_count": len(not_triggered),
+                    "avg_nt_pnl": round(avg_nt_pnl, 4) if avg_nt_pnl is not None else None,
+                    "exit_reasons": reason_str,
+                    "nt_exit_reasons": nt_reason_str,
+                })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing Tick Momentum Shadow: {e}\n{traceback.format_exc()}")
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -2710,6 +2770,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
         "be_shadow_tracking": be_shadow_tracking,
+        "tick_momentum_shadow": tick_momentum_shadow,
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),

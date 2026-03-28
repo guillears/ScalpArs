@@ -30,6 +30,42 @@ _close_lock = asyncio.Lock()
 # Current BTC macro regime, updated by scan_and_trade, read by update_open_positions
 _current_btc_regime: str = "NEUTRAL"
 
+# Phantom Tick Momentum shadow configs: (label, windows, delta)
+_SHADOW_TICK_CONFIGS = [
+    ('a', [15, 30, 45], 0.15),
+    ('b', [30, 45, 60], 0.12),
+    ('c', [30, 45, 60], 0.15),
+]
+
+
+def _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, direction):
+    """Check if all windows confirm momentum fading. Returns True if confirmed."""
+    min_window = min(windows) if windows else 15
+    if len(tick_buf) < 5 or (now - tick_buf[0][0]) < min_window:
+        return False
+
+    smooth_cutoff = now - 5.0
+    smooth_prices = [p for t, p in tick_buf if t >= smooth_cutoff]
+    smoothed = sum(smooth_prices) / len(smooth_prices) if smooth_prices else tick_buf[-1][1]
+
+    for w, delta in zip(windows, per_window_deltas):
+        target_time = now - w
+        best_tick = None
+        best_diff = float('inf')
+        for t, p in tick_buf:
+            diff = abs(t - target_time)
+            if diff < best_diff:
+                best_diff = diff
+                best_tick = p
+        if best_tick is None or best_diff > w * 0.5:
+            return False
+        price_change_pct = ((smoothed - best_tick) / best_tick) * 100
+        if direction == "LONG" and price_change_pct > -delta:
+            return False
+        elif direction == "SHORT" and price_change_pct < delta:
+            return False
+    return True
+
 
 class TradingEngine:
     """Main trading engine that manages positions and executes trades"""
@@ -820,6 +856,15 @@ class TradingEngine:
                 'phantom_be_l2_triggered': False,
                 'phantom_be_l2_triggered_at': None,
                 'phantom_be_l2_would_exit_pnl': None,
+                'phantom_tick_a_triggered': False,
+                'phantom_tick_a_triggered_at': None,
+                'phantom_tick_a_pnl': None,
+                'phantom_tick_b_triggered': False,
+                'phantom_tick_b_triggered_at': None,
+                'phantom_tick_b_pnl': None,
+                'phantom_tick_c_triggered': False,
+                'phantom_tick_c_triggered_at': None,
+                'phantom_tick_c_pnl': None,
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -931,13 +976,16 @@ class TradingEngine:
         order.closed_at = datetime.utcnow()
         order.close_reason = reason
 
-        # Persist phantom BE shadow data from real-time cache
+        # Persist phantom shadow data from real-time cache
         for cached in _open_orders_cache.get(order.pair, []):
             if cached['id'] == order.id:
                 order.phantom_be_l1_triggered_at = cached.get('phantom_be_l1_triggered_at')
                 order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
                 order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
                 order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
+                for _lbl in ['a', 'b', 'c']:
+                    setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
+                    setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
                 break
 
         try:
@@ -998,6 +1046,18 @@ class TradingEngine:
         tracker = websocket_tracker.get_tracker(order.pair)
         initial_price = tracker.last_price if tracker else order.exit_price
         now = datetime.utcnow()
+        # Carry tick buffer and phantom tick states from cache
+        cached_tick_buf = []
+        phantom_tick_states = {}
+        for cached in _open_orders_cache.get(order.pair, []):
+            if cached['id'] == order.id:
+                cached_tick_buf = cached.get('tick_prices', [])
+                for _lbl in ['a', 'b', 'c']:
+                    phantom_tick_states[f'phantom_tick_{_lbl}_triggered'] = cached.get(f'phantom_tick_{_lbl}_triggered', False)
+                    phantom_tick_states[f'phantom_tick_{_lbl}_triggered_at'] = cached.get(f'phantom_tick_{_lbl}_triggered_at')
+                    phantom_tick_states[f'phantom_tick_{_lbl}_pnl'] = cached.get(f'phantom_tick_{_lbl}_pnl')
+                break
+
         self._post_exit_tracking[order.id] = {
             "order_id": order.id,
             "pair": order.pair,
@@ -1022,6 +1082,8 @@ class TradingEngine:
             "running_min_pnl": None,
             "floor_before_signal_regain": None,
             "close_reason": reason,
+            "tick_prices": cached_tick_buf,
+            **phantom_tick_states,
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
 
@@ -1129,6 +1191,23 @@ class TradingEngine:
                 if current_pnl > info["peak_before_signal_lost"]:
                     info["peak_before_signal_lost"] = current_pnl
 
+            # Post-exit phantom tick momentum checks
+            tick_exit_min_profit = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_profit', 0.05)
+            pe_tick_buf = info.get("tick_prices")
+            if pe_tick_buf is not None:
+                now_ts = time.time()
+                pe_tick_buf.append((now_ts, price))
+                pe_tick_buf[:] = [(t, p) for t, p in pe_tick_buf if t >= now_ts - 70]
+                if current_pnl > tick_exit_min_profit:
+                    for _lbl, _swin, _sdelta in _SHADOW_TICK_CONFIGS:
+                        _tk = f'phantom_tick_{_lbl}_triggered'
+                        if not info.get(_tk):
+                            _sdeltas = [_sdelta] * len(_swin)
+                            if _check_tick_momentum_fade(pe_tick_buf, now_ts, _swin, _sdeltas, direction):
+                                info[_tk] = True
+                                info[f'phantom_tick_{_lbl}_triggered_at'] = now
+                                info[f'phantom_tick_{_lbl}_pnl'] = current_pnl
+
             if now >= info["tracking_until"]:
                 if direction == "LONG":
                     peak_pnl = ((info["post_high"] - entry) / entry) * 100
@@ -1176,6 +1255,12 @@ class TradingEngine:
                                 post_exit_signal_regained_minutes=round(sig_regained_minutes, 2) if sig_regained_minutes is not None else None,
                                 post_exit_pnl_at_signal_regained=round(info["pnl_at_signal_regained"], 4) if info["pnl_at_signal_regained"] is not None else None,
                                 post_exit_floor_before_signal_regain=round(info["floor_before_signal_regain"], 4) if info["floor_before_signal_regain"] is not None else None,
+                                phantom_tick_a_triggered_at=info.get("phantom_tick_a_triggered_at"),
+                                phantom_tick_a_pnl=round(info["phantom_tick_a_pnl"], 4) if info.get("phantom_tick_a_pnl") is not None else None,
+                                phantom_tick_b_triggered_at=info.get("phantom_tick_b_triggered_at"),
+                                phantom_tick_b_pnl=round(info["phantom_tick_b_pnl"], 4) if info.get("phantom_tick_b_pnl") is not None else None,
+                                phantom_tick_c_triggered_at=info.get("phantom_tick_c_triggered_at"),
+                                phantom_tick_c_pnl=round(info["phantom_tick_c_pnl"], 4) if info.get("phantom_tick_c_pnl") is not None else None,
                             )
                         )
                         await pe_write_db.commit()
@@ -2089,11 +2174,14 @@ class TradingEngine:
             # Real-time Tick Momentum Exit: multi-window price velocity check
             tick_exit_enabled = getattr(config.trading_config.thresholds, 'tick_momentum_exit_enabled', False)
             tick_exit_min_profit = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_profit', 0.05)
-            if tick_exit_enabled and pnl_pct > tick_exit_min_profit:
-                now = time.time()
-                tick_buf = order_info.get('tick_prices', [])
-                tick_buf.append((now, current_price))
+            now = time.time()
+            tick_buf = order_info.get('tick_prices', [])
+            tick_buf.append((now, current_price))
+            cutoff = now - 70
+            tick_buf[:] = [(t, p) for t, p in tick_buf if t >= cutoff]
+            order_info['tick_prices'] = tick_buf
 
+            if tick_exit_enabled and pnl_pct > tick_exit_min_profit:
                 tick_min_delta_fallback = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_delta', 0.05)
                 deltas_str = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_deltas', '')
                 windows_str = getattr(config.trading_config.thresholds, 'tick_momentum_exit_windows', '15,30,60')
@@ -2113,78 +2201,44 @@ class TradingEngine:
                 if per_window_deltas is None:
                     per_window_deltas = [tick_min_delta_fallback] * len(windows)
 
-                max_window = max(windows) if windows else 60
+                all_windows_confirm = _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, direction)
 
-                cutoff = now - max_window - 10
-                tick_buf[:] = [(t, p) for t, p in tick_buf if t >= cutoff]
-                order_info['tick_prices'] = tick_buf
+                # Shadow tick momentum: check phantom configs
+                for _lbl, _swin, _sdelta in _SHADOW_TICK_CONFIGS:
+                    _tk = f'phantom_tick_{_lbl}_triggered'
+                    if not order_info.get(_tk):
+                        _sdeltas = [_sdelta] * len(_swin)
+                        if _check_tick_momentum_fade(tick_buf, now, _swin, _sdeltas, direction):
+                            order_info[_tk] = True
+                            order_info[f'phantom_tick_{_lbl}_triggered_at'] = datetime.utcnow()
+                            order_info[f'phantom_tick_{_lbl}_pnl'] = pnl_pct
 
-                if len(tick_buf) >= 5 and (now - tick_buf[0][0]) >= min(windows):
-                    smooth_cutoff = now - 5.0
-                    smooth_prices = [p for t, p in tick_buf if t >= smooth_cutoff]
-                    smoothed = sum(smooth_prices) / len(smooth_prices) if smooth_prices else current_price
-
-                    all_windows_confirm = True
-                    for w, delta in zip(windows, per_window_deltas):
-                        target_time = now - w
-                        best_tick = None
-                        best_diff = float('inf')
-                        for t, p in tick_buf:
-                            diff = abs(t - target_time)
-                            if diff < best_diff:
-                                best_diff = diff
-                                best_tick = p
-                        if best_tick is None or best_diff > w * 0.5:
-                            all_windows_confirm = False
-                            break
-
-                        price_change_pct = ((smoothed - best_tick) / best_tick) * 100
-                        if direction == "LONG" and price_change_pct > -delta:
-                            all_windows_confirm = False
-                            break
-                        elif direction == "SHORT" and price_change_pct < delta:
-                            all_windows_confirm = False
-                            break
-
-                    if all_windows_confirm:
-                        tp_level = order_info.get('current_tp_level', 1)
-                        deltas_info = '/'.join(f"{d:.2f}" for d in per_window_deltas)
-                        logger.warning(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: tick momentum fading across {windows}s windows (deltas={deltas_info}%), pnl={pnl_pct:.4f}% > min={tick_exit_min_profit}% - CLOSING NOW!")
-                        try:
-                            async with AsyncSessionLocal() as db:
-                                result = await db.execute(
-                                    select(Order).where(
-                                        and_(Order.id == order_id, Order.status == "OPEN")
-                                    )
-                                )
-                                order = result.scalar_one_or_none()
-                                if order:
-                                    await self.close_position(
-                                        db, order, current_price,
-                                        f"TICK_MOMENTUM_EXIT L{tp_level}"
-                                    )
-                                    logger.info(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
-                                    async with _cache_lock:
-                                        _open_orders_cache[pair] = [
-                                            o for o in _open_orders_cache.get(pair, [])
-                                            if o['id'] != order_id
-                                        ]
-                        except Exception as e:
-                            logger.error(f"[REALTIME_TICK_MOMENTUM_EXIT] Error closing {pair}: {e}")
-                        continue
-            else:
-                tick_buf = order_info.get('tick_prices', [])
-                if tick_buf is not None:
-                    now_t = time.time()
-                    tick_buf.append((now_t, current_price))
-                    windows_str = getattr(config.trading_config.thresholds, 'tick_momentum_exit_windows', '15,30,60')
+                if all_windows_confirm:
+                    tp_level = order_info.get('current_tp_level', 1)
+                    deltas_info = '/'.join(f"{d:.2f}" for d in per_window_deltas)
+                    logger.warning(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: tick momentum fading across {windows}s windows (deltas={deltas_info}%), pnl={pnl_pct:.4f}% > min={tick_exit_min_profit}% - CLOSING NOW!")
                     try:
-                        max_w = max(int(w.strip()) for w in windows_str.split(',') if w.strip())
-                    except (ValueError, AttributeError):
-                        max_w = 60
-                    cutoff_t = now_t - max_w - 10
-                    tick_buf[:] = [(t, p) for t, p in tick_buf if t >= cutoff_t]
-                    order_info['tick_prices'] = tick_buf
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(
+                                    and_(Order.id == order_id, Order.status == "OPEN")
+                                )
+                            )
+                            order = result.scalar_one_or_none()
+                            if order:
+                                await self.close_position(
+                                    db, order, current_price,
+                                    f"TICK_MOMENTUM_EXIT L{tp_level}"
+                                )
+                                logger.info(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                async with _cache_lock:
+                                    _open_orders_cache[pair] = [
+                                        o for o in _open_orders_cache.get(pair, [])
+                                        if o['id'] != order_id
+                                    ]
+                    except Exception as e:
+                        logger.error(f"[REALTIME_TICK_MOMENTUM_EXIT] Error closing {pair}: {e}")
+                    continue
 
             # Real-time P&L trailing: only MOMENTUM_EXIT (signal lost). Skipped when signal active + RSI exit enabled.
             pnl_trigger = getattr(config.trading_config.thresholds, 'pnl_trailing_trigger', 0.0)
@@ -2356,6 +2410,15 @@ class TradingEngine:
                 'phantom_be_l2_triggered': order.phantom_be_l2_triggered_at is not None,
                 'phantom_be_l2_triggered_at': order.phantom_be_l2_triggered_at,
                 'phantom_be_l2_would_exit_pnl': order.phantom_be_l2_would_exit_pnl,
+                'phantom_tick_a_triggered': order.phantom_tick_a_triggered_at is not None,
+                'phantom_tick_a_triggered_at': order.phantom_tick_a_triggered_at,
+                'phantom_tick_a_pnl': order.phantom_tick_a_pnl,
+                'phantom_tick_b_triggered': order.phantom_tick_b_triggered_at is not None,
+                'phantom_tick_b_triggered_at': order.phantom_tick_b_triggered_at,
+                'phantom_tick_b_pnl': order.phantom_tick_b_pnl,
+                'phantom_tick_c_triggered': order.phantom_tick_c_triggered_at is not None,
+                'phantom_tick_c_triggered_at': order.phantom_tick_c_triggered_at,
+                'phantom_tick_c_pnl': order.phantom_tick_c_pnl,
             }
             
             if order.pair not in new_cache:
@@ -2381,6 +2444,10 @@ class TradingEngine:
                             new_info['tick_prices'] = old_info.get('tick_prices', [])
                             for _lvl in [1, 2]:
                                 for _key in [f'phantom_be_l{_lvl}_triggered', f'phantom_be_l{_lvl}_triggered_at', f'phantom_be_l{_lvl}_would_exit_pnl']:
+                                    if old_info.get(_key) is not None:
+                                        new_info[_key] = old_info[_key]
+                            for _lbl in ['a', 'b', 'c']:
+                                for _key in [f'phantom_tick_{_lbl}_triggered', f'phantom_tick_{_lbl}_triggered_at', f'phantom_tick_{_lbl}_pnl']:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]
                             break

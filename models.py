@@ -122,6 +122,17 @@ class Order(Base):
     phantom_be_l2_triggered_at = Column(DateTime, nullable=True)
     phantom_be_l2_would_exit_pnl = Column(Float, nullable=True)
 
+    # Phantom Tick Momentum shadow tracking: alternative exit configs
+    # A = same windows (15,30,45), higher delta (0.15%)
+    # B = wider windows (30,45,60), same delta (0.12%)
+    # C = wider windows (30,45,60), higher delta (0.15%)
+    phantom_tick_a_triggered_at = Column(DateTime, nullable=True)
+    phantom_tick_a_pnl = Column(Float, nullable=True)
+    phantom_tick_b_triggered_at = Column(DateTime, nullable=True)
+    phantom_tick_b_pnl = Column(Float, nullable=True)
+    phantom_tick_c_triggered_at = Column(DateTime, nullable=True)
+    phantom_tick_c_pnl = Column(Float, nullable=True)
+
     # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
     first_rsi2_pnl = Column(Float, nullable=True)
     first_rsi2_minutes = Column(Float, nullable=True)

@@ -2379,6 +2379,10 @@ class TradingEngine:
                             else:
                                 new_info['low_price'] = min(new_info['low_price'], old_info.get('low_price', float('inf')))
                             new_info['tick_prices'] = old_info.get('tick_prices', [])
+                            for _lvl in [1, 2]:
+                                for _key in [f'phantom_be_l{_lvl}_triggered', f'phantom_be_l{_lvl}_triggered_at', f'phantom_be_l{_lvl}_would_exit_pnl']:
+                                    if old_info.get(_key) is not None:
+                                        new_info[_key] = old_info[_key]
                             break
             _open_orders_cache = new_cache
         

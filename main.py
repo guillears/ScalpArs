@@ -2122,6 +2122,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             slopes = [abs(o.entry_ema20_slope) for o in group if o.entry_ema20_slope is not None]
             btc_slopes = [abs(o.entry_btc_ema20_slope) for o in group if o.entry_btc_ema20_slope is not None]
             btc_adxs = [o.entry_btc_adx for o in group if o.entry_btc_adx is not None]
+            btc_rsis = [o.entry_btc_rsi for o in group if o.entry_btc_rsi is not None]
 
             adx_rising = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx > o.entry_adx_prev)
             adx_falling = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx <= o.entry_adx_prev)
@@ -2150,6 +2151,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_stretch": round(sum(stretches) / len(stretches), 4) if stretches else None,
                 "avg_ema20_slope": round(sum(slopes) / len(slopes), 4) if slopes else None,
                 "avg_btc_slope": round(sum(btc_slopes) / len(btc_slopes), 4) if btc_slopes else None,
+                "avg_btc_rsi": round(sum(btc_rsis) / len(btc_rsis), 1) if btc_rsis else None,
                 "avg_btc_adx": round(sum(btc_adxs) / len(btc_adxs), 1) if btc_adxs else None,
                 "btc_adx_rising": btc_adx_rising,
                 "btc_adx_falling": btc_adx_falling,

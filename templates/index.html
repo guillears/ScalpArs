@@ -1882,7 +1882,33 @@
                                 <input type="number" step="1" min="0" id="config-macro-trend-min-btc-adx" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
                             </label>
                         </div>
-                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC ADX >= min)</p>
+                        <div class="flex items-center gap-4 mt-2 flex-wrap">
+                            <span class="text-xs text-gray-500 w-20">RSI BTC LONG:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" max="100" id="config-btc-rsi-min-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="mx-1 text-gray-500">to</span>
+                                <input type="number" step="1" min="0" max="100" id="config-btc-rsi-max-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                            <span class="text-xs text-gray-500 w-20 ml-4">RSI BTC SHORT:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" max="100" id="config-btc-rsi-min-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="mx-1 text-gray-500">to</span>
+                                <input type="number" step="1" min="0" max="100" id="config-btc-rsi-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                            <span class="text-xs text-gray-500 w-20 ml-4">ADX BTC LONG:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="mx-1 text-gray-500">to</span>
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                            <span class="text-xs text-gray-500 w-20 ml-4">ADX BTC SHORT:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="mx-1 text-gray-500">to</span>
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                        </div>
+                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC RSI/ADX in range)</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI &amp; ADX Filter</span>
@@ -6101,6 +6127,14 @@
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
                 document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
                 document.getElementById('config-macro-trend-min-btc-adx').value = config.thresholds.macro_trend_min_btc_adx !== undefined ? config.thresholds.macro_trend_min_btc_adx : 0;
+                document.getElementById('config-btc-rsi-min-long').value = config.thresholds.btc_rsi_min_long !== undefined ? config.thresholds.btc_rsi_min_long : 0;
+                document.getElementById('config-btc-rsi-max-long').value = config.thresholds.btc_rsi_max_long !== undefined ? config.thresholds.btc_rsi_max_long : 100;
+                document.getElementById('config-btc-rsi-min-short').value = config.thresholds.btc_rsi_min_short !== undefined ? config.thresholds.btc_rsi_min_short : 0;
+                document.getElementById('config-btc-rsi-max-short').value = config.thresholds.btc_rsi_max_short !== undefined ? config.thresholds.btc_rsi_max_short : 100;
+                document.getElementById('config-btc-adx-min-long').value = config.thresholds.btc_adx_min_long !== undefined ? config.thresholds.btc_adx_min_long : 0;
+                document.getElementById('config-btc-adx-max-long').value = config.thresholds.btc_adx_max_long !== undefined ? config.thresholds.btc_adx_max_long : 100;
+                document.getElementById('config-btc-adx-min-short').value = config.thresholds.btc_adx_min_short !== undefined ? config.thresholds.btc_adx_min_short : 0;
+                document.getElementById('config-btc-adx-max-short').value = config.thresholds.btc_adx_max_short !== undefined ? config.thresholds.btc_adx_max_short : 100;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-long-rsi-max').value = config.thresholds.momentum_long_rsi_max !== undefined ? config.thresholds.momentum_long_rsi_max : 100;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
@@ -6310,6 +6344,14 @@
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
                     macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
                     macro_trend_min_btc_adx: safeFloat(document.getElementById('config-macro-trend-min-btc-adx').value),
+                    btc_rsi_min_long: safeFloat(document.getElementById('config-btc-rsi-min-long').value),
+                    btc_rsi_max_long: safeFloat(document.getElementById('config-btc-rsi-max-long').value),
+                    btc_rsi_min_short: safeFloat(document.getElementById('config-btc-rsi-min-short').value),
+                    btc_rsi_max_short: safeFloat(document.getElementById('config-btc-rsi-max-short').value),
+                    btc_adx_min_long: safeFloat(document.getElementById('config-btc-adx-min-long').value),
+                    btc_adx_max_long: safeFloat(document.getElementById('config-btc-adx-max-long').value),
+                    btc_adx_min_short: safeFloat(document.getElementById('config-btc-adx-min-short').value),
+                    btc_adx_max_short: safeFloat(document.getElementById('config-btc-adx-max-short').value),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_long_rsi_max: safeFloat(document.getElementById('config-momentum-long-rsi-max').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),

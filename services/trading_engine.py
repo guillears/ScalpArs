@@ -1838,8 +1838,35 @@ class TradingEngine:
                     if min_btc_adx > 0 and btc_adx is not None and btc_adx < min_btc_adx:
                         btc_adx_blocks = True
 
-                    if btc_blocks or pair_blocks or btc_adx_blocks:
-                        if btc_adx_blocks:
+                    _th = config.trading_config.thresholds
+                    btc_rsi_blocks = False
+                    if btc_rsi is not None:
+                        if signal == "LONG":
+                            _rsi_lo = getattr(_th, 'btc_rsi_min_long', 0)
+                            _rsi_hi = getattr(_th, 'btc_rsi_max_long', 100)
+                        else:
+                            _rsi_lo = getattr(_th, 'btc_rsi_min_short', 0)
+                            _rsi_hi = getattr(_th, 'btc_rsi_max_short', 100)
+                        if (_rsi_lo > 0 and btc_rsi < _rsi_lo) or (_rsi_hi < 100 and btc_rsi > _rsi_hi):
+                            btc_rsi_blocks = True
+
+                    btc_adx_range_blocks = False
+                    if btc_adx is not None:
+                        if signal == "LONG":
+                            _adx_lo = getattr(_th, 'btc_adx_min_long', 0)
+                            _adx_hi = getattr(_th, 'btc_adx_max_long', 100)
+                        else:
+                            _adx_lo = getattr(_th, 'btc_adx_min_short', 0)
+                            _adx_hi = getattr(_th, 'btc_adx_max_short', 100)
+                        if (_adx_lo > 0 and btc_adx < _adx_lo) or (_adx_hi < 100 and btc_adx > _adx_hi):
+                            btc_adx_range_blocks = True
+
+                    if btc_blocks or pair_blocks or btc_adx_blocks or btc_rsi_blocks or btc_adx_range_blocks:
+                        if btc_rsi_blocks:
+                            reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
+                        elif btc_adx_range_blocks:
+                            reason = f"BTC ADX {btc_adx:.1f} out of {signal} range [{_adx_lo}-{_adx_hi}]"
+                        elif btc_adx_blocks:
                             reason = f"BTC ADX {btc_adx:.1f} < min {min_btc_adx}"
                         elif btc_blocks:
                             reason = f"BTC={btc_regime}"

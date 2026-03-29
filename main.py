@@ -2758,15 +2758,47 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
 
                 triggered = [o for o in dir_orders if getattr(o, trig_field, None) is not None]
-                not_triggered = [o for o in dir_orders if getattr(o, trig_field, None) is None]
+                not_trig_raw = [o for o in dir_orders if getattr(o, trig_field, None) is None]
+                clean_nt = [o for o in not_trig_raw if not (o.close_reason or '').startswith('TICK_MOMENTUM_EXIT')]
+                skipped = [o for o in not_trig_raw if (o.close_reason or '').startswith('TICK_MOMENTUM_EXIT')]
 
-                if not triggered and not not_triggered:
+                if not triggered and not clean_nt and not skipped:
                     continue
+
+                total = len(dir_orders)
+                pct_trig = round(len(triggered) / total * 100, 1) if total else 0
+                pct_nt = round(len(clean_nt) / total * 100, 1) if total else 0
+                pct_skipped = round(len(skipped) / total * 100, 1) if total else 0
 
                 avg_phantom_pnl = sum(getattr(o, pnl_field) or 0 for o in triggered) / len(triggered) if triggered else None
                 avg_actual_pnl = sum(o.pnl_percentage or 0 for o in triggered) / len(triggered) if triggered else None
                 delta = round(avg_phantom_pnl - avg_actual_pnl, 4) if avg_phantom_pnl is not None and avg_actual_pnl is not None else None
-                avg_nt_pnl = sum(o.pnl_percentage or 0 for o in not_triggered) / len(not_triggered) if not_triggered else None
+                avg_nt_pnl = sum(o.pnl_percentage or 0 for o in clean_nt) / len(clean_nt) if clean_nt else None
+
+                # Timing: avg minutes from opened_at to phantom trigger
+                phantom_mins = []
+                for o in triggered:
+                    pt = getattr(o, trig_field)
+                    if pt and o.opened_at:
+                        phantom_mins.append((pt - o.opened_at).total_seconds() / 60.0)
+                avg_min_phantom = round(sum(phantom_mins) / len(phantom_mins), 1) if phantom_mins else None
+
+                # Overlap subset: triggered trades where actual close was also TICK_MOMENTUM_EXIT
+                overlap = [o for o in triggered if (o.close_reason or '').startswith('TICK_MOMENTUM_EXIT')]
+                actual_mins = []
+                phantom_first_count = 0
+                for o in overlap:
+                    if o.closed_at and o.opened_at:
+                        actual_mins.append((o.closed_at - o.opened_at).total_seconds() / 60.0)
+                    pt = getattr(o, trig_field)
+                    if pt and o.closed_at and pt < o.closed_at:
+                        phantom_first_count += 1
+                avg_min_actual = round(sum(actual_mins) / len(actual_mins), 1) if actual_mins else None
+                pct_phantom_first = round(phantom_first_count / len(overlap) * 100, 1) if overlap else None
+
+                # Totals (excluding skipped)
+                tot_phantom = sum(getattr(o, pnl_field) or 0 for o in triggered) + sum(o.pnl_percentage or 0 for o in clean_nt)
+                tot_actual = sum(o.pnl_percentage or 0 for o in triggered) + sum(o.pnl_percentage or 0 for o in clean_nt)
 
                 reason_counts = {}
                 for o in triggered:
@@ -2775,7 +2807,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 reason_str = " ".join(f"{r}:{c}" for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]))
 
                 nt_reason_counts = {}
-                for o in not_triggered:
+                for o in clean_nt:
                     r = o.close_reason or "UNKNOWN"
                     nt_reason_counts[r] = nt_reason_counts.get(r, 0) + 1
                 nt_reason_str = " ".join(f"{r}:{c}" for r, c in sorted(nt_reason_counts.items(), key=lambda x: -x[1]))
@@ -2785,13 +2817,23 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "windows": win_str,
                     "delta_threshold": delta_str,
                     "direction": direction,
-                    "total": len(dir_orders),
+                    "total": total,
                     "triggered_count": len(triggered),
+                    "pct_trig": pct_trig,
                     "avg_phantom_pnl": round(avg_phantom_pnl, 4) if avg_phantom_pnl is not None else None,
                     "avg_actual_pnl": round(avg_actual_pnl, 4) if avg_actual_pnl is not None else None,
                     "delta": delta,
-                    "not_triggered_count": len(not_triggered),
+                    "avg_min_phantom": avg_min_phantom,
+                    "avg_min_actual": avg_min_actual,
+                    "pct_phantom_first": pct_phantom_first,
+                    "overlap_count": len(overlap),
+                    "not_triggered_count": len(clean_nt),
+                    "pct_nt": pct_nt,
                     "avg_nt_pnl": round(avg_nt_pnl, 4) if avg_nt_pnl is not None else None,
+                    "skipped_count": len(skipped),
+                    "pct_skipped": pct_skipped,
+                    "tot_with_phantom": round(tot_phantom, 4),
+                    "tot_actual": round(tot_actual, 4),
                     "exit_reasons": reason_str,
                     "nt_exit_reasons": nt_reason_str,
                 })

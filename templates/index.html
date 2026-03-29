@@ -872,25 +872,33 @@
                 <!-- Tick Momentum Shadow Tracking -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Tick Momentum Shadow</h3>
-                    <p class="text-xs text-gray-500 mb-3">Phantom comparison: what would alternative tick momentum configs have done vs the real exit (Real: 15,30,45s / 0.12%)</p>
+                    <p class="text-xs text-gray-500 mb-3">Phantom comparison: what would alternative tick momentum configs have done vs the real exit (Real: 15,30,45s / 0.12%). Skipped = trades closed by actual tick momentum where phantom didn't fire (excluded from analysis).</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs text-gray-300">
                             <thead>
                                 <tr class="text-gray-400 border-b border-white/10">
                                     <th class="px-3 py-2 font-medium text-left">Config</th>
                                     <th class="px-3 py-2 font-medium text-right">Total</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom triggered">Triggered</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L% at phantom trigger point">Phantom P&L</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg actual close P&L% for triggered trades">Actual P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom triggered">Trig</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="% of total trades where phantom triggered">%Trig</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades excluded: actual tick mom closed but phantom didn't fire">Skip</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L% at phantom trigger point">Ph P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg actual close P&L% for triggered trades">Act P&L</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Phantom - Actual (green = phantom better)">Delta</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg minutes from open to phantom trigger">Min Ph</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg minutes from open to actual tick mom close (overlap trades)">Min Act</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="% of overlap trades where phantom triggered before actual close">%Ph1st</th>
                                     <th class="px-3 py-2 font-medium text-left" title="Close reasons for triggered trades">Exit Reasons</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom never triggered">Not Trig</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg close P&L% for non-triggered trades">NT P&L</th>
-                                    <th class="px-3 py-2 font-medium text-left" title="Close reasons for non-triggered trades">NT Reasons</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Clean not-triggered trades (excl skipped)">NT</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="% of total that are clean NT">%NT</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg close P&L% for clean NT trades">NT P&L</th>
+                                    <th class="px-3 py-2 font-medium text-left" title="Close reasons for clean NT trades">NT Reasons</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total P&L using phantom exits for triggered + actual for NT">Tot w/Ph</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total actual P&L for triggered + NT (excl skipped)">Tot Actual</th>
                                 </tr>
                             </thead>
                             <tbody id="tick-momentum-shadow-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>
+                                <tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3000,15 +3008,21 @@
             if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Tick Momentum Shadow\n');
-                lines.push(`${'Config'.padEnd(28)} ${'Total'.padStart(5)} ${'Trig'.padStart(5)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'NotTrig'.padStart(8)} ${'NTP&L'.padStart(10)} ${'Exit Reasons'.padEnd(40)} ${'NT Reasons'.padEnd(30)}`);
+                lines.push(`${'Config'.padEnd(28)} ${'Tot'.padStart(4)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'Skip'.padStart(7)} ${'PhP&L'.padStart(11)} ${'ActP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'MinPh'.padStart(6)} ${'MinAc'.padStart(6)} ${'%Ph1'.padStart(5)} ${'NT'.padStart(4)} ${'%NT'.padStart(4)} ${'NTP&L'.padStart(10)} ${'TotPh'.padStart(11)} ${'TotAct'.padStart(11)} ${'Exit Reasons'.padEnd(35)} ${'NT Reasons'.padEnd(25)}`);
                 for (const r of perf.tick_momentum_shadow) {
                     const phantomStr = r.avg_phantom_pnl !== null ? ((r.avg_phantom_pnl >= 0 ? '+' : '') + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
                     const actualStr = r.avg_actual_pnl !== null ? ((r.avg_actual_pnl >= 0 ? '+' : '') + r.avg_actual_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
                     const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
                     const ntStr = r.avg_nt_pnl !== null ? ((r.avg_nt_pnl >= 0 ? '+' : '') + r.avg_nt_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                    const minPhStr = r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
+                    const minActStr = r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
+                    const ph1stStr = r.pct_phantom_first !== null ? (r.pct_phantom_first.toFixed(0) + '%').padStart(5) : '-'.padStart(5);
+                    const skipStr = (r.skipped_count + '(' + r.pct_skipped.toFixed(0) + '%)').padStart(7);
+                    const totPhStr = ((r.tot_with_phantom >= 0 ? '+' : '') + r.tot_with_phantom.toFixed(4) + '%').padStart(11);
+                    const totActStr = ((r.tot_actual >= 0 ? '+' : '') + r.tot_actual.toFixed(4) + '%').padStart(11);
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
-                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(5)} ${String(r.triggered_count).padStart(5)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.not_triggered_count).padStart(8)} ${ntStr} ${(r.exit_reasons || '-').padEnd(40)} ${(r.nt_exit_reasons || '-').padEnd(30)}`);
+                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
                 }
             }
 
@@ -3508,15 +3522,21 @@
                 if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Tick Momentum Shadow\n');
-                    lines.push(`${'Config'.padEnd(28)} ${'Total'.padStart(5)} ${'Trig'.padStart(5)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'NotTrig'.padStart(8)} ${'NTP&L'.padStart(10)} ${'Exit Reasons'.padEnd(40)} ${'NT Reasons'.padEnd(30)}`);
+                    lines.push(`${'Config'.padEnd(28)} ${'Tot'.padStart(4)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'Skip'.padStart(7)} ${'PhP&L'.padStart(11)} ${'ActP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'MinPh'.padStart(6)} ${'MinAc'.padStart(6)} ${'%Ph1'.padStart(5)} ${'NT'.padStart(4)} ${'%NT'.padStart(4)} ${'NTP&L'.padStart(10)} ${'TotPh'.padStart(11)} ${'TotAct'.padStart(11)} ${'Exit Reasons'.padEnd(35)} ${'NT Reasons'.padEnd(25)}`);
                     for (const r of perf.tick_momentum_shadow) {
                         const phantomStr = r.avg_phantom_pnl !== null ? ((r.avg_phantom_pnl >= 0 ? '+' : '') + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
                         const actualStr = r.avg_actual_pnl !== null ? ((r.avg_actual_pnl >= 0 ? '+' : '') + r.avg_actual_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
                         const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
                         const ntStr = r.avg_nt_pnl !== null ? ((r.avg_nt_pnl >= 0 ? '+' : '') + r.avg_nt_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
+                        const minPhStr = r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
+                        const minActStr = r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
+                        const ph1stStr = r.pct_phantom_first !== null ? (r.pct_phantom_first.toFixed(0) + '%').padStart(5) : '-'.padStart(5);
+                        const skipStr = (r.skipped_count + '(' + r.pct_skipped.toFixed(0) + '%)').padStart(7);
+                        const totPhStr = ((r.tot_with_phantom >= 0 ? '+' : '') + r.tot_with_phantom.toFixed(4) + '%').padStart(11);
+                        const totActStr = ((r.tot_actual >= 0 ? '+' : '') + r.tot_actual.toFixed(4) + '%').padStart(11);
                         const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                         const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
-                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(5)} ${String(r.triggered_count).padStart(5)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.not_triggered_count).padStart(8)} ${ntStr} ${(r.exit_reasons || '-').padEnd(40)} ${(r.nt_exit_reasons || '-').padEnd(30)}`);
+                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
                     }
                 }
 
@@ -5493,21 +5513,38 @@
                         const ntStr = r.avg_nt_pnl !== null ? `${r.avg_nt_pnl >= 0 ? '+' : ''}${r.avg_nt_pnl.toFixed(4)}%` : '-';
                         const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                         const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
+                        const minPhStr = r.avg_min_phantom !== null ? `${r.avg_min_phantom.toFixed(1)}m` : '-';
+                        const minActStr = r.avg_min_actual !== null ? `${r.avg_min_actual.toFixed(1)}m` : '-';
+                        const ph1stClass = r.pct_phantom_first !== null ? (r.pct_phantom_first >= 50 ? 'text-emerald-400' : 'text-orange-400') : 'text-gray-500';
+                        const ph1stStr = r.pct_phantom_first !== null ? `${r.pct_phantom_first.toFixed(0)}%` : '-';
+                        const skipStr = r.skipped_count > 0 ? `${r.skipped_count} (${r.pct_skipped.toFixed(0)}%)` : '0';
+                        const totPhClass = r.tot_with_phantom >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totPhStr = `${r.tot_with_phantom >= 0 ? '+' : ''}${r.tot_with_phantom.toFixed(4)}%`;
+                        const totActClass = r.tot_actual >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totActStr = `${r.tot_actual >= 0 ? '+' : ''}${r.tot_actual.toFixed(4)}%`;
                         return `<tr class="hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-cyan-400">${r.label} <span class="text-gray-500 text-[10px]">(${r.windows} / ${r.delta_threshold})</span> <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
                             <td class="px-3 py-2 text-right">${r.total}</td>
                             <td class="px-3 py-2 text-right">${r.triggered_count}</td>
+                            <td class="px-3 py-2 text-right text-gray-400">${r.pct_trig.toFixed(0)}%</td>
+                            <td class="px-3 py-2 text-right ${r.skipped_count > 0 ? 'text-yellow-400' : 'text-gray-500'}">${skipStr}</td>
                             <td class="px-3 py-2 text-right ${phantomClass}">${phantomStr}</td>
                             <td class="px-3 py-2 text-right ${actualClass}">${actualStr}</td>
                             <td class="px-3 py-2 text-right font-medium ${deltaClass}">${deltaStr}</td>
+                            <td class="px-3 py-2 text-right text-gray-300">${minPhStr}</td>
+                            <td class="px-3 py-2 text-right text-gray-300">${minActStr}</td>
+                            <td class="px-3 py-2 text-right ${ph1stClass}">${ph1stStr}</td>
                             <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.exit_reasons || '-'}</td>
                             <td class="px-3 py-2 text-right">${r.not_triggered_count}</td>
+                            <td class="px-3 py-2 text-right text-gray-400">${r.pct_nt.toFixed(0)}%</td>
                             <td class="px-3 py-2 text-right ${ntClass}">${ntStr}</td>
                             <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.nt_exit_reasons || '-'}</td>
+                            <td class="px-3 py-2 text-right font-medium ${totPhClass}">${totPhStr}</td>
+                            <td class="px-3 py-2 text-right font-medium ${totActClass}">${totActStr}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    tmsBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
+                    tmsBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
                 }
 
                 // Hold-Time Expectancy

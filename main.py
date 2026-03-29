@@ -1847,8 +1847,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
         # Performance by BTC Entry RSI
         btc_rsi_ranges = [
-            ("<30", 0, 30), ("30-40", 30, 40), ("40-45", 40, 45), ("45-50", 45, 50),
-            ("50-55", 50, 55), ("55-60", 55, 60), ("60-70", 60, 70), ("70+", 70, 999),
+            ("<30", 0, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50),
+            ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999),
         ]
         btc_rsi_orders = [o for o in orders if o.entry_btc_rsi is not None]
         for range_name, r_min, r_max in btc_rsi_ranges:
@@ -1884,8 +1884,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
         # BTC RSI x BTC ADX Cross-Tab
         ct_btc_rsi_ranges = [
-            ("<30", 0, 30), ("30-40", 30, 40), ("40-45", 40, 45), ("45-50", 45, 50),
-            ("50-55", 50, 55), ("55-60", 55, 60), ("60-70", 60, 70), ("70+", 70, 999),
+            ("<30", 0, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50),
+            ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999),
         ]
         ct_btc_adx_ranges = [
             ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
@@ -2478,7 +2478,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_btc_rsi_ranges = [("<30", 0, 30), ("30-40", 30, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-70", 60, 70), ("70+", 70, 999)]
+            np_btc_rsi_ranges = [("<30", 0, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999)]
             np_btc_rsi_trades = [o for o in np_trades if o.entry_btc_rsi is not None]
             all_btc_rsi_trades = [o for o in orders if o.entry_btc_rsi is not None]
             for rng, lo, hi in np_btc_rsi_ranges:

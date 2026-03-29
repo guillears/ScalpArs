@@ -368,7 +368,7 @@
                         </table>
                     </div>
                 </div>
-
+                
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-6">
                     <!-- Row 1 -->
                     <div>
@@ -904,6 +904,15 @@
                     </div>
                 </div>
 
+                <!-- Signal Lost Shadow -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Signal Lost Shadow</h3>
+                    <p class="text-xs text-gray-500 mb-3">Post-exit recovery analysis for Signal Lost trades — "If we flagged instead of closing, how much could we improve?"</p>
+                    <div id="signal-lost-shadow-container">
+                        <p class="text-xs text-gray-500 px-3 py-4">No Signal Lost shadow data yet</p>
+                    </div>
+                </div>
+
                 <!-- Hold-Time Expectancy -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Hold-Time Expectancy</h3>
@@ -1101,7 +1110,7 @@
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting pair EMA20 slope)</td></tr>
                             </tbody>
                         </table>
-                    </div>
+            </div>
                 </div>
 
                 <!-- Performance by BTC EMA20 Slope -->
@@ -1109,7 +1118,7 @@
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC EMA20 Slope</h3>
                     <p class="text-xs text-gray-500 mb-3">Win rate and P&L by BTC EMA20 trend strength (absolute slope %) at entry</p>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Slope Range</th>
@@ -1123,7 +1132,7 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
                             </tr>
-                            </thead>
+                        </thead>
                             <tbody id="btc-slope-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC EMA20 slope)</td></tr>
                         </tbody>
@@ -1149,13 +1158,13 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
-                                </tr>
+                            </tr>
                             </thead>
                             <tbody id="btc-adx-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             
                 <!-- Performance by BTC ADX Direction -->
@@ -1181,14 +1190,14 @@
                             </tbody>
                         </table>
                     </div>
-                </div>
-
+            </div>
+            
                 <!-- Performance by BTC Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Entry RSI</h3>
                     <p class="text-xs text-gray-500 mb-3">Win rate and P&L by BTC RSI(14) value at entry — helps identify which BTC momentum conditions favor LONGs vs SHORTs</p>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">RSI Range</th>
@@ -1201,8 +1210,8 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
-                                </tr>
-                            </thead>
+                            </tr>
+                        </thead>
                             <tbody id="btc-rsi-performance-body" class="divide-y divide-white/5">
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC RSI)</td></tr>
                             </tbody>
@@ -1278,17 +1287,17 @@
                         </thead>
                             <tbody id="rsi-adx-crosstab-body" class="divide-y divide-white/5">
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                        </tbody>
+                    </table>
                 </div>
-
+            </div>
+            
                 <!-- BTC RSI x BTC ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC RSI x BTC ADX</h3>
                     <p class="text-xs text-gray-500 mb-3">Cross-tabulation: how BTC RSI and BTC ADX ranges interact per direction — find which BTC conditions favor LONGs vs SHORTs</p>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-sm">
+                    <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Direction</th>
@@ -1298,8 +1307,8 @@
                                     <th class="px-3 py-2 font-medium text-right">Win Rate</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
-                                </tr>
-                            </thead>
+                            </tr>
+                        </thead>
                             <tbody id="btc-rsi-adx-crosstab-body" class="divide-y divide-white/5">
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC RSI x ADX)</td></tr>
                             </tbody>
@@ -3052,6 +3061,23 @@
                 }
             }
 
+            if (perf.signal_lost_shadow && perf.signal_lost_shadow.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Signal Lost Shadow — Post-Exit Recovery\n');
+                for (const s of perf.signal_lost_shadow) {
+                    const dirLabel = s.direction === 'LONG' ? 'LONG' : 'SHORT';
+                    const slStr = (s.avg_sl_pnl >= 0 ? '+' : '') + s.avg_sl_pnl.toFixed(4) + '%';
+                    lines.push(`${dirLabel} | SL Trades: ${s.total_sl} | Avg SL Close P&L: ${slStr} | Avg Peak at: ${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'}\n`);
+                    lines.push(`${'Exit Alternative'.padEnd(22)} ${'Hit'.padStart(4)} ${'%'.padStart(5)} ${'Alt P&L'.padStart(11)} ${'SL P&L'.padStart(11)} ${'Improvement'.padStart(12)}`);
+                    for (const r of s.rows) {
+                        const altStr = r.avg_alt_pnl !== null ? ((r.avg_alt_pnl >= 0 ? '+' : '') + r.avg_alt_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
+                        const impStr = r.avg_improvement !== null ? ((r.avg_improvement > 0 ? '+' : '') + r.avg_improvement.toFixed(4) + '%').padStart(12) : '-'.padStart(12);
+                        lines.push(`${r.label.padEnd(22)} ${String(r.hit).padStart(4)} ${(r.pct.toFixed(0) + '%').padStart(5)} ${altStr} ${slStr.padStart(11)} ${impStr}`);
+                    }
+                    lines.push('');
+                }
+            }
+
             if (perf.hold_time_expectancy && perf.hold_time_expectancy.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Hold-Time Expectancy\n');
@@ -3566,6 +3592,24 @@
                     }
                 }
 
+                // --- SIGNAL LOST SHADOW ---
+                if (perf.signal_lost_shadow && perf.signal_lost_shadow.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Signal Lost Shadow — Post-Exit Recovery\n');
+                    for (const s of perf.signal_lost_shadow) {
+                        const dirLabel = s.direction === 'LONG' ? 'LONG' : 'SHORT';
+                        const slStr = (s.avg_sl_pnl >= 0 ? '+' : '') + s.avg_sl_pnl.toFixed(4) + '%';
+                        lines.push(`${dirLabel} | SL Trades: ${s.total_sl} | Avg SL Close P&L: ${slStr} | Avg Peak at: ${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'}\n`);
+                        lines.push(`${'Exit Alternative'.padEnd(22)} ${'Hit'.padStart(4)} ${'%'.padStart(5)} ${'Alt P&L'.padStart(11)} ${'SL P&L'.padStart(11)} ${'Improvement'.padStart(12)}`);
+                        for (const r of s.rows) {
+                            const altStr = r.avg_alt_pnl !== null ? ((r.avg_alt_pnl >= 0 ? '+' : '') + r.avg_alt_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
+                            const impStr = r.avg_improvement !== null ? ((r.avg_improvement > 0 ? '+' : '') + r.avg_improvement.toFixed(4) + '%').padStart(12) : '-'.padStart(12);
+                            lines.push(`${r.label.padEnd(22)} ${String(r.hit).padStart(4)} ${(r.pct.toFixed(0) + '%').padStart(5)} ${altStr} ${slStr.padStart(11)} ${impStr}`);
+                        }
+                        lines.push('');
+                    }
+                }
+
                 // --- HOLD-TIME EXPECTANCY ---
                 if (perf.hold_time_expectancy && perf.hold_time_expectancy.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -3918,7 +3962,7 @@
                 } else {
                     ppBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
-
+                
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
                 document.getElementById('perf-total-longs').textContent = data.total_longs;
                 document.getElementById('perf-total-shorts').textContent = data.total_shorts;
@@ -5571,6 +5615,56 @@
                     }).join('');
                 } else {
                     tmsBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
+                }
+
+                // Signal Lost Shadow
+                const slsContainer = document.getElementById('signal-lost-shadow-container');
+                if (data.signal_lost_shadow && data.signal_lost_shadow.length > 0) {
+                    slsContainer.innerHTML = data.signal_lost_shadow.map(s => {
+                        const dirColor = s.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const dirLabel = s.direction === 'LONG' ? 'LONG' : 'SHORT';
+                        const slPnlClass = s.avg_sl_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const slPnlStr = `${s.avg_sl_pnl >= 0 ? '+' : ''}${s.avg_sl_pnl.toFixed(4)}%`;
+                        const headerHtml = `<div class="flex items-center gap-4 mb-2">
+                            <span class="${dirColor} text-xs font-semibold">${dirLabel}</span>
+                            <span class="text-xs text-gray-400">SL Trades: <span class="text-white font-medium">${s.total_sl}</span></span>
+                            <span class="text-xs text-gray-400">Avg SL Close P&L: <span class="${slPnlClass} font-medium">${slPnlStr}</span></span>
+                            <span class="text-xs text-gray-400">Avg Peak at: <span class="text-white">${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'}</span></span>
+                        </div>`;
+                        const rowsHtml = s.rows.map(r => {
+                            const altClass = r.avg_alt_pnl !== null ? (r.avg_alt_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
+                            const altStr = r.avg_alt_pnl !== null ? `${r.avg_alt_pnl >= 0 ? '+' : ''}${r.avg_alt_pnl.toFixed(4)}%` : '-';
+                            const impClass = r.avg_improvement !== null ? (r.avg_improvement > 0 ? 'text-emerald-400' : r.avg_improvement < 0 ? 'text-red-400' : 'text-gray-400') : 'text-gray-500';
+                            const impStr = r.avg_improvement !== null ? `${r.avg_improvement > 0 ? '+' : ''}${r.avg_improvement.toFixed(4)}%` : '-';
+                            const isRecovery = r.label.startsWith('Recovery');
+                            const isSummary = r.label.startsWith('Peak') || r.label.startsWith('Worst') || r.label.startsWith('Final');
+                            const labelClass = isRecovery ? 'text-cyan-400' : isSummary ? 'text-gray-400 italic' : 'text-amber-400';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-3 py-1.5 ${labelClass} text-xs">${r.label}</td>
+                                <td class="px-3 py-1.5 text-right">${r.hit}</td>
+                                <td class="px-3 py-1.5 text-right text-gray-400">${r.pct.toFixed(0)}%</td>
+                                <td class="px-3 py-1.5 text-right ${altClass}">${altStr}</td>
+                                <td class="px-3 py-1.5 text-right ${slPnlClass}">${slPnlStr}</td>
+                                <td class="px-3 py-1.5 text-right font-medium ${impClass}">${impStr}</td>
+                            </tr>`;
+                        }).join('');
+                        return `${headerHtml}
+                        <div class="overflow-x-auto mb-4">
+                            <table class="w-full text-xs text-gray-300">
+                                <thead><tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">Exit Alternative</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades where this level was reached">Hit</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="% of Signal Lost trades">%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L at this alternative exit">Alt P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg actual Signal Lost close P&L">SL P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Alt P&L minus SL P&L (green = improvement)">Improvement</th>
+                                </tr></thead>
+                                <tbody class="divide-y divide-white/5">${rowsHtml}</tbody>
+                            </table>
+                        </div>`;
+                    }).join('');
+                } else {
+                    slsContainer.innerHTML = '<p class="text-xs text-gray-500 px-3 py-4">No Signal Lost shadow data yet</p>';
                 }
 
                 // Hold-Time Expectancy

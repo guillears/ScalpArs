@@ -798,6 +798,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "entry_conditions_by_reason": [],
             "be_shadow_tracking": [],
             "tick_momentum_shadow": [],
+            "signal_lost_shadow": [],
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
@@ -1234,6 +1235,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "entry_conditions_by_reason": [],
             "be_shadow_tracking": [],
             "tick_momentum_shadow": [],
+            "signal_lost_shadow": [],
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
@@ -2840,6 +2842,98 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Tick Momentum Shadow: {e}\n{traceback.format_exc()}")
 
+    # Signal Lost Shadow — post-exit recovery analysis
+    signal_lost_shadow = []
+    try:
+        sl_orders = [o for o in orders if (o.close_reason or '').startswith('SIGNAL_LOST') and o.post_exit_peak_pnl is not None]
+        recovery_levels = [
+            ("Recovery to -0.25%", -0.25),
+            ("Recovery to -0.10%", -0.10),
+            ("Recovery to 0% (BE)", 0.0),
+            ("Recovery to +0.10%", 0.10),
+        ]
+        for direction in ["LONG", "SHORT"]:
+            dir_sl = [o for o in sl_orders if o.direction == direction]
+            if not dir_sl:
+                continue
+            total_sl = len(dir_sl)
+            avg_sl_pnl = round(sum(o.pnl_percentage or 0 for o in dir_sl) / total_sl, 4)
+
+            rows = []
+            for level_name, level_val in recovery_levels:
+                hit = [o for o in dir_sl if o.post_exit_peak_pnl is not None and o.post_exit_peak_pnl >= level_val]
+                hit_count = len(hit)
+                pct = round(hit_count / total_sl * 100, 1) if total_sl else 0
+                avg_alt_pnl = level_val
+                avg_improvement = round(avg_alt_pnl - avg_sl_pnl, 4)
+                rows.append({
+                    "label": level_name,
+                    "hit": hit_count,
+                    "pct": pct,
+                    "avg_alt_pnl": round(avg_alt_pnl, 4),
+                    "avg_improvement": avg_improvement,
+                })
+
+            # Tick Momentum: earliest phantom trigger per trade
+            tm_hits = []
+            for o in dir_sl:
+                earliest_at = None
+                earliest_pnl = None
+                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
+                    t_at = getattr(o, f'phantom_tick_{_lbl}_triggered_at', None)
+                    t_pnl = getattr(o, f'phantom_tick_{_lbl}_pnl', None)
+                    if t_at is not None:
+                        if earliest_at is None or t_at < earliest_at:
+                            earliest_at = t_at
+                            earliest_pnl = t_pnl
+                if earliest_at is not None and earliest_pnl is not None:
+                    tm_hits.append(earliest_pnl)
+            tm_count = len(tm_hits)
+            tm_pct = round(tm_count / total_sl * 100, 1) if total_sl else 0
+            tm_avg_pnl = round(sum(tm_hits) / tm_count, 4) if tm_hits else None
+            tm_improvement = round(tm_avg_pnl - avg_sl_pnl, 4) if tm_avg_pnl is not None else None
+            rows.append({
+                "label": "Tick Momentum",
+                "hit": tm_count,
+                "pct": tm_pct,
+                "avg_alt_pnl": tm_avg_pnl,
+                "avg_improvement": tm_improvement,
+            })
+
+            # Signal Regain
+            regain_trades = [o for o in dir_sl if o.post_exit_signal_regained_minutes is not None]
+            regain_count = len(regain_trades)
+            regain_pct = round(regain_count / total_sl * 100, 1) if total_sl else 0
+            regain_avg_pnl = round(sum(o.post_exit_pnl_at_signal_regained or 0 for o in regain_trades) / regain_count, 4) if regain_trades else None
+            regain_improvement = round(regain_avg_pnl - avg_sl_pnl, 4) if regain_avg_pnl is not None else None
+            rows.append({
+                "label": "Signal Regain",
+                "hit": regain_count,
+                "pct": regain_pct,
+                "avg_alt_pnl": regain_avg_pnl,
+                "avg_improvement": regain_improvement,
+            })
+
+            # Peak / Worst / Final (always 100%)
+            avg_peak = round(sum(o.post_exit_peak_pnl or 0 for o in dir_sl) / total_sl, 4)
+            avg_worst = round(sum(o.post_exit_trough_pnl or 0 for o in dir_sl) / total_sl, 4)
+            avg_final = round(sum(o.post_exit_final_pnl or 0 for o in dir_sl) / total_sl, 4)
+            avg_peak_min = round(sum(o.post_exit_peak_minutes or 0 for o in dir_sl) / total_sl, 1)
+            rows.append({"label": "Peak After Close", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_peak, "avg_improvement": round(avg_peak - avg_sl_pnl, 4)})
+            rows.append({"label": "Worst After Close", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_worst, "avg_improvement": round(avg_worst - avg_sl_pnl, 4)})
+            rows.append({"label": "Final (45min)", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_final, "avg_improvement": round(avg_final - avg_sl_pnl, 4)})
+
+            signal_lost_shadow.append({
+                "direction": direction,
+                "total_sl": total_sl,
+                "avg_sl_pnl": avg_sl_pnl,
+                "avg_peak_minutes": avg_peak_min,
+                "regain_floor_avg": round(sum(o.post_exit_floor_before_signal_regain or 0 for o in regain_trades) / regain_count, 4) if regain_trades else None,
+                "rows": rows,
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing Signal Lost Shadow: {e}\n{traceback.format_exc()}")
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -2908,6 +3002,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "entry_conditions_by_reason": entry_conditions_by_reason,
         "be_shadow_tracking": be_shadow_tracking,
         "tick_momentum_shadow": tick_momentum_shadow,
+        "signal_lost_shadow": signal_lost_shadow,
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),

@@ -1920,6 +1920,28 @@
                         <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC RSI/ADX in range)</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
+                        <span class="text-sm text-gray-300">BTC RSI x BTC ADX Cross-Filter</span>
+                        <p class="text-xs text-gray-500 mb-2">Restrict which BTC ADX ranges are allowed per BTC RSI range in the global gate. Empty = allow all combinations.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th></th></tr></thead>
+                                    <tbody id="btc-rsi-adx-filter-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcRsiAdxRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th></th></tr></thead>
+                                    <tbody id="btc-rsi-adx-filter-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcRsiAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI &amp; ADX Filter</span>
                         <div class="flex items-center gap-6 mt-1 flex-wrap">
                             <label class="flex items-center text-sm text-gray-400">
@@ -6245,6 +6267,8 @@
                 document.getElementById('config-ema-gap-max-mirror').textContent = document.getElementById('config-ema-gap-5-8-max').value;
                 loadRsiAdxFilter('long', config.thresholds.rsi_adx_filter_long || '');
                 loadRsiAdxFilter('short', config.thresholds.rsi_adx_filter_short || '');
+                loadBtcRsiAdxFilter('long', config.thresholds.btc_rsi_adx_filter_long || '');
+                loadBtcRsiAdxFilter('short', config.thresholds.btc_rsi_adx_filter_short || '');
                 document.getElementById('config-regime-change-exit-enabled').checked = config.thresholds.regime_change_exit_enabled !== undefined ? config.thresholds.regime_change_exit_enabled : true;
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
@@ -6321,6 +6345,41 @@
                 const rMin = row.querySelector('.rsi-adx-min').value.trim();
                 const rMax = row.querySelector('.rsi-adx-max').value.trim();
                 const adx = row.querySelector('.rsi-adx-adx').value.trim();
+                if (rMin && rMax && adx) rules.push(`${rMin}-${rMax}:${adx}`);
+            });
+            return rules.join(',');
+        }
+
+        // BTC RSI x BTC ADX Cross-Filter helpers
+        function addBtcRsiAdxRow(direction, rsiMin='', rsiMax='', minAdx='') {
+            const tbody = document.getElementById(`btc-rsi-adx-filter-${direction}-body`);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs btc-rsi-adx-min" value="${rsiMin}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs btc-rsi-adx-max" value="${rsiMax}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs btc-rsi-adx-adx" value="${minAdx}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadBtcRsiAdxFilter(direction, filterStr) {
+            const tbody = document.getElementById(`btc-rsi-adx-filter-${direction}-body`);
+            tbody.innerHTML = '';
+            if (!filterStr || !filterStr.trim()) return;
+            for (const rule of filterStr.split(',')) {
+                const r = rule.trim();
+                if (!r || !r.includes(':')) continue;
+                const [rsiPart, minAdx] = r.split(':');
+                const [rsiMin, rsiMax] = rsiPart.split('-');
+                addBtcRsiAdxRow(direction, rsiMin, rsiMax, minAdx);
+            }
+        }
+        function collectBtcRsiAdxFilter(direction) {
+            const rows = document.querySelectorAll(`#btc-rsi-adx-filter-${direction}-body tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const rMin = row.querySelector('.btc-rsi-adx-min').value.trim();
+                const rMax = row.querySelector('.btc-rsi-adx-max').value.trim();
+                const adx = row.querySelector('.btc-rsi-adx-adx').value.trim();
                 if (rMin && rMax && adx) rules.push(`${rMin}-${rMax}:${adx}`);
             });
             return rules.join(',');
@@ -6456,6 +6515,8 @@
                     ema_gap_5_8_max: safeFloat(document.getElementById('config-ema-gap-5-8-max').value),
                     rsi_adx_filter_long: collectRsiAdxFilter('long'),
                     rsi_adx_filter_short: collectRsiAdxFilter('short'),
+                    btc_rsi_adx_filter_long: collectBtcRsiAdxFilter('long'),
+                    btc_rsi_adx_filter_short: collectBtcRsiAdxFilter('short'),
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),

@@ -1861,8 +1861,31 @@ class TradingEngine:
                         if (_adx_lo > 0 and btc_adx < _adx_lo) or (_adx_hi < 100 and btc_adx > _adx_hi):
                             btc_adx_range_blocks = True
 
-                    if btc_blocks or pair_blocks or btc_adx_blocks or btc_rsi_blocks or btc_adx_range_blocks:
-                        if btc_rsi_blocks:
+                    btc_cross_blocks = False
+                    btc_cross_reason = ""
+                    if btc_rsi is not None and btc_adx is not None:
+                        _cf_key = 'btc_rsi_adx_filter_long' if signal == 'LONG' else 'btc_rsi_adx_filter_short'
+                        _cf_str = getattr(_th, _cf_key, '')
+                        if _cf_str and _cf_str.strip():
+                            for _cf_rule in _cf_str.split(','):
+                                _cf_rule = _cf_rule.strip()
+                                if not _cf_rule or ':' not in _cf_rule:
+                                    continue
+                                try:
+                                    _cf_rsi_part, _cf_min_adx = _cf_rule.split(':')
+                                    _cf_rsi_min, _cf_rsi_max = map(float, _cf_rsi_part.split('-'))
+                                    if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
+                                        if btc_adx < float(_cf_min_adx):
+                                            btc_cross_blocks = True
+                                            btc_cross_reason = f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) requires ADX>={_cf_min_adx}, got {btc_adx:.1f}"
+                                        break
+                                except (ValueError, TypeError):
+                                    continue
+
+                    if btc_blocks or pair_blocks or btc_adx_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_cross_blocks:
+                        if btc_cross_blocks:
+                            reason = btc_cross_reason
+                        elif btc_rsi_blocks:
                             reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
                         elif btc_adx_range_blocks:
                             reason = f"BTC ADX {btc_adx:.1f} out of {signal} range [{_adx_lo}-{_adx_hi}]"

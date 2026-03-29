@@ -133,6 +133,8 @@ class SignalThresholds(BaseModel):
     regime_change_exit_enabled: bool = True  # Close positions when BTC macro regime flips against trade direction
     rsi_adx_filter_long: str = ""  # RSI x ADX cross-filter for LONGs, e.g. "55-60:18,60-65:25" (empty = allow all)
     rsi_adx_filter_short: str = ""  # RSI x ADX cross-filter for SHORTs, e.g. "30-35:25,35-50:30" (empty = allow all)
+    btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all)
+    btc_rsi_adx_filter_short: str = ""  # BTC RSI x ADX cross-filter for SHORTs (empty = allow all)
 
 
 class InvestmentConfig(BaseModel):

@@ -99,7 +99,9 @@
     "tick_momentum_exit_windows": "15,30,45",
     "regime_change_exit_enabled": true,
     "rsi_adx_filter_long": "",
-    "rsi_adx_filter_short": "30-35:25,35-50:30"
+    "rsi_adx_filter_short": "30-35:25,35-50:30",
+    "btc_rsi_adx_filter_long": "",
+    "btc_rsi_adx_filter_short": ""
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

@@ -803,6 +803,8 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "equity_curve": [],
             "pnl_distribution": [],
             "hourly_performance": [],
+            "daily_performance": [],
+            "day_time_heatmap": [],
             "_error": str(e)
         }
 
@@ -1065,6 +1067,79 @@ def _compute_hourly_performance(orders):
     return result
 
 
+_DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+def _compute_daily_performance(orders):
+    """Compute win rate and avg P&L by day of week (UTC-3)."""
+    from datetime import timezone
+    UTC_MINUS_3 = timezone(timedelta(hours=-3))
+    daily = {d: [] for d in range(7)}
+    for o in orders:
+        if o.closed_at is None:
+            continue
+        ct = o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at.tzinfo is None else o.closed_at
+        weekday = ct.astimezone(UTC_MINUS_3).weekday()
+        daily[weekday].append(o)
+    result = []
+    for d in range(7):
+        trades = daily[d]
+        count = len(trades)
+        if count == 0:
+            result.append({"day": d, "label": _DAY_LABELS[d], "trades": 0, "wins": 0,
+                           "win_rate": 0, "avg_pnl_pct": 0, "longs": 0, "shorts": 0})
+            continue
+        wins = sum(1 for o in trades if (o.pnl or 0) > 0)
+        longs = sum(1 for o in trades if o.direction == "LONG")
+        avg_pnl = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
+        result.append({
+            "day": d, "label": _DAY_LABELS[d], "trades": count, "wins": wins,
+            "win_rate": round(wins / count * 100, 1),
+            "avg_pnl_pct": avg_pnl,
+            "longs": longs, "shorts": count - longs,
+        })
+    return result
+
+
+_TIME_BLOCK_LABELS = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
+
+def _compute_day_time_heatmap(orders):
+    """Compute win rate and avg P&L by day-of-week x 4-hour block (UTC-3)."""
+    from datetime import timezone
+    UTC_MINUS_3 = timezone(timedelta(hours=-3))
+    grid = {}
+    for d in range(7):
+        for b in range(6):
+            grid[(d, b)] = []
+    for o in orders:
+        if o.closed_at is None:
+            continue
+        ct = o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at.tzinfo is None else o.closed_at
+        local = ct.astimezone(UTC_MINUS_3)
+        weekday = local.weekday()
+        block = local.hour // 4
+        grid[(weekday, block)].append(o)
+    result = []
+    for d in range(7):
+        for b in range(6):
+            trades = grid[(d, b)]
+            count = len(trades)
+            if count == 0:
+                result.append({"day": d, "day_label": _DAY_LABELS[d],
+                               "block": b, "block_label": _TIME_BLOCK_LABELS[b],
+                               "trades": 0, "wins": 0, "win_rate": 0, "avg_pnl_pct": 0})
+                continue
+            wins = sum(1 for o in trades if (o.pnl or 0) > 0)
+            avg_pnl = round(sum(o.pnl_percentage or 0 for o in trades) / count, 4)
+            result.append({
+                "day": d, "day_label": _DAY_LABELS[d],
+                "block": b, "block_label": _TIME_BLOCK_LABELS[b],
+                "trades": count, "wins": wins,
+                "win_rate": round(wins / count * 100, 1),
+                "avg_pnl_pct": avg_pnl,
+            })
+    return result
+
+
 def _compute_time_buckets(orders, bucket_minutes=15):
     """Group closed trades into time buckets and compute per-bucket stats."""
     from datetime import timezone
@@ -1240,6 +1315,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "equity_curve": [],
             "pnl_distribution": [],
             "hourly_performance": [],
+            "daily_performance": [],
+            "day_time_heatmap": [],
         }
 
     # Separate longs and shorts
@@ -3009,6 +3086,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),
         "hourly_performance": _compute_hourly_performance(orders),
+        "daily_performance": _compute_daily_performance(orders),
+        "day_time_heatmap": _compute_day_time_heatmap(orders),
     }
 
 

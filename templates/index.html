@@ -1388,6 +1388,40 @@
                     </div>
                     <p id="hourly-performance-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
                 </div>
+
+                <!-- Performance by Day of Week -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Day of Week (UTC-3)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days</p>
+                    <div style="height: 320px; position: relative;">
+                        <canvas id="daily-performance-chart"></canvas>
+                    </div>
+                    <p id="daily-performance-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
+                </div>
+
+                <!-- Day x Time Heatmap -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Day x Time Heatmap (UTC-3)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Performance by day of week crossed with 4-hour time blocks — find your optimal trading windows</p>
+                    <div class="overflow-x-auto">
+                        <table id="day-time-heatmap-table" class="w-full text-xs">
+                            <thead>
+                                <tr>
+                                    <th class="px-2 py-1 text-left text-gray-400"></th>
+                                    <th class="px-2 py-1 text-center text-gray-400">00-04</th>
+                                    <th class="px-2 py-1 text-center text-gray-400">04-08</th>
+                                    <th class="px-2 py-1 text-center text-gray-400">08-12</th>
+                                    <th class="px-2 py-1 text-center text-gray-400">12-16</th>
+                                    <th class="px-2 py-1 text-center text-gray-400">16-20</th>
+                                    <th class="px-2 py-1 text-center text-gray-400">20-24</th>
+                                </tr>
+                            </thead>
+                            <tbody id="day-time-heatmap-body">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -3137,6 +3171,39 @@
                 }
             }
 
+            if (perf.daily_performance && perf.daily_performance.some(d => d.trades > 0)) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Day of Week (UTC-3)\n');
+                lines.push(`${'Day'.padEnd(6)} ${'#'.padStart(4)} ${'Dir'.padEnd(8)} ${'Win%'.padStart(6)} ${'Avg P&L%'.padStart(11)}`);
+                for (const d of perf.daily_performance) {
+                    if (d.trades === 0) continue;
+                    const dirStr = `${d.longs}L/${d.shorts}S`;
+                    const pnlStr = (d.avg_pnl_pct >= 0 ? '+' : '') + d.avg_pnl_pct.toFixed(4) + '%';
+                    lines.push(`${d.label.padEnd(6)} ${String(d.trades).padStart(4)} ${dirStr.padEnd(8)} ${(d.win_rate.toFixed(1) + '%').padStart(6)} ${pnlStr.padStart(11)}`);
+                }
+            }
+
+            if (perf.day_time_heatmap && perf.day_time_heatmap.some(c => c.trades > 0)) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
+                const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
+                lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')}`);
+                const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                for (let d = 0; d < 7; d++) {
+                    let row = dayNames[d].padEnd(6);
+                    for (let b = 0; b < 6; b++) {
+                        const cell = perf.day_time_heatmap.find(c => c.day === d && c.block === b);
+                        if (!cell || cell.trades === 0) {
+                            row += ' ' + '-'.padStart(12);
+                        } else {
+                            const s = `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`;
+                            row += ' ' + s.padStart(12);
+                        }
+                    }
+                    lines.push(row);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by Entry Gap (EMA20)\n');
             lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
@@ -3673,6 +3740,41 @@
                     }
                 }
 
+                // --- DAILY PERFORMANCE ---
+                if (perf.daily_performance && perf.daily_performance.some(d => d.trades > 0)) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Day of Week (UTC-3)\n');
+                    lines.push(`${'Day'.padEnd(6)} ${'#'.padStart(4)} ${'Dir'.padEnd(8)} ${'Win%'.padStart(6)} ${'Avg P&L%'.padStart(11)}`);
+                    for (const d of perf.daily_performance) {
+                        if (d.trades === 0) continue;
+                        const dirStr = `${d.longs}L/${d.shorts}S`;
+                        const pnlStr = (d.avg_pnl_pct >= 0 ? '+' : '') + d.avg_pnl_pct.toFixed(4) + '%';
+                        lines.push(`${d.label.padEnd(6)} ${String(d.trades).padStart(4)} ${dirStr.padEnd(8)} ${(d.win_rate.toFixed(1) + '%').padStart(6)} ${pnlStr.padStart(11)}`);
+                    }
+                }
+
+                // --- DAY x TIME HEATMAP ---
+                if (perf.day_time_heatmap && perf.day_time_heatmap.some(c => c.trades > 0)) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
+                    const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
+                    lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')}`);
+                    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                    for (let d = 0; d < 7; d++) {
+                        let row = dayNames[d].padEnd(6);
+                        for (let b = 0; b < 6; b++) {
+                            const cell = perf.day_time_heatmap.find(c => c.day === d && c.block === b);
+                            if (!cell || cell.trades === 0) {
+                                row += ' ' + '-'.padStart(12);
+                            } else {
+                                const s = `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`;
+                                row += ' ' + s.padStart(12);
+                            }
+                        }
+                        lines.push(row);
+                    }
+                }
+
                 // --- GAP PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Entry Gap (EMA20)\n');
@@ -3929,6 +4031,8 @@
         let _lastEqHash = null;
         let _lastDistHash = null;
         let _lastHourlyHash = null;
+        let _lastDailyHash = null;
+        let _lastDayTimeHash = null;
 
         async function loadPerformance() {
             try {
@@ -5196,6 +5300,140 @@
                     } else {
                         hourEmpty.style.display = 'block';
                         hourCanvas.style.display = 'none';
+                    }
+                }
+
+                // Daily Performance Chart (Day of Week)
+                const dayCanvas = document.getElementById('daily-performance-chart');
+                const dayEmpty = document.getElementById('daily-performance-empty');
+                const dayData = data.daily_performance;
+                const dayHash = JSON.stringify(dayData || []);
+                if (dayHash !== _lastDailyHash) {
+                    _lastDailyHash = dayHash;
+                    if (window._dayChart) { window._dayChart.destroy(); window._dayChart = null; }
+                    if (dayData && dayData.some(d => d.trades > 0)) {
+                        dayEmpty.style.display = 'none';
+                        dayCanvas.style.display = 'block';
+                        const dayBarColors = dayData.map(d => {
+                            if (d.trades === 0) return 'rgba(107, 114, 128, 0.3)';
+                            return d.win_rate >= 50 ? 'rgba(52, 211, 153, 0.7)' : 'rgba(248, 113, 113, 0.7)';
+                        });
+                        window._dayChart = new Chart(dayCanvas, {
+                            type: 'bar',
+                            data: {
+                                labels: dayData.map(d => d.label),
+                                datasets: [
+                                    {
+                                        label: 'Win Rate %',
+                                        data: dayData.map(d => d.win_rate),
+                                        backgroundColor: dayBarColors,
+                                        borderColor: dayBarColors.map(c => c.replace('0.7', '1').replace('0.3', '0.5')),
+                                        borderWidth: 1,
+                                        yAxisID: 'y',
+                                        order: 2,
+                                    },
+                                    {
+                                        label: 'Avg P&L %',
+                                        data: dayData.map(d => d.avg_pnl_pct),
+                                        type: 'line',
+                                        borderColor: 'rgba(96, 165, 250, 1)',
+                                        backgroundColor: 'rgba(96, 165, 250, 0.1)',
+                                        borderWidth: 2,
+                                        pointRadius: 4,
+                                        pointHoverRadius: 7,
+                                        pointBackgroundColor: dayData.map(d => d.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
+                                        fill: false,
+                                        tension: 0.3,
+                                        yAxisID: 'y1',
+                                        order: 1,
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { mode: 'index', intersect: false },
+                                plugins: {
+                                    legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                                    tooltip: {
+                                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                        titleColor: '#e5e7eb',
+                                        bodyColor: '#d1d5db',
+                                        borderColor: 'rgba(255,255,255,0.1)',
+                                        borderWidth: 1,
+                                        callbacks: {
+                                            afterBody: function(ctx) {
+                                                const i = ctx[0].dataIndex;
+                                                const d = dayData[i];
+                                                return [`Trades: ${d.trades} (${d.longs}L/${d.shorts}S)`, `Wins: ${d.wins}/${d.trades}`];
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: { ticks: { color: '#6b7280', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    y: {
+                                        position: 'left',
+                                        title: { display: true, text: 'Win Rate %', color: '#9ca3af', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', callback: v => v + '%' },
+                                        grid: { color: 'rgba(255,255,255,0.05)' },
+                                        min: 0,
+                                        max: 100,
+                                    },
+                                    y1: {
+                                        position: 'right',
+                                        title: { display: true, text: 'Avg P&L %', color: '#60a5fa', font: { size: 11 } },
+                                        ticks: { color: '#60a5fa', callback: v => v.toFixed(2) + '%' },
+                                        grid: { drawOnChartArea: false },
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        dayEmpty.style.display = 'block';
+                        dayCanvas.style.display = 'none';
+                    }
+                }
+
+                // Day x Time Heatmap
+                const dtBody = document.getElementById('day-time-heatmap-body');
+                const dtData = data.day_time_heatmap;
+                const dtHash = JSON.stringify(dtData || []);
+                if (dtHash !== _lastDayTimeHash) {
+                    _lastDayTimeHash = dtHash;
+                    if (dtData && dtData.some(c => c.trades > 0)) {
+                        const pnls = dtData.filter(c => c.trades > 0).map(c => c.avg_pnl_pct);
+                        const maxAbs = Math.max(Math.abs(Math.min(...pnls)), Math.abs(Math.max(...pnls)), 0.0001);
+                        const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                        let html = '';
+                        for (let d = 0; d < 7; d++) {
+                            html += `<tr>`;
+                            html += `<td class="px-2 py-2 font-medium text-gray-300 text-sm">${dayNames[d]}</td>`;
+                            for (let b = 0; b < 6; b++) {
+                                const cell = dtData.find(c => c.day === d && c.block === b);
+                                if (!cell || cell.trades === 0) {
+                                    html += `<td class="px-2 py-2 text-center" style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(255,255,255,0.05);">
+                                        <span class="text-gray-600 text-[10px]">-</span></td>`;
+                                } else {
+                                    const intensity = Math.min(Math.abs(cell.avg_pnl_pct) / maxAbs, 1);
+                                    const alpha = 0.15 + intensity * 0.55;
+                                    const bg = cell.avg_pnl_pct >= 0
+                                        ? `rgba(52, 211, 153, ${alpha})`
+                                        : `rgba(248, 113, 113, ${alpha})`;
+                                    const pnlColor = cell.avg_pnl_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
+                                    const wrColor = cell.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                                    html += `<td class="px-2 py-2 text-center" style="background: ${bg}; border: 1px solid rgba(255,255,255,0.08);"
+                                        title="${cell.day_label} ${cell.block_label} | ${cell.trades} trades | WR ${cell.win_rate}% | Avg P&L ${cell.avg_pnl_pct >= 0 ? '+' : ''}${cell.avg_pnl_pct.toFixed(4)}%">
+                                        <div class="font-bold ${pnlColor} text-xs">${cell.avg_pnl_pct >= 0 ? '+' : ''}${cell.avg_pnl_pct.toFixed(2)}%</div>
+                                        <div class="text-[10px] text-gray-400">${cell.trades}t <span class="${wrColor}">${cell.win_rate.toFixed(0)}%W</span></div>
+                                    </td>`;
+                                }
+                            }
+                            html += `</tr>`;
+                        }
+                        dtBody.innerHTML = html;
+                    } else {
+                        dtBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                     }
                 }
 

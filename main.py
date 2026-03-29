@@ -1821,7 +1821,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ("0.16-0.25%", 0.16, 0.25), ("0.25-0.40%", 0.25, 0.40), (">0.40%", 0.40, 999),
         ]
         ct_adx_ranges_bt = [
-            ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
+            ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
+            ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
         ]
         ct_orders = [o for o in orders if o.entry_btc_ema20_slope is not None and o.entry_btc_adx is not None]
         for sr_name, sr_min, sr_max in ct_slope_ranges:
@@ -2400,7 +2401,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_rsi_ranges = [("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70-80", 70, 80)]
+            np_rsi_ranges = [("20-30", 20, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999)]
             np_rsi_trades = [o for o in np_trades if o.entry_rsi is not None]
             all_rsi_trades = [o for o in orders if o.entry_rsi is not None]
             for rng, lo, hi in np_rsi_ranges:
@@ -2411,7 +2412,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_gap58_ranges = [("0.02-0.05%", 0.02, 0.05), ("0.05-0.10%", 0.05, 0.10), ("0.10-0.20%", 0.10, 0.20), (">0.20%", 0.20, 999)]
+            np_gap58_ranges = [("<0.02%", 0.00, 0.02), ("0.02-0.05%", 0.02, 0.05), ("0.05-0.10%", 0.05, 0.10), ("0.10-0.20%", 0.10, 0.20), (">0.20%", 0.20, 999)]
             np_gap58_trades = [o for o in np_trades if o.entry_ema_gap_5_8 is not None]
             all_gap58_trades = [o for o in orders if o.entry_ema_gap_5_8 is not None]
             for rng, lo, hi in np_gap58_ranges:
@@ -2422,7 +2423,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_gap_ranges = [("0.15-0.25%", 0.15, 0.25), ("0.25-0.35%", 0.25, 0.35), ("0.35-0.50%", 0.35, 0.50), ("0.50-0.80%", 0.50, 0.80), (">0.80%", 0.80, 999)]
+            np_gap_ranges = [("<0.15%", 0.00, 0.15), ("0.15-0.25%", 0.15, 0.25), ("0.25-0.35%", 0.25, 0.35), ("0.35-0.50%", 0.35, 0.50), ("0.50-0.80%", 0.50, 0.80), (">0.80%", 0.80, 999)]
             np_gap_trades = [o for o in np_trades if o.entry_gap is not None]
             all_gap_trades = [o for o in orders if o.entry_gap is not None]
             for rng, lo, hi in np_gap_ranges:
@@ -2433,7 +2434,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_stretch_ranges = [("0.04-0.08%", 0.04, 0.08), ("0.08-0.12%", 0.08, 0.12), ("0.12-0.16%", 0.12, 0.16), ("0.16-0.20%", 0.16, 0.20), ("0.20-0.25%", 0.20, 0.25), ("0.25-0.30%", 0.25, 0.30), (">0.30%", 0.30, 999)]
+            np_stretch_ranges = [("<0.04%", 0.00, 0.04), ("0.04-0.08%", 0.04, 0.08), ("0.08-0.12%", 0.08, 0.12), ("0.12-0.16%", 0.12, 0.16), ("0.16-0.20%", 0.16, 0.20), ("0.20-0.25%", 0.20, 0.25), ("0.25-0.30%", 0.25, 0.30), (">0.30%", 0.30, 999)]
             np_stretch_trades = [o for o in np_trades if o.entry_ema5_stretch is not None]
             all_stretch_trades = [o for o in orders if o.entry_ema5_stretch is not None]
             for rng, lo, hi in np_stretch_ranges:
@@ -2444,7 +2445,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_slope_ranges = [("0.06-0.08%", 0.06, 0.08), ("0.08-0.10%", 0.08, 0.10), ("0.10-0.12%", 0.10, 0.12), ("0.12-0.14%", 0.12, 0.14), ("0.14-0.16%", 0.14, 0.16), ("0.16-0.18%", 0.16, 0.18), ("0.18-0.20%", 0.18, 0.20), ("0.20-0.25%", 0.20, 0.25), ("0.25-0.30%", 0.25, 0.30), ("0.30-0.40%", 0.30, 0.40), ("0.40-0.60%", 0.40, 0.60), (">0.60%", 0.60, 999)]
+            np_slope_ranges = [("<0.06%", 0.00, 0.06), ("0.06-0.08%", 0.06, 0.08), ("0.08-0.10%", 0.08, 0.10), ("0.10-0.12%", 0.10, 0.12), ("0.12-0.14%", 0.12, 0.14), ("0.14-0.16%", 0.14, 0.16), ("0.16-0.18%", 0.16, 0.18), ("0.18-0.20%", 0.18, 0.20), ("0.20-0.25%", 0.20, 0.25), ("0.25-0.30%", 0.25, 0.30), ("0.30-0.40%", 0.30, 0.40), ("0.40-0.60%", 0.40, 0.60), (">0.60%", 0.60, 999)]
             np_slope_trades = [o for o in np_trades if o.entry_ema20_slope is not None]
             all_slope_trades = [o for o in orders if o.entry_ema20_slope is not None]
             for rng, lo, hi in np_slope_ranges:
@@ -2455,7 +2456,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_btc_slope_ranges = [("0.06-0.10%", 0.06, 0.10), ("0.10-0.14%", 0.10, 0.14), ("0.14-0.18%", 0.14, 0.18), ("0.18-0.25%", 0.18, 0.25), (">0.25%", 0.25, 999)]
+            np_btc_slope_ranges = [("<0.06%", 0.00, 0.06), ("0.06-0.10%", 0.06, 0.10), ("0.10-0.14%", 0.10, 0.14), ("0.14-0.18%", 0.14, 0.18), ("0.18-0.25%", 0.18, 0.25), (">0.25%", 0.25, 999)]
             np_btc_slope_trades = [o for o in np_trades if o.entry_btc_ema20_slope is not None]
             all_btc_slope_trades = [o for o in orders if o.entry_btc_ema20_slope is not None]
             for rng, lo, hi in np_btc_slope_ranges:
@@ -2466,7 +2467,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_btc_adx_ranges = [("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999)]
+            np_btc_adx_ranges = [("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999)]
             np_btc_adx_trades = [o for o in np_trades if o.entry_btc_adx is not None]
             all_btc_adx_trades = [o for o in orders if o.entry_btc_adx is not None]
             for rng, lo, hi in np_btc_adx_ranges:

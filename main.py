@@ -2712,6 +2712,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     pass_reason_counts[r] = pass_reason_counts.get(r, 0) + 1
                 pass_reason_str = " ".join(f"{r}:{c}" for r, c in sorted(pass_reason_counts.items(), key=lambda x: -x[1]))
 
+                total_pnl_with_be = (len(would_exit) * avg_phantom_pnl) + (sum(o.pnl_percentage or 0 for o in passed_through))
+                total_pnl_without_be = sum(o.pnl_percentage or 0 for o in triggered)
+
                 be_shadow_tracking.append({
                     "level": level,
                     "direction": direction,
@@ -2725,6 +2728,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "delta": round(avg_actual_pnl_exit - avg_phantom_pnl, 4) if avg_actual_pnl_exit is not None else None,
                     "avg_actual_pnl_pass": round(avg_actual_pnl_pass, 4) if avg_actual_pnl_pass is not None else None,
                     "avg_actual_pnl_all": round(avg_actual_pnl_all, 4),
+                    "total_pnl_with_be": round(total_pnl_with_be, 4),
+                    "total_pnl_without_be": round(total_pnl_without_be, 4),
                     "avg_adx": avg_adx,
                     "exit_reasons": reason_str,
                     "pass_reasons": pass_reason_str,

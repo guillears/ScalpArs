@@ -857,6 +857,8 @@
                                     <th class="px-3 py-2 font-medium text-right" title="Trades that triggered BE but never pulled back to offset">Passed Thru</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg P&L% for trades that passed through without hitting phantom stop">Pass P&L</th>
                                     <th class="px-3 py-2 font-medium text-left" title="Close reasons for passed-through trades">Pass Reasons</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total P&L% if BE was enabled (Would Exit × Phantom + Pass Thru actual)">Tot w/BE</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total P&L% without BE (actual result for all triggered trades)">Tot w/o BE</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average entry ADX for triggered trades">Avg ADX</th>
                                 </tr>
                             </thead>
@@ -2980,16 +2982,18 @@
             if (perf.be_shadow_tracking && perf.be_shadow_tracking.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## BE Shadow Tracking\n');
-                lines.push(`${'Level'.padEnd(26)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'AvgADX'.padStart(7)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
+                lines.push(`${'Level'.padEnd(26)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'Tot w/BE'.padStart(11)} ${'Tot w/o BE'.padStart(11)} ${'AvgADX'.padStart(7)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
                 for (const r of perf.be_shadow_tracking) {
                     const phantomStr = ('+' + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11);
                     const actualStr = r.avg_actual_pnl_exit !== null ? ((r.avg_actual_pnl_exit >= 0 ? '+' : '') + r.avg_actual_pnl_exit.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
                     const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
                     const passPnlStr = r.avg_actual_pnl_pass !== null ? ((r.avg_actual_pnl_pass >= 0 ? '+' : '') + r.avg_actual_pnl_pass.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                    const withBeStr = ((r.total_pnl_with_be >= 0 ? '+' : '') + r.total_pnl_with_be.toFixed(4) + '%').padStart(11);
+                    const withoutBeStr = ((r.total_pnl_without_be >= 0 ? '+' : '') + r.total_pnl_without_be.toFixed(4) + '%').padStart(11);
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const levelStr = `L${r.level} (${r.orig_trigger}%→${r.orig_offset}%)${dirSuffix}`;
                     const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
-                    lines.push(`${levelStr.padEnd(26)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${adxStr.padStart(7)} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
+                    lines.push(`${levelStr.padEnd(26)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${withBeStr} ${withoutBeStr} ${adxStr.padStart(7)} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
                 }
             }
 
@@ -3485,16 +3489,18 @@
                 if (perf.be_shadow_tracking && perf.be_shadow_tracking.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## BE Shadow Tracking\n');
-                    lines.push(`${'Level'.padEnd(26)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'AvgADX'.padStart(7)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
+                    lines.push(`${'Level'.padEnd(26)} ${'Trig'.padStart(5)} ${'WouldExit'.padStart(10)} ${'PhantomP&L'.padStart(11)} ${'ActualP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'PassThru'.padStart(9)} ${'PassP&L'.padStart(9)} ${'Tot w/BE'.padStart(11)} ${'Tot w/o BE'.padStart(11)} ${'AvgADX'.padStart(7)} ${'Exit Reasons'.padEnd(40)} ${'Pass Reasons'.padEnd(30)}`);
                     for (const r of perf.be_shadow_tracking) {
                         const phantomStr = ('+' + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11);
                         const actualStr = r.avg_actual_pnl_exit !== null ? ((r.avg_actual_pnl_exit >= 0 ? '+' : '') + r.avg_actual_pnl_exit.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
                         const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
                         const passPnlStr = r.avg_actual_pnl_pass !== null ? ((r.avg_actual_pnl_pass >= 0 ? '+' : '') + r.avg_actual_pnl_pass.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
+                        const withBeStr = ((r.total_pnl_with_be >= 0 ? '+' : '') + r.total_pnl_with_be.toFixed(4) + '%').padStart(11);
+                        const withoutBeStr = ((r.total_pnl_without_be >= 0 ? '+' : '') + r.total_pnl_without_be.toFixed(4) + '%').padStart(11);
                         const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                         const levelStr = `L${r.level} (${r.orig_trigger}%→${r.orig_offset}%)${dirSuffix}`;
                         const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
-                        lines.push(`${levelStr.padEnd(26)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${adxStr.padStart(7)} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
+                        lines.push(`${levelStr.padEnd(26)} ${String(r.triggered_count).padStart(5)} ${String(r.would_exit_count).padStart(10)} ${phantomStr} ${actualStr} ${deltaStr} ${String(r.passed_through_count).padStart(9)} ${passPnlStr} ${withBeStr} ${withoutBeStr} ${adxStr.padStart(7)} ${(r.exit_reasons || '-').padEnd(40)} ${(r.pass_reasons || '-').padEnd(30)}`);
                     }
                 }
 
@@ -5464,11 +5470,13 @@
                             <td class="px-3 py-2 text-right">${r.passed_through_count}</td>
                             <td class="px-3 py-2 text-right ${passPnlClass}">${passPnlStr}</td>
                             <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.pass_reasons || '-'}</td>
+                            <td class="px-3 py-2 text-right font-medium ${r.total_pnl_with_be >= 0 ? 'text-emerald-400' : 'text-red-400'}">${r.total_pnl_with_be >= 0 ? '+' : ''}${r.total_pnl_with_be.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right font-medium ${r.total_pnl_without_be >= 0 ? 'text-emerald-400' : 'text-red-400'}">${r.total_pnl_without_be >= 0 ? '+' : ''}${r.total_pnl_without_be.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right">${r.avg_adx != null ? r.avg_adx.toFixed(1) : '-'}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    bsBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>';
+                    bsBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting after BE L1/L2 disabled)</td></tr>';
                 }
 
                 // Tick Momentum Shadow Tracking

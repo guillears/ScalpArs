@@ -2768,6 +2768,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
 
                 total = len(dir_orders)
+                tot_all_actual = round(sum(o.pnl_percentage or 0 for o in dir_orders), 4)
                 pct_trig = round(len(triggered) / total * 100, 1) if total else 0
                 pct_nt = round(len(clean_nt) / total * 100, 1) if total else 0
                 pct_skipped = round(len(skipped) / total * 100, 1) if total else 0
@@ -2836,6 +2837,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "pct_skipped": pct_skipped,
                     "tot_with_phantom": round(tot_phantom, 4),
                     "tot_actual": round(tot_actual, 4),
+                    "tot_all_actual": tot_all_actual,
                     "exit_reasons": reason_str,
                     "nt_exit_reasons": nt_reason_str,
                 })

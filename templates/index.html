@@ -895,10 +895,11 @@
                                     <th class="px-3 py-2 font-medium text-left" title="Close reasons for clean NT trades">NT Reasons</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total P&L using phantom exits for triggered + actual for NT">Tot w/Ph</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total actual P&L for triggered + NT (excl skipped)">Tot Actual</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total actual P&L for ALL trades (baseline)">All Actual</th>
                                 </tr>
                             </thead>
                             <tbody id="tick-momentum-shadow-body" class="divide-y divide-white/5">
-                                <tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>
+                                <tr><td colspan="19" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3077,9 +3078,10 @@
                     const skipStr = (r.skipped_count + '(' + r.pct_skipped.toFixed(0) + '%)').padStart(7);
                     const totPhStr = ((r.tot_with_phantom >= 0 ? '+' : '') + r.tot_with_phantom.toFixed(4) + '%').padStart(11);
                     const totActStr = ((r.tot_actual >= 0 ? '+' : '') + r.tot_actual.toFixed(4) + '%').padStart(11);
+                    const totAllStr = ((r.tot_all_actual >= 0 ? '+' : '') + r.tot_all_actual.toFixed(4) + '%').padStart(11);
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
-                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
+                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${totAllStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
                 }
             }
 
@@ -3608,9 +3610,10 @@
                         const skipStr = (r.skipped_count + '(' + r.pct_skipped.toFixed(0) + '%)').padStart(7);
                         const totPhStr = ((r.tot_with_phantom >= 0 ? '+' : '') + r.tot_with_phantom.toFixed(4) + '%').padStart(11);
                         const totActStr = ((r.tot_actual >= 0 ? '+' : '') + r.tot_actual.toFixed(4) + '%').padStart(11);
+                        const totAllStr = ((r.tot_all_actual >= 0 ? '+' : '') + r.tot_all_actual.toFixed(4) + '%').padStart(11);
                         const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                         const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
-                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
+                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${totAllStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
                     }
                 }
 
@@ -5614,6 +5617,8 @@
                         const totPhStr = `${r.tot_with_phantom >= 0 ? '+' : ''}${r.tot_with_phantom.toFixed(4)}%`;
                         const totActClass = r.tot_actual >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totActStr = `${r.tot_actual >= 0 ? '+' : ''}${r.tot_actual.toFixed(4)}%`;
+                        const totAllClass = r.tot_all_actual >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totAllStr = `${r.tot_all_actual >= 0 ? '+' : ''}${r.tot_all_actual.toFixed(4)}%`;
                         return `<tr class="hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-cyan-400">${r.label} <span class="text-gray-500 text-[10px]">(${r.windows} / ${r.delta_threshold})</span> <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
                             <td class="px-3 py-2 text-right">${r.total}</td>
@@ -5633,10 +5638,11 @@
                             <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.nt_exit_reasons || '-'}</td>
                             <td class="px-3 py-2 text-right font-medium ${totPhClass}">${totPhStr}</td>
                             <td class="px-3 py-2 text-right font-medium ${totActClass}">${totActStr}</td>
+                            <td class="px-3 py-2 text-right font-bold ${totAllClass}">${totAllStr}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    tmsBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
+                    tmsBody.innerHTML = '<tr><td colspan="19" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
                 }
 
                 // Signal Lost Shadow

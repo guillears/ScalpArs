@@ -26,8 +26,9 @@ websockets>=12.0
 jinja2>=3.1.0
 aiofiles>=23.2.0
 
-# Auth (session signing)
+# Auth (session signing + form parsing)
 itsdangerous>=2.1.0
+python-multipart>=0.0.6
 
 # Utilities
 httpx>=0.26.0

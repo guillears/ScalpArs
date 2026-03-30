@@ -8,18 +8,21 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
+from starlette.responses import RedirectResponse
+from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -45,6 +48,7 @@ logger = logging.getLogger("scalpars")
 # Background task control
 _scan_task = None
 _monitor_task = None
+_bnb_swap_task = None
 should_stop = False
 _scan_lock = asyncio.Lock()
 
@@ -100,9 +104,28 @@ async def scan_loop():
         await asyncio.sleep(scan_backoff)
 
 
+async def bnb_swap_loop():
+    """Periodic loop to check BNB balance and auto-swap USDT to BNB for fee coverage."""
+    global should_stop
+    interval = config.trading_config.bnb_check_interval_hours * 3600
+    logger.info(f"[BNB_LOOP] BNB swap loop started (every {config.trading_config.bnb_check_interval_hours}h)")
+    await asyncio.sleep(60)
+    while not should_stop:
+        try:
+            if config.trading_config.bnb_swap_enabled:
+                async with AsyncSessionLocal() as db:
+                    await trading_engine.initialize(db)
+                    await trading_engine.bnb_scheduled_check(db)
+        except Exception as e:
+            logger.error(f"[BNB_LOOP] Error in BNB swap loop: {e}")
+            import traceback
+            traceback.print_exc()
+        await asyncio.sleep(interval)
+
+
 async def start_background_tasks():
     """Start background trading tasks"""
-    global _scan_task, _monitor_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -123,19 +146,20 @@ async def start_background_tasks():
     
     _monitor_task = asyncio.create_task(monitor_loop())
     _scan_task = asyncio.create_task(scan_loop())
-    logger.info("[STARTUP] Monitor and scan loops started independently")
+    _bnb_swap_task = asyncio.create_task(bnb_swap_loop())
+    logger.info("[STARTUP] Monitor, scan, and BNB swap loops started independently")
 
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global _scan_task, _monitor_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, should_stop
     should_stop = True
     
     # Stop WebSocket tracker
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
     
-    for task in (_monitor_task, _scan_task):
+    for task in (_monitor_task, _scan_task, _bnb_swap_task):
         if task:
             task.cancel()
             try:
@@ -241,6 +265,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+LOGIN_PASSWORD = os.environ.get("LOGIN_PASSWORD", "guille86")
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    OPEN_PATHS = {"/login", "/static", "/favicon.ico"}
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if any(path == p or path.startswith(p + "/") for p in self.OPEN_PATHS):
+            return await call_next(request)
+        if not request.session.get("authenticated"):
+            if path.startswith("/api/"):
+                return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+            return RedirectResponse(url="/login", status_code=302)
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get("SESSION_SECRET", "scalpars-s3cr3t-k3y-ch4ng3-m3"),
+    max_age=60 * 60 * 24 * 30,
+)
+
 # Create directories if they don't exist
 os.makedirs("static", exist_ok=True)
 os.makedirs("templates", exist_ok=True)
@@ -271,6 +317,33 @@ class ConfigUpdate(BaseModel):
 
 class ManualCloseRequest(BaseModel):
     order_id: int
+
+
+# ============== Auth Routes ==============
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Serve login page"""
+    if request.session.get("authenticated"):
+        return RedirectResponse(url="/", status_code=302)
+    with open("templates/login.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.post("/login")
+async def login(request: Request, password: str = Form(...)):
+    """Validate password and create session"""
+    if password == LOGIN_PASSWORD:
+        request.session["authenticated"] = True
+        return RedirectResponse(url="/", status_code=302)
+    return RedirectResponse(url="/login?error=1", status_code=302)
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    """Clear session and redirect to login"""
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=302)
 
 
 # ============== API Routes ==============
@@ -334,11 +407,21 @@ async def reset_paper_trading(db: AsyncSession = Depends(get_db)):
         delete(Transaction).where(Transaction.is_paper == True)
     )
     
+    # Delete paper BNB swap logs
+    await db.execute(
+        delete(BnbSwapLog).where(BnbSwapLog.is_paper == True)
+    )
+    
     # Reset bot state
-    trading_engine.paper_balance = config.trading_config.paper_balance  # Default 10,000
+    trading_engine.paper_balance = config.trading_config.paper_balance
+    trading_engine.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
     trading_engine.total_runtime_seconds = 0
     trading_engine.started_at = None
     trading_engine.is_running = False
+    trading_engine._bnb_emergency_threshold = 0.0
+    trading_engine._bnb_projected_need = 0.0
+    trading_engine._bnb_burn_rate = 0.0
+    trading_engine._last_bnb_check = None
     
     # Clear any ban state
     set_ban_until(0)
@@ -372,8 +455,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
     await trading_engine.initialize(db)
     
     if trading_engine.is_paper_mode:
-        # Always recalculate from DB to prevent stale/inflated values
         balance = await trading_engine._recalculate_paper_balance(db)
+        await trading_engine._recalculate_paper_bnb(db)
         result = await db.execute(
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == True)
@@ -381,23 +464,63 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         )
         open_orders = result.scalars().all()
         used_margin = sum(o.investment for o in open_orders)
+        bnb_usd = trading_engine.paper_bnb_balance_usd
         
         return {
             "usdt_balance": balance,
-            "bnb_balance": 0,
+            "bnb_balance": round(bnb_usd, 2),
+            "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
-            "total_portfolio": balance + used_margin,
+            "total_portfolio": balance + used_margin + bnb_usd,
             "is_paper": True
         }
     else:
         balance = await binance_service.get_balance()
+        bnb_price = await binance_service.get_bnb_price()
+        bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
         return {
             "usdt_balance": balance['usdt_free'],
             "bnb_balance": balance['bnb_total'],
+            "bnb_balance_usd": round(bnb_usd, 2),
+            "bnb_balance_is_usd": False,
             "usdt_in_orders": balance['usdt_used'],
             "total_portfolio": balance['total_portfolio'],
             "is_paper": False
         }
+
+
+@app.get("/api/bnb-swaps")
+async def get_bnb_swaps(db: AsyncSession = Depends(get_db)):
+    """Get BNB swap history and current status"""
+    result = await db.execute(
+        select(BnbSwapLog).order_by(desc(BnbSwapLog.timestamp)).limit(50)
+    )
+    swaps = result.scalars().all()
+    return {
+        "swaps": [
+            {
+                "timestamp": s.timestamp.isoformat() if s.timestamp else None,
+                "swap_type": s.swap_type,
+                "amount_usdt": s.amount_usdt,
+                "bnb_price": s.bnb_price,
+                "amount_bnb": s.amount_bnb,
+                "pre_bnb_usd": s.pre_bnb_usd,
+                "post_bnb_usd": s.post_bnb_usd,
+                "burn_rate": s.burn_rate,
+                "is_paper": s.is_paper,
+            }
+            for s in swaps
+        ],
+        "status": {
+            "bnb_swap_enabled": config.trading_config.bnb_swap_enabled,
+            "burn_rate_per_hour": round(trading_engine._bnb_burn_rate, 2),
+            "projected_need": round(trading_engine._bnb_projected_need, 2),
+            "emergency_threshold": round(trading_engine._bnb_emergency_threshold, 2),
+            "last_check": trading_engine._last_bnb_check.isoformat() if trading_engine._last_bnb_check else None,
+            "check_interval_hours": config.trading_config.bnb_check_interval_hours,
+            "runway_hours": config.trading_config.bnb_runway_hours,
+        }
+    }
 
 
 # ----- Market Data -----
@@ -2132,9 +2255,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             adx_falling = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx <= o.entry_adx_prev)
             btc_adx_rising = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx > o.entry_btc_adx_prev)
             btc_adx_falling = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx <= o.entry_btc_adx_prev)
+            btc_rsi_rising = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi > o.entry_btc_rsi_prev)
+            btc_rsi_falling = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi <= o.entry_btc_rsi_prev)
+            ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
 
             peaks = [o.peak_pnl or 0 for o in group]
             pnls = [o.pnl_percentage or 0 for o in group]
+            total_pnl_usd = sum(o.pnl or 0 for o in group)
+            total_pnl_usd = sum(o.pnl or 0 for o in group)
 
             avg_dur_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in group if o.closed_at and o.opened_at) / count
             hours, remainder = divmod(int(avg_dur_secs), 3600)
@@ -2159,8 +2287,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_btc_adx": round(sum(btc_adxs) / len(btc_adxs), 1) if btc_adxs else None,
                 "btc_adx_rising": btc_adx_rising,
                 "btc_adx_falling": btc_adx_falling,
+                "btc_rsi_rising": btc_rsi_rising,
+                "btc_rsi_falling": btc_rsi_falling,
+                "avg_ema5_dist": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
+                "total_pnl_usd": round(total_pnl_usd, 2),
                 "avg_duration": avg_dur_str,
             })
     except Exception as e:

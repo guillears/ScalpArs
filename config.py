@@ -110,6 +110,8 @@ class SignalThresholds(BaseModel):
     btc_adx_max_long: float = 100  # Max BTC ADX to allow LONGs (100 = disabled)
     btc_adx_min_short: float = 0  # Min BTC ADX to allow SHORTs (0 = disabled)
     btc_adx_max_short: float = 100  # Max BTC ADX to allow SHORTs (100 = disabled)
+    btc_adx_dir_long: str = "both"  # BTC ADX direction filter for LONGs: "both", "rising", "falling"
+    btc_adx_dir_short: str = "both"  # BTC ADX direction filter for SHORTs: "both", "rising", "falling"
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit
     signal_lost_min_profit: float = 0.05  # Min P&L % (notional) to trigger signal-lost exit
     signal_lost_max_profit: float = 999.0  # Max P&L % for signal-lost exit (creates a range with min)
@@ -182,6 +184,12 @@ class TradingConfig(BaseModel):
     # Paper trading
     paper_trading: bool = True
     paper_balance: float = 2000.0  # Starting balance for paper trading
+    
+    # BNB fee management
+    bnb_swap_enabled: bool = True
+    bnb_check_interval_hours: int = 12
+    bnb_runway_hours: int = 24
+    paper_bnb_initial_usd: float = 500.0
     
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 20  # 5, 10, 20, or 50

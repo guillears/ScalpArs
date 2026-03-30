@@ -122,6 +122,13 @@
                         </svg>
                         <span>Reset</span>
                     </button>
+
+                    <!-- Logout Button -->
+                    <a href="/logout" class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all duration-200" title="Logout">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                        </svg>
+                    </a>
                 </div>
             </div>
         </div>
@@ -138,6 +145,7 @@
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC ADX:</span>
                 <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
+                <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
                 <span id="btc-adx-low-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase tracking-wide">ADX LOW</span>
             </div>
             <div class="flex items-center space-x-4">
@@ -161,8 +169,9 @@
                     <p id="usdt-balance" class="text-2xl font-bold text-white">$0.00</p>
                 </div>
                 <div class="glass rounded-xl p-5">
-                    <p class="text-sm text-gray-400 mb-1">BNB Balance</p>
-                    <p id="bnb-balance" class="text-2xl font-bold text-white">0.0000</p>
+                    <p class="text-sm text-gray-400 mb-1">BNB Balance <span id="bnb-label" class="text-xs text-gray-500">(fee reserve)</span></p>
+                    <p id="bnb-balance" class="text-2xl font-bold text-white">$0.00</p>
+                    <p id="bnb-burn-rate" class="text-xs text-gray-500 mt-1"></p>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT in Open Orders</p>
@@ -236,6 +245,9 @@
                 </button>
                 <button onclick="switchOrdersTab('closed')" id="tab-closed" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
                     Closed Orders
+                </button>
+                <button onclick="switchOrdersTab('bnb-swaps')" id="tab-bnb-swaps" class="px-4 py-3 text-sm font-medium text-gray-400 hover:text-white transition">
+                    BNB Swaps
                 </button>
             </div>
             
@@ -333,6 +345,55 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- BNB Swaps Tab -->
+            <div id="content-bnb-swaps" class="hidden">
+                <div class="glass rounded-xl p-4 mb-3 flex flex-wrap items-center gap-6 text-sm">
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Auto-Swap:</span>
+                        <span id="bnb-swap-status-badge" class="px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">ON</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-400">Burn Rate:</span>
+                        <span id="bnb-swap-burn-rate" class="text-white font-medium ml-1">$0.00/hr</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-400">Emergency Threshold:</span>
+                        <span id="bnb-swap-emergency" class="text-yellow-400 font-medium ml-1">$0.00</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-400">Projected Need:</span>
+                        <span id="bnb-swap-projected" class="text-white font-medium ml-1">$0.00</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-400">Last Check:</span>
+                        <span id="bnb-swap-last-check" class="text-gray-300 ml-1">--</span>
+                    </div>
+                </div>
+                <div class="glass rounded-xl overflow-hidden">
+                    <div class="overflow-x-auto scrollbar-thin max-h-80 overflow-y-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-white/5 sticky top-0">
+                                <tr class="text-gray-400 text-left">
+                                    <th class="px-4 py-3 font-medium">Time</th>
+                                    <th class="px-4 py-3 font-medium text-center">Type</th>
+                                    <th class="px-4 py-3 font-medium text-right">USDT Spent</th>
+                                    <th class="px-4 py-3 font-medium text-right">BNB Price</th>
+                                    <th class="px-4 py-3 font-medium text-right">BNB Received</th>
+                                    <th class="px-4 py-3 font-medium text-right">BNB Before</th>
+                                    <th class="px-4 py-3 font-medium text-right">BNB After</th>
+                                    <th class="px-4 py-3 font-medium text-right">Burn Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bnb-swaps-table-body" class="divide-y divide-white/5">
+                                <tr>
+                                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">No BNB swaps yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>
@@ -656,13 +717,16 @@
                                     <th class="px-3 py-2 font-medium text-right" title="Average BTC RSI at entry">BTCRSI</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average BTC ADX at entry">BTCADX</th>
                                     <th class="px-3 py-2 font-medium text-center" title="BTC ADX Direction at entry: Rising/Falling count">BTCADXDir</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="BTC RSI Direction at entry: Rising/Falling count">BTCRSIDir</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Signed distance: price vs EMA5 at entry (positive = above)">EMA5%</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgP&L%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total P&L in USD">Total$</th>
                                     <th class="px-3 py-2 font-medium text-center">Duration</th>
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-reason-body" class="divide-y divide-white/5">
-                                <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1598,6 +1662,40 @@
                             <p class="text-xs text-gray-500 mt-1">Wait before re-entering same pair after any trade exit</p>
                         </div>
                     </div>
+
+                    <!-- BNB Fee Management -->
+                    <h4 class="text-md font-semibold text-gray-300 mt-6 mb-3">BNB Fee Management</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Auto-Swap Enabled</label>
+                            <select id="config-bnb-swap-enabled" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
+                                <option value="true">Enabled</option>
+                                <option value="false">Disabled</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Paper BNB Initial</label>
+                            <div class="flex">
+                                <input type="number" id="config-paper-bnb-initial" min="0" step="50" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="500">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">USD</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Check Interval</label>
+                            <div class="flex">
+                                <input type="number" id="config-bnb-check-interval" min="1" max="48" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="12">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Runway Target</label>
+                            <div class="flex">
+                                <input type="number" id="config-bnb-runway-hours" min="1" max="168" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="24">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
+                        </div>
+                    </div>
                     
                     <!-- Position & Size Limits -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
@@ -1997,7 +2095,21 @@
                                 <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
                             </label>
                         </div>
-                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC RSI/ADX in range)</p>
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                            <span class="text-xs text-gray-500 w-20">ADX Dir LONG:</span>
+                            <select id="config-btc-adx-dir-long" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                <option value="both">Both</option>
+                                <option value="rising">Rising only</option>
+                                <option value="falling">Falling only</option>
+                            </select>
+                            <span class="text-xs text-gray-500 w-20 ml-4">ADX Dir SHORT:</span>
+                            <select id="config-btc-adx-dir-short" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                <option value="both">Both</option>
+                                <option value="rising">Rising only</option>
+                                <option value="falling">Falling only</option>
+                            </select>
+                        </div>
+                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC RSI/ADX in range + ADX direction)</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">BTC RSI x BTC ADX Cross-Filter</span>
@@ -2773,6 +2885,14 @@
                 updateStatusUI();
                 updateTimer(runtimeSeconds);
                 
+                // BNB burn rate display
+                const burnEl = document.getElementById('bnb-burn-rate');
+                if (data.bnb_burn_rate > 0) {
+                    burnEl.textContent = `Burn: $${data.bnb_burn_rate.toFixed(2)}/hr`;
+                } else {
+                    burnEl.textContent = '';
+                }
+                
                 // Update paper toggle
                 document.getElementById('paper-toggle').checked = !isPaperMode;
                 
@@ -2917,7 +3037,16 @@
                 const data = await res.json();
                 
                 document.getElementById('usdt-balance').textContent = formatUSD(data.usdt_balance);
-                document.getElementById('bnb-balance').textContent = parseFloat(data.bnb_balance || 0).toFixed(4);
+                if (data.bnb_balance_is_usd) {
+                    document.getElementById('bnb-balance').textContent = formatUSD(data.bnb_balance);
+                } else {
+                    const bnbVal = parseFloat(data.bnb_balance || 0);
+                    const bnbUsd = data.bnb_balance_usd || 0;
+                    document.getElementById('bnb-balance').textContent = bnbVal.toFixed(4) + ' BNB';
+                    if (bnbUsd > 0) {
+                        document.getElementById('bnb-burn-rate').textContent = '≈ ' + formatUSD(bnbUsd);
+                    }
+                }
                 document.getElementById('usdt-orders').textContent = formatUSD(data.usdt_in_orders);
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
             } catch (e) {
@@ -3001,12 +3130,13 @@
 
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Close Reason\n');
-            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Duration'}`);
+            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'}`);
             for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                 const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                 const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
                 const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
                 const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
+                const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
                 const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
                 const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
                 const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
@@ -3016,9 +3146,11 @@
                 const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
                 const btcRsiStr = r.avg_btc_rsi != null ? r.avg_btc_rsi.toFixed(1) : '-';
                 const btcAdxStr = r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-';
+                const ema5DistStr = r.avg_ema5_dist != null ? (r.avg_ema5_dist >= 0 ? '+' : '') + r.avg_ema5_dist.toFixed(2) + '%' : '-';
                 const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                 const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
-                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${r.avg_duration || '-'}`);
+                const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
+                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${r.avg_duration || '-'}`);
             }
 
             lines.push(`\n${hr2}`);
@@ -3430,6 +3562,7 @@
             const rsiAdxS = th.rsi_adx_filter_short || '(none)';
             lines.push(`  RSI x ADX Filter L: ${rsiAdxL}  |  S: ${rsiAdxS}`);
             lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
+            lines.push(`  BTC RSI L: ${th.btc_rsi_min_long||0}-${th.btc_rsi_max_long||100}  |  BTC RSI S: ${th.btc_rsi_min_short||0}-${th.btc_rsi_max_short||100}  |  BTC ADX L: ${th.btc_adx_min_long||0}-${th.btc_adx_max_long||100}  |  BTC ADX S: ${th.btc_adx_min_short||0}-${th.btc_adx_max_short||100}  |  ADX Dir L: ${th.btc_adx_dir_long||'both'}  |  ADX Dir S: ${th.btc_adx_dir_short||'both'}`);
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
@@ -3438,6 +3571,7 @@
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
             lines.push(`  Paper Trading: ${cfg.paper_trading ? 'ON' : 'OFF'}  |  Paper Balance: $${cfg.paper_balance || 0}`);
+            lines.push(`  BNB Auto-Swap: ${cfg.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Paper BNB: $${cfg.paper_bnb_initial_usd || 500}  |  Check: ${cfg.bnb_check_interval_hours || 12}h  |  Runway: ${cfg.bnb_runway_hours || 24}h`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
             lines.push(`  Cooldown After Exit: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
 
@@ -3583,12 +3717,13 @@
                 // --- ENTRY CONDITIONS BY CLOSE REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Close Reason\n');
-                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Duration'}`);
+                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'}`);
                 for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
                     const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
                     const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
+                    const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
                     const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
                     const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
                     const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
@@ -3598,9 +3733,11 @@
                     const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
                     const btcRsiStr = r.avg_btc_rsi != null ? r.avg_btc_rsi.toFixed(1) : '-';
                     const btcAdxStr = r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-';
+                    const ema5DistStr = r.avg_ema5_dist != null ? (r.avg_ema5_dist >= 0 ? '+' : '') + r.avg_ema5_dist.toFixed(2) + '%' : '-';
                     const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                     const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
-                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${r.avg_duration || '-'}`);
+                    const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
+                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${r.avg_duration || '-'}`);
                 }
 
                 // --- ENTRY TYPE PERFORMANCE ---
@@ -4447,6 +4584,11 @@
                                 .join(' ') || '-';
                             const adxDirStr = `<span class="text-emerald-400 text-xs">${r.adx_rising}R</span>/<span class="text-red-400 text-xs">${r.adx_falling}F</span>`;
                             const btcAdxDirStr = `<span class="text-emerald-400 text-xs">${r.btc_adx_rising}R</span>/<span class="text-red-400 text-xs">${r.btc_adx_falling}F</span>`;
+                            const btcRsiDirStr = `<span class="text-emerald-400 text-xs">${r.btc_rsi_rising || 0}R</span>/<span class="text-red-400 text-xs">${r.btc_rsi_falling || 0}F</span>`;
+                            const ema5DistVal = r.avg_ema5_dist;
+                            const ema5DistClass = ema5DistVal != null ? (ema5DistVal >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                            const totalPnlUsd = r.total_pnl_usd || 0;
+                            const totalPnlClass = totalPnlUsd >= 0 ? 'text-emerald-400' : 'text-red-400';
                             return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium">${r.reason} <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
@@ -4463,13 +4605,16 @@
                                 <td class="px-3 py-2 text-right">${r.avg_btc_rsi != null ? r.avg_btc_rsi.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-center">${btcAdxDirStr}</td>
+                                <td class="px-3 py-2 text-center">${btcRsiDirStr}</td>
+                                <td class="px-3 py-2 text-right ${ema5DistClass}">${ema5DistVal != null ? (ema5DistVal >= 0 ? '+' : '') + ema5DistVal.toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${r.avg_peak_pct >= 0 ? '+' : ''}${r.avg_peak_pct.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${totalPnlUsd.toFixed(2)}</td>
                                 <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.avg_duration || '-'}</td>
                             </tr>`;
                         }).join('');
                 } else {
-                    ecrBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ecrBody.innerHTML = '<tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap
@@ -6261,6 +6406,14 @@
                         ? 'text-red-400 font-bold'
                         : 'text-emerald-400 font-bold';
                     if (adxLowTag) adxLowTag.classList.toggle('hidden', !(isLow || isHigh));
+                    const adxDirTag = document.getElementById('btc-adx-dir-tag');
+                    if (adxDirTag && window._prevBtcAdx != null) {
+                        const isRising = btcAdxVal > window._prevBtcAdx;
+                        adxDirTag.textContent = isRising ? 'RISING' : 'FALLING';
+                        adxDirTag.className = `px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${isRising ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`;
+                        adxDirTag.classList.remove('hidden');
+                    }
+                    window._prevBtcAdx = btcAdxVal;
                 }
             } catch (e) {
                 console.error('Error loading pairs:', e);
@@ -6313,7 +6466,7 @@
         function switchOrdersTab(tab) {
             currentTab = tab;
             
-            ['transactions', 'open', 'closed'].forEach(t => {
+            ['transactions', 'open', 'closed', 'bnb-swaps'].forEach(t => {
                 document.getElementById(`tab-${t}`).classList.remove('tab-active');
                 document.getElementById(`content-${t}`).classList.add('hidden');
             });
@@ -6327,7 +6480,7 @@
             else if (tab === 'closed') {
                 loadClosedOrders();
                 loadPerformance();
-            }
+            } else if (tab === 'bnb-swaps') loadBnbSwaps();
         }
 
         // Load transactions
@@ -6538,6 +6691,56 @@
             }
         }
 
+        async function loadBnbSwaps() {
+            try {
+                const res = await fetch(`${API_BASE}/api/bnb-swaps`);
+                const data = await res.json();
+
+                const status = data.status || {};
+                const badge = document.getElementById('bnb-swap-status-badge');
+                if (status.bnb_swap_enabled) {
+                    badge.textContent = 'ON';
+                    badge.className = 'px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400';
+                } else {
+                    badge.textContent = 'OFF';
+                    badge.className = 'px-2 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400';
+                }
+                document.getElementById('bnb-swap-burn-rate').textContent = `$${(status.burn_rate_per_hour || 0).toFixed(2)}/hr`;
+                document.getElementById('bnb-swap-emergency').textContent = formatUSD(status.emergency_threshold || 0);
+                document.getElementById('bnb-swap-projected').textContent = formatUSD(status.projected_need || 0);
+                document.getElementById('bnb-swap-last-check').textContent = status.last_check ? new Date(status.last_check).toLocaleTimeString() : '--';
+
+                const swaps = data.swaps || [];
+                const tbody = document.getElementById('bnb-swaps-table-body');
+
+                if (swaps.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-500">No BNB swaps yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = swaps.map(s => {
+                    const typeBadge = s.swap_type === 'emergency'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/20 text-orange-400">EMERGENCY</span>'
+                        : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">SCHEDULED</span>';
+                    const afterClass = s.post_bnb_usd > s.pre_bnb_usd ? 'text-emerald-400' : 'text-white';
+                    return `
+                        <tr class="hover:bg-white/5 transition">
+                            <td class="px-4 py-3 text-sm">${s.timestamp ? formatTime(s.timestamp) : '--'}</td>
+                            <td class="px-4 py-3 text-center">${typeBadge}</td>
+                            <td class="px-4 py-3 text-right text-yellow-400 font-medium">${formatUSD(s.amount_usdt)}</td>
+                            <td class="px-4 py-3 text-right font-mono">${formatUSD(s.bnb_price)}</td>
+                            <td class="px-4 py-3 text-right font-mono">${(s.amount_bnb || 0).toFixed(4)}</td>
+                            <td class="px-4 py-3 text-right">${formatUSD(s.pre_bnb_usd)}</td>
+                            <td class="px-4 py-3 text-right ${afterClass} font-medium">${formatUSD(s.post_bnb_usd)}</td>
+                            <td class="px-4 py-3 text-right text-gray-400">${s.burn_rate != null ? '$' + s.burn_rate.toFixed(2) + '/hr' : '--'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Error loading BNB swaps:', e);
+            }
+        }
+
         // Close order manually
         async function closeOrder(orderId) {
             if (!confirm('Are you sure you want to close this position?')) return;
@@ -6599,6 +6802,10 @@
                 document.getElementById('config-reserve-mode').value = config.investment.reserve_mode;
                 document.getElementById('config-reserve-value').value = config.investment.reserve_mode === 'percentage' ? config.investment.reserve_percentage : config.investment.reserve_fixed;
                 document.getElementById('config-paper-balance').value = config.paper_balance;
+                document.getElementById('config-bnb-swap-enabled').value = config.bnb_swap_enabled ? 'true' : 'false';
+                document.getElementById('config-paper-bnb-initial').value = config.paper_bnb_initial_usd || 500;
+                document.getElementById('config-bnb-check-interval').value = config.bnb_check_interval_hours || 12;
+                document.getElementById('config-bnb-runway-hours').value = config.bnb_runway_hours || 24;
                 document.getElementById('config-cooldown-loss').value = config.investment.cooldown_after_loss_minutes || 5;
                 document.getElementById('config-max-positions').value = config.investment.max_open_positions || 100;
                 document.getElementById('config-min-investment').value = config.investment.min_investment_size || 100;
@@ -6651,6 +6858,8 @@
                 document.getElementById('config-btc-adx-max-long').value = config.thresholds.btc_adx_max_long !== undefined ? config.thresholds.btc_adx_max_long : 100;
                 document.getElementById('config-btc-adx-min-short').value = config.thresholds.btc_adx_min_short !== undefined ? config.thresholds.btc_adx_min_short : 0;
                 document.getElementById('config-btc-adx-max-short').value = config.thresholds.btc_adx_max_short !== undefined ? config.thresholds.btc_adx_max_short : 100;
+                document.getElementById('config-btc-adx-dir-long').value = config.thresholds.btc_adx_dir_long || 'both';
+                document.getElementById('config-btc-adx-dir-short').value = config.thresholds.btc_adx_dir_short || 'both';
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-long-rsi-max').value = config.thresholds.momentum_long_rsi_max !== undefined ? config.thresholds.momentum_long_rsi_max : 100;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
@@ -6852,6 +7061,10 @@
                 maker_exit_timeout_seconds: parseInt(document.getElementById('config-maker-exit-timeout').value) || 10,
                 maker_exit_offset_ticks: parseInt(document.getElementById('config-maker-exit-offset-ticks').value) || 2,
                 paper_balance: safeFloat(document.getElementById('config-paper-balance').value),
+                bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
+                paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
+                bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,
+                bnb_runway_hours: parseInt(document.getElementById('config-bnb-runway-hours').value) || 24,
                 investment: {
                     mode: invMode,
                     fixed_amount: invMode === 'fixed' ? invValue : 100,
@@ -6906,6 +7119,8 @@
                     btc_adx_max_long: safeFloat(document.getElementById('config-btc-adx-max-long').value),
                     btc_adx_min_short: safeFloat(document.getElementById('config-btc-adx-min-short').value),
                     btc_adx_max_short: safeFloat(document.getElementById('config-btc-adx-max-short').value),
+                    btc_adx_dir_long: document.getElementById('config-btc-adx-dir-long').value,
+                    btc_adx_dir_short: document.getElementById('config-btc-adx-dir-short').value,
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_long_rsi_max: safeFloat(document.getElementById('config-momentum-long-rsi-max').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),

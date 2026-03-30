@@ -145,6 +145,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_ema5_slope_pct FLOAT"))
                 if 'exit_ema5_crossed' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_ema5_crossed BOOLEAN"))
+                if 'entry_btc_rsi_prev' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_prev FLOAT"))
+                if 'entry_price_vs_ema5_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_price_vs_ema5_pct FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]
@@ -166,6 +170,8 @@ async def init_db():
                 bs_columns = [c['name'] for c in inspector.get_columns('bot_state')]
                 if 'ban_until' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN ban_until FLOAT DEFAULT 0.0"))
+                if 'paper_bnb_balance_usd' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN paper_bnb_balance_usd FLOAT DEFAULT 500.0"))
         
         await conn.run_sync(_migrate)
 

@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Order, Transaction, BotState, PairData
+from models import Order, Transaction, BotState, PairData, BnbSwapLog
 from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
@@ -86,6 +86,12 @@ class TradingEngine:
         self._initialized = False
         self._post_exit_tracking: Dict[int, dict] = {}
         self._rsi3_history: Dict[int, list] = {}  # per-order RSI history for 3-drop detection
+        # BNB fee management
+        self.paper_bnb_balance_usd: float = config.trading_config.paper_bnb_initial_usd
+        self._bnb_emergency_threshold: float = 0.0
+        self._bnb_projected_need: float = 0.0
+        self._bnb_burn_rate: float = 0.0
+        self._last_bnb_check: Optional[datetime] = None
     
     async def initialize(self, db: AsyncSession):
         """Initialize engine state from database (only on first call)"""
@@ -99,6 +105,7 @@ class TradingEngine:
             self.is_running = state.is_running
             self.is_paper_mode = state.is_paper_mode
             self.paper_balance = state.paper_balance
+            self.paper_bnb_balance_usd = getattr(state, 'paper_bnb_balance_usd', None) or config.trading_config.paper_bnb_initial_usd
             self.total_runtime_seconds = state.total_runtime_seconds
             if state.is_running and state.started_at:
                 self.started_at = state.started_at
@@ -108,6 +115,7 @@ class TradingEngine:
                 is_running=False,
                 is_paper_mode=True,
                 paper_balance=config.trading_config.paper_balance,
+                paper_bnb_balance_usd=config.trading_config.paper_bnb_initial_usd,
                 total_runtime_seconds=0
             )
             db.add(state)
@@ -129,6 +137,7 @@ class TradingEngine:
             state.is_running = self.is_running
             state.is_paper_mode = self.is_paper_mode
             state.paper_balance = self.paper_balance
+            state.paper_bnb_balance_usd = self.paper_bnb_balance_usd
             state.total_runtime_seconds = self.total_runtime_seconds
             state.started_at = self.started_at
             state.updated_at = datetime.utcnow()
@@ -137,6 +146,7 @@ class TradingEngine:
                 is_running=self.is_running,
                 is_paper_mode=self.is_paper_mode,
                 paper_balance=self.paper_balance,
+                paper_bnb_balance_usd=self.paper_bnb_balance_usd,
                 total_runtime_seconds=self.total_runtime_seconds,
                 started_at=self.started_at
             )
@@ -188,6 +198,10 @@ class TradingEngine:
             "is_running": self.is_running,
             "is_paper_mode": self.is_paper_mode,
             "paper_balance": self.paper_balance,
+            "paper_bnb_balance_usd": round(self.paper_bnb_balance_usd, 2),
+            "bnb_burn_rate": round(self._bnb_burn_rate, 2),
+            "bnb_emergency_threshold": round(self._bnb_emergency_threshold, 2),
+            "bnb_last_check": self._last_bnb_check.isoformat() if self._last_bnb_check else None,
             "runtime_seconds": runtime,
             "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         }
@@ -195,7 +209,7 @@ class TradingEngine:
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
         """Recalculate paper_balance from DB as source of truth.
         
-        Formula: initial_balance + sum(closed PnL) - sum(open investments)
+        Formula: initial_balance + sum(closed PnL) - sum(open investments) - sum(BNB swaps)
         This prevents any in-memory drift from accumulating.
         """
         initial = config.trading_config.paper_balance
@@ -211,7 +225,13 @@ class TradingEngine:
             )
         )
         total_open_margin = open_margin_result.scalar() or 0
-        correct_balance = initial + total_closed_pnl - total_open_margin
+        bnb_swap_result = await db.execute(
+            select(func.coalesce(func.sum(BnbSwapLog.amount_usdt), 0)).where(
+                BnbSwapLog.is_paper == True
+            )
+        )
+        total_bnb_swaps = bnb_swap_result.scalar() or 0
+        correct_balance = initial + total_closed_pnl - total_open_margin - total_bnb_swaps
         if abs(correct_balance - self.paper_balance) > 0.01:
             logger.warning(
                 f"[BALANCE_SYNC] Correcting drift: "
@@ -220,6 +240,194 @@ class TradingEngine:
             )
         self.paper_balance = correct_balance
         return correct_balance
+
+    async def _recalculate_paper_bnb(self, db: AsyncSession) -> float:
+        """Recalculate paper BNB balance from DB as source of truth.
+        
+        Formula: initial_bnb + sum(swap inflows) - sum(all fees from paper orders)
+        """
+        initial = config.trading_config.paper_bnb_initial_usd
+        swap_result = await db.execute(
+            select(func.coalesce(func.sum(BnbSwapLog.amount_usdt), 0)).where(
+                BnbSwapLog.is_paper == True
+            )
+        )
+        total_swaps = swap_result.scalar() or 0
+        fee_result = await db.execute(
+            select(func.coalesce(func.sum(Order.total_fee), 0)).where(
+                and_(Order.status == "CLOSED", Order.is_paper == True)
+            )
+        )
+        total_closed_fees = fee_result.scalar() or 0
+        open_entry_fee_result = await db.execute(
+            select(func.coalesce(func.sum(Order.entry_fee), 0)).where(
+                and_(Order.status == "OPEN", Order.is_paper == True)
+            )
+        )
+        total_open_entry_fees = open_entry_fee_result.scalar() or 0
+        correct = initial + total_swaps - total_closed_fees - total_open_entry_fees
+        self.paper_bnb_balance_usd = correct
+        return correct
+
+    async def _deduct_fee_from_bnb(self, fee_usd: float, db: AsyncSession):
+        """Deduct a fee (in USDT) from the paper BNB balance and check emergency threshold."""
+        if not self.is_paper_mode or fee_usd <= 0:
+            return
+        self.paper_bnb_balance_usd -= fee_usd
+        if self.paper_bnb_balance_usd < 0:
+            self.paper_bnb_balance_usd = 0
+        if config.trading_config.bnb_swap_enabled and self._bnb_emergency_threshold > 0:
+            if self.paper_bnb_balance_usd < self._bnb_emergency_threshold:
+                await self._execute_bnb_swap(db, swap_type="emergency")
+
+    async def _execute_bnb_swap(self, db: AsyncSession, swap_type: str = "scheduled"):
+        """Execute a USDT→BNB swap (paper or live)."""
+        tc = config.trading_config
+        if not tc.bnb_swap_enabled:
+            return
+        
+        target = self._bnb_projected_need if self._bnb_projected_need > 0 else tc.paper_bnb_initial_usd * 0.4
+        
+        if self.is_paper_mode:
+            current_bnb = self.paper_bnb_balance_usd
+            if current_bnb >= target:
+                return
+            shortfall = target - current_bnb
+            available_usdt = await self._recalculate_paper_balance(db)
+            min_investment = tc.investment.min_investment_size
+            if available_usdt - shortfall < min_investment:
+                shortfall = max(0, available_usdt - min_investment)
+            if shortfall <= 0:
+                logger.warning(f"[BNB_SWAP] Cannot swap: insufficient USDT (available={available_usdt:.2f})")
+                return
+            
+            bnb_price = await binance_service.get_bnb_price()
+            if bnb_price <= 0:
+                bnb_price = 600.0  # fallback for paper mode
+            
+            pre_usdt = self.paper_balance
+            pre_bnb = self.paper_bnb_balance_usd
+            self.paper_bnb_balance_usd += shortfall
+            
+            swap_log = BnbSwapLog(
+                swap_type=swap_type,
+                amount_usdt=shortfall,
+                bnb_price=bnb_price,
+                amount_bnb=round(shortfall / bnb_price, 6),
+                pre_bnb_usd=pre_bnb,
+                post_bnb_usd=self.paper_bnb_balance_usd,
+                pre_usdt=pre_usdt,
+                post_usdt=pre_usdt - shortfall,
+                burn_rate=self._bnb_burn_rate,
+                is_paper=True
+            )
+            db.add(swap_log)
+            await db.commit()
+            
+            await self._recalculate_paper_balance(db)
+            await self.save_state(db)
+            logger.info(
+                f"[BNB_SWAP] Paper {swap_type}: swapped ${shortfall:.2f} USDT → "
+                f"{shortfall/bnb_price:.4f} BNB @ ${bnb_price:.2f}. "
+                f"BNB: ${pre_bnb:.2f} → ${self.paper_bnb_balance_usd:.2f}"
+            )
+        else:
+            balance = await binance_service.get_balance()
+            bnb_price = await binance_service.get_bnb_price()
+            if bnb_price <= 0:
+                return
+            current_bnb_usd = balance['bnb_total'] * bnb_price
+            if current_bnb_usd >= target:
+                return
+            shortfall = target - current_bnb_usd
+            available_usdt = balance['usdt_free']
+            min_investment = tc.investment.min_investment_size
+            if available_usdt - shortfall < min_investment:
+                shortfall = max(0, available_usdt - min_investment)
+            if shortfall <= 5:
+                return
+            
+            result = await binance_service.buy_bnb(shortfall)
+            if not result:
+                return
+            
+            new_balance = await binance_service.get_balance()
+            swap_log = BnbSwapLog(
+                swap_type=swap_type,
+                amount_usdt=result['cost_usdt'],
+                bnb_price=result['price'],
+                amount_bnb=result['bnb_amount'],
+                pre_bnb_usd=current_bnb_usd,
+                post_bnb_usd=new_balance['bnb_total'] * result['price'],
+                pre_usdt=available_usdt,
+                post_usdt=new_balance['usdt_free'],
+                burn_rate=self._bnb_burn_rate,
+                is_paper=False
+            )
+            db.add(swap_log)
+            await db.commit()
+            logger.info(
+                f"[BNB_SWAP] Live {swap_type}: bought {result['bnb_amount']:.4f} BNB "
+                f"for ${result['cost_usdt']:.2f} @ ${result['price']:.2f}"
+            )
+
+    async def bnb_scheduled_check(self, db: AsyncSession):
+        """Scheduled BNB balance check: compute burn rate, project needs, swap if necessary."""
+        tc = config.trading_config
+        if not tc.bnb_swap_enabled:
+            return
+        
+        self._last_bnb_check = datetime.utcnow()
+        
+        now = datetime.utcnow()
+        cutoff_24h = now - timedelta(hours=24)
+        cutoff_12h = now - timedelta(hours=12)
+        
+        result_24h = await db.execute(
+            select(
+                func.coalesce(func.sum(Order.total_fee), 0),
+                func.count(Order.id)
+            ).where(
+                and_(Order.status == "CLOSED", Order.closed_at >= cutoff_24h)
+            )
+        )
+        row_24h = result_24h.one()
+        fees_24h = float(row_24h[0] or 0)
+        count_24h = int(row_24h[1] or 0)
+        
+        result_12h = await db.execute(
+            select(func.coalesce(func.sum(Order.total_fee), 0)).where(
+                and_(Order.status == "CLOSED", Order.closed_at >= cutoff_12h)
+            )
+        )
+        fees_12h = float(result_12h.scalar() or 0)
+        
+        hours_elapsed = 24.0 if count_24h > 0 else 0
+        self._bnb_burn_rate = fees_24h / hours_elapsed if hours_elapsed > 0 else 0
+        self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
+        self._bnb_emergency_threshold = fees_12h
+        
+        if self._bnb_projected_need <= 0:
+            logger.info("[BNB_CHECK] No fee history yet, skipping swap check")
+            return
+        
+        if self.is_paper_mode:
+            await self._recalculate_paper_bnb(db)
+            current_bnb = self.paper_bnb_balance_usd
+        else:
+            balance = await binance_service.get_balance()
+            bnb_price = await binance_service.get_bnb_price()
+            current_bnb = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
+        
+        logger.info(
+            f"[BNB_CHECK] Burn rate: ${self._bnb_burn_rate:.2f}/hr | "
+            f"Projected need ({tc.bnb_runway_hours}h): ${self._bnb_projected_need:.2f} | "
+            f"Emergency threshold (12h fees): ${self._bnb_emergency_threshold:.2f} | "
+            f"Current BNB: ${current_bnb:.2f}"
+        )
+        
+        if current_bnb < self._bnb_projected_need:
+            await self._execute_bnb_swap(db, swap_type="scheduled")
 
     async def get_available_balance(self, db: AsyncSession) -> float:
         """Get available balance for trading.
@@ -473,7 +681,8 @@ class TradingEngine:
             logger.warning(f"[MAKER_EXIT] {pair}: Orderbook unavailable, falling back to taker")
             result = await binance_service.close_position(symbol, direction, amount)
             if not result:
-                return {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER'}
+                logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
+                return None
             return {
                 'price': result['price'], 'fee_rate': taker_fee_rate,
                 'exit_order_type': 'TAKER_FALLBACK',
@@ -497,7 +706,8 @@ class TradingEngine:
             logger.warning(f"[MAKER_EXIT] {pair}: Limit order failed, falling back to taker")
             result = await binance_service.close_position(symbol, direction, amount)
             if not result:
-                return {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER'}
+                logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
+                return None
             return {
                 'price': result['price'], 'fee_rate': taker_fee_rate,
                 'exit_order_type': 'TAKER_FALLBACK',
@@ -540,7 +750,8 @@ class TradingEngine:
         logger.info(f"[MAKER_EXIT] {pair}: No fill, falling back to market order")
         result = await binance_service.close_position(symbol, direction, amount)
         if not result:
-            return {'price': current_price, 'fee_rate': taker_fee_rate, 'exit_order_type': 'TAKER'}
+            logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
+            return None
         return {
             'price': result['price'], 'fee_rate': taker_fee_rate,
             'exit_order_type': 'TAKER_FALLBACK',
@@ -624,7 +835,9 @@ class TradingEngine:
         entry_btc_ema20_slope: float = None,
         entry_btc_adx: float = None,
         entry_btc_adx_prev: float = None,
-        entry_btc_rsi: float = None
+        entry_btc_rsi: float = None,
+        entry_btc_rsi_prev: float = None,
+        entry_price_vs_ema5_pct: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -783,6 +996,8 @@ class TradingEngine:
             entry_btc_adx=entry_btc_adx,
             entry_btc_adx_prev=entry_btc_adx_prev,
             entry_btc_rsi=entry_btc_rsi,
+            entry_btc_rsi_prev=entry_btc_rsi_prev,
+            entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -820,6 +1035,7 @@ class TradingEngine:
         # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
             await self._recalculate_paper_balance(db)
+            await self._deduct_fee_from_bnb(entry_fee, db)
             await self.save_state(db)
         
         # Force reset WebSocket tracking for new order (fresh start from entry price)
@@ -932,40 +1148,69 @@ class TradingEngine:
         exit_order_type = 'TAKER'
         actual_exit_price = current_price
 
-        if maker_exit_enabled:
-            if not self.is_paper_mode:
-                symbol = order.pair.replace('USDT', '/USDT:USDT')
-                exit_result = await self._try_maker_exit(
-                    symbol=symbol, side=order.direction, amount=order.quantity,
-                    pair=order.pair, direction=order.direction, current_price=current_price
+        if not self.is_paper_mode:
+            # --- Live mode: exit with bounded retry ---
+            max_exit_retries = 3
+            exit_result = None
+
+            for attempt in range(1, max_exit_retries + 1):
+                if maker_exit_enabled and reason != "MANUAL":
+                    symbol = order.pair.replace('USDT', '/USDT:USDT')
+                    exit_result = await self._try_maker_exit(
+                        symbol=symbol, side=order.direction, amount=order.quantity,
+                        pair=order.pair, direction=order.direction, current_price=current_price
+                    )
+                else:
+                    symbol = order.pair.replace('USDT', '/USDT:USDT')
+                    result = await binance_service.close_position(
+                        symbol=symbol, side=order.direction, amount=order.quantity
+                    )
+                    if result:
+                        exit_result = {
+                            'price': current_price,
+                            'fee_rate': taker_fee_rate,
+                            'exit_order_type': 'TAKER',
+                        }
+                    else:
+                        exit_result = None
+
+                if exit_result is not None:
+                    break
+
+                if attempt < max_exit_retries:
+                    logger.warning(
+                        f"[EXIT_RETRY] {order.pair}: Attempt {attempt}/{max_exit_retries} failed, retrying in 2s..."
+                    )
+                    await asyncio.sleep(2)
+                    fresh_price = self._ws_prices.get(order.pair)
+                    if fresh_price and fresh_price > 0:
+                        current_price = fresh_price
+
+            if exit_result is None:
+                logger.critical(
+                    f"[EXIT_FAILED] {order.pair}: All {max_exit_retries} exit attempts failed — order stays OPEN for monitor retry"
                 )
-                actual_exit_price = exit_result['price']
-                exit_fee_rate = exit_result['fee_rate']
-                exit_order_type = exit_result['exit_order_type']
-            else:
+                return None
+
+            actual_exit_price = exit_result['price']
+            exit_fee_rate = exit_result['fee_rate']
+            exit_order_type = exit_result['exit_order_type']
+            notional_at_close = order.quantity * actual_exit_price
+            exit_fee = notional_at_close * exit_fee_rate
+        else:
+            # --- Paper mode: no retry needed ---
+            if maker_exit_enabled and reason != "MANUAL":
                 exit_result = await self._simulate_maker_exit_paper(
                     pair=order.pair, direction=order.direction, current_price=current_price
                 )
                 actual_exit_price = exit_result['price']
                 exit_fee_rate = exit_result['fee_rate']
                 exit_order_type = exit_result['exit_order_type']
-
-            notional_at_close = order.quantity * actual_exit_price
-            exit_fee = notional_at_close * exit_fee_rate
-        else:
-            # Standard taker exit
-            notional_at_close = order.quantity * current_price
-            exit_fee = notional_at_close * taker_fee_rate
-
-            if not self.is_paper_mode:
-                symbol = order.pair.replace('USDT', '/USDT:USDT')
-                result = await binance_service.close_position(
-                    symbol=symbol,
-                    side=order.direction,
-                    amount=order.quantity
-                )
-                if not result:
-                    return None
+                notional_at_close = order.quantity * actual_exit_price
+                exit_fee = notional_at_close * exit_fee_rate
+            else:
+                notional_at_close = order.quantity * current_price
+                exit_fee = notional_at_close * taker_fee_rate
 
         total_fee = order.entry_fee + exit_fee
 
@@ -1082,6 +1327,7 @@ class TradingEngine:
         # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
             await self._recalculate_paper_balance(db)
+            await self._deduct_fee_from_bnb(exit_fee, db)
             await self.save_state(db)
         
         # Keep WebSocket subscription active for all top pairs (real-time price display)
@@ -1792,6 +2038,7 @@ class TradingEngine:
         btc_adx = None
         btc_adx_prev = None
         btc_rsi = None
+        btc_rsi_prev = None
         if btc_global_enabled:
             btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
             if btc_ohlcv:
@@ -1802,6 +2049,7 @@ class TradingEngine:
                     btc_adx = btc_indicators.get('adx')
                     btc_adx_prev = btc_indicators.get('adx_prev1')
                     btc_rsi = btc_indicators.get('rsi')
+                    btc_rsi_prev = btc_indicators.get('rsi_prev1')
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                     btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
                     if btc_ema20 and btc_ema20_prev6 and btc_ema20_prev6 != 0:
@@ -1898,6 +2146,14 @@ class TradingEngine:
                         if (_adx_lo > 0 and btc_adx < _adx_lo) or (_adx_hi < 100 and btc_adx > _adx_hi):
                             btc_adx_range_blocks = True
 
+                    btc_adx_dir_blocks = False
+                    if btc_adx is not None and btc_adx_prev is not None:
+                        _adx_dir_cfg = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
+                        if _adx_dir_cfg == 'rising' and btc_adx <= btc_adx_prev:
+                            btc_adx_dir_blocks = True
+                        elif _adx_dir_cfg == 'falling' and btc_adx >= btc_adx_prev:
+                            btc_adx_dir_blocks = True
+
                     btc_cross_blocks = False
                     btc_cross_reason = ""
                     if btc_rsi is not None and btc_adx is not None:
@@ -1919,9 +2175,13 @@ class TradingEngine:
                                 except (ValueError, TypeError):
                                     continue
 
-                    if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_cross_blocks:
+                    if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_adx_dir_blocks or btc_cross_blocks:
                         if btc_cross_blocks:
                             reason = btc_cross_reason
+                        elif btc_adx_dir_blocks:
+                            _adx_dir_label = "Rising" if btc_adx > btc_adx_prev else "Falling"
+                            _adx_dir_want = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
+                            reason = f"BTC ADX {_adx_dir_label} ({btc_adx:.1f} vs prev {btc_adx_prev:.1f}), {signal} requires {_adx_dir_want}"
                         elif btc_rsi_blocks:
                             reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
                         elif btc_adx_range_blocks:
@@ -1944,8 +2204,10 @@ class TradingEngine:
                     if indicators.get('ema5') and indicators.get('ema8') and indicators['ema8'] > 0:
                         entry_ema_gap_5_8 = round(abs((indicators['ema5'] - indicators['ema8']) / indicators['ema8'] * 100), 4)
                     entry_ema5_stretch = None
+                    entry_price_vs_ema5_pct = None
                     if indicators.get('ema5') and indicators['price'] > 0:
                         entry_ema5_stretch = round(abs(indicators['price'] - indicators['ema5']) / indicators['price'] * 100, 4)
+                        entry_price_vs_ema5_pct = round((indicators['price'] - indicators['ema5']) / indicators['ema5'] * 100, 4)
                     entry_rsi = indicators.get('rsi')
                     entry_adx = indicators.get('adx')
                     entry_adx_prev = indicators.get('adx_prev1')
@@ -1978,7 +2240,9 @@ class TradingEngine:
                         entry_btc_ema20_slope=btc_ema20_slope_pct,
                         entry_btc_adx=round(btc_adx, 1) if btc_adx is not None else None,
                         entry_btc_adx_prev=round(btc_adx_prev, 1) if btc_adx_prev is not None else None,
-                        entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None
+                        entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
+                        entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
+                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct
                     )
 
                     if order:

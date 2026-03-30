@@ -64,6 +64,8 @@ class Order(Base):
     entry_adx_prev = Column(Float, nullable=True)
     # EMA5 stretch: abs(price - ema5) / price * 100 at time of entry
     entry_ema5_stretch = Column(Float, nullable=True)
+    # Signed price vs EMA5 at entry: (price - ema5) / ema5 * 100 (positive = above, negative = below)
+    entry_price_vs_ema5_pct = Column(Float, nullable=True)
     # Macro trend regime at time of entry (BULLISH, BEARISH, NEUTRAL)
     entry_macro_trend = Column(String(10), nullable=True)
     # EMA20 slope % of the pair at entry: ((ema20 - ema20_prev6) / ema20_prev6) * 100
@@ -76,6 +78,8 @@ class Order(Base):
     entry_btc_adx_prev = Column(Float, nullable=True)
     # BTC RSI(14) value at entry
     entry_btc_rsi = Column(Float, nullable=True)
+    # BTC RSI(14) one candle prior (for BTC RSI direction analysis)
+    entry_btc_rsi_prev = Column(Float, nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)
@@ -222,6 +226,9 @@ class BotState(Base):
     # Paper trading balance
     paper_balance = Column(Float, nullable=False, default=10000.0)
     
+    # Paper BNB balance (USDT equivalent)
+    paper_bnb_balance_usd = Column(Float, nullable=False, default=500.0)
+    
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)
     
@@ -238,6 +245,24 @@ class ConfigChangeLog(Base):
     old_value = Column(String(200), nullable=True)
     new_value = Column(String(200), nullable=True)
     changed_at = Column(DateTime, nullable=False, default=func.now())
+
+
+class BnbSwapLog(Base):
+    """Log of automatic USDT→BNB swaps for fee coverage"""
+    __tablename__ = "bnb_swap_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=func.now())
+    swap_type = Column(String(20), nullable=False)  # "scheduled" or "emergency"
+    amount_usdt = Column(Float, nullable=False)
+    bnb_price = Column(Float, nullable=False)
+    amount_bnb = Column(Float, nullable=False)
+    pre_bnb_usd = Column(Float, nullable=False)
+    post_bnb_usd = Column(Float, nullable=False)
+    pre_usdt = Column(Float, nullable=False)
+    post_usdt = Column(Float, nullable=False)
+    burn_rate = Column(Float, nullable=True)
+    is_paper = Column(Boolean, nullable=False, default=True)
 
 
 class PairData(Base):

@@ -71,8 +71,19 @@ class BinanceService:
                 'adjustForTimeDifference': True
             }
         })
+        
+        # Spot exchange for BNB purchases (same API keys)
+        self.spot_exchange = ccxt.binance({
+            'apiKey': settings.binance_api_key,
+            'secret': settings.binance_api_secret,
+            'enableRateLimit': True,
+            'options': {
+                'adjustForTimeDifference': True
+            }
+        })
         self._markets_loaded = False
         self._public_markets_loaded = False
+        self._spot_markets_loaded = False
     
     async def load_markets(self):
         """Load market data for private exchange"""
@@ -118,10 +129,59 @@ class BinanceService:
                 except Exception as cb_err:
                     logger.error(f"[BINANCE] Failed to persist ban state: {cb_err}")
 
+    async def _load_spot_markets(self):
+        """Load market data for spot exchange"""
+        if not self._spot_markets_loaded:
+            await self.spot_exchange.load_markets()
+            self._spot_markets_loaded = True
+
+    async def get_bnb_price(self) -> float:
+        """Get current BNB/USDT price from spot market"""
+        try:
+            await self.load_public_markets()
+            ticker = await self.public_exchange.fetch_ticker('BNB/USDT:USDT')
+            return float(ticker.get('last', 0))
+        except Exception:
+            try:
+                await self._load_spot_markets()
+                ticker = await self.spot_exchange.fetch_ticker('BNB/USDT')
+                return float(ticker.get('last', 0))
+            except Exception as e:
+                logger.error(f"[BINANCE] Error fetching BNB price: {e}")
+                return 0.0
+
+    async def buy_bnb(self, amount_usdt: float) -> Optional[Dict]:
+        """Buy BNB with USDT on spot market. Returns fill details."""
+        try:
+            await self._load_spot_markets()
+            bnb_price = await self.get_bnb_price()
+            if bnb_price <= 0:
+                logger.error("[BNB_SWAP] Cannot buy BNB: price unavailable")
+                return None
+            bnb_qty = round(amount_usdt / bnb_price, 3)
+            if bnb_qty < 0.001:
+                logger.warning(f"[BNB_SWAP] Swap amount too small: {bnb_qty} BNB")
+                return None
+            order = await self.spot_exchange.create_order(
+                symbol='BNB/USDT', type='market', side='buy', amount=bnb_qty
+            )
+            fill_price = float(order.get('average', order.get('price', bnb_price)))
+            fill_amount = float(order.get('filled', order.get('amount', bnb_qty)))
+            return {
+                'bnb_amount': fill_amount,
+                'price': fill_price,
+                'cost_usdt': fill_amount * fill_price,
+                'order_id': order.get('id')
+            }
+        except Exception as e:
+            logger.error(f"[BNB_SWAP] Error buying BNB: {e}")
+            return None
+
     async def close(self):
         """Close exchange connections"""
         await self.exchange.close()
         await self.public_exchange.close()
+        await self.spot_exchange.close()
     
     async def get_balance(self) -> Dict:
         """Get account balance"""

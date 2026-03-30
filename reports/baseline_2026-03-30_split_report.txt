@@ -1,0 +1,132 @@
+================================================================================
+TRADING BOT SPLIT ANALYTICS REPORT — BASELINE SNAPSHOT
+Generated: 2026-03-30T13:55:01.791Z
+Saved as pre-deployment baseline for comparison
+Total Trades: 35 (18L BULLISH / 17S BEARISH)
+================================================================================
+
+## CONFIGURATION
+
+Signal Thresholds:
+  EMA Gap Threshold L: 0.02  |  S: 0.02  |  EMA Gap Max: 0.35
+  ADX Very Strong: L>25 S>30  |  ADX Strong: L>18 S>25  |  ADX Max: L30 S35
+  LONG RSI: 40 - 65  |  SHORT RSI: 30 - 50
+  RSI x ADX Filter L: (none)  |  S: 30-35:25,35-50:30
+  Macro Trend Filter: true  |  BTC Global: true  |  Neutral Mode: none  |  Min BTC ADX: 18
+  EMA20 Filter Long: true  |  Short: true
+  EMA20 Slope Long: true  |  Short: true
+  RSI Momentum Filter: true  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)
+  EMA Gap Expanding Filter: true  (block entry if EMA5-EMA8 gap compressing vs prev candle)
+
+Exit Settings:
+  Regime Change Exit: true  (close on opposite BTC regime shift)
+  Signal Lost Exit: true  |  Signal Lost Range: [-0.9%, -0.5%]
+  RSI Momentum Exit: false  |  Range: [-0.8%, -0.45%]
+  Tick Momentum Exit: true  |  Min Profit: 0.03%  |  Min Deltas: 0.12%  |  Windows: 15,30,45s
+
+################################################################################
+### BULLISH REGIME (18 LONG trades)
+################################################################################
+
+## OVERALL PERFORMANCE
+Total Trades: 18  (18L / 0S)
+Wins: 12  |  Losses: 6  |  Win Rate: 66.67%
+Avg Win: $153.02  |  Avg Loss: $-155.42
+Total P&L: $903.73 (3.99%)  |  Fees: $280.31
+Avg Duration: 01:00:58
+
+## Closing Reason Summary
+TICK_MOMENTUM_EXIT L1  11  61.1%  11L/0S  Avg P&L% +0.60%  Total$ +$1627.83
+SIGNAL_LOST L1          6  33.3%   6L/0S  Avg P&L% -0.60%  Total$ -$932.52
+REGIME_CHANGE L1        1   5.6%   1L/0S  Avg P&L% +0.79%  Total$ +$208.42
+
+## Entry Conditions by Close Reason
+TICK_MOMENTUM_EXIT L1 (L)  AvgRSI:59.7  AvgADX:22.0  EMA20Slp:0.25%  BTCSlp:0.14%  BTCADX:23.7
+SIGNAL_LOST L1 (L)         AvgRSI:62.6  AvgADX:23.0  EMA20Slp:0.20%  BTCSlp:0.10%  BTCADX:23.3
+
+## Tick Momentum Shadow (LONG)
+Config                                    Tot  Trg  %Trg  Skip      PhP&L     ActP&L     Delta    MinPh  MinAc  %Ph1   NT  %NT    NTP&L       TotPh      TotAct
+A (15,30,45s / 0.15%) (L)                 18    6   33%  5(28%)  +0.2986%  +0.2757%  +0.0228%   6.4m   5.5m   33%    7  39%  -0.4009%    -1.0152%    -1.1521%
+B (30,45,60s / 0.12%) (L)                 18   12   67%   1(6%)  +0.2231%  +0.3731%  -0.1500%  22.6m  52.7m   60%    5  28%  -0.3345%    +1.0049%    +2.8044%
+C (30,45,60s / 0.15%) (L)                 18    9   50%  3(17%)  +0.2148%  +0.3089%  -0.0941%   9.5m  16.9m   38%    6  33%  -0.3852%    -0.3782%    +0.4689%
+D (30,60,90s / 0.12%) (L)                 18   12   67%   1(6%)  +0.2321%  +0.3731%  -0.1410%  26.4m  52.7m   60%    5  28%  -0.3345%    +1.1120%    +2.8044%
+E (30,60,90s / 0.15%) (L)                 18   10   56%  2(11%)  +0.4209%  +0.5083%  -0.0873%  31.0m  40.0m   44%    6  33%  -0.3852%    +1.8980%    +2.7714%
+F (30,60,90s / 0.08/0.12/0.18%) (L)       18   12   67%  2(11%)  +0.2414%  +0.4363%  -0.1949%  27.3m  40.0m   56%    4  22%  -0.6161%    +0.4327%    +2.7714%
+
+LONG CONCLUSION: Current config (15,30,45s/0.12%) outperforms all phantoms. All deltas negative. Keep current for LONGs.
+
+## Signal Lost Shadow (LONG)
+LONG | SL Trades: 6 | Avg SL Close P&L: -0.5997% | Avg Peak at: 26.8min
+Recovery to -0.25%: 6/6 (100%)  Improvement: +0.3497%
+Recovery to -0.10%: 5/6 (83%)   Improvement: +0.4997%
+Recovery to 0% (BE): 3/6 (50%)  Improvement: +0.5997%
+Signal Regain: 5/6 (83%)        Improvement: +0.2436%
+
+## BE Shadow (LONG)
+L1 (0.5%→0.2%): 10 trig, 6 would exit at +0.20% vs actual +0.78% = Delta +0.58% (BE hurts)
+L2 (1%→0.5%):    5 trig, 0 would exit (all pass through)
+
+################################################################################
+### BEARISH REGIME (17 SHORT trades)
+################################################################################
+
+## OVERALL PERFORMANCE
+Total Trades: 17  (0L / 17S)
+Wins: 11  |  Losses: 6  |  Win Rate: 64.71%
+Avg Win: $190.44  |  Avg Loss: $-146.77
+Total P&L: $1214.24 (5.55%)  |  Fees: $297.51
+Avg Duration: 00:47:37
+
+## Closing Reason Summary
+SIGNAL_LOST L1          6  35.3%  0L/6S  Avg P&L% -0.53%  Total$ -$880.63
+TICK_MOMENTUM_EXIT L1  11  64.7%  0L/11S Avg P&L% +0.90%  Total$ +$2094.88
+
+## Entry Conditions by Close Reason
+TICK_MOMENTUM_EXIT L1 (S)  AvgRSI:34.4  AvgADX:30.1  EMA20Slp:0.19%  BTCSlp:0.14%  BTCADX:27.7
+SIGNAL_LOST L1 (S)         AvgRSI:37.6  AvgADX:31.0  EMA20Slp:0.09%  BTCSlp:0.07%  BTCADX:27.8
+
+## Tick Momentum Shadow (SHORT)
+Config                                    Tot  Trg  %Trg  Skip      PhP&L     ActP&L     Delta    MinPh  MinAc  %Ph1   NT  %NT    NTP&L       TotPh      TotAct
+A (15,30,45s / 0.15%) (S)                 17   10   59%  2(12%)  +1.0421%  +0.8945%  +0.1476%  55.4m  47.9m   44%    5  29%  -0.5336%    +7.7526%    +6.2768%
+B (30,45,60s / 0.12%) (S)                 17   12   71%   0(0%)  +0.9063%  +0.7765%  +0.1299%  35.4m  48.2m   91%    5  29%  -0.5336%    +8.2077%    +6.6495%
+C (30,45,60s / 0.15%) (S)                 17   12   71%   0(0%)  +1.0274%  +0.7765%  +0.2510%  47.5m  48.2m   46%    5  29%  -0.5336%    +9.6610%    +6.6495%
+D (30,60,90s / 0.12%) (S)                 17   12   71%   0(0%)  +1.0910%  +0.7765%  +0.3146%  40.2m  48.2m   73%    5  29%  -0.5336%   +10.4245%    +6.6495%
+E (30,60,90s / 0.15%) (S)                 17   12   71%   0(0%)  +1.0648%  +0.7765%  +0.2884%  46.9m  48.2m   55%    5  29%  -0.5336%   +10.1098%    +6.6495%
+F (30,60,90s / 0.08/0.12/0.18%) (S)       17   12   71%   0(0%)  +1.2079%  +0.7765%  +0.4314%  46.2m  48.2m   36%    5  29%  -0.5336%   +11.8268%    +6.6495%
+
+SHORT CONCLUSION: ALL phantoms outperform actual. Config F is best (+11.83% vs +6.65%, +78% improvement).
+Wider windows (30,60,90s) consistently beat narrower. Variable delta in F is most effective.
+SHORTs need different (wider) tick momentum config than LONGs.
+
+## Signal Lost Shadow (SHORT)
+SHORT | SL Trades: 6 | Avg SL Close P&L: -0.5342% | Avg Peak at: 23.9min
+Recovery to -0.25%: 4/6 (67%)   Improvement: +0.2842%
+Recovery to -0.10%: 2/6 (33%)   Improvement: +0.4342%
+Recovery to 0% (BE): 2/6 (33%)  Improvement: +0.5342%
+Tick Momentum: 1/6 (17%)        Improvement: +2.5852%
+
+## BE Shadow (SHORT)
+L1 (0.5%→0.2%): 8 trig, 1 would exit at +0.20% vs actual +0.19% = Delta -0.01% (negligible)
+L2 (1%→0.5%):   6 trig, 1 would exit at +0.50% vs actual +0.26% = Delta -0.24% (BE hurts)
+
+################################################################################
+### KEY INDICATORS — EMA20 SLOPE FILTER (strongest discriminator for SHORTs)
+################################################################################
+
+## SHORT Pair EMA20 Slope
+< 0.08%: 4 trades, 0% WR, -$569.82 (ALL LOSSES)
+>= 0.08%: 13 trades, 76.9% WR, +$1,784.06
+
+## LONG Pair EMA20 Slope (less clear pattern)
+0.06-0.08%: 2 trades, 100% WR, +$141.81
+0.20-0.25%: 4 trades, 100% WR, +$1028.91
+Pattern not as clean as SHORTs
+
+################################################################################
+### COMBINED TOTALS
+################################################################################
+
+Total P&L: $2,117.97 (18L: $903.73 + 17S: $1,214.24)
+Total Fees: $577.82
+Combined Win Rate: 65.7% (23W / 12L)
+Runtime: 0.68 days

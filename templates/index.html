@@ -1970,10 +1970,6 @@
                                 <input type="number" step="0.01" id="config-macro-trend-flat-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
-                            <label class="flex items-center text-sm text-gray-400">
-                                Min BTC ADX:
-                                <input type="number" step="1" min="0" id="config-macro-trend-min-btc-adx" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
-                            </label>
                         </div>
                         <div class="flex items-center gap-4 mt-2 flex-wrap">
                             <span class="text-xs text-gray-500 w-20">RSI BTC LONG:</span>
@@ -3433,7 +3429,7 @@
             const rsiAdxL = th.rsi_adx_filter_long || '(none)';
             const rsiAdxS = th.rsi_adx_filter_short || '(none)';
             lines.push(`  RSI x ADX Filter L: ${rsiAdxL}  |  S: ${rsiAdxS}`);
-            lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}  |  Min BTC ADX: ${th.macro_trend_min_btc_adx !== undefined ? th.macro_trend_min_btc_adx : 0}`);
+            lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
@@ -6251,15 +6247,20 @@
 
                 const adxValueEl = document.getElementById('btc-adx-value');
                 const adxLowTag = document.getElementById('btc-adx-low-tag');
-                const minBtcAdxEl = document.getElementById('config-macro-trend-min-btc-adx');
-                const minBtcAdx = minBtcAdxEl ? parseFloat(minBtcAdxEl.value) || 0 : 0;
+                const adxMinL = parseFloat(document.getElementById('config-btc-adx-min-long')?.value) || 0;
+                const adxMinS = parseFloat(document.getElementById('config-btc-adx-min-short')?.value) || 0;
+                const adxMaxL = parseFloat(document.getElementById('config-btc-adx-max-long')?.value) || 100;
+                const adxMaxS = parseFloat(document.getElementById('config-btc-adx-max-short')?.value) || 100;
+                const effectiveMin = Math.min(adxMinL || 0, adxMinS || 0);
+                const effectiveMax = Math.max(adxMaxL || 100, adxMaxS || 100);
                 if (adxValueEl && btcAdxVal != null) {
                     adxValueEl.textContent = btcAdxVal.toFixed(1);
-                    const isLow = minBtcAdx > 0 && btcAdxVal < minBtcAdx;
-                    adxValueEl.className = isLow
+                    const isLow = effectiveMin > 0 && btcAdxVal < effectiveMin;
+                    const isHigh = effectiveMax < 100 && btcAdxVal > effectiveMax;
+                    adxValueEl.className = (isLow || isHigh)
                         ? 'text-red-400 font-bold'
                         : 'text-emerald-400 font-bold';
-                    if (adxLowTag) adxLowTag.classList.toggle('hidden', !isLow);
+                    if (adxLowTag) adxLowTag.classList.toggle('hidden', !(isLow || isHigh));
                 }
             } catch (e) {
                 console.error('Error loading pairs:', e);
@@ -6642,7 +6643,6 @@
                 document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
                 document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
-                document.getElementById('config-macro-trend-min-btc-adx').value = config.thresholds.macro_trend_min_btc_adx !== undefined ? config.thresholds.macro_trend_min_btc_adx : 0;
                 document.getElementById('config-btc-rsi-min-long').value = config.thresholds.btc_rsi_min_long !== undefined ? config.thresholds.btc_rsi_min_long : 0;
                 document.getElementById('config-btc-rsi-max-long').value = config.thresholds.btc_rsi_max_long !== undefined ? config.thresholds.btc_rsi_max_long : 100;
                 document.getElementById('config-btc-rsi-min-short').value = config.thresholds.btc_rsi_min_short !== undefined ? config.thresholds.btc_rsi_min_short : 0;
@@ -6898,7 +6898,6 @@
                     btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
                     macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
-                    macro_trend_min_btc_adx: safeFloat(document.getElementById('config-macro-trend-min-btc-adx').value),
                     btc_rsi_min_long: safeFloat(document.getElementById('config-btc-rsi-min-long').value),
                     btc_rsi_max_long: safeFloat(document.getElementById('config-btc-rsi-max-long').value),
                     btc_rsi_min_short: safeFloat(document.getElementById('config-btc-rsi-min-short').value),

@@ -94,7 +94,6 @@ class SignalThresholds(BaseModel):
     momentum_adx_max: float = 100.0  # Max ADX for momentum entries (100 = disabled)
     momentum_short_rsi_min: float = 30.0  # Min RSI for momentum SHORT - avoid shorting oversold (0 = disabled)
     btc_global_filter_enabled: bool = True  # Use BTC regime to gate all pairs (overrides per-pair regime)
-    macro_trend_min_btc_adx: float = 0  # Min BTC ADX to allow entries (0 = disabled)
     btc_rsi_min_long: float = 0  # Min BTC RSI to allow LONGs (0 = disabled)
     btc_rsi_max_long: float = 100  # Max BTC RSI to allow LONGs (100 = disabled)
     btc_rsi_min_short: float = 0  # Min BTC RSI to allow SHORTs (0 = disabled)

@@ -1875,11 +1875,6 @@ class TradingEngine:
 
                     pair_blocks = (pair_regime != btc_regime)
 
-                    min_btc_adx = getattr(config.trading_config.thresholds, 'macro_trend_min_btc_adx', 0)
-                    btc_adx_blocks = False
-                    if min_btc_adx > 0 and btc_adx is not None and btc_adx < min_btc_adx:
-                        btc_adx_blocks = True
-
                     _th = config.trading_config.thresholds
                     btc_rsi_blocks = False
                     if btc_rsi is not None:
@@ -1924,15 +1919,13 @@ class TradingEngine:
                                 except (ValueError, TypeError):
                                     continue
 
-                    if btc_blocks or pair_blocks or btc_adx_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_cross_blocks:
+                    if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_cross_blocks:
                         if btc_cross_blocks:
                             reason = btc_cross_reason
                         elif btc_rsi_blocks:
                             reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
                         elif btc_adx_range_blocks:
                             reason = f"BTC ADX {btc_adx:.1f} out of {signal} range [{_adx_lo}-{_adx_hi}]"
-                        elif btc_adx_blocks:
-                            reason = f"BTC ADX {btc_adx:.1f} < min {min_btc_adx}"
                         elif btc_blocks:
                             reason = f"BTC={btc_regime}"
                         else:

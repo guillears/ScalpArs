@@ -209,8 +209,11 @@ class TradingEngine:
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
         """Recalculate paper_balance from DB as source of truth.
         
-        Formula: initial_balance + sum(closed PnL) - sum(open investments) - sum(BNB swaps)
-        This prevents any in-memory drift from accumulating.
+        Formula: initial + closed_pnl + closed_fees - open_margin - bnb_swaps
+        
+        Fees are paid from BNB, not USDT. Since Order.pnl is net of fees,
+        we add back closed fees to avoid double-counting (fees already tracked
+        in the BNB balance via _deduct_fee_from_bnb).
         """
         initial = config.trading_config.paper_balance
         closed_pnl_result = await db.execute(
@@ -219,6 +222,12 @@ class TradingEngine:
             )
         )
         total_closed_pnl = closed_pnl_result.scalar() or 0
+        closed_fees_result = await db.execute(
+            select(func.coalesce(func.sum(Order.total_fee), 0)).where(
+                and_(Order.status == "CLOSED", Order.is_paper == True)
+            )
+        )
+        total_closed_fees = closed_fees_result.scalar() or 0
         open_margin_result = await db.execute(
             select(func.coalesce(func.sum(Order.investment), 0)).where(
                 and_(Order.status == "OPEN", Order.is_paper == True)
@@ -231,7 +240,7 @@ class TradingEngine:
             )
         )
         total_bnb_swaps = bnb_swap_result.scalar() or 0
-        correct_balance = initial + total_closed_pnl - total_open_margin - total_bnb_swaps
+        correct_balance = initial + total_closed_pnl + total_closed_fees - total_open_margin - total_bnb_swaps
         if abs(correct_balance - self.paper_balance) > 0.01:
             logger.warning(
                 f"[BALANCE_SYNC] Correcting drift: "

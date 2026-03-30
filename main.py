@@ -799,6 +799,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "be_shadow_tracking": [],
             "tick_momentum_shadow": [],
             "signal_lost_shadow": [],
+            "exit_quality_ema5": [],
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
@@ -1311,6 +1312,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "be_shadow_tracking": [],
             "tick_momentum_shadow": [],
             "signal_lost_shadow": [],
+            "exit_quality_ema5": [],
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
@@ -2060,6 +2062,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             post_exit_troughs = [o.post_exit_trough_pnl for o in data["trades"] if o.post_exit_trough_pnl is not None]
 
             rsi2_fired = [o for o in data["trades"] if o.first_rsi2_pnl is not None]
+            ema5_dists = [o.exit_price_vs_ema5_pct for o in data["trades"] if o.exit_price_vs_ema5_pct is not None]
 
             by_close_reason[reason] = {
                 "trades": count,
@@ -2080,6 +2083,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "rsi2_fire_pct": round(len(rsi2_fired) / count * 100, 1) if count > 0 else 0,
                 "avg_rsi2_pnl": round(sum(o.first_rsi2_pnl for o in rsi2_fired) / len(rsi2_fired), 4) if rsi2_fired else None,
                 "avg_rsi2_min": round(sum(o.first_rsi2_minutes for o in rsi2_fired) / len(rsi2_fired), 1) if rsi2_fired else None,
+                "avg_exit_ema5_pct": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
@@ -2666,6 +2670,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 floor_orders = [o for o in sig_regained_orders if o.post_exit_floor_before_signal_regain is not None]
                 avg_floor_before_sig_regain = sum(o.post_exit_floor_before_signal_regain for o in floor_orders) / len(floor_orders) if floor_orders else None
 
+                ema5_dists_pe = [o.exit_price_vs_ema5_pct for o in group if o.exit_price_vs_ema5_pct is not None]
+                ema5_slopes_pe = [o.exit_ema5_slope_pct for o in group if o.exit_ema5_slope_pct is not None]
+                ema5_crossed_pe = sum(1 for o in group if o.exit_ema5_crossed is True)
+
                 no_regain = [o for o in group if o.post_exit_signal_regained_minutes is None]
                 nr_count = len(no_regain)
                 nr_rec_neg020 = sum(1 for o in no_regain if (o.post_exit_peak_pnl or 0) >= -0.20) if nr_count else 0
@@ -2705,6 +2713,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "nr_rec_neg020_pct": round(nr_rec_neg020 / nr_count * 100, 1) if nr_count > 0 else None,
                     "nr_rec_neg010_pct": round(nr_rec_neg010 / nr_count * 100, 1) if nr_count > 0 else None,
                     "nr_rec_neg005_pct": round(nr_rec_neg005 / nr_count * 100, 1) if nr_count > 0 else None,
+                    "avg_exit_ema5_dist": round(sum(ema5_dists_pe) / len(ema5_dists_pe), 4) if ema5_dists_pe else None,
+                    "avg_exit_ema5_slope": round(sum(ema5_slopes_pe) / len(ema5_slopes_pe), 4) if ema5_slopes_pe else None,
+                    "exit_ema5_crossed_pct": round(ema5_crossed_pe / count * 100, 1) if count > 0 else None,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")
@@ -2917,6 +2928,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "tot_with_phantom": round(tot_phantom, 4),
                     "tot_actual": round(tot_actual, 4),
                     "tot_all_actual": tot_all_actual,
+                    "vs_actual": round(tot_phantom - tot_actual, 4),
+                    "est_total": round(tot_all_actual + (tot_phantom - tot_actual), 4),
                     "exit_reasons": reason_str,
                     "nt_exit_reasons": nt_reason_str,
                 })
@@ -3015,6 +3028,57 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Signal Lost Shadow: {e}\n{traceback.format_exc()}")
 
+    # Exit Quality — Price vs EMA5
+    exit_quality_ema5 = []
+    try:
+        eq_groups = {}
+        for o in orders:
+            if o.exit_price_vs_ema5_pct is None:
+                continue
+            reason = o.close_reason or "UNKNOWN"
+            if " L" in reason:
+                parts = reason.split(" L")
+                base_reason = parts[0]
+                try:
+                    level = int(parts[1].replace("+", ""))
+                    if level >= 6:
+                        reason = f"{base_reason} L6+"
+                except ValueError:
+                    pass
+            direction = o.direction or "UNKNOWN"
+            eq_groups.setdefault((reason, direction), []).append(o)
+
+        for (reason, direction) in sorted(eq_groups.keys()):
+            group = eq_groups[(reason, direction)]
+            count = len(group)
+            if count == 0:
+                continue
+            dists = [o.exit_price_vs_ema5_pct for o in group]
+            slopes = [o.exit_ema5_slope_pct for o in group if o.exit_ema5_slope_pct is not None]
+            crossed_count = sum(1 for o in group if o.exit_ema5_crossed)
+            favorable = [o for o in group if o.exit_price_vs_ema5_pct >= 0]
+            unfavorable = [o for o in group if o.exit_price_vs_ema5_pct < 0]
+            fav_pnl = round(sum(o.pnl_percentage or 0 for o in favorable) / len(favorable), 4) if favorable else None
+            unfav_pnl = round(sum(o.pnl_percentage or 0 for o in unfavorable) / len(unfavorable), 4) if unfavorable else None
+            avg_pnl = round(sum(o.pnl_percentage or 0 for o in group) / count, 4)
+
+            exit_quality_ema5.append({
+                "reason": reason,
+                "direction": direction,
+                "count": count,
+                "avg_dist": round(sum(dists) / count, 4),
+                "pct_favorable": round(len(favorable) / count * 100, 1),
+                "pct_crossed": round(crossed_count / count * 100, 1),
+                "avg_slope": round(sum(slopes) / len(slopes), 4) if slopes else None,
+                "avg_pnl_favorable": fav_pnl,
+                "avg_pnl_unfavorable": unfav_pnl,
+                "avg_pnl": avg_pnl,
+                "favorable_count": len(favorable),
+                "unfavorable_count": len(unfavorable),
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing Exit Quality EMA5: {e}\n{traceback.format_exc()}")
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -3084,6 +3148,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "be_shadow_tracking": be_shadow_tracking,
         "tick_momentum_shadow": tick_momentum_shadow,
         "signal_lost_shadow": signal_lost_shadow,
+        "exit_quality_ema5": exit_quality_ema5,
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),

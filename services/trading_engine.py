@@ -1017,6 +1017,48 @@ class TradingEngine:
         except Exception:
             order.signal_active_at_close = None
 
+        # Exit quality: Price vs EMA5
+        try:
+            if pd and pd.ema5 and actual_exit_price:
+                if order.direction == "LONG":
+                    order.exit_price_vs_ema5_pct = round((actual_exit_price - pd.ema5) / actual_exit_price * 100, 4)
+                else:
+                    order.exit_price_vs_ema5_pct = round((pd.ema5 - actual_exit_price) / actual_exit_price * 100, 4)
+                if pd.ema5_prev3 and pd.ema5:
+                    order.exit_ema5_slope_pct = round((pd.ema5 - pd.ema5_prev3) / pd.ema5 * 100, 4)
+            # Check if price crossed EMA5 during the trade
+            try:
+                ohlcv_data = await binance_service.get_ohlcv(order.pair, '5m', 100)
+                if ohlcv_data and len(ohlcv_data) >= 51 and order.opened_at:
+                    import pandas as _pd_lib
+                    from ta.trend import EMAIndicator as _EMA
+                    df = _pd_lib.DataFrame(ohlcv_data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    df['close'] = df['close'].astype(float)
+                    df['high'] = df['high'].astype(float)
+                    df['low'] = df['low'].astype(float)
+                    df['timestamp'] = _pd_lib.to_datetime(df['timestamp'], unit='ms')
+                    ema5_series = _EMA(close=df['close'], window=5).ema_indicator()
+                    entry_ts = order.opened_at
+                    if entry_ts.tzinfo:
+                        entry_ts = entry_ts.replace(tzinfo=None)
+                    mask = df['timestamp'] >= _pd_lib.Timestamp(entry_ts)
+                    crossed = False
+                    for idx in df.index[mask]:
+                        e5 = ema5_series.iloc[idx]
+                        if _pd_lib.isna(e5):
+                            continue
+                        if order.direction == "LONG" and df.at[idx, 'low'] <= e5:
+                            crossed = True
+                            break
+                        elif order.direction == "SHORT" and df.at[idx, 'high'] >= e5:
+                            crossed = True
+                            break
+                    order.exit_ema5_crossed = crossed
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         # Create transaction record
         transaction = Transaction(
             order_id=order.id,

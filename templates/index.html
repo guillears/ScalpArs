@@ -995,20 +995,24 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Reason</th>
                                     <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center">Conf</th>
                                     <th class="px-3 py-2 font-medium text-center">#</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg signed % distance from price to EMA5 at exit">Avg EMA5 Dist</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="% of exits where price was on favorable side of EMA5">% Favorable</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="% of trades where price crossed EMA5 during the trade">% Crossed</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg EMA5 slope at exit">Avg Slope</th>
-                                    <th class="px-3 py-2 font-medium text-right text-emerald-400" title="Avg P&L for trades exiting on favorable side of EMA5">Avg P&L (Fav)</th>
-                                    <th class="px-3 py-2 font-medium text-center text-emerald-400"># Fav</th>
-                                    <th class="px-3 py-2 font-medium text-right text-red-400" title="Avg P&L for trades exiting on unfavorable side of EMA5">Avg P&L (Unfav)</th>
-                                    <th class="px-3 py-2 font-medium text-center text-red-400"># Unfav</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L for all trades in this group">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg peak P&L % reached during trade">Avg Peak</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L for all trades in this group">Avg Close</th>
+                                    <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Avg peak minus close P&L — money left on the table during trade">Regret</th>
+                                    <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total regret in USD across all trades in group">Regret $</th>
+                                    <th class="px-3 py-2 font-medium text-right text-orange-400" title="Avg P&L the trade continued to reach after exit">Post-Exit Peak</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg signed % distance from price to EMA5 at exit">EMA5 Dist</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="% of exits where price was on favorable side of EMA5">% Fav</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="% of trades where price crossed EMA5 during the trade">% Cross</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg EMA5 slope at exit">Slope</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg EMA5 dist at peak (Phase 2)">Pk EMA5</th>
+                                    <th class="px-3 py-2 font-medium text-right text-emerald-400" title="Avg P&L for trades exiting on favorable side of EMA5">P&L Fav</th>
+                                    <th class="px-3 py-2 font-medium text-right text-red-400" title="Avg P&L for trades exiting on unfavorable side of EMA5">P&L Unfav</th>
                                 </tr>
                             </thead>
                             <tbody id="exit-quality-ema5-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No exit quality data yet (needs trades with EMA5 tracking)</td></tr>
+                                <tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No exit quality data yet (needs trades with EMA5 tracking)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3925,15 +3929,21 @@
                 if (perf.exit_quality_ema5 && perf.exit_quality_ema5.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Exit Quality — Price vs EMA5\n');
-                    lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'#'.padEnd(4)} ${'AvgDist'.padStart(10)} ${'%Fav'.padStart(7)} ${'%Cross'.padStart(7)} ${'AvgSlope'.padStart(10)} ${'P&L(Fav)'.padStart(11)} ${'#Fav'.padStart(5)} ${'P&L(Unfav)'.padStart(12)} ${'#Unf'.padStart(5)} ${'AvgP&L'.padStart(10)}`);
+                    lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(5)} ${'#'.padEnd(4)} ${'AvgPeak'.padStart(10)} ${'AvgClose'.padStart(10)} ${'Regret'.padStart(10)} ${'Regret$'.padStart(10)} ${'PostExPk'.padStart(10)} ${'EMA5Dist'.padStart(10)} ${'%Fav'.padStart(7)} ${'%Cross'.padStart(7)} ${'Slope'.padStart(10)} ${'PkEMA5'.padStart(10)} ${'P&L(Fav)'.padStart(11)} ${'P&L(Unf)'.padStart(11)}`);
                     for (const r of perf.exit_quality_ema5.sort((a, b) => b.count - a.count)) {
                         const dir = r.direction === 'LONG' ? 'L' : 'S';
+                        const conf = r.confidence === 'VERY_STRONG' ? 'V' : r.confidence === 'STRONG_BUY' ? 'S' : r.confidence ? r.confidence[0] : '?';
+                        const peakStr = (r.avg_peak_pnl >= 0 ? '+' : '') + r.avg_peak_pnl.toFixed(4) + '%';
+                        const closeStr = (r.avg_pnl >= 0 ? '+' : '') + r.avg_pnl.toFixed(4) + '%';
+                        const regretStr = r.avg_regret.toFixed(4) + '%';
+                        const regretUsdStr = '$' + r.total_regret_usd.toFixed(2);
+                        const postExStr = r.avg_post_exit_peak != null ? (r.avg_post_exit_peak >= 0 ? '+' : '') + r.avg_post_exit_peak.toFixed(4) + '%' : '-';
                         const distStr = (r.avg_dist >= 0 ? '+' : '') + r.avg_dist.toFixed(4) + '%';
                         const slopeStr = r.avg_slope != null ? (r.avg_slope >= 0 ? '+' : '') + r.avg_slope.toFixed(4) + '%' : '-';
+                        const pkEma5Str = r.avg_peak_ema5_dist != null ? (r.avg_peak_ema5_dist >= 0 ? '+' : '') + r.avg_peak_ema5_dist.toFixed(4) + '%' : '-';
                         const favPnl = r.avg_pnl_favorable != null ? (r.avg_pnl_favorable >= 0 ? '+' : '') + r.avg_pnl_favorable.toFixed(4) + '%' : '-';
                         const unfavPnl = r.avg_pnl_unfavorable != null ? (r.avg_pnl_unfavorable >= 0 ? '+' : '') + r.avg_pnl_unfavorable.toFixed(4) + '%' : '-';
-                        const avgPnl = (r.avg_pnl >= 0 ? '+' : '') + r.avg_pnl.toFixed(4) + '%';
-                        lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${String(r.count).padEnd(4)} ${distStr.padStart(10)} ${(r.pct_favorable.toFixed(1) + '%').padStart(7)} ${(r.pct_crossed.toFixed(1) + '%').padStart(7)} ${slopeStr.padStart(10)} ${favPnl.padStart(11)} ${String(r.favorable_count).padStart(5)} ${unfavPnl.padStart(12)} ${String(r.unfavorable_count).padStart(5)} ${avgPnl.padStart(10)}`);
+                        lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${conf.padEnd(5)} ${String(r.count).padEnd(4)} ${peakStr.padStart(10)} ${closeStr.padStart(10)} ${regretStr.padStart(10)} ${regretUsdStr.padStart(10)} ${postExStr.padStart(10)} ${distStr.padStart(10)} ${(r.pct_favorable.toFixed(1) + '%').padStart(7)} ${(r.pct_crossed.toFixed(1) + '%').padStart(7)} ${slopeStr.padStart(10)} ${pkEma5Str.padStart(10)} ${favPnl.padStart(11)} ${unfavPnl.padStart(11)}`);
                     }
                 }
 
@@ -6199,35 +6209,46 @@
                 // Exit Quality — Price vs EMA5
                 const eqBody = document.getElementById('exit-quality-ema5-body');
                 if (data.exit_quality_ema5 && data.exit_quality_ema5.length > 0) {
+                    const eqConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
                     eqBody.innerHTML = data.exit_quality_ema5
                         .sort((a, b) => b.count - a.count)
                         .map(r => {
                             const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                             const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
+                            const confColor = eqConfColors[r.confidence] || 'text-gray-400';
+                            const confLabel = r.confidence === 'VERY_STRONG' ? 'V' : r.confidence === 'STRONG_BUY' ? 'S' : r.confidence ? r.confidence[0] : '?';
+                            const peakClass = r.avg_peak_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const closeClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const distClass = r.avg_dist >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const favPctClass = r.pct_favorable >= 50 ? 'text-emerald-400' : 'text-red-400';
                             const crossClass = r.pct_crossed > 50 ? 'text-red-400' : 'text-emerald-400';
                             const slopeClass = r.avg_slope != null ? (r.avg_slope >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
                             const favPnlClass = r.avg_pnl_favorable != null ? (r.avg_pnl_favorable >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
                             const unfavPnlClass = r.avg_pnl_unfavorable != null ? (r.avg_pnl_unfavorable >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
-                            const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const postExitStr = r.avg_post_exit_peak != null ? (r.avg_post_exit_peak >= 0 ? '+' : '') + r.avg_post_exit_peak.toFixed(4) + '%' : '-';
+                            const postExitClass = r.avg_post_exit_peak != null ? (r.avg_post_exit_peak >= 0 ? 'text-orange-400' : 'text-gray-400') : '';
+                            const pkEma5Str = r.avg_peak_ema5_dist != null ? (r.avg_peak_ema5_dist >= 0 ? '+' : '') + r.avg_peak_ema5_dist.toFixed(4) + '%' : '-';
                             return `<tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium text-cyan-400">${r.reason}</td>
                                 <td class="px-3 py-2 text-center"><span class="${dirColor} text-xs font-medium">${dirLabel}</span></td>
+                                <td class="px-3 py-2 text-center"><span class="${confColor} text-xs font-medium">${confLabel}</span></td>
                                 <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${r.avg_peak_pnl >= 0 ? '+' : ''}${r.avg_peak_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${closeClass} font-medium">${r.avg_pnl >= 0 ? '+' : ''}${r.avg_pnl.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-yellow-400 font-medium">${r.avg_regret.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-yellow-400 font-medium">$${r.total_regret_usd.toFixed(2)}</td>
+                                <td class="px-3 py-2 text-right ${postExitClass} font-medium">${postExitStr}</td>
                                 <td class="px-3 py-2 text-right ${distClass} font-medium">${r.avg_dist >= 0 ? '+' : ''}${r.avg_dist.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${favPctClass} font-medium">${r.pct_favorable.toFixed(1)}%</td>
                                 <td class="px-3 py-2 text-right ${crossClass} font-medium">${r.pct_crossed.toFixed(1)}%</td>
                                 <td class="px-3 py-2 text-right ${slopeClass} font-medium">${r.avg_slope != null ? (r.avg_slope >= 0 ? '+' : '') + r.avg_slope.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium">${pkEma5Str}</td>
                                 <td class="px-3 py-2 text-right ${favPnlClass} font-medium">${r.avg_pnl_favorable != null ? (r.avg_pnl_favorable >= 0 ? '+' : '') + r.avg_pnl_favorable.toFixed(4) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-center text-emerald-400">${r.favorable_count}</td>
                                 <td class="px-3 py-2 text-right ${unfavPnlClass} font-medium">${r.avg_pnl_unfavorable != null ? (r.avg_pnl_unfavorable >= 0 ? '+' : '') + r.avg_pnl_unfavorable.toFixed(4) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-center text-red-400">${r.unfavorable_count}</td>
-                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${r.avg_pnl >= 0 ? '+' : ''}${r.avg_pnl.toFixed(4)}%</td>
                             </tr>`;
                         }).join('');
                 } else {
-                    eqBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No exit quality data yet (needs trades with EMA5 tracking)</td></tr>';
+                    eqBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No exit quality data yet (needs trades with EMA5 tracking)</td></tr>';
                 }
 
                 // Hold-Time Expectancy

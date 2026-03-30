@@ -1236,7 +1236,7 @@ class TradingEngine:
         order.closed_at = datetime.utcnow()
         order.close_reason = reason
 
-        # Persist phantom shadow data from real-time cache
+        # Persist phantom shadow data and peak EMA5 metrics from real-time cache
         for cached in _open_orders_cache.get(order.pair, []):
             if cached['id'] == order.id:
                 order.phantom_be_l1_triggered_at = cached.get('phantom_be_l1_triggered_at')
@@ -1246,6 +1246,10 @@ class TradingEngine:
                 for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
                     setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
                     setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
+                if cached.get('peak_ema5_dist_pct') is not None:
+                    order.peak_ema5_dist_pct = cached['peak_ema5_dist_pct']
+                if cached.get('peak_ema5_slope_pct') is not None:
+                    order.peak_ema5_slope_pct = cached['peak_ema5_slope_pct']
                 break
 
         try:
@@ -2500,6 +2504,15 @@ class TradingEngine:
             if pnl_pct > cached_peak_pnl:
                 order_info['peak_pnl'] = pnl_pct
                 cached_peak_pnl = pnl_pct
+                _ema5_val = order_info.get('cached_ema5')
+                if _ema5_val and _ema5_val > 0:
+                    if direction == 'LONG':
+                        order_info['peak_ema5_dist_pct'] = round((current_price - _ema5_val) / current_price * 100, 4)
+                    else:
+                        order_info['peak_ema5_dist_pct'] = round((_ema5_val - current_price) / current_price * 100, 4)
+                    _ema5_prev3 = order_info.get('cached_ema5_prev3')
+                    if _ema5_prev3 and _ema5_prev3 > 0:
+                        order_info['peak_ema5_slope_pct'] = round((_ema5_val - _ema5_prev3) / _ema5_val * 100, 4)
             cached_trough_pnl = order_info.get('trough_pnl', 0.0)
             if pnl_pct < cached_trough_pnl:
                 order_info['trough_pnl'] = pnl_pct
@@ -2718,13 +2731,15 @@ class TradingEngine:
         if pair_names:
             sig_result = await db.execute(
                 select(PairData.pair, PairData.ema5, PairData.ema8, PairData.ema20, PairData.price,
-                       PairData.rsi, PairData.rsi_prev1, PairData.rsi_prev2).where(PairData.pair.in_(pair_names))
+                       PairData.rsi, PairData.rsi_prev1, PairData.rsi_prev2,
+                       PairData.ema5_prev3).where(PairData.pair.in_(pair_names))
             )
             for row in sig_result:
                 pair_emas[row.pair] = {
                     'ema5': row.ema5, 'ema8': row.ema8,
                     'ema20': row.ema20, 'price': row.price,
-                    'rsi': row.rsi, 'rsi_prev1': row.rsi_prev1, 'rsi_prev2': row.rsi_prev2
+                    'rsi': row.rsi, 'rsi_prev1': row.rsi_prev1, 'rsi_prev2': row.rsi_prev2,
+                    'ema5_prev3': row.ema5_prev3,
                 }
                 if row.ema5 is not None:
                     pair_ema5s[row.pair] = row.ema5
@@ -2772,7 +2787,10 @@ class TradingEngine:
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'cached_ema5': pair_ema5s.get(order.pair),
+                'cached_ema5_prev3': pair_emas.get(order.pair, {}).get('ema5_prev3'),
                 'peak_ema5_gap': order.peak_ema5_gap or 0.0,
+                'peak_ema5_dist_pct': order.peak_ema5_dist_pct,
+                'peak_ema5_slope_pct': order.peak_ema5_slope_pct,
                 'rsi': pair_emas.get(order.pair, {}).get('rsi'),
                 'rsi_prev1': pair_emas.get(order.pair, {}).get('rsi_prev1'),
                 'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2'),
@@ -2819,6 +2837,9 @@ class TradingEngine:
                             new_info['peak_pnl'] = max(new_info['peak_pnl'], old_info.get('peak_pnl', 0))
                             new_info['trough_pnl'] = min(new_info['trough_pnl'], old_info.get('trough_pnl', 0))
                             new_info['peak_ema5_gap'] = max(new_info['peak_ema5_gap'], old_info.get('peak_ema5_gap', 0))
+                            if old_info.get('peak_pnl', 0) >= new_info.get('peak_pnl', 0):
+                                new_info['peak_ema5_dist_pct'] = old_info.get('peak_ema5_dist_pct')
+                                new_info['peak_ema5_slope_pct'] = old_info.get('peak_ema5_slope_pct')
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

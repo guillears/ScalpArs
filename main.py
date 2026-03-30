@@ -3185,10 +3185,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 except ValueError:
                     pass
             direction = o.direction or "UNKNOWN"
-            eq_groups.setdefault((reason, direction), []).append(o)
+            conf = getattr(o, 'confidence', 'UNKNOWN') or 'UNKNOWN'
+            eq_groups.setdefault((reason, direction, conf), []).append(o)
 
-        for (reason, direction) in sorted(eq_groups.keys()):
-            group = eq_groups[(reason, direction)]
+        for (reason, direction, conf) in sorted(eq_groups.keys()):
+            group = eq_groups[(reason, direction, conf)]
             count = len(group)
             if count == 0:
                 continue
@@ -3201,9 +3202,25 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             unfav_pnl = round(sum(o.pnl_percentage or 0 for o in unfavorable) / len(unfavorable), 4) if unfavorable else None
             avg_pnl = round(sum(o.pnl_percentage or 0 for o in group) / count, 4)
 
+            peaks = [o.peak_pnl or 0 for o in group]
+            avg_peak = round(sum(peaks) / count, 4)
+            regrets = [(o.peak_pnl or 0) - (o.pnl_percentage or 0) for o in group]
+            avg_regret = round(sum(regrets) / count, 4)
+            total_regret_usd = round(sum(
+                ((o.peak_pnl or 0) - (o.pnl_percentage or 0)) * (o.investment or 0) / 100
+                for o in group
+            ), 2)
+
+            post_peaks = [o.post_exit_peak_pnl for o in group if o.post_exit_peak_pnl is not None]
+            avg_post_exit_peak = round(sum(post_peaks) / len(post_peaks), 4) if post_peaks else None
+
+            peak_ema5_dists = [o.peak_ema5_dist_pct for o in group if getattr(o, 'peak_ema5_dist_pct', None) is not None]
+            peak_ema5_slopes = [o.peak_ema5_slope_pct for o in group if getattr(o, 'peak_ema5_slope_pct', None) is not None]
+
             exit_quality_ema5.append({
                 "reason": reason,
                 "direction": direction,
+                "confidence": conf,
                 "count": count,
                 "avg_dist": round(sum(dists) / count, 4),
                 "pct_favorable": round(len(favorable) / count * 100, 1),
@@ -3214,6 +3231,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_pnl": avg_pnl,
                 "favorable_count": len(favorable),
                 "unfavorable_count": len(unfavorable),
+                "avg_peak_pnl": avg_peak,
+                "avg_regret": avg_regret,
+                "total_regret_usd": total_regret_usd,
+                "avg_post_exit_peak": avg_post_exit_peak,
+                "avg_peak_ema5_dist": round(sum(peak_ema5_dists) / len(peak_ema5_dists), 4) if peak_ema5_dists else None,
+                "avg_peak_ema5_slope": round(sum(peak_ema5_slopes) / len(peak_ema5_slopes), 4) if peak_ema5_slopes else None,
             })
     except Exception as e:
         logger.error(f"[PERF] Error computing Exit Quality EMA5: {e}\n{traceback.format_exc()}")

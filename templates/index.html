@@ -3168,7 +3168,10 @@
                 for (const s of perf.signal_lost_shadow) {
                     const dirLabel = s.direction === 'LONG' ? 'LONG' : 'SHORT';
                     const slStr = (s.avg_sl_pnl >= 0 ? '+' : '') + s.avg_sl_pnl.toFixed(4) + '%';
-                    lines.push(`${dirLabel} | SL Trades: ${s.total_sl} | Avg SL Close P&L: ${slStr} | Avg Peak at: ${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'}\n`);
+                    const ema5DistStr = s.avg_ema5_dist != null ? (s.avg_ema5_dist >= 0 ? '+' : '') + s.avg_ema5_dist.toFixed(4) + '%' : '-';
+                    const ema5SlopeStr = s.avg_ema5_slope != null ? (s.avg_ema5_slope >= 0 ? '+' : '') + s.avg_ema5_slope.toFixed(4) + '%' : '-';
+                    const ema5CrossStr = s.ema5_crossed_pct != null ? s.ema5_crossed_pct.toFixed(1) + '%' : '-';
+                    lines.push(`${dirLabel} | SL Trades: ${s.total_sl} | Avg SL Close P&L: ${slStr} | Avg Peak at: ${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'} | EMA5 Dist: ${ema5DistStr} | EMA5 Slope: ${ema5SlopeStr} | EMA5 Crossed: ${ema5CrossStr}\n`);
                     lines.push(`${'Exit Alternative'.padEnd(22)} ${'Hit'.padStart(4)} ${'%'.padStart(5)} ${'Alt P&L'.padStart(11)} ${'SL P&L'.padStart(11)} ${'Improvement'.padStart(12)}`);
                     for (const r of s.rows) {
                         const altStr = r.avg_alt_pnl !== null ? ((r.avg_alt_pnl >= 0 ? '+' : '') + r.avg_alt_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
@@ -3756,7 +3759,10 @@
                     for (const s of perf.signal_lost_shadow) {
                         const dirLabel = s.direction === 'LONG' ? 'LONG' : 'SHORT';
                         const slStr = (s.avg_sl_pnl >= 0 ? '+' : '') + s.avg_sl_pnl.toFixed(4) + '%';
-                        lines.push(`${dirLabel} | SL Trades: ${s.total_sl} | Avg SL Close P&L: ${slStr} | Avg Peak at: ${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'}\n`);
+                        const ema5DistStr = s.avg_ema5_dist != null ? (s.avg_ema5_dist >= 0 ? '+' : '') + s.avg_ema5_dist.toFixed(4) + '%' : '-';
+                        const ema5SlopeStr = s.avg_ema5_slope != null ? (s.avg_ema5_slope >= 0 ? '+' : '') + s.avg_ema5_slope.toFixed(4) + '%' : '-';
+                        const ema5CrossStr = s.ema5_crossed_pct != null ? s.ema5_crossed_pct.toFixed(1) + '%' : '-';
+                        lines.push(`${dirLabel} | SL Trades: ${s.total_sl} | Avg SL Close P&L: ${slStr} | Avg Peak at: ${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'} | EMA5 Dist: ${ema5DistStr} | EMA5 Slope: ${ema5SlopeStr} | EMA5 Crossed: ${ema5CrossStr}\n`);
                         lines.push(`${'Exit Alternative'.padEnd(22)} ${'Hit'.padStart(4)} ${'%'.padStart(5)} ${'Alt P&L'.padStart(11)} ${'SL P&L'.padStart(11)} ${'Improvement'.padStart(12)}`);
                         for (const r of s.rows) {
                             const altStr = r.avg_alt_pnl !== null ? ((r.avg_alt_pnl >= 0 ? '+' : '') + r.avg_alt_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
@@ -5983,11 +5989,20 @@
                         const dirLabel = s.direction === 'LONG' ? 'LONG' : 'SHORT';
                         const slPnlClass = s.avg_sl_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const slPnlStr = `${s.avg_sl_pnl >= 0 ? '+' : ''}${s.avg_sl_pnl.toFixed(4)}%`;
-                        const headerHtml = `<div class="flex items-center gap-4 mb-2">
+                        const ema5DistClass = s.avg_ema5_dist != null ? (s.avg_ema5_dist >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        const ema5DistStr = s.avg_ema5_dist != null ? `${s.avg_ema5_dist >= 0 ? '+' : ''}${s.avg_ema5_dist.toFixed(4)}%` : '-';
+                        const ema5SlopeClass = s.avg_ema5_slope != null ? (s.avg_ema5_slope >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                        const ema5SlopeStr = s.avg_ema5_slope != null ? `${s.avg_ema5_slope >= 0 ? '+' : ''}${s.avg_ema5_slope.toFixed(4)}%` : '-';
+                        const ema5CrossStr = s.ema5_crossed_pct != null ? `${s.ema5_crossed_pct.toFixed(1)}%` : '-';
+                        const ema5CrossClass = s.ema5_crossed_pct != null ? (s.ema5_crossed_pct > 50 ? 'text-red-400' : 'text-emerald-400') : '';
+                        const headerHtml = `<div class="flex items-center gap-4 mb-2 flex-wrap">
                             <span class="${dirColor} text-xs font-semibold">${dirLabel}</span>
                             <span class="text-xs text-gray-400">SL Trades: <span class="text-white font-medium">${s.total_sl}</span></span>
                             <span class="text-xs text-gray-400">Avg SL Close P&L: <span class="${slPnlClass} font-medium">${slPnlStr}</span></span>
                             <span class="text-xs text-gray-400">Avg Peak at: <span class="text-white">${s.avg_peak_minutes != null ? s.avg_peak_minutes.toFixed(1) + 'min' : '-'}</span></span>
+                            <span class="text-xs text-gray-400">EMA5 Dist: <span class="${ema5DistClass} font-medium">${ema5DistStr}</span></span>
+                            <span class="text-xs text-gray-400">EMA5 Slope: <span class="${ema5SlopeClass} font-medium">${ema5SlopeStr}</span></span>
+                            <span class="text-xs text-gray-400">EMA5 Crossed: <span class="${ema5CrossClass} font-medium">${ema5CrossStr}</span></span>
                         </div>`;
                         const rowsHtml = s.rows.map(r => {
                             const altClass = r.avg_alt_pnl !== null ? (r.avg_alt_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';

@@ -3017,12 +3017,19 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             rows.append({"label": "Worst After Close", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_worst, "avg_improvement": round(avg_worst - avg_sl_pnl, 4)})
             rows.append({"label": "Final (45min)", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_final, "avg_improvement": round(avg_final - avg_sl_pnl, 4)})
 
+            ema5_dists_sl = [o.exit_price_vs_ema5_pct for o in dir_sl if o.exit_price_vs_ema5_pct is not None]
+            ema5_slopes_sl = [o.exit_ema5_slope_pct for o in dir_sl if o.exit_ema5_slope_pct is not None]
+            ema5_crossed_sl = sum(1 for o in dir_sl if o.exit_ema5_crossed is True)
+
             signal_lost_shadow.append({
                 "direction": direction,
                 "total_sl": total_sl,
                 "avg_sl_pnl": avg_sl_pnl,
                 "avg_peak_minutes": avg_peak_min,
                 "regain_floor_avg": round(sum(o.post_exit_floor_before_signal_regain or 0 for o in regain_trades) / regain_count, 4) if regain_trades else None,
+                "avg_ema5_dist": round(sum(ema5_dists_sl) / len(ema5_dists_sl), 4) if ema5_dists_sl else None,
+                "avg_ema5_slope": round(sum(ema5_slopes_sl) / len(ema5_slopes_sl), 4) if ema5_slopes_sl else None,
+                "ema5_crossed_pct": round(ema5_crossed_sl / total_sl * 100, 1) if total_sl > 0 else None,
                 "rows": rows,
             })
     except Exception as e:

@@ -6710,7 +6710,7 @@
                 document.getElementById('bnb-swap-burn-rate').textContent = `$${(status.burn_rate_per_hour || 0).toFixed(2)}/hr`;
                 document.getElementById('bnb-swap-emergency').textContent = formatUSD(status.emergency_threshold || 0);
                 document.getElementById('bnb-swap-projected').textContent = formatUSD(status.projected_need || 0);
-                document.getElementById('bnb-swap-last-check').textContent = status.last_check ? new Date(status.last_check).toLocaleTimeString() : '--';
+                document.getElementById('bnb-swap-last-check').textContent = status.last_check ? new Date(status.last_check).toLocaleTimeString('en-US', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--';
 
                 const swaps = data.swaps || [];
                 const tbody = document.getElementById('bnb-swaps-table-body');

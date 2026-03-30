@@ -1514,12 +1514,12 @@
                                     <th class="px-2 py-1 text-center text-gray-400">12-16</th>
                                     <th class="px-2 py-1 text-center text-gray-400">16-20</th>
                                     <th class="px-2 py-1 text-center text-gray-400">20-24</th>
-                                </tr>
+                            </tr>
                             </thead>
                             <tbody id="day-time-heatmap-body">
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
-                            </tbody>
-                        </table>
+                        </tbody>
+                    </table>
                     </div>
                 </div>
             </div>
@@ -1662,40 +1662,6 @@
                             <p class="text-xs text-gray-500 mt-1">Wait before re-entering same pair after any trade exit</p>
                         </div>
                     </div>
-
-                    <!-- BNB Fee Management -->
-                    <h4 class="text-md font-semibold text-gray-300 mt-6 mb-3">BNB Fee Management</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Auto-Swap Enabled</label>
-                            <select id="config-bnb-swap-enabled" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
-                                <option value="true">Enabled</option>
-                                <option value="false">Disabled</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Paper BNB Initial</label>
-                            <div class="flex">
-                                <input type="number" id="config-paper-bnb-initial" min="0" step="50" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="500">
-                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">USD</span>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Check Interval</label>
-                            <div class="flex">
-                                <input type="number" id="config-bnb-check-interval" min="1" max="48" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="12">
-                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm text-gray-400 mb-2">Runway Target</label>
-                            <div class="flex">
-                                <input type="number" id="config-bnb-runway-hours" min="1" max="168" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="24">
-                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
-                        </div>
-                    </div>
                     
                     <!-- Position & Size Limits -->
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
@@ -1822,6 +1788,42 @@
                                 </label>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Real-time exit when price declines across all rolling windows (WebSocket tick-based, faster than RSI)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BNB Fee Management -->
+                <div>
+                    <h4 class="text-md font-semibold text-gray-300 mb-3">BNB Fee Management</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Auto-Swap Enabled</label>
+                            <select id="config-bnb-swap-enabled" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500">
+                                <option value="true">Enabled</option>
+                                <option value="false">Disabled</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Paper BNB Initial</label>
+                            <div class="flex">
+                                <input type="number" id="config-paper-bnb-initial" min="0" step="50" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="500">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">USD</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Check Interval</label>
+                            <div class="flex">
+                                <input type="number" id="config-bnb-check-interval" min="1" max="48" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="12">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Runway Target</label>
+                            <div class="flex">
+                                <input type="number" id="config-bnb-runway-hours" min="1" max="168" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="24">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">hrs</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
                         </div>
                     </div>
                 </div>

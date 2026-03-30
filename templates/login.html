@@ -29,14 +29,13 @@
             min-height: 100vh;
         }
         .glass {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: #1a1a2e;
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
         .glass-strong {
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: #1a1a2e;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
         }
         @keyframes float {
             0%, 100% { transform: translateY(0px); }
@@ -117,8 +116,17 @@
                             placeholder="Enter password"
                             autocomplete="current-password"
                             required
-                            class="w-full pl-11 pr-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
+                            class="w-full pl-11 pr-11 py-3 rounded-lg bg-white/10 border border-white/15 text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 transition-colors"
                         >
+                        <button type="button" id="toggle-pw" onclick="togglePassword()" class="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition-colors focus:outline-none">
+                            <svg id="eye-open" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                            <svg id="eye-closed" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L6.11 6.11m3.768 3.768l4.242 4.242M6.11 6.11l-3.22-3.22m3.22 3.22l4.242 4.242m0 0L17.89 17.89m0 0l3.22 3.22M17.89 17.89l-4.242-4.242"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
 
@@ -148,7 +156,13 @@
         const card = form.closest('.glass-strong');
         const passwordInput = document.getElementById('password');
 
-        // Show error from query param
+        function togglePassword() {
+            const isHidden = passwordInput.type === 'password';
+            passwordInput.type = isHidden ? 'text' : 'password';
+            document.getElementById('eye-open').classList.toggle('hidden', !isHidden);
+            document.getElementById('eye-closed').classList.toggle('hidden', isHidden);
+        }
+
         const params = new URLSearchParams(window.location.search);
         if (params.get('error') === '1') {
             errorBox.classList.remove('hidden');

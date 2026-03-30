@@ -237,6 +237,8 @@ def get_signal(
     ema20_filter_short = getattr(th, 'momentum_ema20_filter_short', True)
     ema20_slope_long = getattr(th, 'momentum_ema20_slope_filter_long', True)
     ema20_slope_short = getattr(th, 'momentum_ema20_slope_filter_short', True)
+    ema20_slope_min_long = getattr(th, 'momentum_ema20_slope_min_long', 0.0)
+    ema20_slope_min_short = getattr(th, 'momentum_ema20_slope_min_short', 0.0)
     long_rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
     long_rsi_max = getattr(th, 'momentum_long_rsi_max', 100)
     short_rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
@@ -256,6 +258,8 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_long and (ema20_prev6 is None or ema20 <= ema20_prev6):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
+            elif ema20_slope_min_long > 0 and ema20_prev6 and ema20_prev6 != 0 and abs((ema20 - ema20_prev6) / ema20_prev6 * 100) < ema20_slope_min_long:
+                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev6) / ema20_prev6 * 100):.4f}% < min {ema20_slope_min_long}%")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi < rsi_prev3:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against LONG")
             elif long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
@@ -294,6 +298,8 @@ def get_signal(
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
             elif ema20_slope_short and (ema20_prev6 is None or ema20 >= ema20_prev6):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
+            elif ema20_slope_min_short > 0 and ema20_prev6 and ema20_prev6 != 0 and abs((ema20 - ema20_prev6) / ema20_prev6 * 100) < ema20_slope_min_short:
+                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev6) / ema20_prev6 * 100):.4f}% < min {ema20_slope_min_short}%")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi > rsi_prev3:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against SHORT")
             elif short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:

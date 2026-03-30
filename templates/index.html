@@ -1930,6 +1930,19 @@
                                 <span class="ml-2 text-sm text-gray-400">SHORT: EMA20 falling</span>
                             </label>
                         </div>
+                        <p class="text-xs text-gray-500 mt-2 mb-1">Minimum EMA20 slope magnitude (abs %) — 0 = disabled</p>
+                        <div class="flex items-center gap-4 mt-1">
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">LONG min:</span>
+                                <input type="number" id="config-ema20-slope-min-long" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">SHORT min:</span>
+                                <input type="number" id="config-ema20-slope-min-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="mb-2 px-4">
                         <span class="text-sm text-gray-300">Macro Trend Regime (EMA20)</span>
@@ -3422,7 +3435,7 @@
             lines.push(`  RSI x ADX Filter L: ${rsiAdxL}  |  S: ${rsiAdxS}`);
             lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}  |  Min BTC ADX: ${th.macro_trend_min_btc_adx !== undefined ? th.macro_trend_min_btc_adx : 0}`);
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
-            lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}`);
+            lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA8 gap compressing vs prev candle)`);
 
@@ -6623,6 +6636,8 @@
                 document.getElementById('config-momentum-ema20-filter-short').checked = config.thresholds.momentum_ema20_filter_short !== undefined ? config.thresholds.momentum_ema20_filter_short : true;
                 document.getElementById('config-momentum-ema20-slope-filter-long').checked = config.thresholds.momentum_ema20_slope_filter_long !== undefined ? config.thresholds.momentum_ema20_slope_filter_long : true;
                 document.getElementById('config-momentum-ema20-slope-filter-short').checked = config.thresholds.momentum_ema20_slope_filter_short !== undefined ? config.thresholds.momentum_ema20_slope_filter_short : true;
+                document.getElementById('config-ema20-slope-min-long').value = config.thresholds.momentum_ema20_slope_min_long !== undefined ? config.thresholds.momentum_ema20_slope_min_long : 0;
+                document.getElementById('config-ema20-slope-min-short').value = config.thresholds.momentum_ema20_slope_min_short !== undefined ? config.thresholds.momentum_ema20_slope_min_short : 0;
                 document.getElementById('config-macro-trend-filter-enabled').checked = config.thresholds.macro_trend_filter_enabled !== undefined ? config.thresholds.macro_trend_filter_enabled : true;
                 document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
@@ -6877,6 +6892,8 @@
                     momentum_ema20_filter_short: document.getElementById('config-momentum-ema20-filter-short').checked,
                     momentum_ema20_slope_filter_long: document.getElementById('config-momentum-ema20-slope-filter-long').checked,
                     momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked,
+                    momentum_ema20_slope_min_long: safeFloat(document.getElementById('config-ema20-slope-min-long').value),
+                    momentum_ema20_slope_min_short: safeFloat(document.getElementById('config-ema20-slope-min-short').value),
                     macro_trend_filter_enabled: document.getElementById('config-macro-trend-filter-enabled').checked,
                     btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,

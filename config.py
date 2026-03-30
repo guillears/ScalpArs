@@ -83,6 +83,8 @@ class SignalThresholds(BaseModel):
     momentum_ema20_filter_short: bool = True
     momentum_ema20_slope_filter_long: bool = True
     momentum_ema20_slope_filter_short: bool = True
+    momentum_ema20_slope_min_long: float = 0.0
+    momentum_ema20_slope_min_short: float = 0.0
     macro_trend_filter_enabled: bool = True
     macro_trend_neutral_mode: str = "both"  # "both" or "none"
     macro_trend_flat_threshold: float = 0.07  # % change below which EMA20 slope is considered neutral

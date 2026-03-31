@@ -1052,6 +1052,15 @@ class TradingEngine:
         websocket_tracker.force_reset_tracking(pair, actual_price)
         await websocket_tracker.subscribe_pair(pair, actual_price)
         
+        # Fetch current EMA5 data so the WebSocket tick loop can capture
+        # peak EMA5 metrics immediately (before update_orders_cache runs).
+        _pair_data_row = await db.execute(
+            select(PairData.ema5, PairData.ema5_prev3).where(PairData.pair == pair)
+        )
+        _pair_data = _pair_data_row.first()
+        _cached_ema5 = _pair_data.ema5 if _pair_data else None
+        _cached_ema5_prev3 = _pair_data.ema5_prev3 if _pair_data else None
+
         # Immediately add to real-time cache so the WebSocket SL callback can
         # protect this order right away (without waiting for update_orders_cache).
         async with _cache_lock:
@@ -1080,6 +1089,10 @@ class TradingEngine:
                 'high_price': actual_price,
                 'low_price': actual_price,
                 'pullback_trigger': conf_config.pullback_trigger,
+                'cached_ema5': _cached_ema5,
+                'cached_ema5_prev3': _cached_ema5_prev3,
+                'peak_ema5_dist_pct': None,
+                'peak_ema5_slope_pct': None,
                 'tick_prices': [],
                 'phantom_be_l1_triggered': False,
                 'phantom_be_l1_triggered_at': None,

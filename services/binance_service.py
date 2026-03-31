@@ -160,7 +160,7 @@ class BinanceService:
 
             # Step 1: Transfer USDT from futures wallet to spot wallet
             logger.info(f"[BNB_SWAP] Step 1/3: Transferring {amount_usdt} USDT futures → spot")
-            await self.exchange.transfer('USDT', amount_usdt, 'future', 'spot')
+            await self.spot_exchange.transfer('USDT', amount_usdt, 'future', 'spot')
 
             # Step 2: Buy BNB on spot market
             bnb_price = await self.get_bnb_price()
@@ -182,7 +182,7 @@ class BinanceService:
 
             # Step 3: Transfer BNB from spot wallet back to futures wallet
             logger.info(f"[BNB_SWAP] Step 3/3: Transferring {filled_qty} BNB spot → futures")
-            await self.exchange.transfer('BNB', filled_qty, 'spot', 'future')
+            await self.spot_exchange.transfer('BNB', filled_qty, 'spot', 'future')
 
             logger.info(f"[BNB_SWAP] Complete: {cost:.2f} USDT → {filled_qty} BNB @ {avg_price:.2f}")
             return {

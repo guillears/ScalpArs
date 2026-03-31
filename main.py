@@ -478,9 +478,10 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         balance = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
-        total = balance['usdt_free'] + balance['usdt_used'] + bnb_usd
+        usdt_wallet = balance['usdt_total']
+        total = usdt_wallet + bnb_usd
         return {
-            "usdt_balance": balance['usdt_free'],
+            "usdt_balance": usdt_wallet,
             "bnb_balance": balance['bnb_total'],
             "bnb_balance_usd": round(bnb_usd, 2),
             "bnb_balance_is_usd": False,

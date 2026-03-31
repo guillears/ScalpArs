@@ -2953,9 +2953,21 @@
             loadClosedOrders();
             loadConfig();
             loadInvestors();
-            fetch(`${API_BASE}/api/server-ip`).then(r => r.json()).then(d => {
-                document.getElementById('server-ip').textContent = d.ip;
-            }).catch(() => {});
+            function checkServerIp() {
+                fetch(`${API_BASE}/api/server-ip`).then(r => r.json()).then(d => {
+                    const el = document.getElementById('server-ip');
+                    el.textContent = d.ip;
+                    if (d.changed) {
+                        el.className = 'text-red-400 font-bold animate-pulse';
+                        el.parentElement.title = `IP changed! Was: ${d.initial_ip}`;
+                    } else {
+                        el.className = '';
+                        el.parentElement.title = '';
+                    }
+                }).catch(() => {});
+            }
+            checkServerIp();
+            setInterval(checkServerIp, 60000);
 
             function updateRoundtripDisplay() {
                 const makerPct = parseFloat(document.getElementById('config-maker-fee').value) || 0.018;

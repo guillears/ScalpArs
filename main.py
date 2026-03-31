@@ -478,13 +478,14 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         balance = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
+        total = balance['usdt_free'] + balance['usdt_used'] + bnb_usd
         return {
             "usdt_balance": balance['usdt_free'],
             "bnb_balance": balance['bnb_total'],
             "bnb_balance_usd": round(bnb_usd, 2),
             "bnb_balance_is_usd": False,
             "usdt_in_orders": balance['usdt_used'],
-            "total_portfolio": balance['total_portfolio'],
+            "total_portfolio": round(total, 2),
             "is_paper": False
         }
 
@@ -3634,20 +3635,35 @@ async def remove_investor(investor_id: int, db: AsyncSession = Depends(get_db)):
 
 # ----- Server Info -----
 
-_server_outbound_ip = None
+_server_initial_ip = None
+_server_current_ip = None
+_server_ip_last_check = 0
+
+async def _fetch_outbound_ip() -> str:
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5) as client:
+            r = await client.get("https://api.ipify.org")
+            return r.text.strip()
+    except Exception:
+        return "unavailable"
 
 @app.get("/api/server-ip")
 async def get_server_ip():
-    global _server_outbound_ip
-    if _server_outbound_ip is None:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await client.get("https://api.ipify.org")
-                _server_outbound_ip = r.text.strip()
-        except Exception:
-            _server_outbound_ip = "unavailable"
-    return {"ip": _server_outbound_ip}
+    global _server_initial_ip, _server_current_ip, _server_ip_last_check
+    now = time.time()
+    if _server_initial_ip is None:
+        _server_initial_ip = await _fetch_outbound_ip()
+        _server_current_ip = _server_initial_ip
+        _server_ip_last_check = now
+    elif now - _server_ip_last_check > 300:
+        _server_current_ip = await _fetch_outbound_ip()
+        _server_ip_last_check = now
+    return {
+        "ip": _server_current_ip,
+        "initial_ip": _server_initial_ip,
+        "changed": _server_current_ip != _server_initial_ip and _server_current_ip != "unavailable"
+    }
 
 
 # ----- Configuration -----

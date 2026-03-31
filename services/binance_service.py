@@ -151,27 +151,30 @@ class BinanceService:
                 return 0.0
 
     async def buy_bnb(self, amount_usdt: float) -> Optional[Dict]:
-        """Buy BNB with USDT on spot market. Returns fill details."""
+        """Buy BNB with USDT via Binance Futures Convert (fee-free, stays in futures wallet)."""
         try:
-            await self._load_spot_markets()
-            bnb_price = await self.get_bnb_price()
-            if bnb_price <= 0:
-                logger.error("[BNB_SWAP] Cannot buy BNB: price unavailable")
-                return None
-            bnb_qty = round(amount_usdt / bnb_price, 3)
-            if bnb_qty < 0.001:
-                logger.warning(f"[BNB_SWAP] Swap amount too small: {bnb_qty} BNB")
-                return None
-            order = await self.spot_exchange.create_order(
-                symbol='BNB/USDT', type='market', side='buy', amount=bnb_qty
-            )
-            fill_price = float(order.get('average', order.get('price', bnb_price)))
-            fill_amount = float(order.get('filled', order.get('amount', bnb_qty)))
+            await self.load_markets()
+            quote = await self.exchange.fapiPrivatePostConvertGetQuote({
+                'fromAsset': 'USDT',
+                'toAsset': 'BNB',
+                'fromAmount': str(round(amount_usdt, 2)),
+            })
+            quote_id = quote.get('quoteId')
+            if not quote_id:
+                raise Exception(f"No quoteId in response: {quote}")
+            accept = await self.exchange.fapiPrivatePostConvertAcceptQuote({
+                'quoteId': quote_id,
+            })
+            to_amount = float(accept.get('toAmount', quote.get('toAmount', 0)))
+            from_amount = float(accept.get('fromAmount', quote.get('fromAmount', amount_usdt)))
+            ratio = float(quote.get('ratio', 0))
+            price = (from_amount / to_amount) if to_amount > 0 else ratio
+            logger.info(f"[BNB_SWAP] Futures convert: {from_amount} USDT → {to_amount} BNB @ {price:.2f}")
             return {
-                'bnb_amount': fill_amount,
-                'price': fill_price,
-                'cost_usdt': fill_amount * fill_price,
-                'order_id': order.get('id')
+                'bnb_amount': to_amount,
+                'price': price,
+                'cost_usdt': from_amount,
+                'order_id': accept.get('orderId', quote_id)
             }
         except Exception as e:
             logger.error(f"[BNB_SWAP] Error buying BNB: {e}")

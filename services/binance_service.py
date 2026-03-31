@@ -158,6 +158,7 @@ class BinanceService:
                 'fromAsset': 'USDT',
                 'toAsset': 'BNB',
                 'fromAmount': str(round(amount_usdt, 2)),
+                'validTime': '30s',
             })
             quote_id = quote.get('quoteId')
             if not quote_id:

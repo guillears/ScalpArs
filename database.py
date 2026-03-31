@@ -165,6 +165,12 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN ema5_went_negative VARCHAR(20)"))
                 if 'entry_price_vs_ema5_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_price_vs_ema5_pct FLOAT"))
+                if 'signal_lost_flagged' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN signal_lost_flagged BOOLEAN DEFAULT 0"))
+                if 'signal_lost_flag_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN signal_lost_flag_pnl FLOAT"))
+                if 'signal_lost_flagged_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN signal_lost_flagged_at DATETIME"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

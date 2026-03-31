@@ -941,36 +941,28 @@
                 <!-- Tick Momentum Shadow Tracking -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Tick Momentum Shadow</h3>
-                    <p class="text-xs text-gray-500 mb-3">Phantom comparison: what would alternative tick momentum configs have done vs the real exit (Real: 15,30,45s / 0.12%). Skipped = trades closed by actual tick momentum where phantom didn't fire (excluded from analysis).</p>
+                    <p class="text-xs text-gray-500 mb-3">Apples-to-apples: only TICK_MOMENTUM_EXIT trades. Which phantom strategy exits closest to the post-exit peak? (Real: 15,30,45s / 0.12%). Phantom tracking runs during trade + 45 min post-exit.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs text-gray-300">
                             <thead>
                                 <tr class="text-gray-400 border-b border-white/10">
                                     <th class="px-3 py-2 font-medium text-left">Config</th>
-                                    <th class="px-3 py-2 font-medium text-right">Total</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom triggered">Trig</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="% of total trades where phantom triggered">%Trig</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Trades excluded: actual tick mom closed but phantom didn't fire">Skip</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg P&L% at phantom trigger point">Ph P&L</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg actual close P&L% for triggered trades">Act P&L</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Phantom - Actual (green = phantom better)">Delta</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total TICK_MOMENTUM_EXIT trades">#</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom also triggered (during trade or post-exit 45 min)">Trig</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom never triggered">NT</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg actual tick momentum exit P&L%">Exit%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg phantom exit P&L% (triggered subset)">Ph%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg post-exit peak P&L% (benchmark — how far price went after exit)">Peak%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Left on Table Actual: avg (Peak - Exit) for triggered subset">LoT Act</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Left on Table Phantom: avg (Peak - Ph) for triggered subset">LoT Ph</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="LoT Act - LoT Ph (positive = phantom exits closer to peak)">Saved</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg minutes from open to actual exit">Min Act</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg minutes from open to phantom trigger">Min Ph</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg minutes from open to actual tick mom close (overlap trades)">Min Act</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="% of overlap trades where phantom triggered before actual close">%Ph1st</th>
-                                    <th class="px-3 py-2 font-medium text-left" title="Close reasons for triggered trades">Exit Reasons</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Clean not-triggered trades (excl skipped)">NT</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="% of total that are clean NT">%NT</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Avg close P&L% for clean NT trades">NT P&L</th>
-                                    <th class="px-3 py-2 font-medium text-left" title="Close reasons for clean NT trades">NT Reasons</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Total P&L using phantom exits for triggered + actual for NT">Tot w/Ph</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Total actual P&L for triggered + NT (excl skipped)">Tot Actual</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Total actual P&L for ALL trades (baseline)">All Actual</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Net P&L impact of switching to this config (Tot w/Ph - Tot Actual)">vs Act</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Estimated total P&L if this config was used (All Actual + vs Act)">Est Tot</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Estimated avg P&L if using phantom: (phantom P&L for trig + actual P&L for NT) / total">Est Avg</th>
                                 </tr>
                             </thead>
                             <tbody id="tick-momentum-shadow-body" class="divide-y divide-white/5">
-                                <tr><td colspan="21" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>
+                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -998,7 +990,7 @@
                                     <th class="px-2 py-2 font-medium text-center">#</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg trade duration in minutes">Dur</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg close P&L %">Close%</th>
-                                    <th class="px-2 py-2 font-medium text-right text-orange-400" title="Avg post-exit peak P&L %">Post-Ex</th>
+                                    <th class="px-2 py-2 font-medium text-right text-orange-400" title="Avg peak P&L % reached during trade">Peak%</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg minutes from open to peak P&L">Pk Min</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg EMA5 distance at entry">E5 Entry</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg EMA5 distance at peak P&L">E5 Peak</th>
@@ -1006,12 +998,43 @@
                                     <th class="px-2 py-2 font-medium text-right text-red-400" title="Avg trough (worst) P&L %">Trough%</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg minutes from open to trough P&L">Tr Min</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg EMA5 distance at trough">E5 Trgh</th>
+                                    <th class="px-2 py-2 font-medium text-right text-yellow-400" title="Delta EMA5% from peak to trough — momentum reversal">ΔE5 Tr</th>
                                     <th class="px-2 py-2 font-medium text-right" title="% of trades where EMA5 never went unfavorable">%Never</th>
                                     <th class="px-2 py-2 font-medium text-right" title="% of trades where EMA5 went unfavorable but recovered">%Recov</th>
                                 </tr>
                             </thead>
                             <tbody id="exit-quality-ema5-body" class="divide-y divide-white/5">
-                                <tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>
+                                <tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Flagged Exits (Signal Lost Flag System) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Flagged Exits</h3>
+                    <p class="text-xs text-gray-500 mb-3">Trades that hit Signal Lost but were kept open — Net Recover shows if holding helped vs exiting at signal lost</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium text-left">Close Reason</th>
+                                    <th class="px-2 py-2 font-medium text-center">#</th>
+                                    <th class="px-2 py-2 font-medium text-center">%</th>
+                                    <th class="px-2 py-2 font-medium text-center">Dir</th>
+                                    <th class="px-2 py-2 font-medium text-center">Conf</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Avg P&L % at close">Avg P&L %</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Avg P&L $ at close">Avg P&L $</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Avg peak P&L % during trade">Avg Peak %</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Peak minus close (money left on table)">Pullback %</th>
+                                    <th class="px-2 py-2 font-medium text-right text-orange-400" title="Avg P&L % when signal lost was first detected (flag moment)">P&L @ SL</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Avg minutes from trade open to flag">Open→Flag</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Avg minutes from flag to close">Flag→Close</th>
+                                    <th class="px-2 py-2 font-medium text-right text-cyan-400" title="Close P&L minus Flag P&L — positive = flag helped, negative = flag hurt">Net Recover</th>
+                                </tr>
+                            </thead>
+                            <tbody id="flagged-exits-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No flagged trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1740,6 +1763,34 @@
                                 </label>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Close when EMA5/EMA8 momentum reverses while P&L is within range [min, max] (pre-TP only)</p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Signal Lost Flag System</label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-signal-lost-flag-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Security Min
+                                    <input type="number" step="0.01" id="config-signal-lost-flag-security-min" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-0.9">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Security Max
+                                    <input type="number" step="0.01" id="config-signal-lost-flag-security-max" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-0.7">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    TM Min P&L (Flagged)
+                                    <input type="number" step="0.01" id="config-tick-momentum-min-profit-flagged" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-0.10">
+                                    <span class="ml-1">%</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">When ON: flag trades at signal lost instead of closing, let them run. Security gap exits flagged trades if P&L drops to [min, max] with signal still lost. TM Min P&L (Flagged) = min profit for tick momentum to trigger on flagged trades.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">RSI Momentum Exit</label>
@@ -3286,25 +3337,13 @@
 
             if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
                 lines.push(`\n${hr2}`);
-                lines.push('## Tick Momentum Shadow\n');
-                lines.push(`${'Config'.padEnd(28)} ${'Tot'.padStart(4)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'Skip'.padStart(7)} ${'PhP&L'.padStart(11)} ${'ActP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'MinPh'.padStart(6)} ${'MinAc'.padStart(6)} ${'%Ph1'.padStart(5)} ${'NT'.padStart(4)} ${'%NT'.padStart(4)} ${'NTP&L'.padStart(10)} ${'TotPh'.padStart(11)} ${'TotAct'.padStart(11)} ${'Exit Reasons'.padEnd(35)} ${'NT Reasons'.padEnd(25)}`);
+                lines.push('## Tick Momentum Shadow (TICK_MOMENTUM_EXIT only)\n');
+                lines.push(`${'Config'.padEnd(28)} ${'#'.padStart(3)} ${'Trg'.padStart(4)} ${'NT'.padStart(3)} ${'Exit%'.padStart(10)} ${'Ph%'.padStart(10)} ${'Peak%'.padStart(10)} ${'LoT Act'.padStart(10)} ${'LoT Ph'.padStart(10)} ${'Saved'.padStart(10)} ${'MinAct'.padStart(7)} ${'MinPh'.padStart(7)} ${'EstAvg'.padStart(10)}`);
                 for (const r of perf.tick_momentum_shadow) {
-                    const phantomStr = r.avg_phantom_pnl !== null ? ((r.avg_phantom_pnl >= 0 ? '+' : '') + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
-                    const actualStr = r.avg_actual_pnl !== null ? ((r.avg_actual_pnl >= 0 ? '+' : '') + r.avg_actual_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
-                    const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
-                    const ntStr = r.avg_nt_pnl !== null ? ((r.avg_nt_pnl >= 0 ? '+' : '') + r.avg_nt_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
-                    const minPhStr = r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
-                    const minActStr = r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
-                    const ph1stStr = r.pct_phantom_first !== null ? (r.pct_phantom_first.toFixed(0) + '%').padStart(5) : '-'.padStart(5);
-                    const skipStr = (r.skipped_count + '(' + r.pct_skipped.toFixed(0) + '%)').padStart(7);
-                    const totPhStr = ((r.tot_with_phantom >= 0 ? '+' : '') + r.tot_with_phantom.toFixed(4) + '%').padStart(11);
-                    const totActStr = ((r.tot_actual >= 0 ? '+' : '') + r.tot_actual.toFixed(4) + '%').padStart(11);
-                    const totAllStr = ((r.tot_all_actual >= 0 ? '+' : '') + r.tot_all_actual.toFixed(4) + '%').padStart(11);
-                    const vsActStr = ((r.vs_actual >= 0 ? '+' : '') + r.vs_actual.toFixed(4) + '%').padStart(11);
-                    const estTotStr = ((r.est_total >= 0 ? '+' : '') + r.est_total.toFixed(4) + '%').padStart(11);
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
-                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${totAllStr} ${vsActStr} ${estTotStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
+                    const fmtPnl = (v, w) => v !== null && v !== undefined ? ((v >= 0 ? '+' : '') + v.toFixed(4) + '%').padStart(w) : '-'.padStart(w);
+                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(3)} ${String(r.triggered_count).padStart(4)} ${String(r.nt_count).padStart(3)} ${fmtPnl(r.avg_exit_pnl, 10)} ${fmtPnl(r.avg_phantom_pnl, 10)} ${fmtPnl(r.avg_peak_pnl, 10)} ${fmtPnl(r.lot_act, 10)} ${fmtPnl(r.lot_ph, 10)} ${fmtPnl(r.saved, 10)} ${r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${fmtPnl(r.est_tot, 10)}`);
                 }
             }
 
@@ -3333,10 +3372,23 @@
                 lines.push('## Exit Quality\n');
                 const _fp = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                 const _fm = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'PostEx'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)}`);
+                lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)}`);
                 for (const r of perf.exit_quality_ema5.sort((a, b) => b.count - a.count)) {
                     const dir = r.direction === 'LONG' ? 'L' : 'S';
-                    lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${String(r.count).padEnd(4)} ${_fm(r.avg_duration).padStart(7)} ${_fp(r.avg_close_pnl).padStart(10)} ${_fp(r.avg_post_exit_peak).padStart(10)} ${_fm(r.avg_peak_min).padStart(7)} ${_fp(r.avg_entry_ema5).padStart(10)} ${_fp(r.avg_peak_ema5).padStart(10)} ${_fp(r.avg_delta_ema5).padStart(10)} ${_fp(r.avg_trough).padStart(10)} ${_fm(r.avg_trough_min).padStart(7)} ${_fp(r.avg_trough_ema5).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)}`);
+                    lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${String(r.count).padEnd(4)} ${_fm(r.avg_duration).padStart(7)} ${_fp(r.avg_close_pnl).padStart(10)} ${_fp(r.avg_peak_pnl).padStart(10)} ${_fm(r.avg_peak_min).padStart(7)} ${_fp(r.avg_entry_ema5).padStart(10)} ${_fp(r.avg_peak_ema5).padStart(10)} ${_fp(r.avg_delta_ema5).padStart(10)} ${_fp(r.avg_trough).padStart(10)} ${_fm(r.avg_trough_min).padStart(7)} ${_fp(r.avg_trough_ema5).padStart(10)} ${_fp(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)}`);
+                }
+            }
+
+            if (perf.flagged_exits && perf.flagged_exits.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Flagged Exits (Signal Lost Flag System)\n');
+                const _ffp = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
+                const _ffm = (v) => v != null ? v.toFixed(1) + 'm' : '-';
+                lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)}`);
+                const flSorted = perf.flagged_exits.sort((a, b) => { if (a.reason === 'ALL') return 1; if (b.reason === 'ALL') return -1; return b.count - a.count; });
+                for (const r of flSorted) {
+                    const dir = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
+                    lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp(r.avg_peak_pnl).padStart(10)} ${_ffp(r.avg_pullback).padStart(10)} ${_ffp(r.avg_pnl_at_sl).padStart(10)} ${_ffm(r.avg_dur_open_flag).padStart(9)} ${_ffm(r.avg_dur_flag_close).padStart(10)} ${_ffp(r.net_recover).padStart(11)}`);
                 }
             }
 
@@ -3588,6 +3640,7 @@
             lines.push('\nExit Settings:');
             lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
+            lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.7}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
             lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Range: [${th.rsi_momentum_exit_min_profit}%, ${th.rsi_momentum_exit_max_profit !== undefined ? th.rsi_momentum_exit_max_profit : 999}%]  (close on 2 consecutive RSI drops/rises)`);
             lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Deltas: ${th.tick_momentum_exit_min_deltas || th.tick_momentum_exit_min_delta || 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
 
@@ -3878,25 +3931,13 @@
                 // --- TICK MOMENTUM SHADOW ---
                 if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
                     lines.push(`\n${hr2}`);
-                    lines.push('## Tick Momentum Shadow\n');
-                    lines.push(`${'Config'.padEnd(28)} ${'Tot'.padStart(4)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'Skip'.padStart(7)} ${'PhP&L'.padStart(11)} ${'ActP&L'.padStart(10)} ${'Delta'.padStart(9)} ${'MinPh'.padStart(6)} ${'MinAc'.padStart(6)} ${'%Ph1'.padStart(5)} ${'NT'.padStart(4)} ${'%NT'.padStart(4)} ${'NTP&L'.padStart(10)} ${'TotPh'.padStart(11)} ${'TotAct'.padStart(11)} ${'Exit Reasons'.padEnd(35)} ${'NT Reasons'.padEnd(25)}`);
+                    lines.push('## Tick Momentum Shadow (TICK_MOMENTUM_EXIT only)\n');
+                    lines.push(`${'Config'.padEnd(28)} ${'#'.padStart(3)} ${'Trg'.padStart(4)} ${'NT'.padStart(3)} ${'Exit%'.padStart(10)} ${'Ph%'.padStart(10)} ${'Peak%'.padStart(10)} ${'LoT Act'.padStart(10)} ${'LoT Ph'.padStart(10)} ${'Saved'.padStart(10)} ${'MinAct'.padStart(7)} ${'MinPh'.padStart(7)} ${'EstAvg'.padStart(10)}`);
                     for (const r of perf.tick_momentum_shadow) {
-                        const phantomStr = r.avg_phantom_pnl !== null ? ((r.avg_phantom_pnl >= 0 ? '+' : '') + r.avg_phantom_pnl.toFixed(4) + '%').padStart(11) : '-'.padStart(11);
-                        const actualStr = r.avg_actual_pnl !== null ? ((r.avg_actual_pnl >= 0 ? '+' : '') + r.avg_actual_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
-                        const deltaStr = r.delta !== null ? ((r.delta >= 0 ? '+' : '') + r.delta.toFixed(4) + '%').padStart(9) : '-'.padStart(9);
-                        const ntStr = r.avg_nt_pnl !== null ? ((r.avg_nt_pnl >= 0 ? '+' : '') + r.avg_nt_pnl.toFixed(4) + '%').padStart(10) : '-'.padStart(10);
-                        const minPhStr = r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
-                        const minActStr = r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(6) : '-'.padStart(6);
-                        const ph1stStr = r.pct_phantom_first !== null ? (r.pct_phantom_first.toFixed(0) + '%').padStart(5) : '-'.padStart(5);
-                        const skipStr = (r.skipped_count + '(' + r.pct_skipped.toFixed(0) + '%)').padStart(7);
-                        const totPhStr = ((r.tot_with_phantom >= 0 ? '+' : '') + r.tot_with_phantom.toFixed(4) + '%').padStart(11);
-                        const totActStr = ((r.tot_actual >= 0 ? '+' : '') + r.tot_actual.toFixed(4) + '%').padStart(11);
-                        const totAllStr = ((r.tot_all_actual >= 0 ? '+' : '') + r.tot_all_actual.toFixed(4) + '%').padStart(11);
-                        const vsActStr = ((r.vs_actual >= 0 ? '+' : '') + r.vs_actual.toFixed(4) + '%').padStart(11);
-                        const estTotStr = ((r.est_total >= 0 ? '+' : '') + r.est_total.toFixed(4) + '%').padStart(11);
                         const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                         const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
-                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(4)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${skipStr} ${phantomStr} ${actualStr} ${deltaStr} ${minPhStr} ${minActStr} ${ph1stStr} ${String(r.not_triggered_count).padStart(4)} ${(r.pct_nt.toFixed(0) + '%').padStart(4)} ${ntStr} ${totPhStr} ${totActStr} ${totAllStr} ${vsActStr} ${estTotStr} ${(r.exit_reasons || '-').padEnd(35)} ${(r.nt_exit_reasons || '-').padEnd(25)}`);
+                        const fmtPnl = (v, w) => v !== null && v !== undefined ? ((v >= 0 ? '+' : '') + v.toFixed(4) + '%').padStart(w) : '-'.padStart(w);
+                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(3)} ${String(r.triggered_count).padStart(4)} ${String(r.nt_count).padStart(3)} ${fmtPnl(r.avg_exit_pnl, 10)} ${fmtPnl(r.avg_phantom_pnl, 10)} ${fmtPnl(r.avg_peak_pnl, 10)} ${fmtPnl(r.lot_act, 10)} ${fmtPnl(r.lot_ph, 10)} ${fmtPnl(r.saved, 10)} ${r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${fmtPnl(r.est_tot, 10)}`);
                     }
                 }
 
@@ -3927,10 +3968,24 @@
                     lines.push('## Exit Quality\n');
                     const _fp2 = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                     const _fm2 = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                    lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'PostEx'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)}`);
+                    lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)}`);
                     for (const r of perf.exit_quality_ema5.sort((a, b) => b.count - a.count)) {
                         const dir = r.direction === 'LONG' ? 'L' : 'S';
-                        lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${String(r.count).padEnd(4)} ${_fm2(r.avg_duration).padStart(7)} ${_fp2(r.avg_close_pnl).padStart(10)} ${_fp2(r.avg_post_exit_peak).padStart(10)} ${_fm2(r.avg_peak_min).padStart(7)} ${_fp2(r.avg_entry_ema5).padStart(10)} ${_fp2(r.avg_peak_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5).padStart(10)} ${_fp2(r.avg_trough).padStart(10)} ${_fm2(r.avg_trough_min).padStart(7)} ${_fp2(r.avg_trough_ema5).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)}`);
+                        lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${String(r.count).padEnd(4)} ${_fm2(r.avg_duration).padStart(7)} ${_fp2(r.avg_close_pnl).padStart(10)} ${_fp2(r.avg_peak_pnl).padStart(10)} ${_fm2(r.avg_peak_min).padStart(7)} ${_fp2(r.avg_entry_ema5).padStart(10)} ${_fp2(r.avg_peak_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5).padStart(10)} ${_fp2(r.avg_trough).padStart(10)} ${_fm2(r.avg_trough_min).padStart(7)} ${_fp2(r.avg_trough_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)}`);
+                    }
+                }
+
+                // --- FLAGGED EXITS ---
+                if (perf.flagged_exits && perf.flagged_exits.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Flagged Exits (Signal Lost Flag System)\n');
+                    const _ffp3 = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
+                    const _ffm3 = (v) => v != null ? v.toFixed(1) + 'm' : '-';
+                    lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)}`);
+                    const flSorted3 = perf.flagged_exits.sort((a, b) => { if (a.reason === 'ALL') return 1; if (b.reason === 'ALL') return -1; return b.count - a.count; });
+                    for (const r of flSorted3) {
+                        const dir = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
+                        lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp3(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp3(r.avg_peak_pnl).padStart(10)} ${_ffp3(r.avg_pullback).padStart(10)} ${_ffp3(r.avg_pnl_at_sl).padStart(10)} ${_ffm3(r.avg_dur_open_flag).padStart(9)} ${_ffm3(r.avg_dur_flag_close).padStart(10)} ${_ffp3(r.net_recover).padStart(11)}`);
                     }
                 }
 
@@ -6081,57 +6136,39 @@
                 const tmsBody = document.getElementById('tick-momentum-shadow-body');
                 if (data.tick_momentum_shadow && data.tick_momentum_shadow.length > 0) {
                     tmsBody.innerHTML = data.tick_momentum_shadow.map(r => {
-                        const phantomClass = r.avg_phantom_pnl !== null ? (r.avg_phantom_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
-                        const phantomStr = r.avg_phantom_pnl !== null ? `${r.avg_phantom_pnl >= 0 ? '+' : ''}${r.avg_phantom_pnl.toFixed(4)}%` : '-';
-                        const actualClass = r.avg_actual_pnl !== null ? (r.avg_actual_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
-                        const actualStr = r.avg_actual_pnl !== null ? `${r.avg_actual_pnl >= 0 ? '+' : ''}${r.avg_actual_pnl.toFixed(4)}%` : '-';
-                        const deltaClass = r.delta !== null ? (r.delta > 0 ? 'text-emerald-400' : r.delta < 0 ? 'text-red-400' : 'text-gray-400') : 'text-gray-500';
-                        const deltaStr = r.delta !== null ? `${r.delta > 0 ? '+' : ''}${r.delta.toFixed(4)}%` : '-';
-                        const ntClass = r.avg_nt_pnl !== null ? (r.avg_nt_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
-                        const ntStr = r.avg_nt_pnl !== null ? `${r.avg_nt_pnl >= 0 ? '+' : ''}${r.avg_nt_pnl.toFixed(4)}%` : '-';
                         const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                         const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
-                        const minPhStr = r.avg_min_phantom !== null ? `${r.avg_min_phantom.toFixed(1)}m` : '-';
+                        const fmt = (v, cls) => v !== null && v !== undefined ? `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(4)}%</span>` : '<span class="text-gray-500">-</span>';
+                        const pnlCls = v => v >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const exitStr = fmt(r.avg_exit_pnl, pnlCls(r.avg_exit_pnl));
+                        const phStr = fmt(r.avg_phantom_pnl, r.avg_phantom_pnl !== null ? pnlCls(r.avg_phantom_pnl) : 'text-gray-500');
+                        const peakStr = r.avg_peak_pnl !== null ? `<span class="text-cyan-400">+${r.avg_peak_pnl.toFixed(4)}%</span>` : '<span class="text-gray-500">-</span>';
+                        const lotActStr = r.lot_act !== null ? `<span class="text-amber-400">+${r.lot_act.toFixed(4)}%</span>` : '<span class="text-gray-500">-</span>';
+                        const lotPhStr = r.lot_ph !== null ? `<span class="${r.lot_ph <= (r.lot_act || 999) ? 'text-emerald-400' : 'text-amber-400'}">${r.lot_ph >= 0 ? '+' : ''}${r.lot_ph.toFixed(4)}%</span>` : '<span class="text-gray-500">-</span>';
+                        const savedCls = r.saved !== null ? (r.saved > 0 ? 'text-emerald-400 font-bold' : r.saved < 0 ? 'text-red-400 font-bold' : 'text-gray-400') : 'text-gray-500';
+                        const savedStr = r.saved !== null ? `${r.saved > 0 ? '+' : ''}${r.saved.toFixed(4)}%` : '-';
                         const minActStr = r.avg_min_actual !== null ? `${r.avg_min_actual.toFixed(1)}m` : '-';
-                        const ph1stClass = r.pct_phantom_first !== null ? (r.pct_phantom_first >= 50 ? 'text-emerald-400' : 'text-orange-400') : 'text-gray-500';
-                        const ph1stStr = r.pct_phantom_first !== null ? `${r.pct_phantom_first.toFixed(0)}%` : '-';
-                        const skipStr = r.skipped_count > 0 ? `${r.skipped_count} (${r.pct_skipped.toFixed(0)}%)` : '0';
-                        const totPhClass = r.tot_with_phantom >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const totPhStr = `${r.tot_with_phantom >= 0 ? '+' : ''}${r.tot_with_phantom.toFixed(4)}%`;
-                        const totActClass = r.tot_actual >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const totActStr = `${r.tot_actual >= 0 ? '+' : ''}${r.tot_actual.toFixed(4)}%`;
-                        const totAllClass = r.tot_all_actual >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const totAllStr = `${r.tot_all_actual >= 0 ? '+' : ''}${r.tot_all_actual.toFixed(4)}%`;
-                        const vsActClass = r.vs_actual >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const vsActStr = `${r.vs_actual >= 0 ? '+' : ''}${r.vs_actual.toFixed(4)}%`;
-                        const estTotClass = r.est_total >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const estTotStr = `${r.est_total >= 0 ? '+' : ''}${r.est_total.toFixed(4)}%`;
+                        const minPhStr = r.avg_min_phantom !== null ? `${r.avg_min_phantom.toFixed(1)}m` : '-';
+                        const estCls = r.est_tot !== null ? pnlCls(r.est_tot) : 'text-gray-500';
+                        const estStr = r.est_tot !== null ? `${r.est_tot >= 0 ? '+' : ''}${r.est_tot.toFixed(4)}%` : '-';
                         return `<tr class="hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-cyan-400">${r.label} <span class="text-gray-500 text-[10px]">(${r.windows} / ${r.delta_threshold})</span> <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
                             <td class="px-3 py-2 text-right">${r.total}</td>
                             <td class="px-3 py-2 text-right">${r.triggered_count}</td>
-                            <td class="px-3 py-2 text-right text-gray-400">${r.pct_trig.toFixed(0)}%</td>
-                            <td class="px-3 py-2 text-right ${r.skipped_count > 0 ? 'text-yellow-400' : 'text-gray-500'}">${skipStr}</td>
-                            <td class="px-3 py-2 text-right ${phantomClass}">${phantomStr}</td>
-                            <td class="px-3 py-2 text-right ${actualClass}">${actualStr}</td>
-                            <td class="px-3 py-2 text-right font-medium ${deltaClass}">${deltaStr}</td>
-                            <td class="px-3 py-2 text-right text-gray-300">${minPhStr}</td>
+                            <td class="px-3 py-2 text-right text-gray-400">${r.nt_count}</td>
+                            <td class="px-3 py-2 text-right">${exitStr}</td>
+                            <td class="px-3 py-2 text-right">${phStr}</td>
+                            <td class="px-3 py-2 text-right">${peakStr}</td>
+                            <td class="px-3 py-2 text-right">${lotActStr}</td>
+                            <td class="px-3 py-2 text-right">${lotPhStr}</td>
+                            <td class="px-3 py-2 text-right ${savedCls}">${savedStr}</td>
                             <td class="px-3 py-2 text-right text-gray-300">${minActStr}</td>
-                            <td class="px-3 py-2 text-right ${ph1stClass}">${ph1stStr}</td>
-                            <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.exit_reasons || '-'}</td>
-                            <td class="px-3 py-2 text-right">${r.not_triggered_count}</td>
-                            <td class="px-3 py-2 text-right text-gray-400">${r.pct_nt.toFixed(0)}%</td>
-                            <td class="px-3 py-2 text-right ${ntClass}">${ntStr}</td>
-                            <td class="px-3 py-2 text-left text-[10px] text-gray-400">${r.nt_exit_reasons || '-'}</td>
-                            <td class="px-3 py-2 text-right font-medium ${totPhClass}">${totPhStr}</td>
-                            <td class="px-3 py-2 text-right font-medium ${totActClass}">${totActStr}</td>
-                            <td class="px-3 py-2 text-right font-bold ${totAllClass}">${totAllStr}</td>
-                            <td class="px-3 py-2 text-right font-bold ${vsActClass}">${vsActStr}</td>
-                            <td class="px-3 py-2 text-right font-bold ${estTotClass}">${estTotStr}</td>
+                            <td class="px-3 py-2 text-right text-gray-300">${minPhStr}</td>
+                            <td class="px-3 py-2 text-right font-bold ${estCls}">${estStr}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    tmsBody.innerHTML = '<tr><td colspan="21" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
+                    tmsBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
                 }
 
                 // Signal Lost Shadow
@@ -6202,8 +6239,7 @@
                             const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                             const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
                             const closeClass = r.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const postExStr = r.avg_post_exit_peak != null ? (r.avg_post_exit_peak >= 0 ? '+' : '') + r.avg_post_exit_peak.toFixed(4) + '%' : '-';
-                            const postExClass = r.avg_post_exit_peak != null ? (r.avg_post_exit_peak >= 0 ? 'text-orange-400' : 'text-gray-400') : '';
+                            const peakClass = r.avg_peak_pnl != null ? (r.avg_peak_pnl >= 0 ? 'text-orange-400' : 'text-gray-400') : '';
                             const fmtPct = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                             const fmtMin = (v) => v != null ? v.toFixed(1) + 'm' : '-';
                             const e5EntryClass = r.avg_entry_ema5 != null ? (r.avg_entry_ema5 >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
@@ -6211,6 +6247,7 @@
                             const deltaClass = r.avg_delta_ema5 != null ? (r.avg_delta_ema5 >= 0 ? 'text-emerald-400' : 'text-yellow-400') : '';
                             const troughClass = r.avg_trough < 0 ? 'text-red-400' : 'text-gray-400';
                             const trE5Class = r.avg_trough_ema5 != null ? (r.avg_trough_ema5 >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                            const deltaTrClass = r.avg_delta_ema5_trough != null ? (r.avg_delta_ema5_trough >= 0 ? 'text-emerald-400' : 'text-yellow-400') : '';
                             const neverClass = r.pct_never_neg != null && r.pct_never_neg >= 50 ? 'text-emerald-400' : 'text-gray-400';
                             const recovClass = r.pct_recovered != null && r.pct_recovered > 0 ? 'text-yellow-400' : 'text-gray-400';
                             return `<tr class="hover:bg-white/5">
@@ -6219,7 +6256,7 @@
                                 <td class="px-2 py-1.5 text-center">${r.count}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_duration)}</td>
                                 <td class="px-2 py-1.5 text-right ${closeClass} font-medium">${fmtPct(r.avg_close_pnl)}</td>
-                                <td class="px-2 py-1.5 text-right ${postExClass} font-medium">${postExStr}</td>
+                                <td class="px-2 py-1.5 text-right ${peakClass} font-medium">${fmtPct(r.avg_peak_pnl)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_peak_min)}</td>
                                 <td class="px-2 py-1.5 text-right ${e5EntryClass}">${fmtPct(r.avg_entry_ema5)}</td>
                                 <td class="px-2 py-1.5 text-right ${e5PeakClass}">${fmtPct(r.avg_peak_ema5)}</td>
@@ -6227,12 +6264,53 @@
                                 <td class="px-2 py-1.5 text-right ${troughClass} font-medium">${fmtPct(r.avg_trough)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_trough_min)}</td>
                                 <td class="px-2 py-1.5 text-right ${trE5Class}">${fmtPct(r.avg_trough_ema5)}</td>
+                                <td class="px-2 py-1.5 text-right ${deltaTrClass} font-medium">${fmtPct(r.avg_delta_ema5_trough)}</td>
                                 <td class="px-2 py-1.5 text-right ${neverClass}">${r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-'}</td>
                                 <td class="px-2 py-1.5 text-right ${recovClass}">${r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-'}</td>
                             </tr>`;
                         }).join('');
                 } else {
-                    eqBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>';
+                    eqBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>';
+                }
+
+                // Flagged Exits
+                const flBody = document.getElementById('flagged-exits-body');
+                if (data.flagged_exits && data.flagged_exits.length > 0) {
+                    flBody.innerHTML = data.flagged_exits
+                        .sort((a, b) => {
+                            if (a.reason === 'ALL') return 1;
+                            if (b.reason === 'ALL') return -1;
+                            return b.count - a.count;
+                        })
+                        .map(r => {
+                            const isAll = r.reason === 'ALL';
+                            const rowClass = isAll ? 'bg-white/5 font-semibold border-t border-white/20' : 'hover:bg-white/5';
+                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : r.direction === 'SHORT' ? 'text-red-400' : 'text-gray-400';
+                            const dirLabel = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
+                            const pnlClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const pnlUsdClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const fmtPct = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
+                            const fmtMin = (v) => v != null ? v.toFixed(1) + 'm' : '-';
+                            const nrClass = r.net_recover != null ? (r.net_recover >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400';
+                            const peakClass = r.avg_peak_pnl != null ? (r.avg_peak_pnl >= 0 ? 'text-orange-400' : 'text-gray-400') : '';
+                            return `<tr class="${rowClass}">
+                                <td class="px-2 py-1.5 font-medium ${isAll ? 'text-white' : 'text-cyan-400'}">${r.reason}</td>
+                                <td class="px-2 py-1.5 text-center">${r.count}</td>
+                                <td class="px-2 py-1.5 text-center text-gray-400">${r.pct.toFixed(0)}%</td>
+                                <td class="px-2 py-1.5 text-center"><span class="${dirColor} font-medium">${dirLabel}</span></td>
+                                <td class="px-2 py-1.5 text-center text-gray-300">${isAll ? '-' : (r.confidence || '-')}</td>
+                                <td class="px-2 py-1.5 text-right ${pnlClass} font-medium">${fmtPct(r.avg_pnl_pct)}</td>
+                                <td class="px-2 py-1.5 text-right ${pnlUsdClass}">$${r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-'}</td>
+                                <td class="px-2 py-1.5 text-right ${peakClass}">${fmtPct(r.avg_peak_pnl)}</td>
+                                <td class="px-2 py-1.5 text-right text-yellow-400">${fmtPct(r.avg_pullback)}</td>
+                                <td class="px-2 py-1.5 text-right text-orange-400 font-medium">${fmtPct(r.avg_pnl_at_sl)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_dur_open_flag)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_dur_flag_close)}</td>
+                                <td class="px-2 py-1.5 text-right ${nrClass} font-bold">${fmtPct(r.net_recover)}</td>
+                            </tr>`;
+                        }).join('');
+                } else {
+                    flBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No flagged trades yet</td></tr>';
                 }
 
                 // Hold-Time Expectancy
@@ -6889,6 +6967,10 @@
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
+                document.getElementById('config-signal-lost-flag-enabled').checked = config.thresholds.signal_lost_flag_enabled !== undefined ? config.thresholds.signal_lost_flag_enabled : true;
+                document.getElementById('config-signal-lost-flag-security-min').value = config.thresholds.signal_lost_flag_security_min !== undefined ? config.thresholds.signal_lost_flag_security_min : -0.9;
+                document.getElementById('config-signal-lost-flag-security-max').value = config.thresholds.signal_lost_flag_security_max !== undefined ? config.thresholds.signal_lost_flag_security_max : -0.7;
+                document.getElementById('config-tick-momentum-min-profit-flagged').value = config.thresholds.tick_momentum_exit_min_profit_flagged !== undefined ? config.thresholds.tick_momentum_exit_min_profit_flagged : -0.10;
                 document.getElementById('config-rsi-momentum-exit-enabled').checked = config.thresholds.rsi_momentum_exit_enabled !== undefined ? config.thresholds.rsi_momentum_exit_enabled : true;
                 document.getElementById('config-rsi-momentum-exit-min-profit').value = config.thresholds.rsi_momentum_exit_min_profit !== undefined ? config.thresholds.rsi_momentum_exit_min_profit : 0.05;
                 document.getElementById('config-rsi-momentum-exit-max-profit').value = config.thresholds.rsi_momentum_exit_max_profit !== undefined ? config.thresholds.rsi_momentum_exit_max_profit : 999;
@@ -7144,6 +7226,10 @@
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     signal_lost_max_profit: safeFloat(document.getElementById('config-signal-lost-max-profit').value),
+                    signal_lost_flag_enabled: document.getElementById('config-signal-lost-flag-enabled').checked,
+                    signal_lost_flag_security_min: safeFloat(document.getElementById('config-signal-lost-flag-security-min').value),
+                    signal_lost_flag_security_max: safeFloat(document.getElementById('config-signal-lost-flag-security-max').value),
+                    tick_momentum_exit_min_profit_flagged: safeFloat(document.getElementById('config-tick-momentum-min-profit-flagged').value),
                     ema5_slope_exit_enabled: false,
                     ema5_slope_lookback: 3,
                     ema5_slope_threshold: -0.02,

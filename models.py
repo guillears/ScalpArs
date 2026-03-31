@@ -161,6 +161,11 @@ class Order(Base):
     phantom_tick_g_triggered_at = Column(DateTime, nullable=True)
     phantom_tick_g_pnl = Column(Float, nullable=True)
 
+    # Signal Lost Flag: trade was in signal-lost zone but kept open
+    signal_lost_flagged = Column(Boolean, nullable=True, default=False)
+    signal_lost_flag_pnl = Column(Float, nullable=True)
+    signal_lost_flagged_at = Column(DateTime, nullable=True)
+
     # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
     first_rsi2_pnl = Column(Float, nullable=True)
     first_rsi2_minutes = Column(Float, nullable=True)
@@ -171,8 +176,8 @@ class Order(Base):
     opened_at = Column(DateTime, nullable=False, default=func.now())
     closed_at = Column(DateTime, nullable=True)
     
-    # Close reason
-    close_reason = Column(String(20), nullable=True)
+    # Close reason (FL_ prefix for signal-lost-flagged trades)
+    close_reason = Column(String(40), nullable=True)
     
     # Entry order type: MAKER, TAKER, or TAKER_FALLBACK
     entry_order_type = Column(String(15), nullable=True, default="TAKER")

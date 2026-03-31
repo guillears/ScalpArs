@@ -1098,6 +1098,9 @@ class TradingEngine:
                 'trough_reached_at': None,
                 'trough_ema5_dist_pct': None,
                 'ema5_ever_negative': False,
+                'signal_lost_flagged': False,
+                'signal_lost_flag_pnl': None,
+                'signal_lost_flagged_at': None,
                 'tick_prices': [],
                 'phantom_be_l1_triggered': False,
                 'phantom_be_l1_triggered_at': None,
@@ -1266,9 +1269,16 @@ class TradingEngine:
         order.closed_at = datetime.utcnow()
         order.close_reason = reason
 
-        # Persist phantom shadow data and peak EMA5 metrics from real-time cache
+        # Persist phantom shadow data, peak EMA5 metrics, and signal-lost flag from real-time cache
         for cached in _open_orders_cache.get(order.pair, []):
             if cached['id'] == order.id:
+                # Signal Lost Flag: persist and prepend FL_ to close reason
+                if cached.get('signal_lost_flagged'):
+                    order.signal_lost_flagged = True
+                    order.signal_lost_flag_pnl = cached.get('signal_lost_flag_pnl')
+                    order.signal_lost_flagged_at = cached.get('signal_lost_flagged_at')
+                    if not reason.startswith("FL_"):
+                        order.close_reason = f"FL_{reason}"
                 order.phantom_be_l1_triggered_at = cached.get('phantom_be_l1_triggered_at')
                 order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
                 order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
@@ -1393,7 +1403,8 @@ class TradingEngine:
         tc = config.trading_config
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
-        if not (reason.startswith("BREAKEVEN_SL") or reason.startswith("SIGNAL_LOST") or reason.startswith("TICK_MOMENTUM_EXIT") or reason.startswith("RSI_MOMENTUM_EXIT") or reason.startswith("STOP_LOSS") or reason.startswith("REGIME_CHANGE")):
+        _reason_base = reason[3:] if reason.startswith("FL_") else reason
+        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -1500,7 +1511,8 @@ class TradingEngine:
                     info["pnl_at_signal_lost"] = current_pnl
 
             # Signal-regained detection (for SIGNAL_LOST exits: did the signal come back?)
-            if info["signal_regained_at"] is None and pair_data and info.get("close_reason", "").startswith("SIGNAL_LOST"):
+            _cr = info.get("close_reason", "")
+            if info["signal_regained_at"] is None and pair_data and ("SIGNAL_LOST" in _cr):
                 if is_signal_direction_active(
                     direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
                 ):
@@ -1620,6 +1632,8 @@ class TradingEngine:
                                 phantom_tick_e_pnl=round(info["phantom_tick_e_pnl"], 4) if info.get("phantom_tick_e_pnl") is not None else None,
                                 phantom_tick_f_triggered_at=info.get("phantom_tick_f_triggered_at"),
                                 phantom_tick_f_pnl=round(info["phantom_tick_f_pnl"], 4) if info.get("phantom_tick_f_pnl") is not None else None,
+                                phantom_tick_g_triggered_at=info.get("phantom_tick_g_triggered_at"),
+                                phantom_tick_g_pnl=round(info["phantom_tick_g_pnl"], 4) if info.get("phantom_tick_g_pnl") is not None else None,
                             )
                         )
                         await pe_write_db.commit()
@@ -1941,7 +1955,9 @@ class TradingEngine:
                             })
                         continue
 
-            # SIGNAL_LOST: full signal no longer matches entry direction while in small profit
+            # SIGNAL_LOST: full signal no longer matches entry direction
+            # Flag system: instead of exiting in primary range, flag the trade and let it run.
+            # Security gap at [-0.9, -0.7] is the hard exit for flagged trades.
             signal_lost_enabled = getattr(config.trading_config.thresholds, 'signal_lost_exit_enabled', True)
             signal_dir_active = pair_data and is_signal_direction_active(
                 order.direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
@@ -1959,16 +1975,59 @@ class TradingEngine:
                 sl_pnl_pct = (sl_net_pnl / sl_notional) * 100
                 conf_config = config.trading_config.confidence_levels.get(order.confidence)
                 sl_tp_target = order.dynamic_tp_target if order.dynamic_tp_target is not None else (conf_config.tp_min if conf_config else 0.2)
+
+                _flag_enabled = getattr(config.trading_config.thresholds, 'signal_lost_flag_enabled', True)
+
+                # Check if trade is already flagged (from cache)
+                _is_flagged = False
+                async with _cache_lock:
+                    for _ci in _open_orders_cache.get(order.pair, []):
+                        if _ci['id'] == order.id:
+                            _is_flagged = _ci.get('signal_lost_flagged', False)
+                            break
+
                 if sl_pnl_pct >= signal_lost_min and sl_pnl_pct <= signal_lost_max and sl_pnl_pct < sl_tp_target:
+                    if _flag_enabled and not _is_flagged:
+                        # Flag system ON: flag the trade instead of exiting
+                        tp_level = order.current_tp_level or 1
+                        async with _cache_lock:
+                            for _ci in _open_orders_cache.get(order.pair, []):
+                                if _ci['id'] == order.id:
+                                    _ci['signal_lost_flagged'] = True
+                                    _ci['signal_lost_flag_pnl'] = round(sl_pnl_pct, 4)
+                                    _ci['signal_lost_flagged_at'] = datetime.utcnow()
+                                    break
+                        logger.info(f"[SIGNAL_LOST_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — FLAGGED (not exiting), signal='{pair_data.signal}'")
+                        continue
+                    elif not _flag_enabled:
+                        # Flag system OFF: original behavior — exit immediately
+                        tp_level = order.current_tp_level or 1
+                        logger.info(f"[SIGNAL_LOST] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% >= min {signal_lost_min}%, signal now '{pair_data.signal}' != '{order.direction}'")
+                        closed_order = await self.close_position(db, order, current_price, f"SIGNAL_LOST L{tp_level}")
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id,
+                                "pair": closed_order.pair,
+                                "action": "CLOSED",
+                                "reason": f"SIGNAL_LOST L{tp_level}",
+                                "pnl": closed_order.pnl,
+                                "tp_level": tp_level
+                            })
+                        continue
+
+                # Security gap: flagged trade with signal still lost
+                security_gap_min = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_min', -0.9)
+                security_gap_max = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_max', -0.7)
+                if _is_flagged and sl_pnl_pct >= security_gap_min and sl_pnl_pct <= security_gap_max:
                     tp_level = order.current_tp_level or 1
-                    logger.info(f"[SIGNAL_LOST] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% >= min {signal_lost_min}%, signal now '{pair_data.signal}' != '{order.direction}'")
-                    closed_order = await self.close_position(db, order, current_price, f"SIGNAL_LOST L{tp_level}")
+                    logger.info(f"[FL_SIGNAL_LOST] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% hit security gap [{security_gap_min}, {security_gap_max}]")
+                    closed_order = await self.close_position(db, order, current_price, f"FL_SIGNAL_LOST L{tp_level}")
                     if closed_order:
                         updates.append({
                             "order_id": closed_order.id,
                             "pair": closed_order.pair,
                             "action": "CLOSED",
-                            "reason": f"SIGNAL_LOST L{tp_level}",
+                            "reason": f"FL_SIGNAL_LOST L{tp_level}",
                             "pnl": closed_order.pnl,
                             "tp_level": tp_level
                         })
@@ -2615,7 +2674,10 @@ class TradingEngine:
 
             # Real-time Tick Momentum Exit: multi-window price velocity check
             tick_exit_enabled = getattr(config.trading_config.thresholds, 'tick_momentum_exit_enabled', False)
+            _is_trade_flagged = order_info.get('signal_lost_flagged', False)
             tick_exit_min_profit = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_profit', 0.05)
+            if _is_trade_flagged:
+                tick_exit_min_profit = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_profit_flagged', -0.10)
             now = time.time()
             tick_buf = order_info.get('tick_prices', [])
             tick_buf.append((now, current_price))
@@ -2851,6 +2913,9 @@ class TradingEngine:
                 'trough_reached_at': order.trough_reached_at,
                 'trough_ema5_dist_pct': order.trough_ema5_dist_pct,
                 'ema5_ever_negative': order.ema5_went_negative in ("RECOVERED", "ENDED_NEG") if order.ema5_went_negative else False,
+                'signal_lost_flagged': bool(order.signal_lost_flagged) if order.signal_lost_flagged else False,
+                'signal_lost_flag_pnl': order.signal_lost_flag_pnl,
+                'signal_lost_flagged_at': order.signal_lost_flagged_at,
                 'rsi': pair_emas.get(order.pair, {}).get('rsi'),
                 'rsi_prev1': pair_emas.get(order.pair, {}).get('rsi_prev1'),
                 'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2'),
@@ -2909,6 +2974,10 @@ class TradingEngine:
                                 new_info['trough_ema5_dist_pct'] = old_info.get('trough_ema5_dist_pct')
                             if old_info.get('ema5_ever_negative'):
                                 new_info['ema5_ever_negative'] = True
+                            if old_info.get('signal_lost_flagged'):
+                                new_info['signal_lost_flagged'] = True
+                                new_info['signal_lost_flag_pnl'] = old_info.get('signal_lost_flag_pnl')
+                                new_info['signal_lost_flagged_at'] = old_info.get('signal_lost_flagged_at')
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

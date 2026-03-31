@@ -115,6 +115,9 @@ class SignalThresholds(BaseModel):
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit
     signal_lost_min_profit: float = 0.05  # Min P&L % (notional) to trigger signal-lost exit
     signal_lost_max_profit: float = 999.0  # Max P&L % for signal-lost exit (creates a range with min)
+    signal_lost_flag_enabled: bool = True  # Flag trades at signal lost instead of exiting; let them run
+    signal_lost_flag_security_min: float = -0.9  # Security gap lower bound for flagged trades
+    signal_lost_flag_security_max: float = -0.7  # Security gap upper bound — flagged trades exit here if signal still lost
     ema5_slope_exit_enabled: bool = True  # Exit when EMA5 slope decelerates (momentum loss)
     ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
     ema5_slope_threshold: float = 0.01  # Min EMA5 slope % to stay in trade (0 = original behavior)
@@ -130,6 +133,7 @@ class SignalThresholds(BaseModel):
     rsi_momentum_exit_max_profit: float = 999.0  # Max P&L % to trigger RSI momentum exit (caps to losers when set to 0)
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
+    tick_momentum_exit_min_profit_flagged: float = -0.10  # Min P&L % for flagged trades (Signal Lost Flag system)
     tick_momentum_exit_min_delta: float = 0.05  # Min % price drop across each window to confirm fade (fallback)
     tick_momentum_exit_min_deltas: str = ""  # Per-window deltas, comma-separated (overrides min_delta when set)
     tick_momentum_exit_windows: str = "15,30,60"  # Comma-separated rolling window sizes in seconds

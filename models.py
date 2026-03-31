@@ -312,3 +312,15 @@ class PairData(Base):
     
     # Timestamp
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+
+
+class Investor(Base):
+    """Portfolio investor with share-based ownership tracking"""
+    __tablename__ = "investors"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False, unique=True)
+    shares = Column(Float, nullable=False, default=0.0)
+    total_deposited = Column(Float, nullable=False, default=0.0)
+    total_withdrawn = Column(Float, nullable=False, default=0.0)
+    created_at = Column(DateTime, nullable=False, default=func.now())

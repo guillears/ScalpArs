@@ -22,14 +22,14 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
     TradingConfig, ConfidenceConfig, SignalThresholds, InvestmentConfig
 )
 from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status
-from services.trading_engine import trading_engine, realtime_stop_loss_callback
+from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
 
@@ -691,6 +691,12 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             current_price = ws_tracker.last_price
         else:
             current_price = o.current_price
+
+        cached_flagged = False
+        for ci in _open_orders_cache.get(o.pair, []):
+            if ci['id'] == o.id:
+                cached_flagged = ci.get('signal_lost_flagged', False)
+                break
         
         # Calculate current P&L (including both entry and estimated exit fees)
         if current_price and o.entry_price:
@@ -756,7 +762,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "tp_target": o.dynamic_tp_target or 0,
             **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
-            "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER"
+            "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER",
+            "signal_lost_flagged": cached_flagged
         })
 
     return orders_data
@@ -3021,6 +3028,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 sum_nt_actual = sum(o.pnl_percentage or 0 for o in nt)
                 est_tot = round((sum_phantom + sum_nt_actual) / total, 4) if total else None
 
+                pct_trig = round(len(triggered) / total * 100, 1) if total else 0
+
+                ph_first_count = sum(1 for o in triggered if getattr(o, trig_field) and o.closed_at and getattr(o, trig_field) < o.closed_at)
+                act_first_count = len(triggered) - ph_first_count
+
+                vs_exit = round(est_tot - avg_exit_pnl, 4) if est_tot is not None else None
+
                 tick_momentum_shadow.append({
                     "label": lbl.upper(),
                     "windows": win_str,
@@ -3028,7 +3042,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "direction": direction,
                     "total": total,
                     "triggered_count": len(triggered),
+                    "pct_trig": pct_trig,
                     "nt_count": len(nt),
+                    "ph_first_count": ph_first_count,
+                    "act_first_count": act_first_count,
                     "avg_exit_pnl": avg_exit_pnl,
                     "avg_phantom_pnl": avg_phantom_pnl,
                     "avg_peak_pnl": avg_peak_pnl,
@@ -3038,6 +3055,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_min_actual": avg_min_actual,
                     "avg_min_phantom": avg_min_phantom,
                     "est_tot": est_tot,
+                    "vs_exit": vs_exit,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Tick Momentum Shadow: {e}\n{traceback.format_exc()}")
@@ -3405,6 +3423,157 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),
     }
+
+
+# ----- Investor Portfolio -----
+
+class InvestorCreate(BaseModel):
+    name: str
+
+class InvestorDeposit(BaseModel):
+    investor_id: int
+    amount: float
+
+class InvestorWithdraw(BaseModel):
+    investor_id: int
+    amount: float
+
+
+async def _get_portfolio_value(db: AsyncSession) -> float:
+    """Return the total USDT portfolio value (balance + open positions margin)."""
+    await trading_engine.initialize(db)
+    if trading_engine.is_paper_mode:
+        balance = await trading_engine._recalculate_paper_balance(db)
+        result = await db.execute(
+            select(Order).where(and_(Order.status == "OPEN", Order.is_paper == True))
+        )
+        open_orders = result.scalars().all()
+        used_margin = sum(o.investment for o in open_orders)
+        return balance + used_margin
+    else:
+        bal = await binance_service.get_balance()
+        return bal['total_portfolio']
+
+
+async def _get_total_shares(db: AsyncSession) -> float:
+    result = await db.execute(select(func.coalesce(func.sum(Investor.shares), 0.0)))
+    return result.scalar()
+
+
+async def _get_nav_per_share(db: AsyncSession) -> float:
+    total_shares = await _get_total_shares(db)
+    if total_shares <= 0:
+        return 1.0
+    portfolio = await _get_portfolio_value(db)
+    return portfolio / total_shares
+
+
+@app.get("/api/investors")
+async def list_investors(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Investor).order_by(Investor.id))
+    investors = result.scalars().all()
+
+    total_shares = await _get_total_shares(db)
+    portfolio_value = await _get_portfolio_value(db)
+    nav = portfolio_value / total_shares if total_shares > 0 else 1.0
+
+    rows = []
+    for inv in investors:
+        pct = (inv.shares / total_shares * 100) if total_shares > 0 else 0.0
+        value = inv.shares * nav
+        rows.append({
+            "id": inv.id,
+            "name": inv.name,
+            "shares": round(inv.shares, 6),
+            "ownership_pct": round(pct, 2),
+            "value_usd": round(value, 2),
+            "total_deposited": round(inv.total_deposited, 2),
+            "total_withdrawn": round(inv.total_withdrawn, 2),
+            "created_at": inv.created_at.isoformat() if inv.created_at else None,
+        })
+
+    return {
+        "investors": rows,
+        "total_shares": round(total_shares, 6),
+        "nav_per_share": round(nav, 6),
+        "portfolio_value": round(portfolio_value, 2),
+    }
+
+
+@app.post("/api/investors")
+async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Name is required")
+
+    existing = await db.execute(select(Investor).where(Investor.name == name))
+    if existing.scalar():
+        raise HTTPException(409, f"Investor '{name}' already exists")
+
+    inv = Investor(name=name, shares=0.0, total_deposited=0.0, total_withdrawn=0.0)
+    db.add(inv)
+    await db.flush()
+    return {"ok": True, "id": inv.id, "name": inv.name}
+
+
+@app.post("/api/investors/deposit")
+async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get_db)):
+    if body.amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+
+    inv = await db.get(Investor, body.investor_id)
+    if not inv:
+        raise HTTPException(404, "Investor not found")
+
+    nav = await _get_nav_per_share(db)
+    new_shares = body.amount / nav
+    inv.shares += new_shares
+    inv.total_deposited += body.amount
+    await db.flush()
+
+    return {"ok": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6)}
+
+
+@app.post("/api/investors/withdraw")
+async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(get_db)):
+    if body.amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+
+    inv = await db.get(Investor, body.investor_id)
+    if not inv:
+        raise HTTPException(404, "Investor not found")
+
+    nav = await _get_nav_per_share(db)
+    shares_needed = body.amount / nav
+
+    if shares_needed > inv.shares + 1e-9:
+        max_value = inv.shares * nav
+        raise HTTPException(400, f"Insufficient shares. Max withdrawal: ${max_value:.2f}")
+
+    inv.shares = max(0.0, inv.shares - shares_needed)
+    inv.total_withdrawn += body.amount
+    await db.flush()
+
+    return {"ok": True, "shares_removed": round(shares_needed, 6), "nav": round(nav, 6)}
+
+
+@app.delete("/api/investors/{investor_id}")
+async def remove_investor(investor_id: int, db: AsyncSession = Depends(get_db)):
+    inv = await db.get(Investor, investor_id)
+    if not inv:
+        raise HTTPException(404, "Investor not found")
+
+    if inv.shares > 1e-9:
+        nav = await _get_nav_per_share(db)
+        remaining_value = inv.shares * nav
+        inv.total_withdrawn += remaining_value
+        inv.shares = 0.0
+        await db.flush()
+
+    await db.execute(delete(Investor).where(Investor.id == investor_id))
+    await db.flush()
+
+    return {"ok": True}
 
 
 # ----- Configuration -----

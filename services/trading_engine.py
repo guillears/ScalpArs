@@ -1094,6 +1094,10 @@ class TradingEngine:
                 'cached_ema5_prev3': _cached_ema5_prev3,
                 'peak_ema5_dist_pct': None,
                 'peak_ema5_slope_pct': None,
+                'peak_reached_at': None,
+                'trough_reached_at': None,
+                'trough_ema5_dist_pct': None,
+                'ema5_ever_negative': False,
                 'tick_prices': [],
                 'phantom_be_l1_triggered': False,
                 'phantom_be_l1_triggered_at': None,
@@ -1276,6 +1280,13 @@ class TradingEngine:
                     order.peak_ema5_dist_pct = cached['peak_ema5_dist_pct']
                 if cached.get('peak_ema5_slope_pct') is not None:
                     order.peak_ema5_slope_pct = cached['peak_ema5_slope_pct']
+                if cached.get('peak_reached_at') is not None:
+                    order.peak_reached_at = cached['peak_reached_at']
+                if cached.get('trough_reached_at') is not None:
+                    order.trough_reached_at = cached['trough_reached_at']
+                if cached.get('trough_ema5_dist_pct') is not None:
+                    order.trough_ema5_dist_pct = cached['trough_ema5_dist_pct']
+                order._ema5_ever_negative = cached.get('ema5_ever_negative', False)
                 break
 
         try:
@@ -1333,6 +1344,15 @@ class TradingEngine:
                 pass
         except Exception:
             pass
+
+        # Determine EMA5 went negative category (after exit_price_vs_ema5_pct is set)
+        ema5_ever_neg = getattr(order, '_ema5_ever_negative', False)
+        if not ema5_ever_neg:
+            order.ema5_went_negative = "NEVER"
+        elif order.exit_price_vs_ema5_pct is not None and order.exit_price_vs_ema5_pct >= 0:
+            order.ema5_went_negative = "RECOVERED"
+        else:
+            order.ema5_went_negative = "ENDED_NEG"
 
         # Create transaction record
         transaction = Transaction(
@@ -2429,6 +2449,7 @@ class TradingEngine:
             # Track peak P&L in real-time for break-even decisions
             current_peak = max(cached_peak_pnl, pnl_pct) if pnl_pct > 0 else cached_peak_pnl
             if pnl_pct > cached_peak_pnl and pnl_pct > 0:
+                order_info['peak_reached_at'] = datetime.utcnow()
                 _ema5_val = order_info.get('cached_ema5')
                 if _ema5_val and _ema5_val > 0:
                     if direction == 'LONG':
@@ -2441,7 +2462,24 @@ class TradingEngine:
             order_info['peak_pnl'] = current_peak
             
             current_trough = min(cached_trough_pnl, pnl_pct) if pnl_pct < 0 else cached_trough_pnl
+            if pnl_pct < cached_trough_pnl and pnl_pct < 0:
+                order_info['trough_reached_at'] = datetime.utcnow()
+                _ema5_val_t = order_info.get('cached_ema5')
+                if _ema5_val_t and _ema5_val_t > 0:
+                    if direction == 'LONG':
+                        order_info['trough_ema5_dist_pct'] = round((current_price - _ema5_val_t) / current_price * 100, 4)
+                    else:
+                        order_info['trough_ema5_dist_pct'] = round((_ema5_val_t - current_price) / current_price * 100, 4)
             order_info['trough_pnl'] = current_trough
+
+            # Track if EMA5 distance ever went unfavorable
+            if not order_info.get('ema5_ever_negative'):
+                _ema5_neg = order_info.get('cached_ema5')
+                if _ema5_neg and _ema5_neg > 0:
+                    if direction == 'LONG' and current_price < _ema5_neg:
+                        order_info['ema5_ever_negative'] = True
+                    elif direction == 'SHORT' and current_price > _ema5_neg:
+                        order_info['ema5_ever_negative'] = True
             
             # Shadow BE tracking: record phantom triggers using original L1/L2 values
             _SHADOW_BE = [(1, 0.50, 0.20), (2, 1.00, 0.50)]
@@ -2809,6 +2847,10 @@ class TradingEngine:
                 'peak_ema5_gap': order.peak_ema5_gap or 0.0,
                 'peak_ema5_dist_pct': order.peak_ema5_dist_pct,
                 'peak_ema5_slope_pct': order.peak_ema5_slope_pct,
+                'peak_reached_at': order.peak_reached_at,
+                'trough_reached_at': order.trough_reached_at,
+                'trough_ema5_dist_pct': order.trough_ema5_dist_pct,
+                'ema5_ever_negative': order.ema5_went_negative in ("RECOVERED", "ENDED_NEG") if order.ema5_went_negative else False,
                 'rsi': pair_emas.get(order.pair, {}).get('rsi'),
                 'rsi_prev1': pair_emas.get(order.pair, {}).get('rsi_prev1'),
                 'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2'),
@@ -2861,6 +2903,12 @@ class TradingEngine:
                             if old_info.get('peak_pnl', 0) >= new_info.get('peak_pnl', 0):
                                 new_info['peak_ema5_dist_pct'] = old_info.get('peak_ema5_dist_pct')
                                 new_info['peak_ema5_slope_pct'] = old_info.get('peak_ema5_slope_pct')
+                                new_info['peak_reached_at'] = old_info.get('peak_reached_at')
+                            if old_info.get('trough_pnl', 0) <= new_info.get('trough_pnl', 0):
+                                new_info['trough_reached_at'] = old_info.get('trough_reached_at')
+                                new_info['trough_ema5_dist_pct'] = old_info.get('trough_ema5_dist_pct')
+                            if old_info.get('ema5_ever_negative'):
+                                new_info['ema5_ever_negative'] = True
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

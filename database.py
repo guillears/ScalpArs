@@ -155,6 +155,14 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_ema5_crossed BOOLEAN"))
                 if 'entry_btc_rsi_prev' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_prev FLOAT"))
+                if 'peak_reached_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN peak_reached_at DATETIME"))
+                if 'trough_reached_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN trough_reached_at DATETIME"))
+                if 'trough_ema5_dist_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN trough_ema5_dist_pct FLOAT"))
+                if 'ema5_went_negative' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN ema5_went_negative VARCHAR(20)"))
                 if 'entry_price_vs_ema5_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_price_vs_ema5_pct FLOAT"))
 

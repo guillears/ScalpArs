@@ -3168,13 +3168,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Signal Lost Shadow: {e}\n{traceback.format_exc()}")
 
-    # Exit Quality — Price vs EMA5
+    # Exit Quality — Trade Lifecycle
     exit_quality_ema5 = []
     try:
         eq_groups = {}
         for o in orders:
-            if o.exit_price_vs_ema5_pct is None:
-                continue
             reason = o.close_reason or "UNKNOWN"
             if " L" in reason:
                 parts = reason.split(" L")
@@ -3186,61 +3184,92 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 except ValueError:
                     pass
             direction = o.direction or "UNKNOWN"
-            conf = getattr(o, 'confidence', 'UNKNOWN') or 'UNKNOWN'
-            eq_groups.setdefault((reason, direction, conf), []).append(o)
+            eq_groups.setdefault((reason, direction), []).append(o)
 
-        for (reason, direction, conf) in sorted(eq_groups.keys()):
-            group = eq_groups[(reason, direction, conf)]
+        for (reason, direction) in sorted(eq_groups.keys()):
+            group = eq_groups[(reason, direction)]
             count = len(group)
             if count == 0:
                 continue
-            dists = [o.exit_price_vs_ema5_pct for o in group]
-            slopes = [o.exit_ema5_slope_pct for o in group if o.exit_ema5_slope_pct is not None]
-            crossed_count = sum(1 for o in group if o.exit_ema5_crossed)
-            favorable = [o for o in group if o.exit_price_vs_ema5_pct >= 0]
-            unfavorable = [o for o in group if o.exit_price_vs_ema5_pct < 0]
-            fav_pnl = round(sum(o.pnl_percentage or 0 for o in favorable) / len(favorable), 4) if favorable else None
-            unfav_pnl = round(sum(o.pnl_percentage or 0 for o in unfavorable) / len(unfavorable), 4) if unfavorable else None
-            avg_pnl = round(sum(o.pnl_percentage or 0 for o in group) / count, 4)
 
-            peaks = [o.peak_pnl or 0 for o in group]
-            avg_peak = round(sum(peaks) / count, 4)
-            regrets = [(o.peak_pnl or 0) - (o.pnl_percentage or 0) for o in group]
-            avg_regret = round(sum(regrets) / count, 4)
-            total_regret_usd = round(sum(
-                ((o.peak_pnl or 0) - (o.pnl_percentage or 0)) * (o.investment or 0) / 100
-                for o in group
-            ), 2)
+            # Duration
+            durations = []
+            for o in group:
+                if o.opened_at and o.closed_at:
+                    durations.append((o.closed_at - o.opened_at).total_seconds() / 60.0)
+            avg_duration = round(sum(durations) / len(durations), 1) if durations else None
 
+            # Close P&L
+            avg_close_pnl = round(sum(o.pnl_percentage or 0 for o in group) / count, 4)
+
+            # Post-exit peak
             post_peaks = [o.post_exit_peak_pnl for o in group if o.post_exit_peak_pnl is not None]
             avg_post_exit_peak = round(sum(post_peaks) / len(post_peaks), 4) if post_peaks else None
 
-            peak_ema5_dists = [o.peak_ema5_dist_pct for o in group if getattr(o, 'peak_ema5_dist_pct', None) is not None]
-            peak_ema5_slopes = [o.peak_ema5_slope_pct for o in group if getattr(o, 'peak_ema5_slope_pct', None) is not None]
+            # Peak minutes (from opened_at to peak_reached_at)
+            peak_mins = []
+            for o in group:
+                if o.opened_at and getattr(o, 'peak_reached_at', None):
+                    peak_mins.append((o.peak_reached_at - o.opened_at).total_seconds() / 60.0)
+            avg_peak_min = round(sum(peak_mins) / len(peak_mins), 1) if peak_mins else None
+
+            # EMA5% at entry
+            entry_ema5s = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
+            avg_entry_ema5 = round(sum(entry_ema5s) / len(entry_ema5s), 4) if entry_ema5s else None
+
+            # EMA5% at peak
+            peak_ema5s = [o.peak_ema5_dist_pct for o in group if getattr(o, 'peak_ema5_dist_pct', None) is not None]
+            avg_peak_ema5 = round(sum(peak_ema5s) / len(peak_ema5s), 4) if peak_ema5s else None
+
+            # Delta EMA5% (entry - peak): negative = momentum fading
+            delta_ema5s = []
+            for o in group:
+                if o.entry_price_vs_ema5_pct is not None and getattr(o, 'peak_ema5_dist_pct', None) is not None:
+                    delta_ema5s.append(o.peak_ema5_dist_pct - o.entry_price_vs_ema5_pct)
+            avg_delta_ema5 = round(sum(delta_ema5s) / len(delta_ema5s), 4) if delta_ema5s else None
+
+            # Trough P&L
+            troughs = [o.trough_pnl or 0 for o in group]
+            avg_trough = round(sum(troughs) / count, 4)
+
+            # Trough minutes
+            trough_mins = []
+            for o in group:
+                if o.opened_at and getattr(o, 'trough_reached_at', None):
+                    trough_mins.append((o.trough_reached_at - o.opened_at).total_seconds() / 60.0)
+            avg_trough_min = round(sum(trough_mins) / len(trough_mins), 1) if trough_mins else None
+
+            # EMA5% at trough
+            trough_ema5s = [o.trough_ema5_dist_pct for o in group if getattr(o, 'trough_ema5_dist_pct', None) is not None]
+            avg_trough_ema5 = round(sum(trough_ema5s) / len(trough_ema5s), 4) if trough_ema5s else None
+
+            # EMA5 went negative stats
+            neg_values = [getattr(o, 'ema5_went_negative', None) for o in group]
+            neg_known = [v for v in neg_values if v is not None]
+            pct_never = round(sum(1 for v in neg_known if v == "NEVER") / len(neg_known) * 100, 1) if neg_known else None
+            pct_recovered = round(sum(1 for v in neg_known if v == "RECOVERED") / len(neg_known) * 100, 1) if neg_known else None
+            pct_ended_neg = round(sum(1 for v in neg_known if v == "ENDED_NEG") / len(neg_known) * 100, 1) if neg_known else None
 
             exit_quality_ema5.append({
                 "reason": reason,
                 "direction": direction,
-                "confidence": conf,
                 "count": count,
-                "avg_dist": round(sum(dists) / count, 4),
-                "pct_favorable": round(len(favorable) / count * 100, 1),
-                "pct_crossed": round(crossed_count / count * 100, 1),
-                "avg_slope": round(sum(slopes) / len(slopes), 4) if slopes else None,
-                "avg_pnl_favorable": fav_pnl,
-                "avg_pnl_unfavorable": unfav_pnl,
-                "avg_pnl": avg_pnl,
-                "favorable_count": len(favorable),
-                "unfavorable_count": len(unfavorable),
-                "avg_peak_pnl": avg_peak,
-                "avg_regret": avg_regret,
-                "total_regret_usd": total_regret_usd,
+                "avg_duration": avg_duration,
+                "avg_close_pnl": avg_close_pnl,
                 "avg_post_exit_peak": avg_post_exit_peak,
-                "avg_peak_ema5_dist": round(sum(peak_ema5_dists) / len(peak_ema5_dists), 4) if peak_ema5_dists else None,
-                "avg_peak_ema5_slope": round(sum(peak_ema5_slopes) / len(peak_ema5_slopes), 4) if peak_ema5_slopes else None,
+                "avg_peak_min": avg_peak_min,
+                "avg_entry_ema5": avg_entry_ema5,
+                "avg_peak_ema5": avg_peak_ema5,
+                "avg_delta_ema5": avg_delta_ema5,
+                "avg_trough": avg_trough,
+                "avg_trough_min": avg_trough_min,
+                "avg_trough_ema5": avg_trough_ema5,
+                "pct_never_neg": pct_never,
+                "pct_recovered": pct_recovered,
+                "pct_ended_neg": pct_ended_neg,
             })
     except Exception as e:
-        logger.error(f"[PERF] Error computing Exit Quality EMA5: {e}\n{traceback.format_exc()}")
+        logger.error(f"[PERF] Error computing Exit Quality: {e}\n{traceback.format_exc()}")
 
     return {
         "total_trades": total_trades,

@@ -392,7 +392,7 @@ class BinanceService:
                 'amount': float(order.get('amount', amount)),
                 'price': float(order.get('average', order.get('price', 0))),
                 'cost': float(order.get('cost', 0)),
-                'fee': float(order.get('fee', {}).get('cost', 0)),
+                'fee': float((order.get('fee') or {}).get('cost', 0)),
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
             }
         except Exception as e:
@@ -461,7 +461,7 @@ class BinanceService:
                 'status': order.get('status', 'open'),
                 'filled': float(order.get('filled', 0)),
                 'remaining': float(order.get('remaining', amount)),
-                'fee': float(order.get('fee', {}).get('cost', 0)),
+                'fee': float((order.get('fee') or {}).get('cost', 0)),
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
             }
         except Exception as e:
@@ -479,7 +479,7 @@ class BinanceService:
                 'filled': float(order.get('filled', 0)),
                 'remaining': float(order.get('remaining', 0)),
                 'average': float(order.get('average', order.get('price', 0))),
-                'fee': float(order.get('fee', {}).get('cost', 0)),
+                'fee': float((order.get('fee') or {}).get('cost', 0)),
             }
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching order status {order_id} for {symbol}: {e}")

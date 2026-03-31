@@ -943,6 +943,79 @@ async def close_order(request: ManualCloseRequest, db: AsyncSession = Depends(ge
     return {"status": "closed", "pnl": closed_order.pnl}
 
 
+@app.post("/api/recover-positions")
+async def recover_positions(db: AsyncSession = Depends(get_db)):
+    """Import orphan Binance positions that have no matching Order in the database."""
+    await trading_engine.initialize(db)
+    if trading_engine.is_paper_mode:
+        raise HTTPException(400, "Position recovery only works in live mode")
+
+    positions = await binance_service.get_open_positions()
+    if not positions:
+        return {"recovered": 0, "positions": []}
+
+    recovered = []
+    for pos in positions:
+        pair = pos['symbol'].replace('/USDT:USDT', 'USDT')
+        existing = await db.execute(
+            select(Order).where(
+                and_(Order.pair == pair, Order.status == "OPEN", Order.is_paper == False)
+            )
+        )
+        if existing.scalar_one_or_none():
+            continue
+
+        investment = pos['margin']
+        leverage = pos['leverage']
+        notional = pos['notional']
+        quantity = pos['contracts']
+        entry_price = pos['entry_price']
+        direction = pos['side']
+
+        order = Order(
+            pair=pair,
+            direction=direction,
+            status="OPEN",
+            entry_price=entry_price,
+            current_price=pos['mark_price'],
+            investment=abs(investment),
+            leverage=leverage,
+            notional_value=abs(notional),
+            quantity=quantity,
+            confidence="RECOVERED",
+            entry_fee=0.0,
+            entry_order_type="TAKER",
+            peak_pnl=0.0,
+            trough_pnl=0.0,
+            high_price_since_entry=entry_price if direction == "LONG" else None,
+            low_price_since_entry=entry_price if direction == "SHORT" else None,
+            is_paper=False,
+            current_tp_level=1,
+            dynamic_tp_target=0.0
+        )
+        db.add(order)
+        await db.flush()
+
+        transaction = Transaction(
+            order_id=order.id,
+            pair=pair,
+            action=f"OPEN_{direction}",
+            price=entry_price,
+            quantity=quantity,
+            investment=abs(investment),
+            leverage=leverage,
+            notional_value=abs(notional),
+            fee=0.0,
+            order_type="TAKER",
+            is_paper=False
+        )
+        db.add(transaction)
+        recovered.append({"pair": pair, "direction": direction, "entry_price": entry_price, "quantity": quantity})
+
+    await db.commit()
+    return {"recovered": len(recovered), "positions": recovered}
+
+
 # ----- Performance Metrics -----
 
 @app.get("/api/performance")

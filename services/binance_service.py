@@ -151,34 +151,39 @@ class BinanceService:
                 return 0.0
 
     async def buy_bnb(self, amount_usdt: float) -> Optional[Dict]:
-        """Buy BNB with USDT via Binance Futures Convert (fee-free, stays in futures wallet)."""
-        try:
-            await self.load_markets()
-            quote = await self.exchange.fapiPrivatePostConvertGetQuote({
-                'fromAsset': 'USDT',
-                'toAsset': 'BNB',
-                'fromAmount': str(round(amount_usdt, 2)),
-            })
-            quote_id = quote.get('quoteId')
-            if not quote_id:
-                raise Exception(f"No quoteId in response: {quote}")
-            accept = await self.exchange.fapiPrivatePostConvertAcceptQuote({
-                'quoteId': quote_id,
-            })
-            to_amount = float(accept.get('toAmount', quote.get('toAmount', 0)))
-            from_amount = float(accept.get('fromAmount', quote.get('fromAmount', amount_usdt)))
-            ratio = float(quote.get('ratio', 0))
-            price = (from_amount / to_amount) if to_amount > 0 else ratio
-            logger.info(f"[BNB_SWAP] Futures convert: {from_amount} USDT → {to_amount} BNB @ {price:.2f}")
-            return {
-                'bnb_amount': to_amount,
-                'price': price,
-                'cost_usdt': from_amount,
-                'order_id': accept.get('orderId', quote_id)
-            }
-        except Exception as e:
-            logger.error(f"[BNB_SWAP] Error buying BNB: {e}")
-            return None
+        """Buy BNB with USDT via Binance Futures Convert (fee-free, stays in futures wallet).
+        Retries up to 3 times since quotes expire after 10s and CCXT time-sync adds latency."""
+        await self.load_markets()
+        last_error = None
+        for attempt in range(3):
+            try:
+                quote = await self.exchange.fapiPrivatePostConvertGetQuote({
+                    'fromAsset': 'USDT',
+                    'toAsset': 'BNB',
+                    'fromAmount': str(round(amount_usdt, 2)),
+                })
+                quote_id = quote.get('quoteId')
+                if not quote_id:
+                    raise Exception(f"No quoteId in response: {quote}")
+                accept = await self.exchange.fapiPrivatePostConvertAcceptQuote({
+                    'quoteId': quote_id,
+                })
+                to_amount = float(accept.get('toAmount', quote.get('toAmount', 0)))
+                from_amount = float(accept.get('fromAmount', quote.get('fromAmount', amount_usdt)))
+                ratio = float(quote.get('ratio', 0))
+                price = (from_amount / to_amount) if to_amount > 0 else ratio
+                logger.info(f"[BNB_SWAP] Futures convert (attempt {attempt+1}): {from_amount} USDT → {to_amount} BNB @ {price:.2f}")
+                return {
+                    'bnb_amount': to_amount,
+                    'price': price,
+                    'cost_usdt': from_amount,
+                    'order_id': accept.get('orderId', quote_id)
+                }
+            except Exception as e:
+                last_error = e
+                logger.warning(f"[BNB_SWAP] Attempt {attempt+1}/3 failed: {e}")
+        logger.error(f"[BNB_SWAP] All 3 attempts failed. Last error: {last_error}")
+        return None
 
     async def close(self):
         """Close exchange connections"""

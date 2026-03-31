@@ -2424,6 +2424,16 @@ class TradingEngine:
             
             # Track peak P&L in real-time for break-even decisions
             current_peak = max(cached_peak_pnl, pnl_pct) if pnl_pct > 0 else cached_peak_pnl
+            if pnl_pct > cached_peak_pnl and pnl_pct > 0:
+                _ema5_val = order_info.get('cached_ema5')
+                if _ema5_val and _ema5_val > 0:
+                    if direction == 'LONG':
+                        order_info['peak_ema5_dist_pct'] = round((current_price - _ema5_val) / current_price * 100, 4)
+                    else:
+                        order_info['peak_ema5_dist_pct'] = round((_ema5_val - current_price) / current_price * 100, 4)
+                    _ema5_prev3 = order_info.get('cached_ema5_prev3')
+                    if _ema5_prev3 and _ema5_prev3 > 0:
+                        order_info['peak_ema5_slope_pct'] = round((_ema5_val - _ema5_prev3) / _ema5_val * 100, 4)
             order_info['peak_pnl'] = current_peak
             
             current_trough = min(cached_trough_pnl, pnl_pct) if pnl_pct < 0 else cached_trough_pnl
@@ -2521,24 +2531,6 @@ class TradingEngine:
                     logger.error(f"[REALTIME_SL] Error closing {pair}: {e}")
                 continue  # Already handled, skip trailing stop check
             
-            # Update peak/trough P&L in cache
-            cached_peak_pnl = order_info.get('peak_pnl', 0.0)
-            if pnl_pct > cached_peak_pnl:
-                order_info['peak_pnl'] = pnl_pct
-                cached_peak_pnl = pnl_pct
-                _ema5_val = order_info.get('cached_ema5')
-                if _ema5_val and _ema5_val > 0:
-                    if direction == 'LONG':
-                        order_info['peak_ema5_dist_pct'] = round((current_price - _ema5_val) / current_price * 100, 4)
-                    else:
-                        order_info['peak_ema5_dist_pct'] = round((_ema5_val - current_price) / current_price * 100, 4)
-                    _ema5_prev3 = order_info.get('cached_ema5_prev3')
-                    if _ema5_prev3 and _ema5_prev3 > 0:
-                        order_info['peak_ema5_slope_pct'] = round((_ema5_val - _ema5_prev3) / _ema5_val * 100, 4)
-            cached_trough_pnl = order_info.get('trough_pnl', 0.0)
-            if pnl_pct < cached_trough_pnl:
-                order_info['trough_pnl'] = pnl_pct
-
             # Real-time RSI Momentum Exit: two consecutive RSI drops/rises within P&L range
             rt_rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
             rt_rsi_exit_min = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)

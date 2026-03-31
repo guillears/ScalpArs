@@ -154,6 +154,8 @@ class Order(Base):
     phantom_tick_e_pnl = Column(Float, nullable=True)
     phantom_tick_f_triggered_at = Column(DateTime, nullable=True)
     phantom_tick_f_pnl = Column(Float, nullable=True)
+    phantom_tick_g_triggered_at = Column(DateTime, nullable=True)
+    phantom_tick_g_pnl = Column(Float, nullable=True)
 
     # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
     first_rsi2_pnl = Column(Float, nullable=True)

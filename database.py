@@ -143,6 +143,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_f_triggered_at DATETIME"))
                 if 'phantom_tick_f_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_f_pnl FLOAT"))
+                if 'phantom_tick_g_triggered_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_g_triggered_at DATETIME"))
+                if 'phantom_tick_g_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_g_pnl FLOAT"))
                 if 'exit_price_vs_ema5_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_price_vs_ema5_pct FLOAT"))
                 if 'exit_ema5_slope_pct' not in columns:

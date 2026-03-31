@@ -2971,6 +2971,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ('d', '30,60,90s', '0.12%', [30, 60, 90], 0.12),
             ('e', '30,60,90s', '0.15%', [30, 60, 90], 0.15),
             ('f', '30,60,90s', '0.08/0.12/0.18%', [30, 60, 90], [0.08, 0.12, 0.18]),
+            ('g', '60,90,120s', '0.15%', [60, 90, 120], 0.15),
         ]
         for lbl, win_str, delta_str, _wins, _delta in _SHADOW_TICK_LABELS:
             trig_field = f'phantom_tick_{lbl}_triggered_at'
@@ -3105,7 +3106,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             for o in dir_sl:
                 earliest_at = None
                 earliest_pnl = None
-                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
+                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
                     t_at = getattr(o, f'phantom_tick_{_lbl}_triggered_at', None)
                     t_pnl = getattr(o, f'phantom_tick_{_lbl}_pnl', None)
                     if t_at is not None:

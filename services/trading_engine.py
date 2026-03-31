@@ -39,6 +39,7 @@ _SHADOW_TICK_CONFIGS = [
     ('d', [30, 60, 90], 0.12),
     ('e', [30, 60, 90], 0.15),
     ('f', [30, 60, 90], [0.08, 0.12, 0.18]),
+    ('g', [60, 90, 120], 0.15),
 ]
 
 
@@ -1118,6 +1119,9 @@ class TradingEngine:
                 'phantom_tick_f_triggered': False,
                 'phantom_tick_f_triggered_at': None,
                 'phantom_tick_f_pnl': None,
+                'phantom_tick_g_triggered': False,
+                'phantom_tick_g_triggered_at': None,
+                'phantom_tick_g_pnl': None,
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -1265,7 +1269,7 @@ class TradingEngine:
                 order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
                 order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
                 order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
-                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
+                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
                     setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
                     setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
                 if cached.get('peak_ema5_dist_pct') is not None:
@@ -1381,7 +1385,7 @@ class TradingEngine:
         for cached in _open_orders_cache.get(order.pair, []):
             if cached['id'] == order.id:
                 cached_tick_buf = cached.get('tick_prices', [])
-                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
+                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
                     phantom_tick_states[f'phantom_tick_{_lbl}_triggered'] = cached.get(f'phantom_tick_{_lbl}_triggered', False)
                     phantom_tick_states[f'phantom_tick_{_lbl}_triggered_at'] = cached.get(f'phantom_tick_{_lbl}_triggered_at')
                     phantom_tick_states[f'phantom_tick_{_lbl}_pnl'] = cached.get(f'phantom_tick_{_lbl}_pnl')
@@ -1526,7 +1530,7 @@ class TradingEngine:
             if pe_tick_buf is not None:
                 now_ts = time.time()
                 pe_tick_buf.append((now_ts, price))
-                pe_tick_buf[:] = [(t, p) for t, p in pe_tick_buf if t >= now_ts - 70]
+                pe_tick_buf[:] = [(t, p) for t, p in pe_tick_buf if t >= now_ts - 125]
                 if current_pnl > tick_exit_min_profit:
                     for _lbl, _swin, _sdelta in _SHADOW_TICK_CONFIGS:
                         _tk = f'phantom_tick_{_lbl}_triggered'
@@ -2577,7 +2581,7 @@ class TradingEngine:
             now = time.time()
             tick_buf = order_info.get('tick_prices', [])
             tick_buf.append((now, current_price))
-            cutoff = now - 70
+            cutoff = now - 125
             tick_buf[:] = [(t, p) for t, p in tick_buf if t >= cutoff]
             order_info['tick_prices'] = tick_buf
 
@@ -2833,6 +2837,9 @@ class TradingEngine:
                 'phantom_tick_f_triggered': order.phantom_tick_f_triggered_at is not None,
                 'phantom_tick_f_triggered_at': order.phantom_tick_f_triggered_at,
                 'phantom_tick_f_pnl': order.phantom_tick_f_pnl,
+                'phantom_tick_g_triggered': order.phantom_tick_g_triggered_at is not None,
+                'phantom_tick_g_triggered_at': order.phantom_tick_g_triggered_at,
+                'phantom_tick_g_pnl': order.phantom_tick_g_pnl,
             }
             
             if order.pair not in new_cache:
@@ -2863,7 +2870,7 @@ class TradingEngine:
                                 for _key in [f'phantom_be_l{_lvl}_triggered', f'phantom_be_l{_lvl}_triggered_at', f'phantom_be_l{_lvl}_would_exit_pnl']:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]
-                            for _lbl in ['a', 'b', 'c', 'd', 'e', 'f']:
+                            for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
                                 for _key in [f'phantom_tick_{_lbl}_triggered', f'phantom_tick_{_lbl}_triggered_at', f'phantom_tick_{_lbl}_pnl']:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]

@@ -151,39 +151,49 @@ class BinanceService:
                 return 0.0
 
     async def buy_bnb(self, amount_usdt: float) -> Optional[Dict]:
-        """Buy BNB with USDT via Binance Futures Convert (fee-free, stays in futures wallet).
-        Retries up to 3 times since quotes expire after 10s and CCXT time-sync adds latency."""
-        await self.load_markets()
-        last_error = None
-        for attempt in range(3):
-            try:
-                quote = await self.exchange.fapiPrivatePostConvertGetQuote({
-                    'fromAsset': 'USDT',
-                    'toAsset': 'BNB',
-                    'fromAmount': str(round(amount_usdt, 2)),
-                })
-                quote_id = quote.get('quoteId')
-                if not quote_id:
-                    raise Exception(f"No quoteId in response: {quote}")
-                accept = await self.exchange.fapiPrivatePostConvertAcceptQuote({
-                    'quoteId': quote_id,
-                })
-                to_amount = float(accept.get('toAmount', quote.get('toAmount', 0)))
-                from_amount = float(accept.get('fromAmount', quote.get('fromAmount', amount_usdt)))
-                ratio = float(quote.get('ratio', 0))
-                price = (from_amount / to_amount) if to_amount > 0 else ratio
-                logger.info(f"[BNB_SWAP] Futures convert (attempt {attempt+1}): {from_amount} USDT → {to_amount} BNB @ {price:.2f}")
-                return {
-                    'bnb_amount': to_amount,
-                    'price': price,
-                    'cost_usdt': from_amount,
-                    'order_id': accept.get('orderId', quote_id)
-                }
-            except Exception as e:
-                last_error = e
-                logger.warning(f"[BNB_SWAP] Attempt {attempt+1}/3 failed: {e}")
-        logger.error(f"[BNB_SWAP] All 3 attempts failed. Last error: {last_error}")
-        return None
+        """Buy BNB with USDT via transfer-to-spot + spot market buy + transfer-back.
+        Three non-time-sensitive API calls; no expiring quotes."""
+        import math
+        try:
+            await self.load_markets()
+            await self._load_spot_markets()
+
+            # Step 1: Transfer USDT from futures wallet to spot wallet
+            logger.info(f"[BNB_SWAP] Step 1/3: Transferring {amount_usdt} USDT futures → spot")
+            await self.exchange.transfer('USDT', amount_usdt, 'future', 'spot')
+
+            # Step 2: Buy BNB on spot market
+            bnb_price = await self.get_bnb_price()
+            if bnb_price <= 0:
+                logger.error("[BNB_SWAP] Cannot get BNB price. USDT stranded on spot wallet — transfer back manually.")
+                return None
+            bnb_qty = math.floor((amount_usdt / bnb_price) * 1000) / 1000  # round down to 3 decimals (BNB lot size)
+            if bnb_qty <= 0:
+                logger.error(f"[BNB_SWAP] Calculated BNB qty is 0 (price={bnb_price}). USDT stranded on spot wallet.")
+                return None
+
+            logger.info(f"[BNB_SWAP] Step 2/3: Buying {bnb_qty} BNB on spot @ ~{bnb_price:.2f}")
+            order = await self.spot_exchange.create_market_order('BNB/USDT', 'buy', bnb_qty)
+
+            filled_qty = float(order.get('filled', order.get('amount', bnb_qty)))
+            avg_price = float(order.get('average', order.get('price', bnb_price)))
+            cost = float(order.get('cost', amount_usdt))
+            order_id = order.get('id', 'spot_buy')
+
+            # Step 3: Transfer BNB from spot wallet back to futures wallet
+            logger.info(f"[BNB_SWAP] Step 3/3: Transferring {filled_qty} BNB spot → futures")
+            await self.exchange.transfer('BNB', filled_qty, 'spot', 'future')
+
+            logger.info(f"[BNB_SWAP] Complete: {cost:.2f} USDT → {filled_qty} BNB @ {avg_price:.2f}")
+            return {
+                'bnb_amount': filled_qty,
+                'price': avg_price,
+                'cost_usdt': cost,
+                'order_id': str(order_id)
+            }
+        except Exception as e:
+            logger.error(f"[BNB_SWAP] Failed: {e}. If transfer already happened, check spot wallet for stranded funds.")
+            return None
 
     async def close(self):
         """Close exchange connections"""

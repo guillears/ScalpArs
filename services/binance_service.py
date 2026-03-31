@@ -152,36 +152,44 @@ class BinanceService:
 
     async def buy_bnb(self, amount_usdt: float) -> Optional[Dict]:
         """Buy BNB with USDT via transfer-to-spot + spot market buy + transfer-back.
-        Three non-time-sensitive API calls; no expiring quotes."""
+        Four steps; all non-time-sensitive, no expiring quotes."""
         try:
             await self.load_markets()
             await self._load_spot_markets()
 
             # Step 1: Transfer USDT from futures wallet to spot wallet
-            logger.info(f"[BNB_SWAP] Step 1/3: Transferring {amount_usdt} USDT futures → spot")
+            logger.info(f"[BNB_SWAP] Step 1/4: Transferring {amount_usdt} USDT futures → spot")
             await self.spot_exchange.transfer('USDT', amount_usdt, 'future', 'spot')
 
             # Step 2: Buy BNB on spot using quoteOrderQty (spend exact USDT amount)
-            logger.info(f"[BNB_SWAP] Step 2/3: Buying BNB with {amount_usdt} USDT on spot")
+            logger.info(f"[BNB_SWAP] Step 2/4: Buying BNB with {amount_usdt} USDT on spot")
             order = await self.spot_exchange.create_order(
                 'BNB/USDT', 'market', 'buy', None, None,
                 {'quoteOrderQty': round(amount_usdt, 2)}
             )
 
-            filled_qty = float(order.get('filled', order.get('amount', 0)))
             avg_price = float(order.get('average', order.get('price', 0)))
             cost = float(order.get('cost', amount_usdt))
             order_id = order.get('id', 'spot_buy')
 
-            # Step 3: Fetch actual spot BNB balance (after fee deduction) and transfer back
+            # Step 3: Fetch actual spot balances and transfer BNB back to futures
             spot_bal = await self.spot_exchange.fetch_balance()
             actual_bnb = float(spot_bal.get('BNB', {}).get('free', 0))
             if actual_bnb <= 0:
                 logger.error("[BNB_SWAP] No BNB on spot after buy. Check order status.")
                 return None
 
-            logger.info(f"[BNB_SWAP] Step 3/3: Transferring {actual_bnb} BNB spot → futures")
+            if avg_price <= 0 and actual_bnb > 0:
+                avg_price = cost / actual_bnb
+
+            logger.info(f"[BNB_SWAP] Step 3/4: Transferring {actual_bnb} BNB spot → futures")
             await self.spot_exchange.transfer('BNB', actual_bnb, 'spot', 'future')
+
+            # Step 4: Return any leftover USDT (from lot-size rounding) back to futures
+            leftover_usdt = float(spot_bal.get('USDT', {}).get('free', 0))
+            if leftover_usdt > 0.01:
+                logger.info(f"[BNB_SWAP] Step 4/4: Returning {leftover_usdt:.2f} leftover USDT spot → futures")
+                await self.spot_exchange.transfer('USDT', leftover_usdt, 'spot', 'future')
 
             logger.info(f"[BNB_SWAP] Complete: {cost:.2f} USDT → {actual_bnb} BNB @ {avg_price:.2f}")
             return {

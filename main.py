@@ -523,6 +523,62 @@ async def get_bnb_swaps(db: AsyncSession = Depends(get_db)):
     }
 
 
+@app.post("/api/bnb-swaps/manual")
+async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
+    """Manually buy BNB with a specified USDT amount"""
+    amount = data.get("amount", 0)
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+
+    await trading_engine.initialize(db)
+
+    if trading_engine.is_paper_mode:
+        bnb_price = await binance_service.get_bnb_price()
+        if bnb_price <= 0:
+            bnb_price = 600.0
+        pre_bnb = trading_engine.paper_bnb_balance_usd
+        pre_usdt = trading_engine.paper_balance
+        trading_engine.paper_bnb_balance_usd += amount
+        swap_log = BnbSwapLog(
+            swap_type="manual",
+            amount_usdt=amount,
+            bnb_price=bnb_price,
+            amount_bnb=round(amount / bnb_price, 6),
+            pre_bnb_usd=pre_bnb,
+            post_bnb_usd=trading_engine.paper_bnb_balance_usd,
+            pre_usdt=pre_usdt,
+            post_usdt=pre_usdt - amount,
+            burn_rate=trading_engine._bnb_burn_rate,
+            is_paper=True
+        )
+        db.add(swap_log)
+        await db.commit()
+        await trading_engine._recalculate_paper_balance(db)
+        await trading_engine.save_state(db)
+        return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "cost_usdt": round(amount, 2)}
+    else:
+        result = await binance_service.buy_bnb(amount)
+        if not result:
+            raise HTTPException(500, "BNB purchase failed — check Binance API logs")
+        new_balance = await binance_service.get_balance()
+        bnb_price = result['price']
+        swap_log = BnbSwapLog(
+            swap_type="manual",
+            amount_usdt=result['cost_usdt'],
+            bnb_price=bnb_price,
+            amount_bnb=result['bnb_amount'],
+            pre_bnb_usd=0,
+            post_bnb_usd=new_balance['bnb_total'] * bnb_price,
+            pre_usdt=0,
+            post_usdt=new_balance['usdt_free'],
+            burn_rate=trading_engine._bnb_burn_rate,
+            is_paper=False
+        )
+        db.add(swap_log)
+        await db.commit()
+        return {"ok": True, "bnb_amount": result['bnb_amount'], "bnb_price": round(bnb_price, 2), "cost_usdt": round(result['cost_usdt'], 2)}
+
+
 # ----- Market Data -----
 
 @app.get("/api/pairs")
@@ -3574,6 +3630,24 @@ async def remove_investor(investor_id: int, db: AsyncSession = Depends(get_db)):
     await db.flush()
 
     return {"ok": True}
+
+
+# ----- Server Info -----
+
+_server_outbound_ip = None
+
+@app.get("/api/server-ip")
+async def get_server_ip():
+    global _server_outbound_ip
+    if _server_outbound_ip is None:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5) as client:
+                r = await client.get("https://api.ipify.org")
+                _server_outbound_ip = r.text.strip()
+        except Exception:
+            _server_outbound_ip = "unavailable"
+    return {"ip": _server_outbound_ip}
 
 
 # ----- Configuration -----

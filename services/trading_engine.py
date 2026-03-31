@@ -2992,7 +2992,8 @@ class TradingEngine:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]
                             break
-            _open_orders_cache = new_cache
+            _open_orders_cache.clear()
+            _open_orders_cache.update(new_cache)
         
         logger.debug(f"[CACHE] Updated orders cache: {len(orders)} orders across {len(new_cache)} pairs")
 

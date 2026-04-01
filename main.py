@@ -491,10 +491,10 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         balance = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
-        usdt_wallet = balance['usdt_total']
-        total = usdt_wallet + bnb_usd
+        usdt_free = balance['usdt_free']
+        total = balance['usdt_total'] + bnb_usd
         return {
-            "usdt_balance": usdt_wallet,
+            "usdt_balance": usdt_free,
             "bnb_balance": balance['bnb_total'],
             "bnb_balance_usd": round(bnb_usd, 2),
             "bnb_balance_is_usd": False,
@@ -1660,6 +1660,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         orders = all_orders
     
     if not orders:
+        logger.warning("[PERF] No closed orders found for is_paper=%s (regime=%s), returning empty performance",
+                       trading_engine.is_paper_mode, regime)
         early_open_result = await db.execute(
             select(Order).where(
                 and_(Order.status == "OPEN", Order.is_paper == trading_engine.is_paper_mode)

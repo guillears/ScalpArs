@@ -206,7 +206,7 @@
                 </div>
             </div>
             <div class="glass rounded-xl overflow-hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-96 overflow-y-auto">
+                <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                     <table class="w-full text-sm">
                         <thead class="bg-white/5 sticky top-0">
                             <tr class="text-gray-400 text-left">
@@ -254,7 +254,7 @@
             
             <!-- Transactions Tab -->
             <div id="content-transactions" class="glass rounded-xl overflow-hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-96 overflow-y-auto">
+                <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                     <table class="w-full text-sm">
                         <thead class="bg-white/5 sticky top-0">
                             <tr class="text-gray-400 text-left">
@@ -283,7 +283,7 @@
             
             <!-- Open Orders Tab -->
             <div id="content-open" class="glass rounded-xl overflow-hidden hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-96 overflow-y-auto">
+                <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                     <table class="w-full text-sm">
                         <thead class="bg-white/5 sticky top-0">
                             <tr class="text-gray-400 text-left">
@@ -317,7 +317,7 @@
             
             <!-- Closed Orders Tab -->
             <div id="content-closed" class="glass rounded-xl overflow-hidden hidden">
-                <div class="overflow-x-auto scrollbar-thin max-h-96 overflow-y-auto">
+                <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                     <table class="w-full text-sm">
                         <thead class="bg-white/5 sticky top-0">
                             <tr class="text-gray-400 text-left">
@@ -374,7 +374,7 @@
                     </div>
                 </div>
                 <div class="glass rounded-xl overflow-hidden">
-                    <div class="overflow-x-auto scrollbar-thin max-h-96 overflow-y-auto">
+                    <div class="overflow-x-auto scrollbar-thin max-h-[28rem] overflow-y-auto">
                         <table class="w-full text-sm">
                             <thead class="bg-white/5 sticky top-0">
                                 <tr class="text-gray-400 text-left">
@@ -4551,6 +4551,7 @@
 
         async function loadPerformance() {
             try {
+                const safe = (v, fb=0) => (v != null && !isNaN(v)) ? v : fb;
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
                 const badge = document.getElementById('regime-filter-badge');
@@ -4581,25 +4582,25 @@
                                 <td class="px-3 py-2 text-right text-yellow-400">$0.00</td>
                             </tr>`;
                         }
-                        const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
-                        const pnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const avgClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const pfClass = r.profit_factor >= 1.5 ? 'text-emerald-400' : r.profit_factor >= 1.0 ? 'text-amber-400' : 'text-red-400';
-                        const fmtNum = n => Math.round(n).toLocaleString('en-US');
-                        const pnlInvStr = `${r.total_pnl >= 0 ? '+' : '-'}$${fmtNum(Math.abs(r.total_pnl))} (${r.pnl_over_inv >= 0 ? '+' : ''}${r.pnl_over_inv.toFixed(2)}%)`;
-                        const pnlNotStr = `${r.total_pnl >= 0 ? '+' : '-'}$${fmtNum(Math.abs(r.total_pnl))} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
+                        const wrClass = safe(r.win_rate) >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlClass = safe(r.total_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgClass = safe(r.avg_pnl_pct) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pfClass = safe(r.profit_factor) >= 1.5 ? 'text-emerald-400' : safe(r.profit_factor) >= 1.0 ? 'text-amber-400' : 'text-red-400';
+                        const fmtNum = n => Math.round(safe(n)).toLocaleString('en-US');
+                        const pnlInvStr = `${safe(r.total_pnl) >= 0 ? '+' : '-'}$${fmtNum(Math.abs(safe(r.total_pnl)))} (${safe(r.pnl_over_inv) >= 0 ? '+' : ''}${safe(r.pnl_over_inv).toFixed(2)}%)`;
+                        const pnlNotStr = `${safe(r.total_pnl) >= 0 ? '+' : '-'}$${fmtNum(Math.abs(safe(r.total_pnl)))} (${safe(r.pnl_over_not) >= 0 ? '+' : ''}${safe(r.pnl_over_not).toFixed(2)}%)`;
                         const isTotal = r.period === 'Total';
                         const rowClass = isTotal ? 'border-t border-white/20 font-semibold' : 'hover:bg-white/5';
                         return `<tr class="${rowClass}">
                             <td class="px-3 py-2 font-medium ${isTotal ? 'text-white' : ''}">${r.period}</td>
-                            <td class="px-3 py-2 text-center">${r.count} <span class="text-xs text-gray-500">(${r.longs}L/${r.shorts}S)</span></td>
-                            <td class="px-3 py-2 text-center ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
-                            <td class="px-3 py-2 text-right ${avgClass} font-medium">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-center">${safe(r.count)} <span class="text-xs text-gray-500">(${safe(r.longs)}L/${safe(r.shorts)}S)</span></td>
+                            <td class="px-3 py-2 text-center ${wrClass} font-medium">${safe(r.win_rate).toFixed(1)}%</td>
+                            <td class="px-3 py-2 text-right ${avgClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(2)}%</td>
                             <td class="px-3 py-2 text-right text-gray-300">$${fmtNum(r.total_investment)}</td>
                             <td class="px-3 py-2 text-right text-gray-300">$${fmtNum(r.total_notional)}</td>
                             <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlInvStr}</td>
                             <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlNotStr}</td>
-                            <td class="px-3 py-2 text-right ${pfClass} font-medium">${r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)}</td>
+                            <td class="px-3 py-2 text-right ${pfClass} font-medium">${safe(r.profit_factor) >= 999 ? '∞' : safe(r.profit_factor).toFixed(2)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">$${fmtNum(r.total_fees)}</td>
                         </tr>`;
                     }).join('');
@@ -4667,20 +4668,20 @@
                             return `<tr class="hover:bg-white/5"><td class="px-3 py-2 ${trendColors[trend]} font-medium">${trend}</td><td class="px-3 py-2 text-center text-gray-500">0</td><td colspan="7" class="px-3 py-2 text-center text-gray-500">-</td></tr>`;
                         }
                         const pnlClass = t.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const rrClass = t.risk_reward >= 1 ? 'text-emerald-400' : 'text-red-400';
-                        const lClass = t.long_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const sClass = t.short_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const rrClass = safe(t.risk_reward) >= 1 ? 'text-emerald-400' : 'text-red-400';
+                        const lClass = safe(t.long_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const sClass = safe(t.short_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${trendColors[trend]} font-medium">${trend}</td>
-                                <td class="px-3 py-2 text-center">${t.total_trades} (${t.long_trades}L/${t.short_trades}S)</td>
-                                <td class="px-3 py-2 text-right ${pnlClass} font-bold">${formatUSD(t.total_pnl)}</td>
-                                <td class="px-3 py-2 text-right">${t.total_win_rate.toFixed(0)}%</td>
-                                <td class="px-3 py-2 text-right ${rrClass} font-medium">${t.risk_reward > 0 ? t.risk_reward.toFixed(2) : '-'}</td>
-                                <td class="px-3 py-2 text-right ${lClass} font-medium">${t.long_trades > 0 ? formatUSD(t.long_pnl) : '-'}</td>
-                                <td class="px-3 py-2 text-right">${t.long_trades > 0 ? t.long_win_rate.toFixed(0) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${sClass} font-medium">${t.short_trades > 0 ? formatUSD(t.short_pnl) : '-'}</td>
-                                <td class="px-3 py-2 text-right">${t.short_trades > 0 ? t.short_win_rate.toFixed(0) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center">${safe(t.total_trades)} (${safe(t.long_trades)}L/${safe(t.short_trades)}S)</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-bold">${formatUSD(safe(t.total_pnl))}</td>
+                                <td class="px-3 py-2 text-right">${safe(t.total_win_rate).toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${rrClass} font-medium">${safe(t.risk_reward) > 0 ? safe(t.risk_reward).toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${lClass} font-medium">${safe(t.long_trades) > 0 ? formatUSD(safe(t.long_pnl)) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${safe(t.long_trades) > 0 ? safe(t.long_win_rate).toFixed(0) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${sClass} font-medium">${safe(t.short_trades) > 0 ? formatUSD(safe(t.short_pnl)) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${safe(t.short_trades) > 0 ? safe(t.short_win_rate).toFixed(0) + '%' : '-'}</td>
                             </tr>`;
                     }).join('');
                 }
@@ -4718,27 +4719,27 @@
                             `;
                         }
                         
-                        const totalPnlClass = c.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const longPnlClass = c.long_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const shortPnlClass = c.short_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const longPctClass = c.long_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const shortPctClass = c.short_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const rrClass = c.risk_reward >= 1 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = safe(c.total_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const longPnlClass = safe(c.long_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const shortPnlClass = safe(c.short_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const longPctClass = safe(c.long_pnl_pct) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const shortPctClass = safe(c.short_pnl_pct) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const rrClass = safe(c.risk_reward) >= 1 ? 'text-emerald-400' : 'text-red-400';
                         
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${confColors[conf]} font-medium">${conf}</td>
-                                <td class="px-3 py-2 text-center">${c.total_trades} (${c.long_trades}L/${c.short_trades}S)</td>
-                                <td class="px-3 py-2 text-right ${totalPnlClass} font-bold">${formatUSD(c.total_pnl)}</td>
-                                <td class="px-3 py-2 text-right">${c.total_win_rate.toFixed(0)}%</td>
-                                <td class="px-3 py-2 text-right ${rrClass} font-medium">${c.risk_reward > 0 ? c.risk_reward.toFixed(2) : '-'}</td>
-                                <td class="px-3 py-2 text-right ${longPnlClass} font-medium">${c.long_trades > 0 ? formatUSD(c.long_pnl) : '-'}</td>
-                                <td class="px-3 py-2 text-right ${longPctClass}">${c.long_trades > 0 ? c.long_pnl_pct.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right">${c.long_trades > 0 ? c.long_win_rate.toFixed(0) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${shortPnlClass} font-medium">${c.short_trades > 0 ? formatUSD(c.short_pnl) : '-'}</td>
-                                <td class="px-3 py-2 text-right ${shortPctClass}">${c.short_trades > 0 ? c.short_pnl_pct.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right">${c.short_trades > 0 ? c.short_win_rate.toFixed(0) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-cyan-400">${c.avg_entry_gap != null ? c.avg_entry_gap.toFixed(3) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center">${safe(c.total_trades)} (${safe(c.long_trades)}L/${safe(c.short_trades)}S)</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-bold">${formatUSD(safe(c.total_pnl))}</td>
+                                <td class="px-3 py-2 text-right">${safe(c.total_win_rate).toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${rrClass} font-medium">${safe(c.risk_reward) > 0 ? safe(c.risk_reward).toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${longPnlClass} font-medium">${safe(c.long_trades) > 0 ? formatUSD(safe(c.long_pnl)) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${longPctClass}">${safe(c.long_trades) > 0 ? safe(c.long_pnl_pct).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${safe(c.long_trades) > 0 ? safe(c.long_win_rate).toFixed(0) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${shortPnlClass} font-medium">${safe(c.short_trades) > 0 ? formatUSD(safe(c.short_pnl)) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${shortPctClass}">${safe(c.short_trades) > 0 ? safe(c.short_pnl_pct).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${safe(c.short_trades) > 0 ? safe(c.short_win_rate).toFixed(0) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${c.avg_entry_gap != null ? safe(c.avg_entry_gap).toFixed(3) + '%' : '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -4791,8 +4792,8 @@
                     };
                     
                     reasonBody.innerHTML = sortedReasons.map(([reason, stats]) => {
-                        const pnlPctClass = stats.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const pnlUsdClass = stats.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = safe(stats.avg_pnl_pct) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlUsdClass = safe(stats.avg_pnl_usd) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const isHighLevel = reason.includes('L4+') || (reason.includes(' L') && parseInt(reason.split(' L')[1]) >= 3);
                         const reasonClass = isHighLevel ? 'text-emerald-400 font-medium' : '';
                         
@@ -4811,13 +4812,13 @@
                         }
                         const dirBadges = dirParts.length > 0 ? dirParts.join(' ') : '-';
                         
-                        const dropVal = stats.avg_price_drop || 0;
-                        const peakVal = stats.avg_peak_pnl_pct || 0;
+                        const dropVal = safe(stats.avg_price_drop);
+                        const peakVal = safe(stats.avg_peak_pnl_pct);
                         const peakClass = peakVal >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const postPeakVal = stats.avg_post_exit_peak_pnl;
                         const postTroughVal = stats.avg_post_exit_trough_pnl;
-                        const postPeakStr = postPeakVal != null ? `<span class="${postPeakVal >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${postPeakVal >= 0 ? '+' : ''}${postPeakVal.toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
-                        const postTroughStr = postTroughVal != null ? `<span class="${postTroughVal >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${postTroughVal >= 0 ? '+' : ''}${postTroughVal.toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
+                        const postPeakStr = postPeakVal != null ? `<span class="${safe(postPeakVal) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${safe(postPeakVal) >= 0 ? '+' : ''}${safe(postPeakVal).toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
+                        const postTroughStr = postTroughVal != null ? `<span class="${safe(postTroughVal) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${safe(postTroughVal) >= 0 ? '+' : ''}${safe(postTroughVal).toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${reasonClass}">${reason}</td>
@@ -4825,19 +4826,19 @@
                                 <td class="px-3 py-2 text-center text-gray-400">${crTotalTrades > 0 ? (stats.trades / crTotalTrades * 100).toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-center">${dirBadges}</td>
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
-                                <td class="px-3 py-2 text-right ${pnlPctClass}">${stats.avg_pnl_pct >= 0 ? '+' : ''}${stats.avg_pnl_pct.toFixed(2)}%</td>
-                                <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(stats.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass}">${safe(stats.avg_pnl_pct) >= 0 ? '+' : ''}${safe(stats.avg_pnl_pct).toFixed(2)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(safe(stats.avg_pnl_usd))}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${peakVal >= 0 ? '+' : ''}${peakVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right">${postPeakStr}</td>
                                 <td class="px-3 py-2 text-right">${postTroughStr}</td>
-                                <td class="px-3 py-2 text-right ${stats.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(stats.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${safe(stats.total_pnl_usd) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(safe(stats.total_pnl_usd))}</td>
                                 <td class="px-3 py-2 text-center text-gray-400 text-xs">${stats.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center text-xs">${(stats.signal_active || 0) + (stats.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${stats.signal_active || 0}</span>/<span class="text-red-400">${stats.signal_inactive || 0}</span>` : '-'}</td>
-                                <td class="px-3 py-2 text-center text-cyan-400">${stats.rsi2_fire_pct != null ? stats.rsi2_fire_pct.toFixed(1) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${stats.avg_rsi2_pnl != null ? (stats.avg_rsi2_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${stats.avg_rsi2_pnl != null ? (stats.avg_rsi2_pnl >= 0 ? '+' : '') + stats.avg_rsi2_pnl.toFixed(4) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-cyan-400">${stats.avg_rsi2_min != null ? stats.avg_rsi2_min.toFixed(1) + 'm' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${stats.avg_exit_ema5_pct != null ? (stats.avg_exit_ema5_pct >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${stats.avg_exit_ema5_pct != null ? (stats.avg_exit_ema5_pct >= 0 ? '+' : '') + stats.avg_exit_ema5_pct.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center text-cyan-400">${stats.rsi2_fire_pct != null ? safe(stats.rsi2_fire_pct).toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${stats.avg_rsi2_pnl != null ? (safe(stats.avg_rsi2_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${stats.avg_rsi2_pnl != null ? (safe(stats.avg_rsi2_pnl) >= 0 ? '+' : '') + safe(stats.avg_rsi2_pnl).toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${stats.avg_rsi2_min != null ? safe(stats.avg_rsi2_min).toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${stats.avg_exit_ema5_pct != null ? (safe(stats.avg_exit_ema5_pct) >= 0 ? 'text-emerald-400' : 'text-red-400') : ''} font-medium">${stats.avg_exit_ema5_pct != null ? (safe(stats.avg_exit_ema5_pct) >= 0 ? '+' : '') + safe(stats.avg_exit_ema5_pct).toFixed(4) + '%' : '-'}</td>
                             </tr>
                         `;
                     }).join('');
@@ -4876,22 +4877,22 @@
                                 <td class="px-3 py-2 font-medium">${r.reason} <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
                                 <td class="px-3 py-2 text-center">${r.trades}</td>
                                 <td class="px-3 py-2 text-center">${confBadges}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_adx != null ? r.avg_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_rsi != null ? safe(r.avg_rsi).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_adx != null ? safe(r.avg_adx).toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-center">${adxDirStr}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_ema20_slope != null ? r.avg_ema20_slope.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_btc_slope != null ? r.avg_btc_slope.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_btc_rsi != null ? r.avg_btc_rsi.toFixed(1) : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_gap != null ? safe(r.avg_gap).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_gap58 != null ? safe(r.avg_gap58).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_stretch != null ? safe(r.avg_stretch).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_ema20_slope != null ? safe(r.avg_ema20_slope).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_slope != null ? safe(r.avg_btc_slope).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_rsi != null ? safe(r.avg_btc_rsi).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_adx != null ? safe(r.avg_btc_adx).toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-center">${btcAdxDirStr}</td>
                                 <td class="px-3 py-2 text-center">${btcRsiDirStr}</td>
-                                <td class="px-3 py-2 text-right ${ema5DistClass}">${ema5DistVal != null ? (ema5DistVal >= 0 ? '+' : '') + ema5DistVal.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${r.avg_peak_pct >= 0 ? '+' : ''}${r.avg_peak_pct.toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${totalPnlUsd.toFixed(2)}</td>
+                                <td class="px-3 py-2 text-right ${ema5DistClass}">${ema5DistVal != null ? (safe(ema5DistVal) >= 0 ? '+' : '') + safe(ema5DistVal).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct) >= 0 ? '+' : ''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
                                 <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.avg_duration || '-'}</td>
                             </tr>`;
                         }).join('');
@@ -5441,10 +5442,10 @@
                                 <td class="px-3 py-2 font-medium text-white">${r.value}</td>
                                 <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction || '-'}</td>
                                 <td class="px-3 py-2 text-center">${r.count}</td>
-                                <td class="px-3 py-2 text-center ${r.pct_of_total >= 50 ? 'text-red-400 font-medium' : 'text-yellow-400'}">${r.pct_of_total != null ? r.pct_of_total.toFixed(1) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right ${pnlClass}">${r.avg_close_pnl.toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${pnlClass}">${formatUSD(r.avg_pnl_usd)}</td>
-                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center ${safe(r.pct_of_total) >= 50 ? 'text-red-400 font-medium' : 'text-yellow-400'}">${r.pct_of_total != null ? safe(r.pct_of_total).toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass}">${safe(r.avg_close_pnl).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlClass}">${formatUSD(safe(r.avg_pnl_usd))}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(safe(r.total_pnl_usd))}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_entry_adx != null ? r.avg_entry_adx.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
@@ -5948,9 +5949,9 @@
                                     const pnlColor = cell.avg_pnl_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
                                     const wrColor = cell.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
                                     html += `<td class="px-2 py-2 text-center" style="background: ${bg}; border: 1px solid rgba(255,255,255,0.08);"
-                                        title="${cell.day_label} ${cell.block_label} | ${cell.trades} trades | WR ${cell.win_rate}% | Avg P&L ${cell.avg_pnl_pct >= 0 ? '+' : ''}${cell.avg_pnl_pct.toFixed(4)}%">
-                                        <div class="font-bold ${pnlColor} text-xs">${cell.avg_pnl_pct >= 0 ? '+' : ''}${cell.avg_pnl_pct.toFixed(2)}%</div>
-                                        <div class="text-[10px] text-gray-400">${cell.trades}t <span class="${wrColor}">${cell.win_rate.toFixed(0)}%W</span></div>
+                                        title="${cell.day_label} ${cell.block_label} | ${cell.trades} trades | WR ${safe(cell.win_rate)}% | Avg P&L ${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(4)}%">
+                                        <div class="font-bold ${pnlColor} text-xs">${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(2)}%</div>
+                                        <div class="text-[10px] text-gray-400">${cell.trades}t <span class="${wrColor}">${safe(cell.win_rate).toFixed(0)}%W</span></div>
                                     </td>`;
                                 }
                             }
@@ -5988,11 +5989,11 @@
                             <td class="px-3 py-2 text-center">${e.trades}</td>
                             <td class="px-3 py-2 text-center">${e.pct_of_total}%</td>
                             <td class="px-3 py-2 text-center ${wrClass}">${e.win_rate}%</td>
-                            <td class="px-3 py-2 text-right">${e.avg_pnl_pct.toFixed(2)}%</td>
-                            <td class="px-3 py-2 text-right">${formatUSD(e.avg_pnl_usd)}</td>
-                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(e.total_pnl)}</td>
-                            <td class="px-3 py-2 text-right">${formatUSD(e.avg_entry_fee)}</td>
-                            <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(e.total_fees)}</td>
+                            <td class="px-3 py-2 text-right">${safe(e.avg_pnl_pct).toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-right">${formatUSD(safe(e.avg_pnl_usd))}</td>
+                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(safe(e.total_pnl))}</td>
+                            <td class="px-3 py-2 text-right">${formatUSD(safe(e.avg_entry_fee))}</td>
+                            <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(safe(e.total_fees))}</td>
                             <td class="px-3 py-2 text-right ${savClass} font-medium">${e.fee_savings > 0 ? '+' : ''}${formatUSD(e.fee_savings)}</td>
                             <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
                         </tr>`;
@@ -6042,12 +6043,12 @@
                             <td class="px-3 py-2 text-center">${e.trades}</td>
                             <td class="px-3 py-2 text-center">${e.pct_of_total}%</td>
                             <td class="px-3 py-2 text-center ${wrClass}">${e.win_rate}%</td>
-                            <td class="px-3 py-2 text-right">${e.avg_pnl_pct.toFixed(2)}%</td>
-                            <td class="px-3 py-2 text-right">${formatUSD(e.avg_pnl_usd)}</td>
-                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(e.total_pnl)}</td>
-                            <td class="px-3 py-2 text-right">${formatUSD(e.avg_exit_fee)}</td>
-                            <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(e.total_fees)}</td>
-                            <td class="px-3 py-2 text-right ${savClass} font-medium">${e.fee_savings > 0 ? '+' : ''}${formatUSD(e.fee_savings)}</td>
+                            <td class="px-3 py-2 text-right">${safe(e.avg_pnl_pct).toFixed(2)}%</td>
+                            <td class="px-3 py-2 text-right">${formatUSD(safe(e.avg_pnl_usd))}</td>
+                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(safe(e.total_pnl))}</td>
+                            <td class="px-3 py-2 text-right">${formatUSD(safe(e.avg_exit_fee))}</td>
+                            <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(safe(e.total_fees))}</td>
+                            <td class="px-3 py-2 text-right ${savClass} font-medium">${safe(e.fee_savings) > 0 ? '+' : ''}${formatUSD(safe(e.fee_savings))}</td>
                             <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
                         </tr>`;
                     }).join('');
@@ -6108,14 +6109,14 @@
                                 <td class="px-3 py-2 text-center text-gray-400">${sld.total_sl_trades > 0 ? (c.data.count / sld.total_sl_trades * 100).toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-center">${slDirLabel(c.data.by_direction)}</td>
                                 <td class="px-3 py-2 text-center">${slConfBadges(c.data.by_confidence)}</td>
-                                <td class="px-3 py-2 text-right text-cyan-400">${c.data.avg_entry_gap != null ? c.data.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
-                                <td class="px-3 py-2 text-right text-purple-400">${c.data.avg_entry_rsi != null ? c.data.avg_entry_rsi.toFixed(1) : '-'}</td>
-                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${c.data.avg_peak_pnl >= 0 ? '+' : ''}${c.data.avg_peak_pnl.toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${troughClass} font-medium">${c.data.avg_trough_pnl >= 0 ? '+' : ''}${(c.data.avg_trough_pnl || 0).toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${worstTroughClass} font-medium">${c.data.worst_trough_pnl >= 0 ? '+' : ''}${(c.data.worst_trough_pnl || 0).toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${closeClass} font-medium">${c.data.avg_close_pnl >= 0 ? '+' : ''}${c.data.avg_close_pnl.toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right text-amber-400 font-medium">${slDropVal.toFixed(4)}%</td>
-                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(c.data.total_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${c.data.avg_entry_gap != null ? safe(c.data.avg_entry_gap).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-purple-400">${c.data.avg_entry_rsi != null ? safe(c.data.avg_entry_rsi).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(c.data.avg_peak_pnl) >= 0 ? '+' : ''}${safe(c.data.avg_peak_pnl).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${troughClass} font-medium">${safe(c.data.avg_trough_pnl) >= 0 ? '+' : ''}${safe(c.data.avg_trough_pnl).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${worstTroughClass} font-medium">${safe(c.data.worst_trough_pnl) >= 0 ? '+' : ''}${safe(c.data.worst_trough_pnl).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${closeClass} font-medium">${safe(c.data.avg_close_pnl) >= 0 ? '+' : ''}${safe(c.data.avg_close_pnl).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right text-amber-400 font-medium">${safe(slDropVal).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(safe(c.data.total_pnl_usd))}</td>
                                 <td class="px-3 py-2 text-right text-gray-400">${c.data.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center text-xs">${(c.data.signal_active || 0) + (c.data.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${c.data.signal_active || 0}</span>/<span class="text-red-400">${c.data.signal_inactive || 0}</span>` : '-'}</td>
                             </tr>
@@ -6625,6 +6626,7 @@
                 }
             } catch (e) {
                 console.error('Error loading performance:', e);
+                showToast('Performance render error: ' + e.message, 'error');
             }
         }
 

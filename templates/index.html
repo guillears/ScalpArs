@@ -173,6 +173,7 @@
                     <p class="text-sm text-gray-400 mb-1">BNB Balance <span id="bnb-label" class="text-xs text-gray-500">(fee reserve)</span></p>
                     <p id="bnb-balance" class="text-2xl font-bold text-white">$0.00</p>
                     <p id="bnb-burn-rate" class="text-xs text-gray-500 mt-1"></p>
+                    <p id="bnb-runway" class="text-xs text-gray-500"></p>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT in Open Orders</p>
@@ -2987,6 +2988,7 @@
         let runtimeSeconds = 0;
         let currentTab = 'transactions';
         let _lastClosedCount = -1;
+        let _bnbBurnRate = 0;
 
         // API Base
         const API_BASE = '';
@@ -3123,9 +3125,10 @@
                 updateTimer(runtimeSeconds);
                 
                 // BNB burn rate display
+                _bnbBurnRate = data.bnb_burn_rate || 0;
                 const burnEl = document.getElementById('bnb-burn-rate');
-                if (data.bnb_burn_rate > 0) {
-                    burnEl.textContent = `Burn: $${data.bnb_burn_rate.toFixed(2)}/hr`;
+                if (_bnbBurnRate > 0) {
+                    burnEl.textContent = `Burn: $${_bnbBurnRate.toFixed(2)}/hr`;
                 } else {
                     burnEl.textContent = '';
                 }
@@ -3274,14 +3277,23 @@
                 const data = await res.json();
                 
                 document.getElementById('usdt-balance').textContent = formatUSD(data.usdt_balance);
+                const runwayEl = document.getElementById('bnb-runway');
                 if (data.bnb_balance_is_usd) {
                     document.getElementById('bnb-balance').textContent = formatUSD(data.bnb_balance);
+                    if (_bnbBurnRate > 0) {
+                        const hrs = Math.round(data.bnb_balance / _bnbBurnRate);
+                        runwayEl.textContent = `Runway: ${hrs}h`;
+                    } else { runwayEl.textContent = ''; }
                 } else {
                     const bnbVal = parseFloat(data.bnb_balance || 0);
                     const bnbUsd = data.bnb_balance_usd || 0;
                     document.getElementById('bnb-balance').textContent = bnbVal.toFixed(4) + ' BNB';
                     if (bnbUsd > 0) {
                         document.getElementById('bnb-burn-rate').textContent = '≈ ' + formatUSD(bnbUsd);
+                        if (_bnbBurnRate > 0) {
+                            const hrs = Math.round(bnbUsd / _bnbBurnRate);
+                            runwayEl.textContent = `Runway: ${hrs}h`;
+                        } else { runwayEl.textContent = ''; }
                     }
                 }
                 document.getElementById('usdt-orders').textContent = formatUSD(data.usdt_in_orders);

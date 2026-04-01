@@ -1096,6 +1096,7 @@ class TradingEngine:
                 'high_price': actual_price,
                 'low_price': actual_price,
                 'pullback_trigger': conf_config.pullback_trigger,
+                'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'cached_ema5': _cached_ema5,
                 'cached_ema5_prev3': _cached_ema5_prev3,
                 'peak_ema5_dist_pct': None,
@@ -2904,7 +2905,7 @@ class TradingEngine:
                         continue
             
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled)
-            if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', True):
+            if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', False):
                 should_close_trailing = False
                 tp_level = order_info.get('current_tp_level', 1)
                 

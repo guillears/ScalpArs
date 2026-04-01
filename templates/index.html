@@ -3860,6 +3860,21 @@
             return lines;
         }
 
+        async function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+
         // Copy Analytics to clipboard
         async function copyAnalytics() {
             const btn = document.getElementById('copy-analytics-btn');
@@ -4436,7 +4451,7 @@
                 lines.push(hr);
 
                 const text = lines.join('\n');
-                await navigator.clipboard.writeText(text);
+                await copyToClipboard(text);
                 btn.textContent = 'Copied!';
                 btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
                 btn.classList.add('bg-emerald-600');
@@ -4502,7 +4517,7 @@
                 lines.push(hr);
 
                 const text = lines.join('\n');
-                await navigator.clipboard.writeText(text);
+                await copyToClipboard(text);
                 btn.textContent = 'Copied!';
                 btn.classList.remove('bg-purple-600', 'hover:bg-purple-500');
                 btn.classList.add('bg-emerald-600');

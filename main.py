@@ -1036,22 +1036,91 @@ async def recover_positions(db: AsyncSession = Depends(get_db)):
     return {"recovered": len(recovered), "positions": recovered}
 
 
+async def _get_actual_fill_price(order) -> float:
+    """Try to fetch the actual fill price from Binance trade history for an order.
+    Falls back to current WebSocket price or entry price if trade history unavailable."""
+    symbol = order.pair.replace('USDT', '/USDT:USDT')
+    try:
+        trades = await binance_service.fetch_my_trades(symbol, limit=10)
+        if trades:
+            close_side = 'sell' if order.direction == 'LONG' else 'buy'
+            relevant = [t for t in trades if t['side'] == close_side]
+            if relevant:
+                latest = relevant[-1]
+                logger.info(
+                    f"[FILL_PRICE] {order.pair}: Found actual fill @ {latest['price']} "
+                    f"(side={latest['side']}, time={latest['datetime']})"
+                )
+                return latest['price']
+    except Exception as e:
+        logger.warning(f"[FILL_PRICE] {order.pair}: Could not fetch trade history: {e}")
+
+    fallback = order.current_price or order.entry_price
+    logger.warning(f"[FILL_PRICE] {order.pair}: Using fallback price {fallback} (no trade history match)")
+    return fallback
+
+
+_reconcile_skip_counter = 0
+
 async def _reconcile_open_orders(db: AsyncSession) -> list:
     """Shared reconciliation: close DB orders that are OPEN but gone from Binance.
 
     Returns list of dicts describing each closed order, or empty list.
-    Skips silently when Binance API returns an error (None) to avoid false closures.
+    When the bulk get_open_positions() fails, falls back to per-symbol checks
+    after 5 consecutive failures.
     """
+    global _reconcile_skip_counter
+
     binance_positions = await binance_service.get_open_positions()
+
     if binance_positions is None:
-        logger.warning("[RECONCILE] Skipped — Binance API error (cannot distinguish from empty)")
+        _reconcile_skip_counter += 1
+        if _reconcile_skip_counter >= 5:
+            logger.critical(
+                f"[RECONCILE] get_open_positions() failed {_reconcile_skip_counter} consecutive times — "
+                f"falling back to per-symbol position checks"
+            )
+            return await _reconcile_per_symbol(db)
+        logger.warning(f"[RECONCILE] Skipped — Binance API error (consecutive skips: {_reconcile_skip_counter})")
         return []
+
+    _reconcile_skip_counter = 0
 
     binance_pairs = set()
     for pos in binance_positions:
         pair = pos['symbol'].replace('/USDT:USDT', 'USDT')
         binance_pairs.add(pair)
 
+    return await _close_orphan_orders(db, binance_pairs)
+
+
+async def _reconcile_per_symbol(db: AsyncSession) -> list:
+    """Fallback reconciliation: check each DB open order individually against Binance."""
+    result = await db.execute(
+        select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False))
+    )
+    open_orders = result.scalars().all()
+    if not open_orders:
+        return []
+
+    still_open_pairs = set()
+    for order in open_orders:
+        symbol = order.pair.replace('USDT', '/USDT:USDT')
+        try:
+            pos = await binance_service.get_position_for_symbol(symbol)
+            if pos is not None:
+                still_open_pairs.add(order.pair)
+            else:
+                logger.info(f"[RECONCILE_FALLBACK] {order.pair}: no position found on Binance")
+        except Exception as e:
+            logger.error(f"[RECONCILE_FALLBACK] {order.pair}: per-symbol check failed: {e}, keeping as OPEN")
+            still_open_pairs.add(order.pair)
+
+    return await _close_orphan_orders(db, still_open_pairs)
+
+
+async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
+    """Close DB orders whose pair is not in binance_pairs (not open on Binance)."""
     result = await db.execute(
         select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False))
     )
@@ -1060,10 +1129,11 @@ async def _reconcile_open_orders(db: AsyncSession) -> list:
     closed = []
     for order in open_orders:
         if order.pair not in binance_pairs:
+            exit_price = await _get_actual_fill_price(order)
             order.status = "CLOSED"
             order.close_reason = "EXTERNAL_CLOSE"
             order.closed_at = datetime.utcnow()
-            order.exit_price = order.current_price or order.entry_price
+            order.exit_price = exit_price
             if order.direction == "LONG":
                 raw = (order.exit_price - order.entry_price) * order.quantity
             else:
@@ -1084,7 +1154,7 @@ async def _reconcile_open_orders(db: AsyncSession) -> list:
             )
             db.add(tx)
             closed.append({"pair": order.pair, "direction": order.direction, "pnl": order.pnl})
-            logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE (not found on Binance)")
+            logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE @ {order.exit_price} (not found on Binance)")
 
     if closed:
         await db.commit()

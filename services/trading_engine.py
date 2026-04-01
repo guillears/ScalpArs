@@ -678,6 +678,27 @@ class TradingEngine:
             'entry_order_type': 'TAKER_FALLBACK',
         }
 
+    async def _fetch_actual_fill_price(self, order, fallback_price: float) -> float:
+        """Fetch the actual fill price from Binance trade history for an externally closed order."""
+        symbol = order.pair.replace('USDT', '/USDT:USDT')
+        try:
+            trades = await binance_service.fetch_my_trades(symbol, limit=10)
+            if trades:
+                close_side = 'sell' if order.direction == 'LONG' else 'buy'
+                relevant = [t for t in trades if t['side'] == close_side]
+                if relevant:
+                    latest = relevant[-1]
+                    logger.info(
+                        f"[FILL_PRICE] {order.pair}: Found actual fill @ {latest['price']} "
+                        f"(side={latest['side']}, time={latest['datetime']})"
+                    )
+                    return latest['price']
+        except Exception as e:
+            logger.warning(f"[FILL_PRICE] {order.pair}: Could not fetch trade history: {e}")
+
+        logger.warning(f"[FILL_PRICE] {order.pair}: Using fallback price {fallback_price}")
+        return fallback_price
+
     async def _try_maker_exit(
         self, symbol: str, side: str, amount: float,
         pair: str, direction: str, current_price: float
@@ -695,14 +716,24 @@ class TradingEngine:
         ob = await binance_service.fetch_orderbook(symbol)
         if not ob:
             logger.warning(f"[MAKER_EXIT] {pair}: Orderbook unavailable, falling back to taker")
-            result = await binance_service.close_position(symbol, direction, amount)
-            if not result:
-                logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
-                return None
-            return {
-                'price': result['price'], 'fee_rate': taker_fee_rate,
-                'exit_order_type': 'TAKER_FALLBACK',
-            }
+            try:
+                result = await binance_service.close_position(symbol, direction, amount)
+                if not result:
+                    logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
+                    return None
+                return {
+                    'price': result['price'], 'fee_rate': taker_fee_rate,
+                    'exit_order_type': 'TAKER_FALLBACK',
+                }
+            except Exception as e:
+                logger.critical(
+                    f"[MAKER_EXIT] {pair}: Taker fallback CRASHED (orderbook unavailable path): {e}. "
+                    f"Returning fallback with current_price={current_price}."
+                )
+                return {
+                    'price': current_price, 'fee_rate': taker_fee_rate,
+                    'exit_order_type': 'TAKER_FALLBACK_RECOVERED',
+                }
 
         tick_size = await binance_service.get_tick_size(symbol)
         if direction == 'LONG':
@@ -720,14 +751,24 @@ class TradingEngine:
         )
         if not limit_result:
             logger.warning(f"[MAKER_EXIT] {pair}: Limit order failed, falling back to taker")
-            result = await binance_service.close_position(symbol, direction, amount)
-            if not result:
-                logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
-                return None
-            return {
-                'price': result['price'], 'fee_rate': taker_fee_rate,
-                'exit_order_type': 'TAKER_FALLBACK',
-            }
+            try:
+                result = await binance_service.close_position(symbol, direction, amount)
+                if not result:
+                    logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
+                    return None
+                return {
+                    'price': result['price'], 'fee_rate': taker_fee_rate,
+                    'exit_order_type': 'TAKER_FALLBACK',
+                }
+            except Exception as e:
+                logger.critical(
+                    f"[MAKER_EXIT] {pair}: Taker fallback CRASHED (limit order failed path): {e}. "
+                    f"Returning fallback with current_price={current_price}."
+                )
+                return {
+                    'price': current_price, 'fee_rate': taker_fee_rate,
+                    'exit_order_type': 'TAKER_FALLBACK_RECOVERED',
+                }
 
         order_id = limit_result['id']
         polls = max(1, timeout // 2)
@@ -764,14 +805,24 @@ class TradingEngine:
             }
 
         logger.info(f"[MAKER_EXIT] {pair}: No fill, falling back to market order")
-        result = await binance_service.close_position(symbol, direction, amount)
-        if not result:
-            logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
-            return None
-        return {
-            'price': result['price'], 'fee_rate': taker_fee_rate,
-            'exit_order_type': 'TAKER_FALLBACK',
-        }
+        try:
+            result = await binance_service.close_position(symbol, direction, amount)
+            if not result:
+                logger.error(f"[MAKER_EXIT] {pair}: Taker fallback ALSO failed — position NOT closed on Binance")
+                return None
+            return {
+                'price': result['price'], 'fee_rate': taker_fee_rate,
+                'exit_order_type': 'TAKER_FALLBACK',
+            }
+        except Exception as e:
+            logger.critical(
+                f"[MAKER_EXIT] {pair}: Taker fallback CRASHED after market order likely executed on Binance: {e}. "
+                f"Returning fallback result with current_price={current_price} to allow DB closure."
+            )
+            return {
+                'price': current_price, 'fee_rate': taker_fee_rate,
+                'exit_order_type': 'TAKER_FALLBACK_RECOVERED',
+            }
 
     async def _simulate_maker_exit_paper(
         self, pair: str, direction: str, current_price: float
@@ -1241,18 +1292,19 @@ class TradingEngine:
                         raise RuntimeError("Binance API error — cannot determine position state")
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
                     if order.pair not in binance_pairs:
-                        logger.warning(f"[EXTERNAL_CLOSE] {order.pair}: position gone from Binance — closing in DB")
+                        actual_price = await self._fetch_actual_fill_price(order, current_price)
+                        logger.warning(f"[EXTERNAL_CLOSE] {order.pair}: position gone from Binance — closing in DB @ {actual_price}")
                         order.status = "CLOSED"
                         order.close_reason = "EXTERNAL_CLOSE"
                         order.closed_at = datetime.utcnow()
-                        order.exit_price = current_price
+                        order.exit_price = actual_price
                         taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
-                        notional_at_close = order.quantity * current_price
+                        notional_at_close = order.quantity * actual_price
                         exit_fee = notional_at_close * taker_fee
                         if order.direction == "LONG":
-                            raw_pnl = (current_price - order.entry_price) * order.quantity
+                            raw_pnl = (actual_price - order.entry_price) * order.quantity
                         else:
-                            raw_pnl = (order.entry_price - current_price) * order.quantity
+                            raw_pnl = (order.entry_price - actual_price) * order.quantity
                         order.pnl = round(raw_pnl - (order.entry_fee or 0) - exit_fee, 4)
                         _notional = order.entry_price * order.quantity if order.quantity else 1
                         order.pnl_percentage = round(((raw_pnl - (order.entry_fee or 0) - exit_fee) / _notional) * 100, 4)
@@ -1261,7 +1313,7 @@ class TradingEngine:
                         order.exit_order_type = "EXTERNAL"
                         tx = Transaction(
                             order_id=order.id, pair=order.pair,
-                            action=f"CLOSE_{order.direction}", price=current_price,
+                            action=f"CLOSE_{order.direction}", price=actual_price,
                             quantity=order.quantity, investment=order.investment,
                             leverage=order.leverage, notional_value=order.notional_value,
                             fee=order.exit_fee, order_type="EXTERNAL",

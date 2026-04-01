@@ -540,6 +540,51 @@ class BinanceService:
             logger.error(f"[BINANCE] Error fetching positions: {e}")
             return None
 
+    async def get_position_for_symbol(self, symbol: str) -> Optional[Dict]:
+        """Lightweight check: fetch position for a single symbol.
+        Returns dict with position info if open, None if no position or on error."""
+        try:
+            await self.load_markets()
+            positions = await self.exchange.fetch_positions([symbol])
+            for pos in positions:
+                contracts = float(pos.get('contracts', 0))
+                if contracts != 0:
+                    return {
+                        'symbol': pos['symbol'],
+                        'side': 'LONG' if pos.get('side') == 'long' else 'SHORT',
+                        'contracts': abs(contracts),
+                        'entry_price': float(pos.get('entryPrice', 0)),
+                        'mark_price': float(pos.get('markPrice', 0)),
+                        'unrealized_pnl': float(pos.get('unrealizedPnl', 0)),
+                        'leverage': int(pos.get('leverage') or 1),
+                    }
+            return None
+        except Exception as e:
+            logger.error(f"[BINANCE] Error fetching position for {symbol}: {e}")
+            return None
+
+    async def fetch_my_trades(self, symbol: str, limit: int = 5) -> Optional[List[Dict]]:
+        """Fetch recent trades for a symbol from Binance.
+        Returns list of trade dicts, or None on error."""
+        try:
+            await self.load_markets()
+            trades = await self.exchange.fetch_my_trades(symbol, limit=limit)
+            return [
+                {
+                    'price': float(t.get('price', 0)),
+                    'amount': float(t.get('amount', 0)),
+                    'cost': float(t.get('cost', 0)),
+                    'side': t.get('side', ''),
+                    'timestamp': t.get('timestamp'),
+                    'datetime': t.get('datetime'),
+                    'fee': t.get('fee', {}),
+                }
+                for t in trades
+            ]
+        except Exception as e:
+            logger.error(f"[BINANCE] Error fetching trades for {symbol}: {e}")
+            return None
+
 
 # Global service instance
 binance_service = BinanceService()

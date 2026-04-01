@@ -6830,15 +6830,18 @@
                     }
                     const adxDirTag = document.getElementById('btc-adx-dir-tag');
                     if (adxDirTag && window._prevBtcAdx != null) {
+                        const _ADX_HOLD_MS = 30000;
                         if (btcAdxVal > window._prevBtcAdx) {
                             adxDirTag.textContent = 'RISING';
                             adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400';
                             adxDirTag.classList.remove('hidden');
+                            window._adxDirSetAt = Date.now();
                         } else if (btcAdxVal < window._prevBtcAdx) {
                             adxDirTag.textContent = 'FALLING';
                             adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400';
                             adxDirTag.classList.remove('hidden');
-                        } else {
+                            window._adxDirSetAt = Date.now();
+                        } else if (!window._adxDirSetAt || Date.now() - window._adxDirSetAt > _ADX_HOLD_MS) {
                             adxDirTag.classList.add('hidden');
                         }
                     }

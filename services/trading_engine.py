@@ -27,6 +27,12 @@ _open_orders_cache: Dict[str, List[Dict]] = {}  # pair -> list of order info
 _cache_lock = asyncio.Lock()
 _close_lock = asyncio.Lock()
 
+# Orders whose exit failed but whose position still exists on Binance.
+# Maps order_id -> attempt count. Retried each monitor cycle until success,
+# EXTERNAL_CLOSE, or max retries reached.
+_exit_retry_queue: Dict[int, int] = {}
+_EXIT_RETRY_MAX = 30
+
 # Current BTC macro regime, updated by scan_and_trade, read by update_open_positions
 _current_btc_regime: str = "NEUTRAL"
 
@@ -1230,6 +1236,8 @@ class TradingEngine:
             if exit_result is None:
                 try:
                     positions = await binance_service.get_open_positions()
+                    if positions is None:
+                        raise RuntimeError("Binance API error — cannot determine position state")
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
                     if order.pair not in binance_pairs:
                         logger.warning(f"[EXTERNAL_CLOSE] {order.pair}: position gone from Binance — closing in DB")
@@ -1250,6 +1258,16 @@ class TradingEngine:
                         order.exit_fee = round(exit_fee, 4)
                         order.total_fee = round((order.entry_fee or 0) + exit_fee, 4)
                         order.exit_order_type = "EXTERNAL"
+                        tx = Transaction(
+                            order_id=order.id, pair=order.pair,
+                            action=f"CLOSE_{order.direction}", price=current_price,
+                            quantity=order.quantity, investment=order.investment,
+                            leverage=order.leverage, notional_value=order.notional_value,
+                            fee=order.exit_fee, order_type="EXTERNAL",
+                            is_paper=False
+                        )
+                        db.add(tx)
+                        _exit_retry_queue.pop(order.id, None)
                         async with _cache_lock:
                             _open_orders_cache[order.pair] = [
                                 o for o in _open_orders_cache.get(order.pair, []) if o['id'] != order.id
@@ -1257,8 +1275,10 @@ class TradingEngine:
                         return order
                 except Exception as e:
                     logger.error(f"[EXTERNAL_CLOSE] {order.pair}: reconcile check failed: {e}")
+                _exit_retry_queue.setdefault(order.id, 0)
                 logger.critical(
-                    f"[EXIT_FAILED] {order.pair}: All {max_exit_retries} exit attempts failed — order stays OPEN for monitor retry"
+                    f"[EXIT_FAILED] {order.pair}: All {max_exit_retries} exit attempts failed — "
+                    f"added to retry queue (attempt {_exit_retry_queue[order.id]}/{_EXIT_RETRY_MAX})"
                 )
                 return None
 
@@ -2175,7 +2195,45 @@ class TradingEngine:
                 })
             else:
                 await db.commit()
-        
+
+        # --- Process exit retry queue (live mode only) ---
+        if not self.is_paper_mode and _exit_retry_queue:
+            retry_ids = list(_exit_retry_queue.keys())
+            for order_id in retry_ids:
+                attempt = _exit_retry_queue.get(order_id, 0) + 1
+                _exit_retry_queue[order_id] = attempt
+
+                if attempt > _EXIT_RETRY_MAX:
+                    logger.critical(
+                        f"[EXIT_RETRY_EXHAUSTED] Order {order_id}: Gave up after {_EXIT_RETRY_MAX} retries"
+                    )
+                    del _exit_retry_queue[order_id]
+                    continue
+
+                retry_result = await db.execute(
+                    select(Order).where(Order.id == order_id)
+                )
+                retry_order = retry_result.scalar_one_or_none()
+                if not retry_order or retry_order.status != "OPEN":
+                    _exit_retry_queue.pop(order_id, None)
+                    continue
+
+                tracker = websocket_tracker.get_tracker(retry_order.pair)
+                price = tracker.last_price if tracker else None
+                if not price or price <= 0:
+                    continue
+
+                logger.info(
+                    f"[EXIT_RETRY_QUEUE] {retry_order.pair}: Retry {attempt}/{_EXIT_RETRY_MAX}"
+                )
+                async with _close_lock:
+                    closed = await self._close_position_locked(
+                        db, retry_order, price, reason=retry_order.close_reason or "EXIT_RETRY"
+                    )
+                if closed:
+                    _exit_retry_queue.pop(order_id, None)
+                    logger.info(f"[EXIT_RETRY_QUEUE] {retry_order.pair}: Successfully closed on retry {attempt}")
+
         return updates
     
     async def scan_and_trade(self, db: AsyncSession) -> List[Dict]:

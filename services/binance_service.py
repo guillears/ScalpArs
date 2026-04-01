@@ -509,8 +509,8 @@ class BinanceService:
         close_side = 'sell' if side == 'LONG' else 'buy'
         return await self.create_market_order(symbol, close_side, amount)
     
-    async def get_open_positions(self) -> List[Dict]:
-        """Get all open positions from Binance"""
+    async def get_open_positions(self) -> Optional[List[Dict]]:
+        """Get all open positions from Binance. Returns None on API error (distinct from empty list)."""
         try:
             await self.load_markets()
             positions = await self.exchange.fetch_positions()
@@ -534,7 +534,7 @@ class BinanceService:
             return open_positions
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching positions: {e}")
-            return []
+            return None
 
 
 # Global service instance

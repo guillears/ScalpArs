@@ -58,9 +58,12 @@ async def monitor_loop():
     
     Runs independently of scan_loop so stop-loss monitoring is never
     blocked by slow API calls in scan_and_trade.
+    Also runs periodic reconciliation every ~60s (live mode only).
     """
     global should_stop
     logger.info("[MONITOR] Monitor loop started (1s cycle)")
+    _reconcile_counter = 0
+    _RECONCILE_INTERVAL = 60
     while not should_stop:
         try:
             async with AsyncSessionLocal() as db:
@@ -68,6 +71,16 @@ async def monitor_loop():
                 await trading_engine.update_open_positions(db)
                 await trading_engine.update_orders_cache(db)
                 await trading_engine.update_post_exit_tracking(db)
+
+                _reconcile_counter += 1
+                if _reconcile_counter >= _RECONCILE_INTERVAL and not trading_engine.is_paper_mode:
+                    _reconcile_counter = 0
+                    try:
+                        closed = await _reconcile_open_orders(db)
+                        if closed:
+                            logger.info(f"[MONITOR_RECONCILE] Auto-reconciled {len(closed)} orphan order(s)")
+                    except Exception as e:
+                        logger.error(f"[MONITOR_RECONCILE] Error during auto-reconciliation: {e}")
         except Exception as e:
             logger.error(f"[ERROR] Error in monitor loop: {e}")
             import traceback
@@ -951,6 +964,8 @@ async def recover_positions(db: AsyncSession = Depends(get_db)):
         raise HTTPException(400, "Position recovery only works in live mode")
 
     positions = await binance_service.get_open_positions()
+    if positions is None:
+        raise HTTPException(503, "Could not fetch Binance positions — API error")
     if not positions:
         return {"recovered": 0, "positions": []}
 
@@ -1016,14 +1031,17 @@ async def recover_positions(db: AsyncSession = Depends(get_db)):
     return {"recovered": len(recovered), "positions": recovered}
 
 
-@app.post("/api/reconcile-positions")
-async def reconcile_positions(db: AsyncSession = Depends(get_db)):
-    """Close DB orders that are OPEN but no longer exist on Binance (orphan detection)."""
-    await trading_engine.initialize(db)
-    if trading_engine.is_paper_mode:
-        raise HTTPException(400, "Reconciliation only works in live mode")
+async def _reconcile_open_orders(db: AsyncSession) -> list:
+    """Shared reconciliation: close DB orders that are OPEN but gone from Binance.
 
+    Returns list of dicts describing each closed order, or empty list.
+    Skips silently when Binance API returns an error (None) to avoid false closures.
+    """
     binance_positions = await binance_service.get_open_positions()
+    if binance_positions is None:
+        logger.warning("[RECONCILE] Skipped — Binance API error (cannot distinguish from empty)")
+        return []
+
     binance_pairs = set()
     for pos in binance_positions:
         pair = pos['symbol'].replace('/USDT:USDT', 'USDT')
@@ -1065,6 +1083,17 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 
     if closed:
         await db.commit()
+    return closed
+
+
+@app.post("/api/reconcile-positions")
+async def reconcile_positions(db: AsyncSession = Depends(get_db)):
+    """Close DB orders that are OPEN but no longer exist on Binance (orphan detection)."""
+    await trading_engine.initialize(db)
+    if trading_engine.is_paper_mode:
+        raise HTTPException(400, "Reconciliation only works in live mode")
+
+    closed = await _reconcile_open_orders(db)
     return {"closed": len(closed), "orders": closed}
 
 

@@ -80,7 +80,7 @@
     "signal_lost_max_profit": -0.50,
     "signal_lost_flag_enabled": true,
     "signal_lost_flag_security_min": -0.9,
-    "signal_lost_flag_security_max": -0.7,
+    "signal_lost_flag_security_max": -0.8,
     "ema5_slope_exit_enabled": false,
     "ema5_slope_lookback": 3,
     "ema5_slope_threshold": -0.02,

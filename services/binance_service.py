@@ -217,10 +217,18 @@ class BinanceService:
             usdt_balance = balance.get('USDT', {})
             bnb_balance = balance.get('BNB', {})
             
+            # Extract stable Wallet Balance from raw Binance response (excludes unrealized PnL)
+            usdt_wallet = float(usdt_balance.get('total', 0))
+            raw_info = balance.get('info', {})
+            for asset in raw_info.get('assets', []):
+                if asset.get('asset') == 'USDT':
+                    usdt_wallet = float(asset.get('walletBalance', usdt_wallet))
+                    break
+            
             return {
                 'usdt_free': float(usdt_balance.get('free', 0)),
                 'usdt_used': float(usdt_balance.get('used', 0)),
-                'usdt_total': float(usdt_balance.get('total', 0)),
+                'usdt_total': usdt_wallet,
                 'bnb_free': float(bnb_balance.get('free', 0)),
                 'bnb_total': float(bnb_balance.get('total', 0)),
                 'total_portfolio': float(balance.get('total', {}).get('USDT', 0))
@@ -389,9 +397,9 @@ class BinanceService:
                 'id': order['id'],
                 'symbol': symbol,
                 'side': side,
-                'amount': float(order.get('amount', amount)),
-                'price': float(order.get('average', order.get('price', 0))),
-                'cost': float(order.get('cost', 0)),
+                'amount': float(order.get('amount') or amount),
+                'price': float(order.get('average') or order.get('price') or 0),
+                'cost': float(order.get('cost') or 0),
                 'fee': float((order.get('fee') or {}).get('cost', 0)),
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
             }
@@ -456,11 +464,11 @@ class BinanceService:
                 'id': order['id'],
                 'symbol': symbol,
                 'side': side,
-                'amount': float(order.get('amount', amount)),
-                'price': float(order.get('price', price)),
+                'amount': float(order.get('amount') or amount),
+                'price': float(order.get('price') or price),
                 'status': order.get('status', 'open'),
-                'filled': float(order.get('filled', 0)),
-                'remaining': float(order.get('remaining', amount)),
+                'filled': float(order.get('filled') or 0),
+                'remaining': float(order.get('remaining') or amount),
                 'fee': float((order.get('fee') or {}).get('cost', 0)),
                 'timestamp': order.get('timestamp', datetime.now().timestamp() * 1000)
             }
@@ -476,9 +484,9 @@ class BinanceService:
             return {
                 'id': order['id'],
                 'status': order.get('status', 'unknown'),
-                'filled': float(order.get('filled', 0)),
-                'remaining': float(order.get('remaining', 0)),
-                'average': float(order.get('average', order.get('price', 0))),
+                'filled': float(order.get('filled') or 0),
+                'remaining': float(order.get('remaining') or 0),
+                'average': float(order.get('average') or order.get('price') or 0),
                 'fee': float((order.get('fee') or {}).get('cost', 0)),
             }
         except Exception as e:

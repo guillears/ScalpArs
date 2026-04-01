@@ -1085,10 +1085,11 @@
                                     <th class="px-2 py-2 font-medium text-right" title="Avg minutes from trade open to flag">Open→Flag</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Avg minutes from flag to close">Flag→Close</th>
                                     <th class="px-2 py-2 font-medium text-right text-cyan-400" title="Close P&L minus Flag P&L — positive = flag helped, negative = flag hurt">Net Recover</th>
+                                    <th class="px-2 py-2 font-medium text-right text-cyan-400" title="Net Recover in USD">Net Recover $</th>
                                 </tr>
                             </thead>
                             <tbody id="flagged-exits-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No flagged trades yet</td></tr>
+                                <tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No flagged trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3593,11 +3594,11 @@
                 lines.push('## Flagged Exits (Signal Lost Flag System)\n');
                 const _ffp = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                 const _ffm = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)}`);
+                lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)} ${'NetRec$'.padStart(10)}`);
                 const flSorted = perf.flagged_exits.sort((a, b) => { if (a.reason === 'ALL') return 1; if (b.reason === 'ALL') return -1; return b.count - a.count; });
                 for (const r of flSorted) {
                     const dir = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
-                    lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp(r.avg_peak_pnl).padStart(10)} ${_ffp(r.avg_pullback).padStart(10)} ${_ffp(r.avg_pnl_at_sl).padStart(10)} ${_ffm(r.avg_dur_open_flag).padStart(9)} ${_ffm(r.avg_dur_flag_close).padStart(10)} ${_ffp(r.net_recover).padStart(11)}`);
+                    lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp(r.avg_peak_pnl).padStart(10)} ${_ffp(r.avg_pullback).padStart(10)} ${_ffp(r.avg_pnl_at_sl).padStart(10)} ${_ffm(r.avg_dur_open_flag).padStart(9)} ${_ffm(r.avg_dur_flag_close).padStart(10)} ${_ffp(r.net_recover).padStart(11)} ${('$' + (r.net_recover_usd != null ? r.net_recover_usd.toFixed(2) : '-')).padStart(10)}`);
                 }
             }
 
@@ -4222,11 +4223,11 @@
                     lines.push('## Flagged Exits (Signal Lost Flag System)\n');
                     const _ffp3 = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                     const _ffm3 = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                    lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)}`);
+                    lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)} ${'NetRec$'.padStart(10)}`);
                     const flSorted3 = perf.flagged_exits.sort((a, b) => { if (a.reason === 'ALL') return 1; if (b.reason === 'ALL') return -1; return b.count - a.count; });
                     for (const r of flSorted3) {
                         const dir = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
-                        lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp3(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp3(r.avg_peak_pnl).padStart(10)} ${_ffp3(r.avg_pullback).padStart(10)} ${_ffp3(r.avg_pnl_at_sl).padStart(10)} ${_ffm3(r.avg_dur_open_flag).padStart(9)} ${_ffm3(r.avg_dur_flag_close).padStart(10)} ${_ffp3(r.net_recover).padStart(11)}`);
+                        lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp3(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp3(r.avg_peak_pnl).padStart(10)} ${_ffp3(r.avg_pullback).padStart(10)} ${_ffp3(r.avg_pnl_at_sl).padStart(10)} ${_ffm3(r.avg_dur_open_flag).padStart(9)} ${_ffm3(r.avg_dur_flag_close).padStart(10)} ${_ffp3(r.net_recover).padStart(11)} ${('$' + (r.net_recover_usd != null ? r.net_recover_usd.toFixed(2) : '-')).padStart(10)}`);
                     }
                 }
 
@@ -6599,10 +6600,11 @@
                                 <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_dur_open_flag)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_dur_flag_close)}</td>
                                 <td class="px-2 py-1.5 text-right ${nrClass} font-bold">${fmtPct(r.net_recover)}</td>
+                                <td class="px-2 py-1.5 text-right ${r.net_recover_usd != null ? (r.net_recover_usd >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400'} font-bold">${r.net_recover_usd != null ? '$' + r.net_recover_usd.toFixed(2) : '-'}</td>
                             </tr>`;
                         }).join('');
                 } else {
-                    flBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No flagged trades yet</td></tr>';
+                    flBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No flagged trades yet</td></tr>';
                 }
 
                 // Hold-Time Expectancy

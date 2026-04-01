@@ -3602,6 +3602,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 flag_pnls = [o.signal_lost_flag_pnl for o in group if o.signal_lost_flag_pnl is not None]
                 avg_pnl_at_sl = round(sum(flag_pnls) / len(flag_pnls), 4) if flag_pnls else None
                 net_recover = round(avg_pnl_pct - avg_pnl_at_sl, 4) if avg_pnl_at_sl is not None else None
+                net_recover_usds = [
+                    (o.pnl or 0) - (o.signal_lost_flag_pnl / 100 * o.investment)
+                    for o in group if o.signal_lost_flag_pnl is not None and o.investment
+                ]
+                net_recover_usd = round(sum(net_recover_usds) / len(net_recover_usds), 2) if net_recover_usds else None
                 dur_open_flag = []
                 dur_flag_close = []
                 for o in group:
@@ -3617,7 +3622,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count, "pct": pct,
                     "avg_pnl_pct": avg_pnl_pct, "avg_pnl_usd": avg_pnl_usd,
                     "avg_peak_pnl": avg_peak_pnl, "avg_pullback": avg_pullback,
-                    "avg_pnl_at_sl": avg_pnl_at_sl, "net_recover": net_recover,
+                    "avg_pnl_at_sl": avg_pnl_at_sl, "net_recover": net_recover, "net_recover_usd": net_recover_usd,
                     "avg_dur_open_flag": avg_dur_open_flag, "avg_dur_flag_close": avg_dur_flag_close,
                 })
 
@@ -3630,6 +3635,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             all_flag_pnls = [o.signal_lost_flag_pnl for o in flagged_orders if o.signal_lost_flag_pnl is not None]
             all_avg_at_sl = round(sum(all_flag_pnls) / len(all_flag_pnls), 4) if all_flag_pnls else None
             all_net_recover = round(all_avg_pnl_pct - all_avg_at_sl, 4) if all_avg_at_sl is not None else None
+            all_nr_usds = [
+                (o.pnl or 0) - (o.signal_lost_flag_pnl / 100 * o.investment)
+                for o in flagged_orders if o.signal_lost_flag_pnl is not None and o.investment
+            ]
+            all_net_recover_usd = round(sum(all_nr_usds) / len(all_nr_usds), 2) if all_nr_usds else None
             all_dur_of = []
             all_dur_fc = []
             for o in flagged_orders:
@@ -3642,7 +3652,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "count": total_flagged, "pct": 100.0,
                 "avg_pnl_pct": all_avg_pnl_pct, "avg_pnl_usd": all_avg_pnl_usd,
                 "avg_peak_pnl": all_avg_peak, "avg_pullback": all_avg_pullback,
-                "avg_pnl_at_sl": all_avg_at_sl, "net_recover": all_net_recover,
+                "avg_pnl_at_sl": all_avg_at_sl, "net_recover": all_net_recover, "net_recover_usd": all_net_recover_usd,
                 "avg_dur_open_flag": round(sum(all_dur_of) / len(all_dur_of), 1) if all_dur_of else None,
                 "avg_dur_flag_close": round(sum(all_dur_fc) / len(all_dur_fc), 1) if all_dur_fc else None,
             })

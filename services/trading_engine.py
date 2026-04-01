@@ -1435,11 +1435,15 @@ class TradingEngine:
                     phantom_tick_states[f'phantom_tick_{_lbl}_pnl'] = cached.get(f'phantom_tick_{_lbl}_pnl')
                 break
 
+        _pe_notional = order.entry_price * order.quantity if order.quantity else 1
+        _pe_fee_drag = (((order.entry_fee or 0) + _pe_notional * getattr(tc, 'taker_fee', tc.trading_fee)) / _pe_notional) * 100
+
         self._post_exit_tracking[order.id] = {
             "order_id": order.id,
             "pair": order.pair,
             "entry_price": order.entry_price,
             "direction": order.direction,
+            "fee_drag_pct": _pe_fee_drag,
             "exit_time": now,
             "tracking_until": now + timedelta(minutes=minutes),
             "post_high": initial_price or order.exit_price,
@@ -1493,11 +1497,11 @@ class TradingEngine:
                 info["post_low"] = price
                 info["trough_at"] = now
 
-            # Current P&L for tracking calculations
+            # Current P&L for tracking calculations (net of fees, consistent with pnl_percentage)
             if direction == "LONG":
-                current_pnl = ((price - entry) / entry) * 100
+                current_pnl = ((price - entry) / entry) * 100 - info["fee_drag_pct"]
             else:
-                current_pnl = ((entry - price) / entry) * 100
+                current_pnl = ((entry - price) / entry) * 100 - info["fee_drag_pct"]
 
             # Track running minimum P&L (from entry) for floor-before-recovery analysis
             if info["running_min_pnl"] is None or current_pnl < info["running_min_pnl"]:
@@ -1587,14 +1591,15 @@ class TradingEngine:
                                 info[f'phantom_tick_{_lbl}_pnl'] = current_pnl
 
             if now >= info["tracking_until"]:
+                _fd = info["fee_drag_pct"]
                 if direction == "LONG":
-                    peak_pnl = ((info["post_high"] - entry) / entry) * 100
-                    trough_pnl = ((info["post_low"] - entry) / entry) * 100
-                    final_pnl = ((price - entry) / entry) * 100
+                    peak_pnl = ((info["post_high"] - entry) / entry) * 100 - _fd
+                    trough_pnl = ((info["post_low"] - entry) / entry) * 100 - _fd
+                    final_pnl = ((price - entry) / entry) * 100 - _fd
                 else:
-                    peak_pnl = ((entry - info["post_low"]) / entry) * 100
-                    trough_pnl = ((entry - info["post_high"]) / entry) * 100
-                    final_pnl = ((entry - price) / entry) * 100
+                    peak_pnl = ((entry - info["post_low"]) / entry) * 100 - _fd
+                    trough_pnl = ((entry - info["post_high"]) / entry) * 100 - _fd
+                    final_pnl = ((entry - price) / entry) * 100 - _fd
 
                 exit_time = info["exit_time"]
                 peak_minutes = (info["peak_at"] - exit_time).total_seconds() / 60.0

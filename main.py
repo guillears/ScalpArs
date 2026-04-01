@@ -1016,6 +1016,58 @@ async def recover_positions(db: AsyncSession = Depends(get_db)):
     return {"recovered": len(recovered), "positions": recovered}
 
 
+@app.post("/api/reconcile-positions")
+async def reconcile_positions(db: AsyncSession = Depends(get_db)):
+    """Close DB orders that are OPEN but no longer exist on Binance (orphan detection)."""
+    await trading_engine.initialize(db)
+    if trading_engine.is_paper_mode:
+        raise HTTPException(400, "Reconciliation only works in live mode")
+
+    binance_positions = await binance_service.get_open_positions()
+    binance_pairs = set()
+    for pos in binance_positions:
+        pair = pos['symbol'].replace('/USDT:USDT', 'USDT')
+        binance_pairs.add(pair)
+
+    result = await db.execute(
+        select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False))
+    )
+    open_orders = result.scalars().all()
+
+    closed = []
+    for order in open_orders:
+        if order.pair not in binance_pairs:
+            order.status = "CLOSED"
+            order.close_reason = "EXTERNAL_CLOSE"
+            order.closed_at = datetime.utcnow()
+            order.exit_price = order.current_price or order.entry_price
+            if order.direction == "LONG":
+                raw = (order.exit_price - order.entry_price) * order.quantity
+            else:
+                raw = (order.entry_price - order.exit_price) * order.quantity
+            fee = (order.entry_fee or 0) + order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+            order.pnl = round(raw - fee, 4)
+            notional = order.entry_price * order.quantity if order.quantity else 1
+            order.pnl_percentage = round(((raw - fee) / notional) * 100, 4)
+            order.exit_fee = round(order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee), 4)
+            order.total_fee = round((order.entry_fee or 0) + order.exit_fee, 4)
+
+            tx = Transaction(
+                order_id=order.id, pair=order.pair,
+                action=f"CLOSE_{order.direction}", price=order.exit_price,
+                quantity=order.quantity, investment=order.investment,
+                leverage=order.leverage, notional_value=order.notional_value,
+                fee=order.exit_fee, order_type="EXTERNAL", is_paper=False
+            )
+            db.add(tx)
+            closed.append({"pair": order.pair, "direction": order.direction, "pnl": order.pnl})
+            logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE (not found on Binance)")
+
+    if closed:
+        await db.commit()
+    return {"closed": len(closed), "orders": closed}
+
+
 # ----- Performance Metrics -----
 
 @app.get("/api/performance")

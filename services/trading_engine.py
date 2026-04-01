@@ -1222,11 +1222,41 @@ class TradingEngine:
                         f"[EXIT_RETRY] {order.pair}: Attempt {attempt}/{max_exit_retries} failed, retrying in 2s..."
                     )
                     await asyncio.sleep(2)
-                    fresh_price = self._ws_prices.get(order.pair)
+                    _retry_tracker = websocket_tracker.get_tracker(order.pair)
+                    fresh_price = _retry_tracker.last_price if _retry_tracker else None
                     if fresh_price and fresh_price > 0:
                         current_price = fresh_price
 
             if exit_result is None:
+                try:
+                    positions = await binance_service.get_open_positions()
+                    binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
+                    if order.pair not in binance_pairs:
+                        logger.warning(f"[EXTERNAL_CLOSE] {order.pair}: position gone from Binance — closing in DB")
+                        order.status = "CLOSED"
+                        order.close_reason = "EXTERNAL_CLOSE"
+                        order.closed_at = datetime.utcnow()
+                        order.exit_price = current_price
+                        taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                        notional_at_close = order.quantity * current_price
+                        exit_fee = notional_at_close * taker_fee
+                        if order.direction == "LONG":
+                            raw_pnl = (current_price - order.entry_price) * order.quantity
+                        else:
+                            raw_pnl = (order.entry_price - current_price) * order.quantity
+                        order.pnl = round(raw_pnl - (order.entry_fee or 0) - exit_fee, 4)
+                        _notional = order.entry_price * order.quantity if order.quantity else 1
+                        order.pnl_percentage = round(((raw_pnl - (order.entry_fee or 0) - exit_fee) / _notional) * 100, 4)
+                        order.exit_fee = round(exit_fee, 4)
+                        order.total_fee = round((order.entry_fee or 0) + exit_fee, 4)
+                        order.exit_order_type = "EXTERNAL"
+                        async with _cache_lock:
+                            _open_orders_cache[order.pair] = [
+                                o for o in _open_orders_cache.get(order.pair, []) if o['id'] != order.id
+                            ]
+                        return order
+                except Exception as e:
+                    logger.error(f"[EXTERNAL_CLOSE] {order.pair}: reconcile check failed: {e}")
                 logger.critical(
                     f"[EXIT_FAILED] {order.pair}: All {max_exit_retries} exit attempts failed — order stays OPEN for monitor retry"
                 )

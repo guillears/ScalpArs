@@ -1309,12 +1309,6 @@ class TradingEngine:
                 order.regime_comeback_pnl = cached.get('regime_comeback_pnl')
                 order.regime_opposite_at = cached.get('regime_opposite_at')
                 order.regime_opposite_pnl = cached.get('regime_opposite_pnl')
-                order.regime_neutral_hit_at = cached.get('regime_neutral_hit_at')
-                order.regime_neutral_pnl = cached.get('regime_neutral_pnl')
-                order.regime_comeback_at = cached.get('regime_comeback_at')
-                order.regime_comeback_pnl = cached.get('regime_comeback_pnl')
-                order.regime_opposite_at = cached.get('regime_opposite_at')
-                order.regime_opposite_pnl = cached.get('regime_opposite_pnl')
                 order._ema5_ever_negative = cached.get('ema5_ever_negative', False)
                 break
 
@@ -3035,6 +3029,16 @@ class TradingEngine:
                                 for _key in [f'phantom_tick_{_lbl}_triggered', f'phantom_tick_{_lbl}_triggered_at', f'phantom_tick_{_lbl}_pnl']:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]
+                            if old_info.get('regime_neutral_hit'):
+                                new_info['regime_neutral_hit'] = True
+                                new_info['regime_neutral_hit_at'] = old_info.get('regime_neutral_hit_at')
+                                new_info['regime_neutral_pnl'] = old_info.get('regime_neutral_pnl')
+                            if old_info.get('regime_comeback_at') is not None:
+                                new_info['regime_comeback_at'] = old_info['regime_comeback_at']
+                                new_info['regime_comeback_pnl'] = old_info.get('regime_comeback_pnl')
+                            if old_info.get('regime_opposite_at') is not None:
+                                new_info['regime_opposite_at'] = old_info['regime_opposite_at']
+                                new_info['regime_opposite_pnl'] = old_info.get('regime_opposite_pnl')
                             break
             _open_orders_cache.clear()
             _open_orders_cache.update(new_cache)

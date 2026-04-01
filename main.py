@@ -1467,7 +1467,7 @@ def _compute_regime_neutral_deep_dive(orders):
     final_pnls = [o.pnl_percentage for o in neutral_trades if o.pnl_percentage is not None]
     better_at_neutral = sum(1 for o in neutral_trades if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.regime_neutral_pnl > o.pnl_percentage)
     total_diff_usd = sum(
-        ((o.regime_neutral_pnl - o.pnl_percentage) / 100) * o.notional_value
+        ((o.pnl_percentage - o.regime_neutral_pnl) / 100) * o.notional_value
         for o in neutral_trades
         if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.notional_value
     )
@@ -1481,7 +1481,7 @@ def _compute_regime_neutral_deep_dive(orders):
         for o in group:
             by_dir[o.direction] = by_dir.get(o.direction, 0) + 1
         diff_usd = sum(
-            ((o.regime_neutral_pnl - o.pnl_percentage) / 100) * o.notional_value
+            ((o.pnl_percentage - o.regime_neutral_pnl) / 100) * o.notional_value
             for o in group
             if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.notional_value
         )
@@ -1493,7 +1493,7 @@ def _compute_regime_neutral_deep_dive(orders):
             "by_direction": by_dir,
             "avg_pnl_at_neutral": round(sum(pnls_n) / len(pnls_n), 4) if pnls_n else 0,
             "avg_final_pnl": round(sum(pnls_f) / len(pnls_f), 4) if pnls_f else 0,
-            "avg_diff": round((sum(pnls_n) / len(pnls_n)) - (sum(pnls_f) / len(pnls_f)), 4) if pnls_n and pnls_f else 0,
+            "avg_diff": round((sum(pnls_f) / len(pnls_f)) - (sum(pnls_n) / len(pnls_n)), 4) if pnls_n and pnls_f else 0,
             "better_at_neutral": better,
             "better_pct": round(better / len(group) * 100, 1) if group else 0,
             "total_impact_usd": round(diff_usd, 2),

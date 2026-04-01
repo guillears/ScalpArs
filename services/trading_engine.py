@@ -2077,14 +2077,19 @@ class TradingEngine:
                     if _flag_enabled and not _is_flagged:
                         # Flag system ON: flag the trade instead of exiting
                         tp_level = order.current_tp_level or 1
+                        flag_time = datetime.utcnow()
                         async with _cache_lock:
                             for _ci in _open_orders_cache.get(order.pair, []):
                                 if _ci['id'] == order.id:
                                     _ci['signal_lost_flagged'] = True
                                     _ci['signal_lost_flag_pnl'] = round(sl_pnl_pct, 4)
-                                    _ci['signal_lost_flagged_at'] = datetime.utcnow()
+                                    _ci['signal_lost_flagged_at'] = flag_time
                                     break
-                        logger.info(f"[SIGNAL_LOST_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — FLAGGED (not exiting), signal='{pair_data.signal}'")
+                        order.signal_lost_flagged = True
+                        order.signal_lost_flag_pnl = round(sl_pnl_pct, 4)
+                        order.signal_lost_flagged_at = flag_time
+                        await db.commit()
+                        logger.info(f"[SIGNAL_LOST_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — FLAGGED (persisted to DB), signal='{pair_data.signal}'")
                         continue
                     elif not _flag_enabled:
                         # Flag system OFF: original behavior — exit immediately

@@ -3655,7 +3655,8 @@ async def _get_portfolio_value(db: AsyncSession) -> float:
         )
         open_orders = result.scalars().all()
         used_margin = sum(o.investment for o in open_orders)
-        return balance + used_margin
+        bnb_usd = trading_engine.paper_bnb_balance_usd
+        return balance + used_margin + bnb_usd
     else:
         bal = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()

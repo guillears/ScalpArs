@@ -166,6 +166,14 @@ class Order(Base):
     signal_lost_flag_pnl = Column(Float, nullable=True)
     signal_lost_flagged_at = Column(DateTime, nullable=True)
 
+    # Regime Neutral tracking: what happened when BTC regime went NEUTRAL during trade
+    regime_neutral_hit_at = Column(DateTime, nullable=True)
+    regime_neutral_pnl = Column(Float, nullable=True)
+    regime_comeback_at = Column(DateTime, nullable=True)
+    regime_comeback_pnl = Column(Float, nullable=True)
+    regime_opposite_at = Column(DateTime, nullable=True)
+    regime_opposite_pnl = Column(Float, nullable=True)
+
     # In-trade RSI pattern tracking (first occurrence, no P&L threshold)
     first_rsi2_pnl = Column(Float, nullable=True)
     first_rsi2_minutes = Column(Float, nullable=True)

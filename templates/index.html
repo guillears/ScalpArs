@@ -982,6 +982,53 @@
                     </div>
                 </div>
 
+                <!-- Regime Neutral Deep Dive -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Regime Neutral Deep Dive</h3>
+                    <p class="text-xs text-gray-500 mb-3">When BTC macro regime went NEUTRAL during a trade — should we exit at NEUTRAL or wait?</p>
+                    <div id="regime-neutral-summary" class="mb-3 hidden">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div class="bg-white/5 rounded-lg px-3 py-2 text-center">
+                                <p class="text-[10px] text-gray-400 uppercase">Trades Hit Neutral</p>
+                                <p id="rn-total" class="text-sm font-bold text-gray-200">0</p>
+                            </div>
+                            <div class="bg-white/5 rounded-lg px-3 py-2 text-center">
+                                <p class="text-[10px] text-gray-400 uppercase">Avg P&L @ Neutral</p>
+                                <p id="rn-avg-neutral" class="text-sm font-bold text-gray-200">0%</p>
+                            </div>
+                            <div class="bg-white/5 rounded-lg px-3 py-2 text-center">
+                                <p class="text-[10px] text-gray-400 uppercase">Avg Final P&L</p>
+                                <p id="rn-avg-final" class="text-sm font-bold text-gray-200">0%</p>
+                            </div>
+                            <div class="bg-white/5 rounded-lg px-3 py-2 text-center">
+                                <p class="text-[10px] text-gray-400 uppercase">Better @ Neutral</p>
+                                <p id="rn-better-pct" class="text-sm font-bold text-gray-200">0%</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium text-left">Outcome</th>
+                                    <th class="px-2 py-2 font-medium text-center">#</th>
+                                    <th class="px-2 py-2 font-medium text-center">% of Total</th>
+                                    <th class="px-2 py-2 font-medium text-center">LONG</th>
+                                    <th class="px-2 py-2 font-medium text-center">SHORT</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Avg P&L % at the moment regime went NEUTRAL">Avg P&L @ Neutral</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Avg final P&L % when trade actually closed">Avg Final P&L</th>
+                                    <th class="px-2 py-2 font-medium text-right text-orange-400" title="Neutral P&L minus Final P&L — positive = would have been better to exit at NEUTRAL">Diff %</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="% of trades where exiting at NEUTRAL would have been better">Better @ Neutral</th>
+                                    <th class="px-2 py-2 font-medium text-right text-yellow-400" title="Total USD impact if we had exited at NEUTRAL instead">Impact $</th>
+                                </tr>
+                            </thead>
+                            <tbody id="regime-neutral-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No regime neutral data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Exit Quality -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Exit Quality</h3>
@@ -3500,6 +3547,22 @@
                 }
             }
 
+            if (perf.regime_neutral_deep_dive && perf.regime_neutral_deep_dive.total > 0) {
+                const rn = perf.regime_neutral_deep_dive;
+                lines.push(`\n${hr2}`);
+                lines.push('## Regime Neutral Deep Dive\n');
+                lines.push(`Trades Hit Neutral: ${rn.total} | Avg P&L @ Neutral: ${(rn.avg_pnl_at_neutral >= 0 ? '+' : '') + rn.avg_pnl_at_neutral.toFixed(4)}% | Avg Final P&L: ${(rn.avg_final_pnl >= 0 ? '+' : '') + rn.avg_final_pnl.toFixed(4)}% | Better @ Neutral: ${rn.better_at_neutral_pct.toFixed(1)}% | Total Impact: $${rn.total_impact_usd.toFixed(2)}\n`);
+                if (rn.rows && rn.rows.length > 0) {
+                    lines.push(`${'Outcome'.padEnd(36)} ${'#'.padStart(4)} ${'%Tot'.padStart(6)} ${'LONG'.padStart(5)} ${'SHORT'.padStart(6)} ${'Avg@Neutral'.padStart(12)} ${'AvgFinal'.padStart(12)} ${'Diff%'.padStart(10)} ${'Better%'.padStart(8)} ${'Impact$'.padStart(10)}`);
+                    for (const r of rn.rows) {
+                        const nStr = (r.avg_pnl_at_neutral >= 0 ? '+' : '') + r.avg_pnl_at_neutral.toFixed(4) + '%';
+                        const fStr = (r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%';
+                        const dStr = (r.avg_diff > 0 ? '+' : '') + r.avg_diff.toFixed(4) + '%';
+                        lines.push(`${r.label.padEnd(36)} ${String(r.count).padStart(4)} ${(r.pct_of_total.toFixed(1) + '%').padStart(6)} ${String((r.by_direction && r.by_direction.LONG) || 0).padStart(5)} ${String((r.by_direction && r.by_direction.SHORT) || 0).padStart(6)} ${nStr.padStart(12)} ${fStr.padStart(12)} ${dStr.padStart(10)} ${(r.better_pct.toFixed(1) + '%').padStart(8)} ${('$' + r.total_impact_usd.toFixed(2)).padStart(10)}`);
+                    }
+                }
+            }
+
             if (perf.exit_quality_ema5 && perf.exit_quality_ema5.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Exit Quality\n');
@@ -4092,6 +4155,23 @@
                             lines.push(`${r.label.padEnd(22)} ${String(r.hit).padStart(4)} ${(r.pct.toFixed(0) + '%').padStart(5)} ${altStr} ${slStr.padStart(11)} ${impStr}`);
                         }
                         lines.push('');
+                    }
+                }
+
+                // --- REGIME NEUTRAL DEEP DIVE ---
+                if (perf.regime_neutral_deep_dive && perf.regime_neutral_deep_dive.total > 0) {
+                    const rn = perf.regime_neutral_deep_dive;
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Regime Neutral Deep Dive\n');
+                    lines.push(`Trades Hit Neutral: ${rn.total} | Avg P&L @ Neutral: ${(rn.avg_pnl_at_neutral >= 0 ? '+' : '') + rn.avg_pnl_at_neutral.toFixed(4)}% | Avg Final P&L: ${(rn.avg_final_pnl >= 0 ? '+' : '') + rn.avg_final_pnl.toFixed(4)}% | Better @ Neutral: ${rn.better_at_neutral_pct.toFixed(1)}% | Total Impact: $${rn.total_impact_usd.toFixed(2)}\n`);
+                    if (rn.rows && rn.rows.length > 0) {
+                        lines.push(`${'Outcome'.padEnd(36)} ${'#'.padStart(4)} ${'%Tot'.padStart(6)} ${'LONG'.padStart(5)} ${'SHORT'.padStart(6)} ${'Avg@Neutral'.padStart(12)} ${'AvgFinal'.padStart(12)} ${'Diff%'.padStart(10)} ${'Better%'.padStart(8)} ${'Impact$'.padStart(10)}`);
+                        for (const r of rn.rows) {
+                            const nStr = (r.avg_pnl_at_neutral >= 0 ? '+' : '') + r.avg_pnl_at_neutral.toFixed(4) + '%';
+                            const fStr = (r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%';
+                            const dStr = (r.avg_diff > 0 ? '+' : '') + r.avg_diff.toFixed(4) + '%';
+                            lines.push(`${r.label.padEnd(36)} ${String(r.count).padStart(4)} ${(r.pct_of_total.toFixed(1) + '%').padStart(6)} ${String((r.by_direction && r.by_direction.LONG) || 0).padStart(5)} ${String((r.by_direction && r.by_direction.SHORT) || 0).padStart(6)} ${nStr.padStart(12)} ${fStr.padStart(12)} ${dStr.padStart(10)} ${(r.better_pct.toFixed(1) + '%').padStart(8)} ${('$' + r.total_impact_usd.toFixed(2)).padStart(10)}`);
+                        }
                     }
                 }
 
@@ -6372,6 +6452,45 @@
                     }).join('');
                 } else {
                     slsContainer.innerHTML = '<p class="text-xs text-gray-500 px-3 py-4">No Signal Lost shadow data yet</p>';
+                }
+
+                // Regime Neutral Deep Dive
+                const rnData = data.regime_neutral_deep_dive;
+                const rnSummary = document.getElementById('regime-neutral-summary');
+                const rnBody = document.getElementById('regime-neutral-body');
+                if (rnData && rnData.total > 0) {
+                    rnSummary.classList.remove('hidden');
+                    document.getElementById('rn-total').textContent = rnData.total;
+                    document.getElementById('rn-avg-neutral').textContent = `${rnData.avg_pnl_at_neutral >= 0 ? '+' : ''}${rnData.avg_pnl_at_neutral.toFixed(4)}%`;
+                    document.getElementById('rn-avg-neutral').className = `text-sm font-bold ${rnData.avg_pnl_at_neutral >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
+                    document.getElementById('rn-avg-final').textContent = `${rnData.avg_final_pnl >= 0 ? '+' : ''}${rnData.avg_final_pnl.toFixed(4)}%`;
+                    document.getElementById('rn-avg-final').className = `text-sm font-bold ${rnData.avg_final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
+                    document.getElementById('rn-better-pct').textContent = `${rnData.better_at_neutral_pct.toFixed(1)}%`;
+                    document.getElementById('rn-better-pct').className = `text-sm font-bold ${rnData.better_at_neutral_pct > 50 ? 'text-emerald-400' : 'text-red-400'}`;
+                    if (rnData.rows && rnData.rows.length > 0) {
+                        rnBody.innerHTML = rnData.rows.map(r => {
+                            const nCls = r.avg_pnl_at_neutral >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const fCls = r.avg_final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const dCls = r.avg_diff > 0 ? 'text-emerald-400' : r.avg_diff < 0 ? 'text-red-400' : 'text-gray-400';
+                            const bCls = r.better_pct > 50 ? 'text-emerald-400' : 'text-red-400';
+                            const iCls = r.total_impact_usd > 0 ? 'text-emerald-400' : r.total_impact_usd < 0 ? 'text-red-400' : 'text-gray-400';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-left text-cyan-400">${r.label}</td>
+                                <td class="px-2 py-1.5 text-center">${r.count}</td>
+                                <td class="px-2 py-1.5 text-center text-gray-400">${r.pct_of_total.toFixed(1)}%</td>
+                                <td class="px-2 py-1.5 text-center">${(r.by_direction && r.by_direction.LONG) || 0}</td>
+                                <td class="px-2 py-1.5 text-center">${(r.by_direction && r.by_direction.SHORT) || 0}</td>
+                                <td class="px-2 py-1.5 text-right ${nCls} font-medium">${r.avg_pnl_at_neutral >= 0 ? '+' : ''}${r.avg_pnl_at_neutral.toFixed(4)}%</td>
+                                <td class="px-2 py-1.5 text-right ${fCls} font-medium">${r.avg_final_pnl >= 0 ? '+' : ''}${r.avg_final_pnl.toFixed(4)}%</td>
+                                <td class="px-2 py-1.5 text-right ${dCls} font-medium">${r.avg_diff > 0 ? '+' : ''}${r.avg_diff.toFixed(4)}%</td>
+                                <td class="px-2 py-1.5 text-right ${bCls}">${r.better_pct.toFixed(1)}%</td>
+                                <td class="px-2 py-1.5 text-right ${iCls} font-medium">$${r.total_impact_usd.toFixed(2)}</td>
+                            </tr>`;
+                        }).join('');
+                    }
+                } else {
+                    rnSummary.classList.add('hidden');
+                    rnBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No regime neutral data yet</td></tr>';
                 }
 
                 // Exit Quality

@@ -171,6 +171,18 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN signal_lost_flag_pnl FLOAT"))
                 if 'signal_lost_flagged_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN signal_lost_flagged_at DATETIME"))
+                if 'regime_neutral_hit_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN regime_neutral_hit_at DATETIME"))
+                if 'regime_neutral_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN regime_neutral_pnl FLOAT"))
+                if 'regime_comeback_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN regime_comeback_at DATETIME"))
+                if 'regime_comeback_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN regime_comeback_pnl FLOAT"))
+                if 'regime_opposite_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN regime_opposite_at DATETIME"))
+                if 'regime_opposite_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN regime_opposite_pnl FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

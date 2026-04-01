@@ -1068,6 +1068,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
+            "regime_neutral_deep_dive": {},
             "_error": str(e)
         }
 
@@ -1365,6 +1366,77 @@ def _compute_daily_performance(orders):
 
 _TIME_BLOCK_LABELS = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
 
+def _compute_regime_neutral_deep_dive(orders):
+    """Analyze trades that experienced a BTC regime NEUTRAL event."""
+    neutral_trades = [o for o in orders if o.regime_neutral_hit_at is not None]
+    if not neutral_trades:
+        return {"total": 0, "comebacks": 0, "full_reversals": 0, "neutral_only": 0, "rows": []}
+
+    comebacks = [o for o in neutral_trades if o.regime_comeback_at is not None]
+    reversals = [o for o in neutral_trades if o.regime_opposite_at is not None]
+    neutral_only = [o for o in neutral_trades if o.regime_comeback_at is None and o.regime_opposite_at is None]
+
+    total = len(neutral_trades)
+    pnl_at_neutral = [o.regime_neutral_pnl for o in neutral_trades if o.regime_neutral_pnl is not None]
+    final_pnls = [o.pnl_pct for o in neutral_trades if o.pnl_pct is not None]
+    better_at_neutral = sum(1 for o in neutral_trades if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.regime_neutral_pnl > o.pnl_pct)
+    total_diff_usd = sum(
+        ((o.regime_neutral_pnl - o.pnl_pct) / 100) * o.notional_value
+        for o in neutral_trades
+        if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.notional_value
+    )
+
+    def _group_stats(group, label):
+        if not group:
+            return None
+        pnls_n = [o.regime_neutral_pnl for o in group if o.regime_neutral_pnl is not None]
+        pnls_f = [o.pnl_pct for o in group if o.pnl_pct is not None]
+        by_dir = {}
+        for o in group:
+            by_dir[o.direction] = by_dir.get(o.direction, 0) + 1
+        diff_usd = sum(
+            ((o.regime_neutral_pnl - o.pnl_pct) / 100) * o.notional_value
+            for o in group
+            if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.notional_value
+        )
+        better = sum(1 for o in group if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.regime_neutral_pnl > o.pnl_pct)
+        return {
+            "label": label,
+            "count": len(group),
+            "pct_of_total": round(len(group) / total * 100, 1) if total > 0 else 0,
+            "by_direction": by_dir,
+            "avg_pnl_at_neutral": round(sum(pnls_n) / len(pnls_n), 4) if pnls_n else 0,
+            "avg_final_pnl": round(sum(pnls_f) / len(pnls_f), 4) if pnls_f else 0,
+            "avg_diff": round((sum(pnls_n) / len(pnls_n)) - (sum(pnls_f) / len(pnls_f)), 4) if pnls_n and pnls_f else 0,
+            "better_at_neutral": better,
+            "better_pct": round(better / len(group) * 100, 1) if group else 0,
+            "total_impact_usd": round(diff_usd, 2),
+        }
+
+    rows = []
+    cb = _group_stats(comebacks, "Comeback (back to favorable)")
+    if cb:
+        rows.append(cb)
+    rv = _group_stats(reversals, "Full Reversal (went opposite)")
+    if rv:
+        rows.append(rv)
+    no = _group_stats(neutral_only, "Stayed Neutral until close")
+    if no:
+        rows.append(no)
+
+    return {
+        "total": total,
+        "comebacks": len(comebacks),
+        "full_reversals": len(reversals),
+        "neutral_only": len(neutral_only),
+        "avg_pnl_at_neutral": round(sum(pnl_at_neutral) / len(pnl_at_neutral), 4) if pnl_at_neutral else 0,
+        "avg_final_pnl": round(sum(final_pnls) / len(final_pnls), 4) if final_pnls else 0,
+        "better_at_neutral_pct": round(better_at_neutral / total * 100, 1) if total > 0 else 0,
+        "total_impact_usd": round(total_diff_usd, 2),
+        "rows": rows,
+    }
+
+
 def _compute_day_time_heatmap(orders):
     """Compute win rate and avg P&L by day-of-week x 4-hour block (UTC-3)."""
     from datetime import timezone
@@ -1582,6 +1654,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
+            "regime_neutral_deep_dive": {},
         }
 
     # Separate longs and shorts
@@ -3547,12 +3620,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "signal_lost_shadow": signal_lost_shadow,
         "exit_quality_ema5": exit_quality_ema5,
         "flagged_exits": flagged_exits,
+        "regime_neutral_deep_dive": _compute_regime_neutral_deep_dive(orders),
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),
         "hourly_performance": _compute_hourly_performance(orders),
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),
+        "regime_neutral_deep_dive": _compute_regime_neutral_deep_dive(orders),
     }
 
 

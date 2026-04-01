@@ -1129,6 +1129,13 @@ class TradingEngine:
                 'phantom_tick_g_triggered': False,
                 'phantom_tick_g_triggered_at': None,
                 'phantom_tick_g_pnl': None,
+                'regime_neutral_hit': False,
+                'regime_neutral_hit_at': None,
+                'regime_neutral_pnl': None,
+                'regime_comeback_at': None,
+                'regime_comeback_pnl': None,
+                'regime_opposite_at': None,
+                'regime_opposite_pnl': None,
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -1296,6 +1303,18 @@ class TradingEngine:
                     order.trough_reached_at = cached['trough_reached_at']
                 if cached.get('trough_ema5_dist_pct') is not None:
                     order.trough_ema5_dist_pct = cached['trough_ema5_dist_pct']
+                order.regime_neutral_hit_at = cached.get('regime_neutral_hit_at')
+                order.regime_neutral_pnl = cached.get('regime_neutral_pnl')
+                order.regime_comeback_at = cached.get('regime_comeback_at')
+                order.regime_comeback_pnl = cached.get('regime_comeback_pnl')
+                order.regime_opposite_at = cached.get('regime_opposite_at')
+                order.regime_opposite_pnl = cached.get('regime_opposite_pnl')
+                order.regime_neutral_hit_at = cached.get('regime_neutral_hit_at')
+                order.regime_neutral_pnl = cached.get('regime_neutral_pnl')
+                order.regime_comeback_at = cached.get('regime_comeback_at')
+                order.regime_comeback_pnl = cached.get('regime_comeback_pnl')
+                order.regime_opposite_at = cached.get('regime_opposite_at')
+                order.regime_opposite_pnl = cached.get('regime_opposite_pnl')
                 order._ema5_ever_negative = cached.get('ema5_ever_negative', False)
                 break
 
@@ -1855,6 +1874,24 @@ class TradingEngine:
                     elif order.direction == "SHORT" and hist[-1] > hist[-2] > hist[-3] > hist[-4]:
                         order.first_rsi3_pnl = round(pnl_pct, 4)
                         order.first_rsi3_minutes = round(_trk_age, 2)
+
+            # Regime Neutral tracking: record when regime goes NEUTRAL, comes back, or goes opposite
+            _favorable_regime = "BULLISH" if order.direction == "LONG" else "BEARISH"
+            _opposite_regime = "BEARISH" if order.direction == "LONG" else "BULLISH"
+            if _current_btc_regime == "NEUTRAL" and not cached.get('regime_neutral_hit'):
+                cached['regime_neutral_hit'] = True
+                cached['regime_neutral_hit_at'] = datetime.utcnow()
+                cached['regime_neutral_pnl'] = round(pnl_pct, 4)
+                logger.info(f"[REGIME_NEUTRAL] {order.pair} {order.direction}: regime went NEUTRAL (pnl={pnl_pct:.4f}%)")
+            elif cached.get('regime_neutral_hit'):
+                if _current_btc_regime == _favorable_regime and not cached.get('regime_comeback_at'):
+                    cached['regime_comeback_at'] = datetime.utcnow()
+                    cached['regime_comeback_pnl'] = round(pnl_pct, 4)
+                    logger.info(f"[REGIME_COMEBACK] {order.pair} {order.direction}: regime back to {_favorable_regime} (pnl={pnl_pct:.4f}%)")
+                elif _current_btc_regime == _opposite_regime and not cached.get('regime_opposite_at'):
+                    cached['regime_opposite_at'] = datetime.utcnow()
+                    cached['regime_opposite_pnl'] = round(pnl_pct, 4)
+                    logger.info(f"[REGIME_OPPOSITE] {order.pair} {order.direction}: regime went {_opposite_regime} (pnl={pnl_pct:.4f}%)")
 
             # REGIME_CHANGE: close when BTC macro regime flips against trade direction
             regime_exit_enabled = getattr(config.trading_config.thresholds, 'regime_change_exit_enabled', True)
@@ -2947,6 +2984,13 @@ class TradingEngine:
                 'phantom_tick_g_triggered': order.phantom_tick_g_triggered_at is not None,
                 'phantom_tick_g_triggered_at': order.phantom_tick_g_triggered_at,
                 'phantom_tick_g_pnl': order.phantom_tick_g_pnl,
+                'regime_neutral_hit': order.regime_neutral_hit_at is not None,
+                'regime_neutral_hit_at': order.regime_neutral_hit_at,
+                'regime_neutral_pnl': order.regime_neutral_pnl,
+                'regime_comeback_at': order.regime_comeback_at,
+                'regime_comeback_pnl': order.regime_comeback_pnl,
+                'regime_opposite_at': order.regime_opposite_at,
+                'regime_opposite_pnl': order.regime_opposite_pnl,
             }
             
             if order.pair not in new_cache:

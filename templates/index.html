@@ -3568,12 +3568,19 @@
                 lines.push(`Trades Hit Neutral: ${rn.total} | Avg P&L @ Neutral: ${(rn.avg_pnl_at_neutral >= 0 ? '+' : '') + rn.avg_pnl_at_neutral.toFixed(4)}% | Avg Final P&L: ${(rn.avg_final_pnl >= 0 ? '+' : '') + rn.avg_final_pnl.toFixed(4)}% | Better @ Neutral: ${rn.better_at_neutral_pct.toFixed(1)}% | Total Impact: $${rn.total_impact_usd.toFixed(2)}\n`);
                 if (rn.rows && rn.rows.length > 0) {
                     lines.push(`${'Outcome'.padEnd(36)} ${'#'.padStart(4)} ${'%Tot'.padStart(6)} ${'LONG'.padStart(5)} ${'SHORT'.padStart(6)} ${'Avg@Neutral'.padStart(12)} ${'AvgFinal'.padStart(12)} ${'Diff%'.padStart(10)} ${'Better%'.padStart(8)} ${'Impact$'.padStart(10)}`);
+                    let _rnL = 0, _rnS = 0;
                     for (const r of rn.rows) {
+                        _rnL += (r.by_direction && r.by_direction.LONG) || 0; _rnS += (r.by_direction && r.by_direction.SHORT) || 0;
                         const nStr = (r.avg_pnl_at_neutral >= 0 ? '+' : '') + r.avg_pnl_at_neutral.toFixed(4) + '%';
                         const fStr = (r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%';
                         const dStr = (r.avg_diff > 0 ? '+' : '') + r.avg_diff.toFixed(4) + '%';
                         lines.push(`${r.label.padEnd(36)} ${String(r.count).padStart(4)} ${(r.pct_of_total.toFixed(1) + '%').padStart(6)} ${String((r.by_direction && r.by_direction.LONG) || 0).padStart(5)} ${String((r.by_direction && r.by_direction.SHORT) || 0).padStart(6)} ${nStr.padStart(12)} ${fStr.padStart(12)} ${dStr.padStart(10)} ${(r.better_pct.toFixed(1) + '%').padStart(8)} ${('$' + r.total_impact_usd.toFixed(2)).padStart(10)}`);
                     }
+                    const _rnAllDiff = rn.avg_final_pnl - rn.avg_pnl_at_neutral;
+                    const _rnNs = (rn.avg_pnl_at_neutral >= 0 ? '+' : '') + rn.avg_pnl_at_neutral.toFixed(4) + '%';
+                    const _rnFs = (rn.avg_final_pnl >= 0 ? '+' : '') + rn.avg_final_pnl.toFixed(4) + '%';
+                    const _rnDs = (_rnAllDiff > 0 ? '+' : '') + _rnAllDiff.toFixed(4) + '%';
+                    lines.push(`${'ALL'.padEnd(36)} ${String(rn.total).padStart(4)} ${'100.0%'.padStart(6)} ${String(_rnL).padStart(5)} ${String(_rnS).padStart(6)} ${_rnNs.padStart(12)} ${_rnFs.padStart(12)} ${_rnDs.padStart(10)} ${(rn.better_at_neutral_pct.toFixed(1) + '%').padStart(8)} ${('$' + rn.total_impact_usd.toFixed(2)).padStart(10)}`);
                 }
             }
 
@@ -4195,12 +4202,19 @@
                     lines.push(`Trades Hit Neutral: ${rn.total} | Avg P&L @ Neutral: ${(rn.avg_pnl_at_neutral >= 0 ? '+' : '') + rn.avg_pnl_at_neutral.toFixed(4)}% | Avg Final P&L: ${(rn.avg_final_pnl >= 0 ? '+' : '') + rn.avg_final_pnl.toFixed(4)}% | Better @ Neutral: ${rn.better_at_neutral_pct.toFixed(1)}% | Total Impact: $${rn.total_impact_usd.toFixed(2)}\n`);
                     if (rn.rows && rn.rows.length > 0) {
                         lines.push(`${'Outcome'.padEnd(36)} ${'#'.padStart(4)} ${'%Tot'.padStart(6)} ${'LONG'.padStart(5)} ${'SHORT'.padStart(6)} ${'Avg@Neutral'.padStart(12)} ${'AvgFinal'.padStart(12)} ${'Diff%'.padStart(10)} ${'Better%'.padStart(8)} ${'Impact$'.padStart(10)}`);
+                        let _rnL2 = 0, _rnS2 = 0;
                         for (const r of rn.rows) {
+                            _rnL2 += (r.by_direction && r.by_direction.LONG) || 0; _rnS2 += (r.by_direction && r.by_direction.SHORT) || 0;
                             const nStr = (r.avg_pnl_at_neutral >= 0 ? '+' : '') + r.avg_pnl_at_neutral.toFixed(4) + '%';
                             const fStr = (r.avg_final_pnl >= 0 ? '+' : '') + r.avg_final_pnl.toFixed(4) + '%';
                             const dStr = (r.avg_diff > 0 ? '+' : '') + r.avg_diff.toFixed(4) + '%';
                             lines.push(`${r.label.padEnd(36)} ${String(r.count).padStart(4)} ${(r.pct_of_total.toFixed(1) + '%').padStart(6)} ${String((r.by_direction && r.by_direction.LONG) || 0).padStart(5)} ${String((r.by_direction && r.by_direction.SHORT) || 0).padStart(6)} ${nStr.padStart(12)} ${fStr.padStart(12)} ${dStr.padStart(10)} ${(r.better_pct.toFixed(1) + '%').padStart(8)} ${('$' + r.total_impact_usd.toFixed(2)).padStart(10)}`);
                         }
+                        const _rnAllDiff2 = rn.avg_final_pnl - rn.avg_pnl_at_neutral;
+                        const _rnNs2 = (rn.avg_pnl_at_neutral >= 0 ? '+' : '') + rn.avg_pnl_at_neutral.toFixed(4) + '%';
+                        const _rnFs2 = (rn.avg_final_pnl >= 0 ? '+' : '') + rn.avg_final_pnl.toFixed(4) + '%';
+                        const _rnDs2 = (_rnAllDiff2 > 0 ? '+' : '') + _rnAllDiff2.toFixed(4) + '%';
+                        lines.push(`${'ALL'.padEnd(36)} ${String(rn.total).padStart(4)} ${'100.0%'.padStart(6)} ${String(_rnL2).padStart(5)} ${String(_rnS2).padStart(6)} ${_rnNs2.padStart(12)} ${_rnFs2.padStart(12)} ${_rnDs2.padStart(10)} ${(rn.better_at_neutral_pct.toFixed(1) + '%').padStart(8)} ${('$' + rn.total_impact_usd.toFixed(2)).padStart(10)}`);
                     }
                 }
 

@@ -3658,7 +3658,9 @@ async def _get_portfolio_value(db: AsyncSession) -> float:
         return balance + used_margin
     else:
         bal = await binance_service.get_balance()
-        return bal['total_portfolio']
+        bnb_price = await binance_service.get_bnb_price()
+        bnb_usd = bal['bnb_total'] * bnb_price if bnb_price > 0 else 0
+        return bal['usdt_total'] + bnb_usd
 
 
 async def _get_total_shares(db: AsyncSession) -> float:

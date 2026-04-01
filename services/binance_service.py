@@ -217,16 +217,20 @@ class BinanceService:
             usdt_balance = balance.get('USDT', {})
             bnb_balance = balance.get('BNB', {})
             
-            # Extract stable Wallet Balance from raw Binance response (excludes unrealized PnL)
+            # Extract stable Wallet Balance and USDT-only Available Balance
+            # from raw Binance response (the CCXT 'free' field is account-wide,
+            # which includes BNB value — we want USDT-only).
             usdt_wallet = float(usdt_balance.get('total', 0))
+            usdt_free = float(usdt_balance.get('free', 0))
             raw_info = balance.get('info', {})
             for asset in raw_info.get('assets', []):
                 if asset.get('asset') == 'USDT':
                     usdt_wallet = float(asset.get('walletBalance', usdt_wallet))
+                    usdt_free = float(asset.get('availableBalance', usdt_free))
                     break
             
             return {
-                'usdt_free': float(usdt_balance.get('free', 0)),
+                'usdt_free': usdt_free,
                 'usdt_used': float(usdt_balance.get('used', 0)),
                 'usdt_total': usdt_wallet,
                 'bnb_free': float(bnb_balance.get('free', 0)),

@@ -1668,8 +1668,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             )
         )
         early_used_margin = sum(o.investment for o in early_open_result.scalars().all())
-        early_portfolio = trading_engine.paper_balance + early_used_margin
-        early_return_multiple = round(early_portfolio / config.trading_config.paper_balance, 4) if config.trading_config.paper_balance > 0 else 0
+        if trading_engine.is_paper_mode:
+            early_portfolio = trading_engine.paper_balance + early_used_margin
+            early_return_multiple = round(early_portfolio / config.trading_config.paper_balance, 4) if config.trading_config.paper_balance > 0 else 0
+        else:
+            early_return_multiple = 1.0
         return {
             "total_trades": 0,
             "total_longs": 0,
@@ -1800,7 +1803,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     avg_leverage = sum(o.leverage for o in orders) / total_trades if total_trades > 0 else 0
     
     # Return Multiple & Daily Compound Return
-    initial_balance = config.trading_config.paper_balance
     open_result = await db.execute(
         select(Order).where(
             and_(Order.status == "OPEN", Order.is_paper == trading_engine.is_paper_mode)
@@ -1808,8 +1810,18 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     )
     open_orders_for_balance = open_result.scalars().all()
     used_margin = sum(o.investment for o in open_orders_for_balance)
-    current_balance = trading_engine.paper_balance + used_margin
     runtime_days = trading_engine.get_runtime_seconds() / 86400.0
+
+    if trading_engine.is_paper_mode:
+        initial_balance = config.trading_config.paper_balance
+        current_balance = trading_engine.paper_balance + used_margin
+    else:
+        balance = await binance_service.get_balance()
+        bnb_price = await binance_service.get_bnb_price()
+        bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
+        current_balance = balance['usdt_total'] + bnb_usd + used_margin
+        initial_balance = current_balance - total_pnl
+
     return_multiple = current_balance / initial_balance if initial_balance > 0 else 0
     if runtime_days >= 0.5 and return_multiple > 0:
         daily_compound_return = (return_multiple ** (1 / runtime_days) - 1) * 100

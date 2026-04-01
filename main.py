@@ -1459,28 +1459,28 @@ def _compute_regime_neutral_deep_dive(orders):
 
     total = len(neutral_trades)
     pnl_at_neutral = [o.regime_neutral_pnl for o in neutral_trades if o.regime_neutral_pnl is not None]
-    final_pnls = [o.pnl_pct for o in neutral_trades if o.pnl_pct is not None]
-    better_at_neutral = sum(1 for o in neutral_trades if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.regime_neutral_pnl > o.pnl_pct)
+    final_pnls = [o.pnl_percentage for o in neutral_trades if o.pnl_percentage is not None]
+    better_at_neutral = sum(1 for o in neutral_trades if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.regime_neutral_pnl > o.pnl_percentage)
     total_diff_usd = sum(
-        ((o.regime_neutral_pnl - o.pnl_pct) / 100) * o.notional_value
+        ((o.regime_neutral_pnl - o.pnl_percentage) / 100) * o.notional_value
         for o in neutral_trades
-        if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.notional_value
+        if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.notional_value
     )
 
     def _group_stats(group, label):
         if not group:
             return None
         pnls_n = [o.regime_neutral_pnl for o in group if o.regime_neutral_pnl is not None]
-        pnls_f = [o.pnl_pct for o in group if o.pnl_pct is not None]
+        pnls_f = [o.pnl_percentage for o in group if o.pnl_percentage is not None]
         by_dir = {}
         for o in group:
             by_dir[o.direction] = by_dir.get(o.direction, 0) + 1
         diff_usd = sum(
-            ((o.regime_neutral_pnl - o.pnl_pct) / 100) * o.notional_value
+            ((o.regime_neutral_pnl - o.pnl_percentage) / 100) * o.notional_value
             for o in group
-            if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.notional_value
+            if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.notional_value
         )
-        better = sum(1 for o in group if o.regime_neutral_pnl is not None and o.pnl_pct is not None and o.regime_neutral_pnl > o.pnl_pct)
+        better = sum(1 for o in group if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.regime_neutral_pnl > o.pnl_percentage)
         return {
             "label": label,
             "count": len(group),

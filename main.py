@@ -1458,8 +1458,8 @@ def _compute_regime_neutral_deep_dive(orders):
     if not neutral_trades:
         return {"total": 0, "comebacks": 0, "full_reversals": 0, "neutral_only": 0, "rows": []}
 
-    comebacks = [o for o in neutral_trades if o.regime_comeback_at is not None]
     reversals = [o for o in neutral_trades if o.regime_opposite_at is not None]
+    comebacks = [o for o in neutral_trades if o.regime_comeback_at is not None and o.regime_opposite_at is None]
     neutral_only = [o for o in neutral_trades if o.regime_comeback_at is None and o.regime_opposite_at is None]
 
     total = len(neutral_trades)

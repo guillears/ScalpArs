@@ -6498,7 +6498,10 @@
                     document.getElementById('rn-better-pct').textContent = `${rnData.better_at_neutral_pct.toFixed(1)}%`;
                     document.getElementById('rn-better-pct').className = `text-sm font-bold ${rnData.better_at_neutral_pct > 50 ? 'text-emerald-400' : 'text-red-400'}`;
                     if (rnData.rows && rnData.rows.length > 0) {
-                        rnBody.innerHTML = rnData.rows.map(r => {
+                        let allLongs = 0, allShorts = 0;
+                        rnData.rows.forEach(r => { allLongs += (r.by_direction && r.by_direction.LONG) || 0; allShorts += (r.by_direction && r.by_direction.SHORT) || 0; });
+                        const allDiff = rnData.avg_final_pnl - rnData.avg_pnl_at_neutral;
+                        const rowsHtml = rnData.rows.map(r => {
                             const nCls = r.avg_pnl_at_neutral >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const fCls = r.avg_final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const dCls = r.avg_diff > 0 ? 'text-emerald-400' : r.avg_diff < 0 ? 'text-red-400' : 'text-gray-400';
@@ -6517,6 +6520,24 @@
                                 <td class="px-2 py-1.5 text-right ${iCls} font-medium">$${r.total_impact_usd.toFixed(2)}</td>
                             </tr>`;
                         }).join('');
+                        const aNcls = rnData.avg_pnl_at_neutral >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const aFcls = rnData.avg_final_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const aDcls = allDiff > 0 ? 'text-emerald-400' : allDiff < 0 ? 'text-red-400' : 'text-gray-400';
+                        const aBcls = rnData.better_at_neutral_pct > 50 ? 'text-emerald-400' : 'text-red-400';
+                        const aIcls = rnData.total_impact_usd > 0 ? 'text-emerald-400' : rnData.total_impact_usd < 0 ? 'text-red-400' : 'text-gray-400';
+                        const allRow = `<tr class="border-t border-white/10 bg-white/5 font-semibold">
+                            <td class="px-2 py-1.5 text-left text-white">ALL</td>
+                            <td class="px-2 py-1.5 text-center">${rnData.total}</td>
+                            <td class="px-2 py-1.5 text-center text-gray-400">100.0%</td>
+                            <td class="px-2 py-1.5 text-center">${allLongs}</td>
+                            <td class="px-2 py-1.5 text-center">${allShorts}</td>
+                            <td class="px-2 py-1.5 text-right ${aNcls}">${rnData.avg_pnl_at_neutral >= 0 ? '+' : ''}${rnData.avg_pnl_at_neutral.toFixed(4)}%</td>
+                            <td class="px-2 py-1.5 text-right ${aFcls}">${rnData.avg_final_pnl >= 0 ? '+' : ''}${rnData.avg_final_pnl.toFixed(4)}%</td>
+                            <td class="px-2 py-1.5 text-right ${aDcls}">${allDiff > 0 ? '+' : ''}${allDiff.toFixed(4)}%</td>
+                            <td class="px-2 py-1.5 text-right ${aBcls}">${rnData.better_at_neutral_pct.toFixed(1)}%</td>
+                            <td class="px-2 py-1.5 text-right ${aIcls}">$${rnData.total_impact_usd.toFixed(2)}</td>
+                        </tr>`;
+                        rnBody.innerHTML = rowsHtml + allRow;
                     }
                 } else {
                     rnSummary.classList.add('hidden');

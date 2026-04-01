@@ -6763,12 +6763,25 @@
                     }
                     const adxDirTag = document.getElementById('btc-adx-dir-tag');
                     if (adxDirTag && window._prevBtcAdx != null) {
-                        const isRising = btcAdxVal > window._prevBtcAdx;
-                        adxDirTag.textContent = isRising ? 'RISING' : 'FALLING';
-                        adxDirTag.className = `px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${isRising ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`;
-                        adxDirTag.classList.remove('hidden');
+                        if (btcAdxVal > window._prevBtcAdx) {
+                            adxDirTag.textContent = 'RISING';
+                            adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400';
+                            adxDirTag.classList.remove('hidden');
+                        } else if (btcAdxVal < window._prevBtcAdx) {
+                            adxDirTag.textContent = 'FALLING';
+                            adxDirTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400';
+                            adxDirTag.classList.remove('hidden');
+                        } else {
+                            adxDirTag.classList.add('hidden');
+                        }
                     }
                     window._prevBtcAdx = btcAdxVal;
+                } else if (adxValueEl) {
+                    adxValueEl.textContent = '--';
+                    adxValueEl.className = 'text-gray-300 font-bold';
+                    if (adxLowTag) adxLowTag.classList.add('hidden');
+                    const adxDirTag = document.getElementById('btc-adx-dir-tag');
+                    if (adxDirTag) adxDirTag.classList.add('hidden');
                 }
             } catch (e) {
                 console.error('Error loading pairs:', e);

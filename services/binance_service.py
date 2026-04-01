@@ -226,7 +226,7 @@ class BinanceService:
             for asset in raw_info.get('assets', []):
                 if asset.get('asset') == 'USDT':
                     usdt_wallet = float(asset.get('walletBalance', usdt_wallet))
-                    usdt_free = float(asset.get('availableBalance', usdt_free))
+                    usdt_free = float(asset.get('maxWithdrawAmount', usdt_free))
                     break
             
             return {

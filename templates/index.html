@@ -386,11 +386,12 @@
                                     <th class="px-4 py-3 font-medium text-right">BNB Before</th>
                                     <th class="px-4 py-3 font-medium text-right">BNB After</th>
                                     <th class="px-4 py-3 font-medium text-right">Burn Rate</th>
+                                    <th class="px-4 py-3 font-medium text-right">Runway</th>
                                 </tr>
                             </thead>
                             <tbody id="bnb-swaps-table-body" class="divide-y divide-white/5">
                                 <tr>
-                                    <td colspan="8" class="px-4 py-8 text-center text-gray-500">No BNB swaps yet</td>
+                                    <td colspan="9" class="px-4 py-8 text-center text-gray-500">No BNB swaps yet</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -7141,8 +7142,10 @@
 
                 tbody.innerHTML = swaps.map(s => {
                     const typeBadge = s.swap_type === 'emergency'
-                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/20 text-orange-400">EMERGENCY</span>'
-                        : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">SCHEDULED</span>';
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400">EMERGENCY</span>'
+                        : s.swap_type === 'manual'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">MANUAL</span>'
+                        : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">AUTO</span>';
                     const afterClass = s.post_bnb_usd > s.pre_bnb_usd ? 'text-emerald-400' : 'text-white';
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -7154,6 +7157,7 @@
                             <td class="px-4 py-3 text-right">${formatUSD(s.pre_bnb_usd)}</td>
                             <td class="px-4 py-3 text-right ${afterClass} font-medium">${formatUSD(s.post_bnb_usd)}</td>
                             <td class="px-4 py-3 text-right text-gray-400">${s.burn_rate != null ? '$' + s.burn_rate.toFixed(2) + '/hr' : '--'}</td>
+                            <td class="px-4 py-3 text-right font-medium ${s.burn_rate > 0 && s.post_bnb_usd / s.burn_rate < 24 ? 'text-yellow-400' : 'text-emerald-400'}">${s.burn_rate > 0 ? Math.round(s.post_bnb_usd / s.burn_rate) + 'h' : '--'}</td>
                         </tr>
                     `;
                 }).join('');

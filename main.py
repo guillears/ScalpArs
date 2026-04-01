@@ -572,6 +572,11 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
         await trading_engine.save_state(db)
         return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "cost_usdt": round(amount, 2)}
     else:
+        pre_balance = await binance_service.get_balance()
+        pre_bnb_price = await binance_service.get_bnb_price()
+        pre_bnb_usd = pre_balance['bnb_total'] * pre_bnb_price if pre_bnb_price > 0 else 0
+        pre_usdt = pre_balance['usdt_free']
+
         result = await binance_service.buy_bnb(amount)
         if not result:
             raise HTTPException(500, "BNB purchase failed — check Binance API logs")
@@ -582,9 +587,9 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
             amount_usdt=result['cost_usdt'],
             bnb_price=bnb_price,
             amount_bnb=result['bnb_amount'],
-            pre_bnb_usd=0,
+            pre_bnb_usd=pre_bnb_usd,
             post_bnb_usd=new_balance['bnb_total'] * bnb_price,
-            pre_usdt=0,
+            pre_usdt=pre_usdt,
             post_usdt=new_balance['usdt_free'],
             burn_rate=trading_engine._bnb_burn_rate,
             is_paper=False
@@ -1819,7 +1824,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         balance = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
-        current_balance = balance['usdt_total'] + bnb_usd + used_margin
+        current_balance = balance['usdt_total'] + bnb_usd
         initial_balance = current_balance - total_pnl
 
     return_multiple = current_balance / initial_balance if initial_balance > 0 else 0

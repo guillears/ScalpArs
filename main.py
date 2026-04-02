@@ -1144,6 +1144,7 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
             order.pnl_percentage = round(((raw - fee) / notional) * 100, 4)
             order.exit_fee = round(order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee), 4)
             order.total_fee = round((order.entry_fee or 0) + order.exit_fee, 4)
+            order.exit_order_type = "EXTERNAL"
 
             tx = Transaction(
                 order_id=order.id, pair=order.pair,

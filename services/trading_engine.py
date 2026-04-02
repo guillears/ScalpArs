@@ -1251,8 +1251,12 @@ class TradingEngine:
             max_exit_retries = 3
             exit_result = None
 
+            _urgent_exit = any(reason.startswith(p) for p in (
+                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM",
+            ))
+
             for attempt in range(1, max_exit_retries + 1):
-                if maker_exit_enabled and reason != "MANUAL":
+                if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit:
                     symbol = order.pair.replace('USDT', '/USDT:USDT')
                     exit_result = await self._try_maker_exit(
                         symbol=symbol, side=order.direction, amount=order.quantity,
@@ -1342,7 +1346,10 @@ class TradingEngine:
             exit_fee = notional_at_close * exit_fee_rate
         else:
             # --- Paper mode: no retry needed ---
-            if maker_exit_enabled and reason != "MANUAL":
+            _urgent_exit_paper = any(reason.startswith(p) for p in (
+                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM",
+            ))
+            if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
                 exit_result = await self._simulate_maker_exit_paper(
                     pair=order.pair, direction=order.direction, current_price=current_price
                 )

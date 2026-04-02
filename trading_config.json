@@ -47,7 +47,7 @@
     "ema_gap_5_8_max": 0.35,
     "adx_strong": 25.0,
     "adx_very_strong": 30.0,
-    "adx_strong_long": 18.0,
+    "adx_strong_long": 15.0,
     "adx_very_strong_long": 25.0,
     "momentum_adx_max_long": 30.0,
     "momentum_ema20_filter_long": true,
@@ -211,7 +211,7 @@
     },
     "VERY_STRONG": {
       "enabled": true,
-      "trade_mode": "both",
+      "trade_mode": "short",
       "leverage": 20.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.90,

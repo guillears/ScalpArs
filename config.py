@@ -112,6 +112,8 @@ class SignalThresholds(BaseModel):
     btc_adx_max_short: float = 100  # Max BTC ADX to allow SHORTs (100 = disabled)
     btc_adx_dir_long: str = "both"  # BTC ADX direction filter for LONGs: "both", "rising", "falling"
     btc_adx_dir_short: str = "both"  # BTC ADX direction filter for SHORTs: "both", "rising", "falling"
+    adx_dir_long: str = "both"  # Pair ADX direction filter for LONGs: "both", "rising", "falling"
+    adx_dir_short: str = "both"  # Pair ADX direction filter for SHORTs: "both", "rising", "falling"
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit
     signal_lost_min_profit: float = 0.05  # Min P&L % (notional) to trigger signal-lost exit
     signal_lost_max_profit: float = 999.0  # Max P&L % for signal-lost exit (creates a range with min)

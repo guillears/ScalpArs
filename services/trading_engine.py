@@ -2452,6 +2452,16 @@ class TradingEngine:
                         elif _adx_dir_cfg == 'falling' and btc_adx >= btc_adx_prev:
                             btc_adx_dir_blocks = True
 
+                    pair_adx_dir_blocks = False
+                    _pair_adx = indicators.get('adx')
+                    _pair_adx_prev = indicators.get('adx_prev1')
+                    if _pair_adx is not None and _pair_adx_prev is not None:
+                        _pair_adx_dir_cfg = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
+                        if _pair_adx_dir_cfg == 'rising' and _pair_adx <= _pair_adx_prev:
+                            pair_adx_dir_blocks = True
+                        elif _pair_adx_dir_cfg == 'falling' and _pair_adx >= _pair_adx_prev:
+                            pair_adx_dir_blocks = True
+
                     btc_cross_blocks = False
                     btc_cross_reason = ""
                     if btc_rsi is not None and btc_adx is not None:
@@ -2473,9 +2483,13 @@ class TradingEngine:
                                 except (ValueError, TypeError):
                                     continue
 
-                    if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_adx_dir_blocks or btc_cross_blocks:
+                    if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_adx_dir_blocks or pair_adx_dir_blocks or btc_cross_blocks:
                         if btc_cross_blocks:
                             reason = btc_cross_reason
+                        elif pair_adx_dir_blocks:
+                            _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
+                            _pd_want = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
+                            reason = f"Pair ADX {_pd_label} ({_pair_adx:.1f} vs prev {_pair_adx_prev:.1f}), {signal} requires {_pd_want}"
                         elif btc_adx_dir_blocks:
                             _adx_dir_label = "Rising" if btc_adx > btc_adx_prev else "Falling"
                             _adx_dir_want = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')

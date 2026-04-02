@@ -29,7 +29,7 @@ from config import (
     TradingConfig, ConfidenceConfig, SignalThresholds, InvestmentConfig
 )
 from services.binance_service import binance_service, set_ban_until, set_ban_persist_callback, get_ban_status
-from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache
+from services.trading_engine import trading_engine, realtime_stop_loss_callback, _open_orders_cache, _cache_lock
 from services.indicators import calculate_indicators, get_signal
 from services.websocket_tracker import websocket_tracker
 
@@ -1120,7 +1120,11 @@ async def _reconcile_per_symbol(db: AsyncSession) -> list:
 
 
 async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
-    """Close DB orders whose pair is not in binance_pairs (not open on Binance)."""
+    """Close DB orders whose pair is not in binance_pairs (not open on Binance).
+
+    Each order is wrapped in its own try/except so a failure on one
+    order never prevents the others from being reconciled.
+    """
     result = await db.execute(
         select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False))
     )
@@ -1129,35 +1133,45 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
     closed = []
     for order in open_orders:
         if order.pair not in binance_pairs:
-            exit_price = await _get_actual_fill_price(order)
-            order.status = "CLOSED"
-            order.close_reason = "EXTERNAL_CLOSE"
-            order.closed_at = datetime.utcnow()
-            order.exit_price = exit_price
-            if order.direction == "LONG":
-                raw = (order.exit_price - order.entry_price) * order.quantity
-            else:
-                raw = (order.entry_price - order.exit_price) * order.quantity
-            fee = (order.entry_fee or 0) + order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
-            order.pnl = round(raw - fee, 4)
-            notional = order.entry_price * order.quantity if order.quantity else 1
-            order.pnl_percentage = round(((raw - fee) / notional) * 100, 4)
-            order.exit_fee = round(order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee), 4)
-            order.total_fee = round((order.entry_fee or 0) + order.exit_fee, 4)
+            try:
+                exit_price = await _get_actual_fill_price(order)
+                order.status = "CLOSED"
+                order.close_reason = "EXTERNAL_CLOSE"
+                order.closed_at = datetime.utcnow()
+                order.exit_price = exit_price
+                if order.direction == "LONG":
+                    raw = (order.exit_price - order.entry_price) * order.quantity
+                else:
+                    raw = (order.entry_price - order.exit_price) * order.quantity
+                fee = (order.entry_fee or 0) + order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                order.pnl = round(raw - fee, 4)
+                notional = order.entry_price * order.quantity if order.quantity else 1
+                order.pnl_percentage = round(((raw - fee) / notional) * 100, 4)
+                order.exit_fee = round(order.exit_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee), 4)
+                order.total_fee = round((order.entry_fee or 0) + order.exit_fee, 4)
 
-            tx = Transaction(
-                order_id=order.id, pair=order.pair,
-                action=f"CLOSE_{order.direction}", price=order.exit_price,
-                quantity=order.quantity, investment=order.investment,
-                leverage=order.leverage, notional_value=order.notional_value,
-                fee=order.exit_fee, order_type="EXTERNAL", is_paper=False
-            )
-            db.add(tx)
-            closed.append({"pair": order.pair, "direction": order.direction, "pnl": order.pnl})
-            logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE @ {order.exit_price} (not found on Binance)")
+                tx = Transaction(
+                    order_id=order.id, pair=order.pair,
+                    action=f"CLOSE_{order.direction}", price=order.exit_price,
+                    quantity=order.quantity, investment=order.investment,
+                    leverage=order.leverage, notional_value=order.notional_value,
+                    fee=order.exit_fee, order_type="EXTERNAL", is_paper=False
+                )
+                db.add(tx)
+                closed.append({"pair": order.pair, "direction": order.direction, "pnl": order.pnl})
+                logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE @ {order.exit_price} (not found on Binance)")
+            except Exception as e:
+                logger.error(f"[RECONCILE] {order.pair} {order.direction}: failed to close orphan order {order.id}: {e}")
 
     if closed:
         await db.commit()
+        async with _cache_lock:
+            for info in closed:
+                pair = info["pair"]
+                _open_orders_cache[pair] = [
+                    o for o in _open_orders_cache.get(pair, [])
+                    if not (o.get('direction') == info["direction"])
+                ]
     return closed
 
 

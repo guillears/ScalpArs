@@ -1362,7 +1362,7 @@ class TradingEngine:
                 notional_at_close = order.quantity * current_price
                 exit_fee = notional_at_close * taker_fee_rate
 
-        total_fee = order.entry_fee + exit_fee
+        total_fee = (order.entry_fee or 0) + exit_fee
 
         # Calculate P&L
         pnl_data = calculate_pnl(
@@ -1371,11 +1371,14 @@ class TradingEngine:
             current_price=actual_exit_price,
             quantity=order.quantity,
             leverage=order.leverage,
-            entry_fee=order.entry_fee,
+            entry_fee=order.entry_fee or 0,
             exit_fee=exit_fee
         )
 
-        # Update order
+        # ═══════════════════════════════════════════════════════════════
+        # PHASE 1: Essential close — commit to DB immediately so the
+        # order is never left as a zombie if optional metadata fails.
+        # ═══════════════════════════════════════════════════════════════
         order.status = "CLOSED"
         order.exit_price = actual_exit_price
         order.exit_fee = exit_fee
@@ -1386,58 +1389,81 @@ class TradingEngine:
         order.closed_at = datetime.utcnow()
         order.close_reason = reason
 
-        # Persist phantom shadow data, peak EMA5 metrics, and signal-lost flag from real-time cache
-        for cached in _open_orders_cache.get(order.pair, []):
-            if cached['id'] == order.id:
-                # Signal Lost Flag: persist and prepend FL_ to close reason
-                if cached.get('signal_lost_flagged'):
-                    order.signal_lost_flagged = True
-                    order.signal_lost_flag_pnl = cached.get('signal_lost_flag_pnl')
-                    order.signal_lost_flagged_at = cached.get('signal_lost_flagged_at')
-                    if not reason.startswith("FL_"):
-                        order.close_reason = f"FL_{reason}"
-                order.phantom_be_l1_triggered_at = cached.get('phantom_be_l1_triggered_at')
-                order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
-                order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
-                order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
-                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
-                    setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
-                    setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
-                if cached.get('peak_ema5_dist_pct') is not None:
-                    order.peak_ema5_dist_pct = cached['peak_ema5_dist_pct']
-                if cached.get('peak_ema5_slope_pct') is not None:
-                    order.peak_ema5_slope_pct = cached['peak_ema5_slope_pct']
-                if cached.get('peak_reached_at') is not None:
-                    order.peak_reached_at = cached['peak_reached_at']
-                if cached.get('trough_reached_at') is not None:
-                    order.trough_reached_at = cached['trough_reached_at']
-                if cached.get('trough_ema5_dist_pct') is not None:
-                    order.trough_ema5_dist_pct = cached['trough_ema5_dist_pct']
-                order.regime_neutral_hit_at = cached.get('regime_neutral_hit_at')
-                order.regime_neutral_pnl = cached.get('regime_neutral_pnl')
-                order.regime_comeback_at = cached.get('regime_comeback_at')
-                order.regime_comeback_pnl = cached.get('regime_comeback_pnl')
-                order.regime_opposite_at = cached.get('regime_opposite_at')
-                order.regime_opposite_pnl = cached.get('regime_opposite_pnl')
-                order._ema5_ever_negative = cached.get('ema5_ever_negative', False)
-                break
+        transaction = Transaction(
+            order_id=order.id,
+            binance_order_id=order.binance_order_id,
+            pair=order.pair,
+            action=f"CLOSE_{order.direction}",
+            price=current_price,
+            quantity=order.quantity,
+            investment=order.investment,
+            leverage=order.leverage,
+            notional_value=notional_at_close,
+            fee=exit_fee,
+            order_type="TAKER",
+            is_paper=order.is_paper
+        )
+        db.add(transaction)
 
+        await db.commit()
+        await db.refresh(order)
+        logger.info(f"[CLOSE_COMMITTED] {order.pair} {order.direction}: essential close saved (reason={reason}, pnl={pnl_data['pnl']:.4f})")
+
+        # ═══════════════════════════════════════════════════════════════
+        # PHASE 2: Optional metadata — failures here must NEVER revert
+        # the close above.  A second commit persists the extras.
+        # ═══════════════════════════════════════════════════════════════
         try:
-            pair_data_result = await db.execute(
-                select(PairData).where(PairData.pair == order.pair)
-            )
-            pd = pair_data_result.scalar_one_or_none()
-            if pd:
-                order.signal_active_at_close = is_signal_direction_active(
-                    order.direction, pd.ema5, pd.ema8, pd.ema20, pd.price
+            # Persist phantom shadow data, peak EMA5 metrics, and signal-lost flag from real-time cache
+            for cached in _open_orders_cache.get(order.pair, []):
+                if cached['id'] == order.id:
+                    if cached.get('signal_lost_flagged'):
+                        order.signal_lost_flagged = True
+                        order.signal_lost_flag_pnl = cached.get('signal_lost_flag_pnl')
+                        order.signal_lost_flagged_at = cached.get('signal_lost_flagged_at')
+                        if not reason.startswith("FL_"):
+                            order.close_reason = f"FL_{reason}"
+                    order.phantom_be_l1_triggered_at = cached.get('phantom_be_l1_triggered_at')
+                    order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
+                    order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
+                    order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
+                    for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
+                        setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
+                        setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
+                    if cached.get('peak_ema5_dist_pct') is not None:
+                        order.peak_ema5_dist_pct = cached['peak_ema5_dist_pct']
+                    if cached.get('peak_ema5_slope_pct') is not None:
+                        order.peak_ema5_slope_pct = cached['peak_ema5_slope_pct']
+                    if cached.get('peak_reached_at') is not None:
+                        order.peak_reached_at = cached['peak_reached_at']
+                    if cached.get('trough_reached_at') is not None:
+                        order.trough_reached_at = cached['trough_reached_at']
+                    if cached.get('trough_ema5_dist_pct') is not None:
+                        order.trough_ema5_dist_pct = cached['trough_ema5_dist_pct']
+                    order.regime_neutral_hit_at = cached.get('regime_neutral_hit_at')
+                    order.regime_neutral_pnl = cached.get('regime_neutral_pnl')
+                    order.regime_comeback_at = cached.get('regime_comeback_at')
+                    order.regime_comeback_pnl = cached.get('regime_comeback_pnl')
+                    order.regime_opposite_at = cached.get('regime_opposite_at')
+                    order.regime_opposite_pnl = cached.get('regime_opposite_pnl')
+                    order._ema5_ever_negative = cached.get('ema5_ever_negative', False)
+                    break
+
+            pd = None
+            try:
+                pair_data_result = await db.execute(
+                    select(PairData).where(PairData.pair == order.pair)
                 )
-            else:
+                pd = pair_data_result.scalar_one_or_none()
+                if pd:
+                    order.signal_active_at_close = is_signal_direction_active(
+                        order.direction, pd.ema5, pd.ema8, pd.ema20, pd.price
+                    )
+                else:
+                    order.signal_active_at_close = None
+            except Exception:
                 order.signal_active_at_close = None
-        except Exception:
-            order.signal_active_at_close = None
 
-        # Exit quality: Price vs EMA5
-        try:
             if pd and pd.ema5 and actual_exit_price:
                 if order.direction == "LONG":
                     order.exit_price_vs_ema5_pct = round((actual_exit_price - pd.ema5) / actual_exit_price * 100, 4)
@@ -1445,7 +1471,7 @@ class TradingEngine:
                     order.exit_price_vs_ema5_pct = round((pd.ema5 - actual_exit_price) / actual_exit_price * 100, 4)
                 if pd.ema5_prev3 and pd.ema5:
                     order.exit_ema5_slope_pct = round((pd.ema5 - pd.ema5_prev3) / pd.ema5 * 100, 4)
-            # Check if price crossed EMA5 during the trade
+
             try:
                 ohlcv_data = await binance_service.get_ohlcv(order.pair, '5m', 100)
                 if ohlcv_data and len(ohlcv_data) >= 51 and order.opened_at:
@@ -1475,46 +1501,28 @@ class TradingEngine:
                     order.exit_ema5_crossed = crossed
             except Exception:
                 pass
-        except Exception:
-            pass
 
-        # Determine EMA5 went negative category (after exit_price_vs_ema5_pct is set)
-        ema5_ever_neg = getattr(order, '_ema5_ever_negative', False)
-        if not ema5_ever_neg:
-            order.ema5_went_negative = "NEVER"
-        elif order.exit_price_vs_ema5_pct is not None and order.exit_price_vs_ema5_pct >= 0:
-            order.ema5_went_negative = "RECOVERED"
-        else:
-            order.ema5_went_negative = "ENDED_NEG"
+            ema5_ever_neg = getattr(order, '_ema5_ever_negative', False)
+            if not ema5_ever_neg:
+                order.ema5_went_negative = "NEVER"
+            elif order.exit_price_vs_ema5_pct is not None and order.exit_price_vs_ema5_pct >= 0:
+                order.ema5_went_negative = "RECOVERED"
+            else:
+                order.ema5_went_negative = "ENDED_NEG"
 
-        # Create transaction record
-        transaction = Transaction(
-            order_id=order.id,
-            binance_order_id=order.binance_order_id,
-            pair=order.pair,
-            action=f"CLOSE_{order.direction}",
-            price=current_price,
-            quantity=order.quantity,
-            investment=order.investment,
-            leverage=order.leverage,
-            notional_value=notional_at_close,
-            fee=exit_fee,
-            order_type="TAKER",
-            is_paper=order.is_paper
-        )
-        db.add(transaction)
-        
-        await db.commit()
-        await db.refresh(order)
+            await db.commit()
+        except Exception as _meta_err:
+            logger.warning(f"[CLOSE_METADATA] {order.pair}: Optional metadata failed (order already closed safely): {_meta_err}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
         
         # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
             await self._recalculate_paper_balance(db)
             await self._deduct_fee_from_bnb(exit_fee, db)
             await self.save_state(db)
-        
-        # Keep WebSocket subscription active for all top pairs (real-time price display)
-        # Pairs are subscribed in scan_and_trade() and stay subscribed
 
         self._register_post_exit_tracking(order, reason)
         self._rsi3_history.pop(order.id, None)

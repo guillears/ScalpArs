@@ -1502,6 +1502,53 @@
                     </div>
                 </div>
 
+                <!-- Volume Cross-Tab -->
+                <div class="mt-6 border-t border-white/5 pt-4">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-1">Volume Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Global volume ratio vs Pair volume ratio — trades, win rate, and P&L per bucket</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Dir</th>
+                                    <th class="px-2 py-1 text-left">Global Vol</th>
+                                    <th class="px-2 py-1 text-left">Pair Vol</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="volume-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- Per-Pair Performance -->
+                <div class="mt-6 border-t border-white/5 pt-4">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Pair</h3>
+                    <p class="text-xs text-gray-500 mb-3">Per-pair breakdown — sorted by total P&L</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Pair</th>
+                                    <th class="px-2 py-1 text-center">Direction</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                    <th class="px-2 py-1 text-center">Block</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pair-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Never Positive Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Never Positive Deep Dive</h3>
@@ -1605,52 +1652,6 @@
                                 <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                         </tbody>
                     </table>
-                    </div>
-                </div>
-                <!-- Volume Cross-Tab -->
-                <div class="mt-6 border-t border-white/5 pt-4">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-1">Volume Cross-Tab</h3>
-                    <p class="text-xs text-gray-500 mb-3">Global volume ratio vs Pair volume ratio — trades, win rate, and P&L per bucket</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead>
-                                <tr class="text-gray-400 border-b border-white/10">
-                                    <th class="px-2 py-1 text-left">Dir</th>
-                                    <th class="px-2 py-1 text-left">Global Vol</th>
-                                    <th class="px-2 py-1 text-left">Pair Vol</th>
-                                    <th class="px-2 py-1 text-right">#</th>
-                                    <th class="px-2 py-1 text-right">Win%</th>
-                                    <th class="px-2 py-1 text-right">Avg P&L</th>
-                                    <th class="px-2 py-1 text-right">Total P&L</th>
-                                </tr>
-                            </thead>
-                            <tbody id="volume-crosstab-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <!-- Per-Pair Performance -->
-                <div class="mt-6 border-t border-white/5 pt-4">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Pair</h3>
-                    <p class="text-xs text-gray-500 mb-3">Per-pair breakdown — sorted by total P&L</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead>
-                                <tr class="text-gray-400 border-b border-white/10">
-                                    <th class="px-2 py-1 text-left">Pair</th>
-                                    <th class="px-2 py-1 text-center">Direction</th>
-                                    <th class="px-2 py-1 text-right">#</th>
-                                    <th class="px-2 py-1 text-right">Win%</th>
-                                    <th class="px-2 py-1 text-right">Avg P&L</th>
-                                    <th class="px-2 py-1 text-right">Total P&L</th>
-                                    <th class="px-2 py-1 text-center">Block</th>
-                                </tr>
-                            </thead>
-                            <tbody id="pair-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>
-                            </tbody>
-                        </table>
                     </div>
                 </div>
             </div>
@@ -6839,9 +6840,9 @@
                 }
 
                 // Per-Pair Performance
-                const ppBody = document.getElementById('pair-performance-body');
+                const pairPerfBody = document.getElementById('pair-performance-body');
                 if (data.pair_performance && data.pair_performance.length > 0) {
-                    ppBody.innerHTML = data.pair_performance.map(r => {
+                    pairPerfBody.innerHTML = data.pair_performance.map(r => {
                         const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
@@ -6856,7 +6857,7 @@
                         </tr>`;
                     }).join('');
                 } else {
-                    ppBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
+                    pairPerfBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
                 }
 
                 // Hold-Time Expectancy

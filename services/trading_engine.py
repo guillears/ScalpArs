@@ -36,6 +36,10 @@ _EXIT_RETRY_MAX = 30
 # Current BTC macro regime, updated by scan_and_trade, read by update_open_positions
 _current_btc_regime: str = "NEUTRAL"
 
+# Global volume ratio: sum(current volumes) / sum(20-bar avg volumes) across top pairs.
+# Computed at end of each scan, used by next scan cycle as a market regime gate.
+_global_volume_ratio: float = 1.0
+
 # Phantom Tick Momentum shadow configs: (label, windows, delta_or_deltas)
 # delta_or_deltas: float = uniform delta for all windows, list = per-window deltas
 _SHADOW_TICK_CONFIGS = [
@@ -210,7 +214,8 @@ class TradingEngine:
             "bnb_emergency_threshold": round(self._bnb_emergency_threshold, 2),
             "bnb_last_check": self._last_bnb_check.isoformat() if self._last_bnb_check else None,
             "runtime_seconds": runtime,
-            "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
+            "global_volume_ratio": round(_global_volume_ratio, 4)
         }
     
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
@@ -904,7 +909,9 @@ class TradingEngine:
         entry_btc_adx_prev: float = None,
         entry_btc_rsi: float = None,
         entry_btc_rsi_prev: float = None,
-        entry_price_vs_ema5_pct: float = None
+        entry_price_vs_ema5_pct: float = None,
+        entry_global_volume_ratio: float = None,
+        entry_pair_volume_ratio: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -1065,6 +1072,8 @@ class TradingEngine:
             entry_btc_rsi=entry_btc_rsi,
             entry_btc_rsi_prev=entry_btc_rsi_prev,
             entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
+            entry_global_volume_ratio=entry_global_volume_ratio,
+            entry_pair_volume_ratio=entry_pair_volume_ratio,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -2321,6 +2330,8 @@ class TradingEngine:
         
         logger.info(f"[SCAN] Starting scan_and_trade cycle...")
         actions = []
+        _scan_vol_sum = 0.0
+        _scan_avg_vol_sum = 0.0
         
         # Get top pairs based on config limit
         pairs_limit = config.trading_config.trading_pairs_limit
@@ -2391,6 +2402,12 @@ class TradingEngine:
                 if adx_val is None:
                     logger.debug(f"[SKIP] {pair}: ADX is null (insufficient price data)")
                     continue
+
+                _pair_vol = indicators.get('volume') or 0
+                _pair_avg_vol = indicators.get('avg_volume') or 0
+                _pair_volume_ratio = round(_pair_vol / _pair_avg_vol, 4) if _pair_avg_vol > 0 else 1.0
+                _scan_vol_sum += _pair_vol
+                _scan_avg_vol_sum += _pair_avg_vol
 
                 signal, confidence = get_signal(
                     ema5=indicators.get('ema5'),
@@ -2513,7 +2530,29 @@ class TradingEngine:
                         logger.info(f"[BTC-GATE] {pair}: {signal} blocked — {reason}")
                         signal = "NO_TRADE"
 
-                await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)
+                if signal in ["LONG", "SHORT"]:
+                    _th = config.trading_config.thresholds
+                    global_vol_blocks = False
+                    if getattr(_th, 'global_volume_filter_enabled', False):
+                        _gv_thresh = getattr(_th, f'global_volume_threshold_{signal.lower()}', 1.05)
+                        if _global_volume_ratio < _gv_thresh:
+                            global_vol_blocks = True
+
+                    pair_vol_blocks = False
+                    if getattr(_th, 'pair_volume_filter_enabled', False):
+                        _pv_thresh = getattr(_th, f'pair_volume_threshold_{signal.lower()}', 1.10)
+                        if _pair_volume_ratio < _pv_thresh:
+                            pair_vol_blocks = True
+
+                    if global_vol_blocks or pair_vol_blocks:
+                        if global_vol_blocks:
+                            reason = f"Global Vol {_global_volume_ratio:.2f} < {_gv_thresh} for {signal}"
+                        else:
+                            reason = f"Pair Vol {_pair_volume_ratio:.2f} < {_pv_thresh} for {signal}"
+                        logger.info(f"[VOL-GATE] {pair}: {signal} blocked — {reason}")
+                        signal = "NO_TRADE"
+
+                await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
 
                 if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
                     logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
@@ -2562,7 +2601,9 @@ class TradingEngine:
                         entry_btc_adx_prev=round(btc_adx_prev, 1) if btc_adx_prev is not None else None,
                         entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
                         entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
-                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct
+                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
+                        entry_global_volume_ratio=round(_global_volume_ratio, 4),
+                        entry_pair_volume_ratio=round(_pair_volume_ratio, 4)
                     )
 
                     if order:
@@ -2576,6 +2617,11 @@ class TradingEngine:
             if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
                 await asyncio.sleep(OHLCV_BATCH_DELAY)
             
+        global _global_volume_ratio
+        if _scan_avg_vol_sum > 0:
+            _global_volume_ratio = round(_scan_vol_sum / _scan_avg_vol_sum, 4)
+            logger.info(f"[GLOBAL_VOL] ratio={_global_volume_ratio:.4f} (sum_vol={_scan_vol_sum:.0f}, sum_avg={_scan_avg_vol_sum:.0f})")
+
         self._last_scan_time = time.time()
         elapsed = self._last_scan_time - now
         logger.info(f"[SCAN] Completed in {elapsed:.1f}s - {len(top_pairs)} pairs processed, {len(actions)} positions opened")
@@ -2588,7 +2634,8 @@ class TradingEngine:
         indicators: Dict,
         signal: str,
         confidence: Optional[str],
-        volume_24h: Optional[float] = None
+        volume_24h: Optional[float] = None,
+        volume_ratio: Optional[float] = None
     ):
         """Update pair data cache in database"""
         result = await db.execute(
@@ -2620,6 +2667,7 @@ class TradingEngine:
             pair_data.signal = signal
             pair_data.confidence = confidence
             pair_data.macro_regime = regime
+            pair_data.volume_ratio = volume_ratio
             pair_data.updated_at = datetime.utcnow()
         else:
             pair_data = PairData(
@@ -2638,7 +2686,8 @@ class TradingEngine:
                 avg_volume=indicators.get('avg_volume'),
                 signal=signal,
                 confidence=confidence,
-                macro_regime=regime
+                macro_regime=regime,
+                volume_ratio=volume_ratio
             )
             db.add(pair_data)
         

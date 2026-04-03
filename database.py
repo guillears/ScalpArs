@@ -183,6 +183,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN regime_opposite_at DATETIME"))
                 if 'regime_opposite_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN regime_opposite_pnl FLOAT"))
+                if 'entry_global_volume_ratio' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_global_volume_ratio FLOAT"))
+                if 'entry_pair_volume_ratio' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_volume_ratio FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]
@@ -199,6 +203,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN rsi_prev2 FLOAT"))
                 if 'macro_regime' not in pd_columns:
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN macro_regime VARCHAR(10)"))
+                if 'volume_ratio' not in pd_columns:
+                    connection.execute(text("ALTER TABLE pair_data ADD COLUMN volume_ratio FLOAT"))
 
             if 'bot_state' in inspector.get_table_names():
                 bs_columns = [c['name'] for c in inspector.get_columns('bot_state')]

@@ -1536,6 +1536,57 @@ def _compute_daily_performance(orders):
 
 _TIME_BLOCK_LABELS = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
 
+_VOL_BINS = [
+    ("< 1.00", 0.0, 1.00),
+    ("1.00-1.05", 1.00, 1.05),
+    ("1.05-1.10", 1.05, 1.10),
+    ("1.10-1.15", 1.10, 1.15),
+    ("1.15-1.20", 1.15, 1.20),
+    ("1.20-1.25", 1.20, 1.25),
+    ("> 1.25", 1.25, 999.0),
+]
+
+def _vol_bin_label(ratio):
+    if ratio is None:
+        return None
+    for label, lo, hi in _VOL_BINS:
+        if lo <= ratio < hi:
+            return label
+    return _VOL_BINS[-1][0]
+
+
+def _compute_volume_crosstab(orders):
+    """Cross-tab: Direction x GlobalVolBin x PairVolBin -> #Trades, WinRate, AvgP&L, TotalP&L"""
+    rows = []
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
+    for direction in ("LONG", "SHORT"):
+        dir_orders = [o for o in closed if o.direction == direction]
+        for g_label, g_lo, g_hi in _VOL_BINS:
+            for p_label, p_lo, p_hi in _VOL_BINS:
+                bucket = [
+                    o for o in dir_orders
+                    if o.entry_global_volume_ratio is not None
+                    and o.entry_pair_volume_ratio is not None
+                    and g_lo <= o.entry_global_volume_ratio < g_hi
+                    and p_lo <= o.entry_pair_volume_ratio < p_hi
+                ]
+                if not bucket:
+                    continue
+                n = len(bucket)
+                wins = sum(1 for o in bucket if o.pnl > 0)
+                total_pnl = sum(o.pnl for o in bucket)
+                rows.append({
+                    "direction": direction,
+                    "global_vol": g_label,
+                    "pair_vol": p_label,
+                    "trades": n,
+                    "win_rate": round(wins / n * 100, 1),
+                    "avg_pnl": round(total_pnl / n, 2),
+                    "total_pnl": round(total_pnl, 2),
+                })
+    return rows
+
+
 def _compute_regime_neutral_deep_dive(orders):
     """Analyze trades that experienced a BTC regime NEUTRAL event."""
     neutral_trades = [o for o in orders if o.regime_neutral_hit_at is not None]
@@ -3712,7 +3763,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
             # ALL summary row
             all_avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in flagged_orders) / total_flagged, 4)
-            all_avg_pnl_usd = round(sum(o.pnl or 0 for o in flagged_orders) / total_flagged, 2)
+            all_avg_pnl_usd = round(sum(o.pnl or 0 for o in flagged_orders), 2)
             all_peaks = [o.peak_pnl for o in flagged_orders if o.peak_pnl is not None]
             all_avg_peak = round(sum(all_peaks) / len(all_peaks), 4) if all_peaks else None
             all_avg_pullback = round(all_avg_peak - all_avg_pnl_pct, 4) if all_avg_peak is not None else None
@@ -3723,7 +3774,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 (o.pnl or 0) - (o.signal_lost_flag_pnl / 100 * o.notional_value)
                 for o in flagged_orders if o.signal_lost_flag_pnl is not None and o.notional_value
             ]
-            all_net_recover_usd = round(sum(all_nr_usds) / len(all_nr_usds), 2) if all_nr_usds else None
+            all_net_recover_usd = round(sum(all_nr_usds), 2) if all_nr_usds else None
             all_dur_of = []
             all_dur_fc = []
             for o in flagged_orders:
@@ -3822,6 +3873,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),
         "regime_neutral_deep_dive": _compute_regime_neutral_deep_dive(orders),
+        "volume_crosstab": _compute_volume_crosstab(orders),
     }
 
 

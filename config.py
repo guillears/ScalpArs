@@ -144,6 +144,12 @@ class SignalThresholds(BaseModel):
     rsi_adx_filter_short: str = ""  # RSI x ADX cross-filter for SHORTs, e.g. "30-35:25,35-50:30" (empty = allow all)
     btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all)
     btc_rsi_adx_filter_short: str = ""  # BTC RSI x ADX cross-filter for SHORTs (empty = allow all)
+    global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
+    global_volume_threshold_long: float = 1.05  # Min global volume ratio to allow LONGs
+    global_volume_threshold_short: float = 1.05  # Min global volume ratio to allow SHORTs
+    pair_volume_filter_enabled: bool = False  # Gate trades when per-pair volume is below its own average
+    pair_volume_threshold_long: float = 1.10  # Min pair volume ratio to allow LONGs
+    pair_volume_threshold_short: float = 1.10  # Min pair volume ratio to allow SHORTs
 
 
 class InvestmentConfig(BaseModel):

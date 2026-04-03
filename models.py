@@ -80,6 +80,9 @@ class Order(Base):
     entry_btc_rsi = Column(Float, nullable=True)
     # BTC RSI(14) one candle prior (for BTC RSI direction analysis)
     entry_btc_rsi_prev = Column(Float, nullable=True)
+    # Volume ratios at entry (for volume filter analytics)
+    entry_global_volume_ratio = Column(Float, nullable=True)
+    entry_pair_volume_ratio = Column(Float, nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)
@@ -317,6 +320,9 @@ class PairData(Base):
     
     # Macro trend regime (EMA50-based)
     macro_regime = Column(String(10), nullable=True)  # BULLISH, BEARISH, NEUTRAL
+    
+    # Volume ratio (current / 20-bar avg)
+    volume_ratio = Column(Float, nullable=True)
     
     # Timestamp
     updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())

@@ -147,6 +147,10 @@
                 <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
                 <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
                 <span id="btc-adx-low-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase tracking-wide">ADX LOW</span>
+                <span class="text-gray-500">|</span>
+                <span class="text-gray-400 font-medium">Global Vol:</span>
+                <span id="global-vol-value" class="text-gray-300 font-bold">--</span>
+                <span id="global-vol-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
             </div>
             <div class="flex items-center space-x-4">
                 <span id="regime-pair-count" class="text-gray-500">--</span>
@@ -1603,6 +1607,29 @@
                     </table>
                     </div>
                 </div>
+                <!-- Volume Cross-Tab -->
+                <div class="mt-6 border-t border-white/5 pt-4">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-1">Volume Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Global volume ratio vs Pair volume ratio — trades, win rate, and P&L per bucket</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Dir</th>
+                                    <th class="px-2 py-1 text-left">Global Vol</th>
+                                    <th class="px-2 py-1 text-left">Pair Vol</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="volume-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -2235,6 +2262,32 @@
                                 <option value="rising">Rising only</option>
                                 <option value="falling">Falling only</option>
                             </select>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-1 px-4">
+                        <span class="text-sm text-gray-300">Volume Filters</span>
+                        <p class="text-xs text-gray-500 mb-1">Two-layer volume gate: global (market regime) + per-pair (local quality)</p>
+                        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mt-1">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-global-volume-filter-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">Global Volume Filter</span>
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-pair-volume-filter-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">Per-pair Volume Filter</span>
+                            </label>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                            <span class="text-xs text-gray-500">Global Thresh L:</span>
+                            <input type="number" id="config-global-vol-threshold-long" step="0.01" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-16" value="1.05">
+                            <span class="text-xs text-gray-500 ml-2">S:</span>
+                            <input type="number" id="config-global-vol-threshold-short" step="0.01" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-16" value="1.05">
+                            <span class="text-xs text-gray-500 ml-4">Pair Thresh L:</span>
+                            <input type="number" id="config-pair-vol-threshold-long" step="0.01" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-16" value="1.10">
+                            <span class="text-xs text-gray-500 ml-2">S:</span>
+                            <input type="number" id="config-pair-vol-threshold-short" step="0.01" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-16" value="1.10">
                         </div>
                     </div>
                     <div class="mt-3 mb-1 px-4">
@@ -3151,6 +3204,27 @@
                 } else {
                     burnEl.textContent = '';
                 }
+
+                // Global volume ratio display
+                const gvr = data.global_volume_ratio;
+                const gvEl = document.getElementById('global-vol-value');
+                const gvTag = document.getElementById('global-vol-tag');
+                if (gvEl && gvr != null) {
+                    gvEl.textContent = gvr.toFixed(2);
+                    const gvThreshL = parseFloat(document.getElementById('config-global-vol-threshold-long')?.value) || 1.05;
+                    const gvThreshS = parseFloat(document.getElementById('config-global-vol-threshold-short')?.value) || 1.05;
+                    const gvMin = Math.min(gvThreshL, gvThreshS);
+                    if (gvr < gvMin) {
+                        gvEl.className = 'text-red-400 font-bold';
+                        if (gvTag) { gvTag.textContent = 'WEAK'; gvTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-red-500/20 text-red-400'; gvTag.classList.remove('hidden'); }
+                    } else if (gvr >= 1.15) {
+                        gvEl.className = 'text-emerald-400 font-bold';
+                        if (gvTag) { gvTag.textContent = 'STRONG'; gvTag.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400'; gvTag.classList.remove('hidden'); }
+                    } else {
+                        gvEl.className = 'text-gray-300 font-bold';
+                        if (gvTag) gvTag.classList.add('hidden');
+                    }
+                }
                 
                 // Update paper toggle
                 document.getElementById('paper-toggle').checked = !isPaperMode;
@@ -3788,6 +3862,16 @@
                 }
             }
 
+            if (perf.volume_crosstab && perf.volume_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Volume Cross-Tab (Global x Pair)\n');
+                lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                for (const r of perf.volume_crosstab) {
+                    const d = r.direction === 'LONG' ? 'L' : 'S';
+                    lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by BTC Entry RSI\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
@@ -3853,6 +3937,8 @@
             lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
             lines.push(`  BTC RSI L: ${th.btc_rsi_min_long||0}-${th.btc_rsi_max_long||100}  |  BTC RSI S: ${th.btc_rsi_min_short||0}-${th.btc_rsi_max_short||100}  |  BTC ADX L: ${th.btc_adx_min_long||0}-${th.btc_adx_max_long||100}  |  BTC ADX S: ${th.btc_adx_min_short||0}-${th.btc_adx_max_short||100}  |  ADX Dir L: ${th.btc_adx_dir_long||'both'}  |  ADX Dir S: ${th.btc_adx_dir_short||'both'}`);
             lines.push(`  Pair ADX Dir L: ${th.adx_dir_long||'both'}  |  Pair ADX Dir S: ${th.adx_dir_short||'both'}`);
+            lines.push(`  Global Vol Filter: ${th.global_volume_filter_enabled}  |  Thresh L: ${th.global_volume_threshold_long||1.05}  |  Thresh S: ${th.global_volume_threshold_short||1.05}`);
+            lines.push(`  Pair Vol Filter: ${th.pair_volume_filter_enabled}  |  Thresh L: ${th.pair_volume_threshold_long||1.10}  |  Thresh S: ${th.pair_volume_threshold_short||1.10}`);
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
@@ -4437,6 +4523,17 @@
                     for (const r of perf.btc_adx_direction_performance) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.btc_adx_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- VOLUME CROSS-TAB ---
+                if (perf.volume_crosstab && perf.volume_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Volume Cross-Tab (Global x Pair)\n');
+                    lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                    for (const r of perf.volume_crosstab) {
+                        const d = r.direction === 'LONG' ? 'L' : 'S';
+                        lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
                     }
                 }
 
@@ -6661,6 +6758,28 @@
                     flBody.innerHTML = '<tr><td colspan="14" class="px-3 py-4 text-center text-gray-500">No flagged trades yet</td></tr>';
                 }
 
+                // Volume Cross-Tab
+                const vcBody = document.getElementById('volume-crosstab-body');
+                if (data.volume_crosstab && data.volume_crosstab.length > 0) {
+                    vcBody.innerHTML = data.volume_crosstab.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1.5 ${dirColor} font-medium">${r.direction === 'LONG' ? 'L' : 'S'}</td>
+                            <td class="px-2 py-1.5 text-gray-300">${r.global_vol}</td>
+                            <td class="px-2 py-1.5 text-gray-300">${r.pair_vol}</td>
+                            <td class="px-2 py-1.5 text-right text-gray-300">${r.trades}</td>
+                            <td class="px-2 py-1.5 text-right ${wrClass}">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-2 py-1.5 text-right ${pnlClass}">$${r.avg_pnl.toFixed(2)}</td>
+                            <td class="px-2 py-1.5 text-right ${totalClass} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    vcBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>';
+                }
+
                 // Hold-Time Expectancy
                 const htConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
                 const htBody = document.getElementById('hold-time-expectancy-body');
@@ -7529,6 +7648,12 @@
                 document.getElementById('config-btc-adx-dir-short').value = config.thresholds.btc_adx_dir_short || 'both';
                 document.getElementById('config-adx-dir-long').value = config.thresholds.adx_dir_long || 'both';
                 document.getElementById('config-adx-dir-short').value = config.thresholds.adx_dir_short || 'both';
+                document.getElementById('config-global-volume-filter-enabled').checked = !!config.thresholds.global_volume_filter_enabled;
+                document.getElementById('config-pair-volume-filter-enabled').checked = !!config.thresholds.pair_volume_filter_enabled;
+                document.getElementById('config-global-vol-threshold-long').value = config.thresholds.global_volume_threshold_long !== undefined ? config.thresholds.global_volume_threshold_long : 1.05;
+                document.getElementById('config-global-vol-threshold-short').value = config.thresholds.global_volume_threshold_short !== undefined ? config.thresholds.global_volume_threshold_short : 1.05;
+                document.getElementById('config-pair-vol-threshold-long').value = config.thresholds.pair_volume_threshold_long !== undefined ? config.thresholds.pair_volume_threshold_long : 1.10;
+                document.getElementById('config-pair-vol-threshold-short').value = config.thresholds.pair_volume_threshold_short !== undefined ? config.thresholds.pair_volume_threshold_short : 1.10;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-long-rsi-max').value = config.thresholds.momentum_long_rsi_max !== undefined ? config.thresholds.momentum_long_rsi_max : 100;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
@@ -7796,6 +7921,12 @@
                     btc_adx_dir_short: document.getElementById('config-btc-adx-dir-short').value,
                     adx_dir_long: document.getElementById('config-adx-dir-long').value,
                     adx_dir_short: document.getElementById('config-adx-dir-short').value,
+                    global_volume_filter_enabled: document.getElementById('config-global-volume-filter-enabled').checked,
+                    global_volume_threshold_long: safeFloat(document.getElementById('config-global-vol-threshold-long').value),
+                    global_volume_threshold_short: safeFloat(document.getElementById('config-global-vol-threshold-short').value),
+                    pair_volume_filter_enabled: document.getElementById('config-pair-volume-filter-enabled').checked,
+                    pair_volume_threshold_long: safeFloat(document.getElementById('config-pair-vol-threshold-long').value),
+                    pair_volume_threshold_short: safeFloat(document.getElementById('config-pair-vol-threshold-short').value),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_long_rsi_max: safeFloat(document.getElementById('config-momentum-long-rsi-max').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),

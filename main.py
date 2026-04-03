@@ -3654,11 +3654,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         reason = f"{base_reason} L6+"
                 except ValueError:
                     pass
-            direction = o.direction or "UNKNOWN"
-            eq_groups.setdefault((reason, direction), []).append(o)
+            eq_groups.setdefault(reason, []).append(o)
 
-        for (reason, direction) in sorted(eq_groups.keys()):
-            group = eq_groups[(reason, direction)]
+        for reason in sorted(eq_groups.keys()):
+            group = eq_groups[reason]
             count = len(group)
             if count == 0:
                 continue
@@ -3730,9 +3729,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             pct_recovered = round(sum(1 for v in neg_known if v == "RECOVERED") / len(neg_known) * 100, 1) if neg_known else None
             pct_ended_neg = round(sum(1 for v in neg_known if v == "ENDED_NEG") / len(neg_known) * 100, 1) if neg_known else None
 
+            eq_longs = sum(1 for o in group if o.direction == "LONG")
+            eq_shorts = count - eq_longs
+            eq_by_conf = {}
+            for o in group:
+                c = o.confidence or "UNKNOWN"
+                eq_by_conf[c] = eq_by_conf.get(c, 0) + 1
             exit_quality_ema5.append({
                 "reason": reason,
-                "direction": direction,
+                "longs": eq_longs, "shorts": eq_shorts, "by_confidence": eq_by_conf,
                 "count": count,
                 "avg_duration": avg_duration,
                 "avg_close_pnl": avg_close_pnl,
@@ -3761,14 +3766,18 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             fg_groups = {}
             for o in flagged_orders:
                 reason = o.close_reason or "UNKNOWN"
-                direction = o.direction or "UNKNOWN"
-                confidence = o.confidence or "UNKNOWN"
-                fg_groups.setdefault((reason, direction, confidence), []).append(o)
+                fg_groups.setdefault(reason, []).append(o)
 
             _group_nr_usds = []
-            for (reason, direction, confidence) in sorted(fg_groups.keys()):
-                group = fg_groups[(reason, direction, confidence)]
+            for reason in sorted(fg_groups.keys()):
+                group = fg_groups[reason]
                 count = len(group)
+                longs = sum(1 for o in group if o.direction == "LONG")
+                shorts = count - longs
+                by_conf = {}
+                for o in group:
+                    c = o.confidence or "UNKNOWN"
+                    by_conf[c] = by_conf.get(c, 0) + 1
                 pct = round(count / total_flagged * 100, 1)
                 avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in group) / count, 4)
                 avg_pnl_usd = round(sum(o.pnl or 0 for o in group) / count, 2)
@@ -3796,7 +3805,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_dur_flag_close = round(sum(dur_flag_close) / len(dur_flag_close), 1) if dur_flag_close else None
 
                 flagged_exits.append({
-                    "reason": reason, "direction": direction, "confidence": confidence,
+                    "reason": reason, "longs": longs, "shorts": shorts, "by_confidence": by_conf,
                     "count": count, "pct": pct,
                     "avg_pnl_pct": avg_pnl_pct, "avg_pnl_usd": avg_pnl_usd,
                     "avg_peak_pnl": avg_peak_pnl, "avg_pullback": avg_pullback,
@@ -3821,8 +3830,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     all_dur_of.append((o.signal_lost_flagged_at - o.opened_at).total_seconds() / 60.0)
                 if getattr(o, 'signal_lost_flagged_at', None) and o.closed_at:
                     all_dur_fc.append((o.closed_at - o.signal_lost_flagged_at).total_seconds() / 60.0)
+            all_longs = sum(1 for o in flagged_orders if o.direction == "LONG")
+            all_shorts = total_flagged - all_longs
+            all_by_conf = {}
+            for o in flagged_orders:
+                c = o.confidence or "UNKNOWN"
+                all_by_conf[c] = all_by_conf.get(c, 0) + 1
             flagged_exits.append({
-                "reason": "ALL", "direction": "-", "confidence": "-",
+                "reason": "ALL", "longs": all_longs, "shorts": all_shorts, "by_confidence": all_by_conf,
                 "count": total_flagged, "pct": 100.0,
                 "avg_pnl_pct": all_avg_pnl_pct, "avg_pnl_usd": all_avg_pnl_usd,
                 "avg_peak_pnl": all_avg_peak, "avg_pullback": all_avg_pullback,

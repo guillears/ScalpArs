@@ -1059,10 +1059,11 @@
                                     <th class="px-2 py-2 font-medium text-right text-yellow-400" title="Delta EMA5% from peak to trough — momentum reversal">ΔE5 Tr</th>
                                     <th class="px-2 py-2 font-medium text-right" title="% of trades where EMA5 never went unfavorable">%Never</th>
                                     <th class="px-2 py-2 font-medium text-right" title="% of trades where EMA5 went unfavorable but recovered">%Recov</th>
+                                    <th class="px-2 py-2 font-medium text-center">Conf</th>
                                 </tr>
                             </thead>
                             <tbody id="exit-quality-ema5-body" class="divide-y divide-white/5">
-                                <tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>
+                                <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6745,8 +6746,6 @@
                     eqBody.innerHTML = data.exit_quality_ema5
                         .sort((a, b) => b.count - a.count)
                         .map(r => {
-                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
-                            const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
                             const closeClass = r.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const peakClass = r.avg_peak_pnl != null ? (r.avg_peak_pnl >= 0 ? 'text-orange-400' : 'text-gray-400') : '';
                             const fmtPct = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
@@ -6759,9 +6758,11 @@
                             const deltaTrClass = r.avg_delta_ema5_trough != null ? (r.avg_delta_ema5_trough >= 0 ? 'text-emerald-400' : 'text-yellow-400') : '';
                             const neverClass = r.pct_never_neg != null && r.pct_never_neg >= 50 ? 'text-emerald-400' : 'text-gray-400';
                             const recovClass = r.pct_recovered != null && r.pct_recovered > 0 ? 'text-yellow-400' : 'text-gray-400';
+                            const eqConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                            const eqConfBadges = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<span class="${eqConfColors[c]||'text-gray-400'}">${c[0]}:${n}</span>`).join(' ') : '-';
                             return `<tr class="hover:bg-white/5">
                                 <td class="px-2 py-1.5 font-medium text-cyan-400">${r.reason}</td>
-                                <td class="px-2 py-1.5 text-center"><span class="${dirColor} font-medium">${dirLabel}</span></td>
+                                <td class="px-2 py-1.5 text-center"><span class="text-emerald-400">${r.longs||0}L</span> / <span class="text-red-400">${r.shorts||0}S</span></td>
                                 <td class="px-2 py-1.5 text-center">${r.count}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_duration)}</td>
                                 <td class="px-2 py-1.5 text-right ${closeClass} font-medium">${fmtPct(r.avg_close_pnl)}</td>
@@ -6776,10 +6777,11 @@
                                 <td class="px-2 py-1.5 text-right ${deltaTrClass} font-medium">${fmtPct(r.avg_delta_ema5_trough)}</td>
                                 <td class="px-2 py-1.5 text-right ${neverClass}">${r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-'}</td>
                                 <td class="px-2 py-1.5 text-right ${recovClass}">${r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-'}</td>
+                                <td class="px-2 py-1.5 text-center text-xs">${eqConfBadges}</td>
                             </tr>`;
                         }).join('');
                 } else {
-                    eqBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>';
+                    eqBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>';
                 }
 
                 // Flagged Exits
@@ -6794,20 +6796,20 @@
                         .map(r => {
                             const isAll = r.reason === 'ALL';
                             const rowClass = isAll ? 'bg-white/5 font-semibold border-t border-white/20' : 'hover:bg-white/5';
-                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : r.direction === 'SHORT' ? 'text-red-400' : 'text-gray-400';
-                            const dirLabel = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
                             const pnlClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const pnlUsdClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const fmtPct = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                             const fmtMin = (v) => v != null ? v.toFixed(1) + 'm' : '-';
                             const nrClass = r.net_recover != null ? (r.net_recover >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400';
                             const peakClass = r.avg_peak_pnl != null ? (r.avg_peak_pnl >= 0 ? 'text-orange-400' : 'text-gray-400') : '';
+                            const confColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                            const confBadges = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<span class="${confColors[c]||'text-gray-400'}">${c[0]}:${n}</span>`).join(' ') : '-';
                             return `<tr class="${rowClass}">
                                 <td class="px-2 py-1.5 font-medium ${isAll ? 'text-white' : 'text-cyan-400'}">${r.reason}</td>
                                 <td class="px-2 py-1.5 text-center">${r.count}</td>
                                 <td class="px-2 py-1.5 text-center text-gray-400">${r.pct.toFixed(0)}%</td>
-                                <td class="px-2 py-1.5 text-center"><span class="${dirColor} font-medium">${dirLabel}</span></td>
-                                <td class="px-2 py-1.5 text-center text-gray-300">${isAll ? '-' : (r.confidence || '-')}</td>
+                                <td class="px-2 py-1.5 text-center"><span class="text-emerald-400">${r.longs||0}L</span> / <span class="text-red-400">${r.shorts||0}S</span></td>
+                                <td class="px-2 py-1.5 text-center text-xs">${confBadges}</td>
                                 <td class="px-2 py-1.5 text-right ${pnlClass} font-medium">${fmtPct(r.avg_pnl_pct)}</td>
                                 <td class="px-2 py-1.5 text-right ${pnlUsdClass}">$${r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-'}</td>
                                 <td class="px-2 py-1.5 text-right ${peakClass}">${fmtPct(r.avg_peak_pnl)}</td>

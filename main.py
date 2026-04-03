@@ -3823,7 +3823,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 (o.pnl or 0) - (o.signal_lost_flag_pnl / 100 * o.notional_value)
                 for o in flagged_orders if o.signal_lost_flag_pnl is not None and o.notional_value
             ]
-            all_net_recover_usd = round(sum(all_nr_usds) / len(all_nr_usds), 2) if all_nr_usds else None
+            all_net_recover_usd = round(sum(all_nr_usds), 2) if all_nr_usds else None
             all_dur_of = []
             all_dur_fc = []
             for o in flagged_orders:

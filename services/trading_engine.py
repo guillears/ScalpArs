@@ -2329,6 +2329,7 @@ class TradingEngine:
             return []
         
         logger.info(f"[SCAN] Starting scan_and_trade cycle...")
+        global _global_volume_ratio
         actions = []
         _scan_vol_sum = 0.0
         _scan_avg_vol_sum = 0.0
@@ -2625,7 +2626,6 @@ class TradingEngine:
             if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
                 await asyncio.sleep(OHLCV_BATCH_DELAY)
             
-        global _global_volume_ratio
         if _scan_avg_vol_sum > 0:
             _global_volume_ratio = round(_scan_vol_sum / _scan_avg_vol_sum, 4)
             logger.info(f"[GLOBAL_VOL] ratio={_global_volume_ratio:.4f} (sum_vol={_scan_vol_sum:.0f}, sum_avg={_scan_avg_vol_sum:.0f})")

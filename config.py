@@ -150,6 +150,8 @@ class SignalThresholds(BaseModel):
     pair_volume_filter_enabled: bool = False  # Gate trades when per-pair volume is below its own average
     pair_volume_threshold_long: float = 1.10  # Min pair volume ratio to allow LONGs
     pair_volume_threshold_short: float = 1.10  # Min pair volume ratio to allow SHORTs
+    global_volume_lookback_bars: int = 48  # Rolling window for global volume average (5m bars)
+    pair_volume_lookback_bars: int = 20  # Rolling window for per-pair volume average (5m bars)
 
 
 class InvestmentConfig(BaseModel):

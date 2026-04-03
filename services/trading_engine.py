@@ -2390,7 +2390,9 @@ class TradingEngine:
                 if not ohlcv:
                     continue
 
-                indicators = calculate_indicators(ohlcv)
+                _pair_vol_bars = getattr(config.trading_config.thresholds, 'pair_volume_lookback_bars', 20)
+                _global_vol_bars = getattr(config.trading_config.thresholds, 'global_volume_lookback_bars', 48)
+                indicators = calculate_indicators(ohlcv, pair_volume_bars=_pair_vol_bars, global_volume_bars=_global_vol_bars)
                 if not indicators:
                     continue
 
@@ -2406,8 +2408,9 @@ class TradingEngine:
                 _pair_vol = indicators.get('volume') or 0
                 _pair_avg_vol = indicators.get('avg_volume') or 0
                 _pair_volume_ratio = round(_pair_vol / _pair_avg_vol, 4) if _pair_avg_vol > 0 else 1.0
+                _pair_avg_vol_global = indicators.get('avg_volume_global') or 0
                 _scan_vol_sum += _pair_vol
-                _scan_avg_vol_sum += _pair_avg_vol
+                _scan_avg_vol_sum += _pair_avg_vol_global if _pair_avg_vol_global > 0 else _pair_avg_vol
 
                 signal, confidence = get_signal(
                     ema5=indicators.get('ema5'),

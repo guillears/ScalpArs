@@ -10,7 +10,7 @@ import config as config_module
 from config import ConfidenceLevel
 
 
-def calculate_indicators(ohlcv: List) -> Dict:
+def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_bars: int = 48) -> Dict:
     """
     Calculate all technical indicators from OHLCV data
     
@@ -44,8 +44,8 @@ def calculate_indicators(ohlcv: List) -> Dict:
     adx_indicator = ADXIndicator(high=df['high'], low=df['low'], close=df['close'], window=14)
     adx = adx_indicator.adx()
     
-    # Get average volume (20 period)
-    avg_volume = df['volume'].rolling(window=20).mean()
+    avg_volume = df['volume'].rolling(window=pair_volume_bars).mean()
+    avg_volume_global = df['volume'].rolling(window=global_volume_bars).mean()
     
     # Get latest values
     return {
@@ -67,7 +67,8 @@ def calculate_indicators(ohlcv: List) -> Dict:
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'adx_prev1': float(adx.iloc[-2]) if len(adx) >= 2 and not pd.isna(adx.iloc[-2]) else None,
         'volume': float(df['volume'].iloc[-1]),
-        'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None
+        'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None,
+        'avg_volume_global': float(avg_volume_global.iloc[-1]) if not pd.isna(avg_volume_global.iloc[-1]) else None
     }
 
 

@@ -1555,6 +1555,30 @@ def _vol_bin_label(ratio):
     return _VOL_BINS[-1][0]
 
 
+def _compute_pair_performance(orders):
+    """Per-pair performance: pair x direction -> #trades, win rate, avg P&L, total P&L"""
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
+    from collections import defaultdict
+    buckets = defaultdict(list)
+    for o in closed:
+        buckets[(o.pair, o.direction)].append(o)
+    rows = []
+    for (pair, direction), trades in buckets.items():
+        n = len(trades)
+        wins = sum(1 for o in trades if o.pnl > 0)
+        total_pnl = sum(o.pnl for o in trades)
+        rows.append({
+            "pair": pair,
+            "direction": direction,
+            "trades": n,
+            "win_rate": round(wins / n * 100, 1),
+            "avg_pnl": round(total_pnl / n, 2),
+            "total_pnl": round(total_pnl, 2),
+        })
+    rows.sort(key=lambda r: r["total_pnl"], reverse=True)
+    return rows
+
+
 def _compute_volume_crosstab(orders):
     """Cross-tab: Direction x GlobalVolBin x PairVolBin -> #Trades, WinRate, AvgP&L, TotalP&L"""
     rows = []
@@ -3874,6 +3898,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "day_time_heatmap": _compute_day_time_heatmap(orders),
         "regime_neutral_deep_dive": _compute_regime_neutral_deep_dive(orders),
         "volume_crosstab": _compute_volume_crosstab(orders),
+        "pair_performance": _compute_pair_performance(orders),
     }
 
 

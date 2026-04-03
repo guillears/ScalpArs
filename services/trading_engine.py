@@ -2336,6 +2336,11 @@ class TradingEngine:
         # Get top pairs based on config limit
         pairs_limit = config.trading_config.trading_pairs_limit
         top_pairs = await binance_service.get_top_futures_pairs(pairs_limit)
+        _blacklist_str = getattr(config.trading_config, 'pair_blacklist', '')
+        _blacklist = set(p.strip() for p in _blacklist_str.split(',') if p.strip())
+        if _blacklist:
+            top_pairs = [p for p in top_pairs if p['pair'] not in _blacklist]
+            logger.info(f"[SCAN] Blacklist active: excluded {len(_blacklist)} pairs ({', '.join(sorted(_blacklist))})")
         logger.info(f"[SCAN] Fetched {len(top_pairs)} pairs from Binance (limit={pairs_limit})")
         
         if not top_pairs:

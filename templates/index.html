@@ -411,6 +411,20 @@
             <div class="glass rounded-xl p-6">
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
 
+                <!-- Regime Filter & Copy Buttons -->
+                <div class="mb-4 flex items-center gap-4">
+                    <span class="text-sm font-semibold text-gray-300">Filter by Macro Trend:</span>
+                    <select id="regime-filter" class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()">
+                        <option value="">All Regimes</option>
+                        <option value="BULLISH">BULLISH</option>
+                        <option value="BEARISH">BEARISH</option>
+                        <option value="NEUTRAL">NEUTRAL</option>
+                    </select>
+                    <span id="regime-filter-badge" class="text-xs text-gray-500"></span>
+                    <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
+                    <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
+                </div>
+
                 <!-- Period Performance Summary -->
                 <div class="mb-6">
                     <h3 class="text-sm font-semibold text-gray-300 mb-3">Period Performance</h3>
@@ -575,20 +589,6 @@
                         <p class="text-xs text-gray-500 mb-1">Runtime (Days)</p>
                         <p id="perf-runtime-days" class="text-xl font-bold">0</p>
                     </div>
-                </div>
-                
-                <!-- Regime Filter -->
-                <div class="mt-6 pt-6 border-t border-white/10 flex items-center gap-4">
-                    <span class="text-sm font-semibold text-gray-300">Filter by Macro Trend:</span>
-                    <select id="regime-filter" class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()">
-                        <option value="">All Regimes</option>
-                        <option value="BULLISH">BULLISH</option>
-                        <option value="BEARISH">BEARISH</option>
-                        <option value="NEUTRAL">NEUTRAL</option>
-                    </select>
-                    <span id="regime-filter-badge" class="text-xs text-gray-500"></span>
-                    <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
-                    <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                 </div>
 
                 <!-- Performance by Macro Trend -->
@@ -1630,6 +1630,29 @@
                         </table>
                     </div>
                 </div>
+                <!-- Per-Pair Performance -->
+                <div class="mt-6 border-t border-white/5 pt-4">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Pair</h3>
+                    <p class="text-xs text-gray-500 mb-3">Per-pair breakdown — sorted by total P&L</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Pair</th>
+                                    <th class="px-2 py-1 text-left">Dir</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                    <th class="px-2 py-1 text-center">Block</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pair-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -1912,6 +1935,11 @@
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">min</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Close if peak &lt; BE L1 Trig &amp; current &lt; BE L1 Off (0 = disabled)</p>
+                        </div>
+                        <div class="md:col-span-4">
+                            <label class="block text-sm text-gray-400 mb-2">Pair Blacklist</label>
+                            <input type="text" id="config-pair-blacklist" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. XRPUSDT, DOGEUSDT" value="">
+                            <p class="text-xs text-gray-500 mt-1">Comma-separated pairs to exclude from trading (only blocks new entries)</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
@@ -3880,6 +3908,16 @@
                 }
             }
 
+            if (perf.pair_performance && perf.pair_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Pair\n');
+                lines.push(`${'Pair'.padEnd(16)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                for (const r of perf.pair_performance) {
+                    const d = r.direction === 'LONG' ? 'L' : 'S';
+                    lines.push(`${(r.pair||'').padEnd(16)} ${d.padEnd(6)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by BTC Entry RSI\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
@@ -3958,6 +3996,7 @@
             lines.push(`  BNB Auto-Swap: ${cfg.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Paper BNB: $${cfg.paper_bnb_initial_usd || 500}  |  Check: ${cfg.bnb_check_interval_hours || 12}h  |  Runway: ${cfg.bnb_runway_hours || 24}h`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
             lines.push(`  Cooldown After Exit: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
+            if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
 
             lines.push(`\nFee & Maker Orders:`);
             lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee ?? 0.00018) * 100).toFixed(3)}%`);
@@ -4542,6 +4581,17 @@
                     for (const r of perf.volume_crosstab) {
                         const d = r.direction === 'LONG' ? 'L' : 'S';
                         lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    }
+                }
+
+                // --- PAIR PERFORMANCE ---
+                if (perf.pair_performance && perf.pair_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Pair\n');
+                    lines.push(`${'Pair'.padEnd(16)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                    for (const r of perf.pair_performance) {
+                        const d = r.direction === 'LONG' ? 'L' : 'S';
+                        lines.push(`${(r.pair||'').padEnd(16)} ${d.padEnd(6)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
                     }
                 }
 
@@ -6788,6 +6838,28 @@
                     vcBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>';
                 }
 
+                // Per-Pair Performance
+                const ppBody = document.getElementById('pair-performance-body');
+                if (data.pair_performance && data.pair_performance.length > 0) {
+                    ppBody.innerHTML = data.pair_performance.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1.5 text-gray-300 font-medium">${r.pair}</td>
+                            <td class="px-2 py-1.5 ${dirColor} font-medium">${r.direction === 'LONG' ? 'L' : 'S'}</td>
+                            <td class="px-2 py-1.5 text-right text-gray-300">${r.trades}</td>
+                            <td class="px-2 py-1.5 text-right ${wrClass}">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-2 py-1.5 text-right ${pnlClass}">$${r.avg_pnl.toFixed(2)}</td>
+                            <td class="px-2 py-1.5 text-right ${totalClass} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                            <td class="px-2 py-1.5 text-center"><button onclick="addToBlacklist('${r.pair}')" class="px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/40 transition">block</button></td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    ppBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
+                }
+
                 // Hold-Time Expectancy
                 const htConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
                 const htBody = document.getElementById('hold-time-expectancy-body');
@@ -6823,6 +6895,16 @@
             } catch (e) {
                 console.error('Error loading performance:', e);
                 showToast('Performance render error: ' + e.message, 'error');
+            }
+        }
+
+        function addToBlacklist(pair) {
+            const el = document.getElementById('config-pair-blacklist');
+            const current = el.value.split(',').map(s => s.trim()).filter(s => s);
+            if (!current.includes(pair)) {
+                current.push(pair);
+                el.value = current.join(', ');
+                showToast(`${pair} added to blacklist — save config to apply`, 'warning');
             }
         }
 
@@ -7607,8 +7689,9 @@
                 document.getElementById('config-max-holding-time').value = config.investment.max_holding_time_minutes !== undefined ? config.investment.max_holding_time_minutes : 180;
                 document.getElementById('config-no-expansion').value = config.investment.no_expansion_minutes !== undefined ? config.investment.no_expansion_minutes : 15;
 
-                // Trading pairs limit
+                // Trading pairs limit & blacklist
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
+                document.getElementById('config-pair-blacklist').value = config.pair_blacklist || '';
                 
                 updateInvestmentUnit();
                 updateReserveUnit();
@@ -7869,6 +7952,7 @@
                 maker_exit_timeout_seconds: parseInt(document.getElementById('config-maker-exit-timeout').value) || 10,
                 maker_exit_offset_ticks: parseInt(document.getElementById('config-maker-exit-offset-ticks').value) || 2,
                 paper_balance: safeFloat(document.getElementById('config-paper-balance').value),
+                pair_blacklist: document.getElementById('config-pair-blacklist').value.trim(),
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,

@@ -207,6 +207,7 @@ class TradingConfig(BaseModel):
     
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 20  # 5, 10, 20, or 50
+    pair_blacklist: str = ""  # Comma-separated pairs to exclude, e.g. "XRPUSDT,DOGEUSDT"
     
     # Investment settings
     investment: InvestmentConfig = InvestmentConfig()

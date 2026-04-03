@@ -15,6 +15,7 @@
   "bnb_runway_hours": 24,
   "paper_bnb_initial_usd": 500.0,
   "trading_pairs_limit": 50,
+  "pair_blacklist": "",
   "investment": {
     "mode": "equal_split",
     "fixed_amount": 200.0,

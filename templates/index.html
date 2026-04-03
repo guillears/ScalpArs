@@ -1639,7 +1639,7 @@
                             <thead>
                                 <tr class="text-gray-400 border-b border-white/10">
                                     <th class="px-2 py-1 text-left">Pair</th>
-                                    <th class="px-2 py-1 text-left">Dir</th>
+                                    <th class="px-2 py-1 text-center">Direction</th>
                                     <th class="px-2 py-1 text-right">#</th>
                                     <th class="px-2 py-1 text-right">Win%</th>
                                     <th class="px-2 py-1 text-right">Avg P&L</th>
@@ -3911,10 +3911,10 @@
             if (perf.pair_performance && perf.pair_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Pair\n');
-                lines.push(`${'Pair'.padEnd(16)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
                 for (const r of perf.pair_performance) {
-                    const d = r.direction === 'LONG' ? 'L' : 'S';
-                    lines.push(`${(r.pair||'').padEnd(16)} ${d.padEnd(6)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    const dir = `${r.longs}L/${r.shorts}S`;
+                    lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
                 }
             }
 
@@ -4588,10 +4588,10 @@
                 if (perf.pair_performance && perf.pair_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Pair\n');
-                    lines.push(`${'Pair'.padEnd(16)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                    lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
                     for (const r of perf.pair_performance) {
-                        const d = r.direction === 'LONG' ? 'L' : 'S';
-                        lines.push(`${(r.pair||'').padEnd(16)} ${d.padEnd(6)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                        const dir = `${r.longs}L/${r.shorts}S`;
+                        lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
                     }
                 }
 
@@ -6842,13 +6842,12 @@
                 const ppBody = document.getElementById('pair-performance-body');
                 if (data.pair_performance && data.pair_performance.length > 0) {
                     ppBody.innerHTML = data.pair_performance.map(r => {
-                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                         const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
                         return `<tr class="hover:bg-white/5">
                             <td class="px-2 py-1.5 text-gray-300 font-medium">${r.pair}</td>
-                            <td class="px-2 py-1.5 ${dirColor} font-medium">${r.direction === 'LONG' ? 'L' : 'S'}</td>
+                            <td class="px-2 py-1.5 text-center"><span class="text-emerald-400">${r.longs}L</span> / <span class="text-red-400">${r.shorts}S</span></td>
                             <td class="px-2 py-1.5 text-right text-gray-300">${r.trades}</td>
                             <td class="px-2 py-1.5 text-right ${wrClass}">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-2 py-1.5 text-right ${pnlClass}">$${r.avg_pnl.toFixed(2)}</td>

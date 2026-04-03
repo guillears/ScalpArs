@@ -1556,20 +1556,23 @@ def _vol_bin_label(ratio):
 
 
 def _compute_pair_performance(orders):
-    """Per-pair performance: pair x direction -> #trades, win rate, avg P&L, total P&L"""
+    """Per-pair performance: one row per pair with L/S breakdown"""
     closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
     from collections import defaultdict
     buckets = defaultdict(list)
     for o in closed:
-        buckets[(o.pair, o.direction)].append(o)
+        buckets[o.pair].append(o)
     rows = []
-    for (pair, direction), trades in buckets.items():
+    for pair, trades in buckets.items():
         n = len(trades)
+        longs = sum(1 for o in trades if o.direction == "LONG")
+        shorts = n - longs
         wins = sum(1 for o in trades if o.pnl > 0)
         total_pnl = sum(o.pnl for o in trades)
         rows.append({
             "pair": pair,
-            "direction": direction,
+            "longs": longs,
+            "shorts": shorts,
             "trades": n,
             "win_rate": round(wins / n * 100, 1),
             "avg_pnl": round(total_pnl / n, 2),

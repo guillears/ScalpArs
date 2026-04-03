@@ -3765,6 +3765,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 confidence = o.confidence or "UNKNOWN"
                 fg_groups.setdefault((reason, direction, confidence), []).append(o)
 
+            _group_nr_usds = []
             for (reason, direction, confidence) in sorted(fg_groups.keys()):
                 group = fg_groups[(reason, direction, confidence)]
                 count = len(group)
@@ -3782,6 +3783,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     for o in group if o.signal_lost_flag_pnl is not None and o.notional_value
                 ]
                 net_recover_usd = round(sum(net_recover_usds) / len(net_recover_usds), 2) if net_recover_usds else None
+                if net_recover_usd is not None:
+                    _group_nr_usds.append(net_recover_usd)
                 dur_open_flag = []
                 dur_flag_close = []
                 for o in group:
@@ -3803,18 +3806,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
             # ALL summary row
             all_avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in flagged_orders) / total_flagged, 4)
-            all_avg_pnl_usd = round(sum(o.pnl or 0 for o in flagged_orders), 2)
+            all_avg_pnl_usd = round(sum(o.pnl or 0 for o in flagged_orders) / total_flagged, 2)
             all_peaks = [o.peak_pnl for o in flagged_orders if o.peak_pnl is not None]
             all_avg_peak = round(sum(all_peaks) / len(all_peaks), 4) if all_peaks else None
             all_avg_pullback = round(all_avg_peak - all_avg_pnl_pct, 4) if all_avg_peak is not None else None
             all_flag_pnls = [o.signal_lost_flag_pnl for o in flagged_orders if o.signal_lost_flag_pnl is not None]
             all_avg_at_sl = round(sum(all_flag_pnls) / len(all_flag_pnls), 4) if all_flag_pnls else None
             all_net_recover = round(all_avg_pnl_pct - all_avg_at_sl, 4) if all_avg_at_sl is not None else None
-            all_nr_usds = [
-                (o.pnl or 0) - (o.signal_lost_flag_pnl / 100 * o.notional_value)
-                for o in flagged_orders if o.signal_lost_flag_pnl is not None and o.notional_value
-            ]
-            all_net_recover_usd = round(sum(all_nr_usds), 2) if all_nr_usds else None
+            all_net_recover_usd = round(sum(_group_nr_usds), 2) if _group_nr_usds else None
             all_dur_of = []
             all_dur_fc = []
             for o in flagged_orders:

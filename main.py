@@ -1569,6 +1569,12 @@ def _compute_pair_performance(orders):
         shorts = n - longs
         wins = sum(1 for o in trades if o.pnl > 0)
         total_pnl = sum(o.pnl for o in trades)
+        hold_hours = []
+        for o in trades:
+            if o.closed_at and o.created_at:
+                delta = (o.closed_at - o.created_at).total_seconds() / 3600
+                hold_hours.append(delta)
+        avg_hold = round(sum(hold_hours) / len(hold_hours), 1) if hold_hours else 0
         rows.append({
             "pair": pair,
             "longs": longs,
@@ -1577,6 +1583,7 @@ def _compute_pair_performance(orders):
             "win_rate": round(wins / n * 100, 1),
             "avg_pnl": round(total_pnl / n, 2),
             "total_pnl": round(total_pnl, 2),
+            "avg_hold_hours": avg_hold,
         })
     rows.sort(key=lambda r: r["total_pnl"], reverse=True)
     return rows
@@ -1602,6 +1609,11 @@ def _compute_volume_crosstab(orders):
                 n = len(bucket)
                 wins = sum(1 for o in bucket if o.pnl > 0)
                 total_pnl = sum(o.pnl for o in bucket)
+                hold_hours = []
+                for o in bucket:
+                    if o.closed_at and o.created_at:
+                        hold_hours.append((o.closed_at - o.created_at).total_seconds() / 3600)
+                avg_hold = round(sum(hold_hours) / len(hold_hours), 1) if hold_hours else 0
                 rows.append({
                     "direction": direction,
                     "global_vol": g_label,
@@ -1610,6 +1622,7 @@ def _compute_volume_crosstab(orders):
                     "win_rate": round(wins / n * 100, 1),
                     "avg_pnl": round(total_pnl / n, 2),
                     "total_pnl": round(total_pnl, 2),
+                    "avg_hold_hours": avg_hold,
                 })
     return rows
 

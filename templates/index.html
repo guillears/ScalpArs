@@ -1517,10 +1517,11 @@
                                     <th class="px-2 py-1 text-right">Win%</th>
                                     <th class="px-2 py-1 text-right">Avg P&L</th>
                                     <th class="px-2 py-1 text-right">Total P&L</th>
+                                    <th class="px-2 py-1 text-right">Avg Dur</th>
                                 </tr>
                             </thead>
                             <tbody id="volume-crosstab-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1539,11 +1540,12 @@
                                     <th class="px-2 py-1 text-right">Win%</th>
                                     <th class="px-2 py-1 text-right">Avg P&L</th>
                                     <th class="px-2 py-1 text-right">Total P&L</th>
+                                    <th class="px-2 py-1 text-right">Avg Dur</th>
                                     <th class="px-2 py-1 text-center">Block</th>
                                 </tr>
                             </thead>
                             <tbody id="pair-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3902,20 +3904,22 @@
             if (perf.volume_crosstab && perf.volume_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Volume Cross-Tab (Global x Pair)\n');
-                lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                 for (const r of perf.volume_crosstab) {
                     const d = r.direction === 'LONG' ? 'L' : 'S';
-                    lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                    lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                 }
             }
 
             if (perf.pair_performance && perf.pair_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Pair\n');
-                lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                 for (const r of perf.pair_performance) {
                     const dir = `${r.longs}L/${r.shorts}S`;
-                    lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                    lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                 }
             }
 
@@ -4578,10 +4582,11 @@
                 if (perf.volume_crosstab && perf.volume_crosstab.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Volume Cross-Tab (Global x Pair)\n');
-                    lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                    lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                     for (const r of perf.volume_crosstab) {
                         const d = r.direction === 'LONG' ? 'L' : 'S';
-                        lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                        lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                     }
                 }
 
@@ -4589,10 +4594,11 @@
                 if (perf.pair_performance && perf.pair_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Pair\n');
-                    lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)}`);
+                    lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                     for (const r of perf.pair_performance) {
                         const dir = `${r.longs}L/${r.shorts}S`;
-                        lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                        lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                     }
                 }
 
@@ -6825,6 +6831,7 @@
                         const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
+                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
                         return `<tr class="hover:bg-white/5">
                             <td class="px-2 py-1.5 ${dirColor} font-medium">${r.direction === 'LONG' ? 'L' : 'S'}</td>
                             <td class="px-2 py-1.5 text-gray-300">${r.global_vol}</td>
@@ -6833,31 +6840,42 @@
                             <td class="px-2 py-1.5 text-right ${wrClass}">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-2 py-1.5 text-right ${pnlClass}">$${r.avg_pnl.toFixed(2)}</td>
                             <td class="px-2 py-1.5 text-right ${totalClass} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                            <td class="px-2 py-1.5 text-right text-gray-400">${dur}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    vcBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>';
+                    vcBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>';
                 }
 
                 // Per-Pair Performance
                 const pairPerfBody = document.getElementById('pair-performance-body');
                 if (data.pair_performance && data.pair_performance.length > 0) {
+                    window._lastPairPerformanceData = data.pair_performance;
+                    const bl = (document.getElementById('config-pair-blacklist').value || '').split(',').map(s => s.trim()).filter(s => s);
                     pairPerfBody.innerHTML = data.pair_performance.map(r => {
+                        const blocked = bl.includes(r.pair);
+                        const rowClass = blocked ? 'opacity-40' : 'hover:bg-white/5';
                         const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
-                        return `<tr class="hover:bg-white/5">
+                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                        const btnClass = blocked
+                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40'
+                            : 'bg-red-500/20 text-red-400 hover:bg-red-500/40';
+                        const btnLabel = blocked ? 'unblock' : 'block';
+                        return `<tr class="${rowClass}">
                             <td class="px-2 py-1.5 text-gray-300 font-medium">${r.pair}</td>
                             <td class="px-2 py-1.5 text-center"><span class="text-emerald-400">${r.longs}L</span> / <span class="text-red-400">${r.shorts}S</span></td>
                             <td class="px-2 py-1.5 text-right text-gray-300">${r.trades}</td>
                             <td class="px-2 py-1.5 text-right ${wrClass}">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-2 py-1.5 text-right ${pnlClass}">$${r.avg_pnl.toFixed(2)}</td>
                             <td class="px-2 py-1.5 text-right ${totalClass} font-bold">$${r.total_pnl.toFixed(2)}</td>
-                            <td class="px-2 py-1.5 text-center"><button onclick="addToBlacklist('${r.pair}')" class="px-1.5 py-0.5 rounded text-[10px] bg-red-500/20 text-red-400 hover:bg-red-500/40 transition">block</button></td>
+                            <td class="px-2 py-1.5 text-right text-gray-400">${dur}</td>
+                            <td class="px-2 py-1.5 text-center"><button onclick="toggleBlacklist('${r.pair}')" class="px-1.5 py-0.5 rounded text-[10px] ${btnClass} transition">${btnLabel}</button></td>
                         </tr>`;
                     }).join('');
                 } else {
-                    pairPerfBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
+                    pairPerfBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
                 }
 
                 // Hold-Time Expectancy
@@ -6898,13 +6916,43 @@
             }
         }
 
-        function addToBlacklist(pair) {
+        function toggleBlacklist(pair) {
             const el = document.getElementById('config-pair-blacklist');
-            const current = el.value.split(',').map(s => s.trim()).filter(s => s);
-            if (!current.includes(pair)) {
+            let current = el.value.split(',').map(s => s.trim()).filter(s => s);
+            if (current.includes(pair)) {
+                current = current.filter(p => p !== pair);
+                el.value = current.join(', ');
+                showToast(`${pair} removed from blacklist — save config to apply`, 'success');
+            } else {
                 current.push(pair);
                 el.value = current.join(', ');
                 showToast(`${pair} added to blacklist — save config to apply`, 'warning');
+            }
+            if (window._lastPairPerformanceData) {
+                const pairPerfBody = document.getElementById('pair-performance-body');
+                const bl = current;
+                pairPerfBody.innerHTML = window._lastPairPerformanceData.map(r => {
+                    const blocked = bl.includes(r.pair);
+                    const rowClass = blocked ? 'opacity-40' : 'hover:bg-white/5';
+                    const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
+                    const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                    const btnClass = blocked
+                        ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40'
+                        : 'bg-red-500/20 text-red-400 hover:bg-red-500/40';
+                    const btnLabel = blocked ? 'unblock' : 'block';
+                    return `<tr class="${rowClass}">
+                        <td class="px-2 py-1.5 text-gray-300 font-medium">${r.pair}</td>
+                        <td class="px-2 py-1.5 text-center"><span class="text-emerald-400">${r.longs}L</span> / <span class="text-red-400">${r.shorts}S</span></td>
+                        <td class="px-2 py-1.5 text-right text-gray-300">${r.trades}</td>
+                        <td class="px-2 py-1.5 text-right ${wrClass}">${r.win_rate.toFixed(1)}%</td>
+                        <td class="px-2 py-1.5 text-right ${pnlClass}">$${r.avg_pnl.toFixed(2)}</td>
+                        <td class="px-2 py-1.5 text-right ${totalClass} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                        <td class="px-2 py-1.5 text-right text-gray-400">${dur}</td>
+                        <td class="px-2 py-1.5 text-center"><button onclick="toggleBlacklist('${r.pair}')" class="px-1.5 py-0.5 rounded text-[10px] ${btnClass} transition">${btnLabel}</button></td>
+                    </tr>`;
+                }).join('');
             }
         }
 

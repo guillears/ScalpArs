@@ -3768,7 +3768,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 reason = o.close_reason or "UNKNOWN"
                 fg_groups.setdefault(reason, []).append(o)
 
-            _group_nr_usds = []
             for reason in sorted(fg_groups.keys()):
                 group = fg_groups[reason]
                 count = len(group)
@@ -3792,8 +3791,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     for o in group if o.signal_lost_flag_pnl is not None and o.notional_value
                 ]
                 net_recover_usd = round(sum(net_recover_usds) / len(net_recover_usds), 2) if net_recover_usds else None
-                if net_recover_usd is not None:
-                    _group_nr_usds.append(net_recover_usd)
                 dur_open_flag = []
                 dur_flag_close = []
                 for o in group:
@@ -3822,7 +3819,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             all_flag_pnls = [o.signal_lost_flag_pnl for o in flagged_orders if o.signal_lost_flag_pnl is not None]
             all_avg_at_sl = round(sum(all_flag_pnls) / len(all_flag_pnls), 4) if all_flag_pnls else None
             all_net_recover = round(all_avg_pnl_pct - all_avg_at_sl, 4) if all_avg_at_sl is not None else None
-            all_net_recover_usd = round(sum(_group_nr_usds), 2) if _group_nr_usds else None
+            all_nr_usds = [
+                (o.pnl or 0) - (o.signal_lost_flag_pnl / 100 * o.notional_value)
+                for o in flagged_orders if o.signal_lost_flag_pnl is not None and o.notional_value
+            ]
+            all_net_recover_usd = round(sum(all_nr_usds) / len(all_nr_usds), 2) if all_nr_usds else None
             all_dur_of = []
             all_dur_fc = []
             for o in flagged_orders:

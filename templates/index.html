@@ -3721,10 +3721,11 @@
                 lines.push('## Exit Quality\n');
                 const _fp = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                 const _fm = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)}`);
+                lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(10)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)} ${'Conf'.padStart(12)}`);
                 for (const r of perf.exit_quality_ema5.sort((a, b) => b.count - a.count)) {
-                    const dir = r.direction === 'LONG' ? 'L' : 'S';
-                    lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${String(r.count).padEnd(4)} ${_fm(r.avg_duration).padStart(7)} ${_fp(r.avg_close_pnl).padStart(10)} ${_fp(r.avg_peak_pnl).padStart(10)} ${_fm(r.avg_peak_min).padStart(7)} ${_fp(r.avg_entry_ema5).padStart(10)} ${_fp(r.avg_peak_ema5).padStart(10)} ${_fp(r.avg_delta_ema5).padStart(10)} ${_fp(r.avg_trough).padStart(10)} ${_fm(r.avg_trough_min).padStart(7)} ${_fp(r.avg_trough_ema5).padStart(10)} ${_fp(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)}`);
+                    const dir = `${r.longs||0}L/${r.shorts||0}S`;
+                    const conf = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ') : '-';
+                    lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(10)} ${String(r.count).padEnd(4)} ${_fm(r.avg_duration).padStart(7)} ${_fp(r.avg_close_pnl).padStart(10)} ${_fp(r.avg_peak_pnl).padStart(10)} ${_fm(r.avg_peak_min).padStart(7)} ${_fp(r.avg_entry_ema5).padStart(10)} ${_fp(r.avg_peak_ema5).padStart(10)} ${_fp(r.avg_delta_ema5).padStart(10)} ${_fp(r.avg_trough).padStart(10)} ${_fm(r.avg_trough_min).padStart(7)} ${_fp(r.avg_trough_ema5).padStart(10)} ${_fp(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)} ${conf.padStart(12)}`);
                 }
             }
 
@@ -3733,11 +3734,12 @@
                 lines.push('## Flagged Exits (Signal Lost Flag System)\n');
                 const _ffp = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                 const _ffm = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)} ${'NetRec$'.padStart(10)}`);
+                lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(10)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)} ${'NetRec$'.padStart(10)} ${'Conf'.padStart(12)}`);
                 const flSorted = perf.flagged_exits.sort((a, b) => { if (a.reason === 'ALL') return 1; if (b.reason === 'ALL') return -1; return b.count - a.count; });
                 for (const r of flSorted) {
-                    const dir = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
-                    lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp(r.avg_peak_pnl).padStart(10)} ${_ffp(r.avg_pullback).padStart(10)} ${_ffp(r.avg_pnl_at_sl).padStart(10)} ${_ffm(r.avg_dur_open_flag).padStart(9)} ${_ffm(r.avg_dur_flag_close).padStart(10)} ${_ffp(r.net_recover).padStart(11)} ${('$' + (r.net_recover_usd != null ? r.net_recover_usd.toFixed(2) : '-')).padStart(10)}`);
+                    const dir = `${r.longs||0}L/${r.shorts||0}S`;
+                    const conf = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ') : '-';
+                    lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(10)} ${_ffp(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp(r.avg_peak_pnl).padStart(10)} ${_ffp(r.avg_pullback).padStart(10)} ${_ffp(r.avg_pnl_at_sl).padStart(10)} ${_ffm(r.avg_dur_open_flag).padStart(9)} ${_ffm(r.avg_dur_flag_close).padStart(10)} ${_ffp(r.net_recover).padStart(11)} ${('$' + (r.net_recover_usd != null ? r.net_recover_usd.toFixed(2) : '-')).padStart(10)} ${conf.padStart(12)}`);
                 }
             }
 
@@ -4382,10 +4384,11 @@
                     lines.push('## Exit Quality\n');
                     const _fp2 = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                     const _fm2 = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                    lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(4)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)}`);
+                    lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(10)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)} ${'Conf'.padStart(12)}`);
                     for (const r of perf.exit_quality_ema5.sort((a, b) => b.count - a.count)) {
-                        const dir = r.direction === 'LONG' ? 'L' : 'S';
-                        lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(4)} ${String(r.count).padEnd(4)} ${_fm2(r.avg_duration).padStart(7)} ${_fp2(r.avg_close_pnl).padStart(10)} ${_fp2(r.avg_peak_pnl).padStart(10)} ${_fm2(r.avg_peak_min).padStart(7)} ${_fp2(r.avg_entry_ema5).padStart(10)} ${_fp2(r.avg_peak_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5).padStart(10)} ${_fp2(r.avg_trough).padStart(10)} ${_fm2(r.avg_trough_min).padStart(7)} ${_fp2(r.avg_trough_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)}`);
+                        const dir = `${r.longs||0}L/${r.shorts||0}S`;
+                        const conf = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ') : '-';
+                        lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(10)} ${String(r.count).padEnd(4)} ${_fm2(r.avg_duration).padStart(7)} ${_fp2(r.avg_close_pnl).padStart(10)} ${_fp2(r.avg_peak_pnl).padStart(10)} ${_fm2(r.avg_peak_min).padStart(7)} ${_fp2(r.avg_entry_ema5).padStart(10)} ${_fp2(r.avg_peak_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5).padStart(10)} ${_fp2(r.avg_trough).padStart(10)} ${_fm2(r.avg_trough_min).padStart(7)} ${_fp2(r.avg_trough_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)} ${conf.padStart(12)}`);
                     }
                 }
 
@@ -4395,11 +4398,12 @@
                     lines.push('## Flagged Exits (Signal Lost Flag System)\n');
                     const _ffp3 = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
                     const _ffm3 = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                    lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(4)} ${'Conf'.padEnd(12)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)} ${'NetRec$'.padStart(10)}`);
+                    lines.push(`${'Reason'.padEnd(28)} ${'#'.padEnd(4)} ${'%'.padEnd(5)} ${'Dir'.padEnd(10)} ${'AvgP&L%'.padStart(10)} ${'AvgP&L$'.padStart(10)} ${'Peak%'.padStart(10)} ${'Pullback%'.padStart(10)} ${'P&L@SL'.padStart(10)} ${'Open→Flg'.padStart(9)} ${'Flg→Close'.padStart(10)} ${'NetRecover'.padStart(11)} ${'NetRec$'.padStart(10)} ${'Conf'.padStart(12)}`);
                     const flSorted3 = perf.flagged_exits.sort((a, b) => { if (a.reason === 'ALL') return 1; if (b.reason === 'ALL') return -1; return b.count - a.count; });
                     for (const r of flSorted3) {
-                        const dir = r.direction === 'LONG' ? 'L' : r.direction === 'SHORT' ? 'S' : '-';
-                        lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(4)} ${(r.confidence || '-').padEnd(12)} ${_ffp3(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp3(r.avg_peak_pnl).padStart(10)} ${_ffp3(r.avg_pullback).padStart(10)} ${_ffp3(r.avg_pnl_at_sl).padStart(10)} ${_ffm3(r.avg_dur_open_flag).padStart(9)} ${_ffm3(r.avg_dur_flag_close).padStart(10)} ${_ffp3(r.net_recover).padStart(11)} ${('$' + (r.net_recover_usd != null ? r.net_recover_usd.toFixed(2) : '-')).padStart(10)}`);
+                        const dir = `${r.longs||0}L/${r.shorts||0}S`;
+                        const conf = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ') : '-';
+                        lines.push(`${r.reason.padEnd(28)} ${String(r.count).padEnd(4)} ${(r.pct.toFixed(0) + '%').padEnd(5)} ${dir.padEnd(10)} ${_ffp3(r.avg_pnl_pct).padStart(10)} ${('$' + (r.avg_pnl_usd != null ? r.avg_pnl_usd.toFixed(2) : '-')).padStart(10)} ${_ffp3(r.avg_peak_pnl).padStart(10)} ${_ffp3(r.avg_pullback).padStart(10)} ${_ffp3(r.avg_pnl_at_sl).padStart(10)} ${_ffm3(r.avg_dur_open_flag).padStart(9)} ${_ffm3(r.avg_dur_flag_close).padStart(10)} ${_ffp3(r.net_recover).padStart(11)} ${('$' + (r.net_recover_usd != null ? r.net_recover_usd.toFixed(2) : '-')).padStart(10)} ${conf.padStart(12)}`);
                     }
                 }
 

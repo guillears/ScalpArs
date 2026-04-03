@@ -3772,8 +3772,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             for reason in sorted(fg_groups.keys()):
                 group = fg_groups[reason]
                 count = len(group)
-                longs = sum(1 for o in group if o.direction == "LONG")
-                shorts = count - longs
+                fg_longs = sum(1 for o in group if o.direction == "LONG")
+                fg_shorts = count - fg_longs
                 by_conf = {}
                 for o in group:
                     c = o.confidence or "UNKNOWN"
@@ -3805,7 +3805,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_dur_flag_close = round(sum(dur_flag_close) / len(dur_flag_close), 1) if dur_flag_close else None
 
                 flagged_exits.append({
-                    "reason": reason, "longs": longs, "shorts": shorts, "by_confidence": by_conf,
+                    "reason": reason, "longs": fg_longs, "shorts": fg_shorts, "by_confidence": by_conf,
                     "count": count, "pct": pct,
                     "avg_pnl_pct": avg_pnl_pct, "avg_pnl_usd": avg_pnl_usd,
                     "avg_peak_pnl": avg_peak_pnl, "avg_pullback": avg_pullback,

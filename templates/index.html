@@ -958,7 +958,6 @@
                                     <th class="px-3 py-2 font-medium text-right" title="Total TICK_MOMENTUM_EXIT trades">#</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Trades where phantom also triggered (during trade or post-exit 45 min)">Trig</th>
                                     <th class="px-3 py-2 font-medium text-right" title="% of total where phantom triggered">%Trig</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Trades where phantom never triggered">NT</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Triggered trades where phantom fired before actual exit">Ph1st</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Triggered trades where actual fired before phantom">Act1st</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg actual tick momentum exit P&L%">Exit%</th>
@@ -969,8 +968,8 @@
                                     <th class="px-3 py-2 font-medium text-right" title="LoT Act - LoT Ph (positive = phantom exits closer to peak)">Saved</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg minutes from open to actual exit">Min Act</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg minutes from open to phantom trigger">Min Ph</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Estimated avg P&L if using phantom: (phantom P&L for trig + actual P&L for NT) / total">Est Avg</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Est Avg - Exit% (positive = phantom improves avg P&L)">vs Exit%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Combo: avg P&L if both configs run, first-fires-wins">Combo%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Combo% - Exit% (positive = combo improves avg P&L)">CvsExit</th>
                                 </tr>
                             </thead>
                             <tbody id="tick-momentum-shadow-body" class="divide-y divide-white/5">
@@ -3684,12 +3683,12 @@
             if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Tick Momentum Shadow (TICK_MOMENTUM_EXIT only)\n');
-                lines.push(`${'Config'.padEnd(28)} ${'#'.padStart(3)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'NT'.padStart(3)} ${'Ph1'.padStart(4)} ${'Ac1'.padStart(4)} ${'Exit%'.padStart(10)} ${'Ph%'.padStart(10)} ${'Peak%'.padStart(10)} ${'LoT Act'.padStart(10)} ${'LoT Ph'.padStart(10)} ${'Saved'.padStart(10)} ${'MinAct'.padStart(7)} ${'MinPh'.padStart(7)} ${'EstAvg'.padStart(10)} ${'vsExit'.padStart(10)}`);
+                lines.push(`${'Config'.padEnd(28)} ${'#'.padStart(3)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'Ph1'.padStart(4)} ${'Ac1'.padStart(4)} ${'Exit%'.padStart(10)} ${'Ph%'.padStart(10)} ${'Peak%'.padStart(10)} ${'LoT Act'.padStart(10)} ${'LoT Ph'.padStart(10)} ${'Saved'.padStart(10)} ${'MinAct'.padStart(7)} ${'MinPh'.padStart(7)} ${'Combo%'.padStart(10)} ${'CvsExit'.padStart(10)}`);
                 for (const r of perf.tick_momentum_shadow) {
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
                     const fmtPnl = (v, w) => v !== null && v !== undefined ? ((v >= 0 ? '+' : '') + v.toFixed(4) + '%').padStart(w) : '-'.padStart(w);
-                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(3)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${String(r.nt_count).padStart(3)} ${String(r.ph_first_count).padStart(4)} ${String(r.act_first_count).padStart(4)} ${fmtPnl(r.avg_exit_pnl, 10)} ${fmtPnl(r.avg_phantom_pnl, 10)} ${fmtPnl(r.avg_peak_pnl, 10)} ${fmtPnl(r.lot_act, 10)} ${fmtPnl(r.lot_ph, 10)} ${fmtPnl(r.saved, 10)} ${r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${fmtPnl(r.est_tot, 10)} ${fmtPnl(r.vs_exit, 10)}`);
+                    lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(3)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${String(r.ph_first_count).padStart(4)} ${String(r.act_first_count).padStart(4)} ${fmtPnl(r.avg_exit_pnl, 10)} ${fmtPnl(r.avg_phantom_pnl, 10)} ${fmtPnl(r.avg_peak_pnl, 10)} ${fmtPnl(r.lot_act, 10)} ${fmtPnl(r.lot_ph, 10)} ${fmtPnl(r.saved, 10)} ${r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${fmtPnl(r.combo_avg, 10)} ${fmtPnl(r.combo_vs_exit, 10)}`);
                 }
             }
 
@@ -4344,12 +4343,12 @@
                 if (perf.tick_momentum_shadow && perf.tick_momentum_shadow.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Tick Momentum Shadow (TICK_MOMENTUM_EXIT only)\n');
-                    lines.push(`${'Config'.padEnd(28)} ${'#'.padStart(3)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'NT'.padStart(3)} ${'Ph1'.padStart(4)} ${'Ac1'.padStart(4)} ${'Exit%'.padStart(10)} ${'Ph%'.padStart(10)} ${'Peak%'.padStart(10)} ${'LoT Act'.padStart(10)} ${'LoT Ph'.padStart(10)} ${'Saved'.padStart(10)} ${'MinAct'.padStart(7)} ${'MinPh'.padStart(7)} ${'EstAvg'.padStart(10)} ${'vsExit'.padStart(10)}`);
+                    lines.push(`${'Config'.padEnd(28)} ${'#'.padStart(3)} ${'Trg'.padStart(4)} ${'%Trg'.padStart(5)} ${'Ph1'.padStart(4)} ${'Ac1'.padStart(4)} ${'Exit%'.padStart(10)} ${'Ph%'.padStart(10)} ${'Peak%'.padStart(10)} ${'LoT Act'.padStart(10)} ${'LoT Ph'.padStart(10)} ${'Saved'.padStart(10)} ${'MinAct'.padStart(7)} ${'MinPh'.padStart(7)} ${'Combo%'.padStart(10)} ${'CvsExit'.padStart(10)}`);
                     for (const r of perf.tick_momentum_shadow) {
                         const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                         const configStr = `${r.label} (${r.windows} / ${r.delta_threshold})${dirSuffix}`;
                         const fmtPnl = (v, w) => v !== null && v !== undefined ? ((v >= 0 ? '+' : '') + v.toFixed(4) + '%').padStart(w) : '-'.padStart(w);
-                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(3)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${String(r.nt_count).padStart(3)} ${String(r.ph_first_count).padStart(4)} ${String(r.act_first_count).padStart(4)} ${fmtPnl(r.avg_exit_pnl, 10)} ${fmtPnl(r.avg_phantom_pnl, 10)} ${fmtPnl(r.avg_peak_pnl, 10)} ${fmtPnl(r.lot_act, 10)} ${fmtPnl(r.lot_ph, 10)} ${fmtPnl(r.saved, 10)} ${r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${fmtPnl(r.est_tot, 10)} ${fmtPnl(r.vs_exit, 10)}`);
+                        lines.push(`${configStr.padEnd(28)} ${String(r.total).padStart(3)} ${String(r.triggered_count).padStart(4)} ${(r.pct_trig.toFixed(0) + '%').padStart(5)} ${String(r.ph_first_count).padStart(4)} ${String(r.act_first_count).padStart(4)} ${fmtPnl(r.avg_exit_pnl, 10)} ${fmtPnl(r.avg_phantom_pnl, 10)} ${fmtPnl(r.avg_peak_pnl, 10)} ${fmtPnl(r.lot_act, 10)} ${fmtPnl(r.lot_ph, 10)} ${fmtPnl(r.saved, 10)} ${r.avg_min_actual !== null ? (r.avg_min_actual.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${r.avg_min_phantom !== null ? (r.avg_min_phantom.toFixed(1) + 'm').padStart(7) : '-'.padStart(7)} ${fmtPnl(r.combo_avg, 10)} ${fmtPnl(r.combo_vs_exit, 10)}`);
                     }
                 }
 
@@ -6617,16 +6616,15 @@
                         const minPhCls = _bothExist ? (_minPhVal < _minActVal ? 'text-emerald-400' : 'text-gray-300') : 'text-gray-300';
                         const minActStr = _minActVal !== null ? `${_minActVal.toFixed(1)}m` : '-';
                         const minPhStr = _minPhVal !== null ? `${_minPhVal.toFixed(1)}m` : '-';
-                        const estCls = r.est_tot !== null ? pnlCls(r.est_tot) : 'text-gray-500';
-                        const estStr = r.est_tot !== null ? `${r.est_tot >= 0 ? '+' : ''}${r.est_tot.toFixed(4)}%` : '-';
-                        const vsExitCls = r.vs_exit !== null ? (r.vs_exit > 0 ? 'text-emerald-400 font-bold' : r.vs_exit < 0 ? 'text-red-400 font-bold' : 'text-gray-400') : 'text-gray-500';
-                        const vsExitStr = r.vs_exit !== null ? `${r.vs_exit > 0 ? '+' : ''}${r.vs_exit.toFixed(4)}%` : '-';
+                        const comboCls = r.combo_avg !== null ? pnlCls(r.combo_avg) : 'text-gray-500';
+                        const comboStr = r.combo_avg !== null ? `${r.combo_avg >= 0 ? '+' : ''}${r.combo_avg.toFixed(4)}%` : '-';
+                        const cvsExitCls = r.combo_vs_exit !== null ? (r.combo_vs_exit > 0 ? 'text-emerald-400 font-bold' : r.combo_vs_exit < 0 ? 'text-red-400 font-bold' : 'text-gray-400') : 'text-gray-500';
+                        const cvsExitStr = r.combo_vs_exit !== null ? `${r.combo_vs_exit > 0 ? '+' : ''}${r.combo_vs_exit.toFixed(4)}%` : '-';
                         return `<tr class="hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-cyan-400">${r.label} <span class="text-gray-500 text-[10px]">(${r.windows} / ${r.delta_threshold})</span> <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
                             <td class="px-3 py-2 text-right">${r.total}</td>
                             <td class="px-3 py-2 text-right">${r.triggered_count}</td>
                             <td class="px-3 py-2 text-right text-gray-400">${r.pct_trig.toFixed(0)}%</td>
-                            <td class="px-3 py-2 text-right text-gray-400">${r.nt_count}</td>
                             <td class="px-3 py-2 text-right text-cyan-400">${r.ph_first_count}</td>
                             <td class="px-3 py-2 text-right text-orange-400">${r.act_first_count}</td>
                             <td class="px-3 py-2 text-right">${exitStr}</td>
@@ -6637,12 +6635,12 @@
                             <td class="px-3 py-2 text-right ${savedCls}">${savedStr}</td>
                             <td class="px-3 py-2 text-right ${minActCls}">${minActStr}</td>
                             <td class="px-3 py-2 text-right ${minPhCls}">${minPhStr}</td>
-                            <td class="px-3 py-2 text-right font-bold ${estCls}">${estStr}</td>
-                            <td class="px-3 py-2 text-right ${vsExitCls}">${vsExitStr}</td>
+                            <td class="px-3 py-2 text-right font-bold ${comboCls}">${comboStr}</td>
+                            <td class="px-3 py-2 text-right ${cvsExitCls}">${cvsExitStr}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    tmsBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
+                    tmsBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No shadow data yet (collecting phantom tick momentum configs)</td></tr>';
                 }
 
                 // Signal Lost Shadow

@@ -3500,17 +3500,21 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         phantom_mins.append((pt - o.opened_at).total_seconds() / 60.0)
                 avg_min_phantom = round(sum(phantom_mins) / len(phantom_mins), 1) if phantom_mins else None
 
-                # Estimated total P&L if using this phantom config
-                sum_phantom = sum(getattr(o, pnl_field) or 0 for o in triggered)
-                sum_nt_actual = sum(o.pnl_percentage or 0 for o in nt)
-                est_tot = round((sum_phantom + sum_nt_actual) / total, 4) if total else None
-
                 pct_trig = round(len(triggered) / total * 100, 1) if total else 0
 
-                ph_first_count = sum(1 for o in triggered if getattr(o, trig_field) and o.closed_at and getattr(o, trig_field) < o.closed_at)
-                act_first_count = len(triggered) - ph_first_count
+                ph1st_orders = [o for o in triggered if getattr(o, trig_field) and o.closed_at and getattr(o, trig_field) < o.closed_at]
+                act1st_orders = [o for o in triggered if o not in ph1st_orders]
+                ph_first_count = len(ph1st_orders)
+                act_first_count = len(act1st_orders)
 
-                vs_exit = round(est_tot - avg_exit_pnl, 4) if est_tot is not None else None
+                # Combo: first-fires-wins realistic P&L
+                sum_combo = (
+                    sum(getattr(o, pnl_field) or 0 for o in ph1st_orders) +
+                    sum(o.pnl_percentage or 0 for o in act1st_orders) +
+                    sum(o.pnl_percentage or 0 for o in nt)
+                )
+                combo_avg = round(sum_combo / total, 4) if total else None
+                combo_vs_exit = round(combo_avg - avg_exit_pnl, 4) if combo_avg is not None else None
 
                 tick_momentum_shadow.append({
                     "label": lbl.upper(),
@@ -3520,7 +3524,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "total": total,
                     "triggered_count": len(triggered),
                     "pct_trig": pct_trig,
-                    "nt_count": len(nt),
                     "ph_first_count": ph_first_count,
                     "act_first_count": act_first_count,
                     "avg_exit_pnl": avg_exit_pnl,
@@ -3531,8 +3534,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "saved": saved,
                     "avg_min_actual": avg_min_actual,
                     "avg_min_phantom": avg_min_phantom,
-                    "est_tot": est_tot,
-                    "vs_exit": vs_exit,
+                    "combo_avg": combo_avg,
+                    "combo_vs_exit": combo_vs_exit,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Tick Momentum Shadow: {e}\n{traceback.format_exc()}")

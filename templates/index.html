@@ -3101,6 +3101,7 @@
         let currentTab = 'transactions';
         let _lastClosedCount = -1;
         let _bnbBurnRate = 0;
+        let _lastBnbKey = '';
 
         // API Base
         const API_BASE = '';
@@ -3237,14 +3238,7 @@
                 updateStatusUI();
                 updateTimer(runtimeSeconds);
                 
-                // BNB burn rate display
                 _bnbBurnRate = data.bnb_burn_rate || 0;
-                const burnEl = document.getElementById('bnb-burn-rate');
-                if (_bnbBurnRate > 0) {
-                    burnEl.textContent = `Burn: $${_bnbBurnRate.toFixed(2)}/hr`;
-                } else {
-                    burnEl.textContent = '';
-                }
 
                 // Global volume ratio display
                 const gvr = data.global_volume_ratio;
@@ -3411,23 +3405,30 @@
                 const data = await res.json();
                 
                 document.getElementById('usdt-balance').textContent = formatUSD(data.usdt_balance);
-                const runwayEl = document.getElementById('bnb-runway');
-                if (data.bnb_balance_is_usd) {
-                    document.getElementById('bnb-balance').textContent = formatUSD(data.bnb_balance);
-                    if (_bnbBurnRate > 0) {
-                        const hrs = Math.round(data.bnb_balance / _bnbBurnRate);
-                        runwayEl.textContent = `Runway: ${hrs}h`;
-                    } else { runwayEl.textContent = ''; }
-                } else {
-                    const bnbVal = parseFloat(data.bnb_balance || 0);
-                    const bnbUsd = data.bnb_balance_usd || 0;
-                    document.getElementById('bnb-balance').textContent = bnbVal.toFixed(4) + ' BNB';
-                    if (bnbUsd > 0) {
-                        document.getElementById('bnb-burn-rate').textContent = '≈ ' + formatUSD(bnbUsd);
+                const bnbKey = `${data.bnb_balance}|${data.bnb_balance_usd}|${_bnbBurnRate}`;
+                if (bnbKey !== _lastBnbKey) {
+                    _lastBnbKey = bnbKey;
+                    const runwayEl = document.getElementById('bnb-runway');
+                    if (data.bnb_balance_is_usd) {
+                        document.getElementById('bnb-balance').textContent = formatUSD(data.bnb_balance);
                         if (_bnbBurnRate > 0) {
-                            const hrs = Math.round(bnbUsd / _bnbBurnRate);
+                            const hrs = Math.round(data.bnb_balance / _bnbBurnRate);
                             runwayEl.textContent = `Runway: ${hrs}h`;
                         } else { runwayEl.textContent = ''; }
+                    } else {
+                        const bnbVal = parseFloat(data.bnb_balance || 0);
+                        const bnbUsd = data.bnb_balance_usd || 0;
+                        document.getElementById('bnb-balance').textContent = bnbVal.toFixed(4) + ' BNB';
+                        const burnEl = document.getElementById('bnb-burn-rate');
+                        if (bnbUsd > 0) {
+                            let burnLine = '≈ ' + formatUSD(bnbUsd);
+                            if (_bnbBurnRate > 0) burnLine += ` · $${_bnbBurnRate.toFixed(2)}/hr`;
+                            burnEl.textContent = burnLine;
+                            if (_bnbBurnRate > 0) {
+                                const hrs = Math.round(bnbUsd / _bnbBurnRate);
+                                runwayEl.textContent = `Runway: ${hrs}h`;
+                            } else { runwayEl.textContent = ''; }
+                        } else { burnEl.textContent = ''; }
                     }
                 }
                 document.getElementById('usdt-orders').textContent = formatUSD(data.usdt_in_orders);

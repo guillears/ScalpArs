@@ -3488,7 +3488,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
                 # Timing
                 actual_mins = []
-                for o in dir_orders:
+                for o in triggered:
                     if o.closed_at and o.opened_at:
                         actual_mins.append((o.closed_at - o.opened_at).total_seconds() / 60.0)
                 avg_min_actual = round(sum(actual_mins) / len(actual_mins), 1) if actual_mins else None

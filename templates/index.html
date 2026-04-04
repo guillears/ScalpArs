@@ -3174,6 +3174,12 @@
         }
 
         // Format numbers
+        function fmtDur(hours) {
+            const t = Math.round((hours || 0) * 3600);
+            const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+            return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        }
+
         function formatUSD(value) {
             return '$' + parseFloat(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
@@ -3912,7 +3918,7 @@
                 lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                 for (const r of perf.volume_crosstab) {
                     const d = r.direction === 'LONG' ? 'L' : 'S';
-                    const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                    const dur = fmtDur(r.avg_hold_hours);
                     lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                 }
             }
@@ -3923,7 +3929,7 @@
                 lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                 for (const r of perf.pair_performance) {
                     const dir = `${r.longs}L/${r.shorts}S`;
-                    const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                    const dur = fmtDur(r.avg_hold_hours);
                     lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                 }
             }
@@ -4592,7 +4598,7 @@
                     lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'PairVol'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                     for (const r of perf.volume_crosstab) {
                         const d = r.direction === 'LONG' ? 'L' : 'S';
-                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                        const dur = fmtDur(r.avg_hold_hours);
                         lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                     }
                 }
@@ -4604,7 +4610,7 @@
                     lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
                     for (const r of perf.pair_performance) {
                         const dir = `${r.longs}L/${r.shorts}S`;
-                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                        const dur = fmtDur(r.avg_hold_hours);
                         lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                     }
                 }
@@ -6839,7 +6845,7 @@
                         const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
-                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                        const dur = fmtDur(r.avg_hold_hours);
                         return `<tr class="hover:bg-white/5">
                             <td class="px-2 py-1.5 ${dirColor} font-medium">${r.direction === 'LONG' ? 'L' : 'S'}</td>
                             <td class="px-2 py-1.5 text-gray-300">${r.global_vol}</td>
@@ -6866,7 +6872,7 @@
                         const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
-                        const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                        const dur = fmtDur(r.avg_hold_hours);
                         const btnClass = blocked
                             ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40'
                             : 'bg-red-500/20 text-red-400 hover:bg-red-500/40';
@@ -6945,7 +6951,7 @@
                     const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
-                    const dur = (r.avg_hold_hours || 0).toFixed(1) + 'h';
+                    const dur = fmtDur(r.avg_hold_hours);
                     const btnClass = blocked
                         ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/40'
                         : 'bg-red-500/20 text-red-400 hover:bg-red-500/40';

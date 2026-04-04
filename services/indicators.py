@@ -66,7 +66,7 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'rsi_prev3': float(rsi.iloc[-4]) if len(rsi) >= 4 and not pd.isna(rsi.iloc[-4]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'adx_prev1': float(adx.iloc[-2]) if len(adx) >= 2 and not pd.isna(adx.iloc[-2]) else None,
-        'volume': float(df['volume'].iloc[-1]),
+        'volume': float(df['volume'].ewm(span=5, adjust=False).mean().iloc[-1]),
         'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None,
         'avg_volume_global': float(avg_volume_global.iloc[-1]) if not pd.isna(avg_volume_global.iloc[-1]) else None
     }

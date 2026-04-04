@@ -39,6 +39,7 @@ _current_btc_regime: str = "NEUTRAL"
 # Global volume ratio: sum(current volumes) / sum(20-bar avg volumes) across top pairs.
 # Computed at end of each scan, used by next scan cycle as a market regime gate.
 _global_volume_ratio: float = 1.0
+_btc_ema20_slope_pct: float = 0.0
 
 # Phantom Tick Momentum shadow configs: (label, windows, delta_or_deltas)
 # delta_or_deltas: float = uniform delta for all windows, list = per-window deltas
@@ -215,7 +216,8 @@ class TradingEngine:
             "bnb_last_check": self._last_bnb_check.isoformat() if self._last_bnb_check else None,
             "runtime_seconds": runtime,
             "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
-            "global_volume_ratio": round(_global_volume_ratio, 4)
+            "global_volume_ratio": round(_global_volume_ratio, 4),
+            "btc_ema20_slope_pct": round(_btc_ema20_slope_pct, 4)
         }
     
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
@@ -2377,8 +2379,9 @@ class TradingEngine:
                     btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
                     if btc_ema20 and btc_ema20_prev6 and btc_ema20_prev6 != 0:
                         btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev6) / btc_ema20_prev6) * 100, 4)
-            global _current_btc_regime
+            global _current_btc_regime, _btc_ema20_slope_pct
             _current_btc_regime = btc_regime
+            _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
             logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev6}, adx={btc_adx})")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):

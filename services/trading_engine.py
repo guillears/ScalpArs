@@ -2357,7 +2357,7 @@ class TradingEngine:
         # BTC global regime filter: fetch BTC data once before processing all pairs
         btc_global_enabled = getattr(config.trading_config.thresholds, 'btc_global_filter_enabled', False)
         btc_ema20 = None
-        btc_ema20_prev6 = None
+        btc_ema20_prev3 = None
         btc_regime = "NEUTRAL"
         btc_ema20_slope_pct = None
         btc_adx = None
@@ -2370,19 +2370,19 @@ class TradingEngine:
                 btc_indicators = calculate_indicators(btc_ohlcv)
                 if btc_indicators:
                     btc_ema20 = btc_indicators.get('ema20')
-                    btc_ema20_prev6 = btc_indicators.get('ema20_prev6')
+                    btc_ema20_prev3 = btc_indicators.get('ema20_prev3')
                     btc_adx = btc_indicators.get('adx')
                     btc_adx_prev = btc_indicators.get('adx_prev1')
                     btc_rsi = btc_indicators.get('rsi')
                     btc_rsi_prev = btc_indicators.get('rsi_prev1')
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
-                    btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev6, flat_th)
-                    if btc_ema20 and btc_ema20_prev6 and btc_ema20_prev6 != 0:
-                        btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev6) / btc_ema20_prev6) * 100, 4)
+                    btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev3, flat_th)
+                    if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
+                        btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
             global _current_btc_regime, _btc_ema20_slope_pct
             _current_btc_regime = btc_regime
             _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
-            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev6}, adx={btc_adx})")
+            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev3}, adx={btc_adx})")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
@@ -2431,7 +2431,7 @@ class TradingEngine:
                     volume=indicators.get('volume'),
                     avg_volume=indicators.get('avg_volume'),
                     price=indicators.get('price'),
-                    ema20_prev6=indicators.get('ema20_prev6'),
+                    ema20_prev3=indicators.get('ema20_prev3'),
                     ema50=indicators.get('ema50'),
                     ema50_prev12=indicators.get('ema50_prev12'),
                     rsi_prev3=indicators.get('rsi_prev3'),
@@ -2445,7 +2445,7 @@ class TradingEngine:
                 if signal in ["LONG", "SHORT"] and btc_global_enabled:
                     flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                     pair_regime = determine_macro_regime(
-                        indicators.get('ema20'), indicators.get('ema20_prev6'), flat_th
+                        indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
                     )
                     neutral_mode = getattr(config.trading_config.thresholds, 'macro_trend_neutral_mode', 'both')
                     btc_blocks = False
@@ -2587,13 +2587,13 @@ class TradingEngine:
                     else:
                         flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
                         entry_regime = determine_macro_regime(
-                            indicators.get('ema20'), indicators.get('ema20_prev6'), flat_th
+                            indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
                         )
                     pair_ema20_slope_pct = None
                     pair_ema20 = indicators.get('ema20')
-                    pair_ema20_prev6 = indicators.get('ema20_prev6')
-                    if pair_ema20 and pair_ema20_prev6 and pair_ema20_prev6 != 0:
-                        pair_ema20_slope_pct = round(((pair_ema20 - pair_ema20_prev6) / pair_ema20_prev6) * 100, 4)
+                    pair_ema20_prev3 = indicators.get('ema20_prev3')
+                    if pair_ema20 and pair_ema20_prev3 and pair_ema20_prev3 != 0:
+                        pair_ema20_slope_pct = round(((pair_ema20 - pair_ema20_prev3) / pair_ema20_prev3) * 100, 4)
                     order = await self.open_position(
                         db=db,
                         pair=pair,
@@ -2659,7 +2659,7 @@ class TradingEngine:
         
         flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
         regime = determine_macro_regime(
-            indicators.get('ema20'), indicators.get('ema20_prev6'), flat_th
+            indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
         )
         
         if pair_data:

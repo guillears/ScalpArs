@@ -68,7 +68,7 @@ class Order(Base):
     entry_price_vs_ema5_pct = Column(Float, nullable=True)
     # Macro trend regime at time of entry (BULLISH, BEARISH, NEUTRAL)
     entry_macro_trend = Column(String(10), nullable=True)
-    # EMA20 slope % of the pair at entry: ((ema20 - ema20_prev6) / ema20_prev6) * 100
+    # EMA20 slope % of the pair at entry: ((ema20 - ema20_prev3) / ema20_prev3) * 100
     entry_ema20_slope = Column(Float, nullable=True)
     # EMA20 slope % of BTC at entry
     entry_btc_ema20_slope = Column(Float, nullable=True)

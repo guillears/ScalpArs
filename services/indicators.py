@@ -57,7 +57,7 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'ema8_prev1': float(ema8.iloc[-2]) if len(ema8) >= 2 and not pd.isna(ema8.iloc[-2]) else None,
         'ema13': float(ema13.iloc[-1]) if not pd.isna(ema13.iloc[-1]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
-        'ema20_prev6': float(ema20.iloc[-7]) if len(ema20) >= 7 and not pd.isna(ema20.iloc[-7]) else None,
+        'ema20_prev3': float(ema20.iloc[-4]) if len(ema20) >= 4 and not pd.isna(ema20.iloc[-4]) else None,
         'ema50': float(ema50.iloc[-1]) if not pd.isna(ema50.iloc[-1]) else None,
         'ema50_prev12': float(ema50.iloc[-13]) if len(ema50) >= 13 and not pd.isna(ema50.iloc[-13]) else None,
         'rsi': float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else None,
@@ -129,7 +129,7 @@ def get_signal(
     avg_volume: float,
     price: float = None,
     config: Optional[Dict] = None,
-    ema20_prev6: float = None,
+    ema20_prev3: float = None,
     ema50: float = None,
     ema50_prev12: float = None,
     rsi_prev3: float = None,
@@ -221,7 +221,7 @@ def get_signal(
     macro_filter_enabled = getattr(th, 'macro_trend_filter_enabled', True)
     neutral_mode = getattr(th, 'macro_trend_neutral_mode', 'both')
     flat_threshold = getattr(th, 'macro_trend_flat_threshold', 0.02)
-    regime = determine_macro_regime(ema20, ema20_prev6, flat_threshold)
+    regime = determine_macro_regime(ema20, ema20_prev3, flat_threshold)
     
     def regime_allows(direction: str) -> bool:
         if not macro_filter_enabled:
@@ -254,13 +254,13 @@ def get_signal(
     if ema8 and ema8 > 0:
         if ema5 > ema8:
             if not regime_allows("LONG"):
-                logger.debug(f"[MOMENTUM] LONG skipped: regime={regime}, ema20={ema20}, ema20_prev6={ema20_prev6}")
+                logger.debug(f"[MOMENTUM] LONG skipped: regime={regime}, ema20={ema20}, ema20_prev3={ema20_prev3}")
             elif ema20_filter_long and (price is None or price <= ema20):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
-            elif ema20_slope_long and (ema20_prev6 is None or ema20 <= ema20_prev6):
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
-            elif ema20_slope_min_long > 0 and ema20_prev6 and ema20_prev6 != 0 and abs((ema20 - ema20_prev6) / ema20_prev6 * 100) < ema20_slope_min_long:
-                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev6) / ema20_prev6 * 100):.4f}% < min {ema20_slope_min_long}%")
+            elif ema20_slope_long and (ema20_prev3 is None or ema20 <= ema20_prev3):
+                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
+            elif ema20_slope_min_long > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_long:
+                logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_long}%")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi < rsi_prev3:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against LONG")
             elif long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
@@ -286,21 +286,21 @@ def get_signal(
                 else:
                     if adx > adx_vs_long:
                         if check_gap_and_mode("LONG", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] LONG VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
                             return "LONG", "VERY_STRONG"
                     if adx > adx_s_long and adx <= adx_vs_long:
                         if check_gap_and_mode("LONG", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev6 and ema20 > ema20_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] LONG STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'up' if ema20_prev3 and ema20 > ema20_prev3 else 'n/a'}")
                             return "LONG", "STRONG_BUY"
         elif ema5 < ema8 and ema5 > 0:
             if not regime_allows("SHORT"):
-                logger.debug(f"[MOMENTUM] SHORT skipped: regime={regime}, ema20={ema20}, ema20_prev6={ema20_prev6}")
+                logger.debug(f"[MOMENTUM] SHORT skipped: regime={regime}, ema20={ema20}, ema20_prev3={ema20_prev3}")
             elif ema20_filter_short and (price is None or price >= ema20):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
-            elif ema20_slope_short and (ema20_prev6 is None or ema20 >= ema20_prev6):
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev6={ema20_prev6}")
-            elif ema20_slope_min_short > 0 and ema20_prev6 and ema20_prev6 != 0 and abs((ema20 - ema20_prev6) / ema20_prev6 * 100) < ema20_slope_min_short:
-                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev6) / ema20_prev6 * 100):.4f}% < min {ema20_slope_min_short}%")
+            elif ema20_slope_short and (ema20_prev3 is None or ema20 >= ema20_prev3):
+                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
+            elif ema20_slope_min_short > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_short:
+                logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_short}%")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi > rsi_prev3:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against SHORT")
             elif short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
@@ -326,11 +326,11 @@ def get_signal(
                 else:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "VERY_STRONG"):
-                            logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] SHORT VERY_STRONG: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
                             return "SHORT", "VERY_STRONG"
                     if adx > th.adx_strong and adx <= th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "STRONG_BUY"):
-                            logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev6 and ema20 < ema20_prev6 else 'n/a'}")
+                            logger.info(f"[MOMENTUM] SHORT STRONG_BUY: ema_gap={ema_gap_pct:.4f}%, ADX={adx:.1f}, RSI={rsi:.1f}, regime={regime}, ema20_slope={'down' if ema20_prev3 and ema20 < ema20_prev3 else 'n/a'}")
                             return "SHORT", "STRONG_BUY"
     
     # Check for bullish EMA stack (LONG conditions - looking for oversold)

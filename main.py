@@ -1572,7 +1572,7 @@ def _compute_pair_performance(orders):
             if o.closed_at and o.opened_at:
                 delta = (o.closed_at - o.opened_at).total_seconds() / 3600
                 hold_hours.append(delta)
-        avg_hold = round(sum(hold_hours) / len(hold_hours), 1) if hold_hours else 0
+        avg_hold = sum(hold_hours) / len(hold_hours) if hold_hours else 0
         rows.append({
             "pair": pair,
             "longs": longs,
@@ -1611,7 +1611,7 @@ def _compute_volume_crosstab(orders):
                 for o in bucket:
                     if o.closed_at and o.opened_at:
                         hold_hours.append((o.closed_at - o.opened_at).total_seconds() / 3600)
-                avg_hold = round(sum(hold_hours) / len(hold_hours), 1) if hold_hours else 0
+                avg_hold = sum(hold_hours) / len(hold_hours) if hold_hours else 0
                 rows.append({
                     "direction": direction,
                     "global_vol": g_label,

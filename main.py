@@ -654,6 +654,17 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                 _adx_max = getattr(th, 'momentum_adx_max_long', 100)
                 _rsi_max = getattr(th, 'momentum_long_rsi_max', 100)
                 _rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
+                _gap58_max = getattr(th, 'ema_gap_5_8_max', 0)
+                # Check confidence-level gap limits
+                _conf_gap_min = 0
+                _conf_gap_max = 999
+                for _cn in ["VERY_STRONG", "STRONG_BUY"]:
+                    _cc = config.trading_config.confidence_levels.get(_cn)
+                    if _cc and _cc.enabled and _cc.trade_mode in ("long", "both"):
+                        _conf_gap_min = getattr(_cc, 'gap_min', 0)
+                        _conf_gap_max = getattr(_cc, 'gap_max', 999)
+                        break
+                _abs_gap = abs(gap) if gap is not None else None
                 if p.rsi and p.rsi > _rsi_max:
                     block_reason = f"RSI {p.rsi:.0f} > {_rsi_max:.0f}"
                 elif p.rsi and p.rsi < _rsi_min:
@@ -664,8 +675,16 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                     block_reason = f"ADX {p.adx:.0f} > {_adx_max:.0f}"
                 elif gap_5_8 is not None and gap_5_8 < _gap_min:
                     block_reason = f"Gap5-8 {gap_5_8:.3f}% < {_gap_min}%"
+                elif _gap58_max > 0 and gap_5_8 is not None and gap_5_8 > _gap58_max:
+                    block_reason = f"Gap5-8 {gap_5_8:.3f}% > max {_gap58_max}%"
+                elif _abs_gap is not None and _conf_gap_min > 0 and _abs_gap < _conf_gap_min:
+                    block_reason = f"Gap5-20 {_abs_gap:.3f}% < min {_conf_gap_min}%"
+                elif _abs_gap is not None and _conf_gap_max < 999 and _abs_gap > _conf_gap_max:
+                    block_reason = f"Gap5-20 {_abs_gap:.3f}% > max {_conf_gap_max}%"
                 elif p.price and p.ema20 and p.price <= p.ema20:
                     block_reason = "Price ≤ EMA20"
+                elif p.ema5_prev3 and p.ema20 and p.ema20 <= p.ema5_prev3:
+                    block_reason = "EMA20 not rising"
                 else:
                     block_reason = "Filter (see logs)"
             elif _is_bear_stack:
@@ -675,6 +694,16 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                 _adx_max = getattr(th, 'momentum_adx_max', 100)
                 _rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
                 _rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
+                _gap58_max = getattr(th, 'ema_gap_5_8_max', 0)
+                _conf_gap_min = 0
+                _conf_gap_max = 999
+                for _cn in ["VERY_STRONG", "STRONG_BUY"]:
+                    _cc = config.trading_config.confidence_levels.get(_cn)
+                    if _cc and _cc.enabled and _cc.trade_mode in ("short", "both"):
+                        _conf_gap_min = getattr(_cc, 'gap_min', 0)
+                        _conf_gap_max = getattr(_cc, 'gap_max', 999)
+                        break
+                _abs_gap = abs(gap) if gap is not None else None
                 if p.rsi and p.rsi > _rsi_max:
                     block_reason = f"RSI {p.rsi:.0f} > {_rsi_max:.0f}"
                 elif p.rsi and p.rsi < _rsi_min:
@@ -685,8 +714,16 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                     block_reason = f"ADX {p.adx:.0f} > {_adx_max:.0f}"
                 elif gap_5_8 is not None and gap_5_8 < _gap_min:
                     block_reason = f"Gap5-8 {gap_5_8:.3f}% < {_gap_min}%"
+                elif _gap58_max > 0 and gap_5_8 is not None and gap_5_8 > _gap58_max:
+                    block_reason = f"Gap5-8 {gap_5_8:.3f}% > max {_gap58_max}%"
+                elif _abs_gap is not None and _conf_gap_min > 0 and _abs_gap < _conf_gap_min:
+                    block_reason = f"Gap5-20 {_abs_gap:.3f}% < min {_conf_gap_min}%"
+                elif _abs_gap is not None and _conf_gap_max < 999 and _abs_gap > _conf_gap_max:
+                    block_reason = f"Gap5-20 {_abs_gap:.3f}% > max {_conf_gap_max}%"
                 elif p.price and p.ema20 and p.price >= p.ema20:
                     block_reason = "Price ≥ EMA20"
+                elif p.ema5_prev3 and p.ema20 and p.ema20 >= p.ema5_prev3:
+                    block_reason = "EMA20 not falling"
                 else:
                     block_reason = "Filter (see logs)"
 

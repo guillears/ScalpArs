@@ -152,6 +152,10 @@ class SignalThresholds(BaseModel):
     pair_volume_threshold_short: float = 1.10  # Min pair volume ratio to allow SHORTs
     global_volume_lookback_bars: int = 48  # Rolling window for global volume average (5m bars)
     pair_volume_lookback_bars: int = 20  # Rolling window for per-pair volume average (5m bars)
+    market_breadth_filter_enabled: bool = True  # Gate entries based on % of pairs in Bull/Bear regime
+    market_breadth_bull_threshold_long: float = 50.0  # Min Bull% of scanned pairs to allow LONGs
+    market_breadth_bear_threshold_short: float = 65.0  # Min Bear% of scanned pairs to allow SHORTs
+    market_breadth_flat_threshold: float = 0.03  # EMA20 slope % threshold for breadth regime classification (independent of macro_trend_flat_threshold)
 
 
 class InvestmentConfig(BaseModel):

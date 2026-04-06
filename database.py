@@ -187,6 +187,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_global_volume_ratio FLOAT"))
                 if 'entry_pair_volume_ratio' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_volume_ratio FLOAT"))
+                if 'entry_bull_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_bull_pct FLOAT"))
+                if 'entry_bear_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_bear_pct FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

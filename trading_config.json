@@ -43,8 +43,8 @@
     "adx_low": 18.0,
     "volume_multiplier": 1.1,
     "ema_gap_threshold": 0.05,
-    "ema_gap_threshold_long": 0.06,
-    "ema_gap_threshold_short": 0.06,
+    "ema_gap_threshold_long": 0.08,
+    "ema_gap_threshold_short": 0.10,
     "ema_gap_5_8_max": 0.35,
     "adx_strong": 25.0,
     "adx_very_strong": 30.0,
@@ -57,7 +57,7 @@
     "momentum_ema20_slope_filter_short": true,
     "momentum_ema20_slope_min_long": 0.0,
     "momentum_ema20_slope_min_short": 0.08,
-    "macro_trend_filter_enabled": true,
+    "macro_trend_filter_enabled": false,
     "macro_trend_neutral_mode": "none",
     "macro_trend_flat_threshold": 0.03,
     "momentum_long_rsi_min": 40.0,
@@ -103,7 +103,7 @@
     "tick_momentum_exit_min_delta": 0.12,
     "tick_momentum_exit_min_deltas": "",
     "tick_momentum_exit_windows": "15,30,45",
-    "regime_change_exit_enabled": true,
+    "regime_change_exit_enabled": false,
     "rsi_adx_filter_long": "",
     "rsi_adx_filter_short": "30-35:25,35-50:30",
     "btc_rsi_adx_filter_long": "",
@@ -115,7 +115,11 @@
     "pair_volume_threshold_long": 1.10,
     "pair_volume_threshold_short": 1.10,
     "global_volume_lookback_bars": 48,
-    "pair_volume_lookback_bars": 20
+    "pair_volume_lookback_bars": 20,
+    "market_breadth_filter_enabled": true,
+    "market_breadth_bull_threshold_long": 25.0,
+    "market_breadth_bear_threshold_short": 65.0,
+    "market_breadth_flat_threshold": 0.03
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,
@@ -127,7 +131,7 @@
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
-      "tp_min": 0.25,
+      "tp_min": 0.5,
       "pullback_trigger": 0.05,
       "gap_min": 0.12,
       "gap_max": 0.25,
@@ -143,7 +147,7 @@
       "be_level4_offset": 0.25,
       "be_level5_trigger": 0.60,
       "be_level5_offset": 0.40,
-      "tp_trailing_enabled": false
+      "tp_trailing_enabled": true
     },
     "MEDIUM": {
       "enabled": false,
@@ -152,7 +156,7 @@
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
-      "tp_min": 0.25,
+      "tp_min": 0.5,
       "pullback_trigger": 0.05,
       "gap_min": 0.12,
       "gap_max": 0.25,
@@ -168,7 +172,7 @@
       "be_level4_offset": 0.25,
       "be_level5_trigger": 0.60,
       "be_level5_offset": 0.40,
-      "tp_trailing_enabled": false
+      "tp_trailing_enabled": true
     },
     "HIGH": {
       "enabled": false,
@@ -177,7 +181,7 @@
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
-      "tp_min": 0.25,
+      "tp_min": 0.5,
       "pullback_trigger": 0.05,
       "gap_min": 0.12,
       "gap_max": 0.25,
@@ -193,7 +197,7 @@
       "be_level4_offset": 0.25,
       "be_level5_trigger": 0.60,
       "be_level5_offset": 0.40,
-      "tp_trailing_enabled": false
+      "tp_trailing_enabled": true
     },
     "EXTREME": {
       "enabled": false,
@@ -202,7 +206,7 @@
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
-      "tp_min": 0.25,
+      "tp_min": 0.5,
       "pullback_trigger": 0.05,
       "gap_min": 0.12,
       "gap_max": 0.25,
@@ -218,7 +222,7 @@
       "be_level4_offset": 0.25,
       "be_level5_trigger": 0.60,
       "be_level5_offset": 0.40,
-      "tp_trailing_enabled": false
+      "tp_trailing_enabled": true
     },
     "VERY_STRONG": {
       "enabled": true,
@@ -227,7 +231,7 @@
       "investment_multiplier": 1.0,
       "stop_loss": -0.90,
       "signal_active_sl": -0.90,
-      "tp_min": 0.25,
+      "tp_min": 0.5,
       "pullback_trigger": 0.05,
       "gap_min": 0.20,
       "gap_max": 0.8,
@@ -244,7 +248,7 @@
       "be_level4_offset": 2.50,
       "be_level5_trigger": 5.00,
       "be_level5_offset": 4.00,
-      "tp_trailing_enabled": false
+      "tp_trailing_enabled": true
     },
     "STRONG_BUY": {
       "enabled": true,
@@ -253,7 +257,7 @@
       "investment_multiplier": 1.0,
       "stop_loss": -0.90,
       "signal_active_sl": -0.90,
-      "tp_min": 0.25,
+      "tp_min": 0.5,
       "pullback_trigger": 0.05,
       "gap_min": 0.20,
       "gap_max": 0.8,
@@ -270,7 +274,7 @@
       "be_level4_offset": 2.50,
       "be_level5_trigger": 5.00,
       "be_level5_offset": 4.00,
-      "tp_trailing_enabled": false
+      "tp_trailing_enabled": true
     }
   }
 }

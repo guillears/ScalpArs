@@ -83,6 +83,9 @@ class Order(Base):
     # Volume ratios at entry (for volume filter analytics)
     entry_global_volume_ratio = Column(Float, nullable=True)
     entry_pair_volume_ratio = Column(Float, nullable=True)
+    # Market breadth at entry (% of scanned pairs in Bull/Bear regime)
+    entry_bull_pct = Column(Float, nullable=True)
+    entry_bear_pct = Column(Float, nullable=True)
     
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

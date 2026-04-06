@@ -152,6 +152,11 @@
                 <span class="text-gray-400 font-medium">Global Vol:</span>
                 <span id="global-vol-value" class="text-gray-300 font-bold">--</span>
                 <span id="global-vol-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
+                <span class="text-gray-500">|</span>
+                <span class="text-gray-400 font-medium">Breadth:</span>
+                <span id="breadth-bull-value" class="text-gray-300 font-bold">--</span>
+                <span class="text-gray-500">/</span>
+                <span id="breadth-bear-value" class="text-gray-300 font-bold">--</span>
             </div>
             <div class="flex items-center space-x-4">
                 <span id="regime-pair-count" class="text-gray-500">--</span>
@@ -1527,6 +1532,29 @@
                         </table>
                     </div>
                 </div>
+                <!-- Market Breadth Cross-Tab -->
+                <div class="mt-6 border-t border-white/5 pt-4">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Market Breadth at Entry</h3>
+                    <p class="text-xs text-gray-500 mb-3">LONGs binned by Bull% at entry, SHORTs binned by Bear% at entry</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Dir</th>
+                                    <th class="px-2 py-1 text-left">Breadth Bin</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                    <th class="px-2 py-1 text-right">Avg Dur</th>
+                                </tr>
+                            </thead>
+                            <tbody id="breadth-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No breadth data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
                 <!-- Per-Pair Performance -->
                 <div class="mt-6 border-t border-white/5 pt-4">
                     <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Pair</h3>
@@ -2467,6 +2495,33 @@
                         </div>
                     </div>
                     <div class="mt-3 mb-2 px-4">
+                        <span class="text-sm text-gray-300">Market Breadth Filter</span>
+                        <p class="text-xs text-gray-500 mb-1">Gate entries based on % of scanned pairs in Bull/Bear regime (independent EMA20 slope threshold)</p>
+                        <div class="flex items-center gap-6 mt-1 flex-wrap">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-market-breadth-filter-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">Enabled</span>
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Bull% &ge; (LONGs):
+                                <input type="number" step="1" min="0" max="100" id="config-market-breadth-bull-threshold-long" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="50">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Bear% &ge; (SHORTs):
+                                <input type="number" step="1" min="0" max="100" id="config-market-breadth-bear-threshold-short" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="65">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Flat threshold:
+                                <input type="number" step="0.01" id="config-market-breadth-flat-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.03">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-blue-400/70 mt-1">LONGs require Bull% &ge; threshold. SHORTs require Bear% &ge; threshold. Flat threshold controls per-pair bull/bear classification sensitivity.</p>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI &amp; ADX Filter</span>
                         <div class="flex items-center gap-6 mt-1 flex-wrap">
                             <label class="flex items-center text-sm text-gray-400">
@@ -3279,6 +3334,20 @@
                     }
                 }
                 
+                // Market breadth display
+                const bullPct = data.market_bull_pct;
+                const bearPct = data.market_bear_pct;
+                const bBullEl = document.getElementById('breadth-bull-value');
+                const bBearEl = document.getElementById('breadth-bear-value');
+                if (bBullEl && bullPct != null) {
+                    bBullEl.textContent = `B:${bullPct.toFixed(0)}%`;
+                    bBullEl.className = bullPct >= 50 ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
+                }
+                if (bBearEl && bearPct != null) {
+                    bBearEl.textContent = `S:${bearPct.toFixed(0)}%`;
+                    bBearEl.className = bearPct >= 65 ? 'text-red-400 font-bold' : 'text-gray-400 font-bold';
+                }
+
                 // Update paper toggle
                 document.getElementById('paper-toggle').checked = !isPaperMode;
                 
@@ -3355,7 +3424,9 @@
             const configResp = await fetch('/api/config');
             const configData = await configResp.json();
             const resetBalance = configData.paper_balance || 2000;
-            if (!confirm(`Are you sure you want to reset paper trading?\n\nThis will:\n- Delete all orders and transactions\n- Reset balance to $${resetBalance.toLocaleString()}\n- Reset timer to 00:00:00`)) {
+            const modeLabel = isPaperMode ? 'PAPER' : 'LIVE';
+            const balanceNote = isPaperMode ? `\n- Reset balance to $${resetBalance.toLocaleString()}` : '';
+            if (!confirm(`Are you sure you want to reset ${modeLabel} trading?\n\nThis will:\n- Delete all ${modeLabel} orders and transactions${balanceNote}\n- Reset timer to 00:00:00\n- Clear all dashboard data`)) {
                 return;
             }
             
@@ -3364,17 +3435,14 @@
                 const data = await res.json();
                 
                 if (data.success) {
-                    // Stop timer
                     clearInterval(timerInterval);
                     timerInterval = null;
                     runtimeSeconds = 0;
                     isRunning = false;
                     
-                    // Update UI
                     updateTimer(0);
                     updateStatusUI();
                     
-                    // Reload all data with slight delay to ensure DB is updated
                     setTimeout(() => {
                         loadBalance();
                         loadOpenOrders();
@@ -3383,9 +3451,8 @@
                         loadPerformance();
                     }, 500);
                     
-                    showToast(`Paper trading reset successfully! Balance: $${resetBalance.toLocaleString()}`);
+                    showToast(`${data.mode === 'paper' ? 'Paper' : 'Live'} trading reset successfully!`);
                     
-                    // Force page reload after a short delay to ensure fresh data
                     setTimeout(() => {
                         window.location.reload();
                     }, 1500);
@@ -3935,6 +4002,17 @@
                 }
             }
 
+            if (perf.breadth_crosstab && perf.breadth_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Market Breadth at Entry\n');
+                lines.push(`${'Dir'.padEnd(6)} ${'Breadth'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
+                for (const r of perf.breadth_crosstab) {
+                    const d = r.direction === 'LONG' ? 'L' : 'S';
+                    const dur = fmtDur(r.avg_hold_hours);
+                    lines.push(`${d.padEnd(6)} ${(r.breadth_bin||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
+                }
+            }
+
             if (perf.pair_performance && perf.pair_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Pair\n');
@@ -4013,6 +4091,7 @@
             lines.push(`  Pair ADX Dir L: ${th.adx_dir_long||'both'}  |  Pair ADX Dir S: ${th.adx_dir_short||'both'}`);
             lines.push(`  Global Vol Filter: ${th.global_volume_filter_enabled}  |  Thresh L: ${th.global_volume_threshold_long||1.05}  |  Thresh S: ${th.global_volume_threshold_short||1.05}  |  Lookback: ${th.global_volume_lookback_bars||48} bars`);
             lines.push(`  Pair Vol Filter: ${th.pair_volume_filter_enabled}  |  Thresh L: ${th.pair_volume_threshold_long||1.10}  |  Thresh S: ${th.pair_volume_threshold_short||1.10}  |  Lookback: ${th.pair_volume_lookback_bars||20} bars`);
+            lines.push(`  Market Breadth Filter: ${th.market_breadth_filter_enabled}  |  Bull% ≥ ${th.market_breadth_bull_threshold_long||50}% (LONGs)  |  Bear% ≥ ${th.market_breadth_bear_threshold_short||65}% (SHORTs)  |  Flat Th: ${th.market_breadth_flat_threshold||0.03}%`);
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)`);
@@ -4612,6 +4691,18 @@
                         const d = r.direction === 'LONG' ? 'L' : 'S';
                         const dur = fmtDur(r.avg_hold_hours);
                         lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
+                    }
+                }
+
+                // --- MARKET BREADTH CROSS-TAB ---
+                if (perf.breadth_crosstab && perf.breadth_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Market Breadth at Entry\n');
+                    lines.push(`${'Dir'.padEnd(6)} ${'Breadth'.padEnd(12)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
+                    for (const r of perf.breadth_crosstab) {
+                        const d = r.direction === 'LONG' ? 'L' : 'S';
+                        const dur = fmtDur(r.avg_hold_hours);
+                        lines.push(`${d.padEnd(6)} ${(r.breadth_bin||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
                     }
                 }
 
@@ -6872,6 +6963,29 @@
                     vcBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>';
                 }
 
+                // Market Breadth Cross-Tab
+                const bcBody = document.getElementById('breadth-crosstab-body');
+                if (data.breadth_crosstab && data.breadth_crosstab.length > 0) {
+                    bcBody.innerHTML = data.breadth_crosstab.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const pnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 55 ? 'text-emerald-400' : r.win_rate < 45 ? 'text-red-400' : 'text-gray-300';
+                        const dur = fmtDur(r.avg_hold_hours);
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1.5 ${dirColor} font-medium">${r.direction === 'LONG' ? 'L' : 'S'}</td>
+                            <td class="px-2 py-1.5 text-gray-300">${r.breadth_bin}</td>
+                            <td class="px-2 py-1.5 text-right text-gray-300">${r.trades}</td>
+                            <td class="px-2 py-1.5 text-right ${wrClass}">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-2 py-1.5 text-right ${pnlClass}">$${r.avg_pnl.toFixed(2)}</td>
+                            <td class="px-2 py-1.5 text-right ${totalClass} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                            <td class="px-2 py-1.5 text-right text-gray-400">${dur}</td>
+                        </tr>`;
+                    }).join('');
+                } else {
+                    bcBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No breadth data yet</td></tr>';
+                }
+
                 // Per-Pair Performance
                 const pairPerfBody = document.getElementById('pair-performance-body');
                 if (data.pair_performance && data.pair_performance.length > 0) {
@@ -7800,6 +7914,10 @@
                 document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
                 document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
+                document.getElementById('config-market-breadth-filter-enabled').checked = config.thresholds.market_breadth_filter_enabled !== undefined ? config.thresholds.market_breadth_filter_enabled : true;
+                document.getElementById('config-market-breadth-bull-threshold-long').value = config.thresholds.market_breadth_bull_threshold_long !== undefined ? config.thresholds.market_breadth_bull_threshold_long : 50;
+                document.getElementById('config-market-breadth-bear-threshold-short').value = config.thresholds.market_breadth_bear_threshold_short !== undefined ? config.thresholds.market_breadth_bear_threshold_short : 65;
+                document.getElementById('config-market-breadth-flat-threshold').value = config.thresholds.market_breadth_flat_threshold !== undefined ? config.thresholds.market_breadth_flat_threshold : 0.03;
                 document.getElementById('config-btc-rsi-min-long').value = config.thresholds.btc_rsi_min_long !== undefined ? config.thresholds.btc_rsi_min_long : 0;
                 document.getElementById('config-btc-rsi-max-long').value = config.thresholds.btc_rsi_max_long !== undefined ? config.thresholds.btc_rsi_max_long : 100;
                 document.getElementById('config-btc-rsi-min-short').value = config.thresholds.btc_rsi_min_short !== undefined ? config.thresholds.btc_rsi_min_short : 0;
@@ -8076,6 +8194,10 @@
                     btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
                     macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
+                    market_breadth_filter_enabled: document.getElementById('config-market-breadth-filter-enabled').checked,
+                    market_breadth_bull_threshold_long: safeFloat(document.getElementById('config-market-breadth-bull-threshold-long').value),
+                    market_breadth_bear_threshold_short: safeFloat(document.getElementById('config-market-breadth-bear-threshold-short').value),
+                    market_breadth_flat_threshold: safeFloat(document.getElementById('config-market-breadth-flat-threshold').value),
                     btc_rsi_min_long: safeFloat(document.getElementById('config-btc-rsi-min-long').value),
                     btc_rsi_max_long: safeFloat(document.getElementById('config-btc-rsi-max-long').value),
                     btc_rsi_min_short: safeFloat(document.getElementById('config-btc-rsi-min-short').value),

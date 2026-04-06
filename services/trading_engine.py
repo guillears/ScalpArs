@@ -40,6 +40,8 @@ _current_btc_regime: str = "NEUTRAL"
 # Computed at end of each scan, used by next scan cycle as a market regime gate.
 _global_volume_ratio: float = 1.0
 _btc_ema20_slope_pct: float = 0.0
+_market_bull_pct: float = 0.0
+_market_bear_pct: float = 0.0
 
 # Phantom Tick Momentum shadow configs: (label, windows, delta_or_deltas)
 # delta_or_deltas: float = uniform delta for all windows, list = per-window deltas
@@ -217,7 +219,9 @@ class TradingEngine:
             "runtime_seconds": runtime,
             "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "global_volume_ratio": round(_global_volume_ratio, 4),
-            "btc_ema20_slope_pct": round(_btc_ema20_slope_pct, 4)
+            "btc_ema20_slope_pct": round(_btc_ema20_slope_pct, 4),
+            "market_bull_pct": round(_market_bull_pct, 1),
+            "market_bear_pct": round(_market_bear_pct, 1)
         }
     
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
@@ -919,7 +923,9 @@ class TradingEngine:
         entry_btc_rsi_prev: float = None,
         entry_price_vs_ema5_pct: float = None,
         entry_global_volume_ratio: float = None,
-        entry_pair_volume_ratio: float = None
+        entry_pair_volume_ratio: float = None,
+        entry_bull_pct: float = None,
+        entry_bear_pct: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -1083,6 +1089,8 @@ class TradingEngine:
             entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
             entry_global_volume_ratio=entry_global_volume_ratio,
             entry_pair_volume_ratio=entry_pair_volume_ratio,
+            entry_bull_pct=entry_bull_pct,
+            entry_bear_pct=entry_bear_pct,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -2471,6 +2479,10 @@ class TradingEngine:
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
         
+        # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
+        _collected = []
+        _breadth_flat_th = getattr(config.trading_config.thresholds, 'market_breadth_flat_threshold', 0.03)
+
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
             batch_num = batch_start // OHLCV_BATCH_SIZE + 1
@@ -2529,196 +2541,242 @@ class TradingEngine:
                 if signal in ["LONG", "SHORT"]:
                     logger.info(f"[SIGNAL-FOUND] {pair}: {signal} {confidence} - RSI={indicators.get('rsi'):.1f}, ADX={indicators.get('adx')}")
 
-                if signal in ["LONG", "SHORT"] and btc_global_enabled:
-                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
-                    pair_regime = determine_macro_regime(
-                        indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
-                    )
-                    neutral_mode = getattr(config.trading_config.thresholds, 'macro_trend_neutral_mode', 'both')
-                    btc_blocks = False
-                    if btc_regime == "NEUTRAL" and neutral_mode != "both":
-                        btc_blocks = True
-                    elif btc_regime == "BULLISH" and signal != "LONG":
-                        btc_blocks = True
-                    elif btc_regime == "BEARISH" and signal != "SHORT":
-                        btc_blocks = True
+                breadth_regime = determine_macro_regime(
+                    indicators.get('ema20'), indicators.get('ema20_prev3'), _breadth_flat_th
+                )
 
-                    pair_blocks = (pair_regime != btc_regime)
-
-                    _th = config.trading_config.thresholds
-                    btc_rsi_blocks = False
-                    if btc_rsi is not None:
-                        if signal == "LONG":
-                            _rsi_lo = getattr(_th, 'btc_rsi_min_long', 0)
-                            _rsi_hi = getattr(_th, 'btc_rsi_max_long', 100)
-                        else:
-                            _rsi_lo = getattr(_th, 'btc_rsi_min_short', 0)
-                            _rsi_hi = getattr(_th, 'btc_rsi_max_short', 100)
-                        if (_rsi_lo > 0 and btc_rsi < _rsi_lo) or (_rsi_hi < 100 and btc_rsi > _rsi_hi):
-                            btc_rsi_blocks = True
-
-                    btc_adx_range_blocks = False
-                    if btc_adx is not None:
-                        if signal == "LONG":
-                            _adx_lo = getattr(_th, 'btc_adx_min_long', 0)
-                            _adx_hi = getattr(_th, 'btc_adx_max_long', 100)
-                        else:
-                            _adx_lo = getattr(_th, 'btc_adx_min_short', 0)
-                            _adx_hi = getattr(_th, 'btc_adx_max_short', 100)
-                        if (_adx_lo > 0 and btc_adx < _adx_lo) or (_adx_hi < 100 and btc_adx > _adx_hi):
-                            btc_adx_range_blocks = True
-
-                    btc_adx_dir_blocks = False
-                    if btc_adx is not None and btc_adx_prev is not None:
-                        _adx_dir_cfg = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
-                        if _adx_dir_cfg == 'rising' and btc_adx <= btc_adx_prev:
-                            btc_adx_dir_blocks = True
-                        elif _adx_dir_cfg == 'falling' and btc_adx >= btc_adx_prev:
-                            btc_adx_dir_blocks = True
-
-                    pair_adx_dir_blocks = False
-                    _pair_adx = indicators.get('adx')
-                    _pair_adx_prev = indicators.get('adx_prev1')
-                    if _pair_adx is not None and _pair_adx_prev is not None:
-                        _pair_adx_dir_cfg = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
-                        if _pair_adx_dir_cfg == 'rising' and _pair_adx <= _pair_adx_prev:
-                            pair_adx_dir_blocks = True
-                        elif _pair_adx_dir_cfg == 'falling' and _pair_adx >= _pair_adx_prev:
-                            pair_adx_dir_blocks = True
-
-                    btc_cross_blocks = False
-                    btc_cross_reason = ""
-                    if btc_rsi is not None and btc_adx is not None:
-                        _cf_key = 'btc_rsi_adx_filter_long' if signal == 'LONG' else 'btc_rsi_adx_filter_short'
-                        _cf_str = getattr(_th, _cf_key, '')
-                        if _cf_str and _cf_str.strip():
-                            for _cf_rule in _cf_str.split(','):
-                                _cf_rule = _cf_rule.strip()
-                                if not _cf_rule or ':' not in _cf_rule:
-                                    continue
-                                try:
-                                    _cf_rsi_part, _cf_min_adx = _cf_rule.split(':')
-                                    _cf_rsi_min, _cf_rsi_max = map(float, _cf_rsi_part.split('-'))
-                                    if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
-                                        if btc_adx < float(_cf_min_adx):
-                                            btc_cross_blocks = True
-                                            btc_cross_reason = f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) requires ADX>={_cf_min_adx}, got {btc_adx:.1f}"
-                                        break
-                                except (ValueError, TypeError):
-                                    continue
-
-                    if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_adx_dir_blocks or pair_adx_dir_blocks or btc_cross_blocks:
-                        if btc_cross_blocks:
-                            reason = btc_cross_reason
-                        elif pair_adx_dir_blocks:
-                            _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
-                            _pd_want = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
-                            reason = f"Pair ADX {_pd_label} ({_pair_adx:.1f} vs prev {_pair_adx_prev:.1f}), {signal} requires {_pd_want}"
-                        elif btc_adx_dir_blocks:
-                            _adx_dir_label = "Rising" if btc_adx > btc_adx_prev else "Falling"
-                            _adx_dir_want = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
-                            reason = f"BTC ADX {_adx_dir_label} ({btc_adx:.1f} vs prev {btc_adx_prev:.1f}), {signal} requires {_adx_dir_want}"
-                        elif btc_rsi_blocks:
-                            reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
-                        elif btc_adx_range_blocks:
-                            reason = f"BTC ADX {btc_adx:.1f} out of {signal} range [{_adx_lo}-{_adx_hi}]"
-                        elif btc_blocks:
-                            reason = f"BTC={btc_regime}"
-                        else:
-                            reason = f"pair={pair_regime} vs BTC={btc_regime}"
-                        logger.info(f"[BTC-GATE] {pair}: {signal} blocked — {reason}")
-                        signal = "NO_TRADE"
-
-                if signal in ["LONG", "SHORT"]:
-                    _th = config.trading_config.thresholds
-                    global_vol_blocks = False
-                    if getattr(_th, 'global_volume_filter_enabled', False):
-                        _gv_thresh = getattr(_th, f'global_volume_threshold_{signal.lower()}', 1.05)
-                        if _global_volume_ratio < _gv_thresh:
-                            global_vol_blocks = True
-
-                    pair_vol_blocks = False
-                    if getattr(_th, 'pair_volume_filter_enabled', False):
-                        _pv_thresh = getattr(_th, f'pair_volume_threshold_{signal.lower()}', 1.10)
-                        if _pair_volume_ratio < _pv_thresh:
-                            pair_vol_blocks = True
-
-                    if global_vol_blocks or pair_vol_blocks:
-                        if global_vol_blocks:
-                            reason = f"Global Vol {_global_volume_ratio:.2f} < {_gv_thresh} for {signal}"
-                        else:
-                            reason = f"Pair Vol {_pair_volume_ratio:.2f} < {_pv_thresh} for {signal}"
-                        logger.info(f"[VOL-GATE] {pair}: {signal} blocked — {reason}")
-                        signal = "NO_TRADE"
-
-                await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
-
-                if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
-                    logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
-                    entry_gap = None
-                    if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
-                        entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
-                    entry_ema_gap_5_8 = None
-                    if indicators.get('ema5') and indicators.get('ema8') and indicators['ema8'] > 0:
-                        entry_ema_gap_5_8 = round(abs((indicators['ema5'] - indicators['ema8']) / indicators['ema8'] * 100), 4)
-                    entry_ema5_stretch = None
-                    entry_price_vs_ema5_pct = None
-                    if indicators.get('ema5') and indicators['price'] > 0:
-                        entry_ema5_stretch = round(abs(indicators['price'] - indicators['ema5']) / indicators['price'] * 100, 4)
-                        entry_price_vs_ema5_pct = round((indicators['price'] - indicators['ema5']) / indicators['ema5'] * 100, 4)
-                    entry_rsi = indicators.get('rsi')
-                    entry_adx = indicators.get('adx')
-                    entry_adx_prev = indicators.get('adx_prev1')
-                    if btc_global_enabled:
-                        entry_regime = btc_regime
-                    else:
-                        flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
-                        entry_regime = determine_macro_regime(
-                            indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
-                        )
-                    pair_ema20_slope_pct = None
-                    pair_ema20 = indicators.get('ema20')
-                    pair_ema20_prev3 = indicators.get('ema20_prev3')
-                    if pair_ema20 and pair_ema20_prev3 and pair_ema20_prev3 != 0:
-                        pair_ema20_slope_pct = round(((pair_ema20 - pair_ema20_prev3) / pair_ema20_prev3) * 100, 4)
-                    order = await self.open_position(
-                        db=db,
-                        pair=pair,
-                        direction=signal,
-                        confidence=confidence,
-                        current_price=indicators['price'],
-                        entry_gap=entry_gap,
-                        entry_ema_gap_5_8=entry_ema_gap_5_8,
-                        entry_ema5_stretch=entry_ema5_stretch,
-                        entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
-                        entry_adx=round(entry_adx, 1) if entry_adx is not None else None,
-                        entry_adx_prev=round(entry_adx_prev, 1) if entry_adx_prev is not None else None,
-                        entry_macro_trend=entry_regime,
-                        entry_ema20_slope=pair_ema20_slope_pct,
-                        entry_btc_ema20_slope=btc_ema20_slope_pct,
-                        entry_btc_adx=round(btc_adx, 1) if btc_adx is not None else None,
-                        entry_btc_adx_prev=round(btc_adx_prev, 1) if btc_adx_prev is not None else None,
-                        entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
-                        entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
-                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
-                        entry_global_volume_ratio=round(_global_volume_ratio, 4),
-                        entry_pair_volume_ratio=round(_pair_volume_ratio, 4)
-                    )
-
-                    if order:
-                        actions.append({
-                            "pair": pair,
-                            "action": f"OPENED_{signal}",
-                            "confidence": confidence,
-                            "price": indicators['price']
-                        })
+                _collected.append({
+                    'pair': pair, 'symbol': symbol, 'volume_24h': volume_24h,
+                    'indicators': indicators, 'signal': signal, 'confidence': confidence,
+                    'pair_volume_ratio': _pair_volume_ratio, 'breadth_regime': breadth_regime,
+                })
 
             if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
                 await asyncio.sleep(OHLCV_BATCH_DELAY)
-            
+
+        # ── Phase 2: Compute global volume ratio and market breadth ──
         if _scan_avg_vol_sum > 0:
             _global_volume_ratio = round(_scan_vol_sum / _scan_avg_vol_sum, 4)
             logger.info(f"[GLOBAL_VOL] ratio={_global_volume_ratio:.4f} (sum_vol={_scan_vol_sum:.0f}, sum_avg={_scan_avg_vol_sum:.0f})")
+
+        global _market_bull_pct, _market_bear_pct
+        _n_bull = sum(1 for r in _collected if r['breadth_regime'] == "BULLISH")
+        _n_bear = sum(1 for r in _collected if r['breadth_regime'] == "BEARISH")
+        _n_total = len(_collected)
+        if _n_total > 0:
+            _market_bull_pct = round(_n_bull / _n_total * 100, 1)
+            _market_bear_pct = round(_n_bear / _n_total * 100, 1)
+        else:
+            _market_bull_pct = 0.0
+            _market_bear_pct = 0.0
+        logger.info(f"[BREADTH] Bull={_market_bull_pct:.1f}% ({_n_bull}/{_n_total}) Bear={_market_bear_pct:.1f}% ({_n_bear}/{_n_total}) threshold={_breadth_flat_th}%")
+
+        # ── Phase 3: Apply gates (BTC, volume, breadth) and enter trades ──
+        _breadth_enabled = getattr(config.trading_config.thresholds, 'market_breadth_filter_enabled', True)
+        _breadth_bull_th = getattr(config.trading_config.thresholds, 'market_breadth_bull_threshold_long', 50.0)
+        _breadth_bear_th = getattr(config.trading_config.thresholds, 'market_breadth_bear_threshold_short', 65.0)
+
+        for _cr in _collected:
+            pair = _cr['pair']
+            indicators = _cr['indicators']
+            signal = _cr['signal']
+            confidence = _cr['confidence']
+            volume_24h = _cr['volume_24h']
+            _pair_volume_ratio = _cr['pair_volume_ratio']
+
+            if signal in ["LONG", "SHORT"] and btc_global_enabled:
+                flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                pair_regime = determine_macro_regime(
+                    indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
+                )
+                neutral_mode = getattr(config.trading_config.thresholds, 'macro_trend_neutral_mode', 'both')
+                btc_blocks = False
+                if btc_regime == "NEUTRAL" and neutral_mode != "both":
+                    btc_blocks = True
+                elif btc_regime == "BULLISH" and signal != "LONG":
+                    btc_blocks = True
+                elif btc_regime == "BEARISH" and signal != "SHORT":
+                    btc_blocks = True
+
+                pair_blocks = (pair_regime != btc_regime)
+
+                _th = config.trading_config.thresholds
+                btc_rsi_blocks = False
+                if btc_rsi is not None:
+                    if signal == "LONG":
+                        _rsi_lo = getattr(_th, 'btc_rsi_min_long', 0)
+                        _rsi_hi = getattr(_th, 'btc_rsi_max_long', 100)
+                    else:
+                        _rsi_lo = getattr(_th, 'btc_rsi_min_short', 0)
+                        _rsi_hi = getattr(_th, 'btc_rsi_max_short', 100)
+                    if (_rsi_lo > 0 and btc_rsi < _rsi_lo) or (_rsi_hi < 100 and btc_rsi > _rsi_hi):
+                        btc_rsi_blocks = True
+
+                btc_adx_range_blocks = False
+                if btc_adx is not None:
+                    if signal == "LONG":
+                        _adx_lo = getattr(_th, 'btc_adx_min_long', 0)
+                        _adx_hi = getattr(_th, 'btc_adx_max_long', 100)
+                    else:
+                        _adx_lo = getattr(_th, 'btc_adx_min_short', 0)
+                        _adx_hi = getattr(_th, 'btc_adx_max_short', 100)
+                    if (_adx_lo > 0 and btc_adx < _adx_lo) or (_adx_hi < 100 and btc_adx > _adx_hi):
+                        btc_adx_range_blocks = True
+
+                btc_adx_dir_blocks = False
+                if btc_adx is not None and btc_adx_prev is not None:
+                    _adx_dir_cfg = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
+                    if _adx_dir_cfg == 'rising' and btc_adx <= btc_adx_prev:
+                        btc_adx_dir_blocks = True
+                    elif _adx_dir_cfg == 'falling' and btc_adx >= btc_adx_prev:
+                        btc_adx_dir_blocks = True
+
+                pair_adx_dir_blocks = False
+                _pair_adx = indicators.get('adx')
+                _pair_adx_prev = indicators.get('adx_prev1')
+                if _pair_adx is not None and _pair_adx_prev is not None:
+                    _pair_adx_dir_cfg = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
+                    if _pair_adx_dir_cfg == 'rising' and _pair_adx <= _pair_adx_prev:
+                        pair_adx_dir_blocks = True
+                    elif _pair_adx_dir_cfg == 'falling' and _pair_adx >= _pair_adx_prev:
+                        pair_adx_dir_blocks = True
+
+                btc_cross_blocks = False
+                btc_cross_reason = ""
+                if btc_rsi is not None and btc_adx is not None:
+                    _cf_key = 'btc_rsi_adx_filter_long' if signal == 'LONG' else 'btc_rsi_adx_filter_short'
+                    _cf_str = getattr(_th, _cf_key, '')
+                    if _cf_str and _cf_str.strip():
+                        for _cf_rule in _cf_str.split(','):
+                            _cf_rule = _cf_rule.strip()
+                            if not _cf_rule or ':' not in _cf_rule:
+                                continue
+                            try:
+                                _cf_rsi_part, _cf_min_adx = _cf_rule.split(':')
+                                _cf_rsi_min, _cf_rsi_max = map(float, _cf_rsi_part.split('-'))
+                                if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
+                                    if btc_adx < float(_cf_min_adx):
+                                        btc_cross_blocks = True
+                                        btc_cross_reason = f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) requires ADX>={_cf_min_adx}, got {btc_adx:.1f}"
+                                    break
+                            except (ValueError, TypeError):
+                                continue
+
+                if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_adx_dir_blocks or pair_adx_dir_blocks or btc_cross_blocks:
+                    if btc_cross_blocks:
+                        reason = btc_cross_reason
+                    elif pair_adx_dir_blocks:
+                        _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
+                        _pd_want = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
+                        reason = f"Pair ADX {_pd_label} ({_pair_adx:.1f} vs prev {_pair_adx_prev:.1f}), {signal} requires {_pd_want}"
+                    elif btc_adx_dir_blocks:
+                        _adx_dir_label = "Rising" if btc_adx > btc_adx_prev else "Falling"
+                        _adx_dir_want = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
+                        reason = f"BTC ADX {_adx_dir_label} ({btc_adx:.1f} vs prev {btc_adx_prev:.1f}), {signal} requires {_adx_dir_want}"
+                    elif btc_rsi_blocks:
+                        reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
+                    elif btc_adx_range_blocks:
+                        reason = f"BTC ADX {btc_adx:.1f} out of {signal} range [{_adx_lo}-{_adx_hi}]"
+                    elif btc_blocks:
+                        reason = f"BTC={btc_regime}"
+                    else:
+                        reason = f"pair={pair_regime} vs BTC={btc_regime}"
+                    logger.info(f"[BTC-GATE] {pair}: {signal} blocked — {reason}")
+                    signal = "NO_TRADE"
+
+            if signal in ["LONG", "SHORT"]:
+                _th = config.trading_config.thresholds
+                global_vol_blocks = False
+                if getattr(_th, 'global_volume_filter_enabled', False):
+                    _gv_thresh = getattr(_th, f'global_volume_threshold_{signal.lower()}', 1.05)
+                    if _global_volume_ratio < _gv_thresh:
+                        global_vol_blocks = True
+
+                pair_vol_blocks = False
+                if getattr(_th, 'pair_volume_filter_enabled', False):
+                    _pv_thresh = getattr(_th, f'pair_volume_threshold_{signal.lower()}', 1.10)
+                    if _pair_volume_ratio < _pv_thresh:
+                        pair_vol_blocks = True
+
+                if global_vol_blocks or pair_vol_blocks:
+                    if global_vol_blocks:
+                        reason = f"Global Vol {_global_volume_ratio:.2f} < {_gv_thresh} for {signal}"
+                    else:
+                        reason = f"Pair Vol {_pair_volume_ratio:.2f} < {_pv_thresh} for {signal}"
+                    logger.info(f"[VOL-GATE] {pair}: {signal} blocked — {reason}")
+                    signal = "NO_TRADE"
+
+            if signal in ["LONG", "SHORT"] and _breadth_enabled:
+                if signal == "LONG" and _market_bull_pct < _breadth_bull_th:
+                    logger.info(f"[BREADTH_GATE] {pair}: LONG blocked — Bull% {_market_bull_pct:.1f}% < {_breadth_bull_th}%")
+                    signal = "NO_TRADE"
+                elif signal == "SHORT" and _market_bear_pct < _breadth_bear_th:
+                    logger.info(f"[BREADTH_GATE] {pair}: SHORT blocked — Bear% {_market_bear_pct:.1f}% < {_breadth_bear_th}%")
+                    signal = "NO_TRADE"
+
+            await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
+
+            if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
+                logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
+                entry_gap = None
+                if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
+                    entry_gap = round(abs((indicators['ema5'] - indicators['ema20']) / indicators['price'] * 100), 4)
+                entry_ema_gap_5_8 = None
+                if indicators.get('ema5') and indicators.get('ema8') and indicators['ema8'] > 0:
+                    entry_ema_gap_5_8 = round(abs((indicators['ema5'] - indicators['ema8']) / indicators['ema8'] * 100), 4)
+                entry_ema5_stretch = None
+                entry_price_vs_ema5_pct = None
+                if indicators.get('ema5') and indicators['price'] > 0:
+                    entry_ema5_stretch = round(abs(indicators['price'] - indicators['ema5']) / indicators['price'] * 100, 4)
+                    entry_price_vs_ema5_pct = round((indicators['price'] - indicators['ema5']) / indicators['ema5'] * 100, 4)
+                entry_rsi = indicators.get('rsi')
+                entry_adx = indicators.get('adx')
+                entry_adx_prev = indicators.get('adx_prev1')
+                if btc_global_enabled:
+                    entry_regime = btc_regime
+                else:
+                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                    entry_regime = determine_macro_regime(
+                        indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
+                    )
+                pair_ema20_slope_pct = None
+                pair_ema20 = indicators.get('ema20')
+                pair_ema20_prev3 = indicators.get('ema20_prev3')
+                if pair_ema20 and pair_ema20_prev3 and pair_ema20_prev3 != 0:
+                    pair_ema20_slope_pct = round(((pair_ema20 - pair_ema20_prev3) / pair_ema20_prev3) * 100, 4)
+                order = await self.open_position(
+                    db=db,
+                    pair=pair,
+                    direction=signal,
+                    confidence=confidence,
+                    current_price=indicators['price'],
+                    entry_gap=entry_gap,
+                    entry_ema_gap_5_8=entry_ema_gap_5_8,
+                    entry_ema5_stretch=entry_ema5_stretch,
+                    entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
+                    entry_adx=round(entry_adx, 1) if entry_adx is not None else None,
+                    entry_adx_prev=round(entry_adx_prev, 1) if entry_adx_prev is not None else None,
+                    entry_macro_trend=entry_regime,
+                    entry_ema20_slope=pair_ema20_slope_pct,
+                    entry_btc_ema20_slope=btc_ema20_slope_pct,
+                    entry_btc_adx=round(btc_adx, 1) if btc_adx is not None else None,
+                    entry_btc_adx_prev=round(btc_adx_prev, 1) if btc_adx_prev is not None else None,
+                    entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
+                    entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
+                    entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
+                    entry_global_volume_ratio=round(_global_volume_ratio, 4),
+                    entry_pair_volume_ratio=round(_pair_volume_ratio, 4),
+                    entry_bull_pct=_market_bull_pct,
+                    entry_bear_pct=_market_bear_pct
+                )
+
+                if order:
+                    actions.append({
+                        "pair": pair,
+                        "action": f"OPENED_{signal}",
+                        "confidence": confidence,
+                        "price": indicators['price']
+                    })
 
         self._last_scan_time = time.time()
         elapsed = self._last_scan_time - now

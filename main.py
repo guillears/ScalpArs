@@ -402,32 +402,30 @@ async def set_paper_mode(enabled: bool, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/api/reset")
-async def reset_paper_trading(db: AsyncSession = Depends(get_db)):
-    """Reset paper trading - clear all data and start fresh with $10,000"""
+async def reset_trading(db: AsyncSession = Depends(get_db)):
+    """Reset trading data for the current mode (paper or live) and start fresh"""
     import config
     
-    # Stop the bot first if running
+    is_paper = trading_engine.is_paper_mode
+    mode_label = "Paper" if is_paper else "Live"
+    
     if trading_engine.is_running:
         await trading_engine.pause(db)
     
-    # Delete all paper trading orders
     await db.execute(
-        delete(Order).where(Order.is_paper == True)
+        delete(Order).where(Order.is_paper == is_paper)
+    )
+    await db.execute(
+        delete(Transaction).where(Transaction.is_paper == is_paper)
+    )
+    await db.execute(
+        delete(BnbSwapLog).where(BnbSwapLog.is_paper == is_paper)
     )
     
-    # Delete all paper trading transactions
-    await db.execute(
-        delete(Transaction).where(Transaction.is_paper == True)
-    )
+    if is_paper:
+        trading_engine.paper_balance = config.trading_config.paper_balance
+        trading_engine.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
     
-    # Delete paper BNB swap logs
-    await db.execute(
-        delete(BnbSwapLog).where(BnbSwapLog.is_paper == True)
-    )
-    
-    # Reset bot state
-    trading_engine.paper_balance = config.trading_config.paper_balance
-    trading_engine.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
     trading_engine.total_runtime_seconds = 0
     trading_engine.started_at = None
     trading_engine.is_running = False
@@ -436,13 +434,9 @@ async def reset_paper_trading(db: AsyncSession = Depends(get_db)):
     trading_engine._bnb_burn_rate = 0.0
     trading_engine._last_bnb_check = None
     
-    # Clear any ban state
     set_ban_until(0)
-    
-    # Save the reset state
     await trading_engine.save_state(db)
     
-    # Clear ban in DB
     result_state = await db.execute(select(BotState).limit(1))
     state_row = result_state.scalar_one_or_none()
     if state_row:
@@ -450,12 +444,14 @@ async def reset_paper_trading(db: AsyncSession = Depends(get_db)):
     
     await db.commit()
     
-    logger.info(f"[RESET] Paper trading reset. Balance: ${trading_engine.paper_balance}, Timer: 00:00:00")
+    balance = trading_engine.paper_balance if is_paper else 0
+    logger.info(f"[RESET] {mode_label} trading reset. {'Balance: $' + str(balance) + ', ' if is_paper else ''}Timer: 00:00:00")
     
     return {
         "success": True,
-        "message": "Paper trading reset successfully",
-        "paper_balance": trading_engine.paper_balance,
+        "message": f"{mode_label} trading reset successfully",
+        "paper_balance": trading_engine.paper_balance if is_paper else None,
+        "mode": "paper" if is_paper else "live",
         "runtime": "00:00:00"
     }
 
@@ -1622,6 +1618,50 @@ def _compute_volume_crosstab(orders):
                     "total_pnl": round(total_pnl, 2),
                     "avg_hold_hours": avg_hold,
                 })
+    return rows
+
+
+_BREADTH_BINS = [
+    ("< 30%", 0, 30),
+    ("30-40%", 30, 40),
+    ("40-50%", 40, 50),
+    ("50-60%", 50, 60),
+    ("60-70%", 60, 70),
+    ("70%+", 70, 101),
+]
+
+
+def _compute_breadth_crosstab(orders):
+    """Cross-tab: Direction x Breadth% bin -> #Trades, WinRate, AvgP&L, TotalP&L
+    For LONGs: binned by entry_bull_pct; for SHORTs: binned by entry_bear_pct."""
+    rows = []
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
+    for direction in ("LONG", "SHORT"):
+        dir_orders = [o for o in closed if o.direction == direction]
+        for b_label, b_lo, b_hi in _BREADTH_BINS:
+            if direction == "LONG":
+                bucket = [o for o in dir_orders if o.entry_bull_pct is not None and b_lo <= o.entry_bull_pct < b_hi]
+            else:
+                bucket = [o for o in dir_orders if o.entry_bear_pct is not None and b_lo <= o.entry_bear_pct < b_hi]
+            if not bucket:
+                continue
+            n = len(bucket)
+            wins = sum(1 for o in bucket if o.pnl > 0)
+            total_pnl = sum(o.pnl for o in bucket)
+            hold_hours = []
+            for o in bucket:
+                if o.closed_at and o.opened_at:
+                    hold_hours.append((o.closed_at - o.opened_at).total_seconds() / 3600)
+            avg_hold = sum(hold_hours) / len(hold_hours) if hold_hours else 0
+            rows.append({
+                "direction": direction,
+                "breadth_bin": b_label,
+                "trades": n,
+                "win_rate": round(wins / n * 100, 1),
+                "avg_pnl": round(total_pnl / n, 2),
+                "total_pnl": round(total_pnl, 2),
+                "avg_hold_hours": avg_hold,
+            })
     return rows
 
 
@@ -3938,6 +3978,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "day_time_heatmap": _compute_day_time_heatmap(orders),
         "regime_neutral_deep_dive": _compute_regime_neutral_deep_dive(orders),
         "volume_crosstab": _compute_volume_crosstab(orders),
+        "breadth_crosstab": _compute_breadth_crosstab(orders),
         "pair_performance": _compute_pair_performance(orders),
     }
 

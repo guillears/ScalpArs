@@ -1138,6 +1138,21 @@ class TradingEngine:
                 f"BNB={self.paper_bnb_balance_usd:.2f} Total={post_total:.2f} | "
                 f"Delta={delta:+.2f} (expected: -{entry_fee:.4f})"
             )
+        elif not self.is_paper_mode:
+            try:
+                bal = await binance_service.get_balance()
+                bnb_price = await binance_service.get_bnb_price()
+                bnb_usd = bal['bnb_total'] * bnb_price if bnb_price > 0 else 0
+                total = bal['usdt_total'] + bnb_usd
+                logger.info(
+                    f"[PORTFOLIO_OPEN] {pair} {direction} | "
+                    f"Investment={investment:.2f} EntryFee={entry_fee:.4f} | "
+                    f"USDT_total={bal['usdt_total']:.2f} USDT_free={bal['usdt_free']:.2f} "
+                    f"BNB={bal['bnb_total']:.6f} BNB_price={bnb_price:.2f} BNB_usd={bnb_usd:.2f} | "
+                    f"Total={total:.2f}"
+                )
+            except Exception as e:
+                logger.warning(f"[PORTFOLIO_OPEN] Failed to log live balance: {e}")
 
         # Force reset WebSocket tracking for new order (fresh start from entry price)
         # This ensures we track high/low from the actual entry, not from previous orders
@@ -1581,6 +1596,22 @@ class TradingEngine:
                 f"BNB={self.paper_bnb_balance_usd:.2f} Total={post_total:.2f} | "
                 f"Delta={delta:+.2f} vs NetPnL={pnl_data['pnl']:+.4f}"
             )
+        elif not self.is_paper_mode:
+            try:
+                bal = await binance_service.get_balance()
+                bnb_price = await binance_service.get_bnb_price()
+                bnb_usd = bal['bnb_total'] * bnb_price if bnb_price > 0 else 0
+                total = bal['usdt_total'] + bnb_usd
+                logger.info(
+                    f"[PORTFOLIO_CLOSE] {order.pair} {order.direction} | "
+                    f"PnL={pnl_data['pnl']:+.4f} (raw={pnl_data['raw_pnl']:+.4f} "
+                    f"entry_fee={order.entry_fee or 0:.4f} exit_fee={exit_fee:.4f}) | "
+                    f"USDT_total={bal['usdt_total']:.2f} USDT_free={bal['usdt_free']:.2f} "
+                    f"BNB={bal['bnb_total']:.6f} BNB_price={bnb_price:.2f} BNB_usd={bnb_usd:.2f} | "
+                    f"Total={total:.2f}"
+                )
+            except Exception as e:
+                logger.warning(f"[PORTFOLIO_CLOSE] Failed to log live balance: {e}")
 
         self._register_post_exit_tracking(order, reason)
         self._rsi3_history.pop(order.id, None)

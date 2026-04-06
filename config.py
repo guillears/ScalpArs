@@ -301,7 +301,7 @@ class Settings(BaseSettings):
     binance_api_key: str = ""
     binance_api_secret: str = ""
     app_env: str = "development"
-    debug: bool = True
+    debug: bool = False
     database_url: str = "sqlite+aiosqlite:///./scalpars.db"
     
     class Config:

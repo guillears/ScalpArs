@@ -28,12 +28,11 @@ Python 3 / FastAPI trading bot for Binance Futures. Uses EMA, RSI, ADX indicator
 - `trading_config.json` — Strategy parameters
 - `config.py` — Environment and app configuration
 
-## Git Push Policy
-NEVER run `git push` unless the user explicitly requests it with words like "push", "push it", "push to remote", etc.
-- Committing locally is fine when asked to commit.
-- Pushing is a separate action that requires explicit user permission every time.
-- Do NOT combine commit and push unless the user explicitly asked for both.
-- When in doubt, commit only and confirm before pushing.
+## Deploy Flow
+When the user says **"commit and push"**, commit all changes and push to `main`. AWS auto-deploys from `main`.
+- Do NOT push unless the user explicitly says "push" or "commit and push".
+- If changes are risky (new logic, parameter changes in live mode), warn the user and suggest testing on paper mode before pushing.
+- A simple "commit" means commit only, do not push.
 
 ## Trading Strategy Analysis Context (188 trades, March 2026)
 

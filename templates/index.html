@@ -3340,12 +3340,14 @@
                 const bBullEl = document.getElementById('breadth-bull-value');
                 const bBearEl = document.getElementById('breadth-bear-value');
                 if (bBullEl && bullPct != null) {
+                    const bullTh = parseFloat(document.getElementById('config-market-breadth-bull-threshold-long')?.value) || 50;
                     bBullEl.textContent = `B:${bullPct.toFixed(0)}%`;
-                    bBullEl.className = bullPct >= 50 ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
+                    bBullEl.className = bullPct >= bullTh ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
                 }
                 if (bBearEl && bearPct != null) {
+                    const bearTh = parseFloat(document.getElementById('config-market-breadth-bear-threshold-short')?.value) || 65;
                     bBearEl.textContent = `S:${bearPct.toFixed(0)}%`;
-                    bBearEl.className = bearPct >= 65 ? 'text-red-400 font-bold' : 'text-gray-400 font-bold';
+                    bBearEl.className = bearPct >= bearTh ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
                 }
                 // Update breadth counts (use same threshold as breadth %)
                 if (data.breadth_n_total != null && data.breadth_n_total > 0) {

@@ -536,10 +536,12 @@ class TradingEngine:
             result = await binance_service.create_market_order(symbol, side, amount, leverage)
             if not result:
                 return None
+            fill_amount = result.get('amount', amount)
+            fill_price = result['price']
             return {
-                'id': result['id'], 'price': result['price'],
-                'amount': result.get('amount', amount),
-                'entry_fee': result.get('fee', notional_value * taker_fee_rate),
+                'id': result['id'], 'price': fill_price,
+                'amount': fill_amount,
+                'entry_fee': fill_amount * fill_price * taker_fee_rate,
                 'entry_order_type': 'TAKER_FALLBACK',
             }
 
@@ -562,10 +564,12 @@ class TradingEngine:
             result = await binance_service.create_market_order(symbol, side, amount, leverage)
             if not result:
                 return None
+            fill_amount = result.get('amount', amount)
+            fill_price = result['price']
             return {
-                'id': result['id'], 'price': result['price'],
-                'amount': result.get('amount', amount),
-                'entry_fee': result.get('fee', notional_value * taker_fee_rate),
+                'id': result['id'], 'price': fill_price,
+                'amount': fill_amount,
+                'entry_fee': fill_amount * fill_price * taker_fee_rate,
                 'entry_order_type': 'TAKER_FALLBACK',
             }
 
@@ -582,7 +586,7 @@ class TradingEngine:
                 filled = True
                 fill_price = status['average'] or limit_price
                 fill_amount = status['filled'] or amount
-                fill_fee = status.get('fee', 0) or (fill_amount * fill_price * maker_fee_rate)
+                fill_fee = fill_amount * fill_price * maker_fee_rate
                 logger.info(f"[MAKER_ENTRY] {pair}: Limit FILLED @ {fill_price} after {(i+1)*2}s")
                 return {
                     'id': order_id, 'price': fill_price,
@@ -600,7 +604,7 @@ class TradingEngine:
 
         if filled_qty and filled_qty > 0:
             fill_price = final_status['average'] or limit_price
-            fill_fee = final_status.get('fee', 0) or (filled_qty * fill_price * maker_fee_rate)
+            fill_fee = filled_qty * fill_price * maker_fee_rate
             logger.info(f"[MAKER_ENTRY] {pair}: Partial fill {filled_qty}/{amount} @ {fill_price}")
             return {
                 'id': order_id, 'price': fill_price,
@@ -613,10 +617,12 @@ class TradingEngine:
         result = await binance_service.create_market_order(symbol, side, amount, leverage)
         if not result:
             return None
+        fill_amount = result.get('amount', amount)
+        fill_price = result['price']
         return {
-            'id': result['id'], 'price': result['price'],
-            'amount': result.get('amount', amount),
-            'entry_fee': result.get('fee', notional_value * taker_fee_rate),
+            'id': result['id'], 'price': fill_price,
+            'amount': fill_amount,
+            'entry_fee': fill_amount * fill_price * taker_fee_rate,
             'entry_order_type': 'TAKER_FALLBACK',
         }
 
@@ -1030,7 +1036,8 @@ class TradingEngine:
                 if result:
                     binance_order_id = result['id']
                     actual_price = result['price']
-                    entry_fee = result.get('fee', entry_fee)
+                    quantity = result.get('amount', quantity)
+                    entry_fee = actual_price * quantity * taker_fee_rate
                     entry_order_type = "TAKER"
         else:
             # Paper trade -- simulate maker fill if enabled

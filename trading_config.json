@@ -118,7 +118,7 @@
     "pair_volume_lookback_bars": 20,
     "market_breadth_filter_enabled": true,
     "market_breadth_bull_threshold_long": 25.0,
-    "market_breadth_bear_threshold_short": 65.0,
+    "market_breadth_bear_threshold_short": 60.0,
     "market_breadth_flat_threshold": 0.03
   },
   "post_exit_tracking_enabled": true,

@@ -3347,6 +3347,17 @@
                     bBearEl.textContent = `S:${bearPct.toFixed(0)}%`;
                     bBearEl.className = bearPct >= 65 ? 'text-red-400 font-bold' : 'text-gray-400 font-bold';
                 }
+                // Update breadth counts (use same threshold as breadth %)
+                if (data.breadth_n_total != null && data.breadth_n_total > 0) {
+                    const pcEl = document.getElementById('regime-pair-count');
+                    const blEl = document.getElementById('regime-bull-count');
+                    const brEl = document.getElementById('regime-bear-count');
+                    const ntEl = document.getElementById('regime-neutral-count');
+                    if (pcEl) pcEl.textContent = `${data.breadth_n_total} pairs:`;
+                    if (blEl) blEl.textContent = `${data.breadth_n_bull} Bull`;
+                    if (brEl) brEl.textContent = `${data.breadth_n_bear} Bear`;
+                    if (ntEl) ntEl.textContent = `${data.breadth_n_neutral} Neutral`;
+                }
 
                 // Update paper toggle
                 document.getElementById('paper-toggle').checked = !isPaperMode;
@@ -7187,17 +7198,12 @@
                     `;
                 }).join('');
                 
-                // Update regime bar
-                let bulls = 0, bears = 0, neutrals = 0;
+                // Update BTC regime badge
                 let btcRegime = null;
                 let btcAdxVal = null;
                 data.forEach(p => {
-                    const r = p.macro_regime || 'NEUTRAL';
-                    if (r === 'BULLISH') bulls++;
-                    else if (r === 'BEARISH') bears++;
-                    else neutrals++;
                     if (p.pair === 'BTCUSDT') {
-                        btcRegime = r;
+                        btcRegime = p.macro_regime || 'NEUTRAL';
                         btcAdxVal = p.adx;
                     }
                 });
@@ -7212,10 +7218,6 @@
                     badge.textContent = btcRegime || 'NEUTRAL';
                     badge.className = 'px-2.5 py-0.5 rounded-full text-xs font-bold bg-yellow-500/20 text-yellow-400';
                 }
-                document.getElementById('regime-pair-count').textContent = `${data.length} pairs:`;
-                document.getElementById('regime-bull-count').textContent = `${bulls} Bull`;
-                document.getElementById('regime-bear-count').textContent = `${bears} Bear`;
-                document.getElementById('regime-neutral-count').textContent = `${neutrals} Neutral`;
                 const globalTag = document.getElementById('btc-global-tag');
                 const btcGlobalOn = document.getElementById('config-btc-global-filter-enabled');
                 if (globalTag) globalTag.classList.toggle('hidden', !(btcGlobalOn && btcGlobalOn.checked));

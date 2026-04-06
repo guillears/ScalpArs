@@ -42,6 +42,10 @@ _global_volume_ratio: float = 1.0
 _btc_ema20_slope_pct: float = 0.0
 _market_bull_pct: float = 0.0
 _market_bear_pct: float = 0.0
+_breadth_n_bull: int = 0
+_breadth_n_bear: int = 0
+_breadth_n_neutral: int = 0
+_breadth_n_total: int = 0
 
 # Phantom Tick Momentum shadow configs: (label, windows, delta_or_deltas)
 # delta_or_deltas: float = uniform delta for all windows, list = per-window deltas
@@ -221,7 +225,11 @@ class TradingEngine:
             "global_volume_ratio": round(_global_volume_ratio, 4),
             "btc_ema20_slope_pct": round(_btc_ema20_slope_pct, 4),
             "market_bull_pct": round(_market_bull_pct, 1),
-            "market_bear_pct": round(_market_bear_pct, 1)
+            "market_bear_pct": round(_market_bear_pct, 1),
+            "breadth_n_bull": _breadth_n_bull,
+            "breadth_n_bear": _breadth_n_bear,
+            "breadth_n_neutral": _breadth_n_neutral,
+            "breadth_n_total": _breadth_n_total
         }
     
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
@@ -2559,17 +2567,18 @@ class TradingEngine:
             _global_volume_ratio = round(_scan_vol_sum / _scan_avg_vol_sum, 4)
             logger.info(f"[GLOBAL_VOL] ratio={_global_volume_ratio:.4f} (sum_vol={_scan_vol_sum:.0f}, sum_avg={_scan_avg_vol_sum:.0f})")
 
-        global _market_bull_pct, _market_bear_pct
-        _n_bull = sum(1 for r in _collected if r['breadth_regime'] == "BULLISH")
-        _n_bear = sum(1 for r in _collected if r['breadth_regime'] == "BEARISH")
-        _n_total = len(_collected)
-        if _n_total > 0:
-            _market_bull_pct = round(_n_bull / _n_total * 100, 1)
-            _market_bear_pct = round(_n_bear / _n_total * 100, 1)
+        global _market_bull_pct, _market_bear_pct, _breadth_n_bull, _breadth_n_bear, _breadth_n_neutral, _breadth_n_total
+        _breadth_n_bull = sum(1 for r in _collected if r['breadth_regime'] == "BULLISH")
+        _breadth_n_bear = sum(1 for r in _collected if r['breadth_regime'] == "BEARISH")
+        _breadth_n_total = len(_collected)
+        _breadth_n_neutral = _breadth_n_total - _breadth_n_bull - _breadth_n_bear
+        if _breadth_n_total > 0:
+            _market_bull_pct = round(_breadth_n_bull / _breadth_n_total * 100, 1)
+            _market_bear_pct = round(_breadth_n_bear / _breadth_n_total * 100, 1)
         else:
             _market_bull_pct = 0.0
             _market_bear_pct = 0.0
-        logger.info(f"[BREADTH] Bull={_market_bull_pct:.1f}% ({_n_bull}/{_n_total}) Bear={_market_bear_pct:.1f}% ({_n_bear}/{_n_total}) threshold={_breadth_flat_th}%")
+        logger.info(f"[BREADTH] Bull={_market_bull_pct:.1f}% ({_breadth_n_bull}/{_breadth_n_total}) Bear={_market_bear_pct:.1f}% ({_breadth_n_bear}/{_breadth_n_total}) threshold={_breadth_flat_th}%")
 
         # ── Phase 3: Apply gates (BTC, volume, breadth) and enter trades ──
         _breadth_enabled = getattr(config.trading_config.thresholds, 'market_breadth_filter_enabled', True)

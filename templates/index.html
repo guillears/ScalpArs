@@ -1135,10 +1135,10 @@
                     </div>
                 </div>
                 
-                <!-- Performance by Entry Gap -->
+                <!-- Performance by Entry Gap 5-20 -->
                 <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by EMA gap range at entry (only tracks new trades)</p>
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Gap 5-20</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by EMA5-EMA20 gap range at entry (only tracks new trades)</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -3914,7 +3914,7 @@
             }
 
             lines.push(`\n${hr2}`);
-            lines.push('## Performance by Entry Gap (EMA20)\n');
+            lines.push('## Performance by Entry Gap 5-20\n');
             lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
             for (const g of (perf.gap_performance || [])) {
                 const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -4596,7 +4596,7 @@
 
                 // --- GAP PERFORMANCE ---
                 lines.push(`\n${hr2}`);
-                lines.push('## Performance by Entry Gap (EMA20)\n');
+                lines.push('## Performance by Entry Gap 5-20\n');
                 lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
                 for (const g of (perf.gap_performance || [])) {
                     const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -5240,7 +5240,7 @@
                     ecrBody.innerHTML = '<tr><td colspan="20" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
-                // Performance by Entry Gap
+                // Performance by Entry Gap 5-20
                 const gapBody = document.getElementById('gap-performance-body');
                 if (data.gap_performance && data.gap_performance.length > 0) {
                     const confBadgeColorsGap = {

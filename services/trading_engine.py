@@ -1353,9 +1353,9 @@ class TradingEngine:
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
                     if order.pair not in binance_pairs:
                         actual_price = await self._fetch_actual_fill_price(order, current_price)
-                        logger.warning(f"[EXTERNAL_CLOSE] {order.pair}: position gone from Binance — closing in DB @ {actual_price}")
+                        logger.warning(f"[CLOSE_FALLBACK] {order.pair}: position gone from Binance — closing in DB @ {actual_price} (reason={reason})")
                         order.status = "CLOSED"
-                        order.close_reason = "EXTERNAL_CLOSE"
+                        order.close_reason = reason
                         order.closed_at = datetime.utcnow()
                         order.exit_price = actual_price
                         taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
@@ -1381,6 +1381,8 @@ class TradingEngine:
                         )
                         db.add(tx)
                         _exit_retry_queue.pop(order.id, None)
+                        await db.commit()
+                        await db.refresh(order)
                         async with _cache_lock:
                             _open_orders_cache[order.pair] = [
                                 o for o in _open_orders_cache.get(order.pair, []) if o['id'] != order.id
@@ -2971,19 +2973,19 @@ class TradingEngine:
                         order = result.scalar_one_or_none()
                         
                         if order:
-                            # Close the order
-                            await self.close_position(
+                            closed = await self.close_position(
                                 db, order, current_price, 
                                 close_reason
                             )
-                            logger.info(f"[REALTIME_{close_reason}] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
-                            
-                            # Remove from cache
-                            async with _cache_lock:
-                                _open_orders_cache[pair] = [
-                                    o for o in _open_orders_cache.get(pair, []) 
-                                    if o['id'] != order_id
-                                ]
+                            if closed:
+                                logger.info(f"[REALTIME_{close_reason}] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                async with _cache_lock:
+                                    _open_orders_cache[pair] = [
+                                        o for o in _open_orders_cache.get(pair, []) 
+                                        if o['id'] != order_id
+                                    ]
+                            else:
+                                logger.warning(f"[REALTIME_{close_reason}] {pair}: close_position returned None — will retry next cycle")
                 except Exception as e:
                     logger.error(f"[REALTIME_SL] Error closing {pair}: {e}")
                 continue  # Already handled, skip trailing stop check
@@ -3014,16 +3016,19 @@ class TradingEngine:
                                 )
                                 order = result.scalar_one_or_none()
                                 if order:
-                                    await self.close_position(
-                                        db, order, current_price,
-                                        f"RSI_MOMENTUM_EXIT L{tp_level}"
+                                    rsi_reason = f"RSI_MOMENTUM_EXIT L{tp_level}"
+                                    closed = await self.close_position(
+                                        db, order, current_price, rsi_reason
                                     )
-                                    logger.info(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
-                                    async with _cache_lock:
-                                        _open_orders_cache[pair] = [
-                                            o for o in _open_orders_cache.get(pair, [])
-                                            if o['id'] != order_id
-                                        ]
+                                    if closed:
+                                        logger.info(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [
+                                                o for o in _open_orders_cache.get(pair, [])
+                                                if o['id'] != order_id
+                                            ]
+                                    else:
+                                        logger.warning(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair}: close_position returned None — will retry next cycle")
                         except Exception as e:
                             logger.error(f"[REALTIME_RSI_MOMENTUM_EXIT] Error closing {pair}: {e}")
                         continue
@@ -3086,16 +3091,19 @@ class TradingEngine:
                             )
                             order = result.scalar_one_or_none()
                             if order:
-                                await self.close_position(
-                                    db, order, current_price,
-                                    f"TICK_MOMENTUM_EXIT L{tp_level}"
+                                tick_reason = f"TICK_MOMENTUM_EXIT L{tp_level}"
+                                closed = await self.close_position(
+                                    db, order, current_price, tick_reason
                                 )
-                                logger.info(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
-                                async with _cache_lock:
-                                    _open_orders_cache[pair] = [
-                                        o for o in _open_orders_cache.get(pair, [])
-                                        if o['id'] != order_id
-                                    ]
+                                if closed:
+                                    logger.info(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [
+                                            o for o in _open_orders_cache.get(pair, [])
+                                            if o['id'] != order_id
+                                        ]
+                                else:
+                                    logger.warning(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair}: close_position returned None — will retry next cycle")
                     except Exception as e:
                         logger.error(f"[REALTIME_TICK_MOMENTUM_EXIT] Error closing {pair}: {e}")
                     continue
@@ -3121,16 +3129,19 @@ class TradingEngine:
                                 )
                                 order = result.scalar_one_or_none()
                                 if order:
-                                    await self.close_position(
-                                        db, order, current_price,
-                                        f"MOMENTUM_EXIT L{tp_level}"
+                                    mom_reason = f"MOMENTUM_EXIT L{tp_level}"
+                                    closed = await self.close_position(
+                                        db, order, current_price, mom_reason
                                     )
-                                    logger.info(f"[REALTIME_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%, peak was {cached_peak_pnl:.4f}%")
-                                    async with _cache_lock:
-                                        _open_orders_cache[pair] = [
-                                            o for o in _open_orders_cache.get(pair, [])
-                                            if o['id'] != order_id
-                                        ]
+                                    if closed:
+                                        logger.info(f"[REALTIME_MOMENTUM_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%, peak was {cached_peak_pnl:.4f}%")
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [
+                                                o for o in _open_orders_cache.get(pair, [])
+                                                if o['id'] != order_id
+                                            ]
+                                    else:
+                                        logger.warning(f"[REALTIME_MOMENTUM_EXIT] {pair}: close_position returned None — will retry next cycle")
                         except Exception as e:
                             logger.error(f"[REALTIME_MOMENTUM_EXIT] Error closing {pair}: {e}")
                         continue
@@ -3171,18 +3182,19 @@ class TradingEngine:
                             order = result.scalar_one_or_none()
                             
                             if order:
-                                await self.close_position(
-                                    db, order, current_price,
-                                    f"TRAILING_STOP L{order.current_tp_level}"
+                                trail_reason = f"TRAILING_STOP L{order.current_tp_level}"
+                                closed = await self.close_position(
+                                    db, order, current_price, trail_reason
                                 )
-                                logger.info(f"[REALTIME_TRAILING] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
-                                
-                                # Remove from cache
-                                async with _cache_lock:
-                                    _open_orders_cache[pair] = [
-                                        o for o in _open_orders_cache.get(pair, [])
-                                        if o['id'] != order_id
-                                    ]
+                                if closed:
+                                    logger.info(f"[REALTIME_TRAILING] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [
+                                            o for o in _open_orders_cache.get(pair, [])
+                                            if o['id'] != order_id
+                                        ]
+                                else:
+                                    logger.warning(f"[REALTIME_TRAILING] {pair}: close_position returned None — will retry next cycle")
                     except Exception as e:
                         logger.error(f"[REALTIME_TRAILING] Error closing {pair}: {e}")
     

@@ -1353,9 +1353,10 @@ class TradingEngine:
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
                     if order.pair not in binance_pairs:
                         actual_price = await self._fetch_actual_fill_price(order, current_price)
-                        logger.warning(f"[EXTERNAL_CLOSE] {order.pair}: position gone from Binance — closing in DB @ {actual_price}")
+                        effective_reason = reason if reason else "EXTERNAL_CLOSE"
+                        logger.warning(f"[POSITION_GONE] {order.pair}: position gone from Binance — closing in DB @ {actual_price} (intended reason={effective_reason})")
                         order.status = "CLOSED"
-                        order.close_reason = "EXTERNAL_CLOSE"
+                        order.close_reason = effective_reason
                         order.closed_at = datetime.utcnow()
                         order.exit_price = actual_price
                         taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
@@ -2402,6 +2403,38 @@ class TradingEngine:
                 if closed:
                     _exit_retry_queue.pop(order_id, None)
                     logger.info(f"[EXIT_RETRY_QUEUE] {retry_order.pair}: Successfully closed on retry {attempt}")
+
+        # --- Periodic Binance position reconciliation (live mode only) ---
+        if not self.is_paper_mode and open_orders:
+            try:
+                positions = await binance_service.get_open_positions()
+                if positions is not None:
+                    binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
+                    for order in open_orders:
+                        if order.status != "OPEN":
+                            continue
+                        if order.pair not in binance_pairs:
+                            tracker = websocket_tracker.get_tracker(order.pair)
+                            price = tracker.last_price if tracker else None
+                            if not price or price <= 0:
+                                price = order.entry_price
+                            actual_price = await self._fetch_actual_fill_price(order, price)
+                            logger.warning(
+                                f"[RECONCILE] {order.pair} {order.direction}: position gone from Binance "
+                                f"but still OPEN in DB — closing @ {actual_price}"
+                            )
+                            async with _close_lock:
+                                await self._close_position_locked(
+                                    db, order, actual_price, reason="EXTERNAL_CLOSE"
+                                )
+                            updates.append({
+                                "order_id": order.id,
+                                "pair": order.pair,
+                                "action": "CLOSED",
+                                "reason": "EXTERNAL_CLOSE (reconciled)",
+                            })
+            except Exception as e:
+                logger.error(f"[RECONCILE] Failed to check Binance positions: {e}")
 
         return updates
     

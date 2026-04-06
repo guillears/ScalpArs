@@ -3341,7 +3341,7 @@
                 const bBearEl = document.getElementById('breadth-bear-value');
                 if (bBullEl && bullPct != null) {
                     const bullTh = parseFloat(document.getElementById('config-market-breadth-bull-threshold-long')?.value) || 50;
-                    bBullEl.textContent = `B:${bullPct.toFixed(0)}%`;
+                    bBullEl.textContent = `L:${bullPct.toFixed(0)}%`;
                     bBullEl.className = bullPct >= bullTh ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
                 }
                 if (bBearEl && bearPct != null) {

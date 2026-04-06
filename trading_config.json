@@ -78,7 +78,7 @@
     "btc_adx_dir_short": "both",
     "adx_dir_long": "rising",
     "adx_dir_short": "both",
-    "signal_lost_exit_enabled": false,
+    "signal_lost_exit_enabled": true,
     "signal_lost_min_profit": -0.90,
     "signal_lost_max_profit": -0.50,
     "signal_lost_flag_enabled": true,

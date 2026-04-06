@@ -68,7 +68,12 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'adx_prev1': float(adx.iloc[-2]) if len(adx) >= 2 and not pd.isna(adx.iloc[-2]) else None,
         'volume': float(df['volume'].ewm(span=5, adjust=False).mean().iloc[-1]),
         'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None,
-        'avg_volume_global': float(avg_volume_global.iloc[-1]) if not pd.isna(avg_volume_global.iloc[-1]) else None
+        'avg_volume_global': float(avg_volume_global.iloc[-1]) if not pd.isna(avg_volume_global.iloc[-1]) else None,
+        'candle_open': float(df['open'].iloc[-1]),
+        'candle_high': float(df['high'].iloc[-1]),
+        'candle_low': float(df['low'].iloc[-1]),
+        'candle_volume_raw': float(df['volume'].iloc[-1]),
+        'candle_avg_volume_20': float(df['volume'].rolling(window=20).mean().iloc[-1]) if len(df) >= 20 else None
     }
 
 

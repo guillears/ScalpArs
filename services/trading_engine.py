@@ -2734,6 +2734,40 @@ class TradingEngine:
 
             await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
 
+            # --- SPIKE GUARD: block entries during abnormal candles ---
+            _sg = config.trading_config.thresholds
+            _spike_guard_on = getattr(_sg, 'spike_guard_enabled', False)
+            if signal in ["LONG", "SHORT"] and _spike_guard_on:
+                _sg_blocked = False
+                _sg_reason = ""
+                _candle_vol = indicators.get('candle_volume_raw')
+                _candle_avg = indicators.get('candle_avg_volume_20')
+                _candle_open = indicators.get('candle_open')
+                _candle_close = indicators.get('price')
+                _ema20 = indicators.get('ema20')
+                _sg_vol_mult = getattr(_sg, 'spike_guard_volume_multiplier', 3.0)
+                _sg_price_pct = getattr(_sg, 'spike_guard_price_move_pct', 1.5)
+                _sg_ema20_dist = getattr(_sg, 'spike_guard_max_ema20_distance_pct', 2.0)
+
+                # Check 1: Volume spike + price move on current candle
+                if _candle_vol and _candle_avg and _candle_avg > 0 and _candle_open and _candle_close and _candle_open > 0:
+                    _vol_ratio = _candle_vol / _candle_avg
+                    _price_move = abs((_candle_close - _candle_open) / _candle_open) * 100
+                    if _vol_ratio >= _sg_vol_mult and _price_move >= _sg_price_pct:
+                        _sg_blocked = True
+                        _sg_reason = f"Volume spike {_vol_ratio:.1f}x + price move {_price_move:.2f}%"
+
+                # Check 2: Price too far from EMA20 (overextended)
+                if not _sg_blocked and _candle_close and _ema20 and _ema20 > 0:
+                    _ema20_dist = abs((_candle_close - _ema20) / _ema20) * 100
+                    if _ema20_dist >= _sg_ema20_dist:
+                        _sg_blocked = True
+                        _sg_reason = f"Price {_ema20_dist:.2f}% from EMA20 (max {_sg_ema20_dist}%)"
+
+                if _sg_blocked:
+                    logger.info(f"[SPIKE_GUARD] {pair}: {signal} blocked — {_sg_reason}")
+                    signal = "NO_TRADE"
+
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
                 logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
                 entry_gap = None

@@ -157,6 +157,12 @@ class SignalThresholds(BaseModel):
     market_breadth_bear_threshold_short: float = 65.0  # Min Bear% of scanned pairs to allow SHORTs
     market_breadth_flat_threshold: float = 0.03  # EMA20 slope % threshold for breadth regime classification (independent of macro_trend_flat_threshold)
 
+    # Spike Guard: block entries during abnormal candles (crashes/pumps)
+    spike_guard_enabled: bool = True
+    spike_guard_volume_multiplier: float = 3.0  # Block if candle volume >= X × 20-bar avg AND price moved >= spike_guard_price_move_pct
+    spike_guard_price_move_pct: float = 1.5  # Min candle price move % to trigger volume spike block
+    spike_guard_max_ema20_distance_pct: float = 2.0  # Block if price is >= X% away from EMA20 (overextended)
+
 
 class InvestmentConfig(BaseModel):
     """Investment configuration"""

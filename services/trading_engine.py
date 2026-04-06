@@ -2442,25 +2442,25 @@ class TradingEngine:
         btc_adx_prev = None
         btc_rsi = None
         btc_rsi_prev = None
-        if btc_global_enabled:
-            btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
-            if btc_ohlcv:
-                btc_indicators = calculate_indicators(btc_ohlcv)
-                if btc_indicators:
-                    btc_ema20 = btc_indicators.get('ema20')
-                    btc_ema20_prev3 = btc_indicators.get('ema20_prev3')
-                    btc_adx = btc_indicators.get('adx')
-                    btc_adx_prev = btc_indicators.get('adx_prev1')
-                    btc_rsi = btc_indicators.get('rsi')
-                    btc_rsi_prev = btc_indicators.get('rsi_prev1')
-                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
-                    btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev3, flat_th)
-                    if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
-                        btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
-            global _current_btc_regime, _btc_ema20_slope_pct
-            _current_btc_regime = btc_regime
-            _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
-            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx})")
+        # Always fetch BTC data for regime/slope display; the toggle only gates entry filters
+        btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
+        if btc_ohlcv:
+            btc_indicators = calculate_indicators(btc_ohlcv)
+            if btc_indicators:
+                btc_ema20 = btc_indicators.get('ema20')
+                btc_ema20_prev3 = btc_indicators.get('ema20_prev3')
+                btc_adx = btc_indicators.get('adx')
+                btc_adx_prev = btc_indicators.get('adx_prev1')
+                btc_rsi = btc_indicators.get('rsi')
+                btc_rsi_prev = btc_indicators.get('rsi_prev1')
+                flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev3, flat_th)
+                if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
+                    btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
+        global _current_btc_regime, _btc_ema20_slope_pct
+        _current_btc_regime = btc_regime
+        _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
+        logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]

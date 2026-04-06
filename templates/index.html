@@ -232,9 +232,9 @@
                                 <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA8 gap (momentum)">Gap 5-8</th>
                                 <th class="px-4 py-3 font-medium text-right">RSI(12)</th>
                                 <th class="px-4 py-3 font-medium text-right">ADX</th>
+                                <th class="px-4 py-3 font-medium text-center">Block Reason</th>
                                 <th class="px-4 py-3 font-medium text-center">Confidence</th>
                                 <th class="px-4 py-3 font-medium text-center">Signal</th>
-                                <th class="px-4 py-3 font-medium text-center">Block Reason</th>
                                 <th class="px-4 py-3 font-medium text-center">Open Positions</th>
                             </tr>
                         </thead>
@@ -2612,8 +2612,8 @@
                                     <th class="px-3 py-3 font-medium text-center text-violet-400" title="Wider stop loss used when entry signal is still active (pre-breakeven)">Sig SL</th>
                                     <th class="px-3 py-3 font-medium text-center">TP Min</th>
                                     <th class="px-3 py-3 font-medium text-center">Pullback</th>
-                                    <th class="px-3 py-3 font-medium text-center" title="Minimum gap % required (EMA5-EMA20)/price">Gap Min</th>
-                                    <th class="px-3 py-3 font-medium text-center" title="Maximum gap % allowed (filters overextended entries)">Gap Max</th>
+                                    <th class="px-3 py-3 font-medium text-center" title="Minimum EMA5-EMA20 gap % required">Gap 5-20 Min</th>
+                                    <th class="px-3 py-3 font-medium text-center" title="Maximum EMA5-EMA20 gap % allowed (filters overextended entries)">Gap 5-20 Max</th>
                                     <th class="px-3 py-3 font-medium text-center">Gap?</th>
                                     <th class="px-3 py-3 font-medium text-center text-cyan-400" title="Max EMA5 Stretch %: max distance from EMA5 allowed for entry">Stretch</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="Enable/disable break-even levels">BE?</th>
@@ -7228,11 +7228,11 @@
                             <td class="px-4 py-3 text-right font-mono text-sm ${gap58Class}">${gap58Value}</td>
                             <td class="px-4 py-3 text-right font-mono ${rsiClass}">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
                             <td class="px-4 py-3 text-right font-mono ${adxClass}">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
+                            <td class="px-4 py-3 text-center">${blockReasonHtml}</td>
                             <td class="px-4 py-3 text-center ${confidenceClass} font-medium">${p.confidence || '-'}</td>
                             <td class="px-4 py-3 text-center">
                                 <span class="px-2 py-1 rounded text-xs font-medium ${signalClass}">${p.signal || 'NOTHING'}</span>
                             </td>
-                            <td class="px-4 py-3 text-center">${blockReasonHtml}</td>
                             <td class="px-4 py-3 text-center">${positionsHtml}</td>
                         </tr>
                     `;

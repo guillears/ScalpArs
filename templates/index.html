@@ -3251,7 +3251,7 @@
                 const slope = data.btc_ema20_slope_pct;
                 if (slopeEl && slope != null) {
                     const sign = slope >= 0 ? '+' : '';
-                    slopeEl.textContent = `${sign}${slope.toFixed(4)}%`;
+                    slopeEl.textContent = `${sign}${slope.toFixed(2)}%`;
                     const flatTh = parseFloat(document.getElementById('config-macro-trend-flat-threshold')?.value) || 0.03;
                     slopeEl.className = slope > flatTh ? 'text-emerald-400 text-xs font-mono' :
                                         slope < -flatTh ? 'text-red-400 text-xs font-mono' :

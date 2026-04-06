@@ -772,7 +772,7 @@ class TradingEngine:
                      f"(bid={ob['best_bid']}, ask={ob['best_ask']}, offset={offset_ticks} ticks)")
 
         limit_result = await binance_service.create_limit_order(
-            symbol=symbol, side=close_side, amount=amount, price=limit_price, leverage=1
+            symbol=symbol, side=close_side, amount=amount, price=limit_price, leverage=1, is_close=True
         )
         if not limit_result:
             logger.warning(f"[MAKER_EXIT] {pair}: Limit order failed, falling back to taker")

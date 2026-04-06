@@ -390,25 +390,27 @@ class BinanceService:
             return 0
     
     async def create_market_order(
-        self, 
-        symbol: str, 
+        self,
+        symbol: str,
         side: str,  # 'buy' or 'sell'
         amount: float,
-        leverage: int = 1
+        leverage: int = 1,
+        is_close: bool = False
     ) -> Optional[Dict]:
         """Create a market order"""
         try:
             await self.load_markets()
-            
-            actual_leverage = await self.set_leverage(symbol, leverage)
-            if actual_leverage == 0:
-                logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping order")
-                _leverage_blocked_pairs.add(symbol)
-                return None
-            if actual_leverage != leverage:
-                logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
-                _leverage_blocked_pairs.add(symbol)
-                return None
+
+            if not is_close:
+                actual_leverage = await self.set_leverage(symbol, leverage)
+                if actual_leverage == 0:
+                    logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping order")
+                    _leverage_blocked_pairs.add(symbol)
+                    return None
+                if actual_leverage != leverage:
+                    logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
+                    _leverage_blocked_pairs.add(symbol)
+                    return None
             
             order = await self.exchange.create_order(
                 symbol=symbol,
@@ -469,20 +471,22 @@ class BinanceService:
         side: str,
         amount: float,
         price: float,
-        leverage: int = 1
+        leverage: int = 1,
+        is_close: bool = False
     ) -> Optional[Dict]:
         """Place a limit (maker) order"""
         try:
             await self.load_markets()
-            actual_leverage = await self.set_leverage(symbol, leverage)
-            if actual_leverage == 0:
-                logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping limit order")
-                _leverage_blocked_pairs.add(symbol)
-                return None
-            if actual_leverage != leverage:
-                logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
-                _leverage_blocked_pairs.add(symbol)
-                return None
+            if not is_close:
+                actual_leverage = await self.set_leverage(symbol, leverage)
+                if actual_leverage == 0:
+                    logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping limit order")
+                    _leverage_blocked_pairs.add(symbol)
+                    return None
+                if actual_leverage != leverage:
+                    logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
+                    _leverage_blocked_pairs.add(symbol)
+                    return None
 
             order = await self.exchange.create_order(
                 symbol=symbol,
@@ -539,7 +543,7 @@ class BinanceService:
         """Close a position"""
         # To close a LONG, we sell. To close a SHORT, we buy.
         close_side = 'sell' if side == 'LONG' else 'buy'
-        return await self.create_market_order(symbol, close_side, amount)
+        return await self.create_market_order(symbol, close_side, amount, is_close=True)
     
     async def get_open_positions(self) -> Optional[List[Dict]]:
         """Get all open positions from Binance. Returns None on API error (distinct from empty list)."""

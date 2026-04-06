@@ -1112,10 +1112,33 @@ class TradingEngine:
         
         # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
+            pre_usdt = self.paper_balance
+            pre_bnb = self.paper_bnb_balance_usd
+
             await self._recalculate_paper_balance(db)
             await self._deduct_fee_from_bnb(entry_fee, db)
             await self.save_state(db)
-        
+
+            _snap = await db.execute(
+                select(func.coalesce(func.sum(Order.investment), 0)).where(
+                    and_(Order.status == "OPEN", Order.is_paper == True)
+                )
+            )
+            post_margin = _snap.scalar() or 0
+            pre_margin = post_margin - investment
+            pre_total = pre_usdt + pre_margin + pre_bnb
+            post_total = self.paper_balance + post_margin + self.paper_bnb_balance_usd
+            delta = post_total - pre_total
+            logger.info(
+                f"[PORTFOLIO_OPEN] {pair} {direction} | "
+                f"Investment={investment:.2f} EntryFee={entry_fee:.4f} | "
+                f"PRE: USDT={pre_usdt:.2f} Margin={pre_margin:.2f} "
+                f"BNB={pre_bnb:.2f} Total={pre_total:.2f} | "
+                f"POST: USDT={self.paper_balance:.2f} Margin={post_margin:.2f} "
+                f"BNB={self.paper_bnb_balance_usd:.2f} Total={post_total:.2f} | "
+                f"Delta={delta:+.2f} (expected: -{entry_fee:.4f})"
+            )
+
         # Force reset WebSocket tracking for new order (fresh start from entry price)
         # This ensures we track high/low from the actual entry, not from previous orders
         websocket_tracker.force_reset_tracking(pair, actual_price)
@@ -1531,9 +1554,33 @@ class TradingEngine:
         
         # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
+            pre_usdt = self.paper_balance
+            pre_bnb = self.paper_bnb_balance_usd
+
             await self._recalculate_paper_balance(db)
             await self._deduct_fee_from_bnb(exit_fee, db)
             await self.save_state(db)
+
+            _snap = await db.execute(
+                select(func.coalesce(func.sum(Order.investment), 0)).where(
+                    and_(Order.status == "OPEN", Order.is_paper == True)
+                )
+            )
+            post_margin = _snap.scalar() or 0
+            pre_margin = post_margin + order.investment
+            pre_total = pre_usdt + pre_margin + pre_bnb
+            post_total = self.paper_balance + post_margin + self.paper_bnb_balance_usd
+            delta = post_total - pre_total
+            logger.info(
+                f"[PORTFOLIO_CLOSE] {order.pair} {order.direction} | "
+                f"PnL={pnl_data['pnl']:+.4f} (raw={pnl_data['raw_pnl']:+.4f} "
+                f"entry_fee={order.entry_fee or 0:.4f} exit_fee={exit_fee:.4f}) | "
+                f"PRE: USDT={pre_usdt:.2f} Margin={pre_margin:.2f} "
+                f"BNB={pre_bnb:.2f} Total={pre_total:.2f} | "
+                f"POST: USDT={self.paper_balance:.2f} Margin={post_margin:.2f} "
+                f"BNB={self.paper_bnb_balance_usd:.2f} Total={post_total:.2f} | "
+                f"Delta={delta:+.2f} vs NetPnL={pnl_data['pnl']:+.4f}"
+            )
 
         self._register_post_exit_tracking(order, reason)
         self._rsi3_history.pop(order.id, None)
@@ -2382,7 +2429,7 @@ class TradingEngine:
             global _current_btc_regime, _btc_ema20_slope_pct
             _current_btc_regime = btc_regime
             _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
-            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev6={btc_ema20_prev3}, adx={btc_adx})")
+            logger.info(f"[SCAN] BTC Global Filter: regime={btc_regime} (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx})")
         
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]

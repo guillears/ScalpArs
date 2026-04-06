@@ -633,7 +633,63 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         gap = None
         if p.ema5 and p.ema20 and p.price and p.price > 0:
             gap = round(((p.ema5 - p.ema20) / p.price) * 100, 4)
-        
+
+        # Calculate EMA5-EMA8 gap
+        gap_5_8 = None
+        if p.ema5 and p.ema8 and p.ema8 > 0:
+            gap_5_8 = round(abs((p.ema5 - p.ema8) / p.ema8) * 100, 4)
+
+        # Determine block reason for NO_TRADE / NOTHING signals
+        block_reason = None
+        if p.signal in (None, "NOTHING", "NO_TRADE"):
+            th = config.trading_config.thresholds
+            _is_bull_stack = p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 > p.ema8 > p.ema13 > p.ema20
+            _is_bear_stack = p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 < p.ema8 < p.ema13 < p.ema20
+            if not _is_bull_stack and not _is_bear_stack:
+                block_reason = "No EMA stack"
+            elif _is_bull_stack:
+                _dir = "LONG"
+                _gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
+                _adx_min = getattr(th, 'adx_strong_long', th.adx_strong)
+                _adx_max = getattr(th, 'momentum_adx_max_long', 100)
+                _rsi_max = getattr(th, 'momentum_long_rsi_max', 100)
+                _rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
+                if p.rsi and p.rsi > _rsi_max:
+                    block_reason = f"RSI {p.rsi:.0f} > {_rsi_max:.0f}"
+                elif p.rsi and p.rsi < _rsi_min:
+                    block_reason = f"RSI {p.rsi:.0f} < {_rsi_min:.0f}"
+                elif p.adx and p.adx < _adx_min:
+                    block_reason = f"ADX {p.adx:.0f} < {_adx_min:.0f}"
+                elif p.adx and p.adx > _adx_max:
+                    block_reason = f"ADX {p.adx:.0f} > {_adx_max:.0f}"
+                elif gap_5_8 is not None and gap_5_8 < _gap_min:
+                    block_reason = f"Gap5-8 {gap_5_8:.3f}% < {_gap_min}%"
+                elif p.price and p.ema20 and p.price <= p.ema20:
+                    block_reason = "Price ≤ EMA20"
+                else:
+                    block_reason = "Filter (see logs)"
+            elif _is_bear_stack:
+                _dir = "SHORT"
+                _gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
+                _adx_min = th.adx_strong
+                _adx_max = getattr(th, 'momentum_adx_max', 100)
+                _rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
+                _rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
+                if p.rsi and p.rsi > _rsi_max:
+                    block_reason = f"RSI {p.rsi:.0f} > {_rsi_max:.0f}"
+                elif p.rsi and p.rsi < _rsi_min:
+                    block_reason = f"RSI {p.rsi:.0f} < {_rsi_min:.0f}"
+                elif p.adx and p.adx < _adx_min:
+                    block_reason = f"ADX {p.adx:.0f} < {_adx_min:.0f}"
+                elif p.adx and p.adx > _adx_max:
+                    block_reason = f"ADX {p.adx:.0f} > {_adx_max:.0f}"
+                elif gap_5_8 is not None and gap_5_8 < _gap_min:
+                    block_reason = f"Gap5-8 {gap_5_8:.3f}% < {_gap_min}%"
+                elif p.price and p.ema20 and p.price >= p.ema20:
+                    block_reason = "Price ≥ EMA20"
+                else:
+                    block_reason = "Filter (see logs)"
+
         pairs_data.append({
             "pair": p.pair,
             "price": display_price,
@@ -642,12 +698,14 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             "ema13": round(p.ema13, 2) if p.ema13 else None,
             "ema20": round(p.ema20, 2) if p.ema20 else None,
             "gap": gap,
+            "gap_5_8": gap_5_8,
             "rsi": round(p.rsi, 2) if p.rsi else None,
             "adx": round(p.adx, 2) if p.adx else None,
             "signal": p.signal,
             "confidence": p.confidence,
             "macro_regime": p.macro_regime,
             "volume_24h": p.volume_24h,
+            "block_reason": block_reason,
             "open_positions": {
                 "long": long_count,
                 "short": short_count

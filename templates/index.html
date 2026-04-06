@@ -228,17 +228,19 @@
                                 <th class="px-4 py-3 font-medium text-right">EMA8</th>
                                 <th class="px-4 py-3 font-medium text-right">EMA13</th>
                                 <th class="px-4 py-3 font-medium text-right">EMA20</th>
-                                <th class="px-4 py-3 font-medium text-right">Gap %</th>
+                                <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA20 gap">Gap 5-20</th>
+                                <th class="px-4 py-3 font-medium text-right" title="EMA5-EMA8 gap (momentum)">Gap 5-8</th>
                                 <th class="px-4 py-3 font-medium text-right">RSI(12)</th>
                                 <th class="px-4 py-3 font-medium text-right">ADX</th>
                                 <th class="px-4 py-3 font-medium text-center">Confidence</th>
                                 <th class="px-4 py-3 font-medium text-center">Signal</th>
+                                <th class="px-4 py-3 font-medium text-center">Block Reason</th>
                                 <th class="px-4 py-3 font-medium text-center">Open Positions</th>
                             </tr>
                         </thead>
                         <tbody id="pairs-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="13" class="px-4 py-8 text-center text-gray-500">Loading pairs data...</td>
+                                <td colspan="15" class="px-4 py-8 text-center text-gray-500">Loading pairs data...</td>
                             </tr>
                         </tbody>
                     </table>
@@ -7135,7 +7137,7 @@
                 const tbody = document.getElementById('pairs-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-gray-500">No pairs data available. Click Refresh to load.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">No pairs data available. Click Refresh to load.</td></tr>';
                     return;
                 }
                 
@@ -7167,18 +7169,52 @@
                     
                     // Format gap with color
                     const gapValue = p.gap !== null ? p.gap.toFixed(3) + '%' : '-';
-                    
+                    const gap58Value = p.gap_5_8 !== null && p.gap_5_8 !== undefined ? p.gap_5_8.toFixed(3) + '%' : '-';
+
                     // Color coding for EMA based on alignment
-                    // Green if EMA5 > EMA8 > EMA13 > EMA20 (bullish)
-                    // Red if EMA5 < EMA8 < EMA13 < EMA20 (bearish)
                     const isBullishEMA = p.ema5 > p.ema8 && p.ema8 > p.ema13 && p.ema13 > p.ema20;
                     const isBearishEMA = p.ema5 < p.ema8 && p.ema8 < p.ema13 && p.ema13 < p.ema20;
-                    const emaColorClass = isBullishEMA ? 'text-emerald-400' : 
+                    const emaColorClass = isBullishEMA ? 'text-emerald-400' :
                                          isBearishEMA ? 'text-red-400' : '';
-                    const gapColorClass = p.signal === 'LONG' ? 'text-emerald-400' : 
-                                         p.signal === 'SHORT' ? 'text-red-400' : 
+                    const gapColorClass = p.signal === 'LONG' ? 'text-emerald-400' :
+                                         p.signal === 'SHORT' ? 'text-red-400' :
                                          (p.gap > 0 ? 'text-emerald-400/50' : p.gap < 0 ? 'text-red-400/50' : '');
-                    
+
+                    // Threshold-aware coloring for Gap 5-8, RSI, ADX
+                    const th = window._cachedConfig?.thresholds || {};
+                    let gap58Class = 'text-gray-400';
+                    let rsiClass = '';
+                    let adxClass = '';
+                    if (isBullishEMA && p.gap_5_8 != null) {
+                        const gap58Min = parseFloat(th.ema_gap_threshold_long || th.ema_gap_threshold || 0.06);
+                        gap58Class = p.gap_5_8 >= gap58Min ? 'text-emerald-400' : 'text-red-400';
+                    } else if (isBearishEMA && p.gap_5_8 != null) {
+                        const gap58Min = parseFloat(th.ema_gap_threshold_short || th.ema_gap_threshold || 0.08);
+                        gap58Class = p.gap_5_8 >= gap58Min ? 'text-emerald-400' : 'text-red-400';
+                    }
+                    if (isBullishEMA && p.rsi != null) {
+                        const rsiMin = parseFloat(th.momentum_long_rsi_min || 40);
+                        const rsiMax = parseFloat(th.momentum_long_rsi_max || 65);
+                        rsiClass = (p.rsi >= rsiMin && p.rsi <= rsiMax) ? 'text-emerald-400' : 'text-red-400';
+                    } else if (isBearishEMA && p.rsi != null) {
+                        const rsiMin = parseFloat(th.momentum_short_rsi_min || 30);
+                        const rsiMax = parseFloat(th.momentum_short_rsi_max || 40);
+                        rsiClass = (p.rsi >= rsiMin && p.rsi <= rsiMax) ? 'text-emerald-400' : 'text-red-400';
+                    }
+                    if (isBullishEMA && p.adx != null) {
+                        const adxMin = parseFloat(th.adx_strong_long || 18);
+                        const adxMax = parseFloat(th.momentum_adx_max_long || 30);
+                        adxClass = (p.adx >= adxMin && p.adx <= adxMax) ? 'text-emerald-400' : 'text-red-400';
+                    } else if (isBearishEMA && p.adx != null) {
+                        const adxMin = parseFloat(th.adx_strong || 25);
+                        const adxMax = parseFloat(th.momentum_adx_max || 35);
+                        adxClass = (p.adx >= adxMin && p.adx <= adxMax) ? 'text-emerald-400' : 'text-red-400';
+                    }
+
+                    const blockReasonHtml = p.block_reason
+                        ? `<span class="text-xs text-yellow-400/80">${p.block_reason}</span>`
+                        : '<span class="text-gray-500">-</span>';
+
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 font-medium">${p.pair}</td>
@@ -7189,12 +7225,14 @@
                             <td class="px-4 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema13)}</td>
                             <td class="px-4 py-3 text-right font-mono text-sm ${emaColorClass}">${formatPrice(p.ema20)}</td>
                             <td class="px-4 py-3 text-right font-mono text-sm ${gapColorClass}">${gapValue}</td>
-                            <td class="px-4 py-3 text-right font-mono">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
-                            <td class="px-4 py-3 text-right font-mono">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
+                            <td class="px-4 py-3 text-right font-mono text-sm ${gap58Class}">${gap58Value}</td>
+                            <td class="px-4 py-3 text-right font-mono ${rsiClass}">${p.rsi !== null ? p.rsi.toFixed(1) : '-'}</td>
+                            <td class="px-4 py-3 text-right font-mono ${adxClass}">${p.adx !== null ? p.adx.toFixed(1) : '-'}</td>
                             <td class="px-4 py-3 text-center ${confidenceClass} font-medium">${p.confidence || '-'}</td>
                             <td class="px-4 py-3 text-center">
                                 <span class="px-2 py-1 rounded text-xs font-medium ${signalClass}">${p.signal || 'NOTHING'}</span>
                             </td>
+                            <td class="px-4 py-3 text-center">${blockReasonHtml}</td>
                             <td class="px-4 py-3 text-center">${positionsHtml}</td>
                         </tr>
                     `;
@@ -7284,7 +7322,7 @@
             if (btn.disabled) return;
 
             try {
-                document.getElementById('pairs-table-body').innerHTML = '<tr><td colspan="13" class="px-4 py-8 text-center text-gray-500">Refreshing...</td></tr>';
+                document.getElementById('pairs-table-body').innerHTML = '<tr><td colspan="15" class="px-4 py-8 text-center text-gray-500">Refreshing...</td></tr>';
                 const res = await fetch(`${API_BASE}/api/pairs/refresh`, { method: 'POST' });
                 const data = await res.json();
                 await loadPairs();
@@ -7841,7 +7879,8 @@
             try {
                 const res = await fetch(`${API_BASE}/api/config`);
                 const config = await res.json();
-                
+                window._cachedConfig = config;
+
                 // Investment settings
                 document.getElementById('config-investment-mode').value = config.investment.mode;
                 if (config.investment.mode === 'percentage') {

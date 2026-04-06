@@ -17,6 +17,8 @@ _ban_until: float = 0
 _ban_persist_callback = None
 POST_BAN_COOLDOWN = 60
 
+_leverage_blocked_pairs: set = set()
+
 
 def set_ban_persist_callback(callback):
     """Register a callback that persists ban_until to the database."""
@@ -365,15 +367,27 @@ class BinanceService:
             logger.error(f"[BINANCE] Error fetching price for {symbol}: {e}")
             return 0.0
     
-    async def set_leverage(self, symbol: str, leverage: int) -> bool:
-        """Set leverage for a symbol"""
+    async def set_leverage(self, symbol: str, leverage: int) -> int:
+        """Set leverage for a symbol. Returns actual leverage applied, or 0 on failure."""
         try:
             await self.load_markets()
-            await self.exchange.set_leverage(leverage, symbol)
-            return True
+            result = await self.exchange.set_leverage(leverage, symbol)
+            actual = int(result.get('leverage', leverage)) if isinstance(result, dict) else leverage
+            if actual != leverage:
+                logger.warning(f"[BINANCE] Leverage for {symbol}: requested {leverage}x but got {actual}x")
+            return actual
         except Exception as e:
-            logger.error(f"[BINANCE] Error setting leverage for {symbol}: {e}")
-            return False
+            logger.warning(f"[BINANCE] set_leverage({symbol}, {leverage}x) failed: {e}")
+            try:
+                pos = await self.get_position(symbol)
+                if pos and pos.get('leverage'):
+                    actual = int(pos['leverage'])
+                    logger.info(f"[BINANCE] Current leverage for {symbol}: {actual}x (from position)")
+                    return actual
+            except Exception:
+                pass
+            logger.error(f"[BINANCE] Cannot determine actual leverage for {symbol}")
+            return 0
     
     async def create_market_order(
         self, 
@@ -386,10 +400,16 @@ class BinanceService:
         try:
             await self.load_markets()
             
-            # Set leverage first
-            await self.set_leverage(symbol, leverage)
+            actual_leverage = await self.set_leverage(symbol, leverage)
+            if actual_leverage == 0:
+                logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping order")
+                _leverage_blocked_pairs.add(symbol)
+                return None
+            if actual_leverage != leverage:
+                logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
+                _leverage_blocked_pairs.add(symbol)
+                return None
             
-            # Create order
             order = await self.exchange.create_order(
                 symbol=symbol,
                 type='market',
@@ -454,7 +474,15 @@ class BinanceService:
         """Place a limit (maker) order"""
         try:
             await self.load_markets()
-            await self.set_leverage(symbol, leverage)
+            actual_leverage = await self.set_leverage(symbol, leverage)
+            if actual_leverage == 0:
+                logger.error(f"[LEVERAGE_MISMATCH] {symbol}: Cannot determine leverage, skipping limit order")
+                _leverage_blocked_pairs.add(symbol)
+                return None
+            if actual_leverage != leverage:
+                logger.warning(f"[LEVERAGE_MISMATCH] {symbol}: Binance leverage {actual_leverage}x != configured {leverage}x — blocking pair")
+                _leverage_blocked_pairs.add(symbol)
+                return None
 
             order = await self.exchange.create_order(
                 symbol=symbol,

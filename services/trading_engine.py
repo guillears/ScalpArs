@@ -13,7 +13,7 @@ from models import Order, Transaction, BotState, PairData, BnbSwapLog
 from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
-from services.binance_service import binance_service
+from services.binance_service import binance_service, _leverage_blocked_pairs
 from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active
 from services.websocket_tracker import websocket_tracker
 
@@ -1053,6 +1053,9 @@ class TradingEngine:
                     quantity = result.get('amount', quantity)
                     entry_fee = actual_price * quantity * taker_fee_rate
                     entry_order_type = "TAKER"
+                else:
+                    logger.error(f"[TRADE] {pair}: Market order failed (leverage mismatch or Binance error)")
+                    return None
         else:
             # Paper trade -- simulate maker fill if enabled
             if maker_enabled:
@@ -2592,6 +2595,12 @@ class TradingEngine:
             confidence = _cr['confidence']
             volume_24h = _cr['volume_24h']
             _pair_volume_ratio = _cr['pair_volume_ratio']
+
+            if signal in ["LONG", "SHORT"] and not self.is_paper_mode:
+                _symbol_check = pair.replace('USDT', '/USDT:USDT')
+                if _symbol_check in _leverage_blocked_pairs:
+                    logger.debug(f"[LEVERAGE_BLOCKED] {pair}: Skipping — leverage mismatch previously detected")
+                    signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and btc_global_enabled:
                 flat_th = config.trading_config.thresholds.macro_trend_flat_threshold

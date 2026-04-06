@@ -2747,22 +2747,14 @@ class TradingEngine:
                 _ema20 = indicators.get('ema20')
                 _sg_vol_mult = getattr(_sg, 'spike_guard_volume_multiplier', 3.0)
                 _sg_price_pct = getattr(_sg, 'spike_guard_price_move_pct', 1.5)
-                _sg_ema20_dist = getattr(_sg, 'spike_guard_max_ema20_distance_pct', 2.0)
 
-                # Check 1: Volume spike + price move on current candle
+                # Volume spike + price move on current candle
                 if _candle_vol and _candle_avg and _candle_avg > 0 and _candle_open and _candle_close and _candle_open > 0:
                     _vol_ratio = _candle_vol / _candle_avg
                     _price_move = abs((_candle_close - _candle_open) / _candle_open) * 100
                     if _vol_ratio >= _sg_vol_mult and _price_move >= _sg_price_pct:
                         _sg_blocked = True
                         _sg_reason = f"Volume spike {_vol_ratio:.1f}x + price move {_price_move:.2f}%"
-
-                # Check 2: Price too far from EMA20 (overextended)
-                if not _sg_blocked and _candle_close and _ema20 and _ema20 > 0:
-                    _ema20_dist = abs((_candle_close - _ema20) / _ema20) * 100
-                    if _ema20_dist >= _sg_ema20_dist:
-                        _sg_blocked = True
-                        _sg_reason = f"Price {_ema20_dist:.2f}% from EMA20 (max {_sg_ema20_dist}%)"
 
                 if _sg_blocked:
                     logger.info(f"[SPIKE_GUARD] {pair}: {signal} blocked — {_sg_reason}")

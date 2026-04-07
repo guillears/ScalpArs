@@ -3961,6 +3961,16 @@
                 lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
             }
 
+            if (perf.range_position_performance && perf.range_position_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Range Position\n');
+                lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.range_position_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by Entry ADX\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
@@ -4158,6 +4168,7 @@
             lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.7}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
             lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Range: [${th.rsi_momentum_exit_min_profit}%, ${th.rsi_momentum_exit_max_profit !== undefined ? th.rsi_momentum_exit_max_profit : 999}%]  (close on 2 consecutive RSI drops/rises)`);
             lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Deltas: ${th.tick_momentum_exit_min_deltas || th.tick_momentum_exit_min_delta || 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
+            lines.push(`  Spike Guard: ${th.spike_guard_enabled !== undefined ? th.spike_guard_enabled : false}  |  Vol Multiplier: ${th.spike_guard_volume_multiplier || 3.0}x  |  Price Move: ${th.spike_guard_price_move_pct || 1.5}%`);
 
             lines.push('\nConfidence Levels:');
             lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
@@ -4643,6 +4654,17 @@
                 for (const r of (perf.rsi_performance || [])) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+                }
+
+                // --- RANGE POSITION PERFORMANCE ---
+                if (perf.range_position_performance && perf.range_position_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Range Position\n');
+                    lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf.range_position_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${confStr.padEnd(14)}`);
+                    }
                 }
 
                 // --- ADX PERFORMANCE ---

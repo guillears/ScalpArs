@@ -2587,7 +2587,7 @@
                                 <span class="ml-2 text-sm text-gray-400">Enabled</span>
                             </label>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">Block entry if EMA5-EMA8 gap is compressing (current gap &le; previous candle). Only enter when momentum is expanding.</p>
+                        <p class="text-xs text-gray-500 mt-1">Block entry if EMA5-EMA8 gap is compressing vs 1 or 2 candles ago. Catches late-trend entries where momentum is decelerating.</p>
                     </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>

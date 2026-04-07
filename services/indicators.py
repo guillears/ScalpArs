@@ -52,9 +52,11 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'price': float(df['close'].iloc[-1]),
         'ema5': float(ema5.iloc[-1]) if not pd.isna(ema5.iloc[-1]) else None,
         'ema5_prev1': float(ema5.iloc[-2]) if len(ema5) >= 2 and not pd.isna(ema5.iloc[-2]) else None,
+        'ema5_prev2': float(ema5.iloc[-3]) if len(ema5) >= 3 and not pd.isna(ema5.iloc[-3]) else None,
         'ema5_prev3': float(ema5.iloc[-4]) if len(ema5) >= 4 and not pd.isna(ema5.iloc[-4]) else None,
         'ema8': float(ema8.iloc[-1]) if not pd.isna(ema8.iloc[-1]) else None,
         'ema8_prev1': float(ema8.iloc[-2]) if len(ema8) >= 2 and not pd.isna(ema8.iloc[-2]) else None,
+        'ema8_prev2': float(ema8.iloc[-3]) if len(ema8) >= 3 and not pd.isna(ema8.iloc[-3]) else None,
         'ema13': float(ema13.iloc[-1]) if not pd.isna(ema13.iloc[-1]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
         'ema20_prev3': float(ema20.iloc[-4]) if len(ema20) >= 4 and not pd.isna(ema20.iloc[-4]) else None,
@@ -139,7 +141,9 @@ def get_signal(
     ema50_prev12: float = None,
     rsi_prev3: float = None,
     ema5_prev1: float = None,
-    ema8_prev1: float = None
+    ema8_prev1: float = None,
+    ema5_prev2: float = None,
+    ema8_prev2: float = None
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -277,11 +281,14 @@ def get_signal(
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
                 prev_gap_pct = ((ema5_prev1 - ema8_prev1) / ema8_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema8_prev1 > 0 else None
+                prev2_gap_pct = ((ema5_prev2 - ema8_prev2) / ema8_prev2) * 100 if ema5_prev2 and ema8_prev2 and ema8_prev2 > 0 else None
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
                 long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= long_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
-                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing vs 1 candle ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                elif gap_expanding_enabled and prev2_gap_pct is not None and ema_gap_pct <= prev2_gap_pct:
+                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing vs 2 candles ({prev2_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                 elif not gap_threshold_met:
@@ -317,11 +324,14 @@ def get_signal(
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
                 prev_gap_pct = ((ema8_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema5_prev1 > 0 else None
+                prev2_gap_pct = ((ema8_prev2 - ema5_prev2) / ema5_prev2) * 100 if ema5_prev2 and ema8_prev2 and ema5_prev2 > 0 else None
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
                 short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= short_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
-                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing vs 1 candle ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                elif gap_expanding_enabled and prev2_gap_pct is not None and ema_gap_pct <= prev2_gap_pct:
+                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing vs 2 candles ({prev2_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
                 elif not gap_threshold_met:

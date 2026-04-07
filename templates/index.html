@@ -1207,6 +1207,30 @@
                     </div>
                 </div>
 
+                <!-- Performance by Range Position -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Range Position</h3>
+                    <p class="text-xs text-gray-500 mb-3">Where price was in the 20-candle high-low range at entry. 0%=bottom, 100%=top. LONGs should enter low, SHORTs should enter high.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Range Position</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="range-position-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting range position)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Entry ADX -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry ADX</h3>
@@ -5362,7 +5386,37 @@
                 } else {
                     rsiBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting entry RSI)</td></tr>';
                 }
-                
+
+                // Performance by Range Position
+                const rpBody = document.getElementById('range-position-performance-body');
+                if (data.range_position_performance && data.range_position_performance.length > 0) {
+                    rpBody.innerHTML = data.range_position_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = {'VERY_STRONG':'text-purple-400','STRONG_BUY':'text-pink-400'}[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${r.range}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    rpBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting range position)</td></tr>';
+                }
+
                 // Performance by Entry ADX
                 const adxBody = document.getElementById('adx-performance-body');
                 if (data.adx_performance && data.adx_performance.length > 0) {

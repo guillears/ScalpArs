@@ -1,0 +1,119 @@
+================================================================================
+TRADING BOT SPLIT ANALYTICS REPORT
+Generated: 2026-04-07T19:52:08.501Z
+Total Trades: 36 (29L Bullish / 7S Bearish)
+Bullish: 29L, 69% WR, -$73.05
+Bearish: 7S, 28.6% WR, -$118.81
+Combined: -$191.86
+
+Key context: This report covers the transition period with multiple config changes,
+bug fixes, and infrastructure improvements. Not representative of final config.
+
+Major fixes during this period:
+- Maker entry disabled (was causing 20s delay hurting shorts)
+- Pair ADX direction bug fixed (was inside BTC global filter block)
+- reduceOnly added to all closes (prevents position flips)
+- Real-time security gap check added (was only in 40s scan loop)
+- SL epsilon fix (boundary precision)
+- 2-candle gap expanding filter
+- Spike guard
+- Multiple threshold adjustments
+
+Final config for fresh test:
+- Leverage: 2x (data collection mode)
+- Maker entry: OFF
+- Gap short: 0.05%, Gap long: 0.06%
+- EMA20 slope min short: 0.04%
+- Gap min: 0.15%
+- RSI: L 40-65, S 30-50
+- TP: 0.7% with 0.05% pullback trailing
+- ADX dir long: rising (enforced independently)
+
+================================================================================
+
+BULLISH REGIME (29 Longs)
+Win Rate: 68.97%
+Total P&L: -$73.05
+Avg P&L%: +0.02%
+
+Key findings:
+- Rising ADX longs: 77.3% WR, +$63.30 (22 trades)
+- Falling ADX longs: 42.9% WR, -$136.34 (7 trades) — ADX direction bug was active
+- Range Position 75-100%: 58.3% WR, -$87.12 (top of range = buying tops)
+- Range Position 50-75%: 75% WR, -$5.68 (mid range = better)
+- Trailing Stop exits: avg +0.67-0.70% close (TP working well)
+- FL_Signal_Lost: avg RngPos 84% (entered at top of range)
+
+BEARISH REGIME (7 Shorts — all pre-fix)
+Win Rate: 28.57%
+Total P&L: -$118.81
+All shorts were with maker entry ON and old config — not representative.
+
+================================================================================
+FULL REPORT DATA BELOW
+================================================================================
+
+## CONFIGURATION
+
+Signal Thresholds:
+  EMA Gap Threshold L: 0.06  |  S: 0.05  |  EMA Gap Max: 0.35
+  ADX Very Strong: L>25 S>30  |  ADX Strong: L>18 S>25  |  ADX Max: L30 S35
+  LONG RSI: 40 - 65  |  SHORT RSI: 30 - 50
+  RSI x ADX Filter L: (none)  |  S: 30-35:25,35-50:30
+  Macro Trend Filter: false  |  BTC Global: false  |  Neutral Mode: none
+  BTC RSI L: 40-65  |  BTC RSI S: 25-60  |  BTC ADX L: 15-35  |  BTC ADX S: 18-35  |  ADX Dir L: both  |  ADX Dir S: both
+  Pair ADX Dir L: rising  |  Pair ADX Dir S: both
+  Global Vol Filter: false  |  Thresh L: 1.05  |  Thresh S: 1.05  |  Lookback: 48 bars
+  Pair Vol Filter: false  |  Thresh L: 1.1  |  Thresh S: 1.1  |  Lookback: 20 bars
+  Market Breadth Filter: true  |  Bull% >= 25% (LONGs)  |  Bear% >= 60% (SHORTs)  |  Flat Th: 0.03%
+  EMA20 Filter Long: true  |  Short: true
+  EMA20 Slope Long: true  |  Short: true  |  Min Slope L: 0%  |  Min Slope S: 0.04%
+  RSI Momentum Filter: true
+  EMA Gap Expanding Filter: true (2-candle)
+  Spike Guard: true  |  Vol Multiplier: 3x  |  Price Move: 1.5%
+  Maker Entry: OFF
+  Leverage: 2x
+
+## Entry Conditions by Close Reason (LONGS)
+
+Reason                     #   ADXD  RngPos  AvgPeak%   AvgP&L%    Total$
+TICK_MOMENTUM_EXIT L1 (L)  8   +1.00  67%    +0.43%     +0.13%     $15.98
+TRAILING_STOP L1 (L)       7   +1.13  65%    +0.76%     +0.70%     $46.04
+STOP_LOSS_WIDE L1 (L)      5   +1.04  77%    +0.21%     -0.91%     $-91.69
+FL_SIGNAL_LOST L1 (L)      4   +2.33  84%    +0.08%     -0.81%     $-88.92
+TRAILING_STOP L2 (L)       4   +0.51  83%    +0.73%     +0.64%     $41.65
+
+## Entry Conditions by Close Reason (SHORTS)
+
+Reason                     #   ADXD  RngPos  AvgPeak%   AvgP&L%    Total$
+FL_SIGNAL_LOST L1 (S)      2    -     5%     +0.19%     -0.81%     $-81.04
+TRAILING_STOP L1 (S)       1    -     -      +0.60%     +0.49%     $24.81
+TRAILING_STOP L2 (S)       1    -     -      +0.90%     +0.85%     $38.89
+STOP_LOSS_WIDE L1 (S)      1    -     -      +0.00%     -0.95%     $-44.75
+
+## Range Position Performance (LONGS)
+
+Range      #   Win%   Avg%
+25-50%     1   100%   +0.54%
+50-75%    12    75%   +0.10%
+75-100%   12   58.3%  -0.13%
+
+## ADX Delta Performance (LONGS)
+
+Delta          #   Win%   Avg%
+-1.0 to -0.5  1   100%   +0.71%
+-0.3 to -0.1  1   100%   +0.20%
+0.0 to 0.05   1   100%   +0.65%
+0.05 to 0.1   1   100%   +0.54%
+0.1 to 0.3    1   100%   +0.63%
+0.3 to 0.5    1    0%    -0.91%
+0.5 to 1.0    2   50%    -0.39%
+1.0 to 2.0    4   100%   +0.58%
+> 2.0         5   60%    +0.01%
+
+## ADX Direction Performance
+
+Dir      #   Direction  Win%   Total$    Avg%
+Rising   22  LONG       77.3%  $63.30    +0.15%
+Falling   7  LONG       42.9%  -$136.34  -0.37%
+Rising    7  SHORT      28.6%  -$118.81  -0.35%

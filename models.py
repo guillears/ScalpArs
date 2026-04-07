@@ -121,6 +121,9 @@ class Order(Base):
     # Whether the entry signal was still active when the order was closed
     signal_active_at_close = Column(Boolean, nullable=True)
 
+    # Slippage tracking: difference between decision price (WebSocket) and actual Binance fill
+    exit_slippage_pct = Column(Float, nullable=True)  # positive = filled worse than expected
+
     # Exit quality: Price vs EMA5 at exit
     exit_price_vs_ema5_pct = Column(Float, nullable=True)
     exit_ema5_slope_pct = Column(Float, nullable=True)

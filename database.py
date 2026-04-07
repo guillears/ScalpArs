@@ -195,6 +195,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_range_position FLOAT"))
                 if 'entry_adx_delta' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_adx_delta FLOAT"))
+                if 'exit_slippage_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN exit_slippage_pct FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

@@ -749,6 +749,7 @@ class TradingEngine:
                 return {
                     'price': result['price'], 'fee_rate': taker_fee_rate,
                     'exit_order_type': 'TAKER_FALLBACK',
+                    'decision_price': current_price,
                 }
             except Exception as e:
                 logger.critical(
@@ -758,6 +759,7 @@ class TradingEngine:
                 return {
                     'price': current_price, 'fee_rate': taker_fee_rate,
                     'exit_order_type': 'TAKER_FALLBACK_RECOVERED',
+                    'decision_price': current_price,
                 }
 
         tick_size = await binance_service.get_tick_size(symbol)
@@ -784,6 +786,7 @@ class TradingEngine:
                 return {
                     'price': result['price'], 'fee_rate': taker_fee_rate,
                     'exit_order_type': 'TAKER_FALLBACK',
+                    'decision_price': current_price,
                 }
             except Exception as e:
                 logger.critical(
@@ -793,6 +796,7 @@ class TradingEngine:
                 return {
                     'price': current_price, 'fee_rate': taker_fee_rate,
                     'exit_order_type': 'TAKER_FALLBACK_RECOVERED',
+                    'decision_price': current_price,
                 }
 
         order_id = limit_result['id']
@@ -809,6 +813,7 @@ class TradingEngine:
                 return {
                     'price': fill_price, 'fee_rate': maker_fee_rate,
                     'exit_order_type': 'MAKER',
+                    'decision_price': current_price,
                 }
 
         logger.info(f"[MAKER_EXIT] {pair}: Timeout after {timeout}s, cancelling limit order")
@@ -827,6 +832,7 @@ class TradingEngine:
             return {
                 'price': fill_price, 'fee_rate': maker_fee_rate,
                 'exit_order_type': 'MAKER',
+                'decision_price': current_price,
             }
 
         logger.info(f"[MAKER_EXIT] {pair}: No fill, falling back to market order")
@@ -838,6 +844,7 @@ class TradingEngine:
             return {
                 'price': result['price'], 'fee_rate': taker_fee_rate,
                 'exit_order_type': 'TAKER_FALLBACK',
+                'decision_price': current_price,
             }
         except Exception as e:
             logger.critical(
@@ -847,6 +854,7 @@ class TradingEngine:
             return {
                 'price': current_price, 'fee_rate': taker_fee_rate,
                 'exit_order_type': 'TAKER_FALLBACK_RECOVERED',
+                'decision_price': current_price,
             }
 
     async def _simulate_maker_exit_paper(
@@ -1347,10 +1355,18 @@ class TradingEngine:
                         symbol=symbol, side=order.direction, amount=order.quantity
                     )
                     if result:
+                        # Use actual Binance fill price, fall back to WebSocket price only if unavailable
+                        binance_fill_price = result.get('price', 0)
+                        if binance_fill_price and binance_fill_price > 0:
+                            _exit_price = binance_fill_price
+                        else:
+                            _exit_price = current_price
+                            logger.warning(f"[EXIT_FILL_PRICE] {order.pair}: Binance returned no fill price, using WebSocket price {current_price}")
                         exit_result = {
-                            'price': current_price,
+                            'price': _exit_price,
                             'fee_rate': taker_fee_rate,
                             'exit_order_type': 'TAKER',
+                            'decision_price': current_price,  # WebSocket price at decision time for slippage calc
                         }
                     else:
                         exit_result = None
@@ -1394,6 +1410,17 @@ class TradingEngine:
                         order.exit_fee = round(exit_fee, 4)
                         order.total_fee = round((order.entry_fee or 0) + exit_fee, 4)
                         order.exit_order_type = "EXTERNAL"
+                        # Slippage for external close: compare WebSocket decision price vs actual fill
+                        if current_price and current_price > 0 and actual_price > 0:
+                            if order.direction == "LONG":
+                                order.exit_slippage_pct = round((current_price - actual_price) / current_price * 100, 4)
+                            else:
+                                order.exit_slippage_pct = round((actual_price - current_price) / current_price * 100, 4)
+                            logger.info(
+                                f"[EXIT_SLIPPAGE] {order.pair} {order.direction} (EXTERNAL): "
+                                f"decision={current_price:.6f}, fill={actual_price:.6f}, "
+                                f"slippage={order.exit_slippage_pct:+.4f}%"
+                            )
                         tx = Transaction(
                             order_id=order.id, pair=order.pair,
                             action=f"CLOSE_{order.direction}", price=actual_price,
@@ -1426,6 +1453,26 @@ class TradingEngine:
             notional_at_close = order.quantity * actual_exit_price
             exit_fee = notional_at_close * exit_fee_rate
 
+            # SLIPPAGE TRACKING: compare decision price (WebSocket) vs actual Binance fill
+            _decision_price = exit_result.get('decision_price', current_price)
+            if _decision_price and _decision_price > 0 and actual_exit_price > 0:
+                if order.direction == "LONG":
+                    # Closing a LONG = selling. Worse fill = lower price. Slippage = (decision - actual) / decision * 100
+                    _slippage_pct = round((_decision_price - actual_exit_price) / _decision_price * 100, 4)
+                else:
+                    # Closing a SHORT = buying. Worse fill = higher price. Slippage = (actual - decision) / decision * 100
+                    _slippage_pct = round((actual_exit_price - _decision_price) / _decision_price * 100, 4)
+                _slippage_dollar = abs(actual_exit_price - _decision_price) * order.quantity
+                _direction_label = "WORSE" if _slippage_pct > 0 else "BETTER" if _slippage_pct < 0 else "EXACT"
+                logger.info(
+                    f"[EXIT_SLIPPAGE] {order.pair} {order.direction}: "
+                    f"decision={_decision_price:.6f}, fill={actual_exit_price:.6f}, "
+                    f"slippage={_slippage_pct:+.4f}% (${_slippage_dollar:.2f}) [{_direction_label}] "
+                    f"type={exit_order_type}"
+                )
+            else:
+                _slippage_pct = None
+
             # POST-CLOSE VERIFICATION: confirm position is actually gone from Binance
             try:
                 await asyncio.sleep(1)  # brief delay for Binance to process
@@ -1439,7 +1486,8 @@ class TradingEngine:
             except Exception as e:
                 logger.warning(f"[CLOSE_VERIFY] {order.pair}: Verification check failed: {e}")
         else:
-            # --- Paper mode: no retry needed ---
+            # --- Paper mode: no retry needed, no slippage ---
+            _slippage_pct = None
             _urgent_exit_paper = any(reason.startswith(p) for p in (
                 "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM",
             ))
@@ -1482,26 +1530,28 @@ class TradingEngine:
         order.pnl_percentage = pnl_data['pnl_percentage']
         order.closed_at = datetime.utcnow()
         order.close_reason = reason
+        order.exit_slippage_pct = _slippage_pct
 
         transaction = Transaction(
             order_id=order.id,
             binance_order_id=order.binance_order_id,
             pair=order.pair,
             action=f"CLOSE_{order.direction}",
-            price=current_price,
+            price=actual_exit_price,
             quantity=order.quantity,
             investment=order.investment,
             leverage=order.leverage,
             notional_value=notional_at_close,
             fee=exit_fee,
-            order_type="TAKER",
+            order_type=exit_order_type,
             is_paper=order.is_paper
         )
         db.add(transaction)
 
         await db.commit()
         await db.refresh(order)
-        logger.info(f"[CLOSE_COMMITTED] {order.pair} {order.direction}: essential close saved (reason={reason}, pnl={pnl_data['pnl']:.4f})")
+        _slip_str = f", slippage={_slippage_pct:+.4f}%" if _slippage_pct is not None else ""
+        logger.info(f"[CLOSE_COMMITTED] {order.pair} {order.direction}: essential close saved (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
 
         # ═══════════════════════════════════════════════════════════════
         # PHASE 2: Optional metadata — failures here must NEVER revert

@@ -981,6 +981,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
             "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER",
+            "exit_slippage_pct": o.exit_slippage_pct,
             "post_exit_peak_minutes": o.post_exit_peak_minutes,
             "post_exit_trough_minutes": o.post_exit_trough_minutes,
             "post_exit_final_pnl": o.post_exit_final_pnl,
@@ -1482,12 +1483,16 @@ def _period_stats(label, trades):
     total_wins_usd = sum(o.pnl for o in trades if (o.pnl or 0) > 0)
     total_losses_usd = abs(sum(o.pnl for o in trades if (o.pnl or 0) < 0))
     profit_factor = round(total_wins_usd / total_losses_usd, 2) if total_losses_usd > 0 else (999 if total_wins_usd > 0 else 0)
+    # Slippage stats (only for trades that have slippage data)
+    slippage_trades = [o for o in trades if o.exit_slippage_pct is not None]
+    avg_slippage_pct = round(sum(o.exit_slippage_pct for o in slippage_trades) / len(slippage_trades), 4) if slippage_trades else None
     return {
         "period": label, "count": count, "longs": longs, "shorts": shorts,
         "win_rate": win_rate, "avg_pnl_pct": avg_pnl_pct, "total_pnl": total_pnl,
         "profit_factor": profit_factor, "total_fees": total_fees,
         "total_investment": total_investment, "total_notional": total_notional,
         "pnl_over_inv": pnl_over_inv, "pnl_over_not": pnl_over_not,
+        "avg_slippage_pct": avg_slippage_pct, "slippage_count": len(slippage_trades),
     }
 
 

@@ -86,7 +86,9 @@ class Order(Base):
     # Market breadth at entry (% of scanned pairs in Bull/Bear regime)
     entry_bull_pct = Column(Float, nullable=True)
     entry_bear_pct = Column(Float, nullable=True)
-    
+    # Price range position at entry: (price - low_20) / (high_20 - low_20) * 100 (0=bottom, 100=top of 20-candle range)
+    entry_range_position = Column(Float, nullable=True)
+
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)
     exit_fee = Column(Float, nullable=True, default=0.0)

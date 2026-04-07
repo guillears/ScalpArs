@@ -75,7 +75,9 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'candle_high': float(df['high'].iloc[-1]),
         'candle_low': float(df['low'].iloc[-1]),
         'candle_volume_raw': float(df['volume'].iloc[-1]),
-        'candle_avg_volume_20': float(df['volume'].rolling(window=20).mean().iloc[-1]) if len(df) >= 20 else None
+        'candle_avg_volume_20': float(df['volume'].rolling(window=20).mean().iloc[-1]) if len(df) >= 20 else None,
+        'high_20': float(df['high'].iloc[-20:].max()) if len(df) >= 20 else None,
+        'low_20': float(df['low'].iloc[-20:].min()) if len(df) >= 20 else None
     }
 
 

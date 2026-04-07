@@ -450,10 +450,11 @@
                                     <th class="px-3 py-2 font-medium text-right" title="P&L as $ and % of total notional">P&L / Not</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">PF</th>
                                     <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total fees paid (entry + exit)">Fees</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg exit slippage (+ = worse fill, - = better fill). Only live trades.">Slip %</th>
                                 </tr>
                             </thead>
                             <tbody id="period-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3621,7 +3622,7 @@
             if (perf.period_performance && perf.period_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Period Performance\n');
-                lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)}`);
+                lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)} ${'Slip%'.padEnd(8)}`);
                 for (const r of perf.period_performance) {
                     const dirStr = `${r.longs}L/${r.shorts}S`;
                     const wrStr = r.count > 0 ? r.win_rate.toFixed(1) + '%' : '-';
@@ -3634,7 +3635,8 @@
                     const pnlNotStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
                     const pfStr = r.count > 0 ? (r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)) : '-';
                     const feesStr = '$' + Math.round(r.total_fees).toLocaleString('en-US');
-                    lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)}`);
+                    const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
+                    lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)} ${slipStr.padEnd(8)}`);
                 }
             }
 
@@ -4304,7 +4306,7 @@
                 if (perf.period_performance && perf.period_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Period Performance\n');
-                    lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)}`);
+                    lines.push(`${'Period'.padEnd(12)} ${'#'.padEnd(6)} ${'Dir'.padEnd(10)} ${'WinRate'.padEnd(9)} ${'AvgP&L%'.padEnd(12)} ${'TotInv'.padEnd(12)} ${'TotNot'.padEnd(14)} ${'P&L/Inv'.padEnd(22)} ${'P&L/Not'.padEnd(24)} ${'PF'.padEnd(6)} ${'Fees'.padEnd(10)} ${'Slip%'.padEnd(8)}`);
                     for (const r of perf.period_performance) {
                         const dirStr = `${r.longs}L/${r.shorts}S`;
                         const wrStr = r.count > 0 ? r.win_rate.toFixed(1) + '%' : '-';
@@ -4317,7 +4319,8 @@
                         const pnlNotStr = `${pnlSign}$${pnlAbs} (${r.pnl_over_not >= 0 ? '+' : ''}${r.pnl_over_not.toFixed(2)}%)`;
                         const pfStr = r.count > 0 ? (r.profit_factor >= 999 ? '∞' : r.profit_factor.toFixed(2)) : '-';
                         const feesStr = '$' + Math.round(r.total_fees).toLocaleString('en-US');
-                        lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)}`);
+                        const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
+                        lines.push(`${r.period.padEnd(12)} ${String(r.count).padEnd(6)} ${dirStr.padEnd(10)} ${wrStr.padEnd(9)} ${avgStr.padEnd(12)} ${invStr.padEnd(12)} ${notStr.padEnd(14)} ${pnlInvStr.padEnd(22)} ${pnlNotStr.padEnd(24)} ${pfStr.padEnd(6)} ${feesStr.padEnd(10)} ${slipStr.padEnd(8)}`);
                     }
                 }
 
@@ -5030,6 +5033,7 @@
                                 <td class="px-3 py-2 text-right">$0.00 (0%)</td>
                                 <td class="px-3 py-2 text-right">-</td>
                                 <td class="px-3 py-2 text-right text-yellow-400">$0.00</td>
+                                <td class="px-3 py-2 text-right text-gray-500">-</td>
                             </tr>`;
                         }
                         const wrClass = safe(r.win_rate) >= 50 ? 'text-emerald-400' : 'text-red-400';
@@ -5052,10 +5056,11 @@
                             <td class="px-3 py-2 text-right ${pnlClass} font-medium">${pnlNotStr}</td>
                             <td class="px-3 py-2 text-right ${pfClass} font-medium">${safe(r.profit_factor) >= 999 ? '∞' : safe(r.profit_factor).toFixed(2)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">$${fmtNum(r.total_fees)}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_slippage_pct != null ? (r.avg_slippage_pct > 0.02 ? 'text-red-400' : r.avg_slippage_pct < -0.02 ? 'text-emerald-400' : 'text-gray-300') : 'text-gray-500'}">${r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-'}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    ppBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ppBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 document.getElementById('perf-total-trades').textContent = data.total_trades;

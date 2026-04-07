@@ -63,7 +63,7 @@
     "momentum_long_rsi_min": 40.0,
     "momentum_long_rsi_max": 65.0,
     "momentum_short_rsi_max": 50.0,
-    "momentum_short_rsi_min": 30.0,
+    "momentum_short_rsi_min": 35.0,
     "momentum_adx_max": 35.0,
     "btc_global_filter_enabled": true,
     "btc_rsi_min_long": 40,

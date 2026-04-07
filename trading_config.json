@@ -2,7 +2,7 @@
   "trading_fee": 0.00045,
   "maker_fee": 0.00018,
   "taker_fee": 0.00045,
-  "maker_entry_enabled": true,
+  "maker_entry_enabled": false,
   "maker_timeout_seconds": 20,
   "maker_offset_ticks": 1,
   "maker_exit_enabled": false,

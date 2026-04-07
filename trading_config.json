@@ -14,7 +14,7 @@
   "bnb_check_interval_hours": 6,
   "bnb_runway_hours": 24,
   "paper_bnb_initial_usd": 500.0,
-  "trading_pairs_limit": 50,
+  "trading_pairs_limit": 70,
   "pair_blacklist": "XAGUSDT,XAUUSDT",
   "investment": {
     "mode": "equal_split",

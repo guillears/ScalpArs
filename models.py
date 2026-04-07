@@ -88,6 +88,8 @@ class Order(Base):
     entry_bear_pct = Column(Float, nullable=True)
     # Price range position at entry: (price - low_20) / (high_20 - low_20) * 100 (0=bottom, 100=top of 20-candle range)
     entry_range_position = Column(Float, nullable=True)
+    # ADX delta at entry: adx - adx_prev (positive = rising, negative = falling, magnitude = strength)
+    entry_adx_delta = Column(Float, nullable=True)
 
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

@@ -934,7 +934,8 @@ class TradingEngine:
         entry_pair_volume_ratio: float = None,
         entry_bull_pct: float = None,
         entry_bear_pct: float = None,
-        entry_range_position: float = None
+        entry_range_position: float = None,
+        entry_adx_delta: float = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -1104,6 +1105,7 @@ class TradingEngine:
             entry_bull_pct=entry_bull_pct,
             entry_bear_pct=entry_bear_pct,
             entry_range_position=entry_range_position,
+            entry_adx_delta=entry_adx_delta,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -2829,7 +2831,8 @@ class TradingEngine:
                     entry_pair_volume_ratio=round(_pair_volume_ratio, 4),
                     entry_bull_pct=_market_bull_pct,
                     entry_bear_pct=_market_bear_pct,
-                    entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None
+                    entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None,
+                    entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None
                 )
 
                 if order:

@@ -1307,7 +1307,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "avg_leverage": 0, "return_multiple": 0, "daily_compound_return": 0,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
-            "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
+            "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "btc_slope_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [],
             "by_close_reason": {},
@@ -2034,6 +2034,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "ema58_gap_performance": [],
             "rsi_performance": [],
             "range_position_performance": [],
+            "adx_delta_performance": [],
             "adx_performance": [],
             "stretch_performance": [],
             "pair_slope_performance": [],
@@ -2235,6 +2236,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     ema58_gap_performance = []
     rsi_performance = []
     range_position_performance = []
+    adx_delta_performance = []
     adx_performance = []
     adx_direction_performance = []
     stretch_performance = []
@@ -2486,6 +2488,38 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     conf = o.confidence or "UNKNOWN"
                     conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
                 range_position_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown
+                })
+
+        # Performance by ADX Delta (adx - adx_prev at entry)
+        adx_delta_ranges = [
+            ("< -1.0", -999, -1.0), ("-1.0 to -0.5", -1.0, -0.5), ("-0.5 to -0.3", -0.5, -0.3),
+            ("-0.3 to 0.0", -0.3, 0.0), ("0.0 to 0.3", 0.0, 0.3), ("0.3 to 0.5", 0.3, 0.5),
+            ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
+        ]
+        adx_delta_orders = [o for o in orders if o.entry_adx_delta is not None]
+        for range_name, d_min, d_max in adx_delta_ranges:
+            range_orders = [o for o in adx_delta_orders if d_min <= o.entry_adx_delta < d_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                adx_delta_performance.append({
                     "range": range_name,
                     "direction": direction,
                     "count": count,
@@ -2783,6 +2817,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         ema58_gap_performance = []
         rsi_performance = []
         range_position_performance = []
+        adx_delta_performance = []
         adx_performance = []
         adx_direction_performance = []
         stretch_performance = []
@@ -4078,6 +4113,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "adx_direction_performance": adx_direction_performance,
         "stretch_performance": stretch_performance,
         "range_position_performance": range_position_performance,
+        "adx_delta_performance": adx_delta_performance,
         "pair_slope_performance": pair_slope_performance,
         "btc_slope_performance": btc_slope_performance,
         "btc_adx_performance": btc_adx_performance,

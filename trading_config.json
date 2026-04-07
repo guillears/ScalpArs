@@ -131,7 +131,7 @@
     "LOW": {
       "enabled": false,
       "trade_mode": "both",
-      "leverage": 20.0,
+      "leverage": 2.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
@@ -156,7 +156,7 @@
     "MEDIUM": {
       "enabled": false,
       "trade_mode": "both",
-      "leverage": 20.0,
+      "leverage": 2.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
@@ -181,7 +181,7 @@
     "HIGH": {
       "enabled": false,
       "trade_mode": "both",
-      "leverage": 20.0,
+      "leverage": 2.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
@@ -206,7 +206,7 @@
     "EXTREME": {
       "enabled": false,
       "trade_mode": "both",
-      "leverage": 20.0,
+      "leverage": 2.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.35,
       "signal_active_sl": -0.35,
@@ -231,7 +231,7 @@
     "VERY_STRONG": {
       "enabled": true,
       "trade_mode": "short",
-      "leverage": 20.0,
+      "leverage": 2.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.90,
       "signal_active_sl": -0.90,
@@ -257,7 +257,7 @@
     "STRONG_BUY": {
       "enabled": true,
       "trade_mode": "long",
-      "leverage": 20.0,
+      "leverage": 2.0,
       "investment_multiplier": 1.0,
       "stop_loss": -0.90,
       "signal_active_sl": -0.90,

@@ -1421,6 +1421,29 @@ class TradingEngine:
             exit_order_type = exit_result['exit_order_type']
             notional_at_close = order.quantity * actual_exit_price
             exit_fee = notional_at_close * exit_fee_rate
+
+            # POST-CLOSE VERIFICATION: confirm position is actually gone from Binance
+            try:
+                await asyncio.sleep(1)  # brief delay for Binance to process
+                positions = await binance_service.get_open_positions()
+                if positions is not None:
+                    binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
+                    if order.pair in binance_pairs:
+                        logger.critical(f"[CLOSE_VERIFY_FAIL] {order.pair}: Close order accepted but position STILL OPEN on Binance! Retrying...")
+                        # Position still exists — retry the close
+                        symbol = order.pair.replace('USDT', '/USDT:USDT')
+                        retry_result = await binance_service.close_position(
+                            symbol=symbol, side=order.direction, amount=order.quantity
+                        )
+                        if retry_result:
+                            logger.info(f"[CLOSE_VERIFY_RETRY] {order.pair}: Retry close succeeded")
+                            actual_exit_price = current_price
+                        else:
+                            logger.critical(f"[CLOSE_VERIFY_RETRY_FAIL] {order.pair}: Retry also failed — position orphaned on Binance!")
+                    else:
+                        logger.info(f"[CLOSE_VERIFY_OK] {order.pair}: Position confirmed closed on Binance")
+            except Exception as e:
+                logger.warning(f"[CLOSE_VERIFY] {order.pair}: Verification check failed: {e}")
         else:
             # --- Paper mode: no retry needed ---
             _urgent_exit_paper = any(reason.startswith(p) for p in (

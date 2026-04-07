@@ -2277,6 +2277,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -2287,6 +2288,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
@@ -2317,6 +2319,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -2327,6 +2330,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
@@ -2355,6 +2359,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -2365,6 +2370,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
@@ -2385,6 +2391,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -2395,6 +2402,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
@@ -2414,6 +2422,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 d_wins = len([o for o in d_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in d_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in d_orders)
                 avg_dur_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in d_orders if o.closed_at) / count if count > 0 else 0
                 dur_h, dur_m, dur_s = int(avg_dur_secs // 3600), int((avg_dur_secs % 3600) // 60), int(avg_dur_secs % 60)
                 conf_breakdown = {}
@@ -2426,6 +2435,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(d_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "avg_duration": f"{dur_h:02d}:{dur_m:02d}:{dur_s:02d}",
                     "by_confidence": conf_breakdown
@@ -2453,6 +2463,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -2463,6 +2474,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
@@ -2483,6 +2495,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -2493,6 +2506,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
@@ -2515,6 +2529,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -2525,6 +2540,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown
                 })
@@ -2566,12 +2582,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
                 avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
                 avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 pair_slope_performance.append({
                     "range": range_name,
                     "direction": direction,
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown,
                     "avg_rsi": avg_rsi,
@@ -2599,12 +2617,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
                 avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
                 avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 btc_slope_performance.append({
                     "range": range_name,
                     "direction": direction,
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown,
                     "avg_rsi": avg_rsi,
@@ -2636,12 +2656,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
                 avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
                 avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 btc_adx_performance.append({
                     "range": range_name,
                     "direction": direction,
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown,
                     "avg_rsi": avg_rsi,
@@ -2665,6 +2687,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     continue
                 bd_wins = len([o for o in bd_orders if (o.pnl or 0) > 0])
                 bd_pnl_sum = sum(o.pnl or 0 for o in bd_orders)
+                bd_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in bd_orders)
                 bd_avg_dur = sum((o.closed_at - o.opened_at).total_seconds() for o in bd_orders if o.closed_at) / bd_count if bd_count > 0 else 0
                 bd_h, bd_m, bd_s = int(bd_avg_dur // 3600), int((bd_avg_dur % 3600) // 60), int(bd_avg_dur % 60)
                 bd_conf = {}
@@ -2677,6 +2700,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "count": bd_count,
                     "win_rate": round(bd_wins / bd_count * 100, 1),
                     "avg_pnl_usd": round(bd_pnl_sum / bd_count, 2),
+                    "avg_pnl_pct": round(bd_pnl_pct_sum / bd_count, 4),
                     "total_pnl_usd": round(bd_pnl_sum, 2),
                     "avg_duration": f"{bd_h:02d}:{bd_m:02d}:{bd_s:02d}",
                     "by_confidence": bd_conf
@@ -2768,12 +2792,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
                 avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
                 avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 btc_rsi_performance.append({
                     "range": range_name,
                     "direction": direction,
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
                     "by_confidence": conf_breakdown,
                     "avg_rsi": avg_rsi,

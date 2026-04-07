@@ -2982,6 +2982,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             btc_rsi_rising = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi > o.entry_btc_rsi_prev)
             btc_rsi_falling = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi <= o.entry_btc_rsi_prev)
             ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
+            adx_deltas = [o.entry_adx_delta for o in group if o.entry_adx_delta is not None]
+            range_positions = [o.entry_range_position for o in group if o.entry_range_position is not None]
 
             peaks = [o.peak_pnl or 0 for o in group]
             pnls = [o.pnl_percentage or 0 for o in group]
@@ -3014,6 +3016,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "btc_rsi_rising": btc_rsi_rising,
                 "btc_rsi_falling": btc_rsi_falling,
                 "avg_ema5_dist": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
+                "avg_adx_delta": round(sum(adx_deltas) / len(adx_deltas), 4) if adx_deltas else None,
+                "avg_range_position": round(sum(range_positions) / len(range_positions), 1) if range_positions else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),

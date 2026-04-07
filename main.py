@@ -3444,6 +3444,21 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
+            np_adx_delta_ranges = [
+                ("< -1.0", -999, -1.0), ("-1.0 to -0.5", -1.0, -0.5), ("-0.5 to -0.3", -0.5, -0.3),
+                ("-0.3 to 0.0", -0.3, 0.0), ("0.0 to 0.3", 0.0, 0.3), ("0.3 to 0.5", 0.3, 0.5),
+                ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
+            ]
+            np_adx_delta_trades = [o for o in np_trades if o.entry_adx_delta is not None]
+            all_adx_delta_trades = [o for o in orders if o.entry_adx_delta is not None]
+            for rng, lo, hi in np_adx_delta_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_adx_delta_trades if lo <= o.entry_adx_delta < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_adx_delta_trades if lo <= o.entry_adx_delta < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "ADX Delta", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
             for np_btc_dir_label in ["Rising", "Falling"]:
                 np_btc_dir_trades = [o for o in np_trades if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]
                 all_btc_dir_trades = [o for o in orders if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None]

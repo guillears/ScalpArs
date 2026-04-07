@@ -2721,6 +2721,22 @@ class TradingEngine:
                     logger.info(f"[BTC-GATE] {pair}: {signal} blocked — {reason}")
                     signal = "NO_TRADE"
 
+            # Pair ADX Direction check — runs independently of BTC global filter
+            if signal in ["LONG", "SHORT"]:
+                _th = config.trading_config.thresholds
+                _pair_adx = indicators.get('adx')
+                _pair_adx_prev = indicators.get('adx_prev1')
+                if _pair_adx is not None and _pair_adx_prev is not None:
+                    _pair_adx_dir_cfg = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
+                    if _pair_adx_dir_cfg == 'rising' and _pair_adx <= _pair_adx_prev:
+                        _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
+                        logger.info(f"[PAIR_ADX_DIR] {pair}: {signal} blocked — Pair ADX {_pd_label} ({_pair_adx:.4f} vs prev {_pair_adx_prev:.4f}), requires {_pair_adx_dir_cfg}")
+                        signal = "NO_TRADE"
+                    elif _pair_adx_dir_cfg == 'falling' and _pair_adx >= _pair_adx_prev:
+                        _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
+                        logger.info(f"[PAIR_ADX_DIR] {pair}: {signal} blocked — Pair ADX {_pd_label} ({_pair_adx:.4f} vs prev {_pair_adx_prev:.4f}), requires {_pair_adx_dir_cfg}")
+                        signal = "NO_TRADE"
+
             if signal in ["LONG", "SHORT"]:
                 _th = config.trading_config.thresholds
                 global_vol_blocks = False

@@ -2513,9 +2513,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
         # Performance by ADX Delta (adx - adx_prev at entry)
         adx_delta_ranges = [
-            ("< -1.0", -999, -1.0), ("-1.0 to -0.5", -1.0, -0.5), ("-0.5 to -0.3", -0.5, -0.3),
-            ("-0.3 to 0.0", -0.3, 0.0), ("0.0 to 0.3", 0.0, 0.3), ("0.3 to 0.5", 0.3, 0.5),
-            ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
+            ("< -2.0", -999, -2.0), ("-2.0 to -1.0", -2.0, -1.0), ("-1.0 to -0.5", -1.0, -0.5),
+            ("-0.5 to -0.3", -0.5, -0.3), ("-0.3 to -0.1", -0.3, -0.1), ("-0.1 to 0.0", -0.1, 0.0),
+            ("0.0 to 0.05", 0.0, 0.05), ("0.05 to 0.1", 0.05, 0.1), ("0.1 to 0.3", 0.1, 0.3),
+            ("0.3 to 0.5", 0.3, 0.5), ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
         ]
         adx_delta_orders = [o for o in orders if o.entry_adx_delta is not None]
         for range_name, d_min, d_max in adx_delta_ranges:
@@ -3445,9 +3446,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         never_positive_deep_dive.append(row)
 
             np_adx_delta_ranges = [
-                ("< -1.0", -999, -1.0), ("-1.0 to -0.5", -1.0, -0.5), ("-0.5 to -0.3", -0.5, -0.3),
-                ("-0.3 to 0.0", -0.3, 0.0), ("0.0 to 0.3", 0.0, 0.3), ("0.3 to 0.5", 0.3, 0.5),
-                ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
+                ("< -2.0", -999, -2.0), ("-2.0 to -1.0", -2.0, -1.0), ("-1.0 to -0.5", -1.0, -0.5),
+                ("-0.5 to -0.3", -0.5, -0.3), ("-0.3 to -0.1", -0.3, -0.1), ("-0.1 to 0.0", -0.1, 0.0),
+                ("0.0 to 0.05", 0.0, 0.05), ("0.05 to 0.1", 0.05, 0.1), ("0.1 to 0.3", 0.1, 0.3),
+                ("0.3 to 0.5", 0.3, 0.5), ("0.5 to 1.0", 0.5, 1.0), ("1.0 to 2.0", 1.0, 2.0), ("> 2.0", 2.0, 999),
             ]
             np_adx_delta_trades = [o for o in np_trades if o.entry_adx_delta is not None]
             all_adx_delta_trades = [o for o in orders if o.entry_adx_delta is not None]

@@ -3089,8 +3089,8 @@ class TradingEngine:
             elif signal_still_active:
                 effective_sl = order_info.get('signal_active_sl', stop_loss_pct)
 
-            # Check if stop loss triggered
-            if pnl_pct <= effective_sl:
+            # Check if stop loss triggered (epsilon 0.01% to avoid boundary precision issues)
+            if pnl_pct <= effective_sl + 0.01:
                 if breakeven_active:
                     close_reason = f"BREAKEVEN_SL_L{be_level}"
                 elif signal_still_active:
@@ -3133,7 +3133,44 @@ class TradingEngine:
                 except Exception as e:
                     logger.error(f"[REALTIME_SL] Error closing {pair}: {e}")
                 continue  # Already handled, skip trailing stop check
-            
+
+            # Real-time Security Gap Exit: flagged trades within security gap range
+            _is_flagged_rt = order_info.get('signal_lost_flagged', False)
+            if _is_flagged_rt:
+                _sg_min = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_min', -0.9)
+                _sg_max = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_max', -0.7)
+                if pnl_pct >= _sg_min and pnl_pct <= _sg_max:
+                    tp_level = order_info.get('current_tp_level', 1)
+                    logger.warning(f"[REALTIME_FL_SIGNAL_LOST] {pair} {direction} L{tp_level}: flagged trade hit security gap pnl={pnl_pct:.4f}% in [{_sg_min}, {_sg_max}] - CLOSING NOW!")
+
+                    if order_info.get('_closing_in_progress'):
+                        continue
+                    order_info['_closing_in_progress'] = True
+
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(
+                                    and_(Order.id == order_id, Order.status == "OPEN")
+                                )
+                            )
+                            order = result.scalar_one_or_none()
+                            if order:
+                                fl_reason = f"FL_SIGNAL_LOST L{tp_level}"
+                                closed = await self.close_position(db, order, current_price, fl_reason)
+                                if closed:
+                                    logger.info(f"[REALTIME_FL_SIGNAL_LOST] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [
+                                            o for o in _open_orders_cache.get(pair, [])
+                                            if o['id'] != order_id
+                                        ]
+                                else:
+                                    logger.warning(f"[REALTIME_FL_SIGNAL_LOST] {pair}: close_position returned None — will retry next cycle")
+                    except Exception as e:
+                        logger.error(f"[REALTIME_FL_SIGNAL_LOST] Error closing {pair}: {e}")
+                    continue
+
             # Real-time RSI Momentum Exit: two consecutive RSI drops/rises within P&L range
             rt_rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
             rt_rsi_exit_min = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)

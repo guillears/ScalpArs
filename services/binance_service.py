@@ -412,11 +412,14 @@ class BinanceService:
                     _leverage_blocked_pairs.add(symbol)
                     return None
             
+            # reduceOnly prevents position flip on close orders
+            params = {'reduceOnly': True} if is_close else {}
             order = await self.exchange.create_order(
                 symbol=symbol,
                 type='market',
                 side=side,
-                amount=amount
+                amount=amount,
+                params=params
             )
             
             return {
@@ -488,12 +491,15 @@ class BinanceService:
                     _leverage_blocked_pairs.add(symbol)
                     return None
 
+            # reduceOnly prevents position flip on close orders
+            params = {'reduceOnly': True} if is_close else {}
             order = await self.exchange.create_order(
                 symbol=symbol,
                 type='limit',
                 side=side,
                 amount=amount,
-                price=price
+                price=price,
+                params=params
             )
 
             return {

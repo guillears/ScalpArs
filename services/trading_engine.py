@@ -1429,17 +1429,7 @@ class TradingEngine:
                 if positions is not None:
                     binance_pairs = {p['symbol'].replace('/USDT:USDT', 'USDT') for p in positions}
                     if order.pair in binance_pairs:
-                        logger.critical(f"[CLOSE_VERIFY_FAIL] {order.pair}: Close order accepted but position STILL OPEN on Binance! Retrying...")
-                        # Position still exists — retry the close
-                        symbol = order.pair.replace('USDT', '/USDT:USDT')
-                        retry_result = await binance_service.close_position(
-                            symbol=symbol, side=order.direction, amount=order.quantity
-                        )
-                        if retry_result:
-                            logger.info(f"[CLOSE_VERIFY_RETRY] {order.pair}: Retry close succeeded")
-                            actual_exit_price = current_price
-                        else:
-                            logger.critical(f"[CLOSE_VERIFY_RETRY_FAIL] {order.pair}: Retry also failed — position orphaned on Binance!")
+                        logger.critical(f"[CLOSE_VERIFY_FAIL] {order.pair}: Position still open on Binance after close — will be caught by retry queue or next reconciliation")
                     else:
                         logger.info(f"[CLOSE_VERIFY_OK] {order.pair}: Position confirmed closed on Binance")
             except Exception as e:
@@ -3087,7 +3077,12 @@ class TradingEngine:
                     close_reason = f"STOP_LOSS L{tp_level}"
                 
                 logger.warning(f"[REALTIME_{close_reason}] {pair} {direction}: pnl={pnl_pct:.4f}% <= effective_sl={effective_sl}% (original_sl={stop_loss_pct}%, peak={current_peak:.4f}%) - CLOSING NOW!")
-                
+
+                # Prevent duplicate close attempts from consecutive monitor cycles
+                if order_info.get('_closing_in_progress'):
+                    continue
+                order_info['_closing_in_progress'] = True
+
                 # Close the order immediately using a new database session
                 try:
                     async with AsyncSessionLocal() as db:
@@ -3132,6 +3127,11 @@ class TradingEngine:
                     elif direction == "SHORT" and _rt_rsi > _rt_rsi1 > _rt_rsi2:
                         rt_rsi_fading = True
                     if rt_rsi_fading:
+                        # Prevent duplicate close attempts from consecutive monitor cycles
+                        if order_info.get('_closing_in_progress'):
+                            continue
+                        order_info['_closing_in_progress'] = True
+
                         tp_level = order_info.get('current_tp_level', 1)
                         logger.warning(f"[REALTIME_RSI_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: RSI fading ({_rt_rsi2:.1f}->{_rt_rsi1:.1f}->{_rt_rsi:.1f}), pnl={pnl_pct:.4f}% (range {rt_rsi_exit_min}% to {rt_rsi_exit_max}%) - CLOSING NOW!")
                         try:
@@ -3206,6 +3206,11 @@ class TradingEngine:
                             order_info[f'phantom_tick_{_lbl}_pnl'] = pnl_pct
 
                 if all_windows_confirm:
+                    # Prevent duplicate close attempts from consecutive monitor cycles
+                    if order_info.get('_closing_in_progress'):
+                        continue
+                    order_info['_closing_in_progress'] = True
+
                     tp_level = order_info.get('current_tp_level', 1)
                     deltas_info = '/'.join(f"{d:.2f}" for d in per_window_deltas)
                     logger.warning(f"[REALTIME_TICK_MOMENTUM_EXIT] {pair} {direction} L{tp_level}: tick momentum fading across {windows}s windows (deltas={deltas_info}%), pnl={pnl_pct:.4f}% > min={tick_exit_min_profit}% - CLOSING NOW!")
@@ -3299,6 +3304,11 @@ class TradingEngine:
                             logger.info(f"[REALTIME_TRAILING_BLOCKED] {pair} SHORT L{tp_level}: Would close at loss ({pnl_pct:.4f}%), waiting for recovery or SL")
                 
                 if should_close_trailing:
+                    # Prevent duplicate close attempts from consecutive monitor cycles
+                    if order_info.get('_closing_in_progress'):
+                        continue
+                    order_info['_closing_in_progress'] = True
+
                     try:
                         async with AsyncSessionLocal() as db:
                             result = await db.execute(
@@ -3307,7 +3317,7 @@ class TradingEngine:
                                 )
                             )
                             order = result.scalar_one_or_none()
-                            
+
                             if order:
                                 trail_reason = f"TRAILING_STOP L{order.current_tp_level}"
                                 closed = await self.close_position(

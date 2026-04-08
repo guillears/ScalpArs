@@ -1801,7 +1801,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT")):
+        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)

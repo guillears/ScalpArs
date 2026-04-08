@@ -1713,6 +1713,8 @@ def _compute_pair_performance(orders):
                 hold_hours.append(delta)
         avg_hold = sum(hold_hours) / len(hold_hours) if hold_hours else 0
         pnl_pct_sum = sum(o.pnl_percentage or 0 for o in trades)
+        slippage_trades = [o for o in trades if o.exit_slippage_pct is not None]
+        avg_slippage = round(sum(o.exit_slippage_pct for o in slippage_trades) / len(slippage_trades), 4) if slippage_trades else None
         rows.append({
             "pair": pair,
             "longs": longs,
@@ -1723,6 +1725,7 @@ def _compute_pair_performance(orders):
             "avg_pnl_pct": round(pnl_pct_sum / n, 4),
             "total_pnl": round(total_pnl, 2),
             "avg_hold_hours": avg_hold,
+            "avg_slippage_pct": avg_slippage,
         })
     rows.sort(key=lambda r: r["total_pnl"], reverse=True)
     return rows
@@ -2010,12 +2013,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         t_avg_win = sum(o.pnl for o in t_wins_list) / len(t_wins_list) if t_wins_list else 0
         t_avg_loss = sum(o.pnl for o in t_losses_list) / len(t_losses_list) if t_losses_list else 0
         t_rr = round(t_avg_win / abs(t_avg_loss), 2) if t_avg_loss != 0 else 0
+        trend_avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in trend_orders) / len(trend_orders), 4) if trend_orders else 0
         macro_trend_performance[trend] = {
             "total_trades": len(trend_orders),
             "long_trades": len(trend_longs),
             "short_trades": len(trend_shorts),
             "total_pnl": round(trend_total_pnl, 2),
             "total_win_rate": trend_total_wr,
+            "avg_pnl_pct": trend_avg_pnl_pct,
             "risk_reward": t_rr,
             "long_pnl": round(trend_long_pnl, 2),
             "short_pnl": round(trend_short_pnl, 2),
@@ -2246,12 +2251,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         conf_gaps = [o.entry_gap for o in conf_orders if o.entry_gap is not None]
         conf_avg_gap = round(sum(conf_gaps) / len(conf_gaps), 4) if conf_gaps else None
         
+        conf_avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in conf_orders) / len(conf_orders), 4) if conf_orders else 0
         confidence_performance[conf] = {
             "total_trades": len(conf_orders),
             "long_trades": len(conf_longs),
             "short_trades": len(conf_shorts),
             "total_pnl": round(conf_total_pnl, 2),
             "total_win_rate": conf_total_win_rate,
+            "avg_pnl_pct": conf_avg_pnl_pct,
             "risk_reward": conf_risk_reward,
             "long_pnl": round(conf_long_pnl, 2),
             "short_pnl": round(conf_short_pnl, 2),

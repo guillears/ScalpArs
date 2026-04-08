@@ -619,6 +619,7 @@
                                     <th class="px-3 py-2 font-medium">Trend</th>
                                     <th class="px-3 py-2 font-medium text-center">Trades</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right">Win%</th>
                                     <th class="px-3 py-2 font-medium text-right">R:R</th>
                                     <th class="px-3 py-2 font-medium text-right">Long P&L</th>
@@ -628,7 +629,7 @@
                                 </tr>
                             </thead>
                             <tbody id="macro-trend-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -644,6 +645,7 @@
                                     <th class="px-3 py-2 font-medium">Confidence</th>
                                     <th class="px-3 py-2 font-medium text-center">Trades</th>
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total Win%</th>
                                     <th class="px-3 py-2 font-medium text-right">R:R</th>
                                     <th class="px-3 py-2 font-medium text-right">Long P&L</th>
@@ -656,7 +658,7 @@
                                 </tr>
                             </thead>
                             <tbody id="confidence-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1652,11 +1654,12 @@
                                     <th class="px-2 py-1 text-right">Avg P&L %</th>
                                     <th class="px-2 py-1 text-right">Total P&L</th>
                                     <th class="px-2 py-1 text-right">Avg Dur</th>
+                                    <th class="px-2 py-1 text-right">Slip %</th>
                                     <th class="px-2 py-1 text-center">Block</th>
                                 </tr>
                             </thead>
                             <tbody id="pair-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -3676,19 +3679,21 @@
 
             lines.push(`\n${hr2}`);
             lines.push('## Performance by Macro Trend\n');
-            lines.push(`${'Trend'.padEnd(10)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Long P&L'.padEnd(12)} ${'L Win%'.padEnd(8)} ${'Short P&L'.padEnd(12)} ${'S Win%'.padEnd(8)}`);
+            lines.push(`${'Trend'.padEnd(10)} ${'Trades'.padEnd(18)} ${'AvgP&L%'.padEnd(9)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Long P&L'.padEnd(12)} ${'L Win%'.padEnd(8)} ${'Short P&L'.padEnd(12)} ${'S Win%'.padEnd(8)}`);
             for (const [trend, t] of Object.entries(perf.by_macro_trend || {})) {
                 const trades = `${t.long_trades||0}L/${t.short_trades||0}S`;
-                lines.push(`${trend.padEnd(10)} ${trades.padEnd(18)} ${(t.total_win_rate||0)+'%'.padEnd(6)} ${(t.risk_reward||0).toString().padEnd(6)} $${(t.long_pnl||0).toFixed(2).padStart(10)} ${((t.long_win_rate||0)+'%').padEnd(8)} $${(t.short_pnl||0).toFixed(2).padStart(10)} ${((t.short_win_rate||0)+'%').padEnd(8)}`);
+                const avgPnlPct = `${(t.avg_pnl_pct||0) >= 0 ? '+' : ''}${(t.avg_pnl_pct||0).toFixed(2)}%`;
+                lines.push(`${trend.padEnd(10)} ${trades.padEnd(18)} ${avgPnlPct.padEnd(9)} ${(t.total_win_rate||0)+'%'.padEnd(6)} ${(t.risk_reward||0).toString().padEnd(6)} $${(t.long_pnl||0).toFixed(2).padStart(10)} ${((t.long_win_rate||0)+'%').padEnd(8)} $${(t.short_pnl||0).toFixed(2).padStart(10)} ${((t.short_win_rate||0)+'%').padEnd(8)}`);
             }
 
             lines.push(`\n${hr2}`);
             lines.push('## Performance by Confidence Level\n');
-            lines.push(`${'Confidence'.padEnd(14)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Total P&L'.padEnd(12)} ${'L P&L'.padEnd(10)} ${'S P&L'.padEnd(10)} ${'Avg Gap'.padEnd(8)}`);
+            lines.push(`${'Confidence'.padEnd(14)} ${'Trades'.padEnd(18)} ${'AvgP&L%'.padEnd(9)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Total P&L'.padEnd(12)} ${'L P&L'.padEnd(10)} ${'S P&L'.padEnd(10)} ${'Avg Gap'.padEnd(8)}`);
             for (const [conf, c] of Object.entries(perf.by_confidence || {})) {
                 if (c.total_trades === 0) continue;
                 const trades = `${c.long_trades||0}L/${c.short_trades||0}S`;
-                lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
+                const avgPnlPct = `${(c.avg_pnl_pct||0) >= 0 ? '+' : ''}${(c.avg_pnl_pct||0).toFixed(2)}%`;
+                lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${avgPnlPct.padEnd(9)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
             }
 
             lines.push(`\n${hr2}`);
@@ -4152,11 +4157,12 @@
             if (perf.pair_performance && perf.pair_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Pair\n');
-                lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
+                lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)} ${'Slip%'.padEnd(8)}`);
                 for (const r of perf.pair_performance) {
                     const dir = `${r.longs}L/${r.shorts}S`;
                     const dur = fmtDur(r.avg_hold_hours);
-                    lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
+                    const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
+                    lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)} ${slipStr.padStart(8)}`);
                 }
             }
 
@@ -4361,20 +4367,22 @@
                 // --- BY MACRO TREND ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Macro Trend\n');
-                lines.push(`${'Trend'.padEnd(10)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Long P&L'.padEnd(12)} ${'L Win%'.padEnd(8)} ${'Short P&L'.padEnd(12)} ${'S Win%'.padEnd(8)}`);
+                lines.push(`${'Trend'.padEnd(10)} ${'Trades'.padEnd(18)} ${'AvgP&L%'.padEnd(9)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Long P&L'.padEnd(12)} ${'L Win%'.padEnd(8)} ${'Short P&L'.padEnd(12)} ${'S Win%'.padEnd(8)}`);
                 for (const [trend, t] of Object.entries(perf.by_macro_trend || {})) {
                     const trades = `${t.long_trades||0}L/${t.short_trades||0}S`;
-                    lines.push(`${trend.padEnd(10)} ${trades.padEnd(18)} ${(t.total_win_rate||0)+'%'.padEnd(6)} ${(t.risk_reward||0).toString().padEnd(6)} $${(t.long_pnl||0).toFixed(2).padStart(10)} ${((t.long_win_rate||0)+'%').padEnd(8)} $${(t.short_pnl||0).toFixed(2).padStart(10)} ${((t.short_win_rate||0)+'%').padEnd(8)}`);
+                    const avgPnlPct = `${(t.avg_pnl_pct||0) >= 0 ? '+' : ''}${(t.avg_pnl_pct||0).toFixed(2)}%`;
+                    lines.push(`${trend.padEnd(10)} ${trades.padEnd(18)} ${avgPnlPct.padEnd(9)} ${(t.total_win_rate||0)+'%'.padEnd(6)} ${(t.risk_reward||0).toString().padEnd(6)} $${(t.long_pnl||0).toFixed(2).padStart(10)} ${((t.long_win_rate||0)+'%').padEnd(8)} $${(t.short_pnl||0).toFixed(2).padStart(10)} ${((t.short_win_rate||0)+'%').padEnd(8)}`);
                 }
 
                 // --- BY CONFIDENCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Confidence Level\n');
-                lines.push(`${'Confidence'.padEnd(14)} ${'Trades'.padEnd(18)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Total P&L'.padEnd(12)} ${'L P&L'.padEnd(10)} ${'S P&L'.padEnd(10)} ${'Avg Gap'.padEnd(8)}`);
+                lines.push(`${'Confidence'.padEnd(14)} ${'Trades'.padEnd(18)} ${'AvgP&L%'.padEnd(9)} ${'Win%'.padEnd(7)} ${'R:R'.padEnd(6)} ${'Total P&L'.padEnd(12)} ${'L P&L'.padEnd(10)} ${'S P&L'.padEnd(10)} ${'Avg Gap'.padEnd(8)}`);
                 for (const [conf, c] of Object.entries(perf.by_confidence || {})) {
                     if (c.total_trades === 0) continue;
                     const trades = `${c.long_trades||0}L/${c.short_trades||0}S`;
-                    lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
+                    const avgPnlPct = `${(c.avg_pnl_pct||0) >= 0 ? '+' : ''}${(c.avg_pnl_pct||0).toFixed(2)}%`;
+                    lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${avgPnlPct.padEnd(9)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
                 }
 
                 // --- CLOSING REASON ---
@@ -4872,11 +4880,12 @@
                 if (perf.pair_performance && perf.pair_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Pair\n');
-                    lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)}`);
+                    lines.push(`${'Pair'.padEnd(16)} ${'Direction'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'AvgDur'.padEnd(8)} ${'Slip%'.padEnd(8)}`);
                     for (const r of perf.pair_performance) {
                         const dir = `${r.longs}L/${r.shorts}S`;
                         const dur = fmtDur(r.avg_hold_hours);
-                        lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
+                        const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
+                        lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)} ${slipStr.padStart(8)}`);
                     }
                 }
 
@@ -5154,9 +5163,10 @@
                     trendBody.innerHTML = ['BULLISH', 'BEARISH', 'NEUTRAL'].map(trend => {
                         const t = data.by_macro_trend[trend];
                         if (!t || t.total_trades === 0) {
-                            return `<tr class="hover:bg-white/5"><td class="px-3 py-2 ${trendColors[trend]} font-medium">${trend}</td><td class="px-3 py-2 text-center text-gray-500">0</td><td colspan="7" class="px-3 py-2 text-center text-gray-500">-</td></tr>`;
+                            return `<tr class="hover:bg-white/5"><td class="px-3 py-2 ${trendColors[trend]} font-medium">${trend}</td><td class="px-3 py-2 text-center text-gray-500">0</td><td colspan="8" class="px-3 py-2 text-center text-gray-500">-</td></tr>`;
                         }
                         const pnlClass = t.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (t.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const rrClass = safe(t.risk_reward) >= 1 ? 'text-emerald-400' : 'text-red-400';
                         const lClass = safe(t.long_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const sClass = safe(t.short_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -5165,6 +5175,7 @@
                                 <td class="px-3 py-2 ${trendColors[trend]} font-medium">${trend}</td>
                                 <td class="px-3 py-2 text-center">${safe(t.total_trades)} (${safe(t.long_trades)}L/${safe(t.short_trades)}S)</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-bold">${formatUSD(safe(t.total_pnl))}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${(t.avg_pnl_pct || 0) >= 0 ? '+' : ''}${(t.avg_pnl_pct || 0).toFixed(2)}%</td>
                                 <td class="px-3 py-2 text-right">${safe(t.total_win_rate).toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${rrClass} font-medium">${safe(t.risk_reward) > 0 ? safe(t.risk_reward).toFixed(2) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${lClass} font-medium">${safe(t.long_trades) > 0 ? formatUSD(safe(t.long_pnl)) : '-'}</td>
@@ -5204,22 +5215,25 @@
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
                                     <td class="px-3 py-2 text-right text-gray-500">-</td>
+                                    <td class="px-3 py-2 text-right text-gray-500">-</td>
                                 </tr>
                             `;
                         }
                         
                         const totalPnlClass = safe(c.total_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (c.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const longPnlClass = safe(c.long_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const shortPnlClass = safe(c.short_pnl) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const longPctClass = safe(c.long_pnl_pct) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const shortPctClass = safe(c.short_pnl_pct) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const rrClass = safe(c.risk_reward) >= 1 ? 'text-emerald-400' : 'text-red-400';
-                        
+
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${confColors[conf]} font-medium">${conf}</td>
                                 <td class="px-3 py-2 text-center">${safe(c.total_trades)} (${safe(c.long_trades)}L/${safe(c.short_trades)}S)</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-bold">${formatUSD(safe(c.total_pnl))}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${(c.avg_pnl_pct || 0) >= 0 ? '+' : ''}${(c.avg_pnl_pct || 0).toFixed(2)}%</td>
                                 <td class="px-3 py-2 text-right">${safe(c.total_win_rate).toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${rrClass} font-medium">${safe(c.risk_reward) > 0 ? safe(c.risk_reward).toFixed(2) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${longPnlClass} font-medium">${safe(c.long_trades) > 0 ? formatUSD(safe(c.long_pnl)) : '-'}</td>
@@ -7283,11 +7297,12 @@
                             <td class="px-2 py-1.5 text-right ${avgPctClass}">${avgPctStr}</td>
                             <td class="px-2 py-1.5 text-right ${totalClass} font-bold">$${r.total_pnl.toFixed(2)}</td>
                             <td class="px-2 py-1.5 text-right text-gray-400">${dur}</td>
+                            <td class="px-2 py-1.5 text-right ${r.avg_slippage_pct != null ? (r.avg_slippage_pct > 0.05 ? 'text-red-400' : r.avg_slippage_pct < -0.05 ? 'text-emerald-400' : 'text-gray-400') : 'text-gray-500'}">${r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-'}</td>
                             <td class="px-2 py-1.5 text-center"><button onclick="toggleBlacklist('${r.pair}')" class="px-1.5 py-0.5 rounded text-[10px] ${btnClass} transition">${btnLabel}</button></td>
                         </tr>`;
                     }).join('');
                 } else {
-                    pairPerfBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
+                    pairPerfBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
                 }
 
                 // Hold-Time Expectancy

@@ -1,0 +1,49 @@
+PRE-EXIT OPTIMIZATION BASELINE — April 8, 2026
+================================================
+35 LONG trades (Bullish regime) + 3 SHORT trades (Bearish regime)
+Config: TM enabled, BE L1 at 99% (off), TP 0.7%, pullback 0.05%
+Next phase: TM OFF, BE L1 at 0.15%/0.10%, TP 0.40%, pullback 0.08%
+
+LONGS: 35 trades, 45.7% WR, -$36.75 (-0.23% avg), expectancy -$1.05/trade
+SHORTS: 3 trades, 66.7% WR, -$1.48 (+0.05% avg)
+
+Key findings:
+- FL_SIGNAL_LOST: 12 trades, -$43.79 (biggest loss driver, avg peak +0.08%)
+- TICK_MOMENTUM: 11 trades, +$6.65 (cutting winners at +0.14%, post-peak +1.03%)
+- TRAILING_STOP: 3 trades, +$7.65 (best exit, avg +0.65%)
+- 9 "Positive No BE" SL trades lost $33.91 (peaked +0.12% then hit SL)
+- EMA5 Stretch 0.16-0.20% = 100% WR, below 0.16% = 22% WR
+
+================================================================================
+FULL REPORT BELOW
+================================================================================
+
+================================================================================
+TRADING BOT SPLIT ANALYTICS REPORT
+Generated: 2026-04-08T19:38:38.790Z
+================================================================================
+
+## CONFIGURATION
+
+Signal Thresholds:
+  EMA Gap Threshold L: 0.06  |  S: 0.05  |  EMA Gap Max: 0.35
+  ADX Very Strong: L>25 S>30  |  ADX Strong: L>18 S>25  |  ADX Max: L30 S35
+  LONG RSI: 40 - 65  |  SHORT RSI: 25 - 50
+  Macro Trend Filter: false  |  BTC Global: false
+  Market Breadth Filter: false
+  Tick Momentum Exit: false (was true)
+  Confidence: V_STRONG both 1x, STRONG_BUY both 1x
+
+BULLISH LONGS: 35 trades
+  TICK_MOMENTUM_EXIT L1: 11 trades, +0.14% avg, +$6.65
+  TRAILING_STOP L1: 3 trades, +0.65% avg, +$7.65
+  FL_SIGNAL_LOST L1: 12 trades, -0.85% avg, -$43.79
+  FL_TICK_MOMENTUM_EXIT L1: 4 trades, -0.05% avg, -$1.05
+  FL_NO_EXPANSION: 3 trades, -0.15% avg, -$2.25
+  NO_EXPANSION: 1 trade, +0.06%, +$0.32
+  STOP_LOSS_WIDE L1: 1 trade, -0.90%, -$4.29
+
+BEARISH SHORTS: 3 trades
+  FL_SIGNAL_LOST L1: 1 trade, -0.84%, -$3.85
+  FL_TICK_MOMENTUM_EXIT L1: 1 trade, +0.21%, +$0.49
+  TRAILING_STOP L1: 1 trade, +0.79%, +$1.89

@@ -115,13 +115,22 @@
                         <span id="control-text">Start Bot</span>
                     </button>
                     
-                    <!-- Reset Button -->
-                    <button onclick="resetBot()" class="px-6 py-2 rounded-lg font-semibold transition-all duration-200 bg-red-500 hover:bg-red-600 text-white flex items-center space-x-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                        <span>Reset</span>
-                    </button>
+                    <!-- Reset Dropdown -->
+                    <div class="relative" id="reset-dropdown-container">
+                        <button onclick="document.getElementById('reset-menu').classList.toggle('hidden')" class="px-6 py-2 rounded-lg font-semibold transition-all duration-200 bg-red-500 hover:bg-red-600 text-white flex items-center space-x-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            <span>Reset</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        <div id="reset-menu" class="hidden absolute right-0 mt-1 w-48 bg-gray-800 border border-white/10 rounded-lg shadow-xl z-50">
+                            <button onclick="resetBot('LONG')" class="w-full px-4 py-2 text-left text-sm text-emerald-400 hover:bg-white/10 rounded-t-lg">Reset LONGs only</button>
+                            <button onclick="resetBot('SHORT')" class="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-white/10">Reset SHORTs only</button>
+                            <div class="border-t border-white/10"></div>
+                            <button onclick="resetBot('ALL')" class="w-full px-4 py-2 text-left text-sm text-yellow-400 hover:bg-white/10 rounded-b-lg font-semibold">Reset ALL</button>
+                        </div>
+                    </div>
 
                     <!-- Logout Button -->
                     <a href="/logout" class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all duration-200" title="Logout">
@@ -3506,29 +3515,38 @@
             }
         }
 
-        async function resetBot() {
-            const configResp = await fetch('/api/config');
-            const configData = await configResp.json();
-            const resetBalance = configData.paper_balance || 2000;
+        async function resetBot(direction = 'ALL') {
+            // Close the dropdown menu
+            document.getElementById('reset-menu').classList.add('hidden');
+
             const modeLabel = isPaperMode ? 'PAPER' : 'LIVE';
-            const balanceNote = isPaperMode ? `\n- Reset balance to $${resetBalance.toLocaleString()}` : '';
-            if (!confirm(`Are you sure you want to reset ${modeLabel} trading?\n\nThis will:\n- Delete all ${modeLabel} orders and transactions${balanceNote}\n- Reset timer to 00:00:00\n- Clear all dashboard data`)) {
-                return;
+            let confirmMsg;
+            if (direction === 'ALL') {
+                const configResp = await fetch('/api/config');
+                const configData = await configResp.json();
+                const resetBalance = configData.paper_balance || 2000;
+                const balanceNote = isPaperMode ? `\n- Reset balance to $${resetBalance.toLocaleString()}` : '';
+                confirmMsg = `Are you sure you want to reset ALL ${modeLabel} trading?\n\nThis will:\n- Delete ALL orders and transactions${balanceNote}\n- Reset timer to 00:00:00\n- Clear all dashboard data`;
+            } else {
+                confirmMsg = `Reset ${direction} trades only?\n\nThis will:\n- Delete all ${direction} orders and transactions\n- Keep ${direction === 'LONG' ? 'SHORT' : 'LONG'} data intact\n- Keep timer running`;
             }
-            
+
+            if (!confirm(confirmMsg)) return;
+
             try {
-                const res = await fetch(`${API_BASE}/api/reset`, { method: 'POST' });
+                const res = await fetch(`${API_BASE}/api/reset?direction=${direction}`, { method: 'POST' });
                 const data = await res.json();
-                
+
                 if (data.success) {
-                    clearInterval(timerInterval);
-                    timerInterval = null;
-                    runtimeSeconds = 0;
-                    isRunning = false;
-                    
-                    updateTimer(0);
-                    updateStatusUI();
-                    
+                    if (direction === 'ALL') {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                        runtimeSeconds = 0;
+                        isRunning = false;
+                        updateTimer(0);
+                        updateStatusUI();
+                    }
+
                     setTimeout(() => {
                         loadBalance();
                         loadOpenOrders();
@@ -3536,12 +3554,12 @@
                         loadTransactions();
                         loadPerformance();
                     }, 500);
-                    
-                    showToast(`${data.mode === 'paper' ? 'Paper' : 'Live'} trading reset successfully!`);
-                    
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1500);
+
+                    showToast(data.message || `${direction} reset successfully!`);
+
+                    if (direction === 'ALL') {
+                        setTimeout(() => { window.location.reload(); }, 1500);
+                    }
                 } else {
                     showToast('Error resetting: ' + (data.message || 'Unknown error'), 'error');
                 }
@@ -3550,6 +3568,15 @@
                 showToast('Error resetting bot', 'error');
             }
         }
+
+        // Close reset dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const container = document.getElementById('reset-dropdown-container');
+            const menu = document.getElementById('reset-menu');
+            if (container && menu && !container.contains(e.target)) {
+                menu.classList.add('hidden');
+            }
+        });
 
         // Toggle paper mode
         document.getElementById('paper-toggle').addEventListener('change', async (e) => {

@@ -50,6 +50,23 @@ Reference this when working on trading_engine.py, main.py, or trading_config.jso
 - **EMA20 Slope**: moderate slopes (0.08-0.12%) best for shorts. Very steep (>0.20%) may be overextended.
 - **Levers to test (300-400 trades)**: Raise EMA5-EMA8 min gap from 0.02% to 0.05%+; cap ADX max at 30.
 
+### April 2026 Live Data (26 trades, ongoing collection — target 40)
+
+#### Entry Quality
+- **FL_SIGNAL_LOST is the #1 loss driver**: 8 trades, -$33.35. Avg peak only +0.06% — these trades never really worked. The signal was dead on arrival.
+- **Entry indicators nearly identical** between FL_SIGNAL_LOST and TICK_MOMENTUM winners — standard filters can't distinguish. Need tighter stretch/gap minimum to filter weak entries.
+- **EMA5 Stretch**: 0.16-0.20% = 100% WR (+$6.51). Below 0.16% = 20% WR. Strong candidate for minimum threshold.
+
+#### Exit Quality
+- **Tick Momentum Exit is cutting winners short**: 7 winning TM trades closed at +0.14% avg, but post-exit peak was +1.11% (100% of trades reached it). Estimated loss from early exit: ~$15 across 7 trades.
+- **Trailing Stop captures the most profit**: 2 trades, +0.63% avg, best exit type. But pullback trigger (0.05%) is very tight.
+- **Consider disabling Tick Momentum Exit**: Trades that TM exited early would have been caught by trailing stop at ~+0.6% instead of +0.14%. Even trades that dipped first would recover (flagged → trailing stop). Need 40+ trades to confirm.
+- **Shorts performing poorly**: 2 trades, 0% WR, -$7.07. Both hit SL quickly.
+
+#### Infrastructure
+- **9 EXTERNAL exits (37.5%)**: Caused by SQLite "database is locked" — Binance close succeeded but DB commit failed. Fixed with WAL mode + commit retry (deployed April 8).
+- **Slippage**: Negligible (+0.017% avg on longs). Not a factor.
+
 ### Caveats
 - 188 trades in a single choppy bearish regime — patterns may shift in trending/bullish markets.
 - Small samples for higher BE levels (L3=23, L4=10, L5=5) and longs (46 trades).

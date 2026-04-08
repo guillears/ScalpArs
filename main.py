@@ -402,58 +402,101 @@ async def set_paper_mode(enabled: bool, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/api/reset")
-async def reset_trading(db: AsyncSession = Depends(get_db)):
-    """Reset trading data for the current mode (paper or live) and start fresh"""
+async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_db)):
+    """Reset trading data. direction=ALL|LONG|SHORT"""
     import config
-    
+
     is_paper = trading_engine.is_paper_mode
     mode_label = "Paper" if is_paper else "Live"
-    
-    if trading_engine.is_running:
-        await trading_engine.pause(db)
-    
-    await db.execute(
-        delete(Order).where(Order.is_paper == is_paper)
-    )
-    await db.execute(
-        delete(Transaction).where(Transaction.is_paper == is_paper)
-    )
-    await db.execute(
-        delete(BnbSwapLog).where(BnbSwapLog.is_paper == is_paper)
-    )
-    
-    if is_paper:
-        trading_engine.paper_balance = config.trading_config.paper_balance
-        trading_engine.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
-    
-    trading_engine.total_runtime_seconds = 0
-    trading_engine.started_at = None
-    trading_engine.is_running = False
-    trading_engine._bnb_emergency_threshold = 0.0
-    trading_engine._bnb_projected_need = 0.0
-    trading_engine._bnb_burn_rate = 0.0
-    trading_engine._last_bnb_check = None
-    
-    set_ban_until(0)
-    await trading_engine.save_state(db)
-    
-    result_state = await db.execute(select(BotState).limit(1))
-    state_row = result_state.scalar_one_or_none()
-    if state_row:
-        state_row.ban_until = 0
-    
-    await db.commit()
-    
-    balance = trading_engine.paper_balance if is_paper else 0
-    logger.info(f"[RESET] {mode_label} trading reset. {'Balance: $' + str(balance) + ', ' if is_paper else ''}Timer: 00:00:00")
-    
-    return {
-        "success": True,
-        "message": f"{mode_label} trading reset successfully",
-        "paper_balance": trading_engine.paper_balance if is_paper else None,
-        "mode": "paper" if is_paper else "live",
-        "runtime": "00:00:00"
-    }
+    direction = direction.upper()
+
+    if direction == "ALL":
+        # Full reset — original behavior
+        if trading_engine.is_running:
+            await trading_engine.pause(db)
+
+        await db.execute(
+            delete(Order).where(Order.is_paper == is_paper)
+        )
+        await db.execute(
+            delete(Transaction).where(Transaction.is_paper == is_paper)
+        )
+        await db.execute(
+            delete(BnbSwapLog).where(BnbSwapLog.is_paper == is_paper)
+        )
+
+        if is_paper:
+            trading_engine.paper_balance = config.trading_config.paper_balance
+            trading_engine.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
+
+        trading_engine.total_runtime_seconds = 0
+        trading_engine.started_at = None
+        trading_engine.is_running = False
+        trading_engine._bnb_emergency_threshold = 0.0
+        trading_engine._bnb_projected_need = 0.0
+        trading_engine._bnb_burn_rate = 0.0
+        trading_engine._last_bnb_check = None
+
+        set_ban_until(0)
+        await trading_engine.save_state(db)
+
+        result_state = await db.execute(select(BotState).limit(1))
+        state_row = result_state.scalar_one_or_none()
+        if state_row:
+            state_row.ban_until = 0
+
+        await db.commit()
+
+        balance = trading_engine.paper_balance if is_paper else 0
+        logger.info(f"[RESET] {mode_label} ALL trading reset. {'Balance: $' + str(balance) + ', ' if is_paper else ''}Timer: 00:00:00")
+
+        return {
+            "success": True,
+            "message": f"{mode_label} trading reset successfully (ALL)",
+            "paper_balance": trading_engine.paper_balance if is_paper else None,
+            "mode": "paper" if is_paper else "live",
+            "runtime": "00:00:00",
+            "direction": "ALL"
+        }
+
+    elif direction in ("LONG", "SHORT"):
+        # Partial reset — only delete orders/transactions for the specified direction
+        # Get order IDs to delete matching transactions
+        order_ids_result = await db.execute(
+            select(Order.id).where(
+                and_(Order.is_paper == is_paper, Order.direction == direction)
+            )
+        )
+        order_ids = [row[0] for row in order_ids_result.fetchall()]
+
+        if order_ids:
+            await db.execute(
+                delete(Transaction).where(Transaction.order_id.in_(order_ids))
+            )
+            await db.execute(
+                delete(Order).where(Order.id.in_(order_ids))
+            )
+
+        await db.commit()
+
+        # Recalculate paper balance from remaining trades
+        if is_paper:
+            await trading_engine._recalculate_paper_balance(db)
+            await trading_engine.save_state(db)
+
+        logger.info(f"[RESET] {mode_label} {direction} trades reset. Deleted {len(order_ids)} orders.")
+
+        return {
+            "success": True,
+            "message": f"{mode_label} {direction} trades reset ({len(order_ids)} orders deleted)",
+            "paper_balance": trading_engine.paper_balance if is_paper else None,
+            "mode": "paper" if is_paper else "live",
+            "direction": direction,
+            "deleted_count": len(order_ids)
+        }
+
+    else:
+        return {"success": False, "message": f"Invalid direction: {direction}. Use ALL, LONG, or SHORT."}
 
 
 # ----- Balance -----

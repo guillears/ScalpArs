@@ -1669,6 +1669,7 @@ def _compute_pair_performance(orders):
                 delta = (o.closed_at - o.opened_at).total_seconds() / 3600
                 hold_hours.append(delta)
         avg_hold = sum(hold_hours) / len(hold_hours) if hold_hours else 0
+        pnl_pct_sum = sum(o.pnl_percentage or 0 for o in trades)
         rows.append({
             "pair": pair,
             "longs": longs,
@@ -1676,6 +1677,7 @@ def _compute_pair_performance(orders):
             "trades": n,
             "win_rate": round(wins / n * 100, 1),
             "avg_pnl": round(total_pnl / n, 2),
+            "avg_pnl_pct": round(pnl_pct_sum / n, 4),
             "total_pnl": round(total_pnl, 2),
             "avg_hold_hours": avg_hold,
         })
@@ -1708,6 +1710,7 @@ def _compute_volume_crosstab(orders):
                     if o.closed_at and o.opened_at:
                         hold_hours.append((o.closed_at - o.opened_at).total_seconds() / 3600)
                 avg_hold = sum(hold_hours) / len(hold_hours) if hold_hours else 0
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in bucket)
                 rows.append({
                     "direction": direction,
                     "global_vol": g_label,
@@ -1715,6 +1718,7 @@ def _compute_volume_crosstab(orders):
                     "trades": n,
                     "win_rate": round(wins / n * 100, 1),
                     "avg_pnl": round(total_pnl / n, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / n, 4),
                     "total_pnl": round(total_pnl, 2),
                     "avg_hold_hours": avg_hold,
                 })
@@ -1758,12 +1762,14 @@ def _compute_breadth_crosstab(orders):
                 if o.closed_at and o.opened_at:
                     hold_hours.append((o.closed_at - o.opened_at).total_seconds() / 3600)
             avg_hold = sum(hold_hours) / len(hold_hours) if hold_hours else 0
+            pnl_pct_sum = sum(o.pnl_percentage or 0 for o in bucket)
             rows.append({
                 "direction": direction,
                 "breadth_bin": b_label,
                 "trades": n,
                 "win_rate": round(wins / n * 100, 1),
                 "avg_pnl": round(total_pnl / n, 2),
+                "avg_pnl_pct": round(pnl_pct_sum / n, 4),
                 "total_pnl": round(total_pnl, 2),
                 "avg_hold_hours": avg_hold,
             })
@@ -2733,6 +2739,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     for o in dc_orders:
                         c = o.confidence or "UNKNOWN"
                         dc_conf[c] = dc_conf.get(c, 0) + 1
+                    dc_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dc_orders)
                     adx_dir_crosstab.append({
                         "pair_adx_dir": pair_dir,
                         "btc_adx_dir": btc_dir,
@@ -2740,6 +2747,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "trades": dc_count,
                         "win_rate": round(dc_wins / dc_count * 100, 1),
                         "avg_pnl": round(dc_pnl / dc_count, 2),
+                        "avg_pnl_pct": round(dc_pnl_pct_sum / dc_count, 4),
                         "total_pnl": round(dc_pnl, 2),
                         "by_confidence": dc_conf,
                     })
@@ -2764,6 +2772,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 ct_count = len(bucket)
                 ct_long_count = len([o for o in bucket if (o.direction or "LONG") == "LONG"])
                 ct_short_count = ct_count - ct_long_count
+                ct_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in bucket)
                 btc_slope_adx_crosstab.append({
                     "slope_range": sr_name,
                     "adx_range": ar_name,
@@ -2771,6 +2780,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "direction": f"{ct_long_count}L/{ct_short_count}S",
                     "win_rate": round(ct_wins / ct_count * 100, 1),
                     "avg_pnl": round(ct_pnl_sum / ct_count, 2),
+                    "avg_pnl_pct": round(ct_pnl_pct_sum / ct_count, 4),
                     "total_pnl": round(ct_pnl_sum, 2),
                 })
 
@@ -2833,6 +2843,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     ct_wins = len([o for o in bucket if (o.pnl or 0) > 0])
                     ct_pnl_sum = sum(o.pnl or 0 for o in bucket)
                     ct_count = len(bucket)
+                    ct_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in bucket)
                     btc_rsi_adx_crosstab.append({
                         "direction": direction,
                         "btc_rsi_range": rsi_name,
@@ -2840,6 +2851,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "trades": ct_count,
                         "win_rate": round(ct_wins / ct_count * 100, 1),
                         "avg_pnl": round(ct_pnl_sum / ct_count, 2),
+                        "avg_pnl_pct": round(ct_pnl_pct_sum / ct_count, 4),
                         "total_pnl": round(ct_pnl_sum, 2),
                     })
 
@@ -3261,6 +3273,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     ct_count = len(bucket)
                     ct_wins = sum(1 for o in bucket if (o.pnl or 0) > 0)
                     ct_pnl = sum(o.pnl or 0 for o in bucket)
+                    ct_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket)
                     rsi_adx_crosstab.append({
                         "direction": direction,
                         "rsi_range": rsi_name,
@@ -3268,7 +3281,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "trades": ct_count,
                         "win_rate": round(ct_wins / ct_count * 100, 1),
                         "total_pnl": round(ct_pnl, 2),
-                        "avg_pnl": round(ct_pnl / ct_count, 2)
+                        "avg_pnl": round(ct_pnl / ct_count, 2),
+                        "avg_pnl_pct": round(ct_pnl_pct / ct_count, 4),
                     })
     except Exception as e:
         logger.error(f"[PERF] Error computing RSI x ADX cross-tab: {e}\n{traceback.format_exc()}")

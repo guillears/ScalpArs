@@ -1379,6 +1379,28 @@ class TradingEngine:
                         f"[EXIT_RETRY] {order.pair}: Attempt {attempt}/{max_exit_retries} failed, retrying in 2s..."
                     )
                     await asyncio.sleep(2)
+
+                    # Before retrying, check if position is already gone (close succeeded but response was lost)
+                    try:
+                        _check_pos = await binance_service.get_position_for_symbol(symbol)
+                        if _check_pos is None:
+                            # Position gone — close succeeded on Binance, fetch actual fill price
+                            actual_price = await self._fetch_actual_fill_price(order, current_price)
+                            logger.info(
+                                f"[EXIT_ALREADY_CLOSED] {order.pair}: Position gone after attempt {attempt}, "
+                                f"close succeeded on Binance (fill={actual_price}). Skipping retries."
+                            )
+                            _decision_price_for_slip = current_price
+                            exit_result = {
+                                'price': actual_price,
+                                'fee_rate': taker_fee_rate,
+                                'exit_order_type': 'TAKER',
+                                'decision_price': _decision_price_for_slip,
+                            }
+                            break
+                    except Exception as _check_err:
+                        logger.warning(f"[EXIT_RETRY] {order.pair}: Position check failed ({_check_err}), continuing retry")
+
                     _retry_tracker = websocket_tracker.get_tracker(order.pair)
                     fresh_price = _retry_tracker.last_price if _retry_tracker else None
                     if fresh_price and fresh_price > 0:

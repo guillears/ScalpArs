@@ -50,22 +50,59 @@ Reference this when working on trading_engine.py, main.py, or trading_config.jso
 - **EMA20 Slope**: moderate slopes (0.08-0.12%) best for shorts. Very steep (>0.20%) may be overextended.
 - **Levers to test (300-400 trades)**: Raise EMA5-EMA8 min gap from 0.02% to 0.05%+; cap ADX max at 30.
 
-### April 2026 Live Data (26 trades, ongoing collection — target 40)
+### April 8, 2026 — Pre-Exit Optimization Baseline (35L + 3S)
 
-#### Entry Quality
-- **FL_SIGNAL_LOST is the #1 loss driver**: 8 trades, -$33.35. Avg peak only +0.06% — these trades never really worked. The signal was dead on arrival.
-- **Entry indicators nearly identical** between FL_SIGNAL_LOST and TICK_MOMENTUM winners — standard filters can't distinguish. Need tighter stretch/gap minimum to filter weak entries.
-- **EMA5 Stretch**: 0.16-0.20% = 100% WR (+$6.51). Below 0.16% = 20% WR. Strong candidate for minimum threshold.
+Baseline saved at `reports/report_2026-04-08_pre_exit_optimization.txt`.
 
-#### Exit Quality
-- **Tick Momentum Exit is cutting winners short**: 7 winning TM trades closed at +0.14% avg, but post-exit peak was +1.11% (100% of trades reached it). Estimated loss from early exit: ~$15 across 7 trades.
-- **Trailing Stop captures the most profit**: 2 trades, +0.63% avg, best exit type. But pullback trigger (0.05%) is very tight.
-- **Consider disabling Tick Momentum Exit**: Trades that TM exited early would have been caught by trailing stop at ~+0.6% instead of +0.14%. Even trades that dipped first would recover (flagged → trailing stop). Need 40+ trades to confirm.
-- **Shorts performing poorly**: 2 trades, 0% WR, -$7.07. Both hit SL quickly.
+#### Key Findings (35 LONG trades in Bullish regime)
+- **Total P&L**: -$36.75 (-0.23% avg), 45.7% WR, expectancy -$1.05/trade
+- **FL_SIGNAL_LOST**: 12 trades, -$43.79 — biggest loss driver, avg peak only +0.08%
+- **TICK_MOMENTUM_EXIT**: 11 trades, +$6.65 — cutting winners at +0.14% when post-peak was +1.03%
+- **TRAILING_STOP**: 3 trades, +$7.65 — best exit type, +0.65% avg
+- **9 "Positive, No BE" SL trades**: peaked at +0.12% avg then dropped to -0.87%, lost $33.91
+- **EMA5 Stretch**: 0.16-0.20% = 100% WR (+$6.60). Below 0.16% = 22% WR. Phase 2 entry filter candidate.
+- **All flagged trades had positive peaks** — entries work, exits fail to capture profit
 
-#### Infrastructure
-- **9 EXTERNAL exits (37.5%)**: Caused by SQLite "database is locked" — Binance close succeeded but DB commit failed. Fixed with WAL mode + commit retry (deployed April 8).
-- **Slippage**: Negligible (+0.017% avg on longs). Not a factor.
+#### New Exit Structure (deployed April 8, collecting data)
+- **BE L1**: trigger at 0.15% peak, floor at 0.10% (protects weak winners that peaked 0.10-0.25%)
+- **Trailing Stop**: TP at 0.40%, pullback 0.08% (rides strong winners)
+- **Tick Momentum**: DISABLED (was net negative — cutting winners short)
+- **BE L2-L5**: disabled (99)
+- **Signal Lost Flag + Security Gap**: kept
+- **SL**: -0.9% unchanged
+
+#### Comparison Table (fill at 40 trades)
+| Metric | Before (35L) | After (40L target) |
+|--------|-------------|-------------------|
+| Win Rate | 45.7% | ? |
+| Avg P&L % | -0.23% | ? |
+| Expectancy/trade | -$1.05 | ? |
+| Profit Factor | 0.30 | ? |
+| Trailing Stop avg close % | +0.65% (3 trades) | ? |
+| BE L1 saves | 0 (was off) | ? |
+| FL_SIGNAL_LOST trades | 12 (-$43.79) | ? |
+| Post-peak captured | +0.14% (TM cut early) | ? |
+| EXTERNAL exits | 34.3% | ? |
+
+#### Infrastructure Fixes (April 8)
+- **P&L accuracy**: Exit now uses real Binance fill price, not WebSocket price
+- **Slippage tracking**: `[EXIT_SLIPPAGE]` logged on every close, `exit_slippage_pct` stored per order
+- **DB lock fix**: WAL mode + 30s busy timeout + same-session commit retry (5 attempts)
+- **Position check before retry**: Prevents ReduceOnly rejected spam when close succeeded but CCXT lost response
+- **EXTERNAL exits**: Should drop to ~0% with these fixes
+
+#### Current Config (April 8)
+- Both confidence levels: `both` mode, 1x leverage
+- Tick Momentum: OFF | RSI Momentum: OFF
+- BE L1: 0.15%/0.10% | BE L2-L5: OFF (99)
+- Trailing: TP 0.40%, pullback 0.08%
+- Breadth filter: OFF | Short RSI min: 25
+- Signal Lost Flag + Security Gap: ON
+
+#### Phase 2 (after 40-trade validation)
+- **Entry tuning**: EMA5 Stretch minimum threshold (0.16%?)
+- **Pair blacklisting**: Based on Slip% data per pair
+- **BE L1 fine-tuning**: Adjust trigger/offset based on new data
 
 ### Caveats
 - 188 trades in a single choppy bearish regime — patterns may shift in trending/bullish markets.

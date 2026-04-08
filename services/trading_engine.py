@@ -1520,51 +1520,32 @@ class TradingEngine:
         # ═══════════════════════════════════════════════════════════════
         # PHASE 1: Essential close — commit to DB immediately so the
         # order is never left as a zombie if optional metadata fails.
-        # Uses retry loop to handle SQLite "database is locked" errors
-        # which can occur when the scan loop writes simultaneously.
+        # Uses retry loop on the SAME session to handle SQLite
+        # "database is locked" errors from scan loop contention.
         # ═══════════════════════════════════════════════════════════════
         _close_time = datetime.utcnow()
         _db_commit_success = False
         _max_db_retries = 5
-        order_pair = order.pair  # save before retry loop (order ref may change in fresh sessions)
+        order_pair = order.pair
         order_id = order.id
+        _db_attempt = 0
 
         for _db_attempt in range(1, _max_db_retries + 1):
             try:
+                # Set all fields on each attempt (rollback resets dirty state)
+                order.status = "CLOSED"
+                order.exit_price = actual_exit_price
+                order.exit_fee = exit_fee
+                order.total_fee = total_fee
+                order.exit_order_type = exit_order_type
+                order.pnl = pnl_data['pnl']
+                order.pnl_percentage = pnl_data['pnl_percentage']
+                order.closed_at = _close_time
+                order.close_reason = reason
+                order.exit_slippage_pct = _slippage_pct
+
+                # Only add Transaction on first attempt (rollback removes it from session)
                 if _db_attempt == 1:
-                    # First attempt: use the caller's session
-                    _session = db
-                else:
-                    # Retry: use a fresh session to avoid stale state
-                    _session = AsyncSessionLocal()
-
-                try:
-                    if _db_attempt > 1:
-                        # Re-fetch the order in the fresh session
-                        _refetch = await _session.execute(
-                            select(Order).where(Order.id == order.id)
-                        )
-                        order = _refetch.scalar_one_or_none()
-                        if not order:
-                            logger.error(f"[DB_RETRY] {order_pair}: Order {order_id} not found on retry {_db_attempt}")
-                            break
-                        if order.status == "CLOSED":
-                            logger.info(f"[DB_RETRY] {order_pair}: Order already CLOSED (committed by earlier attempt), skipping")
-                            _db_commit_success = True
-                            break
-
-                    order.status = "CLOSED"
-                    order.exit_price = actual_exit_price
-                    order.exit_fee = exit_fee
-                    order.total_fee = total_fee
-                    order.exit_order_type = exit_order_type
-                    order.pnl = pnl_data['pnl']
-                    order.pnl_percentage = pnl_data['pnl_percentage']
-                    order.closed_at = _close_time
-                    order.close_reason = reason
-                    order.exit_slippage_pct = _slippage_pct
-
-                    # Create Transaction record (on retries, previous attempt's was rolled back)
                     transaction = Transaction(
                         order_id=order.id,
                         binance_order_id=order.binance_order_id,
@@ -1579,38 +1560,50 @@ class TradingEngine:
                         order_type=exit_order_type,
                         is_paper=order.is_paper
                     )
-                    _session.add(transaction)
+                    db.add(transaction)
 
-                    await _session.commit()
-                    await _session.refresh(order)
-                    _db_commit_success = True
+                await db.commit()
+                await db.refresh(order)
+                _db_commit_success = True
 
-                    _slip_str = f", slippage={_slippage_pct:+.4f}%" if _slippage_pct is not None else ""
-                    if _db_attempt > 1:
-                        logger.info(f"[DB_RETRY_OK] {order.pair} {order.direction}: DB commit succeeded on attempt {_db_attempt} (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
-                    else:
-                        logger.info(f"[CLOSE_COMMITTED] {order.pair} {order.direction}: essential close saved (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
-                    break
-
-                finally:
-                    if _db_attempt > 1 and _session:
-                        await _session.close()
+                _slip_str = f", slippage={_slippage_pct:+.4f}%" if _slippage_pct is not None else ""
+                if _db_attempt > 1:
+                    logger.info(f"[DB_RETRY_OK] {order_pair} {order.direction}: DB commit succeeded on attempt {_db_attempt} (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
+                else:
+                    logger.info(f"[CLOSE_COMMITTED] {order_pair} {order.direction}: essential close saved (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
+                break
 
             except Exception as _db_err:
-                _is_db_locked = "database is locked" in str(_db_err) or "OperationalError" in str(type(_db_err).__name__)
-                if _is_db_locked and _db_attempt < _max_db_retries:
+                _err_str = str(_db_err)
+                if _db_attempt < _max_db_retries:
                     logger.warning(
-                        f"[DB_LOCKED] {order_pair}: DB commit attempt {_db_attempt}/{_max_db_retries} failed (database locked), "
+                        f"[DB_LOCKED] {order_pair}: DB commit attempt {_db_attempt}/{_max_db_retries} failed ({_err_str[:80]}), "
                         f"retrying in {_db_attempt}s... (Binance close already succeeded)"
                     )
                     try:
                         await db.rollback()
                     except Exception:
-                        pass  # session may already be invalidated
+                        pass
                     await asyncio.sleep(_db_attempt)  # progressive backoff: 1s, 2s, 3s, 4s
+
+                    # Re-add Transaction after rollback (rollback removes pending objects)
+                    transaction = Transaction(
+                        order_id=order_id,
+                        binance_order_id=order.binance_order_id,
+                        pair=order_pair,
+                        action=f"CLOSE_{order.direction}",
+                        price=actual_exit_price,
+                        quantity=order.quantity,
+                        investment=order.investment,
+                        leverage=order.leverage,
+                        notional_value=notional_at_close,
+                        fee=exit_fee,
+                        order_type=exit_order_type,
+                        is_paper=order.is_paper
+                    )
+                    db.add(transaction)
                 else:
-                    logger.error(f"[DB_COMMIT_FAILED] {order_pair}: All {_db_attempt} DB commit attempts failed: {_db_err}")
-                    break
+                    logger.error(f"[DB_COMMIT_FAILED] {order_pair}: All {_db_attempt} DB commit attempts failed: {_err_str[:120]}")
 
         if not _db_commit_success:
             logger.critical(
@@ -1618,22 +1611,13 @@ class TradingEngine:
                 f"Position IS closed on Binance (exit={actual_exit_price}). "
                 f"Will be caught by next reconciliation cycle."
             )
-            return None  # DB save failed — reconciliation will clean up
+            return None
 
         # ═══════════════════════════════════════════════════════════════
         # PHASE 2: Optional metadata — failures here must NEVER revert
         # the close above.  A second commit persists the extras.
-        # If Phase 1 used a retry session, re-fetch order in original db.
         # ═══════════════════════════════════════════════════════════════
         try:
-            # Re-fetch order in the original session if Phase 1 used a retry session
-            if _db_attempt > 1:
-                _refetch2 = await db.execute(select(Order).where(Order.id == order_id))
-                order = _refetch2.scalar_one_or_none()
-                if not order:
-                    logger.warning(f"[CLOSE_METADATA] {order_pair}: Could not re-fetch order for Phase 2 metadata")
-                    raise RuntimeError("Order not found for Phase 2")
-
             # Persist phantom shadow data, peak EMA5 metrics, and signal-lost flag from real-time cache
             for cached in _open_orders_cache.get(order_pair, []):
                 if cached['id'] == order_id:

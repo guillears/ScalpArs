@@ -6,11 +6,14 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import settings
 
-# Create async engine
+# Create async engine with SQLite concurrency settings
+# busy_timeout=30000 (30s) makes SQLite wait for locks instead of failing immediately
+# This prevents "database is locked" errors when scan loop and real-time monitor write simultaneously
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
-    future=True
+    future=True,
+    connect_args={"timeout": 30},
 )
 
 # Async session factory
@@ -26,6 +29,15 @@ Base = declarative_base()
 
 async def init_db():
     """Initialize database tables"""
+    # Enable WAL mode for better concurrent read/write performance
+    # WAL allows readers and writers to operate simultaneously without blocking
+    async with engine.begin() as conn:
+        from sqlalchemy import text as _wal_text
+        await conn.execute(_wal_text("PRAGMA journal_mode=WAL"))
+        await conn.execute(_wal_text("PRAGMA busy_timeout=30000"))
+        import logging
+        logging.getLogger("database").info("[DB] SQLite WAL mode enabled, busy_timeout=30s")
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     

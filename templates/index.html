@@ -6563,9 +6563,9 @@
                 // Exit Type Performance
                 const extBody = document.getElementById('exit-type-perf-body');
                 if (data.by_exit_type && Object.keys(data.by_exit_type).length > 0) {
-                    const extColors = { 'MAKER': 'text-sky-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400' };
+                    const extColors = { 'MAKER': 'text-sky-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400', 'EXTERNAL': 'text-red-400', 'TAKER_FALLBACK_RECOVERED': 'text-orange-400' };
                     const extConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
-                    const extOrder = ['MAKER', 'TAKER', 'TAKER_FALLBACK'];
+                    const extOrder = ['MAKER', 'TAKER', 'TAKER_FALLBACK', 'EXTERNAL', 'TAKER_FALLBACK_RECOVERED'];
                     const sortedExitTypes = extOrder.filter(t => data.by_exit_type[t]);
                     let extTotalTrades = 0, extTotalPnl = 0, extTotalFees = 0, extTotalSavings = 0;
                     const extRows = sortedExitTypes.map(etype => {

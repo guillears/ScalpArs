@@ -91,7 +91,7 @@ class Order(Base):
     # ADX delta at entry: adx - adx_prev (positive = rising, negative = falling, magnitude = strength)
     entry_adx_delta = Column(Float, nullable=True)
     # Signal quality score at entry: 0-6 (higher = more favorable conditions aligned)
-    entry_quality_score = Column(Integer, nullable=True)
+    entry_quality_score = Column(Float, nullable=True)
 
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

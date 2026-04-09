@@ -2908,33 +2908,36 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     })
 
         # Quality Score Performance
-        qs_orders = [o for o in orders if o.entry_quality_score is not None]
-        for score_val in range(7):  # 0-6
-            score_orders = [o for o in qs_orders if o.entry_quality_score == score_val]
-            if not score_orders:
-                continue
-            for direction in ["LONG", "SHORT"]:
-                dir_orders = [o for o in score_orders if (o.direction or "LONG") == direction]
-                if not dir_orders:
+        try:
+            qs_orders = [o for o in orders if o.entry_quality_score is not None]
+            for score_val in range(7):  # 0-6
+                score_orders = [o for o in qs_orders if int(o.entry_quality_score) == score_val]
+                if not score_orders:
                     continue
-                count = len(dir_orders)
-                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
-                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
-                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
-                conf_breakdown = {}
-                for o in dir_orders:
-                    conf = o.confidence or "UNKNOWN"
-                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-                quality_score_performance.append({
-                    "range": str(score_val),
-                    "direction": direction,
-                    "count": count,
-                    "win_rate": round(wins / count * 100, 1),
-                    "avg_pnl_usd": round(pnl_sum / count, 2),
-                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
-                    "total_pnl_usd": round(pnl_sum, 2),
-                    "by_confidence": conf_breakdown
-                })
+                for direction in ["LONG", "SHORT"]:
+                    dir_orders = [o for o in score_orders if (o.direction or "LONG") == direction]
+                    if not dir_orders:
+                        continue
+                    count = len(dir_orders)
+                    wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                    pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                    pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
+                    conf_breakdown = {}
+                    for o in dir_orders:
+                        conf = o.confidence or "UNKNOWN"
+                        conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                    quality_score_performance.append({
+                        "range": str(score_val),
+                        "direction": direction,
+                        "count": count,
+                        "win_rate": round(wins / count * 100, 1),
+                        "avg_pnl_usd": round(pnl_sum / count, 2),
+                        "avg_pnl_pct": round(pnl_pct_sum / count, 4),
+                        "total_pnl_usd": round(pnl_sum, 2),
+                        "by_confidence": conf_breakdown
+                    })
+        except Exception as e:
+            logger.error(f"[PERF] Error computing quality score performance: {e}")
 
     except Exception as e:
         logger.error(f"[PERF] Error computing gap/rsi/adx/stretch performance: {e}\n{traceback.format_exc()}")

@@ -2127,9 +2127,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     longs = [o for o in orders if o.direction == "LONG"]
     shorts = [o for o in orders if o.direction == "SHORT"]
     
-    # Winning trades
-    wins = [o for o in orders if (o.pnl or 0) > 0]
-    losses = [o for o in orders if (o.pnl or 0) <= 0]
+    # Winning trades (use all_ prefix to avoid shadowing by inner loops)
+    all_wins = [o for o in orders if (o.pnl or 0) > 0]
+    all_losses = [o for o in orders if (o.pnl or 0) <= 0]
     
     long_wins = [o for o in longs if (o.pnl or 0) > 0]
     short_wins = [o for o in shorts if (o.pnl or 0) > 0]
@@ -2139,15 +2139,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     total_longs = len(longs)
     total_shorts = len(shorts)
     
-    win_rate = (len(wins) / total_trades * 100) if total_trades > 0 else 0
+    win_rate = (len(all_wins) / total_trades * 100) if total_trades > 0 else 0
     win_rate_longs = (len(long_wins) / total_longs * 100) if total_longs > 0 else 0
     win_rate_shorts = (len(short_wins) / total_shorts * 100) if total_shorts > 0 else 0
     
     # Average wins
-    avg_win = sum(o.pnl for o in wins) / len(wins) if wins else 0
+    avg_win = sum(o.pnl for o in all_wins) / len(all_wins) if all_wins else 0
     avg_win_long = sum(o.pnl for o in long_wins) / len(long_wins) if long_wins else 0
     avg_win_short = sum(o.pnl for o in short_wins) / len(short_wins) if short_wins else 0
-    avg_loss = sum(o.pnl for o in losses) / len(losses) if losses else 0
+    avg_loss = sum(o.pnl for o in all_losses) / len(all_losses) if all_losses else 0
     long_losses = [o for o in longs if (o.pnl or 0) <= 0]
     short_losses = [o for o in shorts if (o.pnl or 0) <= 0]
     avg_loss_long = sum(o.pnl for o in long_losses) / len(long_losses) if long_losses else 0
@@ -4221,8 +4221,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "total_trades": total_trades,
         "total_longs": total_longs,
         "total_shorts": total_shorts,
-        "total_wins": len(wins),
-        "total_losses": len(losses),
+        "total_wins": len(all_wins),
+        "total_losses": len(all_losses),
         "win_rate": round(win_rate, 2),
         "win_rate_longs": round(win_rate_longs, 2),
         "win_rate_shorts": round(win_rate_shorts, 2),

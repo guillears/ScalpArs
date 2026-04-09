@@ -981,7 +981,7 @@ class TradingEngine:
             logger.info(f"[SKIP] {pair}: Already have open position")
             return None  # Already have position
         
-        # Check cooldown - don't re-enter same pair too quickly after any close
+        # Check cooldown - don't re-enter same pair too quickly after a losing trade
         cooldown_minutes = config.trading_config.investment.cooldown_after_loss_minutes
         if cooldown_minutes > 0:
             cooldown_threshold = datetime.utcnow() - timedelta(minutes=cooldown_minutes)
@@ -991,14 +991,15 @@ class TradingEngine:
                         Order.pair == pair,
                         Order.status == "CLOSED",
                         Order.is_paper == self.is_paper_mode,
-                        Order.closed_at >= cooldown_threshold
+                        Order.closed_at >= cooldown_threshold,
+                        Order.pnl < 0  # Only apply cooldown after losses
                     )
                 ).order_by(desc(Order.closed_at)).limit(1)
             )
             recent_close = result.scalar_one_or_none()
             if recent_close:
                 time_since_close = (datetime.utcnow() - recent_close.closed_at).total_seconds() / 60
-                logger.info(f"[COOLDOWN] {pair}: Recent exit {time_since_close:.1f} mins ago (pnl={recent_close.pnl:.2f}), waiting {cooldown_minutes} mins")
+                logger.info(f"[COOLDOWN] {pair}: Recent loss {time_since_close:.1f} mins ago (pnl={recent_close.pnl:.2f}), waiting {cooldown_minutes} mins")
                 return None
         
         # Calculate position size
@@ -1527,6 +1528,14 @@ class TradingEngine:
                 exit_fee = notional_at_close * taker_fee_rate
 
         total_fee = (order.entry_fee or 0) + exit_fee
+
+        # Apply FL_ prefix if trade was flagged (check cache before it can be wiped)
+        # This ensures ALL close reasons get the flag, not just those in Phase 2
+        if not reason.startswith("FL_"):
+            for _fl_cached in _open_orders_cache.get(order.pair, []):
+                if _fl_cached['id'] == order.id and _fl_cached.get('signal_lost_flagged'):
+                    reason = f"FL_{reason}"
+                    break
 
         # Calculate P&L
         pnl_data = calculate_pnl(
@@ -3229,7 +3238,12 @@ class TradingEngine:
                     close_reason = f"STOP_LOSS_WIDE L{tp_level}"
                 else:
                     close_reason = f"STOP_LOSS L{tp_level}"
-                
+
+                # Apply FL_ prefix if trade was flagged (signal lost at some point)
+                _is_flagged_sl = order_info.get('signal_lost_flagged', False)
+                if _is_flagged_sl and not close_reason.startswith("FL_"):
+                    close_reason = f"FL_{close_reason}"
+
                 logger.warning(f"[REALTIME_{close_reason}] {pair} {direction}: pnl={pnl_pct:.4f}% <= effective_sl={effective_sl}% (original_sl={stop_loss_pct}%, peak={current_peak:.4f}%) - CLOSING NOW!")
 
                 # Prevent duplicate close attempts from consecutive monitor cycles
@@ -3511,6 +3525,9 @@ class TradingEngine:
 
                             if order:
                                 trail_reason = f"TRAILING_STOP L{order.current_tp_level}"
+                                # Apply FL_ prefix if trade was flagged
+                                if order_info.get('signal_lost_flagged') and not trail_reason.startswith("FL_"):
+                                    trail_reason = f"FL_{trail_reason}"
                                 closed = await self.close_position(
                                     db, order, current_price, trail_reason
                                 )

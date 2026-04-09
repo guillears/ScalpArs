@@ -1,0 +1,34 @@
+PRE-FILTER TIGHTENING BASELINE — April 9, 2026 (40L + 56S = 96 trades)
+========================================================================
+Config: TM OFF, BE L1 0.15%/0.10%, L2 0.25%/0.15%, L3 0.35%/0.25%, TP 0.40%, pullback 0.08%
+Breadth OFF, RSI L:40-65, RSI S:25-50, ADX Max S:35, Gap 5-20 Min L:0.15
+
+LONGS (Bullish): 40 trades, 60% WR, -$14.19 (-0.17% avg), expectancy -$0.35
+SHORTS (Bearish): 56 trades, 76.8% WR, +$0.59 (+0.00% avg), expectancy +$0.01
+COMBINED: 96 trades, 69.8% WR, -$13.60, expectancy -$0.14
+
+Key metrics:
+- Never Positive LONG: 5 trades (-$8.46), avg RSI 61.1, avg ADX 22.0
+- Never Positive SHORT: 7 trades (-$13.76), avg RSI 32.9, avg ADX 30.6
+- FL_SIGNAL_LOST LONG: 11 trades (-$19.26), avg RSI 62.4
+- FL_SIGNAL_LOST SHORT: 7 trades (-$12.75), avg RSI 33.5
+- BREAKEVEN_SL_L1 LONG: 15 trades (+$2.44)
+- BREAKEVEN_SL_L1 SHORT: 28 trades (+$5.50)
+- TRAILING_STOP LONG: 8 trades (+$6.57)
+- TRAILING_STOP SHORT: 7 trades (+$8.87)
+- EXTERNAL exits: 1 (2.5% longs), 0 shorts
+
+Exit structure working:
+- BE L1: main safety net (15L + 28S)
+- BE L2: 1L + 2S caught
+- BE L3: 1L + 4S caught
+- Trailing Stop: profit maximizer (8L + 7S)
+- FL system: 12L + 13S flagged trades
+
+Changes deployed after this baseline:
+- L1: momentum_long_rsi_max 65 -> 63
+- L2: ema_gap_5_20_min_long 0.15 -> 0.10
+- L4: market_breadth_filter ON, bull 30%, bear 45%, flat 0
+- S1: momentum_short_rsi_max 50 -> 40
+- S2: momentum_adx_max 35 -> 33
+- Also: EMA5-20 gap filter moved from confidence levels to global thresholds (UI refactor, same values)

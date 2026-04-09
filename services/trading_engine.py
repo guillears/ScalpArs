@@ -36,6 +36,27 @@ _EXIT_RETRY_MAX = 30
 # Current BTC macro regime, updated by scan_and_trade, read by update_open_positions
 _current_btc_regime: str = "NEUTRAL"
 
+
+def _calculate_quality_score(direction: str, entry_rsi, entry_adx, entry_gap,
+                              bull_pct, bear_pct, btc_adx, pair_ema20_slope) -> int:
+    """Calculate entry quality score (0-6). Higher = more favorable conditions aligned."""
+    score = 0
+    if direction == "LONG":
+        if entry_rsi is not None and 55 <= entry_rsi < 60: score += 1
+        if entry_adx is not None and 20 <= entry_adx < 25: score += 1
+        if entry_gap is not None and 0.25 <= entry_gap <= 0.50: score += 1
+        if bull_pct is not None and bull_pct > 50: score += 1
+        if btc_adx is not None and 20 <= btc_adx < 25: score += 1
+        if pair_ema20_slope is not None and abs(pair_ema20_slope) > 0.12: score += 1
+    else:  # SHORT
+        if entry_rsi is not None and 30 <= entry_rsi < 35: score += 1
+        if entry_adx is not None and 25 <= entry_adx < 30: score += 1
+        if entry_gap is not None and 0.20 <= entry_gap <= 0.40: score += 1
+        if bear_pct is not None and bear_pct > 65: score += 1
+        if btc_adx is not None and 30 <= btc_adx < 35: score += 1
+        if pair_ema20_slope is not None and abs(pair_ema20_slope) > 0.10: score += 1
+    return score
+
 # Global volume ratio: sum(current volumes) / sum(20-bar avg volumes) across top pairs.
 # Computed at end of each scan, used by next scan cycle as a market regime gate.
 _global_volume_ratio: float = 1.0
@@ -943,7 +964,8 @@ class TradingEngine:
         entry_bull_pct: float = None,
         entry_bear_pct: float = None,
         entry_range_position: float = None,
-        entry_adx_delta: float = None
+        entry_adx_delta: float = None,
+        entry_quality_score: int = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -1115,6 +1137,7 @@ class TradingEngine:
             entry_bear_pct=entry_bear_pct,
             entry_range_position=entry_range_position,
             entry_adx_delta=entry_adx_delta,
+            entry_quality_score=entry_quality_score,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -2964,6 +2987,10 @@ class TradingEngine:
                 pair_ema20_prev3 = indicators.get('ema20_prev3')
                 if pair_ema20 and pair_ema20_prev3 and pair_ema20_prev3 != 0:
                     pair_ema20_slope_pct = round(((pair_ema20 - pair_ema20_prev3) / pair_ema20_prev3) * 100, 4)
+                entry_quality_score = _calculate_quality_score(
+                    signal, entry_rsi, entry_adx, entry_gap,
+                    _market_bull_pct, _market_bear_pct, btc_adx, pair_ema20_slope_pct
+                )
                 order = await self.open_position(
                     db=db,
                     pair=pair,
@@ -2989,7 +3016,8 @@ class TradingEngine:
                     entry_bull_pct=_market_bull_pct,
                     entry_bear_pct=_market_bear_pct,
                     entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None,
-                    entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None
+                    entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
+                    entry_quality_score=entry_quality_score
                 )
 
                 if order:

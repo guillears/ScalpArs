@@ -360,11 +360,12 @@
                                 <th class="px-4 py-3 font-medium text-center">BE Level</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium">Reason</th>
+                                <th class="px-4 py-3 font-medium text-center" title="Entry Quality Score (0-6)">Q</th>
                             </tr>
                         </thead>
                         <tbody id="closed-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
+                                <td colspan="18" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -1348,6 +1349,31 @@
                             </tbody>
                         </table>
                 </div>
+                </div>
+
+                <!-- Performance by Entry Quality Score -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry Quality Score</h3>
+                    <p class="text-xs text-gray-500 mb-3">Signal quality score at entry (0-6, higher = more favorable conditions aligned). Used to validate signal-quality-based position sizing.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Score</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="quality-score-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting entry quality scores)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <!-- Performance by Pair EMA20 Slope -->
@@ -4056,6 +4082,14 @@
             }
 
             lines.push(`\n${hr2}`);
+            lines.push('## Performance by Entry Quality Score\n');
+            lines.push(`${'Score'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+            for (const r of (perf.quality_score_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                lines.push(`${(r.range||'').padEnd(8)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+            }
+
+            lines.push(`\n${hr2}`);
             lines.push('## Performance by Pair EMA20 Slope (abs)\n');
             lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
             for (const r of (perf.pair_slope_performance || [])) {
@@ -4770,6 +4804,15 @@
                 for (const r of (perf.stretch_performance || [])) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+                }
+
+                // --- QUALITY SCORE ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Entry Quality Score\n');
+                lines.push(`${'Score'.padEnd(8)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of (perf.quality_score_performance || [])) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.range||'').padEnd(8)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
                 }
 
                 // --- PAIR EMA20 SLOPE ---
@@ -5691,6 +5734,44 @@
                     }).join('');
                 } else {
                     stretchBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting entry EMA5 stretch)</td></tr>';
+                }
+
+                // Performance by Entry Quality Score
+                const qsBody = document.getElementById('quality-score-performance-body');
+                if (data.quality_score_performance && data.quality_score_performance.length > 0) {
+                    const confColorsQS = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    qsBody.innerHTML = data.quality_score_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const scoreVal = parseInt(r.range);
+                        const scoreColor = scoreVal >= 4 ? 'text-emerald-400' : scoreVal >= 2 ? 'text-yellow-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confColorsQS[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${scoreColor}">${r.range}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    qsBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting entry quality scores)</td></tr>';
                 }
 
                 // Performance by Pair EMA20 Slope
@@ -7753,7 +7834,7 @@
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="17" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="18" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
                     return;
                 }
                 
@@ -7821,6 +7902,12 @@
                                     return `<span title="${tip}" class="cursor-help border-b border-dotted border-gray-500">${o.close_reason}</span>`;
                                 }
                                 return o.close_reason;
+                            })()}</td>
+                            <td class="px-4 py-3 text-center">${(() => {
+                                const qs = o.entry_quality_score;
+                                if (qs == null) return '<span class="text-gray-500">-</span>';
+                                const qColor = qs >= 4 ? 'bg-emerald-500/20 text-emerald-400' : qs >= 2 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400';
+                                return `<span class="px-1.5 py-0.5 rounded text-xs font-medium ${qColor}">${qs}</span>`;
                             })()}</td>
                         </tr>
                     `;

@@ -1029,6 +1029,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "post_exit_trough_minutes": o.post_exit_trough_minutes,
             "post_exit_final_pnl": o.post_exit_final_pnl,
             "post_exit_signal_lost_minutes": o.post_exit_signal_lost_minutes,
+            "entry_quality_score": o.entry_quality_score,
         })
 
     return orders_data
@@ -1353,7 +1354,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "btc_slope_adx_crosstab": [],
-            "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [],
+            "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -2099,7 +2100,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "pair_slope_performance": [],
             "btc_slope_performance": [],
             "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "btc_slope_adx_crosstab": [],
-            "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [],
+            "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "by_close_reason": {},
             "stop_loss_deep_dive": {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0},
             "winning_trades_drawdown": [], "trough_recovery": [],
@@ -2309,6 +2310,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     btc_slope_adx_crosstab = []
     btc_rsi_performance = []
     btc_rsi_adx_crosstab = []
+    quality_score_performance = []
     try:
         gap_ranges = [
             ("0.12 - 0.15%", 0.12, 0.15),
@@ -2905,6 +2907,35 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "total_pnl": round(ct_pnl_sum, 2),
                     })
 
+        # Quality Score Performance
+        qs_orders = [o for o in orders if o.entry_quality_score is not None]
+        for score_val in range(7):  # 0-6
+            score_orders = [o for o in qs_orders if o.entry_quality_score == score_val]
+            if not score_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in score_orders if (o.direction or "LONG") == direction]
+                if not dir_orders:
+                    continue
+                count = len(dir_orders)
+                wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                quality_score_performance.append({
+                    "range": str(score_val),
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown
+                })
+
     except Exception as e:
         logger.error(f"[PERF] Error computing gap/rsi/adx/stretch performance: {e}\n{traceback.format_exc()}")
         gap_performance = []
@@ -2923,6 +2954,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         btc_slope_adx_crosstab = []
         btc_rsi_performance = []
         btc_rsi_adx_crosstab = []
+        quality_score_performance = []
     
     # By Close Reason - group by reason with L4+ aggregation
     by_close_reason = {}
@@ -4238,6 +4270,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
         "btc_rsi_performance": btc_rsi_performance,
         "btc_rsi_adx_crosstab": btc_rsi_adx_crosstab,
+        "quality_score_performance": quality_score_performance,
         "by_close_reason": by_close_reason,
         "stop_loss_deep_dive": stop_loss_deep_dive,
         "winning_trades_drawdown": winning_trades_drawdown,

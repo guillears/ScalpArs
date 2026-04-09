@@ -1,0 +1,291 @@
+================================================================================
+TRADING BOT SPLIT ANALYTICS REPORT
+Generated: 2026-04-09T13:27:45.235Z
+================================================================================
+
+## CONFIGURATION
+
+Signal Thresholds:
+  EMA Gap Threshold L: 0.03  |  S: 0.05  |  EMA Gap Max: 0.35
+  ADX Very Strong: L>25 S>30  |  ADX Strong: L>18 S>25  |  ADX Max: L30 S33
+  LONG RSI: 40 - 63  |  SHORT RSI: 25 - 40
+  RSI x ADX Filter L: (none)  |  S: 30-35:25,35-50:30
+  Macro Trend Filter: false  |  BTC Global: false  |  Neutral Mode: none
+  BTC RSI L: 40-65  |  BTC RSI S: 25-60  |  BTC ADX L: 15-35  |  BTC ADX S: 18-35  |  ADX Dir L: both  |  ADX Dir S: both
+  Pair ADX Dir L: rising  |  Pair ADX Dir S: both
+  Global Vol Filter: false  |  Thresh L: 1.05  |  Thresh S: 1.05  |  Lookback: 48 bars
+  Pair Vol Filter: false  |  Thresh L: 1.1  |  Thresh S: 1.1  |  Lookback: 20 bars
+  Market Breadth Filter: true  |  Bull% >= 30% (LONGs)  |  Bear% >= 45% (SHORTs)  |  Flat Th: 0.03%
+  EMA20 Filter Long: true  |  Short: true
+  EMA20 Slope Long: true  |  Short: true  |  Min Slope L: 0%  |  Min Slope S: 0.04%
+  RSI Momentum Filter: true  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)
+  EMA Gap Expanding Filter: true  (block entry if EMA5-EMA8 gap compressing vs prev candle)
+
+General Settings:
+  Paper Trading: ON  |  Paper Balance: $5000
+  BNB Auto-Swap: ON  |  Paper BNB: $500  |  Check: 6h  |  Runway: 24h
+  Investment Mode: equal_split  |  Max Open Positions: 5  |  Trading Pairs: 50
+  Cooldown After Loss: 5min  |  No Expansion: 240min
+  Pair Blacklist: XAGUSDT,XAUUSDT
+
+Fee & Maker Orders:
+  Taker Fee: 0.045%  |  Maker Fee: 0.018%
+  Maker Entry: OFF  |  Timeout: 20s  |  Offset: 1 ticks
+  Maker Exit: OFF  |  Timeout: 10s  |  Offset: 1 ticks
+  Roundtrip: 0.090%  |  Full taker: 0.090%
+
+Exit Settings:
+  Regime Change Exit: false  (close on opposite BTC regime shift)
+  Signal Lost Exit: true  |  Signal Lost Range: [-0.9%, -0.5%]
+  Signal Lost Flag: true  |  Security Gap: [-0.9%, -0.8%]  |  TM Min P&L (Flagged): -0.25%
+  RSI Momentum Exit: false  |  Range: [-0.8%, -0.45%]  (close on 2 consecutive RSI drops/rises)
+  Tick Momentum Exit: false  |  Min Profit: 0.03%  |  Min Deltas: 0.12%  |  Windows: 15,30,45s
+  Spike Guard: true  |  Vol Multiplier: 3x  |  Price Move: 1.5%
+  EMA5-20 Gap Filter: true  |  L Min: 0.1  L Max: 0.8  |  S Min: 0.15  S Max: 0.8
+
+Confidence Levels:
+  Level          Mode       Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   Stretch  TP Trail
+  VERY_STRONG    both       1x  -0.9%  -0.9%  BE:Y  0.15%   0.1%  0.25%   0.15%  0.35%   0.25%  99%   2.5%  99%   4%  0.3    Y
+  STRONG_BUY     both       1x  -0.9%  -0.9%  BE:Y  0.15%   0.1%  0.25%   0.15%  0.35%   0.25%  99%   2.5%  99%   4%  0.3    Y
+
+NOTE: This report was generated AFTER filter tightening was deployed.
+The config shows the NEW filters (RSI L:63, RSI S:40, ADX Max S:33, Breadth ON 30/45).
+However, the TRADE DATA is still from the pre-filter period (trades taken under old config).
+This serves as the baseline snapshot with new config confirmed active.
+
+Changes deployed:
+- L1: momentum_long_rsi_max 65 -> 63
+- L2: ema_gap_5_20_min_long 0.15 -> 0.10
+- L4: market_breadth_filter ON, bull 30%, bear 45%, flat 0
+- S1: momentum_short_rsi_max 50 -> 40
+- S2: momentum_adx_max 35 -> 33
+- EMA5-20 gap filter moved from confidence levels to global thresholds
+
+################################################################################
+### BULLISH REGIME
+################################################################################
+
+================================================================================
+## OVERALL PERFORMANCE
+
+Total Trades: 41  (41L / 0S)
+Wins: 25  |  Losses: 16  |  Win Rate: 60.98%
+Win Rate Longs: 60.98%  |  Shorts: 0%
+Avg Win: $0.42  (L:$0.42 S:$0)
+Avg Loss: $-1.52  (L:$-1.52 S:$0)
+Expectancy: $-0.34/trade
+Best Win L:$1.22 S:$0  |  Worst Loss L:$-2.36 S:$0
+Total P&L: $-14 (-0.16%)  |  Fees: $7.86
+Avg Duration: 00:19:10 (L:00:19:10 S:00:00:00)
+Avg Leverage: 1x  |  Return Multiple: 0.9882x
+Daily Compound Return: -1.5896%  |  Runtime: 0.74 days
+Investment L:$8756.7 S:$0
+
+------------------------------------------------------------
+## Period Performance
+
+Period       #      Dir        WinRate   AvgP&L%      TotInv       TotNot         P&L/Inv                P&L/Not                  PF     Fees       Slip%
+Last 6h      20     20L/0S     65.0%     -0.14%       $3,814       $3,814         -$5 (-0.14%)           -$5 (-0.14%)             0.44   $3         +0.003%
+Last 12h     30     30L/0S     63.3%     -0.13%       $6,169       $6,169         -$8 (-0.13%)           -$8 (-0.13%)             0.44   $6         +0.005%
+1 Day        41     41L/0S     61.0%     -0.16%       $8,757       $8,757         -$14 (-0.16%)          -$14 (-0.16%)            0.43   $8         +0.014%
+Total        41     41L/0S     61.0%     -0.16%       $8,757       $8,757         -$14 (-0.16%)          -$14 (-0.16%)            0.43   $8         +0.014%
+
+------------------------------------------------------------
+## Closing Reason Summary
+
+Reason               #     %       Dir          Conf           Avg P&L%   Avg$       AvgPeak%   Total$       Duration   Signal   AvgGap   AvgRSI
+BREAKEVEN_SL_L1      16    39.0%   16L/0S       S:14 V:2           0.08%     $0.16   0.2099%       $2.63 00:04:47   16/0     0.31%    59.8
+FL_SIGNAL_LOST L1    11    26.8%   11L/0S       S:9 V:2           -0.84%    $-1.75   0.0512%     $-19.26 00:43:12   0/11     0.21%    62.4
+TRAILING_STOP L2     5     12.2%   5L/0S        S:4 V:1            0.37%     $0.78   0.4979%       $3.92 00:09:24   5/0      0.21%    59.8
+TRAILING_STOP L1     3     7.3%    3L/0S        V:1 S:2            0.40%     $0.88   0.4892%       $2.65 00:02:25   3/0      0.39%    56.9
+STOP_LOSS_WIDE L1    2     4.9%    2L/0S        S:1 V:1           -0.87%    $-2.09   0.0675%      $-4.18 00:14:04   2/0      0.52%    61.1
+BREAKEVEN_SL_L3      1     2.4%    1L/0S        V:1                0.27%     $0.63   0.3951%       $0.63 00:01:03   1/0      0.46%    57.9
+BREAKEVEN_SL_L2      1     2.4%    1L/0S        S:1                0.07%     $0.16   0.2515%       $0.16 00:10:33   1/0      0.37%    64.4
+EXTERNAL_CLOSE       1     2.4%    1L/0S        V:1               -0.31%    $-0.74   0.0000%      $-0.74 00:00:40   0/0      0.19%    63.3
+FL_BREAKEVEN_SL_L1   1     2.4%    1L/0S        S:1                0.10%     $0.19   0.2254%       $0.19 02:19:25   1/0      0.24%    63.9
+
+------------------------------------------------------------
+## Never Positive Deep Dive
+
+Dimension          Value          Dir    #     %Tot   Avg P&L%   Avg$      Total$      AvgRSI  AvgADX  AvgGap   Gap5-8   Duration   Signal   Conf
+Direction          LONG           LONG   5     12.2%   -0.8295%   $-1.69     $-8.46   61.1   22.0   0.21% 0.0830% 00:34:02   0/5      S:4 V:1
+Confidence         VERY_STRONG    LONG   1     11.1%   -0.8878%   $-1.68     $-1.68   60.2   27.6   0.16% 0.0454% 00:58:27   0/1      V:1
+Confidence         STRONG_BUY     LONG   4     12.5%   -0.8149%   $-1.70     $-6.78   61.3   20.6   0.22% 0.0924% 00:27:56   0/4      S:4
+RSI                60-65          LONG   4     18.2%   -0.8256%   $-1.72     $-6.87   62.8   22.8   0.21% 0.0797% 00:41:14   0/4      S:3 V:1
+
+------------------------------------------------------------
+## Performance by Entry RSI
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf
+50 - 55      2     LONG    50%         $-0.94    $-0.47    -0.25% S:2
+55 - 60      17    LONG    76.5%        $2.74     $0.16    +0.07% S:13 V:4
+60 - 65      22    LONG    50%        $-15.80    $-0.72    -0.33% S:17 V:5
+
+------------------------------------------------------------
+## Performance by Entry Gap 5-20
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf
+0.15 - 0.20%     15    LONG    40%         $-8.18    $-0.55    -0.26% S:11 V:4
+0.20 - 0.25%     8     LONG    62.5%       $-4.46    $-0.56    -0.27% V:1 S:7
+0.25 - 0.30%     6     LONG    83.3%        $0.68     $0.11    +0.06% S:6
+0.35 - 0.40%     3     LONG    66.7%       $-1.36    $-0.45    -0.25% S:3
+0.40 - 0.50%     6     LONG    83.3%        $1.06     $0.18    +0.08% V:3 S:3
+0.50 - 0.60%     1     LONG    0%          $-2.15    $-2.15    -0.89% S:1
+0.60 - 0.70%     2     LONG    100%         $0.42     $0.21    +0.10% S:1 V:1
+
+------------------------------------------------------------
+## Performance by Market Breadth at Entry
+
+Dir    Breadth      #     Win%    Avg$       Avg%      Total$       AvgDur
+L      < 25%        3     33.3%       $-1.18    -0.49%       $-3.55 00:09:44
+L      25-30%       1     0%          $-1.66    -0.88%       $-1.66 00:11:15
+L      30-35%       5     40%         $-0.19    -0.11%       $-0.93 00:04:15
+L      35-40%       8     75%          $0.01    +0.02%        $0.06 00:26:39
+L      40-45%       4     75%         $-0.31    -0.13%       $-1.24 00:08:58
+L      45-50%       2     50%         $-0.63    -0.34%       $-1.25 00:28:40
+L      50-55%       5     100%         $0.27    +0.14%        $1.33 00:06:05
+L      60-65%       12    50%         $-0.59    -0.28%       $-7.03 00:32:14
+L      65-70%       1     100%         $0.27    +0.11%        $0.27 00:00:46
+
+------------------------------------------------------------
+## Performance by RSI x ADX
+
+Dir     RSI     ADX     #     Win%    Avg$       Avg%      Total$
+LONG    50-55   15-20   1     0%         $-1.60    -0.84%      $-1.60
+LONG    50-55   20-25   1     100%        $0.66    +0.35%       $0.66
+LONG    55-60   15-20   4     50%         $0.40    +0.18%       $1.62
+LONG    55-60   20-25   9     88.9%       $0.12    +0.04%       $1.08
+LONG    55-60   25-30   4     75%         $0.01    +0.00%       $0.04
+LONG    60-65   15-20   8     62.5%      $-0.53    -0.20%      $-4.21
+LONG    60-65   20-25   9     44.4%      $-0.90    -0.42%      $-8.13
+LONG    60-65   25-30   5     40%        $-0.69    -0.36%      $-3.46
+
+------------------------------------------------------------
+## Performance by Entry ADX
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf
+15-20        13    LONG    53.8%       $-4.19    $-0.32    -0.13% S:13
+20-25        19    LONG    68.4%       $-6.39    $-0.34    -0.16% S:19
+25-30        9     LONG    55.6%       $-3.42    $-0.38    -0.20% V:9
+
+------------------------------------------------------------
+## Performance by BTC ADX
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf
+10-15            5     LONG    60%         $-1.34    $-0.27    -0.13% V:1 S:4
+15-20            16    LONG    62.5%       $-4.42    $-0.28    -0.12% S:13 V:3
+20-25            10    LONG    80%          $0.08     $0.01    -0.00% S:9 V:1
+25-30            7     LONG    42.9%       $-4.76    $-0.68    -0.36% S:5 V:2
+30-35            1     LONG    0%          $-2.15    $-2.15    -0.89% S:1
+35-40            2     LONG    50%         $-1.40    $-0.70    -0.30% V:2
+
+################################################################################
+### BEARISH REGIME
+################################################################################
+
+================================================================================
+## OVERALL PERFORMANCE
+
+Total Trades: 56  (0L / 56S)
+Wins: 43  |  Losses: 13  |  Win Rate: 76.79%
+Win Rate Longs: 0%  |  Shorts: 76.79%
+Avg Win: $0.48  (L:$0 S:$0.48)
+Avg Loss: $-1.53  (L:$0 S:$-1.53)
+Expectancy: $0.01/trade
+Best Win L:$0 S:$1.79  |  Worst Loss L:$0 S:$-2.38
+Total P&L: $0.59 (0%)  |  Fees: $11.63
+Avg Duration: 00:33:29 (L:00:00:00 S:00:33:29)
+Avg Leverage: 1x  |  Return Multiple: 1.0005x
+Daily Compound Return: 0.0683%  |  Runtime: 0.74 days
+Investment L:$0 S:$13027.61
+
+------------------------------------------------------------
+## Closing Reason Summary
+
+Reason               #     %       Dir          Conf           Avg P&L%   Avg$       AvgPeak%   Total$       Duration   Signal   AvgGap   AvgRSI
+FL_SIGNAL_LOST L1    7     12.5%   0L/7S        V:3 S:4           -0.82%    $-1.82   0.0379%     $-12.75 00:45:26   0/7      0.32%    33.5
+FL_TRAILING_STOP L2  2     3.6%    0L/2S        V:1 S:1            0.29%     $0.70   0.4215%       $1.39 00:59:19   2/0      0.22%    32.3
+BREAKEVEN_SL_L1      28    50.0%   0L/28S       S:18 V:10          0.09%     $0.20   0.2068%       $5.50 00:24:17   27/1     0.38%    31.8
+TRAILING_STOP L1     4     7.1%    0L/4S        S:3 V:1            0.53%     $1.24   0.5537%       $4.96 00:18:15   4/0      0.33%    32.0
+TRAILING_STOP L3     1     1.8%    0L/1S        S:1                0.76%     $1.79   0.8457%       $1.79 00:31:13   1/0      0.24%    33.5
+TRAILING_STOP L2     2     3.6%    0L/2S        S:1 V:1            0.45%     $1.06   0.5827%       $2.12 00:15:02   2/0      0.45%    31.3
+STOP_LOSS_WIDE L1    2     3.6%    0L/2S        S:1 V:1           -0.96%    $-2.30   0.0000%      $-4.60 00:09:51   1/1      0.54%    36.6
+BREAKEVEN_SL_L3      4     7.1%    0L/4S        V:2 S:2            0.25%     $0.57   0.4215%       $2.29 00:31:34   4/0      0.33%    30.3
+BREAKEVEN_SL_L2      2     3.6%    0L/2S        V:1 S:1            0.18%     $0.43   0.2549%       $0.86 00:22:21   2/0      0.46%    33.0
+FL_BREAKEVEN_SL_L1   2     3.6%    0L/2S        V:1 S:1            0.11%     $0.27   0.1765%       $0.55 02:45:01   2/0      0.34%    29.7
+FL_TRAILING_STOP L1  1     1.8%    0L/1S        V:1                0.26%     $0.61   0.4870%       $0.61 01:20:36   1/0      0.38%    38.5
+FL_STOP_LOSS L1      1     1.8%    0L/1S        V:1               -0.90%    $-2.13   0.0000%      $-2.13 00:22:42   0/1      0.36%    25.4
+
+------------------------------------------------------------
+## Never Positive Deep Dive
+
+Dimension          Value          Dir    #     %Tot   Avg P&L%   Avg$      Total$      AvgRSI  AvgADX  AvgGap   Gap5-8   Duration   Signal   Conf
+Direction          SHORT          SHORT  7     12.5%   -0.8567%   $-1.97    $-13.76   32.9   30.6   0.34% 0.0754% 00:37:25   1/6      V:4 S:3
+Confidence         VERY_STRONG    SHORT  4     17.4%   -0.8947%   $-2.00     $-8.00   33.7   32.2   0.40% 0.0741% 00:18:20   0/4      V:4
+Confidence         STRONG_BUY     SHORT  3     9.1%    -0.8060%   $-1.92     $-5.76   31.9   28.5   0.27% 0.0771% 01:02:52   1/2      S:3
+RSI                35-40          SHORT  1     20.0%   -0.8813%   $-2.00     $-2.00   35.9   30.4   0.30% 0.0588% 00:30:47   0/1      V:1
+RSI                40-45          SHORT  1     50.0%   -1.0077%   $-2.38     $-2.38   40.5   34.3   0.64% 0.0869% 00:04:33   0/1      V:1
+
+------------------------------------------------------------
+## Performance by Entry RSI
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf
+20 - 30      16    SHORT   75%          $0.17     $0.01    +0.01% S:8 V:8
+30 - 35      33    SHORT   81.8%        $5.61     $0.17    +0.06% V:8 S:25
+35 - 40      5     SHORT   60%         $-2.99    $-0.60    -0.26% V:5
+40 - 45      2     SHORT   50%         $-2.20    $-1.10    -0.46% V:2
+
+------------------------------------------------------------
+## Performance by Entry ADX
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf
+25-30        33    SHORT   81.8%        $3.82     $0.12    +0.05% S:33
+30-35        23    SHORT   69.6%       $-3.23    $-0.14    -0.07% V:23
+
+------------------------------------------------------------
+## Performance by RSI x ADX
+
+Dir     RSI     ADX     #     Win%    Avg$       Avg%      Total$
+SHORT   20-30   25-30   8     75%        $-0.02    -0.00%      $-0.18
+SHORT   20-30   30-35   8     75%         $0.04    +0.02%       $0.35
+SHORT   30-35   25-30   25    84%         $0.16    +0.06%       $4.01
+SHORT   30-35   30-35   8     75%         $0.20    +0.06%       $1.60
+SHORT   35-40   30-35   5     60%        $-0.60    -0.26%      $-2.99
+SHORT   40-45   30-35   2     50%        $-1.10    -0.46%      $-2.20
+
+------------------------------------------------------------
+## Performance by Market Breadth at Entry
+
+Dir    Breadth      #     Win%    Avg$       Avg%      Total$       AvgDur
+S      25-30%       1     100%         $0.18    +0.10%        $0.18 00:00:42
+S      35-40%       4     25%         $-1.31    -0.54%       $-5.25 00:53:51
+S      40-45%       2     100%         $0.25    +0.10%        $0.49 01:23:43
+S      45-50%       5     80%          $0.12    +0.05%        $0.59 00:18:42
+S      50-55%       9     55.6%       $-0.49    -0.23%       $-4.42 00:20:41
+S      55-60%       5     60%         $-0.43    -0.22%       $-2.16 00:25:34
+S      60-65%       2     100%         $0.69    +0.29%        $1.38 00:12:11
+S      65-70%       7     100%         $0.40    +0.17%        $2.80 00:47:40
+S      70%+         21    85.7%        $0.33    +0.14%        $6.99 00:34:36
+
+================================================================================
+COMPARISON TABLE — Fill at 50+ trades per direction
+================================================================================
+
+| Metric                  | Before L (41) | After L (50 target) | Before S (56) | After S (50 target) |
+|-------------------------|--------------|---------------------|---------------|---------------------|
+| Win Rate                | 61.0%        | ?                   | 76.8%         | ?                   |
+| Avg P&L %               | -0.16%       | ?                   | +0.00%        | ?                   |
+| Expectancy/trade        | -$0.34       | ?                   | +$0.01        | ?                   |
+| Profit Factor           | 0.43         | ?                   | 1.03          | ?                   |
+| Never Positive          | 5 (-$8.46)   | ?                   | 7 (-$13.76)   | ?                   |
+| FL_SIGNAL_LOST          | 11 (-$19.26) | ?                   | 7 (-$12.75)   | ?                   |
+| TRAILING_STOP avg $     | +$0.82       | ?                   | +$1.27        | ?                   |
+| BE L1 saves             | 16 (+$2.63)  | ?                   | 28 (+$5.50)   | ?                   |
+| Total P&L               | -$14.00      | ?                   | +$0.59        | ?                   |
+| EXTERNAL exits          | 1 (2.4%)     | ?                   | 0 (0%)        | ?                   |
+
+Expected: ~5-6 Never Positive eliminated (~+$9-11), fewer FL_SIGNAL_LOST on both sides.
+
+================================================================================
+END OF SPLIT REPORT
+================================================================================

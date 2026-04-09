@@ -43,7 +43,7 @@
     "adx_low": 18.0,
     "volume_multiplier": 1.1,
     "ema_gap_threshold": 0.05,
-    "ema_gap_threshold_long": 0.03,
+    "ema_gap_threshold_long": 0.02,
     "ema_gap_threshold_short": 0.05,
     "ema_gap_5_8_max": 0.35,
     "adx_strong": 25.0,

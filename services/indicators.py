@@ -196,24 +196,27 @@ def get_signal(
         if direction == "SHORT" and conf.trade_mode not in ["short", "both"]:
             return False
         
-        # Check gap requirement (range: gap_min <= |gap| <= gap_max)
-        if conf.gap_enabled and gap is not None:
-            gap_min = getattr(conf, 'gap_min', 0.08)
-            gap_max = getattr(conf, 'gap_max', 0.40)
+        # Check EMA5-EMA20 gap requirement (from global thresholds, separated by direction)
+        gap_520_enabled = getattr(th, 'ema_gap_5_20_enabled', True)
+        if gap_520_enabled and gap is not None:
             if direction == "LONG":
+                gap_min = getattr(th, 'ema_gap_5_20_min_long', 0.15)
+                gap_max = getattr(th, 'ema_gap_5_20_max_long', 0.8)
                 if gap < gap_min:
-                    logger.debug(f"LONG {confidence} rejected: gap {gap:.4f}% < min {gap_min}%")
+                    logger.debug(f"LONG {confidence} rejected: gap5-20 {gap:.4f}% < min {gap_min}%")
                     return False
                 if gap > gap_max:
-                    logger.debug(f"LONG {confidence} rejected: gap {gap:.4f}% > max {gap_max}% (overextended)")
+                    logger.debug(f"LONG {confidence} rejected: gap5-20 {gap:.4f}% > max {gap_max}% (overextended)")
                     return False
             if direction == "SHORT":
+                gap_min = getattr(th, 'ema_gap_5_20_min_short', 0.15)
+                gap_max = getattr(th, 'ema_gap_5_20_max_short', 0.8)
                 abs_gap = abs(gap)
                 if abs_gap < gap_min:
-                    logger.debug(f"SHORT {confidence} rejected: |gap| {abs_gap:.4f}% < min {gap_min}%")
+                    logger.debug(f"SHORT {confidence} rejected: |gap5-20| {abs_gap:.4f}% < min {gap_min}%")
                     return False
                 if abs_gap > gap_max:
-                    logger.debug(f"SHORT {confidence} rejected: |gap| {abs_gap:.4f}% > max {gap_max}% (overextended)")
+                    logger.debug(f"SHORT {confidence} rejected: |gap5-20| {abs_gap:.4f}% > max {gap_max}% (overextended)")
                     return False
         
         # EMA5 Stretch filter: reject if price too far from EMA5 (abs for defensive edge-case coverage)

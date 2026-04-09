@@ -2672,6 +2672,29 @@
                         </div>
                         <p class="text-xs text-gray-500 mt-1">Block entry if EMA5-EMA8 gap is compressing vs 1 or 2 candles ago. Catches late-trend entries where momentum is decelerating.</p>
                     </div>
+                    <div class="mt-3 mb-2 px-4">
+                        <span class="text-sm text-gray-300">EMA5-EMA20 Gap Filter</span>
+                        <p class="text-xs text-gray-500 mb-1">Gate entries by minimum/maximum EMA5-EMA20 gap distance (signal strength indicator)</p>
+                        <div class="flex items-center gap-6 mt-1 flex-wrap">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-ema-gap-5-20-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <div class="flex items-center gap-4 mt-2 flex-wrap">
+                            <span class="text-xs text-emerald-400 font-medium">LONG:</span>
+                            <span class="text-xs text-gray-500">Min</span>
+                            <input type="number" step="0.01" id="config-ema-gap-5-20-min-long" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.15">
+                            <span class="text-xs text-gray-500">Max</span>
+                            <input type="number" step="0.01" id="config-ema-gap-5-20-max-long" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.8">
+                            <span class="text-xs text-red-400 font-medium ml-4">SHORT:</span>
+                            <span class="text-xs text-gray-500">Min</span>
+                            <input type="number" step="0.01" id="config-ema-gap-5-20-min-short" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.15">
+                            <span class="text-xs text-gray-500">Max</span>
+                            <input type="number" step="0.01" id="config-ema-gap-5-20-max-short" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.8">
+                        </div>
+                    </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
                 </div>
 
@@ -2695,9 +2718,6 @@
                                     <th class="px-3 py-3 font-medium text-center text-violet-400" title="Wider stop loss used when entry signal is still active (pre-breakeven)">Sig SL</th>
                                     <th class="px-3 py-3 font-medium text-center">TP Min</th>
                                     <th class="px-3 py-3 font-medium text-center">Pullback</th>
-                                    <th class="px-3 py-3 font-medium text-center" title="Minimum EMA5-EMA20 gap % required">Gap 5-20 Min</th>
-                                    <th class="px-3 py-3 font-medium text-center" title="Maximum EMA5-EMA20 gap % allowed (filters overextended entries)">Gap 5-20 Max</th>
-                                    <th class="px-3 py-3 font-medium text-center">Gap?</th>
                                     <th class="px-3 py-3 font-medium text-center text-cyan-400" title="Max EMA5 Stretch %: max distance from EMA5 allowed for entry">Stretch</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="Enable/disable break-even levels">BE?</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="BE Level 1: micro-protection trigger">L1 Trig</th>
@@ -2747,15 +2767,6 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-low-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.3">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-low-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.08">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-low-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.40">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="checkbox" id="config-low-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-low-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
@@ -2831,15 +2842,6 @@
                                         <input type="number" step="0.01" id="config-medium-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.4">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-medium-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.08">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-medium-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.40">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="checkbox" id="config-medium-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-medium-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -2911,15 +2913,6 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-high-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.5">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-high-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.08">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-high-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.40">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="checkbox" id="config-high-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-high-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
@@ -2995,15 +2988,6 @@
                                         <input type="number" step="0.01" id="config-extreme-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.6">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-extreme-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.08">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-extreme-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.40">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="checkbox" id="config-extreme-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-extreme-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -3077,15 +3061,6 @@
                                         <input type="number" step="0.01" id="config-very_strong-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.05">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-very_strong-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-very_strong-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.30">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="checkbox" id="config-very_strong-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-very_strong-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -3157,15 +3132,6 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.05">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-strong_buy-gap-min" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.12">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-strong_buy-gap-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.30">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="checkbox" id="config-strong_buy-gap-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
@@ -4262,12 +4228,13 @@
             lines.push(`  RSI Momentum Exit: ${th.rsi_momentum_exit_enabled}  |  Range: [${th.rsi_momentum_exit_min_profit}%, ${th.rsi_momentum_exit_max_profit !== undefined ? th.rsi_momentum_exit_max_profit : 999}%]  (close on 2 consecutive RSI drops/rises)`);
             lines.push(`  Tick Momentum Exit: ${th.tick_momentum_exit_enabled !== undefined ? th.tick_momentum_exit_enabled : false}  |  Min Profit: ${th.tick_momentum_exit_min_profit !== undefined ? th.tick_momentum_exit_min_profit : 0.05}%  |  Min Deltas: ${th.tick_momentum_exit_min_deltas || th.tick_momentum_exit_min_delta || 0.05}%  |  Windows: ${th.tick_momentum_exit_windows || '15,30,60'}s`);
             lines.push(`  Spike Guard: ${th.spike_guard_enabled !== undefined ? th.spike_guard_enabled : false}  |  Vol Multiplier: ${th.spike_guard_volume_multiplier || 3.0}x  |  Price Move: ${th.spike_guard_price_move_pct || 1.5}%`);
+            lines.push(`  EMA5-20 Gap Filter: ${th.ema_gap_5_20_enabled !== undefined ? th.ema_gap_5_20_enabled : true}  |  L Min: ${th.ema_gap_5_20_min_long !== undefined ? th.ema_gap_5_20_min_long : 0.15}  L Max: ${th.ema_gap_5_20_max_long !== undefined ? th.ema_gap_5_20_max_long : 0.8}  |  S Min: ${th.ema_gap_5_20_min_short !== undefined ? th.ema_gap_5_20_min_short : 0.15}  S Max: ${th.ema_gap_5_20_max_short !== undefined ? th.ema_gap_5_20_max_short : 0.8}`);
 
             lines.push('\nConfidence Levels:');
-            lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   GapMin  GapMax  Gap?   Stretch  TP Trail`);
+            lines.push(`  ${'Level'.padEnd(14)} ${'Mode'.padEnd(10)} Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   Stretch  TP Trail`);
             for (const [name, c] of Object.entries(cfg.confidence_levels || {})) {
                 if (!c.enabled) continue;
-                lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  BE:${c.be_levels_enabled !== false ? 'Y' : 'N'}  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.gap_min}   ${c.gap_max}   ${c.gap_enabled?'Y':'N'}      ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
+                lines.push(`  ${name.padEnd(14)} ${(c.trade_mode||'both').padEnd(10)} ${c.leverage}x  ${c.stop_loss}%  ${c.signal_active_sl}%  BE:${c.be_levels_enabled !== false ? 'Y' : 'N'}  ${c.be_level1_trigger}%   ${c.be_level1_offset}%  ${c.be_level2_trigger}%   ${c.be_level2_offset}%  ${c.be_level3_trigger}%   ${c.be_level3_offset}%  ${c.be_level4_trigger}%   ${c.be_level4_offset}%  ${c.be_level5_trigger}%   ${c.be_level5_offset}%  ${c.max_ema5_stretch}    ${c.tp_trailing_enabled?'Y':'N'}`);
             }
 
             if (changelog.length > 0) {
@@ -8262,6 +8229,11 @@
                 document.getElementById('config-rsi-momentum-filter-enabled').checked = config.thresholds.rsi_momentum_filter_enabled !== undefined ? config.thresholds.rsi_momentum_filter_enabled : true;
                 document.getElementById('config-ema-gap-expanding-filter').checked = config.thresholds.ema_gap_expanding_filter !== undefined ? config.thresholds.ema_gap_expanding_filter : true;
                 document.getElementById('config-ema-gap-5-8-max').value = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
+                document.getElementById('config-ema-gap-5-20-enabled').checked = config.thresholds.ema_gap_5_20_enabled !== undefined ? config.thresholds.ema_gap_5_20_enabled : true;
+                document.getElementById('config-ema-gap-5-20-min-long').value = config.thresholds.ema_gap_5_20_min_long !== undefined ? config.thresholds.ema_gap_5_20_min_long : 0.15;
+                document.getElementById('config-ema-gap-5-20-min-short').value = config.thresholds.ema_gap_5_20_min_short !== undefined ? config.thresholds.ema_gap_5_20_min_short : 0.15;
+                document.getElementById('config-ema-gap-5-20-max-long').value = config.thresholds.ema_gap_5_20_max_long !== undefined ? config.thresholds.ema_gap_5_20_max_long : 0.8;
+                document.getElementById('config-ema-gap-5-20-max-short').value = config.thresholds.ema_gap_5_20_max_short !== undefined ? config.thresholds.ema_gap_5_20_max_short : 0.8;
                 // Sync mirror elements for STRONG_BUY row
                 document.getElementById('config-adx-max-mirror').textContent = document.getElementById('config-adx-very-strong').value;
                 document.getElementById('config-adx-max-mirror-long').textContent = document.getElementById('config-adx-very-strong-long').value;
@@ -8299,9 +8271,6 @@
                         document.getElementById(`config-${level}-signal-sl`).value = cfg.signal_active_sl !== undefined ? cfg.signal_active_sl : -0.40;
                         document.getElementById(`config-${level}-tp`).value = cfg.tp_min;
                         document.getElementById(`config-${level}-pb`).value = cfg.pullback_trigger;
-                        document.getElementById(`config-${level}-gap-min`).value = cfg.gap_min !== undefined ? cfg.gap_min : 0.08;
-                        document.getElementById(`config-${level}-gap-max`).value = cfg.gap_max !== undefined ? cfg.gap_max : 0.40;
-                        document.getElementById(`config-${level}-gap-enabled`).checked = cfg.gap_enabled !== false;
                         document.getElementById(`config-${level}-stretch`).value = cfg.max_ema5_stretch !== undefined ? cfg.max_ema5_stretch : 0.12;
                         document.getElementById(`config-${level}-be-enabled`).checked = cfg.be_levels_enabled !== undefined ? cfg.be_levels_enabled : true;
                         document.getElementById(`config-${level}-be-l1-trigger`).value = cfg.be_level1_trigger !== undefined ? cfg.be_level1_trigger : 0.08;
@@ -8542,6 +8511,11 @@
                     rsi_momentum_filter_enabled: document.getElementById('config-rsi-momentum-filter-enabled').checked,
                     ema_gap_expanding_filter: document.getElementById('config-ema-gap-expanding-filter').checked,
                     ema_gap_5_8_max: safeFloat(document.getElementById('config-ema-gap-5-8-max').value),
+                    ema_gap_5_20_enabled: document.getElementById('config-ema-gap-5-20-enabled').checked,
+                    ema_gap_5_20_min_long: safeFloat(document.getElementById('config-ema-gap-5-20-min-long').value),
+                    ema_gap_5_20_min_short: safeFloat(document.getElementById('config-ema-gap-5-20-min-short').value),
+                    ema_gap_5_20_max_long: safeFloat(document.getElementById('config-ema-gap-5-20-max-long').value),
+                    ema_gap_5_20_max_short: safeFloat(document.getElementById('config-ema-gap-5-20-max-short').value),
                     rsi_adx_filter_long: collectRsiAdxFilter('long'),
                     rsi_adx_filter_short: collectRsiAdxFilter('short'),
                     btc_rsi_adx_filter_long: collectBtcRsiAdxFilter('long'),
@@ -8582,9 +8556,6 @@
                     signal_active_sl: safeFloat(document.getElementById(`config-${level}-signal-sl`).value),
                     tp_min: safeFloat(document.getElementById(`config-${level}-tp`).value),
                     pullback_trigger: safeFloat(document.getElementById(`config-${level}-pb`).value),
-                    gap_min: safeFloat(document.getElementById(`config-${level}-gap-min`).value),
-                    gap_max: safeFloat(document.getElementById(`config-${level}-gap-max`).value),
-                    gap_enabled: document.getElementById(`config-${level}-gap-enabled`).checked,
                     max_ema5_stretch: safeFloat(document.getElementById(`config-${level}-stretch`).value),
                     be_levels_enabled: document.getElementById(`config-${level}-be-enabled`).checked,
                     be_level1_trigger: safeFloat(document.getElementById(`config-${level}-be-l1-trigger`).value),

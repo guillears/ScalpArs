@@ -26,7 +26,7 @@
     "cooldown_after_loss_minutes": 5,
     "max_open_positions": 5,
     "max_holding_time_minutes": 1200,
-    "no_expansion_minutes": 180
+    "no_expansion_minutes": 240
   },
   "thresholds": {
     "long_rsi_extreme": 45.0,
@@ -43,7 +43,7 @@
     "adx_low": 18.0,
     "volume_multiplier": 1.1,
     "ema_gap_threshold": 0.05,
-    "ema_gap_threshold_long": 0.06,
+    "ema_gap_threshold_long": 0.03,
     "ema_gap_threshold_short": 0.05,
     "ema_gap_5_8_max": 0.35,
     "adx_strong": 25.0,
@@ -93,6 +93,11 @@
     "pnl_trailing_ratio": 0.5,
     "pnl_trailing_ratio_signal_active": 0.4,
     "ema_gap_expanding_filter": true,
+    "ema_gap_5_20_enabled": true,
+    "ema_gap_5_20_min_long": 0.15,
+    "ema_gap_5_20_min_short": 0.15,
+    "ema_gap_5_20_max_long": 0.8,
+    "ema_gap_5_20_max_short": 0.8,
     "rsi_momentum_filter_enabled": true,
     "rsi_momentum_exit_enabled": false,
     "rsi_momentum_exit_min_profit": -0.80,

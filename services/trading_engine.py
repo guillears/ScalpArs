@@ -2484,9 +2484,21 @@ class TradingEngine:
                         continue
 
                 # Security gap: flagged trade with signal still lost
+                # FL1[WIDE_SL] trades bypass the security gap entirely — they get flagged AT -0.9%,
+                # so the gap [-0.9, -0.8] would trigger immediately and collapse them into FL2 on the
+                # next tick. WIDE_SL trades should run to emergency backstop (-1.2%), trailing recovery,
+                # signal regain, or max hold time — nothing else.
+                _fl1_origin_check = None
+                async with _cache_lock:
+                    for _ci in _open_orders_cache.get(order.pair, []):
+                        if _ci['id'] == order.id:
+                            _fl1_origin_check = _ci.get('fl1_origin') or getattr(order, 'fl1_origin', None)
+                            break
+                if _fl1_origin_check is None:
+                    _fl1_origin_check = getattr(order, 'fl1_origin', None)
                 security_gap_min = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_min', -0.9)
                 security_gap_max = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_max', -0.7)
-                if _is_flagged and sl_pnl_pct >= security_gap_min and sl_pnl_pct <= security_gap_max:
+                if _is_flagged and _fl1_origin_check != "WIDE_SL" and sl_pnl_pct >= security_gap_min and sl_pnl_pct <= security_gap_max:
                     tp_level = order.current_tp_level or 1
                     _fl2_enabled = getattr(config.trading_config.thresholds, 'fl2_enabled', True)
                     # Check if already FL2-flagged (from cache)
@@ -3507,7 +3519,10 @@ class TradingEngine:
                         logger.error(f"[REALTIME_FL2_MONITOR] Error closing {pair}: {e}")
                     continue
 
-            if _is_flagged_rt and not order_info.get('fl2_flagged'):
+            # FL1[WIDE_SL] trades bypass the security gap entirely. See scan-loop comment.
+            if (_is_flagged_rt
+                    and not order_info.get('fl2_flagged')
+                    and order_info.get('fl1_origin') != "WIDE_SL"):
                 _sg_min = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_min', -0.9)
                 _sg_max = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_max', -0.7)
                 if pnl_pct >= _sg_min and pnl_pct <= _sg_max:

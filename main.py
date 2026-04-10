@@ -686,6 +686,32 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
         block_reason = None
         if p.signal in (None, "NOTHING", "NO_TRADE"):
             th = config.trading_config.thresholds
+            # Pull scan-loop globals for filters that depend on cross-pair / BTC state
+            import services.trading_engine as _te
+            _bull_pct = getattr(_te, '_market_bull_pct', 0.0)
+            _bear_pct = getattr(_te, '_market_bear_pct', 0.0)
+            _btc_regime_now = getattr(_te, '_current_btc_regime', 'NEUTRAL')
+            _btc_adx_now = getattr(_te, '_current_btc_adx', None)
+            _btc_rsi_now = getattr(_te, '_current_btc_rsi', None)
+
+            def _check_rsi_adx_cross(direction_label: str, filter_str: str, rsi_val, adx_val):
+                """Return a reason string if the RSI x ADX cross-filter blocks this pair, else None."""
+                if not filter_str or not filter_str.strip() or rsi_val is None or adx_val is None:
+                    return None
+                for rule in filter_str.split(','):
+                    rule = rule.strip()
+                    if not rule or ':' not in rule:
+                        continue
+                    try:
+                        rsi_part, min_adx_str = rule.split(':')
+                        rsi_lo, rsi_hi = (float(x) for x in rsi_part.split('-'))
+                        min_adx = float(min_adx_str)
+                        if rsi_lo <= rsi_val < rsi_hi and adx_val < min_adx:
+                            return f"RSI×ADX: RSI {rsi_val:.0f} in [{rsi_lo:.0f}-{rsi_hi:.0f}) needs ADX≥{min_adx:.0f}"
+                    except (ValueError, TypeError):
+                        continue
+                return None
+
             _is_bull_stack = p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 > p.ema8 > p.ema13 > p.ema20
             _is_bear_stack = p.ema5 and p.ema8 and p.ema13 and p.ema20 and p.ema5 < p.ema8 < p.ema13 < p.ema20
             if not _is_bull_stack and not _is_bear_stack:
@@ -728,8 +754,28 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                     block_reason = "Price ≤ EMA20"
                 elif p.ema5_prev3 and p.ema20 and p.ema20 <= p.ema5_prev3:
                     block_reason = "EMA20 not rising"
+                elif getattr(th, 'market_breadth_filter_enabled', False) and _bull_pct < getattr(th, 'market_breadth_bull_threshold_long', 50.0):
+                    block_reason = f"Breadth Bull {_bull_pct:.0f}% < {getattr(th, 'market_breadth_bull_threshold_long', 50.0):.0f}%"
+                elif getattr(th, 'macro_trend_filter_enabled', False) and p.macro_regime == "BEARISH":
+                    block_reason = "Macro BEARISH"
+                elif getattr(th, 'btc_global_filter_enabled', False) and _btc_regime_now == "BEARISH":
+                    block_reason = "BTC BEARISH"
+                elif getattr(th, 'btc_global_filter_enabled', False) and _btc_rsi_now is not None and (
+                    (getattr(th, 'btc_rsi_min_long', 0) > 0 and _btc_rsi_now < getattr(th, 'btc_rsi_min_long', 0))
+                    or (getattr(th, 'btc_rsi_max_long', 100) < 100 and _btc_rsi_now > getattr(th, 'btc_rsi_max_long', 100))
+                ):
+                    block_reason = f"BTC RSI {_btc_rsi_now:.0f} out of [{getattr(th, 'btc_rsi_min_long', 0):.0f}-{getattr(th, 'btc_rsi_max_long', 100):.0f}]"
+                elif getattr(th, 'btc_global_filter_enabled', False) and _btc_adx_now is not None and (
+                    (getattr(th, 'btc_adx_min_long', 0) > 0 and _btc_adx_now < getattr(th, 'btc_adx_min_long', 0))
+                    or (getattr(th, 'btc_adx_max_long', 100) < 100 and _btc_adx_now > getattr(th, 'btc_adx_max_long', 100))
+                ):
+                    block_reason = f"BTC ADX {_btc_adx_now:.0f} out of [{getattr(th, 'btc_adx_min_long', 0):.0f}-{getattr(th, 'btc_adx_max_long', 100):.0f}]"
                 else:
-                    block_reason = "Filter (see logs)"
+                    _cross = _check_rsi_adx_cross("LONG", getattr(th, 'rsi_adx_filter_long', ''), p.rsi, p.adx)
+                    if _cross:
+                        block_reason = _cross
+                    else:
+                        block_reason = "Filter (see logs)"
             elif _is_bear_stack:
                 _dir = "SHORT"
                 _gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
@@ -767,8 +813,28 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                     block_reason = "Price ≥ EMA20"
                 elif p.ema5_prev3 and p.ema20 and p.ema20 >= p.ema5_prev3:
                     block_reason = "EMA20 not falling"
+                elif getattr(th, 'market_breadth_filter_enabled', False) and _bear_pct < getattr(th, 'market_breadth_bear_threshold_short', 50.0):
+                    block_reason = f"Breadth Bear {_bear_pct:.0f}% < {getattr(th, 'market_breadth_bear_threshold_short', 50.0):.0f}%"
+                elif getattr(th, 'macro_trend_filter_enabled', False) and p.macro_regime == "BULLISH":
+                    block_reason = "Macro BULLISH"
+                elif getattr(th, 'btc_global_filter_enabled', False) and _btc_regime_now == "BULLISH":
+                    block_reason = "BTC BULLISH"
+                elif getattr(th, 'btc_global_filter_enabled', False) and _btc_rsi_now is not None and (
+                    (getattr(th, 'btc_rsi_min_short', 0) > 0 and _btc_rsi_now < getattr(th, 'btc_rsi_min_short', 0))
+                    or (getattr(th, 'btc_rsi_max_short', 100) < 100 and _btc_rsi_now > getattr(th, 'btc_rsi_max_short', 100))
+                ):
+                    block_reason = f"BTC RSI {_btc_rsi_now:.0f} out of [{getattr(th, 'btc_rsi_min_short', 0):.0f}-{getattr(th, 'btc_rsi_max_short', 100):.0f}]"
+                elif getattr(th, 'btc_global_filter_enabled', False) and _btc_adx_now is not None and (
+                    (getattr(th, 'btc_adx_min_short', 0) > 0 and _btc_adx_now < getattr(th, 'btc_adx_min_short', 0))
+                    or (getattr(th, 'btc_adx_max_short', 100) < 100 and _btc_adx_now > getattr(th, 'btc_adx_max_short', 100))
+                ):
+                    block_reason = f"BTC ADX {_btc_adx_now:.0f} out of [{getattr(th, 'btc_adx_min_short', 0):.0f}-{getattr(th, 'btc_adx_max_short', 100):.0f}]"
                 else:
-                    block_reason = "Filter (see logs)"
+                    _cross = _check_rsi_adx_cross("SHORT", getattr(th, 'rsi_adx_filter_short', ''), p.rsi, p.adx)
+                    if _cross:
+                        block_reason = _cross
+                    else:
+                        block_reason = "Filter (see logs)"
 
         pairs_data.append({
             "pair": p.pair,

@@ -2524,7 +2524,12 @@ class TradingEngine:
                         await db.commit()
                         logger.info(f"[FL2_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — promoted to FL2 (origin={order.fl1_origin or 'SIGNAL_LOST'}), recovery_target={getattr(config.trading_config.thresholds, 'fl2_recovery_target', -0.4)}%, deep_stop={getattr(config.trading_config.thresholds, 'fl2_deep_stop', -1.0)}%")
                         continue
-                    # FL2 disabled or already FL2-flagged — original behavior: close here
+                    if _is_fl2:
+                        # Already FL2-flagged (likely promoted by realtime in the last few ms).
+                        # Do NOT close as FL_SIGNAL_LOST — let the FL2 monitor handle recovery/deep_stop.
+                        logger.debug(f"[FL2_HOLD] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — already FL2-flagged, deferring to FL2 monitor")
+                        continue
+                    # FL2 disabled — original behavior: close here
                     logger.info(f"[FL_SIGNAL_LOST] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% hit security gap [{security_gap_min}, {security_gap_max}]")
                     closed_order = await self.close_position(db, order, current_price, f"FL_SIGNAL_LOST L{tp_level}")
                     if closed_order:
@@ -2631,6 +2636,12 @@ class TradingEngine:
                         closed_order = await self.close_position(db, order, current_price, f"FL_DEEP_STOP L{_tp_level_m}")
                         if closed_order:
                             updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED", "reason": f"FL_DEEP_STOP L{_tp_level_m}", "pnl": closed_order.pnl, "tp_level": _tp_level_m})
+                        continue
+                    # FL2 middle zone (between recovery and deep stop) — suppress any STOP_LOSS(_WIDE) close.
+                    # Only FL_RECOVERED, FL_DEEP_STOP, or max hold time should exit a FL2 trade.
+                    if exit_result.get("should_close") and isinstance(reason, str) and reason.startswith("STOP_LOSS"):
+                        logger.debug(f"[FL2_HOLD] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% — suppressing {reason}, FL2 monitor holds to recovery/deep_stop")
+                        await db.commit()
                         continue
                 elif (order.fl1_origin or "") == "WIDE_SL":
                     # FL1[WIDE_SL] emergency backstop — fires at fl1_wide_sl_backstop (-1.2%)
@@ -3250,6 +3261,13 @@ class TradingEngine:
         
         # Check each cached order
         for order_info in cached_orders:
+            # Skip entirely if a close is already in progress for this order.
+            # Prevents warning spam and duplicate close attempts when a close
+            # has been initiated but the cache hasn't been refreshed yet
+            # (e.g. DB commit failed, Binance fill succeeded but we haven't cleaned up).
+            # The flag resets on the next update_orders_cache cycle.
+            if order_info.get('_closing_in_progress'):
+                continue
             order_id = order_info['id']
             direction = order_info['direction']
             entry_price = order_info['entry_price']
@@ -3452,6 +3470,11 @@ class TradingEngine:
                     # WIDE_SL flagged but not at backstop yet — do NOT fire any normal SL close.
                     # The trade should only exit via backstop, trailing recovery, signal regain, or max hold time.
                     logger.debug(f"[REALTIME_FL1_WIDE_SL_HOLD] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% — holding to backstop={_fl1_backstop_rt}%, suppressing {close_reason}")
+                    continue
+
+                # ─── FL2 suppression: FL2-flagged trades only exit via recovery, deep_stop, trailing, or max hold ───
+                if _is_flagged_sl and order_info.get('fl2_flagged'):
+                    logger.debug(f"[REALTIME_FL2_HOLD] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% — suppressing {close_reason}, FL2 monitor handles recovery/deep_stop")
                     continue
 
                 # Apply FL_ prefix if trade was flagged (signal lost at some point)

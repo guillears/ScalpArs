@@ -209,6 +209,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_adx_delta FLOAT"))
                 if 'entry_quality_score' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_quality_score FLOAT"))
+                if 'entry_btc_regime' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_regime VARCHAR(20)"))
+                if 'exit_btc_regime' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN exit_btc_regime VARCHAR(20)"))
                 if 'exit_slippage_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_slippage_pct FLOAT"))
 

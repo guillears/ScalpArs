@@ -1376,6 +1376,55 @@
                     </div>
                 </div>
 
+                <!-- Performance by BTC Regime -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Regime (at Entry)</h3>
+                    <p class="text-xs text-gray-500 mb-3">BTC regime classified at entry time using BTC ADX, slope, and RSI. Used to identify which market regimes the bot performs in.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Regime</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="regime-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC regime tags)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Regime Transition Impact -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Regime Transition Impact</h3>
+                    <p class="text-xs text-gray-500 mb-3">Compares trades where BTC regime stayed the same vs trades where it shifted between entry and exit. Tells us if regime stability matters.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Transition</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="regime-transition-body" class="divide-y divide-white/5">
+                                <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC regime tags)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Pair EMA20 Slope -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Pair EMA20 Slope</h3>
@@ -5772,6 +5821,79 @@
                     }).join('');
                 } else {
                     qsBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting entry quality scores)</td></tr>';
+                }
+
+                // Performance by BTC Regime
+                const regimeBody = document.getElementById('regime-performance-body');
+                if (data.regime_performance && data.regime_performance.length > 0) {
+                    const confColorsRG = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    const regimeColors = {
+                        'CHOPPY': 'text-gray-400',
+                        'HEALTHY_BULL': 'text-emerald-400',
+                        'STRONG_BULL': 'text-green-300',
+                        'BULL_EXHAUSTED': 'text-yellow-400',
+                        'HEALTHY_BEAR': 'text-rose-400',
+                        'STRONG_BEAR': 'text-red-400',
+                        'BEAR_EXHAUSTED': 'text-orange-400',
+                        'UNKNOWN': 'text-gray-500'
+                    };
+                    regimeBody.innerHTML = data.regime_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const regColor = regimeColors[r.range] || 'text-gray-400';
+                        const peakStr = r.avg_peak_pct != null ? (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(2) + '%' : '-';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confColorsRG[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${regColor}">${r.range}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${peakStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    regimeBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC regime tags)</td></tr>';
+                }
+
+                // Regime Transition Impact
+                const regimeTransBody = document.getElementById('regime-transition-body');
+                if (data.regime_transition_performance && data.regime_transition_performance.length > 0) {
+                    regimeTransBody.innerHTML = data.regime_transition_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const labelColor = r.range === 'SAME_REGIME' ? 'text-emerald-400' : 'text-yellow-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${labelColor}">${r.range}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    regimeTransBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC regime tags)</td></tr>';
                 }
 
                 // Performance by Pair EMA20 Slope

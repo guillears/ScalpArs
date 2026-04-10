@@ -15,6 +15,7 @@ import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
 from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active
+from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,9 @@ def _calculate_quality_score(direction: str, entry_rsi, entry_adx, entry_gap,
 # Computed at end of each scan, used by next scan cycle as a market regime gate.
 _global_volume_ratio: float = 1.0
 _btc_ema20_slope_pct: float = 0.0
+# Module-level BTC indicators for regime classification at exit time
+_current_btc_adx: float = None
+_current_btc_rsi: float = None
 _market_bull_pct: float = 0.0
 _market_bear_pct: float = 0.0
 _breadth_n_bull: int = 0
@@ -965,7 +969,8 @@ class TradingEngine:
         entry_bear_pct: float = None,
         entry_range_position: float = None,
         entry_adx_delta: float = None,
-        entry_quality_score: int = None
+        entry_quality_score: int = None,
+        entry_btc_regime: str = None
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -1138,6 +1143,8 @@ class TradingEngine:
             entry_range_position=entry_range_position,
             entry_adx_delta=entry_adx_delta,
             entry_quality_score=entry_quality_score,
+            entry_btc_regime=entry_btc_regime,
+            exit_btc_regime=entry_btc_regime,  # Initialize to entry; updated on close
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -1443,6 +1450,7 @@ class TradingEngine:
                         order.close_reason = reason
                         order.closed_at = datetime.utcnow()
                         order.exit_price = actual_price
+                        order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
                         taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
                         notional_at_close = order.quantity * actual_price
                         exit_fee = notional_at_close * taker_fee
@@ -1597,6 +1605,7 @@ class TradingEngine:
                 order.closed_at = _close_time
                 order.close_reason = reason
                 order.exit_slippage_pct = _slippage_pct
+                order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
 
                 # Only add Transaction on first attempt (rollback removes it from session)
                 if _db_attempt == 1:
@@ -2666,9 +2675,11 @@ class TradingEngine:
                 btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev3, flat_th)
                 if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
                     btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
-        global _current_btc_regime, _btc_ema20_slope_pct
+        global _current_btc_regime, _btc_ema20_slope_pct, _current_btc_adx, _current_btc_rsi
         _current_btc_regime = btc_regime
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
+        _current_btc_adx = btc_adx
+        _current_btc_rsi = btc_rsi
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
         
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
@@ -2991,6 +3002,7 @@ class TradingEngine:
                     signal, entry_rsi, entry_adx, entry_gap,
                     _market_bull_pct, _market_bear_pct, btc_adx, pair_ema20_slope_pct
                 )
+                entry_btc_regime = classify_btc_regime(btc_adx, btc_rsi, btc_ema20_slope_pct)
                 order = await self.open_position(
                     db=db,
                     pair=pair,
@@ -3017,7 +3029,8 @@ class TradingEngine:
                     entry_bear_pct=_market_bear_pct,
                     entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None,
                     entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
-                    entry_quality_score=entry_quality_score
+                    entry_quality_score=entry_quality_score,
+                    entry_btc_regime=entry_btc_regime
                 )
 
                 if order:

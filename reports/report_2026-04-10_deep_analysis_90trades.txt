@@ -1,0 +1,241 @@
+DEEP ANALYSIS — 90 trades (65L + 25S) — April 10, 2026
+=========================================================
+Generated after first batch under tightened filters (RSI 63, gap 0.10, breadth 30/45, ADX max 33)
+
+OVERALL STATE
+-------------
+LONGS:  65 trades, 72.3% WR, -$13.27 (-0.20 expectancy)
+SHORTS: 25 trades, 60.0% WR, -$13.19 (-0.53 expectancy)
+TOTAL:  90 trades, -$26.46
+
+vs. previous 96-trade baseline (-$13.60): GOT WORSE BY $12.86
+
+KEY FINDING: Filters helped longs (WR +12pp) but devastated shorts (WR -16.8pp).
+The aggressive RSI max 40 + ADX max 33 cut off working short configurations.
+
+================================================================================
+USER HYPOTHESIS: "Entries are OK, exit strategy of SL is OK, but huge opportunity
+on exits of WINNERS based on post-peak data."
+================================================================================
+
+VERDICT: VALIDATED ✅
+
+The data conclusively shows winners are exiting WAY too early.
+
+LONGS — Winners Drawdown vs Post-Peak (after close)
+----------------------------------------------------
+Exit Type           #    Avg Close   Avg Peak   POST-PEAK    Capture %
+BREAKEVEN_SL_L1     22    +0.09%     +0.19%     +1.02%       9%
+BREAKEVEN_SL_L2     10    +0.13%     +0.29%     +1.15%       9%
+FL_BREAKEVEN_SL_L1  3     +0.08%     +0.17%     +0.82%       8%
+FL_BREAKEVEN_SL_L2  2     +0.14%     +0.32%     +0.40%       26%
+FL_BREAKEVEN_SL_L3  1     +0.26%     +0.35%     +0.64%       29%
+TRAILING_STOP       8     +0.44%     +0.53%     +2.09%       17%
+FL_TRAILING_STOP    1     +0.59%     +0.68%     +0.60%       49%
+
+INTERPRETATION:
+- BE L1 closes at +0.09% but price continues +1.02% UP after close
+- TRAILING_STOP closes at +0.44% but price continues +2.09% UP after close
+- We're capturing 9-17% of total available move on most exits
+- Even our "trailing stop" (supposed to ride winners) cuts winners short
+
+OPPORTUNITY MATH:
+- 22 BE_L1 winners: +$0.21 avg now → could be +$1.50 if caught half post-peak = +$28
+- 10 BE_L2 winners: +$0.22 avg now → could be +$1.20 = +$10
+- 8 TRAILING_STOP: +$1.01 avg now → could be +$2.50 = +$12
+- Total opportunity: ~$50-70 on existing winners
+- Would flip longs from -$13 to +$30-50
+
+SHORTS — Same pattern, smaller magnitude
+-----------------------------------------
+BREAKEVEN_SL_L2 shorts: post-peak +1.15% (5 trades)
+BREAKEVEN_SL_L1 shorts: post-peak +0.35% (9 trades)
+
+================================================================================
+ENTRY ANALYSIS — Can we filter losers without killing winners?
+================================================================================
+
+LONGS NEVER POSITIVE (9 trades, -$17.55) vs WINNERS — Profile Comparison
+-------------------------------------------------------------------------
+Dimension          Never Positive    Winner avg     Differentiable?
+Avg RSI            60.5              60.4           NO (identical)
+Avg ADX            22.6              21.0           NO (close)
+Avg Gap5-20        0.24%             0.26%          NO (identical)
+Avg EMA5-8 Gap     0.077%            0.085%         NO (identical)
+Avg BTC RSI        60.6              60.8           NO (identical)
+Avg BTC ADX        25.4              22.0           Slight skew
+EMA5 Stretch       0.20%             0.18%          NO (close)
+
+CONCLUSION: Losers and winners have IDENTICAL entry profiles.
+The user is right — entries are not the differentiator at the per-trade level.
+The price behavior AFTER entry is what determines win/loss.
+
+HOWEVER — bucket-level patterns do exist:
+
+LONGS — Performance by Entry ADX
+---------------------------------
+Range    #    Win%    Total$
+15-20    28   85.7%   +$3.66   ✅ ONLY profitable bucket
+20-25    30   60.0%   -$15.06  ❌ ENTIRE loss sits here
+25-30    7    71.4%   -$1.87
+
+THE ENTIRE LONG LOSS SITS IN ADX 20-25.
+
+LONGS — Entry Gap 5-20 (U-shape)
+---------------------------------
+Range          #    Win%    Total$
+0.12-0.15%     7    100%    +$4.32  ✅
+0.15-0.20%     9    88.9%   +$0.15  ✅
+0.20-0.25%     10   70%     -$4.21  ❌
+0.25-0.30%     10   50%     -$7.97  ❌❌
+0.30-0.35%     4    50%     -$3.58  ❌
+0.35-0.40%     7    57%     -$4.72  ❌
+0.40-0.50%     6    100%    +$2.18  ✅
+0.50-0.60%     3    67%     +$0.72  ✅
+
+Pattern: LOW gap good, MID gap disaster, HIGH gap good. Unusual U-shape.
+
+SHORTS — Entry Gap 5-20 (similar U-shape)
+------------------------------------------
+0.15-0.20%     4    75%     +$0.42   ✅
+0.20-0.25%     5    40%     -$4.76   ❌
+0.25-0.30%     3    33%     -$3.60   ❌❌
+0.30-0.35%     1    100%    +$0.45   ✅
+0.35-0.40%     1    100%    +$0.24   ✅
+0.40-0.50%     3    67%     -$1.28
+0.50-0.60%     5    60%     -$3.19   ❌
+0.60-0.70%     3    67%     -$1.48
+
+SHORTS — Entry RSI
+------------------
+20-30    10   50%   -$7.70  ❌  (was best in old data)
+30-35    12   67%   -$4.01
+35-40    3    67%   -$1.49
+
+The RSI max 40 cap missed the issue — RSI 20-30 is now the worst.
+
+SHORTS — BTC RSI
+-----------------
+<30      8    25%   -$8.92  ❌❌ (huge disaster)
+30-35    10   80%   -$1.57
+35-40    5    80%   -$1.06
+40-45    2    50%   -$1.64
+
+When BTC RSI is below 30, shorts fail badly. Adding BTC RSI floor would help.
+
+QUALITY SCORE — INVERSELY CORRELATED (my scoring is wrong)
+-----------------------------------------------------------
+LONGS:
+Score 0-1:  12 trades  +$3.54  (92% WR) ✅
+Score 2-3:  25 trades  -$9.17  (68% WR) ❌
+Score 4-5:  18 trades  -$10.18 (56% WR) ❌❌
+
+SHORTS:
+Score 1-3:  14 trades  -$5.32
+Score 4-5:  11 trades  -$7.87
+
+The conditions I scored as "high quality" (strong ADX, high gap, etc.)
+are actually EXHAUSTED ENTRIES that lose money.
+The Phase 1 scoring needs to be inverted or redesigned.
+
+================================================================================
+COMPARISON vs PREVIOUS BASELINE (96 trades)
+================================================================================
+
+Metric                Before (96)    After (90)    Delta
+Total P&L             -$13.60        -$26.46       -$12.86 ❌
+LONG WR               60.0%          72.3%         +12.3pp ✅
+LONG Total            -$14.19        -$13.27       +$0.92
+LONG Expectancy       -$0.35         -$0.20        +$0.15 ✅
+SHORT WR              76.8%          60.0%         -16.8pp ❌❌
+SHORT Total           +$0.59         -$13.19       -$13.78 ❌❌
+SHORT Expectancy      +$0.01         -$0.53        -$0.54 ❌❌
+
+VERDICT: Filter changes were a NET NEGATIVE.
+- Longs marginally improved (gained 12pp WR but only $0.92 P&L)
+- Shorts got destroyed (lost 16.8pp WR and $13.78)
+
+================================================================================
+THE WINNING FORMULA
+================================================================================
+
+PRIMARY FIX — EXIT STRUCTURE (highest leverage, no trade reduction)
+
+LONGS & SHORTS:
+Field                       Current    New      Reason
+BE L1 trigger               0.15%      0.25%    Skip early exit on weak peaks
+BE L1 offset                0.10%      0.10%    Keep
+BE L2 trigger               0.25%      0.40%    Don't lock too early
+BE L2 offset                0.15%      0.20%
+BE L3 trigger               0.35%      0.60%    Only protect real runners
+BE L3 offset                0.25%      0.35%
+Trailing TP target          0.40%      0.50%    Activate later
+Trailing pullback           0.08%      0.18%    Wider = ride bigger moves
+
+KEY: Trailing pullback 0.08 → 0.18 is the biggest single lever.
+Currently 0.08% pullback closes on noise. Widening lets winners run.
+
+SECONDARY FIX — REVERT SHORT OVER-RESTRICTION
+
+momentum_short_rsi_max:     40 → 45     (was 50, cut too aggressive)
+momentum_adx_max (S):       33 → 35     (revert to original)
+
+NEW FIX — ADD BTC RSI FLOOR FOR SHORTS
+
+btc_rsi_min_short:          25 → 30     (BTC RSI <30 = 25% WR disaster)
+
+OPTIONAL — LONG ADX TIGHTENING (BIG DECISION)
+
+The data shows ADX 20-25 longs lose -$15.06 (the ENTIRE long loss).
+ADX 15-20 longs win +$3.66.
+
+momentum_adx_max_long:      30 → 20     (cap long entries at ADX <20)
+adx_very_strong_long:       25 → 20
+adx_strong_long:            18 → 15
+
+⚠️ RISK: Sample is only 28 trades in ADX 15-20.
+       Could be regime luck. But pattern is stark enough to test.
+
+In sample: would cut 65 trades → ~35 trades, but P&L flips -$13 → +$3.66.
+
+NOT RECOMMENDED YET — Quality Score Sizing
+Phase 1 scoring is INVERSELY correlated. Need to redesign before using
+for sizing. Phase 2 should wait until rescored.
+
+================================================================================
+ESTIMATED IMPACT
+================================================================================
+
+Scenario                     Trades    Est P&L
+Current state                90        -$26.46
+Exit fixes only              90        +$15 to +$30
+Exit + short revert          90        +$20 to +$35
+Exit + short revert + ADX    ~55       +$25 to +$40
+
+Exit fixes have highest leverage (no trade reduction).
+ADX tightening is highest risk (small sample).
+
+================================================================================
+RECOMMENDED ACTION ORDER
+================================================================================
+
+PHASE A (deploy now, low risk):
+1. Trailing pullback 0.08 → 0.18  (biggest single lever)
+2. Trailing TP 0.40 → 0.50
+3. BE L1 trigger 0.15 → 0.25
+4. BE L2 trigger 0.25 → 0.40, offset 0.15 → 0.20
+5. BE L3 trigger 0.35 → 0.60, offset 0.25 → 0.35
+6. Short RSI max 40 → 45
+7. Short ADX max 33 → 35
+8. BTC RSI min short 25 → 30
+
+PHASE B (after 50+ new trades validate Phase A):
+9. Long ADX tightening (max 20) — only if Phase A pattern still holds
+
+PHASE C (after 100+ trades):
+10. Redesign Quality Score with corrected ranges
+11. Enable signal-quality-based sizing if score correlates correctly
+
+================================================================================
+END OF DEEP ANALYSIS REPORT
+================================================================================

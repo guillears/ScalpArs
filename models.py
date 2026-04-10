@@ -92,6 +92,9 @@ class Order(Base):
     entry_adx_delta = Column(Float, nullable=True)
     # Signal quality score at entry: 0-6 (higher = more favorable conditions aligned)
     entry_quality_score = Column(Float, nullable=True)
+    # BTC regime classification at entry (frozen) and exit (current)
+    entry_btc_regime = Column(String(20), nullable=True)
+    exit_btc_regime = Column(String(20), nullable=True)
 
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

@@ -2671,7 +2671,6 @@ class TradingEngine:
                     # The trade should only exit via backstop, trailing recovery, signal regain + trailing, or max hold time.
                     if exit_result.get("should_close") and isinstance(reason, str) and reason.startswith("STOP_LOSS"):
                         logger.debug(f"[FL1_WIDE_SL_HOLD] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% — suppressing {reason}, runway to backstop={_fl1_backstop}%")
-                        await db.commit()
                         continue
 
             if exit_result.get("should_close"):
@@ -2689,25 +2688,23 @@ class TradingEngine:
                 # Extend TP target - update order fields
                 new_tp_level = exit_result.get("new_tp_level", order.current_tp_level + 1)
                 new_tp_target = exit_result.get("new_tp_target")
-                
+
                 logger.info(f"[EXTEND_TP] {order.pair} {order.direction}: L{order.current_tp_level} -> L{new_tp_level} (target: {new_tp_target:.4f}%)")
-                
+
                 order.current_tp_level = new_tp_level
                 order.dynamic_tp_target = new_tp_target
-                
+
                 # NOTE: Do NOT reset high/low tracking when extending TP!
                 # We want to keep the best price ever seen for trailing stop calculation.
                 # Otherwise, if price reverses after extension, we lose the profit reference.
-                
+
                 # Sync cache so real-time WebSocket exits use the correct level
                 async with _cache_lock:
                     for cached_order in _open_orders_cache.get(order.pair, []):
                         if cached_order['id'] == order.id:
                             cached_order['current_tp_level'] = new_tp_level
                             break
-                
-                await db.commit()
-                
+
                 updates.append({
                     "order_id": order.id,
                     "pair": order.pair,
@@ -2715,8 +2712,22 @@ class TradingEngine:
                     "new_level": new_tp_level,
                     "new_target": new_tp_target
                 })
-            else:
-                await db.commit()
+            # NOTE: per-order commit removed.  All pending peak/trough/high/low
+            # updates (and any EXTEND_TP / WIDE_SL hold bookkeeping) are flushed
+            # in one batched commit at the end of the loop below.
+
+        # Batched commit for all non-close bookkeeping updates (peak, trough,
+        # current_price, high/low, EXTEND_TP, etc.).  close_position already
+        # committed its own state via its retry loop, so this final commit
+        # only persists the routine tracking updates.
+        try:
+            await db.commit()
+        except Exception as _monitor_commit_err:
+            logger.error(f"[MONITOR] Batched tracking commit failed: {str(_monitor_commit_err)[:120]}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
         # --- Process exit retry queue (live mode only) ---
         if not self.is_paper_mode and _exit_retry_queue:
@@ -3183,6 +3194,19 @@ class TradingEngine:
                         "price": indicators['price']
                     })
 
+        # Batched pair_data commit — one write for the whole scan cycle instead
+        # of 50 individual commits. This dramatically cuts write contention with
+        # monitor_loop and close_position (previously the per-pair commits were
+        # starving close_position's retry loop for 2+ minutes).
+        try:
+            await db.commit()
+        except Exception as _scan_commit_err:
+            logger.error(f"[SCAN] Batched pair_data commit failed: {str(_scan_commit_err)[:120]}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
         self._last_scan_time = time.time()
         elapsed = self._last_scan_time - now
         logger.info(f"[SCAN] Completed in {elapsed:.1f}s - {len(top_pairs)} pairs processed, {len(actions)} positions opened")
@@ -3198,20 +3222,25 @@ class TradingEngine:
         volume_24h: Optional[float] = None,
         volume_ratio: Optional[float] = None
     ):
-        """Update pair data cache in database"""
+        """Update pair data cache in database.
+
+        NOTE: this function no longer commits. The caller (scan_and_trade)
+        batches pair_data updates into a single commit per scan cycle to
+        reduce SQLite write contention with monitor_loop and close_position.
+        """
         result = await db.execute(
             select(PairData).where(PairData.pair == pair)
         )
         pair_data = result.scalar_one_or_none()
-        
+
         # Use provided 24h volume, or fall back to candle volume
         actual_volume_24h = volume_24h if volume_24h is not None else indicators.get('volume', 0)
-        
+
         flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
         regime = determine_macro_regime(
             indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
         )
-        
+
         if pair_data:
             pair_data.price = indicators.get('price', 0)
             pair_data.ema5 = indicators.get('ema5')
@@ -3251,8 +3280,7 @@ class TradingEngine:
                 volume_ratio=volume_ratio
             )
             db.add(pair_data)
-        
-        await db.commit()
+        # NOTE: commit is batched by the caller (scan_and_trade)
     
     async def check_realtime_stop_loss(self, pair: str, current_price: float):
         """

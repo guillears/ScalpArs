@@ -3573,7 +3573,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            for reason_key in ["STOP_LOSS", "STOP_LOSS_WIDE", "MOMENTUM_EXIT", "PNL_TRAILING", "SLOPE_EXIT", "SIGNAL_LOST", "FL_STOP_LOSS", "FL_SIGNAL_LOST", "FL_TICK_MOMENTUM_EXIT"]:
+            for reason_key in ["STOP_LOSS", "STOP_LOSS_WIDE", "MOMENTUM_EXIT", "PNL_TRAILING", "SLOPE_EXIT", "SIGNAL_LOST", "FL_STOP_LOSS", "FL_SIGNAL_LOST", "FL_TICK_MOMENTUM_EXIT", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED"]:
                 for direction in ["LONG", "SHORT"]:
                     bucket = [o for o in np_trades if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction]
                     all_in = len([o for o in orders if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction])
@@ -3873,6 +3873,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 for o in group:
                     c = o.confidence or "UNKNOWN"
                     by_conf[c] = by_conf.get(c, 0) + 1
+                # FL Origin breakdown: SIGNAL_LOST vs WIDE_SL
+                fl_origin_counts = {}
+                for o in group:
+                    origin = getattr(o, 'fl1_origin', None) or "SIGNAL_LOST"  # legacy rows default to SIGNAL_LOST
+                    fl_origin_counts[origin] = fl_origin_counts.get(origin, 0) + 1
                 pct = round(count / total_flagged * 100, 1)
                 avg_pnl_pct = round(sum(o.pnl_percentage or 0 for o in group) / count, 4)
                 avg_pnl_usd = round(sum(o.pnl or 0 for o in group) / count, 2)
@@ -3899,6 +3904,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
                 flagged_exits.append({
                     "reason": reason, "longs": fg_longs, "shorts": fg_shorts, "by_confidence": by_conf,
+                    "fl_origin": fl_origin_counts,
                     "count": count, "pct": pct,
                     "avg_pnl_pct": avg_pnl_pct, "avg_pnl_usd": avg_pnl_usd,
                     "avg_peak_pnl": avg_peak_pnl, "avg_pullback": avg_pullback,
@@ -3933,8 +3939,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             for o in flagged_orders:
                 c = o.confidence or "UNKNOWN"
                 all_by_conf[c] = all_by_conf.get(c, 0) + 1
+            all_fl_origin = {}
+            for o in flagged_orders:
+                origin = getattr(o, 'fl1_origin', None) or "SIGNAL_LOST"
+                all_fl_origin[origin] = all_fl_origin.get(origin, 0) + 1
             flagged_exits.append({
                 "reason": "ALL", "longs": all_longs, "shorts": all_shorts, "by_confidence": all_by_conf,
+                "fl_origin": all_fl_origin,
                 "count": total_flagged, "pct": 100.0,
                 "avg_pnl_pct": all_avg_pnl_pct, "avg_pnl_usd": all_avg_pnl_usd,
                 "avg_peak_pnl": all_avg_peak, "avg_pullback": all_avg_pullback,

@@ -183,6 +183,12 @@ class Order(Base):
     signal_lost_flagged = Column(Boolean, nullable=True, default=False)
     signal_lost_flag_pnl = Column(Float, nullable=True)
     signal_lost_flagged_at = Column(DateTime, nullable=True)
+    # FL1 origin: "SIGNAL_LOST" (classic) or "WIDE_SL" (flagged from STOP_LOSS_WIDE instead of closing)
+    fl1_origin = Column(String(20), nullable=True)
+    # FL2 double-flag: promoted from FL1 security gap, monitored against fl2_recovery_target / fl2_deep_stop
+    fl2_flagged = Column(Boolean, nullable=True, default=False)
+    fl2_flagged_at = Column(DateTime, nullable=True)
+    fl2_flag_pnl = Column(Float, nullable=True)  # P&L at moment FL2 was triggered
 
     # Regime Neutral tracking: what happened when BTC regime went NEUTRAL during trade
     regime_neutral_hit_at = Column(DateTime, nullable=True)

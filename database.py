@@ -215,6 +215,14 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_btc_regime VARCHAR(20)"))
                 if 'exit_slippage_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_slippage_pct FLOAT"))
+                if 'fl1_origin' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fl1_origin VARCHAR(20)"))
+                if 'fl2_flagged' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fl2_flagged BOOLEAN DEFAULT 0"))
+                if 'fl2_flagged_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fl2_flagged_at DATETIME"))
+                if 'fl2_flag_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN fl2_flag_pnl FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

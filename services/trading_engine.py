@@ -1370,7 +1370,7 @@ class TradingEngine:
             exit_result = None
 
             _urgent_exit = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM",
+                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
             ))
 
             for attempt in range(1, max_exit_retries + 1):
@@ -1543,7 +1543,7 @@ class TradingEngine:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
             _urgent_exit_paper = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM",
+                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
             ))
             if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
                 exit_result = await self._simulate_maker_exit_paper(
@@ -2458,12 +2458,14 @@ class TradingEngine:
                                     _ci['signal_lost_flagged'] = True
                                     _ci['signal_lost_flag_pnl'] = round(sl_pnl_pct, 4)
                                     _ci['signal_lost_flagged_at'] = flag_time
+                                    _ci['fl1_origin'] = "SIGNAL_LOST"
                                     break
                         order.signal_lost_flagged = True
                         order.signal_lost_flag_pnl = round(sl_pnl_pct, 4)
                         order.signal_lost_flagged_at = flag_time
+                        order.fl1_origin = "SIGNAL_LOST"
                         await db.commit()
-                        logger.info(f"[SIGNAL_LOST_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — FLAGGED (persisted to DB), signal='{pair_data.signal}'")
+                        logger.info(f"[SIGNAL_LOST_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — FLAGGED[SIGNAL_LOST] (persisted to DB), signal='{pair_data.signal}'")
                         continue
                     elif not _flag_enabled:
                         # Flag system OFF: original behavior — exit immediately
@@ -2486,6 +2488,31 @@ class TradingEngine:
                 security_gap_max = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_max', -0.7)
                 if _is_flagged and sl_pnl_pct >= security_gap_min and sl_pnl_pct <= security_gap_max:
                     tp_level = order.current_tp_level or 1
+                    _fl2_enabled = getattr(config.trading_config.thresholds, 'fl2_enabled', True)
+                    # Check if already FL2-flagged (from cache)
+                    _is_fl2 = False
+                    async with _cache_lock:
+                        for _ci in _open_orders_cache.get(order.pair, []):
+                            if _ci['id'] == order.id:
+                                _is_fl2 = _ci.get('fl2_flagged', False)
+                                break
+                    if _fl2_enabled and not _is_fl2:
+                        # Promote to FL2 instead of closing — let it try to recover
+                        fl2_time = datetime.utcnow()
+                        async with _cache_lock:
+                            for _ci in _open_orders_cache.get(order.pair, []):
+                                if _ci['id'] == order.id:
+                                    _ci['fl2_flagged'] = True
+                                    _ci['fl2_flagged_at'] = fl2_time
+                                    _ci['fl2_flag_pnl'] = round(sl_pnl_pct, 4)
+                                    break
+                        order.fl2_flagged = True
+                        order.fl2_flagged_at = fl2_time
+                        order.fl2_flag_pnl = round(sl_pnl_pct, 4)
+                        await db.commit()
+                        logger.info(f"[FL2_FLAG] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% — promoted to FL2 (origin={order.fl1_origin or 'SIGNAL_LOST'}), recovery_target={getattr(config.trading_config.thresholds, 'fl2_recovery_target', -0.4)}%, deep_stop={getattr(config.trading_config.thresholds, 'fl2_deep_stop', -1.0)}%")
+                        continue
+                    # FL2 disabled or already FL2-flagged — original behavior: close here
                     logger.info(f"[FL_SIGNAL_LOST] {order.pair} {order.direction} L{tp_level}: pnl={sl_pnl_pct:.4f}% hit security gap [{security_gap_min}, {security_gap_max}]")
                     closed_order = await self.close_position(db, order, current_price, f"FL_SIGNAL_LOST L{tp_level}")
                     if closed_order:
@@ -2531,7 +2558,78 @@ class TradingEngine:
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
             order.trough_pnl = exit_result.get("trough_pnl", order.trough_pnl)
             reason = exit_result.get("reason")
-            
+
+            # ─── FL1[WIDE_SL] interception: convert STOP_LOSS_WIDE into a flag instead of closing ───
+            _fl1_wide_enabled = getattr(config.trading_config.thresholds, 'fl1_for_wide_sl_enabled', True)
+            if (exit_result.get("should_close")
+                    and isinstance(reason, str)
+                    and reason.startswith("STOP_LOSS_WIDE")
+                    and _fl1_wide_enabled
+                    and not order.signal_lost_flagged):
+                tp_level = exit_result.get("tp_level", order.current_tp_level or 1)
+                # Compute actual P&L % at this moment (with fees) for the flag record
+                _entry_notional_w = order.entry_price * order.quantity
+                _exit_fee_w = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                if order.direction == "LONG":
+                    _pnl_w = (current_price - order.entry_price) * order.quantity - (order.entry_fee or 0) - _exit_fee_w
+                else:
+                    _pnl_w = (order.entry_price - current_price) * order.quantity - (order.entry_fee or 0) - _exit_fee_w
+                _pnl_pct_w = round((_pnl_w / _entry_notional_w) * 100, 4) if _entry_notional_w else 0.0
+                flag_time_w = datetime.utcnow()
+                async with _cache_lock:
+                    for _ci in _open_orders_cache.get(order.pair, []):
+                        if _ci['id'] == order.id:
+                            _ci['signal_lost_flagged'] = True
+                            _ci['signal_lost_flag_pnl'] = _pnl_pct_w
+                            _ci['signal_lost_flagged_at'] = flag_time_w
+                            _ci['fl1_origin'] = "WIDE_SL"
+                            break
+                order.signal_lost_flagged = True
+                order.signal_lost_flag_pnl = _pnl_pct_w
+                order.signal_lost_flagged_at = flag_time_w
+                order.fl1_origin = "WIDE_SL"
+                await db.commit()
+                logger.info(f"[FL1_WIDE_SL] {order.pair} {order.direction} L{tp_level}: pnl={_pnl_pct_w:.4f}% — flagged from STOP_LOSS_WIDE (origin=WIDE_SL), backstop={getattr(config.trading_config.thresholds, 'fl1_wide_sl_backstop', -1.2)}%")
+                continue
+
+            # ─── FL1[WIDE_SL] emergency backstop + FL2 recovery/deep_stop monitors ───
+            if order.signal_lost_flagged:
+                # Compute current P&L % with fees
+                _entry_notional_m = order.entry_price * order.quantity
+                _exit_fee_m = current_price * order.quantity * getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
+                if order.direction == "LONG":
+                    _pnl_m = (current_price - order.entry_price) * order.quantity - (order.entry_fee or 0) - _exit_fee_m
+                else:
+                    _pnl_m = (order.entry_price - current_price) * order.quantity - (order.entry_fee or 0) - _exit_fee_m
+                _pnl_pct_m = (_pnl_m / _entry_notional_m) * 100 if _entry_notional_m else 0.0
+                _tp_level_m = order.current_tp_level or 1
+
+                if order.fl2_flagged:
+                    # FL2 monitor: recover → FL_RECOVERED, fall → FL_DEEP_STOP
+                    _fl2_recovery = getattr(config.trading_config.thresholds, 'fl2_recovery_target', -0.4)
+                    _fl2_deep = getattr(config.trading_config.thresholds, 'fl2_deep_stop', -1.0)
+                    if _pnl_pct_m >= _fl2_recovery:
+                        logger.info(f"[FL_RECOVERED] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% >= fl2_recovery_target={_fl2_recovery}%")
+                        closed_order = await self.close_position(db, order, current_price, f"FL_RECOVERED L{_tp_level_m}")
+                        if closed_order:
+                            updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED", "reason": f"FL_RECOVERED L{_tp_level_m}", "pnl": closed_order.pnl, "tp_level": _tp_level_m})
+                        continue
+                    if _pnl_pct_m <= _fl2_deep:
+                        logger.info(f"[FL_DEEP_STOP] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% <= fl2_deep_stop={_fl2_deep}%")
+                        closed_order = await self.close_position(db, order, current_price, f"FL_DEEP_STOP L{_tp_level_m}")
+                        if closed_order:
+                            updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED", "reason": f"FL_DEEP_STOP L{_tp_level_m}", "pnl": closed_order.pnl, "tp_level": _tp_level_m})
+                        continue
+                elif (order.fl1_origin or "") == "WIDE_SL":
+                    # FL1[WIDE_SL] emergency backstop only — normal security gap can still promote to FL2
+                    _fl1_backstop = getattr(config.trading_config.thresholds, 'fl1_wide_sl_backstop', -1.2)
+                    if _pnl_pct_m <= _fl1_backstop:
+                        logger.info(f"[FL_EMERGENCY_SL] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% <= fl1_wide_sl_backstop={_fl1_backstop}%")
+                        closed_order = await self.close_position(db, order, current_price, f"FL_EMERGENCY_SL L{_tp_level_m}")
+                        if closed_order:
+                            updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED", "reason": f"FL_EMERGENCY_SL L{_tp_level_m}", "pnl": closed_order.pnl, "tp_level": _tp_level_m})
+                        continue
+
             if exit_result.get("should_close"):
                 closed_order = await self.close_position(db, order, current_price, reason)
                 if closed_order:
@@ -3280,8 +3378,61 @@ class TradingEngine:
                 else:
                     close_reason = f"STOP_LOSS L{tp_level}"
 
-                # Apply FL_ prefix if trade was flagged (signal lost at some point)
                 _is_flagged_sl = order_info.get('signal_lost_flagged', False)
+
+                # ─── FL1[WIDE_SL] interception: convert STOP_LOSS_WIDE into a flag instead of closing ───
+                _fl1_wide_enabled_rt = getattr(config.trading_config.thresholds, 'fl1_for_wide_sl_enabled', True)
+                if (close_reason.startswith("STOP_LOSS_WIDE")
+                        and _fl1_wide_enabled_rt
+                        and not _is_flagged_sl):
+                    flag_time_rt = datetime.utcnow()
+                    order_info['signal_lost_flagged'] = True
+                    order_info['signal_lost_flag_pnl'] = round(pnl_pct, 4)
+                    order_info['signal_lost_flagged_at'] = flag_time_rt
+                    order_info['fl1_origin'] = "WIDE_SL"
+                    logger.warning(f"[REALTIME_FL1_WIDE_SL] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% — flagged from STOP_LOSS_WIDE (origin=WIDE_SL)")
+                    # Persist flag to DB
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                            )
+                            order_db = result.scalar_one_or_none()
+                            if order_db:
+                                order_db.signal_lost_flagged = True
+                                order_db.signal_lost_flag_pnl = round(pnl_pct, 4)
+                                order_db.signal_lost_flagged_at = flag_time_rt
+                                order_db.fl1_origin = "WIDE_SL"
+                                await db.commit()
+                    except Exception as e:
+                        logger.error(f"[REALTIME_FL1_WIDE_SL] Error persisting flag for {pair}: {e}")
+                    continue  # Don't close — let the trade run to backstop or recover
+
+                # ─── FL1[WIDE_SL] emergency backstop: flagged WIDE_SL trade hit deep loss ───
+                if _is_flagged_sl and order_info.get('fl1_origin') == "WIDE_SL" and not order_info.get('fl2_flagged'):
+                    _fl1_backstop_rt = getattr(config.trading_config.thresholds, 'fl1_wide_sl_backstop', -1.2)
+                    if pnl_pct <= _fl1_backstop_rt + 0.01:
+                        close_reason = f"FL_EMERGENCY_SL L{tp_level}"
+                        logger.warning(f"[REALTIME_FL_EMERGENCY_SL] {pair} {direction}: pnl={pnl_pct:.4f}% <= backstop={_fl1_backstop_rt}% (peak={current_peak:.4f}%) - CLOSING NOW!")
+                        if order_info.get('_closing_in_progress'):
+                            continue
+                        order_info['_closing_in_progress'] = True
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    closed = await self.close_position(db, order, current_price, close_reason)
+                                    if closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_FL_EMERGENCY_SL] Error closing {pair}: {e}")
+                        continue
+
+                # Apply FL_ prefix if trade was flagged (signal lost at some point)
                 if _is_flagged_sl and not close_reason.startswith("FL_"):
                     close_reason = f"FL_{close_reason}"
 
@@ -3323,11 +3474,72 @@ class TradingEngine:
 
             # Real-time Security Gap Exit: flagged trades within security gap range
             _is_flagged_rt = order_info.get('signal_lost_flagged', False)
-            if _is_flagged_rt:
+
+            # ─── FL2 monitors: fire BEFORE the security gap check for already-FL2-flagged trades ───
+            if _is_flagged_rt and order_info.get('fl2_flagged'):
+                _fl2_recovery_rt = getattr(config.trading_config.thresholds, 'fl2_recovery_target', -0.4)
+                _fl2_deep_rt = getattr(config.trading_config.thresholds, 'fl2_deep_stop', -1.0)
+                tp_level = order_info.get('current_tp_level', 1)
+                _fl2_close_reason = None
+                if pnl_pct >= _fl2_recovery_rt:
+                    _fl2_close_reason = f"FL_RECOVERED L{tp_level}"
+                    logger.warning(f"[REALTIME_FL_RECOVERED] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% >= fl2_recovery={_fl2_recovery_rt}% - CLOSING NOW!")
+                elif pnl_pct <= _fl2_deep_rt + 0.01:
+                    _fl2_close_reason = f"FL_DEEP_STOP L{tp_level}"
+                    logger.warning(f"[REALTIME_FL_DEEP_STOP] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% <= fl2_deep_stop={_fl2_deep_rt}% - CLOSING NOW!")
+                if _fl2_close_reason:
+                    if order_info.get('_closing_in_progress'):
+                        continue
+                    order_info['_closing_in_progress'] = True
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                            )
+                            order = result.scalar_one_or_none()
+                            if order:
+                                closed = await self.close_position(db, order, current_price, _fl2_close_reason)
+                                if closed:
+                                    logger.info(f"[REALTIME_{_fl2_close_reason.split()[0]}] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                    except Exception as e:
+                        logger.error(f"[REALTIME_FL2_MONITOR] Error closing {pair}: {e}")
+                    continue
+
+            if _is_flagged_rt and not order_info.get('fl2_flagged'):
                 _sg_min = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_min', -0.9)
                 _sg_max = getattr(config.trading_config.thresholds, 'signal_lost_flag_security_max', -0.7)
                 if pnl_pct >= _sg_min and pnl_pct <= _sg_max:
                     tp_level = order_info.get('current_tp_level', 1)
+                    _fl2_enabled_rt = getattr(config.trading_config.thresholds, 'fl2_enabled', True)
+
+                    # ─── FL2 promotion: flag the trade for recovery/deep_stop monitoring instead of closing ───
+                    if _fl2_enabled_rt:
+                        fl2_time_rt = datetime.utcnow()
+                        order_info['fl2_flagged'] = True
+                        order_info['fl2_flagged_at'] = fl2_time_rt
+                        order_info['fl2_flag_pnl'] = round(pnl_pct, 4)
+                        _fl2_recovery_target = getattr(config.trading_config.thresholds, 'fl2_recovery_target', -0.4)
+                        _fl2_deep_stop = getattr(config.trading_config.thresholds, 'fl2_deep_stop', -1.0)
+                        logger.warning(f"[REALTIME_FL2_FLAG] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% hit security gap — promoted to FL2 (origin={order_info.get('fl1_origin') or 'SIGNAL_LOST'}, recovery={_fl2_recovery_target}%, deep_stop={_fl2_deep_stop}%)")
+                        # Persist FL2 flag to DB
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order_db = result.scalar_one_or_none()
+                                if order_db:
+                                    order_db.fl2_flagged = True
+                                    order_db.fl2_flagged_at = fl2_time_rt
+                                    order_db.fl2_flag_pnl = round(pnl_pct, 4)
+                                    await db.commit()
+                        except Exception as e:
+                            logger.error(f"[REALTIME_FL2_FLAG] Error persisting FL2 for {pair}: {e}")
+                        continue
+
+                    # FL2 disabled — original behavior: close here as FL_SIGNAL_LOST
                     logger.warning(f"[REALTIME_FL_SIGNAL_LOST] {pair} {direction} L{tp_level}: flagged trade hit security gap pnl={pnl_pct:.4f}% in [{_sg_min}, {_sg_max}] - CLOSING NOW!")
 
                     if order_info.get('_closing_in_progress'):
@@ -3670,6 +3882,10 @@ class TradingEngine:
                 'signal_lost_flagged': bool(order.signal_lost_flagged) if order.signal_lost_flagged else False,
                 'signal_lost_flag_pnl': order.signal_lost_flag_pnl,
                 'signal_lost_flagged_at': order.signal_lost_flagged_at,
+                'fl1_origin': order.fl1_origin,
+                'fl2_flagged': bool(order.fl2_flagged) if order.fl2_flagged else False,
+                'fl2_flagged_at': order.fl2_flagged_at,
+                'fl2_flag_pnl': order.fl2_flag_pnl,
                 'rsi': pair_emas.get(order.pair, {}).get('rsi'),
                 'rsi_prev1': pair_emas.get(order.pair, {}).get('rsi_prev1'),
                 'rsi_prev2': pair_emas.get(order.pair, {}).get('rsi_prev2'),
@@ -3739,6 +3955,12 @@ class TradingEngine:
                                 new_info['signal_lost_flagged'] = True
                                 new_info['signal_lost_flag_pnl'] = old_info.get('signal_lost_flag_pnl')
                                 new_info['signal_lost_flagged_at'] = old_info.get('signal_lost_flagged_at')
+                                if old_info.get('fl1_origin'):
+                                    new_info['fl1_origin'] = old_info.get('fl1_origin')
+                            if old_info.get('fl2_flagged'):
+                                new_info['fl2_flagged'] = True
+                                new_info['fl2_flagged_at'] = old_info.get('fl2_flagged_at')
+                                new_info['fl2_flag_pnl'] = old_info.get('fl2_flag_pnl')
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

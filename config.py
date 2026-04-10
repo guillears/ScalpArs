@@ -120,6 +120,13 @@ class SignalThresholds(BaseModel):
     signal_lost_flag_enabled: bool = True  # Flag trades at signal lost instead of exiting; let them run
     signal_lost_flag_security_min: float = -0.9  # Security gap lower bound for flagged trades
     signal_lost_flag_security_max: float = -0.7  # Security gap upper bound — flagged trades exit here if signal still lost
+    # FL1 extension: flag STOP_LOSS_WIDE trades (instead of closing) and let them run to emergency backstop
+    fl1_for_wide_sl_enabled: bool = True
+    fl1_wide_sl_backstop: float = -1.2  # Emergency SL for FL1[WIDE_SL] trades (hit this → FL_EMERGENCY_SL)
+    # FL2 double-flag: when a flagged trade hits the security gap, promote to FL2 with tighter recovery target
+    fl2_enabled: bool = True
+    fl2_recovery_target: float = -0.4  # Tight recovery target — close as FL_RECOVERED if P&L climbs back to this level
+    fl2_deep_stop: float = -1.0  # Deep stop — close as FL_DEEP_STOP if P&L falls below this level
     ema5_slope_exit_enabled: bool = True  # Exit when EMA5 slope decelerates (momentum loss)
     ema5_slope_lookback: int = 3  # Number of candles back for EMA5 slope calculation
     ema5_slope_threshold: float = 0.01  # Min EMA5 slope % to stay in trade (0 = original behavior)

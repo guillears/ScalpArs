@@ -1366,9 +1366,6 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
-            "be_shadow_tracking": [],
-            "tick_momentum_shadow": [],
-            "signal_lost_shadow": [],
             "exit_quality_ema5": [],
             "flagged_exits": [],
             "period_performance": [],
@@ -1377,7 +1374,6 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
-            "regime_neutral_deep_dive": {},
             "_error": str(e)
         }
 
@@ -1826,77 +1822,6 @@ def _compute_breadth_crosstab(orders):
     return rows
 
 
-def _compute_regime_neutral_deep_dive(orders):
-    """Analyze trades that experienced a BTC regime NEUTRAL event."""
-    neutral_trades = [o for o in orders if o.regime_neutral_hit_at is not None]
-    if not neutral_trades:
-        return {"total": 0, "comebacks": 0, "full_reversals": 0, "neutral_only": 0, "rows": []}
-
-    reversals = [o for o in neutral_trades if o.regime_opposite_at is not None]
-    comebacks = [o for o in neutral_trades if o.regime_comeback_at is not None and o.regime_opposite_at is None]
-    neutral_only = [o for o in neutral_trades if o.regime_comeback_at is None and o.regime_opposite_at is None]
-
-    total = len(neutral_trades)
-    pnl_at_neutral = [o.regime_neutral_pnl for o in neutral_trades if o.regime_neutral_pnl is not None]
-    final_pnls = [o.pnl_percentage for o in neutral_trades if o.pnl_percentage is not None]
-    better_at_neutral = sum(1 for o in neutral_trades if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.regime_neutral_pnl > o.pnl_percentage)
-    total_diff_usd = sum(
-        ((o.pnl_percentage - o.regime_neutral_pnl) / 100) * o.notional_value
-        for o in neutral_trades
-        if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.notional_value
-    )
-
-    def _group_stats(group, label):
-        if not group:
-            return None
-        pnls_n = [o.regime_neutral_pnl for o in group if o.regime_neutral_pnl is not None]
-        pnls_f = [o.pnl_percentage for o in group if o.pnl_percentage is not None]
-        by_dir = {}
-        for o in group:
-            by_dir[o.direction] = by_dir.get(o.direction, 0) + 1
-        diff_usd = sum(
-            ((o.pnl_percentage - o.regime_neutral_pnl) / 100) * o.notional_value
-            for o in group
-            if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.notional_value
-        )
-        better = sum(1 for o in group if o.regime_neutral_pnl is not None and o.pnl_percentage is not None and o.regime_neutral_pnl > o.pnl_percentage)
-        return {
-            "label": label,
-            "count": len(group),
-            "pct_of_total": round(len(group) / total * 100, 1) if total > 0 else 0,
-            "by_direction": by_dir,
-            "avg_pnl_at_neutral": round(sum(pnls_n) / len(pnls_n), 4) if pnls_n else 0,
-            "avg_final_pnl": round(sum(pnls_f) / len(pnls_f), 4) if pnls_f else 0,
-            "avg_diff": round((sum(pnls_f) / len(pnls_f)) - (sum(pnls_n) / len(pnls_n)), 4) if pnls_n and pnls_f else 0,
-            "better_at_neutral": better,
-            "better_pct": round(better / len(group) * 100, 1) if group else 0,
-            "total_impact_usd": round(diff_usd, 2),
-        }
-
-    rows = []
-    cb = _group_stats(comebacks, "Comeback (back to favorable)")
-    if cb:
-        rows.append(cb)
-    rv = _group_stats(reversals, "Full Reversal (went opposite)")
-    if rv:
-        rows.append(rv)
-    no = _group_stats(neutral_only, "Stayed Neutral until close")
-    if no:
-        rows.append(no)
-
-    return {
-        "total": total,
-        "comebacks": len(comebacks),
-        "full_reversals": len(reversals),
-        "neutral_only": len(neutral_only),
-        "avg_pnl_at_neutral": round(sum(pnl_at_neutral) / len(pnl_at_neutral), 4) if pnl_at_neutral else 0,
-        "avg_final_pnl": round(sum(final_pnls) / len(final_pnls), 4) if final_pnls else 0,
-        "better_at_neutral_pct": round(better_at_neutral / total * 100, 1) if total > 0 else 0,
-        "total_impact_usd": round(total_diff_usd, 2),
-        "rows": rows,
-    }
-
-
 def _compute_day_time_heatmap(orders):
     """Compute win rate and avg P&L by day-of-week x 4-hour block (UTC-3)."""
     from datetime import timezone
@@ -2113,9 +2038,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
-            "be_shadow_tracking": [],
-            "tick_momentum_shadow": [],
-            "signal_lost_shadow": [],
             "exit_quality_ema5": [],
             "flagged_exits": [],
             "period_performance": [],
@@ -2124,7 +2046,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
-            "regime_neutral_deep_dive": {},
         }
 
     # Separate longs and shorts
@@ -3814,266 +3735,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Hold-Time Expectancy: {e}\n{traceback.format_exc()}")
 
-    # BE Shadow Tracking
-    be_shadow_tracking = []
-    try:
-        for level, orig_trigger, orig_offset in [(1, 0.50, 0.20), (2, 1.00, 0.50)]:
-            trig_field = f'phantom_be_l{level}_triggered_at'
-            exit_field = f'phantom_be_l{level}_would_exit_pnl'
-
-            triggered_all = [o for o in orders if getattr(o, trig_field, None) is not None]
-
-            for direction in ["LONG", "SHORT"]:
-                triggered = [o for o in triggered_all if o.direction == direction]
-                if not triggered:
-                    continue
-
-                would_exit = [o for o in triggered if getattr(o, exit_field, None) is not None]
-                passed_through = [o for o in triggered if getattr(o, exit_field, None) is None]
-
-                adxs = [o.entry_adx for o in triggered if o.entry_adx is not None]
-                avg_adx = round(sum(adxs) / len(adxs), 1) if adxs else None
-
-                avg_phantom_pnl = orig_offset
-                avg_actual_pnl_exit = sum(o.pnl_percentage or 0 for o in would_exit) / len(would_exit) if would_exit else None
-                avg_actual_pnl_pass = sum(o.pnl_percentage or 0 for o in passed_through) / len(passed_through) if passed_through else None
-                avg_actual_pnl_all = sum(o.pnl_percentage or 0 for o in triggered) / len(triggered)
-
-                reason_counts = {}
-                for o in would_exit:
-                    r = o.close_reason or "UNKNOWN"
-                    reason_counts[r] = reason_counts.get(r, 0) + 1
-                reason_str = " ".join(f"{r}:{c}" for r, c in sorted(reason_counts.items(), key=lambda x: -x[1]))
-
-                pass_reason_counts = {}
-                for o in passed_through:
-                    r = o.close_reason or "UNKNOWN"
-                    pass_reason_counts[r] = pass_reason_counts.get(r, 0) + 1
-                pass_reason_str = " ".join(f"{r}:{c}" for r, c in sorted(pass_reason_counts.items(), key=lambda x: -x[1]))
-
-                total_pnl_with_be = (len(would_exit) * avg_phantom_pnl) + (sum(o.pnl_percentage or 0 for o in passed_through))
-                total_pnl_without_be = sum(o.pnl_percentage or 0 for o in triggered)
-
-                be_shadow_tracking.append({
-                    "level": level,
-                    "direction": direction,
-                    "orig_trigger": orig_trigger,
-                    "orig_offset": orig_offset,
-                    "triggered_count": len(triggered),
-                    "would_exit_count": len(would_exit),
-                    "passed_through_count": len(passed_through),
-                    "avg_phantom_pnl": round(avg_phantom_pnl, 4),
-                    "avg_actual_pnl_exit": round(avg_actual_pnl_exit, 4) if avg_actual_pnl_exit is not None else None,
-                    "delta": round(avg_actual_pnl_exit - avg_phantom_pnl, 4) if avg_actual_pnl_exit is not None else None,
-                    "avg_actual_pnl_pass": round(avg_actual_pnl_pass, 4) if avg_actual_pnl_pass is not None else None,
-                    "avg_actual_pnl_all": round(avg_actual_pnl_all, 4),
-                    "total_pnl_with_be": round(total_pnl_with_be, 4),
-                    "total_pnl_without_be": round(total_pnl_without_be, 4),
-                    "avg_adx": avg_adx,
-                    "exit_reasons": reason_str,
-                    "pass_reasons": pass_reason_str,
-                })
-    except Exception as e:
-        logger.error(f"[PERF] Error computing BE Shadow Tracking: {e}\n{traceback.format_exc()}")
-
-    # Tick Momentum Shadow Tracking (apples-to-apples: only TICK_MOMENTUM_EXIT trades)
-    tick_momentum_shadow = []
-    try:
-        _SHADOW_TICK_LABELS = [
-            ('a', '15,30,45s', '0.15%'),
-            ('b', '30,45,60s', '0.12%'),
-            ('c', '30,45,60s', '0.15%'),
-            ('d', '30,60,90s', '0.12%'),
-            ('e', '30,60,90s', '0.15%'),
-            ('f', '30,60,90s', '0.08/0.12/0.18%'),
-            ('g', '60,90,120s', '0.15%'),
-        ]
-        tm_orders = [o for o in orders if (o.close_reason or '').replace('FL_', '').startswith('TICK_MOMENTUM_EXIT')]
-
-        for lbl, win_str, delta_str in _SHADOW_TICK_LABELS:
-            trig_field = f'phantom_tick_{lbl}_triggered_at'
-            pnl_field = f'phantom_tick_{lbl}_pnl'
-
-            for direction in ["LONG", "SHORT"]:
-                dir_orders = [o for o in tm_orders if o.direction == direction]
-                if not dir_orders:
-                    continue
-
-                total = len(dir_orders)
-                triggered = [o for o in dir_orders if getattr(o, trig_field, None) is not None]
-                nt = [o for o in dir_orders if getattr(o, trig_field, None) is None]
-
-                avg_exit_pnl = round(sum(o.pnl_percentage or 0 for o in dir_orders) / total, 4)
-                avg_phantom_pnl = round(sum(getattr(o, pnl_field) or 0 for o in triggered) / len(triggered), 4) if triggered else None
-
-                # Post-exit peak (benchmark) — only for trades that have tracking data
-                peak_orders = [o for o in dir_orders if o.post_exit_peak_pnl is not None]
-                avg_peak_pnl = round(sum(o.post_exit_peak_pnl for o in peak_orders) / len(peak_orders), 4) if peak_orders else None
-
-                # Left on Table — computed on triggered subset that has peak data (same population for fair comparison)
-                trig_with_peak = [o for o in triggered if o.post_exit_peak_pnl is not None]
-                lot_act = None
-                lot_ph = None
-                saved = None
-                if trig_with_peak:
-                    lot_act = round(sum((o.post_exit_peak_pnl - (o.pnl_percentage or 0)) for o in trig_with_peak) / len(trig_with_peak), 4)
-                    lot_ph = round(sum((o.post_exit_peak_pnl - (getattr(o, pnl_field) or 0)) for o in trig_with_peak) / len(trig_with_peak), 4)
-                    saved = round(lot_act - lot_ph, 4)
-
-                # Timing
-                actual_mins = []
-                for o in triggered:
-                    if o.closed_at and o.opened_at:
-                        actual_mins.append((o.closed_at - o.opened_at).total_seconds() / 60.0)
-                avg_min_actual = round(sum(actual_mins) / len(actual_mins), 1) if actual_mins else None
-
-                phantom_mins = []
-                for o in triggered:
-                    pt = getattr(o, trig_field)
-                    if pt and o.opened_at:
-                        phantom_mins.append((pt - o.opened_at).total_seconds() / 60.0)
-                avg_min_phantom = round(sum(phantom_mins) / len(phantom_mins), 1) if phantom_mins else None
-
-                pct_trig = round(len(triggered) / total * 100, 1) if total else 0
-
-                ph1st_orders = [o for o in triggered if getattr(o, trig_field) and o.closed_at and getattr(o, trig_field) < o.closed_at]
-                act1st_orders = [o for o in triggered if o not in ph1st_orders]
-                ph_first_count = len(ph1st_orders)
-                act_first_count = len(act1st_orders)
-
-                # Combo: first-fires-wins realistic P&L
-                sum_combo = (
-                    sum(getattr(o, pnl_field) or 0 for o in ph1st_orders) +
-                    sum(o.pnl_percentage or 0 for o in act1st_orders) +
-                    sum(o.pnl_percentage or 0 for o in nt)
-                )
-                combo_avg = round(sum_combo / total, 4) if total else None
-                combo_vs_exit = round(combo_avg - avg_exit_pnl, 4) if combo_avg is not None else None
-
-                tick_momentum_shadow.append({
-                    "label": lbl.upper(),
-                    "windows": win_str,
-                    "delta_threshold": delta_str,
-                    "direction": direction,
-                    "total": total,
-                    "triggered_count": len(triggered),
-                    "pct_trig": pct_trig,
-                    "ph_first_count": ph_first_count,
-                    "act_first_count": act_first_count,
-                    "avg_exit_pnl": avg_exit_pnl,
-                    "avg_phantom_pnl": avg_phantom_pnl,
-                    "avg_peak_pnl": avg_peak_pnl,
-                    "lot_act": lot_act,
-                    "lot_ph": lot_ph,
-                    "saved": saved,
-                    "avg_min_actual": avg_min_actual,
-                    "avg_min_phantom": avg_min_phantom,
-                    "combo_avg": combo_avg,
-                    "combo_vs_exit": combo_vs_exit,
-                })
-    except Exception as e:
-        logger.error(f"[PERF] Error computing Tick Momentum Shadow: {e}\n{traceback.format_exc()}")
-
-    # Signal Lost Shadow — post-exit recovery analysis
-    signal_lost_shadow = []
-    try:
-        sl_orders = [o for o in orders if (o.close_reason or '').startswith('SIGNAL_LOST') or (o.close_reason or '').startswith('FL_SIGNAL_LOST')]
-        sl_orders = [o for o in sl_orders if o.post_exit_peak_pnl is not None]
-        recovery_levels = [
-            ("Recovery to -0.25%", -0.25),
-            ("Recovery to -0.10%", -0.10),
-            ("Recovery to 0% (BE)", 0.0),
-            ("Recovery to +0.10%", 0.10),
-        ]
-        for direction in ["LONG", "SHORT"]:
-            dir_sl = [o for o in sl_orders if o.direction == direction]
-            if not dir_sl:
-                continue
-            total_sl = len(dir_sl)
-            avg_sl_pnl = round(sum(o.pnl_percentage or 0 for o in dir_sl) / total_sl, 4)
-
-            rows = []
-            for level_name, level_val in recovery_levels:
-                hit = [o for o in dir_sl if o.post_exit_peak_pnl is not None and o.post_exit_peak_pnl >= level_val]
-                hit_count = len(hit)
-                pct = round(hit_count / total_sl * 100, 1) if total_sl else 0
-                avg_alt_pnl = level_val
-                avg_improvement = round(avg_alt_pnl - avg_sl_pnl, 4)
-                rows.append({
-                    "label": level_name,
-                    "hit": hit_count,
-                    "pct": pct,
-                    "avg_alt_pnl": round(avg_alt_pnl, 4),
-                    "avg_improvement": avg_improvement,
-                })
-
-            # Tick Momentum: earliest phantom trigger per trade
-            tm_hits = []
-            for o in dir_sl:
-                earliest_at = None
-                earliest_pnl = None
-                for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
-                    t_at = getattr(o, f'phantom_tick_{_lbl}_triggered_at', None)
-                    t_pnl = getattr(o, f'phantom_tick_{_lbl}_pnl', None)
-                    if t_at is not None:
-                        if earliest_at is None or t_at < earliest_at:
-                            earliest_at = t_at
-                            earliest_pnl = t_pnl
-                if earliest_at is not None and earliest_pnl is not None:
-                    tm_hits.append(earliest_pnl)
-            tm_count = len(tm_hits)
-            tm_pct = round(tm_count / total_sl * 100, 1) if total_sl else 0
-            tm_avg_pnl = round(sum(tm_hits) / tm_count, 4) if tm_hits else None
-            tm_improvement = round(tm_avg_pnl - avg_sl_pnl, 4) if tm_avg_pnl is not None else None
-            rows.append({
-                "label": "Tick Momentum",
-                "hit": tm_count,
-                "pct": tm_pct,
-                "avg_alt_pnl": tm_avg_pnl,
-                "avg_improvement": tm_improvement,
-            })
-
-            # Signal Regain
-            regain_trades = [o for o in dir_sl if o.post_exit_signal_regained_minutes is not None]
-            regain_count = len(regain_trades)
-            regain_pct = round(regain_count / total_sl * 100, 1) if total_sl else 0
-            regain_avg_pnl = round(sum(o.post_exit_pnl_at_signal_regained or 0 for o in regain_trades) / regain_count, 4) if regain_trades else None
-            regain_improvement = round(regain_avg_pnl - avg_sl_pnl, 4) if regain_avg_pnl is not None else None
-            rows.append({
-                "label": "Signal Regain",
-                "hit": regain_count,
-                "pct": regain_pct,
-                "avg_alt_pnl": regain_avg_pnl,
-                "avg_improvement": regain_improvement,
-            })
-
-            # Peak / Worst / Final (always 100%)
-            avg_peak = round(sum(o.post_exit_peak_pnl or 0 for o in dir_sl) / total_sl, 4)
-            avg_worst = round(sum(o.post_exit_trough_pnl or 0 for o in dir_sl) / total_sl, 4)
-            avg_final = round(sum(o.post_exit_final_pnl or 0 for o in dir_sl) / total_sl, 4)
-            avg_peak_min = round(sum(o.post_exit_peak_minutes or 0 for o in dir_sl) / total_sl, 1)
-            rows.append({"label": "Peak After Close", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_peak, "avg_improvement": round(avg_peak - avg_sl_pnl, 4)})
-            rows.append({"label": "Worst After Close", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_worst, "avg_improvement": round(avg_worst - avg_sl_pnl, 4)})
-            rows.append({"label": "Final (45min)", "hit": total_sl, "pct": 100.0, "avg_alt_pnl": avg_final, "avg_improvement": round(avg_final - avg_sl_pnl, 4)})
-
-            ema5_dists_sl = [o.exit_price_vs_ema5_pct for o in dir_sl if o.exit_price_vs_ema5_pct is not None]
-            ema5_slopes_sl = [o.exit_ema5_slope_pct for o in dir_sl if o.exit_ema5_slope_pct is not None]
-            ema5_crossed_sl = sum(1 for o in dir_sl if o.exit_ema5_crossed is True)
-
-            signal_lost_shadow.append({
-                "direction": direction,
-                "total_sl": total_sl,
-                "avg_sl_pnl": avg_sl_pnl,
-                "avg_peak_minutes": avg_peak_min,
-                "regain_floor_avg": round(sum(o.post_exit_floor_before_signal_regain or 0 for o in regain_trades) / regain_count, 4) if regain_trades else None,
-                "avg_ema5_dist": round(sum(ema5_dists_sl) / len(ema5_dists_sl), 4) if ema5_dists_sl else None,
-                "avg_ema5_slope": round(sum(ema5_slopes_sl) / len(ema5_slopes_sl), 4) if ema5_slopes_sl else None,
-                "ema5_crossed_pct": round(ema5_crossed_sl / total_sl * 100, 1) if total_sl > 0 else None,
-                "rows": rows,
-            })
-    except Exception as e:
-        logger.error(f"[PERF] Error computing Signal Lost Shadow: {e}\n{traceback.format_exc()}")
-
     # Exit Quality — Trade Lifecycle
     exit_quality_ema5 = []
     try:
@@ -4355,19 +4016,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
-        "be_shadow_tracking": be_shadow_tracking,
-        "tick_momentum_shadow": tick_momentum_shadow,
-        "signal_lost_shadow": signal_lost_shadow,
         "exit_quality_ema5": exit_quality_ema5,
         "flagged_exits": flagged_exits,
-        "regime_neutral_deep_dive": _compute_regime_neutral_deep_dive(orders),
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),
         "hourly_performance": _compute_hourly_performance(orders),
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),
-        "regime_neutral_deep_dive": _compute_regime_neutral_deep_dive(orders),
         "volume_crosstab": _compute_volume_crosstab(orders),
         "breadth_crosstab": _compute_breadth_crosstab(orders),
         "pair_performance": _compute_pair_performance(orders),

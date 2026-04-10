@@ -2633,13 +2633,19 @@ class TradingEngine:
                             updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED", "reason": f"FL_DEEP_STOP L{_tp_level_m}", "pnl": closed_order.pnl, "tp_level": _tp_level_m})
                         continue
                 elif (order.fl1_origin or "") == "WIDE_SL":
-                    # FL1[WIDE_SL] emergency backstop only — normal security gap can still promote to FL2
+                    # FL1[WIDE_SL] emergency backstop — fires at fl1_wide_sl_backstop (-1.2%)
                     _fl1_backstop = getattr(config.trading_config.thresholds, 'fl1_wide_sl_backstop', -1.2)
                     if _pnl_pct_m <= _fl1_backstop:
                         logger.info(f"[FL_EMERGENCY_SL] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% <= fl1_wide_sl_backstop={_fl1_backstop}%")
                         closed_order = await self.close_position(db, order, current_price, f"FL_EMERGENCY_SL L{_tp_level_m}")
                         if closed_order:
                             updates.append({"order_id": closed_order.id, "pair": closed_order.pair, "action": "CLOSED", "reason": f"FL_EMERGENCY_SL L{_tp_level_m}", "pnl": closed_order.pnl, "tp_level": _tp_level_m})
+                        continue
+                    # WIDE_SL flagged but not at backstop yet — suppress any STOP_LOSS(_WIDE) close from check_exit_conditions.
+                    # The trade should only exit via backstop, trailing recovery, signal regain + trailing, or max hold time.
+                    if exit_result.get("should_close") and isinstance(reason, str) and reason.startswith("STOP_LOSS"):
+                        logger.debug(f"[FL1_WIDE_SL_HOLD] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% — suppressing {reason}, runway to backstop={_fl1_backstop}%")
+                        await db.commit()
                         continue
 
             if exit_result.get("should_close"):
@@ -3443,6 +3449,10 @@ class TradingEngine:
                         except Exception as e:
                             logger.error(f"[REALTIME_FL_EMERGENCY_SL] Error closing {pair}: {e}")
                         continue
+                    # WIDE_SL flagged but not at backstop yet — do NOT fire any normal SL close.
+                    # The trade should only exit via backstop, trailing recovery, signal regain, or max hold time.
+                    logger.debug(f"[REALTIME_FL1_WIDE_SL_HOLD] {pair} {direction} L{tp_level}: pnl={pnl_pct:.4f}% — holding to backstop={_fl1_backstop_rt}%, suppressing {close_reason}")
+                    continue
 
                 # Apply FL_ prefix if trade was flagged (signal lost at some point)
                 if _is_flagged_sl and not close_reason.startswith("FL_"):

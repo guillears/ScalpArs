@@ -1607,7 +1607,8 @@ class TradingEngine:
         for _db_attempt in range(1, _max_db_retries + 1):
             try:
                 # On retry, re-fetch the order so we operate on a fresh attached instance
-                # instead of the one expired by the previous rollback.
+                # instead of the one expired by the previous rollback.  No autoflush risk
+                # because Transaction is added later in this try block, not in the except.
                 if _db_attempt > 1:
                     _fresh = await db.execute(
                         select(Order).where(Order.id == order_id)
@@ -1630,23 +1631,27 @@ class TradingEngine:
                 order.exit_slippage_pct = _slippage_pct
                 order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
 
-                # Only add Transaction on first attempt (rollback removes it from session)
-                if _db_attempt == 1:
-                    transaction = Transaction(
-                        order_id=order_id,
-                        binance_order_id=_tx_binance_order_id,
-                        pair=order_pair,
-                        action=f"CLOSE_{_tx_direction}",
-                        price=actual_exit_price,
-                        quantity=_tx_quantity,
-                        investment=_tx_investment,
-                        leverage=_tx_leverage,
-                        notional_value=notional_at_close,
-                        fee=exit_fee,
-                        order_type=exit_order_type,
-                        is_paper=_tx_is_paper
-                    )
-                    db.add(transaction)
+                # Create and add the Transaction on EVERY attempt, right before commit.
+                # Rollback on the previous iteration removed any prior pending Transaction,
+                # so the session only holds one at a time.  Keeping db.add(...) inside the
+                # try block (and not in the except) ensures the re-fetch select on the
+                # next iteration has NOTHING to autoflush — this is what caused the
+                # "Query-invoked autoflush" cascade (and the 2-minute DOTUSDT stall).
+                transaction = Transaction(
+                    order_id=order_id,
+                    binance_order_id=_tx_binance_order_id,
+                    pair=order_pair,
+                    action=f"CLOSE_{_tx_direction}",
+                    price=actual_exit_price,
+                    quantity=_tx_quantity,
+                    investment=_tx_investment,
+                    leverage=_tx_leverage,
+                    notional_value=notional_at_close,
+                    fee=exit_fee,
+                    order_type=exit_order_type,
+                    is_paper=_tx_is_paper
+                )
+                db.add(transaction)
 
                 await db.commit()
                 await db.refresh(order)
@@ -1671,25 +1676,10 @@ class TradingEngine:
                     except Exception:
                         pass
                     await asyncio.sleep(_db_attempt)  # progressive backoff: 1s, 2s, 3s, 4s
-
-                    # Re-add Transaction after rollback (rollback removes pending objects).
-                    # Use CACHED values — `order` is expired and any attribute read here
-                    # would trigger the greenlet_spawn async-IO-from-sync error.
-                    transaction = Transaction(
-                        order_id=order_id,
-                        binance_order_id=_tx_binance_order_id,
-                        pair=order_pair,
-                        action=f"CLOSE_{_tx_direction}",
-                        price=actual_exit_price,
-                        quantity=_tx_quantity,
-                        investment=_tx_investment,
-                        leverage=_tx_leverage,
-                        notional_value=notional_at_close,
-                        fee=exit_fee,
-                        order_type=exit_order_type,
-                        is_paper=_tx_is_paper
-                    )
-                    db.add(transaction)
+                    # Do NOT add a Transaction here — it will be created fresh in the
+                    # next iteration's try block, right before commit.  Adding it here
+                    # leaves it pending during the select re-fetch, which triggers an
+                    # autoflush cascade that was stalling closes for 2+ minutes.
                 else:
                     logger.error(f"[DB_COMMIT_FAILED] {order_pair}: All {_db_attempt} DB commit attempts failed: {_err_str[:120]}")
 

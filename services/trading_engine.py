@@ -1588,12 +1588,35 @@ class TradingEngine:
         _close_time = datetime.utcnow()
         _db_commit_success = False
         _max_db_retries = 5
+        # Cache every field needed to rebuild state during a retry.
+        # After a rollback SQLAlchemy expires ORM instances — any subsequent
+        # sync attribute read (order.pair, order.quantity, ...) triggers a
+        # lazy-load which in async context raises
+        # "greenlet_spawn has not been called; can't call await_only()".
+        # Reading primitives from local variables avoids that entirely.
         order_pair = order.pair
         order_id = order.id
+        _tx_binance_order_id = order.binance_order_id
+        _tx_direction = order.direction
+        _tx_quantity = order.quantity
+        _tx_investment = order.investment
+        _tx_leverage = order.leverage
+        _tx_is_paper = order.is_paper
         _db_attempt = 0
 
         for _db_attempt in range(1, _max_db_retries + 1):
             try:
+                # On retry, re-fetch the order so we operate on a fresh attached instance
+                # instead of the one expired by the previous rollback.
+                if _db_attempt > 1:
+                    _fresh = await db.execute(
+                        select(Order).where(Order.id == order_id)
+                    )
+                    order = _fresh.scalar_one_or_none()
+                    if order is None:
+                        logger.error(f"[DB_RETRY] {order_pair}: order {order_id} disappeared between attempts, aborting")
+                        break
+
                 # Set all fields on each attempt (rollback resets dirty state)
                 order.status = "CLOSED"
                 order.exit_price = actual_exit_price
@@ -1610,18 +1633,18 @@ class TradingEngine:
                 # Only add Transaction on first attempt (rollback removes it from session)
                 if _db_attempt == 1:
                     transaction = Transaction(
-                        order_id=order.id,
-                        binance_order_id=order.binance_order_id,
-                        pair=order.pair,
-                        action=f"CLOSE_{order.direction}",
+                        order_id=order_id,
+                        binance_order_id=_tx_binance_order_id,
+                        pair=order_pair,
+                        action=f"CLOSE_{_tx_direction}",
                         price=actual_exit_price,
-                        quantity=order.quantity,
-                        investment=order.investment,
-                        leverage=order.leverage,
+                        quantity=_tx_quantity,
+                        investment=_tx_investment,
+                        leverage=_tx_leverage,
                         notional_value=notional_at_close,
                         fee=exit_fee,
                         order_type=exit_order_type,
-                        is_paper=order.is_paper
+                        is_paper=_tx_is_paper
                     )
                     db.add(transaction)
 
@@ -1631,9 +1654,9 @@ class TradingEngine:
 
                 _slip_str = f", slippage={_slippage_pct:+.4f}%" if _slippage_pct is not None else ""
                 if _db_attempt > 1:
-                    logger.info(f"[DB_RETRY_OK] {order_pair} {order.direction}: DB commit succeeded on attempt {_db_attempt} (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
+                    logger.info(f"[DB_RETRY_OK] {order_pair} {_tx_direction}: DB commit succeeded on attempt {_db_attempt} (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
                 else:
-                    logger.info(f"[CLOSE_COMMITTED] {order_pair} {order.direction}: essential close saved (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
+                    logger.info(f"[CLOSE_COMMITTED] {order_pair} {_tx_direction}: essential close saved (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
                 break
 
             except Exception as _db_err:
@@ -1649,20 +1672,22 @@ class TradingEngine:
                         pass
                     await asyncio.sleep(_db_attempt)  # progressive backoff: 1s, 2s, 3s, 4s
 
-                    # Re-add Transaction after rollback (rollback removes pending objects)
+                    # Re-add Transaction after rollback (rollback removes pending objects).
+                    # Use CACHED values — `order` is expired and any attribute read here
+                    # would trigger the greenlet_spawn async-IO-from-sync error.
                     transaction = Transaction(
                         order_id=order_id,
-                        binance_order_id=order.binance_order_id,
+                        binance_order_id=_tx_binance_order_id,
                         pair=order_pair,
-                        action=f"CLOSE_{order.direction}",
+                        action=f"CLOSE_{_tx_direction}",
                         price=actual_exit_price,
-                        quantity=order.quantity,
-                        investment=order.investment,
-                        leverage=order.leverage,
+                        quantity=_tx_quantity,
+                        investment=_tx_investment,
+                        leverage=_tx_leverage,
                         notional_value=notional_at_close,
                         fee=exit_fee,
                         order_type=exit_order_type,
-                        is_paper=order.is_paper
+                        is_paper=_tx_is_paper
                     )
                     db.add(transaction)
                 else:

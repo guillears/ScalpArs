@@ -7486,9 +7486,19 @@
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">FALLBACK</span>'
                         : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">TAKER</span>';
 
-                    const flagBadge = o.signal_lost_flagged
-                        ? ' <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 animate-pulse">FLAG</span>'
-                        : '';
+                    // FL1 = initial flag (running to security gap or WIDE_SL backstop)
+                    // FL2 = double-flagged, in recovery mode (tight -0.4% target / -1.0% deep stop)
+                    let flagBadge = '';
+                    if (o.fl2_flagged) {
+                        const _fl2Title = `FL2 — recovery mode (target -0.4%, deep stop -1.0%). Origin: ${o.fl1_origin || 'SIGNAL_LOST'}`;
+                        flagBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-500/25 text-red-400 animate-pulse" title="${_fl2Title}">FL2</span>`;
+                    } else if (o.signal_lost_flagged) {
+                        const _fl1Title = o.fl1_origin === 'WIDE_SL'
+                            ? 'FL1[WIDE_SL] — signal still active at -0.9%. Running to -1.2% emergency backstop.'
+                            : 'FL1[SIGNAL_LOST] — signal faded in profit. Running to security gap.';
+                        const _fl1Label = o.fl1_origin === 'WIDE_SL' ? 'FL1·W' : 'FL1';
+                        flagBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 animate-pulse" title="${_fl1Title}">${_fl1Label}</span>`;
+                    }
                     
                     return `
                         <tr class="hover:bg-white/5 transition">

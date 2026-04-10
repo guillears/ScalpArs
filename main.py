@@ -969,10 +969,21 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             current_price = o.current_price
 
         cached_flagged = False
+        cached_fl2_flagged = False
+        cached_fl1_origin = None
         for ci in _open_orders_cache.get(o.pair, []):
             if ci['id'] == o.id:
                 cached_flagged = ci.get('signal_lost_flagged', False)
+                cached_fl2_flagged = ci.get('fl2_flagged', False)
+                cached_fl1_origin = ci.get('fl1_origin')
                 break
+        # Fall back to DB values if cache missing (rare — cache can lag briefly)
+        if not cached_flagged and getattr(o, 'signal_lost_flagged', False):
+            cached_flagged = True
+        if not cached_fl2_flagged and getattr(o, 'fl2_flagged', False):
+            cached_fl2_flagged = True
+        if cached_fl1_origin is None:
+            cached_fl1_origin = getattr(o, 'fl1_origin', None)
         
         # Calculate current P&L (including both entry and estimated exit fees)
         if current_price and o.entry_price:
@@ -1039,7 +1050,9 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
             "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER",
-            "signal_lost_flagged": cached_flagged
+            "signal_lost_flagged": cached_flagged,
+            "fl2_flagged": cached_fl2_flagged,
+            "fl1_origin": cached_fl1_origin,
         })
 
     return orders_data

@@ -3669,8 +3669,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     # Post-Exit Regret Deep Dive
     post_exit_regret_deep_dive = []
     try:
-        _pe_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") for p in ["BREAKEVEN_SL", "SIGNAL_LOST", "TICK_MOMENTUM_EXIT", "RSI_MOMENTUM_EXIT", "STOP_LOSS", "REGIME_CHANGE"])
-        pe_orders = [o for o in orders if o.post_exit_peak_pnl is not None and o.close_reason and _pe_match(o.close_reason)]
+        # Include every close reason that has post-exit tracking data.
+        # The old hand-picked whitelist (BREAKEVEN_SL / SIGNAL_LOST / STOP_LOSS
+        # / TICK_MOMENTUM_EXIT / RSI_MOMENTUM_EXIT / REGIME_CHANGE) was silently
+        # dropping the majority of trades, including TRAILING_STOP (the single
+        # most useful regret signal — "did we exit too early?"), the new FL2
+        # family (FL_RECOVERED, FL_DEEP_STOP), FL1[WIDE_SL]'s FL_EMERGENCY_SL,
+        # and FL_NO_EXPANSION.  Every row that has post_exit_peak_pnl tracked
+        # is a candidate for regret analysis.
+        pe_orders = [o for o in orders if o.post_exit_peak_pnl is not None and o.close_reason]
         if pe_orders:
             reason_groups = {}
             for o in pe_orders:

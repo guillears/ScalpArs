@@ -1604,7 +1604,15 @@ class TradingEngine:
         _tx_is_paper = order.is_paper
         _db_attempt = 0
 
+        # Track total time spent waiting on the DB across all retry attempts so we can
+        # measure real-world lock contention in CloudWatch later.  Each attempt also
+        # records its own elapsed time individually in the [DB_LOCKED] / [DB_COMMIT_OK]
+        # log lines.  busy_timeout is 5s per attempt so a healthy commit is <100ms; any
+        # elapsed value close to 5s indicates the attempt hit the timeout ceiling.
+        _db_total_wait_start = time.monotonic()
+
         for _db_attempt in range(1, _max_db_retries + 1):
+            _db_attempt_start = time.monotonic()
             try:
                 # On retry, re-fetch the order so we operate on a fresh attached instance
                 # instead of the one expired by the previous rollback.  No autoflush risk
@@ -1657,18 +1665,38 @@ class TradingEngine:
                 await db.refresh(order)
                 _db_commit_success = True
 
+                _attempt_elapsed = time.monotonic() - _db_attempt_start
+                _total_elapsed = time.monotonic() - _db_total_wait_start
+
                 _slip_str = f", slippage={_slippage_pct:+.4f}%" if _slippage_pct is not None else ""
                 if _db_attempt > 1:
-                    logger.info(f"[DB_RETRY_OK] {order_pair} {_tx_direction}: DB commit succeeded on attempt {_db_attempt} (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
+                    logger.info(
+                        f"[DB_RETRY_OK] {order_pair} {_tx_direction}: DB commit succeeded on attempt {_db_attempt} "
+                        f"(attempt_waited={_attempt_elapsed:.2f}s, total_waited={_total_elapsed:.2f}s, "
+                        f"reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})"
+                    )
                 else:
-                    logger.info(f"[CLOSE_COMMITTED] {order_pair} {_tx_direction}: essential close saved (reason={reason}, pnl=${pnl_data['pnl']:.4f}, exit={actual_exit_price:.6f}{_slip_str})")
+                    # Only emit DB_COMMIT_SLOW if the first attempt took >1s — this flags
+                    # low-grade contention that didn't fully fail but was still slow.
+                    if _attempt_elapsed > 1.0:
+                        logger.warning(
+                            f"[DB_COMMIT_SLOW] {order_pair}: first-attempt commit took {_attempt_elapsed:.2f}s "
+                            f"(below 5s timeout — lock contention is present but not starving)"
+                        )
+                    logger.info(
+                        f"[CLOSE_COMMITTED] {order_pair} {_tx_direction}: essential close saved "
+                        f"(waited={_attempt_elapsed:.2f}s, reason={reason}, pnl=${pnl_data['pnl']:.4f}, "
+                        f"exit={actual_exit_price:.6f}{_slip_str})"
+                    )
                 break
 
             except Exception as _db_err:
+                _attempt_elapsed = time.monotonic() - _db_attempt_start
                 _err_str = str(_db_err)
                 if _db_attempt < _max_db_retries:
                     logger.warning(
-                        f"[DB_LOCKED] {order_pair}: DB commit attempt {_db_attempt}/{_max_db_retries} failed ({_err_str[:80]}), "
+                        f"[DB_LOCKED] {order_pair}: DB commit attempt {_db_attempt}/{_max_db_retries} failed "
+                        f"after waited={_attempt_elapsed:.2f}s ({_err_str[:80]}), "
                         f"retrying in {_db_attempt}s... (Binance close already succeeded)"
                     )
                     try:
@@ -1681,11 +1709,18 @@ class TradingEngine:
                     # leaves it pending during the select re-fetch, which triggers an
                     # autoflush cascade that was stalling closes for 2+ minutes.
                 else:
-                    logger.error(f"[DB_COMMIT_FAILED] {order_pair}: All {_db_attempt} DB commit attempts failed: {_err_str[:120]}")
+                    _total_elapsed = time.monotonic() - _db_total_wait_start
+                    logger.error(
+                        f"[DB_COMMIT_FAILED] {order_pair}: All {_db_attempt} DB commit attempts failed "
+                        f"(final_attempt_waited={_attempt_elapsed:.2f}s, total_waited={_total_elapsed:.2f}s): "
+                        f"{_err_str[:120]}"
+                    )
 
         if not _db_commit_success:
+            _total_elapsed = time.monotonic() - _db_total_wait_start
             logger.critical(
-                f"[DB_COMMIT_FAILED] {order_pair}: Could not save close to DB after {_max_db_retries} attempts. "
+                f"[DB_COMMIT_FAILED] {order_pair}: Could not save close to DB after {_max_db_retries} attempts "
+                f"(total_waited={_total_elapsed:.2f}s). "
                 f"Position IS closed on Binance (exit={actual_exit_price}). "
                 f"Will be caught by next reconciliation cycle."
             )

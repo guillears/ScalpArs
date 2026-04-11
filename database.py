@@ -6,16 +6,25 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from config import settings
 
-# Create async engine with SQLite concurrency settings
-# busy_timeout=60s makes SQLite wait for locks instead of failing immediately.
-# Must match the PRAGMA busy_timeout in init_db.  60s gives close_position enough
-# headroom to acquire the write lock even when scan_loop and monitor_loop are
-# actively committing — previously 30s was too tight under sustained contention.
+# Create async engine with SQLite concurrency settings.
+#
+# busy_timeout=5s is an intentional BOUND on how long a writer will wait for the
+# SQLite write lock before failing.  The previous value of 60s was chosen to
+# maximise the odds of eventually getting through, but it turned lock starvation
+# into multi-minute silent stalls because close_position could wait up to
+# 60s * 5 attempts = 5 minutes while scan_loop kept hammering the lock with
+# tiny per-pair commits (see Apr 11 NEARUSDT incident).
+#
+# 5s strikes a balance: most commits still complete on the first attempt because
+# typical contention windows are sub-second, but worst-case close_position stalls
+# are now bounded to ~25s (5 attempts * 5s) instead of ~5 minutes.
+#
+# Must match the PRAGMA busy_timeout in init_db.
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
     future=True,
-    connect_args={"timeout": 60},
+    connect_args={"timeout": 5},
 )
 
 # Async session factory
@@ -36,11 +45,11 @@ async def init_db():
     async with engine.begin() as conn:
         from sqlalchemy import text as _wal_text
         await conn.execute(_wal_text("PRAGMA journal_mode=WAL"))
-        await conn.execute(_wal_text("PRAGMA busy_timeout=60000"))
+        await conn.execute(_wal_text("PRAGMA busy_timeout=5000"))
         await conn.execute(_wal_text("PRAGMA synchronous=NORMAL"))
         await conn.execute(_wal_text("PRAGMA wal_autocheckpoint=1000"))
         import logging
-        logging.getLogger("database").info("[DB] SQLite WAL mode enabled, busy_timeout=60s, synchronous=NORMAL")
+        logging.getLogger("database").info("[DB] SQLite WAL mode enabled, busy_timeout=5s, synchronous=NORMAL")
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

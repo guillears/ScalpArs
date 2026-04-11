@@ -319,14 +319,33 @@ class TradingConfig(BaseModel):
     }
 
 
+# Pick the right default DB path for the environment:
+#
+# On Elastic Beanstalk, /opt/scalpars-data/ is created by the predeploy hook
+# and survives deploys because it lives OUTSIDE /var/app/current/ (which is
+# replaced on every code push). Connecting directly to the absolute path
+# means the DB survives deploys even if staging symlinks break.
+#
+# Locally, use a relative path next to the repo. This auto-detects based on
+# whether /opt/scalpars-data/ exists at import time, so no env-var juggling
+# is needed for dev vs prod.
+#
+# URL format reminder: sqlite+aiosqlite:///relative.db  = 3 slashes = relative
+#                      sqlite+aiosqlite:////absolute.db = 4 slashes = absolute
+if os.path.isdir("/opt/scalpars-data"):
+    _DEFAULT_DB_URL = "sqlite+aiosqlite:////opt/scalpars-data/scalpars.db"
+else:
+    _DEFAULT_DB_URL = "sqlite+aiosqlite:///./scalpars.db"
+
+
 class Settings(BaseSettings):
     """Application settings from environment"""
     binance_api_key: str = ""
     binance_api_secret: str = ""
     app_env: str = "development"
     debug: bool = False
-    database_url: str = "sqlite+aiosqlite:///./scalpars.db"
-    
+    database_url: str = _DEFAULT_DB_URL
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

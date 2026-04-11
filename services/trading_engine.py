@@ -2671,6 +2671,7 @@ class TradingEngine:
                     # The trade should only exit via backstop, trailing recovery, signal regain + trailing, or max hold time.
                     if exit_result.get("should_close") and isinstance(reason, str) and reason.startswith("STOP_LOSS"):
                         logger.debug(f"[FL1_WIDE_SL_HOLD] {order.pair} {order.direction} L{_tp_level_m}: pnl={_pnl_pct_m:.4f}% — suppressing {reason}, runway to backstop={_fl1_backstop}%")
+                        await db.commit()
                         continue
 
             if exit_result.get("should_close"):
@@ -2705,6 +2706,8 @@ class TradingEngine:
                             cached_order['current_tp_level'] = new_tp_level
                             break
 
+                await db.commit()
+
                 updates.append({
                     "order_id": order.id,
                     "pair": order.pair,
@@ -2712,22 +2715,15 @@ class TradingEngine:
                     "new_level": new_tp_level,
                     "new_target": new_tp_target
                 })
-            # NOTE: per-order commit removed.  All pending peak/trough/high/low
-            # updates (and any EXTEND_TP / WIDE_SL hold bookkeeping) are flushed
-            # in one batched commit at the end of the loop below.
-
-        # Batched commit for all non-close bookkeeping updates (peak, trough,
-        # current_price, high/low, EXTEND_TP, etc.).  close_position already
-        # committed its own state via its retry loop, so this final commit
-        # only persists the routine tracking updates.
-        try:
-            await db.commit()
-        except Exception as _monitor_commit_err:
-            logger.error(f"[MONITOR] Batched tracking commit failed: {str(_monitor_commit_err)[:120]}")
-            try:
-                await db.rollback()
-            except Exception:
-                pass
+            else:
+                # Per-order commit for routine bookkeeping (peak/trough/high/low).
+                # Keeping this commit short is critical: it releases the SQLite
+                # write lock so close_position can acquire it.  An earlier
+                # "optimization" batched these into a single commit at the end
+                # of the loop, but autoflush on the next iteration's SELECT
+                # held the write lock continuously, starving close_position's
+                # retry loop for 2+ minutes.
+                await db.commit()
 
         # --- Process exit retry queue (live mode only) ---
         if not self.is_paper_mode and _exit_retry_queue:
@@ -3194,19 +3190,6 @@ class TradingEngine:
                         "price": indicators['price']
                     })
 
-        # Batched pair_data commit — one write for the whole scan cycle instead
-        # of 50 individual commits. This dramatically cuts write contention with
-        # monitor_loop and close_position (previously the per-pair commits were
-        # starving close_position's retry loop for 2+ minutes).
-        try:
-            await db.commit()
-        except Exception as _scan_commit_err:
-            logger.error(f"[SCAN] Batched pair_data commit failed: {str(_scan_commit_err)[:120]}")
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-
         self._last_scan_time = time.time()
         elapsed = self._last_scan_time - now
         logger.info(f"[SCAN] Completed in {elapsed:.1f}s - {len(top_pairs)} pairs processed, {len(actions)} positions opened")
@@ -3224,9 +3207,15 @@ class TradingEngine:
     ):
         """Update pair data cache in database.
 
-        NOTE: this function no longer commits. The caller (scan_and_trade)
-        batches pair_data updates into a single commit per scan cycle to
-        reduce SQLite write contention with monitor_loop and close_position.
+        Commits per pair intentionally.  An earlier "optimization" batched
+        the commit to once per scan cycle, but autoflush was still emitting
+        UPDATEs on every subsequent SELECT inside the loop — which
+        ACQUIRED the SQLite write lock and held it until the final commit.
+        That made close_position unable to acquire the lock for 60+ seconds
+        at a time.  Per-pair commits keep each write transaction short so
+        the write lock is released between pairs, giving other writers
+        (close_position, monitor_loop, realtime callbacks) windows to
+        sneak in.
         """
         result = await db.execute(
             select(PairData).where(PairData.pair == pair)
@@ -3280,7 +3269,8 @@ class TradingEngine:
                 volume_ratio=volume_ratio
             )
             db.add(pair_data)
-        # NOTE: commit is batched by the caller (scan_and_trade)
+
+        await db.commit()
     
     async def check_realtime_stop_loss(self, pair: str, current_price: float):
         """

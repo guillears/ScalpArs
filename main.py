@@ -3212,7 +3212,24 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             return 0
 
         tc = config.trading_config
-        _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") for p in ["STOP_LOSS", "MOMENTUM_EXIT", "PNL_TRAILING", "SLOPE_EXIT", "SIGNAL_LOST", "BREAKEVEN_SL"])
+        # Close-reason prefixes that represent losing exits for the SL Deep Dive.
+        # The outer `pnl <= 0` filter ensures only losers are counted, so adding
+        # reasons that can close in profit (TRAILING_STOP, FL_RECOVERED) is safe —
+        # those trades are filtered by pnl anyway. We include both the direct and
+        # FL_-prefixed variants of each reason. Reasons without a non-FL variant
+        # (DEEP_STOP, EMERGENCY_SL, NO_EXPANSION) are covered by the FL_ branch;
+        # the direct branch is a harmless no-op for those.
+        _sl_reason_prefixes = [
+            "STOP_LOSS", "MOMENTUM_EXIT", "PNL_TRAILING", "SLOPE_EXIT",
+            "SIGNAL_LOST", "BREAKEVEN_SL",
+            "DEEP_STOP",          # FL_DEEP_STOP at -1% — modern stop-loss for flagged trades
+            "EMERGENCY_SL",       # FL1 WIDE_SL backstop at -1.2%
+            "RSI_MOMENTUM_EXIT",  # RSI faded, trade cut on losing side
+            "NO_EXPANSION",       # Trade timed out without profit expansion
+            "REGIME_CHANGE",      # BTC regime flipped against the trade
+            "MAX_HOLD_TIME",      # Hit max duration (losing side only via pnl<=0 filter)
+        ]
+        _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") for p in _sl_reason_prefixes)
         sl_orders = [o for o in orders if o.close_reason and (o.pnl or 0) <= 0 and _cr_match(o.close_reason)]
         
         be_active_trades = []

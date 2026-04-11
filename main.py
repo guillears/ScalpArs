@@ -2948,7 +2948,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         # BTC Regime Performance — group by entry_btc_regime
         try:
             regime_orders = [o for o in orders if o.entry_btc_regime is not None]
-            regime_labels = ["CHOPPY", "HEALTHY_BULL", "STRONG_BULL", "BULL_EXHAUSTED",
+            # CHOPPY is the legacy single-bucket label (pre-split historical rows).
+            # CHOPPY_WEAK / CHOPPY_FLAT are the new split labels used by
+            # classify_btc_regime for all new trades.
+            regime_labels = ["CHOPPY", "CHOPPY_WEAK", "CHOPPY_FLAT",
+                             "HEALTHY_BULL", "STRONG_BULL", "BULL_EXHAUSTED",
                              "HEALTHY_BEAR", "STRONG_BEAR", "BEAR_EXHAUSTED", "UNKNOWN"]
             for regime in regime_labels:
                 bucket = [o for o in regime_orders if o.entry_btc_regime == regime]

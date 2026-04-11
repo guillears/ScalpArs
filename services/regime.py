@@ -14,7 +14,16 @@ from typing import Optional
 
 REGIME_LABELS = [
     "UNKNOWN",
+    # Legacy single CHOPPY label — kept for historical rows that were tagged
+    # before the sub-split was introduced.  New trades never use this label.
     "CHOPPY",
+    # Choppy sub-labels (new, split from the old single CHOPPY bucket):
+    #   - CHOPPY_WEAK: ADX < 18.  Dead market, low trend strength, noise-dominated.
+    #   - CHOPPY_FLAT: ADX >= 18 but |slope| < 0.02%.  "Coiled" market, often
+    #     precedes a breakout.  ADX says something is brewing but direction is
+    #     still ambiguous.
+    "CHOPPY_WEAK",
+    "CHOPPY_FLAT",
     "HEALTHY_BULL",
     "STRONG_BULL",
     "BULL_EXHAUSTED",
@@ -42,11 +51,13 @@ def classify_btc_regime(
     if btc_adx is None or btc_rsi is None or btc_slope_pct is None:
         return "UNKNOWN"
 
-    # CHOPPY: no trend energy or no clear direction
+    # CHOPPY split into two sub-buckets (see REGIME_LABELS for rationale).
+    # Low-ADX case is checked first because it's the stronger filter — a dead
+    # market with ADX < 18 is "weak" regardless of slope.
     if btc_adx < 18:
-        return "CHOPPY"
+        return "CHOPPY_WEAK"
     if abs(btc_slope_pct) < 0.02:
-        return "CHOPPY"
+        return "CHOPPY_FLAT"
 
     # Trending regimes — direction by slope sign, strength by ADX
     is_bull = btc_slope_pct > 0

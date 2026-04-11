@@ -5608,7 +5608,9 @@
                         'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
                     };
                     const regimeColors = {
-                        'CHOPPY': 'text-gray-400',
+                        'CHOPPY': 'text-gray-400',          // legacy historical label
+                        'CHOPPY_WEAK': 'text-gray-500',     // ADX < 18, dead market
+                        'CHOPPY_FLAT': 'text-slate-400',    // ADX >= 18, flat slope
                         'HEALTHY_BULL': 'text-emerald-400',
                         'STRONG_BULL': 'text-green-300',
                         'BULL_EXHAUSTED': 'text-yellow-400',

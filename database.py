@@ -264,8 +264,87 @@ async def init_db():
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """))
-        
+
         await conn.run_sync(_migrate)
+
+    # ────────────────────────────────────────────────────────────────────
+    # One-off data migration: backfill legacy CHOPPY rows with the new
+    # CHOPPY_WEAK / CHOPPY_FLAT sub-labels.  Idempotent: skips if any row
+    # already has a sub-label (meaning we've already backfilled once).
+    #
+    # For entry_btc_regime we have the stored entry_btc_adx and
+    # entry_btc_ema20_slope, so reclassification is ground-truth.
+    #
+    # For exit_btc_regime we do NOT store exit ADX/slope historically —
+    # so we use the entry values as a proxy.  This is reasonable because
+    # the bot's trades are short (typically <1h) and BTC rarely flips
+    # sub-regime within that window.  Slightly inaccurate for long-held
+    # trades, but keeps within-trade consistency so the Regime Transition
+    # Impact analysis doesn't treat every legacy CHOPPY trade as a shift.
+    # ────────────────────────────────────────────────────────────────────
+    async with engine.begin() as conn:
+        from sqlalchemy import text
+
+        def _backfill_choppy_split(connection):
+            import logging
+            _log = logging.getLogger("database")
+
+            # Idempotency guard
+            already = connection.execute(text(
+                "SELECT COUNT(*) FROM orders "
+                "WHERE entry_btc_regime IN ('CHOPPY_WEAK', 'CHOPPY_FLAT') "
+                "   OR exit_btc_regime IN ('CHOPPY_WEAK', 'CHOPPY_FLAT')"
+            )).scalar()
+            if already and already > 0:
+                _log.info(f"[MIGRATION] CHOPPY split backfill: already migrated ({already} sub-label rows present), skipping")
+                return
+
+            rows = connection.execute(text(
+                "SELECT id, entry_btc_adx, entry_btc_ema20_slope, "
+                "       entry_btc_regime, exit_btc_regime "
+                "FROM orders "
+                "WHERE (entry_btc_regime = 'CHOPPY' OR exit_btc_regime = 'CHOPPY') "
+                "  AND entry_btc_adx IS NOT NULL "
+                "  AND entry_btc_ema20_slope IS NOT NULL"
+            )).fetchall()
+
+            if not rows:
+                _log.info("[MIGRATION] CHOPPY split backfill: no legacy CHOPPY rows to update")
+                return
+
+            updated = 0
+            skipped = 0
+            for row in rows:
+                adx = row.entry_btc_adx
+                slope = row.entry_btc_ema20_slope
+
+                # Mirror classify_btc_regime's CHOPPY logic
+                if adx < 18:
+                    new_label = "CHOPPY_WEAK"
+                elif abs(slope) < 0.02:
+                    new_label = "CHOPPY_FLAT"
+                else:
+                    # Row is tagged CHOPPY but the values don't fit either
+                    # sub-bucket — shouldn't happen given the old classifier,
+                    # but skip defensively.
+                    skipped += 1
+                    continue
+
+                new_entry = new_label if row.entry_btc_regime == "CHOPPY" else row.entry_btc_regime
+                new_exit = new_label if row.exit_btc_regime == "CHOPPY" else row.exit_btc_regime
+
+                connection.execute(
+                    text("UPDATE orders SET entry_btc_regime = :entry, exit_btc_regime = :exit WHERE id = :oid"),
+                    {"entry": new_entry, "exit": new_exit, "oid": row.id}
+                )
+                updated += 1
+
+            _log.info(
+                f"[MIGRATION] CHOPPY split backfill: updated {updated} orders "
+                f"(skipped {skipped} defensively; exit_btc_regime uses entry ADX/slope as proxy)"
+            )
+
+        await conn.run_sync(_backfill_choppy_split)
 
 
 async def get_db():

@@ -3656,10 +3656,30 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            for reason_key in ["STOP_LOSS", "STOP_LOSS_WIDE", "MOMENTUM_EXIT", "PNL_TRAILING", "SLOPE_EXIT", "SIGNAL_LOST", "FL_STOP_LOSS", "FL_SIGNAL_LOST", "FL_TICK_MOMENTUM_EXIT", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED"]:
+            # Derive the set of close-reason bases from the actual never-positive
+            # trades instead of hand-picking a whitelist that always gets stale.
+            # Strip any " L1"/"L2"/... level suffix so "STOP_LOSS L1" and
+            # "STOP_LOSS L2" collapse into one "STOP_LOSS" bucket.
+            def _np_reason_base(cr: str) -> str:
+                return cr.rsplit(" L", 1)[0] if " L" in cr else cr
+
+            np_reason_bases = sorted({
+                _np_reason_base(o.close_reason)
+                for o in np_trades if o.close_reason
+            })
+
+            def _matches_reason(o, base: str) -> bool:
+                if not o.close_reason:
+                    return False
+                # Exact match OR exact base followed by a level suffix.
+                # Guards against false positives like "STOP_LOSS" matching
+                # "STOP_LOSS_WIDE L1" via naive startswith.
+                return o.close_reason == base or o.close_reason.startswith(base + " L")
+
+            for reason_key in np_reason_bases:
                 for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in np_trades if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction]
-                    all_in = len([o for o in orders if o.close_reason and o.close_reason.startswith(reason_key) and (o.direction or "LONG") == direction])
+                    bucket = [o for o in np_trades if _matches_reason(o, reason_key) and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in orders if _matches_reason(o, reason_key) and (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "Close Reason", reason_key, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)

@@ -1,0 +1,162 @@
+================================================================================
+TRADING BOT SPLIT ANALYTICS REPORT
+Generated: 2026-04-12T21:07:54.075Z
+NOTE: Saved as pre-ADX-change baseline (29L + 37S = 66 trades)
+ADX thresholds at time of save: Strong L>18, Very Strong L>25, Max L30
+Next push changes to: Strong L>15, Very Strong L>22, Max L25
+================================================================================
+
+## CONFIGURATION
+
+Signal Thresholds:
+  EMA Gap Threshold L: 0.02  |  S: 0.08  |  EMA Gap Max: 0.35
+  ADX Very Strong: L>25 S>30  |  ADX Strong: L>18 S>25  |  ADX Max: L30 S33
+  LONG RSI: 40 - 63  |  SHORT RSI: 25 - 40
+  RSI x ADX Filter L: (none)  |  S: 30-35:25,35-50:30
+  Macro Trend Filter: false  |  BTC Global: false  |  Neutral Mode: none
+  BTC RSI L: 40-65  |  BTC RSI S: 25-60  |  BTC ADX L: 15-35  |  BTC ADX S: 18-35  |  ADX Dir L: both  |  ADX Dir S: both
+  Pair ADX Dir L: rising  |  Pair ADX Dir S: both
+  Global Vol Filter: false  |  Thresh L: 1.05  |  Thresh S: 1.05  |  Lookback: 48 bars
+  Pair Vol Filter: false  |  Thresh L: 1.1  |  Thresh S: 1.1  |  Lookback: 20 bars
+  Market Breadth Filter: true  |  Bull% >= 30% (LONGs)  |  Bear% >= 45% (SHORTs)  |  Flat Th: 0.03%
+  EMA20 Filter Long: true  |  Short: true
+  EMA20 Slope Long: true  |  Short: true  |  Min Slope L: 0%  |  Min Slope S: 0.04%
+  RSI Momentum Filter: true  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)
+  EMA Gap Expanding Filter: true  (block entry if EMA5-EMA8 gap compressing vs prev candle)
+
+General Settings:
+  Paper Trading: ON  |  Paper Balance: $5000
+  BNB Auto-Swap: ON  |  Paper BNB: $500  |  Check: 6h  |  Runway: 24h
+  Investment Mode: equal_split  |  Max Open Positions: 5  |  Trading Pairs: 50
+  Cooldown After Loss: 5min  |  No Expansion: 240min
+  Pair Blacklist: XAGUSDT,XAUUSDT,ZECUSDT,ENAUSDT
+
+################################################################################
+### BULLISH REGIME — 29 LONGS
+################################################################################
+
+## OVERALL PERFORMANCE
+Total Trades: 29  (29L / 0S)
+Wins: 20  |  Losses: 9  |  Win Rate: 68.97%
+Expectancy: $0/trade
+Total P&L: $-0.06 (0%)  |  Fees: $4.91
+Avg Duration: 00:29:00
+
+## Performance by Entry ADX
+Range        #     Dir     Win%   Total$       Avg$       Avg%
+15-20        10    LONG    80%          $3.57     $0.36    +0.16%
+20-25        13    LONG    69.2%       $-1.01    $-0.08    -0.03%
+25-30        6     LONG    50%         $-2.61    $-0.44    -0.20%
+
+## Performance by Entry Gap EMA5-EMA8
+Range            #     Dir     Win%   Total$       Avg$       Avg%
+0.02 - 0.04%     4     LONG    100%         $3.67     $0.92    +0.41%
+0.04 - 0.06%     10    LONG    50%         $-4.13    $-0.41    -0.19%
+0.06 - 0.08%     5     LONG    60%         $-1.17    $-0.23    -0.10%
+0.08 - 0.10%     4     LONG    75%         $-0.07    $-0.02    -0.01%
+0.10 - 0.12%     3     LONG    100%         $2.33     $0.78    +0.34%
+0.14 - 0.16%     1     LONG    100%         $0.93     $0.93    +0.41%
+0.16 - 0.18%     2     LONG    50%         $-1.63    $-0.82    -0.32%
+
+## Performance by Market Breadth at Entry
+Dir    Breadth      #     Win%    Avg$       Avg%      Total$       AvgDur
+L      30-35%       1     100%         $1.22    +0.53%        $1.22 01:15:25
+L      35-40%       1     0%          $-2.31    -1.02%       $-2.31 00:05:58
+L      40-45%       1     100%         $1.36    +0.60%        $1.36 00:08:08
+L      45-50%       2     50%         $-0.77    -0.34%       $-1.54 00:18:31
+L      50-55%       4     100%         $0.88    +0.39%        $3.52 00:24:25
+L      55-60%       1     100%         $0.81    +0.36%        $0.81 00:16:23
+L      60-65%       2     50%         $-0.86    -0.38%       $-1.72 00:11:38
+L      65-70%       3     33.3%       $-0.43    -0.19%       $-1.30 00:27:20
+L      70%+         14    71.4%       $-0.01    +0.00%       $-0.12 00:35:23
+
+## Performance by Confidence Level
+Confidence     Trades     AvgP&L%   Win%    Total P&L
+VERY_STRONG    6L/0S      -0.20%    50%      $-2.61
+STRONG_BUY     23L/0S     +0.05%    73.91%   $2.55
+
+## Performance by Pair
+Pair             Direction  #     Win%    Total$       AvgDur
+NEARUSDT         2L/0S      2     100%         $2.36 00:47:09
+SOLUSDT          2L/0S      2     100%         $1.78 01:35:57
+AVAXUSDT         2L/0S      2     100%         $1.65 00:37:01
+1000PEPEUSDT     2L/0S      2     100%         $1.50 00:15:35
+FILUSDT          1L/0S      1     100%         $1.36 00:08:08
+RIVERUSDT        1L/0S      1     100%         $0.96 00:05:39
+FFUSDT           1L/0S      1     100%         $0.86 00:11:55
+TONUSDT          1L/0S      1     100%         $0.77 00:22:15
+HYPEUSDT         4L/0S      4     75%         $-0.17 00:13:47
+ARBUSDT          2L/0S      2     50%         $-0.40 00:20:39
+ZECUSDT          1L/0S      1     0%          $-0.89 00:35:01
+ADAUSDT          1L/0S      1     0%          $-0.95 00:18:59
+WLDUSDT          3L/0S      3     66.7%       $-1.13 00:10:58
+WLFIUSDT         2L/0S      2     50%         $-1.85 00:50:38
+ENAUSDT          1L/0S      1     0%          $-2.23 00:32:50
+XRPUSDT          1L/0S      1     0%          $-2.29 00:46:30
+TAOUSDT          1L/0S      1     0%          $-2.34 00:24:10
+
+################################################################################
+### BEARISH REGIME — 37 SHORTS
+################################################################################
+
+## OVERALL PERFORMANCE
+Total Trades: 37  (0L / 37S)
+Wins: 24  |  Losses: 13  |  Win Rate: 64.86%
+Expectancy: $0.17/trade
+Total P&L: $6.45 (0.08%)  |  Fees: $6.14
+Avg Duration: 01:25:03
+
+## Performance by Entry ADX
+Range        #     Dir     Win%   Total$       Avg$       Avg%
+25-30        26    SHORT   65.4%        $3.10     $0.12    +0.06%
+30-35        11    SHORT   63.6%        $3.35     $0.30    +0.13%
+
+## Performance by Entry Gap EMA5-EMA8
+Range            #     Dir     Win%   Total$       Avg$       Avg%
+0.04 - 0.06%     3     SHORT   33.3%       $-3.61    $-1.20    -0.53%
+0.06 - 0.08%     7     SHORT   28.6%       $-7.82    $-1.12    -0.49%
+0.08 - 0.10%     9     SHORT   88.9%        $3.94     $0.44    +0.20%
+0.10 - 0.12%     10    SHORT   60%          $0.95     $0.10    +0.04%
+0.12 - 0.14%     3     SHORT   66.7%        $1.44     $0.48    +0.21%
+0.14 - 0.16%     1     SHORT   100%         $2.29     $2.29    +1.04%
+0.18 - 0.20%     4     SHORT   100%         $9.26     $2.31    +1.03%
+
+## Performance by Market Breadth at Entry
+Dir    Breadth      #     Win%    Avg$       Avg%      Total$       AvgDur
+S      45-50%       1     0%          $-1.01    -0.45%       $-1.01 00:41:04
+S      50-55%       2     50%          $0.27    +0.13%        $0.53 01:00:08
+S      55-60%       1     100%         $0.79    +0.37%        $0.79 01:50:16
+S      60-65%       6     66.7%        $0.00    -0.00%       $-0.02 00:42:49
+S      65-70%       11    36.4%       $-0.92    -0.41%      $-10.08 01:53:11
+S      70%+         16    87.5%        $1.01    +0.45%       $16.22 01:25:51
+
+## Performance by Pair
+Pair             Direction  #     Win%    Total$       AvgDur
+ETHUSDT          0L/2S      2     100%         $3.20 02:14:29
+BNBUSDT          0L/1S      1     100%         $2.14 02:23:30
+LINKUSDT         0L/2S      2     50%          $2.08 02:47:10
+ADAUSDT          0L/2S      2     50%          $1.51 01:52:42
+RIVERUSDT        0L/1S      1     100%         $1.47 00:10:37
+XRPUSDT          0L/1S      1     100%         $0.99 02:22:56
+ARBUSDT          0L/2S      2     100%         $0.98 00:15:57
+SOLUSDT          0L/1S      1     100%         $0.98 01:11:32
+BTCUSDT          0L/1S      1     100%         $0.79 01:50:16
+DOTUSDT          0L/1S      1     100%         $0.73 00:30:25
+DASHUSDT         0L/1S      1     100%         $0.67 00:52:05
+SUIUSDT          0L/4S      4     75%          $0.57 02:04:49
+TAOUSDT          0L/4S      4     75%          $0.47 00:56:54
+WLDUSDT          0L/3S      3     66.7%        $0.02 00:23:23
+AVAXUSDT         0L/2S      2     50%         $-0.08 02:50:19
+TRUMPUSDT        0L/2S      2     50%         $-0.27 01:20:04
+HYPEUSDT         0L/1S      1     0%          $-0.90 01:53:18
+NEARUSDT         0L/1S      1     0%          $-1.01 00:41:04
+FFUSDT           0L/1S      1     0%          $-2.27 00:21:12
+1000PEPEUSDT     0L/1S      1     0%          $-2.40 02:17:03
+FILUSDT          0L/3S      3     33.3%       $-3.23 00:38:15
+
+================================================================================
+COMBINED: 66 trades (29L + 37S)
+Longs P&L: $-0.06 | Shorts P&L: $+6.45 | Total: $+6.39
+================================================================================
+END OF PRE-ADX-CHANGE BASELINE REPORT
+================================================================================

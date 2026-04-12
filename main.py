@@ -2445,8 +2445,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 })
 
         adx_ranges = [
-            ("15-20", 15, 20), ("20-25", 20, 25), ("25-30", 25, 30),
-            ("30-35", 30, 35), ("35-40", 35, 40), ("40+", 40, 999),
+            ("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25),
+            ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
         ]
         adx_orders = [o for o in orders if o.entry_adx is not None]
         for range_name, adx_min, adx_max in adx_ranges:
@@ -3157,6 +3157,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
             adx_deltas = [o.entry_adx_delta for o in group if o.entry_adx_delta is not None]
             range_positions = [o.entry_range_position for o in group if o.entry_range_position is not None]
+            # Breadth: LONGs use Bull%, SHORTs use Bear%
+            if direction == "LONG":
+                breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
+            else:
+                breadths = [o.entry_bear_pct for o in group if o.entry_bear_pct is not None]
 
             peaks = [o.peak_pnl or 0 for o in group]
             pnls = [o.pnl_percentage or 0 for o in group]
@@ -3191,6 +3196,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_ema5_dist": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
                 "avg_adx_delta": round(sum(adx_deltas) / len(adx_deltas), 4) if adx_deltas else None,
                 "avg_range_position": round(sum(range_positions) / len(range_positions), 1) if range_positions else None,
+                "avg_breadth": round(sum(breadths) / len(breadths), 1) if breadths else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
@@ -3432,8 +3438,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70-80", 70, 80),
         ]
         ct_adx_ranges = [
-            ("15-20", 15, 20), ("20-25", 20, 25), ("25-30", 25, 30),
-            ("30-35", 30, 35), ("35-40", 35, 40), ("40+", 40, 999),
+            ("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25),
+            ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
         ]
         ct_orders = [o for o in orders if o.entry_rsi is not None and o.entry_adx is not None]
         for direction in ["LONG", "SHORT"]:
@@ -3521,7 +3527,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_adx_ranges = [("15-20", 15, 20), ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40+", 40, 999)]
+            np_adx_ranges = [("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999)]
             np_adx_trades = [o for o in np_trades if o.entry_adx is not None]
             all_adx_trades = [o for o in orders if o.entry_adx is not None]
             for rng, lo, hi in np_adx_ranges:
@@ -3670,6 +3676,21 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     bucket = [o for o in np_btc_dir_pool if (o.direction or "LONG") == direction]
                     all_in = len([o for o in all_btc_dir_pool if (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "BTC ADX Direction", np_btc_dir_label, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # Market Breadth at Entry — LONGs binned by Bull%, SHORTs by Bear%
+            for direction in ["LONG", "SHORT"]:
+                dir_np = [o for o in np_trades if (o.direction or "LONG") == direction]
+                dir_all = [o for o in orders if (o.direction or "LONG") == direction]
+                for b_label, b_lo, b_hi in _BREADTH_BINS:
+                    if direction == "LONG":
+                        bucket = [o for o in dir_np if o.entry_bull_pct is not None and b_lo <= o.entry_bull_pct < b_hi]
+                        all_in = len([o for o in dir_all if o.entry_bull_pct is not None and b_lo <= o.entry_bull_pct < b_hi])
+                    else:
+                        bucket = [o for o in dir_np if o.entry_bear_pct is not None and b_lo <= o.entry_bear_pct < b_hi]
+                        all_in = len([o for o in dir_all if o.entry_bear_pct is not None and b_lo <= o.entry_bear_pct < b_hi])
+                    row = _np_bucket_stats(bucket, "Breadth", b_label, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 

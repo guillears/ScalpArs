@@ -2855,7 +2855,13 @@ class TradingEngine:
                 btc_adx_prev = btc_indicators.get('adx_prev1')
                 btc_rsi = btc_indicators.get('rsi')
                 btc_rsi_prev = btc_indicators.get('rsi_prev1')
-                flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                _flat_th_long = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_long',
+                                       config.trading_config.thresholds.macro_trend_flat_threshold)
+                _flat_th_short = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_short',
+                                        config.trading_config.thresholds.macro_trend_flat_threshold)
+                # Use the lower threshold so BTC regime stays directional for both sides;
+                # direction-specific re-evaluation happens at signal level
+                flat_th = min(_flat_th_long, _flat_th_short)
                 btc_regime = determine_macro_regime(btc_ema20, btc_ema20_prev3, flat_th)
                 if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
                     btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
@@ -2981,7 +2987,11 @@ class TradingEngine:
                     signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and btc_global_enabled:
-                flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                _th_cfg = config.trading_config.thresholds
+                if signal == "LONG":
+                    flat_th = getattr(_th_cfg, 'macro_trend_flat_threshold_long', _th_cfg.macro_trend_flat_threshold)
+                else:
+                    flat_th = getattr(_th_cfg, 'macro_trend_flat_threshold_short', _th_cfg.macro_trend_flat_threshold)
                 pair_regime = determine_macro_regime(
                     indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
                 )
@@ -3177,7 +3187,11 @@ class TradingEngine:
                 if btc_global_enabled:
                     entry_regime = btc_regime
                 else:
-                    flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+                    _th_cfg = config.trading_config.thresholds
+                    if signal == "LONG":
+                        flat_th = getattr(_th_cfg, 'macro_trend_flat_threshold_long', _th_cfg.macro_trend_flat_threshold)
+                    else:
+                        flat_th = getattr(_th_cfg, 'macro_trend_flat_threshold_short', _th_cfg.macro_trend_flat_threshold)
                     entry_regime = determine_macro_regime(
                         indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
                     )
@@ -3264,7 +3278,10 @@ class TradingEngine:
         # Use provided 24h volume, or fall back to candle volume
         actual_volume_24h = volume_24h if volume_24h is not None else indicators.get('volume', 0)
 
-        flat_th = config.trading_config.thresholds.macro_trend_flat_threshold
+        _th_cfg = config.trading_config.thresholds
+        _flat_l = getattr(_th_cfg, 'macro_trend_flat_threshold_long', _th_cfg.macro_trend_flat_threshold)
+        _flat_s = getattr(_th_cfg, 'macro_trend_flat_threshold_short', _th_cfg.macro_trend_flat_threshold)
+        flat_th = min(_flat_l, _flat_s)
         regime = determine_macro_regime(
             indicators.get('ema20'), indicators.get('ema20_prev3'), flat_th
         )

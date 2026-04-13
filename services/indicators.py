@@ -234,12 +234,17 @@ def get_signal(
     # --- Macro trend regime (EMA20 slope) ---
     macro_filter_enabled = getattr(th, 'macro_trend_filter_enabled', True)
     neutral_mode = getattr(th, 'macro_trend_neutral_mode', 'both')
-    flat_threshold = getattr(th, 'macro_trend_flat_threshold', 0.02)
-    regime = determine_macro_regime(ema20, ema20_prev3, flat_threshold)
-    
+    flat_threshold_long = getattr(th, 'macro_trend_flat_threshold_long',
+                                  getattr(th, 'macro_trend_flat_threshold', 0.02))
+    flat_threshold_short = getattr(th, 'macro_trend_flat_threshold_short',
+                                   getattr(th, 'macro_trend_flat_threshold', 0.02))
+    regime_for_long = determine_macro_regime(ema20, ema20_prev3, flat_threshold_long)
+    regime_for_short = determine_macro_regime(ema20, ema20_prev3, flat_threshold_short)
+
     def regime_allows(direction: str) -> bool:
         if not macro_filter_enabled:
             return True
+        regime = regime_for_long if direction == "LONG" else regime_for_short
         if regime == "BULLISH":
             return direction == "LONG"
         if regime == "BEARISH":

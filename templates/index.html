@@ -2489,8 +2489,8 @@
                         </div>
                     </div>
                     <div class="mb-3 px-4">
-                        <span class="text-sm text-gray-300">BTC ADX Range Filter</span>
-                        <p class="text-xs text-gray-500 mb-1">Block entries when BTC ADX is outside the specified range. Runs independently — does not require Macro Trend to be enabled.</p>
+                        <span class="text-sm text-gray-300">BTC Independent Filters</span>
+                        <p class="text-xs text-gray-500 mb-1">These filters run independently — do not require Macro Trend to be enabled.</p>
                         <div class="flex items-center gap-4 mt-1 flex-wrap">
                             <span class="text-xs text-gray-500 w-20">ADX BTC LONG:</span>
                             <label class="flex items-center text-sm text-gray-400">
@@ -2503,6 +2503,16 @@
                                 <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
                                 <span class="mx-1 text-gray-500">to</span>
                                 <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                            <span class="text-xs text-gray-500 ml-4">Flat threshold L:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.01" id="config-macro-trend-flat-threshold-long" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <span class="text-xs text-gray-500 ml-2">S:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.01" id="config-macro-trend-flat-threshold-short" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
+                                <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
                     </div>
@@ -2526,11 +2536,6 @@
                                     <option value="both">Allow both</option>
                                     <option value="none">Block both</option>
                                 </select>
-                            </label>
-                            <label class="flex items-center text-sm text-gray-400">
-                                Flat threshold:
-                                <input type="number" step="0.01" id="config-macro-trend-flat-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
-                                <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
                         <div class="flex items-center gap-4 mt-2 flex-wrap">
@@ -3364,7 +3369,9 @@
                 if (slopeEl && slope != null) {
                     const sign = slope >= 0 ? '+' : '';
                     slopeEl.textContent = `${sign}${slope.toFixed(2)}%`;
-                    const flatTh = parseFloat(document.getElementById('config-macro-trend-flat-threshold')?.value) || 0.03;
+                    const _flatL = parseFloat(document.getElementById('config-macro-trend-flat-threshold-long')?.value) || 0;
+                    const _flatS = parseFloat(document.getElementById('config-macro-trend-flat-threshold-short')?.value) || 0.02;
+                    const flatTh = Math.min(_flatL, _flatS);
                     slopeEl.className = slope > flatTh ? 'text-emerald-400 text-xs font-mono' :
                                         slope < -flatTh ? 'text-red-400 text-xs font-mono' :
                                         'text-yellow-400 text-xs font-mono';
@@ -8035,7 +8042,8 @@
                 document.getElementById('config-macro-trend-filter-enabled').checked = config.thresholds.macro_trend_filter_enabled !== undefined ? config.thresholds.macro_trend_filter_enabled : true;
                 document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
-                document.getElementById('config-macro-trend-flat-threshold').value = config.thresholds.macro_trend_flat_threshold !== undefined ? config.thresholds.macro_trend_flat_threshold : 0.02;
+                document.getElementById('config-macro-trend-flat-threshold-long').value = config.thresholds.macro_trend_flat_threshold_long !== undefined ? config.thresholds.macro_trend_flat_threshold_long : 0;
+                document.getElementById('config-macro-trend-flat-threshold-short').value = config.thresholds.macro_trend_flat_threshold_short !== undefined ? config.thresholds.macro_trend_flat_threshold_short : 0.02;
                 document.getElementById('config-market-breadth-filter-enabled').checked = config.thresholds.market_breadth_filter_enabled !== undefined ? config.thresholds.market_breadth_filter_enabled : true;
                 document.getElementById('config-market-breadth-bull-threshold-long').value = config.thresholds.market_breadth_bull_threshold_long !== undefined ? config.thresholds.market_breadth_bull_threshold_long : 50;
                 document.getElementById('config-market-breadth-bear-threshold-short').value = config.thresholds.market_breadth_bear_threshold_short !== undefined ? config.thresholds.market_breadth_bear_threshold_short : 65;
@@ -8322,7 +8330,9 @@
                     macro_trend_filter_enabled: document.getElementById('config-macro-trend-filter-enabled').checked,
                     btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,
-                    macro_trend_flat_threshold: safeFloat(document.getElementById('config-macro-trend-flat-threshold').value),
+                    macro_trend_flat_threshold: 0,
+                    macro_trend_flat_threshold_long: safeFloat(document.getElementById('config-macro-trend-flat-threshold-long').value),
+                    macro_trend_flat_threshold_short: safeFloat(document.getElementById('config-macro-trend-flat-threshold-short').value),
                     market_breadth_filter_enabled: document.getElementById('config-market-breadth-filter-enabled').checked,
                     market_breadth_bull_threshold_long: safeFloat(document.getElementById('config-market-breadth-bull-threshold-long').value),
                     market_breadth_bear_threshold_short: safeFloat(document.getElementById('config-market-breadth-bear-threshold-short').value),

@@ -3675,6 +3675,25 @@
                 lines.push(`${conf.padEnd(14)} ${trades.padEnd(18)} ${avgPnlPct.padEnd(9)} ${(c.total_win_rate||0)+'%'.padEnd(6)} ${(c.risk_reward||0).toString().padEnd(6)} $${(c.total_pnl||0).toFixed(2).padStart(10)} $${(c.long_pnl||0).toFixed(2).padStart(8)} $${(c.short_pnl||0).toFixed(2).padStart(8)} ${(c.avg_entry_gap||0).toFixed(3)}%`);
             }
 
+            if (perf.regime_performance && perf.regime_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC Regime (at Entry)\n');
+                lines.push(`${'Regime'.padEnd(18)} ${'#'.padEnd(6)} ${'Dir'.padEnd(8)} ${'Win%'.padEnd(8)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Conf'}`);
+                for (const r of perf.regime_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.range||'?').padEnd(18)} ${String(r.count).padEnd(6)} ${(r.direction||'ALL').padEnd(8)} ${(r.win_rate+'%').padEnd(8)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${((r.avg_pnl_pct||0).toFixed(2)+'%').padStart(9)} ${((r.avg_peak_pct||0).toFixed(4)+'%').padStart(9)} ${confStr}`);
+                }
+            }
+
+            if (perf.regime_transition_performance && perf.regime_transition_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Regime Transition Performance\n');
+                lines.push(`${'Transition'.padEnd(16)} ${'#'.padEnd(6)} ${'Win%'.padEnd(8)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)}`);
+                for (const r of perf.regime_transition_performance) {
+                    lines.push(`${(r.range||'?').padEnd(16)} ${String(r.count).padEnd(6)} ${(r.win_rate+'%').padEnd(8)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${((r.avg_pnl_pct||0).toFixed(2)+'%').padStart(9)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Closing Reason Summary\n');
             const crCopyTotal = Object.values(perf.by_close_reason || {}).reduce((s, r) => s + (r.trades || 0), 0);

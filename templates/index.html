@@ -2487,6 +2487,24 @@
                             </div>
                         </div>
                     </div>
+                    <div class="mb-3 px-4">
+                        <span class="text-sm text-gray-300">BTC ADX Range Filter</span>
+                        <p class="text-xs text-gray-500 mb-1">Block entries when BTC ADX is outside the specified range. Runs independently — does not require Macro Trend to be enabled.</p>
+                        <div class="flex items-center gap-4 mt-1 flex-wrap">
+                            <span class="text-xs text-gray-500 w-20">ADX BTC LONG:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="mx-1 text-gray-500">to</span>
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                            <span class="text-xs text-gray-500 w-20 ml-4">ADX BTC SHORT:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="mx-1 text-gray-500">to</span>
+                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                        </div>
+                    </div>
                     <div class="mb-2 px-4">
                         <span class="text-sm text-gray-300">Macro Trend Regime (EMA20)</span>
                         <p class="text-xs text-gray-500 mb-1">EMA20 rising = BULLISH (LONGs only), falling = BEARISH (SHORTs only), flat = NEUTRAL (configurable)</p>
@@ -2526,18 +2544,6 @@
                                 <input type="number" step="1" min="0" max="100" id="config-btc-rsi-min-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
                                 <span class="mx-1 text-gray-500">to</span>
                                 <input type="number" step="1" min="0" max="100" id="config-btc-rsi-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
-                            </label>
-                            <span class="text-xs text-gray-500 w-20 ml-4">ADX BTC LONG:</span>
-                            <label class="flex items-center text-sm text-gray-400">
-                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
-                                <span class="mx-1 text-gray-500">to</span>
-                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-long" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
-                            </label>
-                            <span class="text-xs text-gray-500 w-20 ml-4">ADX BTC SHORT:</span>
-                            <label class="flex items-center text-sm text-gray-400">
-                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
-                                <span class="mx-1 text-gray-500">to</span>
-                                <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
                             </label>
                         </div>
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">

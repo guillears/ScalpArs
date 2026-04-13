@@ -1892,7 +1892,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION")):
+        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -3008,16 +3008,7 @@ class TradingEngine:
                     if (_rsi_lo > 0 and btc_rsi < _rsi_lo) or (_rsi_hi < 100 and btc_rsi > _rsi_hi):
                         btc_rsi_blocks = True
 
-                btc_adx_range_blocks = False
-                if btc_adx is not None:
-                    if signal == "LONG":
-                        _adx_lo = getattr(_th, 'btc_adx_min_long', 0)
-                        _adx_hi = getattr(_th, 'btc_adx_max_long', 100)
-                    else:
-                        _adx_lo = getattr(_th, 'btc_adx_min_short', 0)
-                        _adx_hi = getattr(_th, 'btc_adx_max_short', 100)
-                    if (_adx_lo > 0 and btc_adx < _adx_lo) or (_adx_hi < 100 and btc_adx > _adx_hi):
-                        btc_adx_range_blocks = True
+                # BTC ADX range check moved outside btc_global gate (runs independently)
 
                 btc_adx_dir_blocks = False
                 if btc_adx is not None and btc_adx_prev is not None:
@@ -3058,7 +3049,7 @@ class TradingEngine:
                             except (ValueError, TypeError):
                                 continue
 
-                if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_range_blocks or btc_adx_dir_blocks or pair_adx_dir_blocks or btc_cross_blocks:
+                if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_dir_blocks or pair_adx_dir_blocks or btc_cross_blocks:
                     if btc_cross_blocks:
                         reason = btc_cross_reason
                     elif pair_adx_dir_blocks:
@@ -3071,8 +3062,6 @@ class TradingEngine:
                         reason = f"BTC ADX {_adx_dir_label} ({btc_adx:.1f} vs prev {btc_adx_prev:.1f}), {signal} requires {_adx_dir_want}"
                     elif btc_rsi_blocks:
                         reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
-                    elif btc_adx_range_blocks:
-                        reason = f"BTC ADX {btc_adx:.1f} out of {signal} range [{_adx_lo}-{_adx_hi}]"
                     elif btc_blocks:
                         reason = f"BTC={btc_regime}"
                     else:
@@ -3095,6 +3084,21 @@ class TradingEngine:
                         _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
                         logger.info(f"[PAIR_ADX_DIR] {pair}: {signal} blocked — Pair ADX {_pd_label} ({_pair_adx:.4f} vs prev {_pair_adx_prev:.4f}), requires {_pair_adx_dir_cfg}")
                         signal = "NO_TRADE"
+
+            # BTC ADX range check — runs independently of BTC global filter.
+            # When btc_adx_min > 0 or btc_adx_max < 100, the check is active
+            # regardless of whether the Macro Trend toggle is on.
+            if signal in ["LONG", "SHORT"] and btc_adx is not None:
+                _th = config.trading_config.thresholds
+                if signal == "LONG":
+                    _btc_adx_lo = getattr(_th, 'btc_adx_min_long', 0)
+                    _btc_adx_hi = getattr(_th, 'btc_adx_max_long', 100)
+                else:
+                    _btc_adx_lo = getattr(_th, 'btc_adx_min_short', 0)
+                    _btc_adx_hi = getattr(_th, 'btc_adx_max_short', 100)
+                if (_btc_adx_lo > 0 and btc_adx < _btc_adx_lo) or (_btc_adx_hi < 100 and btc_adx > _btc_adx_hi):
+                    logger.info(f"[BTC_ADX_GATE] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} outside [{_btc_adx_lo}-{_btc_adx_hi}]")
+                    signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:
                 _th = config.trading_config.thresholds

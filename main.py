@@ -2446,7 +2446,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
         adx_ranges = [
             ("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25),
-            ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
+            ("25-28", 25, 28), ("28-30", 28, 30), ("30-33", 30, 33), ("33-35", 33, 35), ("35+", 35, 999),
         ]
         adx_orders = [o for o in orders if o.entry_adx is not None]
         for range_name, adx_min, adx_max in adx_ranges:
@@ -3439,7 +3439,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         ]
         ct_adx_ranges = [
             ("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25),
-            ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
+            ("25-28", 25, 28), ("28-30", 28, 30), ("30-33", 30, 33), ("33-35", 33, 35), ("35+", 35, 999),
         ]
         ct_orders = [o for o in orders if o.entry_rsi is not None and o.entry_adx is not None]
         for direction in ["LONG", "SHORT"]:
@@ -3527,7 +3527,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_adx_ranges = [("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999)]
+            np_adx_ranges = [("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25), ("25-28", 25, 28), ("28-30", 28, 30), ("30-33", 30, 33), ("33-35", 33, 35), ("35+", 35, 999)]
             np_adx_trades = [o for o in np_trades if o.entry_adx is not None]
             all_adx_trades = [o for o in orders if o.entry_adx is not None]
             for rng, lo, hi in np_adx_ranges:

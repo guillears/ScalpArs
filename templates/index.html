@@ -461,10 +461,11 @@
                                     <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">PF</th>
                                     <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total fees paid (entry + exit)">Fees</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg exit slippage (+ = worse fill, - = better fill). Only live trades.">Slip %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-blue-400" title="Projected balance if current Daily Compound Return continues for this period. Formula: Current Balance × (1 + DCR)^days">Projected Balance</th>
                                 </tr>
                             </thead>
                             <tbody id="period-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4919,8 +4920,21 @@
                 
                 // Period Performance table
                 const ppBody = document.getElementById('period-performance-body');
+                // Projected Balance: current balance × (1 + DCR)^days
+                const _ppCurrentBal = balData ? (balData.usdt_balance || 0) + (balData.usdt_in_orders || 0) : null;
+                const _ppDCR = (data.daily_compound_return || 0) / 100; // convert % to decimal
+                const _ppDaysMap = {'Last 6h': 0.25, 'Last 12h': 0.5, '1 Day': 1, '2 Days': 2, '3 Days': 3, '5 Days': 5, '7 Days': 7, '15 Days': 15, '30 Days': 30, 'Total': null};
+                const _ppProjected = (period) => {
+                    if (!_ppCurrentBal || _ppDCR === 0) return null;
+                    const days = _ppDaysMap[period];
+                    if (days == null) return _ppCurrentBal; // "Total" row shows current balance
+                    return _ppCurrentBal * Math.pow(1 + _ppDCR, days);
+                };
                 if (data.period_performance && data.period_performance.length > 0) {
                     ppBody.innerHTML = data.period_performance.map(r => {
+                        const projBal = _ppProjected(r.period);
+                        const projStr = projBal != null ? '$' + projBal.toFixed(2) : '-';
+                        const projClass = projBal != null && _ppCurrentBal ? (projBal >= _ppCurrentBal ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
                         if (r.count === 0) {
                             return `<tr class="hover:bg-white/5 text-gray-500">
                                 <td class="px-3 py-2 font-medium ${r.period === 'Total' ? 'text-white' : ''}">${r.period}</td>
@@ -4934,6 +4948,7 @@
                                 <td class="px-3 py-2 text-right">-</td>
                                 <td class="px-3 py-2 text-right text-yellow-400">$0.00</td>
                                 <td class="px-3 py-2 text-right text-gray-500">-</td>
+                                <td class="px-3 py-2 text-right ${projClass} font-medium">${projStr}</td>
                             </tr>`;
                         }
                         const wrClass = safe(r.win_rate) >= 50 ? 'text-emerald-400' : 'text-red-400';
@@ -4957,10 +4972,11 @@
                             <td class="px-3 py-2 text-right ${pfClass} font-medium">${safe(r.profit_factor) >= 999 ? '∞' : safe(r.profit_factor).toFixed(2)}</td>
                             <td class="px-3 py-2 text-right text-yellow-400">$${fmtNum(r.total_fees)}</td>
                             <td class="px-3 py-2 text-right ${r.avg_slippage_pct != null ? (r.avg_slippage_pct > 0.02 ? 'text-red-400' : r.avg_slippage_pct < -0.02 ? 'text-emerald-400' : 'text-gray-300') : 'text-gray-500'}">${r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-'}</td>
+                            <td class="px-3 py-2 text-right ${projClass} font-medium">${projStr}</td>
                         </tr>`;
                     }).join('');
                 } else {
-                    ppBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ppBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 document.getElementById('perf-total-trades').textContent = data.total_trades;

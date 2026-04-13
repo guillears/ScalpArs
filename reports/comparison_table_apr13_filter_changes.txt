@@ -1,0 +1,80 @@
+================================================================================
+COMPARISON TABLE — Filter Changes Apr 13, 2026
+================================================================================
+
+Baseline: 117 trades (66L + 51S) collected Apr 11-13 under old filters
+New batch: collected under ALL new filters starting Apr 13 reset
+
+Changes deployed:
+  - Long ADX: Strong 18->15, Very Strong 25->22, Max 30->25
+  - Short EMA5-8 gap min: 0.05->0.08
+  - Short pair ADX dir: both->rising
+  - BTC ADX range: 18-40 both dirs (independent of Macro Trend toggle)
+  - TP min: 0.42->0.50
+  - Pullback trigger: 0.15->0.20
+  - Post-exit tracking: FL_RECOVERED/FL_DEEP_STOP/FL_EMERGENCY_SL now tracked
+  - Blacklist: added ZECUSDT, ENAUSDT
+
+================================================================================
+
+| Metric                          | Before (117t)  | After (50t)    | After (100t)   |
+|---------------------------------|----------------|----------------|----------------|
+| OVERALL                         |                |                |                |
+| Total Trades                    | 117            | ?              | ?              |
+| Total P&L                       | -$7.44         | ?              | ?              |
+| Expectancy/trade                | -$0.06         | ?              | ?              |
+| Profit Factor                   | 0.86           | ?              | ?              |
+| Trades/day                      | ~63            | ?              | ?              |
+|                                 |                |                |                |
+| LONGS                           |                |                |                |
+| Long Trades                     | 66             | ?              | ?              |
+| Long WR                         | 65.2%          | ?              | ?              |
+| Long P&L                        | -$7.77         | ?              | ?              |
+| Long Expectancy                 | -$0.12         | ?              | ?              |
+| ADX 15-18 (new bucket)          | 13t 77% +$1.86 | ?              | ?              |
+| ADX 18-22                       | 29t 79% +$9.59 | ?              | ?              |
+| ADX 22-25                       | 18t 39% -$16.60| ?              | ?              |
+| ADX 25-30 (now blocked)         | 6t 50% -$2.61  | blocked        | blocked        |
+| Avg Winner Close %              | +0.39%         | ?              | ?              |
+| Avg Winner Peak %               | +0.52%         | ?              | ?              |
+| Positive No BE losses           | 15t -$33.75    | ?              | ?              |
+|                                 |                |                |                |
+| SHORTS                          |                |                |                |
+| Short Trades                    | 51             | ?              | ?              |
+| Short WR                        | 60.8%          | ?              | ?              |
+| Short P&L                       | +$0.33         | ?              | ?              |
+| Short Expectancy                | +$0.01         | ?              | ?              |
+| EMA5-8 gap <0.08 (now blocked)  | 10t 30% -$11.43| blocked        | blocked        |
+| Pair ADX Falling (now blocked)  | 9t 44% -$5.47  | blocked        | blocked        |
+| BTC ADX <18 (now blocked)       | ~9t 44% -$2.43 | blocked        | blocked        |
+| Avg Winner Close %              | +0.50%         | ?              | ?              |
+|                                 |                |                |                |
+| EXIT QUALITY                    |                |                |                |
+| TP / Pullback                   | 0.42 / 0.15    | 0.50 / 0.20    | 0.50 / 0.20    |
+| TRAILING_STOP avg close % (L)   | +0.39%         | ?              | ?              |
+| TRAILING_STOP avg close % (S)   | +0.50%         | ?              | ?              |
+| Post-peak continuation (L)      | +2.7%          | ?              | ?              |
+| FL_DEEP_STOP count (L)          | 14 (21%)       | ?              | ?              |
+| FL_DEEP_STOP count (S)          | 10 (20%)       | ?              | ?              |
+| FL_RECOVERED in regret table    | missing        | ?              | ?              |
+|                                 |                |                |                |
+| NEW FILTERS                     |                |                |                |
+| BTC ADX gate blocks             | n/a (was off)  | ?              | ?              |
+| Short pair ADX rising blocks    | n/a (was both) | ?              | ?              |
+| Short EMA5-8 <0.08 blocks       | n/a (was 0.05) | ?              | ?              |
+
+================================================================================
+PROJECTED vs ACTUAL
+================================================================================
+
+| Metric                | Projected      | Actual (50t)   | Actual (100t)  |
+|-----------------------|----------------|----------------|----------------|
+| Long P&L              | ~$0 to +$5     | ?              | ?              |
+| Short P&L             | ~+$18 to +$28  | ?              | ?              |
+| Total P&L             | ~+$18 to +$33  | ?              | ?              |
+| Expectancy/trade      | ~+$0.22 to +$0.41 | ?           | ?              |
+| At 20x leverage       | ~$360 to $660  | ?              | ?              |
+
+================================================================================
+END OF COMPARISON TABLE
+================================================================================

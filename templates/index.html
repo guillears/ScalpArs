@@ -4959,7 +4959,7 @@
                 if (data.period_performance && data.period_performance.length > 0) {
                     ppBody.innerHTML = data.period_performance.map(r => {
                         const projBal = _ppProjected(r.period);
-                        const projStr = projBal != null ? '$' + projBal.toFixed(2) : '-';
+                        const projStr = projBal != null ? '$' + Math.round(projBal).toLocaleString('en-US') : '-';
                         const projClass = projBal != null && _ppCurrentBal ? (projBal >= _ppCurrentBal ? 'text-emerald-400' : 'text-red-400') : 'text-gray-500';
                         if (r.count === 0) {
                             return `<tr class="hover:bg-white/5 text-gray-500">

@@ -183,3 +183,51 @@ Three real options were presented to the user on Apr 11, decision deferred:
 2. **1-3 months out:** migrate to C3 (RDS) as real fix — 1-2 focused days on a quiet weekend
 
 **Status:** user deferred decision on Apr 11 — "lets wait". Revisit when ready. Skip C2 entirely. Do NOT re-enable Managed Platform Updates under any circumstances until DB durability is resolved (C1 or C3).
+
+## April 14, 2026 — Locked Baseline for Fresh Validation
+
+### Context
+Two reports now exist as reference data:
+- `reports/report_2026-04-13_full_117trades.txt` — 117 trades (66L + 51S), runtime 1.86 days, 1x leverage. Best full-detail sample available.
+- Today's 21L sample (in-memory) — 21 trades, runtime ~1 day, mixed 10x/20x leverage, contaminated by 6+ config changes (log below).
+
+### Apr 13 117-trade findings (THE REFERENCE dataset)
+- **Total: Longs -$7.77 (65.2% WR, PF 0.83), Shorts +$0.33 (60.8% WR, PF 1.01). Net ~$-7.50 over 117 trades at 1x.**
+- **VERY_STRONG is broken in both directions**: 15L 40% WR -$12.83 + 19S 47% WR -$5.33 = 34 trades 44% WR -$18.16. STRONG_BUY meanwhile: 51L 72.6% WR +$5.06 + 32S 68.8% WR +$5.66. The stricter VERY_STRONG filters are producing WORSE trades.
+- **Long ADX 22-25 is a disaster bucket**: 18 trades 38.9% WR -$16.60. But the disagreement (today's 21L shows ADX 22-25 at 80% WR) is not resolvable yet.
+- **Long EMA5-EMA8 gap 0.02-0.04% is the BEST bucket** (83.3% WR +$3.12). DO NOT raise `ema_gap_threshold_long` above 0.02.
+- **FL_DEEP_STOP L1 is still the dominant loss path**: 14L -$33, 10S -$23. Peak only +0.16% avg before SL hit. Same problem as April 8 baseline.
+- **Short Gap 0.08%+ works, <0.08% loses**: current `ema_gap_threshold_short = 0.08` is correctly set.
+- **Maker vs Taker fee split**: TAKER_FALLBACK longs 59% WR -$10.92 vs MAKER 70.6% WR +$3.15. Taker fallback trades are systematically worse — consider blocking entry when maker doesn't fill.
+
+### Today's 21-trade contradictions (DO NOT TRUST for filter tuning)
+- Config churn: 6 changes on Apr 14 alone (leverage 10↔20x, EMA gap, BTC ADX min, flat thresholds, regime_change_exit toggle)
+- Small sample inverted several Apr 13 signals (ADX 22-25 looked good, BTC ADX 20-25 looked bad, range position 75%+ looked bad)
+- Treat as illustrative, not reliable
+
+### LOCKED Apr 14 baseline (do NOT change until 40+ fresh trades collected)
+- Leverage: **1x both levels** (fresh test, leverage-invariant statistics)
+- Trade mode: both, max 5 positions, equal_split, $100 fixed
+- `ema_gap_threshold_long = 0.02` (0.02-0.04% is the best bucket per Apr 13)
+- `ema_gap_threshold_short = 0.08`
+- `momentum_adx_max_long = 25` (unchanged — Apr 13 vs today contradict, leave for data to decide)
+- `btc_adx_min_long = 25`, `btc_adx_min_short = 20`
+- VERY_STRONG + STRONG_BUY: both enabled, identical params, 1x lev
+- Exits: BE L1 0.15/0.10, Trailing TP 0.40%/pullback 0.08%, Tick Momentum OFF, RSI Momentum OFF, Signal Lost Flag + Security Gap ON, FL1/FL2 ON, Regime Change Exit ON
+- Market Breadth filter ON (30% bull L, 45% bear S, flat threshold 0.02)
+- EMA Gap Expanding Filter ON, RSI Momentum Filter ON
+
+### Validation plan
+1. Reset (clears Orders/Transactions/BnbSwapLog, keeps config)
+2. Let 40+ trades accumulate with zero config changes
+3. Compare fresh sample to Apr 13 117-trade reference
+4. THEN make filter decisions with 3 samples to triangulate
+
+### Known issues to investigate AFTER 40-trade fresh baseline
+- **VERY_STRONG underperformance**: 34-trade signal. Either disable or relax to match STRONG_BUY.
+- **FL_DEEP_STOP L1 path**: Peak-to-exit gap too wide. The flag fires correctly but exit lets it ride to SL. Worth a code review of the FL1/FL2 branches in `trading_engine.py`.
+- **Long ADX max**: 25 vs 22. Needs more data to resolve Apr 13 / today contradiction.
+- **TAKER_FALLBACK longs losing**: Consider blocking entries when maker doesn't fill within timeout.
+
+### Rule for the next 40 trades
+**NO CONFIG CHANGES.** Every config tweak invalidates the sample. If a problem seems urgent, pause trading and document the issue for post-sample review rather than flipping parameters mid-stream.

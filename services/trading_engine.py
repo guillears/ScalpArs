@@ -3113,6 +3113,25 @@ class TradingEngine:
                     logger.info(f"[BTC_ADX_GATE] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} outside [{_btc_adx_lo}-{_btc_adx_hi}]")
                     signal = "NO_TRADE"
 
+            # BTC Slope directional check — runs independently of Macro Trend toggle.
+            # For LONG: require BTC slope >= +flat_threshold_long (BTC rising meaningfully)
+            # For SHORT: require BTC slope <= -flat_threshold_short (BTC falling meaningfully)
+            # When the threshold is 0, the check is a no-op (allows any slope including flat/opposite).
+            if signal in ["LONG", "SHORT"] and btc_ema20_slope_pct is not None:
+                _th = config.trading_config.thresholds
+                if signal == "LONG":
+                    _flat_th = getattr(_th, 'macro_trend_flat_threshold_long',
+                                       getattr(_th, 'macro_trend_flat_threshold', 0))
+                    if _flat_th > 0 and btc_ema20_slope_pct < _flat_th:
+                        logger.info(f"[BTC_SLOPE_GATE] {pair}: LONG blocked — BTC slope {btc_ema20_slope_pct:+.4f}% < min +{_flat_th}%")
+                        signal = "NO_TRADE"
+                else:  # SHORT
+                    _flat_th = getattr(_th, 'macro_trend_flat_threshold_short',
+                                       getattr(_th, 'macro_trend_flat_threshold', 0))
+                    if _flat_th > 0 and btc_ema20_slope_pct > -_flat_th:
+                        logger.info(f"[BTC_SLOPE_GATE] {pair}: SHORT blocked — BTC slope {btc_ema20_slope_pct:+.4f}% > max -{_flat_th}%")
+                        signal = "NO_TRADE"
+
             if signal in ["LONG", "SHORT"]:
                 _th = config.trading_config.thresholds
                 global_vol_blocks = False

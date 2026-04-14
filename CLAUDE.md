@@ -184,50 +184,267 @@ Three real options were presented to the user on Apr 11, decision deferred:
 
 **Status:** user deferred decision on Apr 11 — "lets wait". Revisit when ready. Skip C2 entirely. Do NOT re-enable Managed Platform Updates under any circumstances until DB durability is resolved (C1 or C3).
 
-## April 14, 2026 — Locked Baseline for Fresh Validation
+## April 14, 2026 — Locked Baseline for 100-Trade Fine-Tuning Sample
 
-### Context
-Two reports now exist as reference data:
-- `reports/report_2026-04-13_full_117trades.txt` — 117 trades (66L + 51S), runtime 1.86 days, 1x leverage. Best full-detail sample available.
-- Today's 21L sample (in-memory) — 21 trades, runtime ~1 day, mixed 10x/20x leverage, contaminated by 6+ config changes (log below).
+### Target sample
+**100 trades: ~50 longs + ~50 shorts** collected at 1x leverage under frozen config. This is the decision point for the first round of data-driven filter tuning. Paper mode.
 
-### Apr 13 117-trade findings (THE REFERENCE dataset)
-- **Total: Longs -$7.77 (65.2% WR, PF 0.83), Shorts +$0.33 (60.8% WR, PF 1.01). Net ~$-7.50 over 117 trades at 1x.**
-- **VERY_STRONG is broken in both directions**: 15L 40% WR -$12.83 + 19S 47% WR -$5.33 = 34 trades 44% WR -$18.16. STRONG_BUY meanwhile: 51L 72.6% WR +$5.06 + 32S 68.8% WR +$5.66. The stricter VERY_STRONG filters are producing WORSE trades.
-- **Long ADX 22-25 is a disaster bucket**: 18 trades 38.9% WR -$16.60. But the disagreement (today's 21L shows ADX 22-25 at 80% WR) is not resolvable yet.
-- **Long EMA5-EMA8 gap 0.02-0.04% is the BEST bucket** (83.3% WR +$3.12). DO NOT raise `ema_gap_threshold_long` above 0.02.
-- **FL_DEEP_STOP L1 is still the dominant loss path**: 14L -$33, 10S -$23. Peak only +0.16% avg before SL hit. Same problem as April 8 baseline.
-- **Short Gap 0.08%+ works, <0.08% loses**: current `ema_gap_threshold_short = 0.08` is correctly set.
-- **Maker vs Taker fee split**: TAKER_FALLBACK longs 59% WR -$10.92 vs MAKER 70.6% WR +$3.15. Taker fallback trades are systematically worse — consider blocking entry when maker doesn't fill.
+### Reference datasets available
+- `reports/report_2026-04-13_full_117trades.txt` — 117 trades (66L + 51S), runtime 1.86 days, 1x leverage, loose filters (BTC ADX min L=15, regime_change_exit OFF). **The primary reference.**
+- `reports/report_2026-04-12_partial_53trades.txt` — 53 trades, full detail
+- `reports/report_2026-04-08_pre_exit_optimization.txt` — 38 trades summary, pre-TM-disable baseline
+- Multiple earlier reports (Apr 6, 7, 9, 10) for cross-sample pattern confirmation
 
-### Today's 21-trade contradictions (DO NOT TRUST for filter tuning)
-- Config churn: 6 changes on Apr 14 alone (leverage 10↔20x, EMA gap, BTC ADX min, flat thresholds, regime_change_exit toggle)
-- Small sample inverted several Apr 13 signals (ADX 22-25 looked good, BTC ADX 20-25 looked bad, range position 75%+ looked bad)
-- Treat as illustrative, not reliable
+Each historical sample ran under a different config. **Do NOT pool raw trades across samples** — the bot was a different strategy in each run. Use cross-sample patterns only (findings that replicate across different configs = robust signal).
 
-### LOCKED Apr 14 baseline (do NOT change until 40+ fresh trades collected)
-- Leverage: **1x both levels** (fresh test, leverage-invariant statistics)
-- Trade mode: both, max 5 positions, equal_split, $100 fixed
-- `ema_gap_threshold_long = 0.02` (0.02-0.04% is the best bucket per Apr 13)
-- `ema_gap_threshold_short = 0.08`
-- `momentum_adx_max_long = 25` (unchanged — Apr 13 vs today contradict, leave for data to decide)
+### Apr 13 117-trade findings (primary reference)
+- **Total: Longs -$7.77 (65.2% WR, PF 0.83), Shorts +$0.33 (60.8% WR, PF 1.01). Net ~$-7.50 at 1x.**
+- **VERY_STRONG underperforms STRONG_BUY in both directions**: combined 34 trades 44% WR -$18.16 vs STRONG_BUY 83 trades 71% WR +$10.72. Paradoxical — the "stricter" filter produces worse trades. Likely because its ADX>22 requirement pushes entries into the ADX 22-25 loser zone.
+- **FL_DEEP_STOP L1 is the biggest absolute-loss sub-bucket** (14L -$33, 10S -$23), BUT the FL system as a whole is NET POSITIVE via the `NetRecover` column (+$11.76 total across 33 FL trades). FL is working — it saves money vs passive SL. The sub-issue is specifically that flagged trades with weak peaks (+0.1-0.2%) still ride to deep_stop at -1.0%. Regime Change Exit was added Apr 14 to catch some of these earlier.
+- **Long EMA5-EMA8 gap 0.02-0.04% is the BEST bucket** (83.3% WR +$3.12, 6 trades). 0.04-0.08% is the loss zone. DO NOT raise `ema_gap_threshold_long` above 0.02.
+- **Short EMA5-EMA8 gap**: <0.08% loses, 0.08-0.12% wins, 0.18-0.20% crushes (100% WR +$9.26). Current `ema_gap_threshold_short=0.08` correctly set.
+- **Maker vs Taker Fallback**: MAKER 70.6% WR longs / 65.6% WR shorts, TAKER_FALLBACK 59.4% WR longs / 52.6% WR shorts. 10-13% WR gap. Taker fallback trades are chasing fast-moving price that often exhausts. Consider blocking entry entirely when maker doesn't fill within timeout.
+
+### Cross-sample CONFIRMED findings — LONGS (Apr 13 + Today 21-trade)
+
+These are directional patterns that replicate across both samples despite different leverage/config. **Use these for tuning decisions.**
+
+| Pattern | Apr 13 | Today | Interpretation |
+|---|---|---|---|
+| EMA5-EMA8 gap 0.04-0.08% loses | 56.2% WR -$7 (32 trades) | 55.6% WR -$130 (9 trades) | Below 0.08% gap is weak entry |
+| Range Position 50-75% > 75-100% | 69% vs 63% WR | 77% vs 37.5% WR | More room to run is better |
+| ADX Delta 0.1-0.3 is the sweet spot | 81.2% WR (16 trades) | 77.8% WR (9 trades) | Building trend > peaking trend |
+| Breadth 50-65% > 70%+ | 70-86% WR vs 69% WR | 83-100% WR vs 20% WR | Moderate breadth beats extreme |
+| EMA5 Stretch 0.20-0.25% works | 66.7% WR +$0.76 | 80% WR +$24.21 | Only consistently positive bucket |
+| EMA5 Stretch >0.25% fades | 64.3% WR -$1.43 (14 trades) | 66.7% WR -$17.62 (3 trades) | Mean reversion territory |
+| "Positive, No BE" SL still a problem | 15 trades peak +0.18% → close -1.00% | 5 trades same pattern | Exit fails weak-peak trades |
+
+### Cross-sample DIVERGE — do NOT tune these yet (need 3rd sample)
+
+| Pattern | Apr 13 | Today | Why divergent |
+|---|---|---|---|
+| Long ADX 22-25 | disaster 38.9% WR | best 80% WR | Confidence-level confound |
+| BTC ADX 20-25 | OK 67.7% WR | disaster 28.6% WR | Regime/sample confound |
+| Entry Gap 0.25-0.30% | disaster 33% WR | OK 66.7% WR | Small-N confound |
+
+### Shorts — NO cross-sample yet
+Today's 21-trade sample has **zero shorts**. All short findings below are Apr 13 1-sample only and must be confirmed by the new 100-trade sample.
+
+**Apr 13 short patterns to validate**:
+- EMA5 Stretch: 0.25-0.30% best (83.3% WR +$11.88, 12 trades), 0.16-0.20% worst (50% WR -$9.46, 18 trades). **Opposite direction from longs** (shorts want HIGH stretch = confirmed downtrend).
+- EMA5-EMA8 gap sweet spots: 0.08-0.12% (64-83% WR) OR 0.18-0.20% (100% WR)
+- Short ADX: 25-30 better than 30-35
+- Breadth 70%+: 72% WR (+$10.55) — acceptable
+
+### FL system reality check (important correction)
+Earlier claim "FL is broken" was wrong. The `NetRecover` column in the Flagged Exits table shows FL trades net +$11.76 across 33 trades — the system saves money vs passive SL. The specific sub-issue is FL_DEEP_STOP L1 (weak-peak trades riding to -1.0% stop). Regime Change Exit (added Apr 14) should catch macro rollovers that FL misses.
+
+### Exit system status
+- **Trailing Stop**: working across all samples. Apr 8 (3 trades +0.65% avg), Apr 13 (56+ trades +0.35-0.51% avg). Dominant winner-capture.
+- **TP min raised 0.40 → 0.50, Pullback raised 0.08 → 0.20 (Apr 14)**: data-backed. Apr 13 winners had post-peak +1.36% to +3.77% — bot was exiting too early on the 0.08 pullback. New params allow tail-winners to run. Small risk of marginal-winner give-back; watch for "Positive, No BE" regression at 40-trade checkpoint.
+- **Tick Momentum Exit**: permanently OFF. 2-sample confirmed (Apr 8 cut winners at +0.14% when post-peak was +1.03%; Apr 13 without TM captured 3-5x more).
+- **Signal Lost Flag + Security Gap**: ON. Working as confirmed by NetRecover.
+- **FL1 wide SL + FL2**: ON.
+- **Regime Change Exit**: newly ON. Tests whether catching macro reversal improves weak-peak FL outcomes.
+- **RSI Momentum Exit**: OFF.
+
+### LOCKED Apr 14 config (DO NOT CHANGE until 100 fresh trades collected)
+- Leverage: **1x both VERY_STRONG and STRONG_BUY**
+- Trade mode: both, max 5 positions, equal_split, $100 fixed, 5% pct
+- `ema_gap_threshold_long = 0.02`, `ema_gap_threshold_short = 0.08`
+- `momentum_adx_max_long = 25` (leave ambiguous; data will decide)
 - `btc_adx_min_long = 25`, `btc_adx_min_short = 20`
-- VERY_STRONG + STRONG_BUY: both enabled, identical params, 1x lev
-- Exits: BE L1 0.15/0.10, Trailing TP 0.40%/pullback 0.08%, Tick Momentum OFF, RSI Momentum OFF, Signal Lost Flag + Security Gap ON, FL1/FL2 ON, Regime Change Exit ON
-- Market Breadth filter ON (30% bull L, 45% bear S, flat threshold 0.02)
-- EMA Gap Expanding Filter ON, RSI Momentum Filter ON
+- `momentum_ema20_slope_min_long = 0.0`, `momentum_ema20_slope_min_short = 0.04`
+- Exits: **TP 0.50 / pullback 0.20**, BE L1 0.15/0.10, Signal Lost Flag ON, FL1/FL2 ON, **Regime Change Exit ON**, Tick Momentum OFF, RSI Momentum OFF
+- Market Breadth ON (30 bull L, 45 bear S, flat 0.02)
+- EMA Gap Expanding ON, RSI Momentum Filter ON
+- Spike Guard ON (3x vol, 1.5% price)
 
-### Validation plan
-1. Reset (clears Orders/Transactions/BnbSwapLog, keeps config)
-2. Let 40+ trades accumulate with zero config changes
-3. Compare fresh sample to Apr 13 117-trade reference
-4. THEN make filter decisions with 3 samples to triangulate
+### Rule for the next 100 trades
+**NO CONFIG CHANGES.** Every tweak invalidates the sample. If urgent, pause trading and document rather than flip parameters mid-stream. Save the config log at checkpoint to verify nothing drifted.
 
-### Known issues to investigate AFTER 40-trade fresh baseline
-- **VERY_STRONG underperformance**: 34-trade signal. Either disable or relax to match STRONG_BUY.
-- **FL_DEEP_STOP L1 path**: Peak-to-exit gap too wide. The flag fires correctly but exit lets it ride to SL. Worth a code review of the FL1/FL2 branches in `trading_engine.py`.
-- **Long ADX max**: 25 vs 22. Needs more data to resolve Apr 13 / today contradiction.
-- **TAKER_FALLBACK longs losing**: Consider blocking entries when maker doesn't fill within timeout.
+### Checklist for the 100-trade report review
+When the fresh report arrives, answer these questions in order:
 
-### Rule for the next 40 trades
-**NO CONFIG CHANGES.** Every config tweak invalidates the sample. If a problem seems urgent, pause trading and document the issue for post-sample review rather than flipping parameters mid-stream.
+**Go/No-Go (first check)**
+1. Profit Factor? >1 continue, <0.5 stop and rethink, 0.5-1 likely fee drag on real edge.
+2. Win Rate in 55-70% range? Outside = something broken.
+3. Avg Loss % vs Avg Peak %? Are losers still bleeding past weak peaks (FL_DEEP_STOP regression)?
+
+**2-sample confirmation tests (replicate Apr 13 findings)**
+4. Does VERY_STRONG still underperform STRONG_BUY? If yes after 100 trades → **disable VERY_STRONG** (or relax to match STRONG_BUY entry rules).
+5. Is MAKER still 10%+ WR higher than TAKER_FALLBACK? If yes → **block taker entries** (save fees + WR).
+6. FL_DEEP_STOP count dropped (because regime_change_exit is now cutting them)? Measure absolute count and NetRecover$.
+7. Long EMA5-EMA8 0.02-0.04% still best bucket? If yes → structural finding, document.
+8. Long ADX 22-25 bucket — tiebreaker vs Apr 13 (disaster) + today (best). Decides whether to cap long ADX max.
+
+**3-sample confirmation tests (patterns from this run + Apr 13)**
+9. EMA5 Stretch >0.25% longs fade? (2-sample already says yes.)
+10. Range Position 75-100% longs underperform? (2-sample already says yes.)
+11. ADX Delta 0.1-0.3 long sweet spot? (2-sample already says yes.)
+12. Breadth 70%+ longs underperform vs 50-65%? (2-sample already says yes.)
+
+**BTC Entry RSI — 4-sample check (HIGHEST PRIORITY entry filter finding)**
+13. **Long BTC RSI 50-55 still losing?** Historical data (Mar 30 + Apr 6 + Apr 12 + Apr 13 = 22 combined trades, 50% WR, negative $ in ALL 4 samples). If 5th sample confirms → **strongest cross-sample filter signal in the whole dataset.** Action: Option B code refactor (move BTC RSI / BTC ADX Dir into "BTC Independent Filters" section, independent of btc_global toggle) and set `btc_rsi_min_long: 55`.
+14. **Long BTC RSI 60-65 still winning?** Historical: 44 combined trades, 73% WR, best zone. If confirmed → keep `btc_rsi_max_long: 65` or relax to 70.
+15. **Short BTC RSI <35 still winning?** Historical: 48 combined trades, 77% WR across Mar 30 + Apr 6 + Apr 12 + Apr 13. If confirmed → this is the golden short zone.
+16. **Short BTC RSI 45-50 still losing?** Historical: 14 combined trades, 36% WR. If confirmed → set `btc_rsi_max_short: 45`.
+
+Note: these filters currently only activate when `btc_global_filter_enabled = true` (which is OFF). Phase 2 code work: move them into "BTC Independent Filters" section (like BTC ADX range already is) so they can be applied without bundling BTC regime alignment.
+
+**New SHORT questions (Apr 13 was 1-sample)**
+17. Short EMA5 Stretch: 0.25-0.30% best, 0.16-0.20% worst? Replicates = add `short_min_ema5_stretch` filter.
+18. Short EMA5-EMA8 gap 0.18-0.20% best bucket replicate?
+19. Short ADX 25-30 > 30-35 replicate?
+
+**New exit validation (Apr 14 changes)**
+20. Did TP 0.50 / pullback 0.20 actually capture more of the post-peak move? Compare Apr 13 winners avg close +0.39% vs new sample winners avg close %.
+21. Any "Positive, No BE" regression (trades that used to exit profitably now hitting SL)?
+
+### Known issues flagged for investigation AFTER 100-trade review
+- **VERY_STRONG**: disable if 2nd sample confirms underperformance
+- **TAKER_FALLBACK entries**: block entirely if 2nd sample confirms WR gap
+- **FL_DEEP_STOP weak-peak path**: if regime_change_exit didn't help, code-level review of FL2 logic in `services/trading_engine.py`. Candidate rule: "if flagged trade's peak <0.3% AND current P&L negative, exit immediately rather than waiting for deep_stop."
+- **Long ADX max**: cap at 22 vs leave at 25 — decide from 3rd sample
+- **Short-specific filters**: `short_min_ema5_stretch = 0.20` candidate if Apr 13 short pattern replicates
+- **BTC RSI independent filters** (Option B code refactor): Move `btc_rsi_min/max_long/short` and `btc_adx_dir_long/short` OUT of the `if btc_global_enabled:` block in `services/trading_engine.py:3067+` and INTO the independent BTC filter section (alongside BTC ADX range, which is already independent per code comment). Add UI toggles in "BTC Independent Filters" section. If Phase 1 confirms the 4-sample BTC RSI patterns, apply new ranges simultaneously: `btc_rsi_min_long: 55`, `btc_rsi_max_short: 45`. Ship the refactor + new ranges in one Phase 2 deploy.
+
+### Cross-sample confirmed entry findings — BTC RSI (4 samples: Mar 30 + Apr 6 + Apr 12 + Apr 13)
+
+These are the strongest cross-sample patterns in the entire dataset. Each bucket result replicates across 4 different configs over ~5 weeks. NEXT REPORT is the 5th sample to confirm.
+
+**LONGS:**
+| BTC RSI | Combined n | Combined WR | Pattern | Current config | Target if confirmed |
+|---|---|---|---|---|---|
+| 35-40 | 6 | 17% | **Consistent loser** (negative $ in 3 of 4 samples) | min: 40 | keep |
+| 40-45 | 12 | 66.7% | Mixed → acceptable | min: 40 | keep |
+| 45-50 | 12 | 75% | Winning | — | — |
+| **50-55** | **22** | **50%** | **Negative $ in ALL 4 samples — strongest historical signal** | — | **min: 55** |
+| 55-60 | 35 | 63% | Winning (positive $ in 2 of 4) | — | — |
+| **60-65** | **44** | **73%** | **Best long zone** | max: 65 | keep or relax to 70 |
+| 65-70 | 6 | 67% | Small sample, positive | — | — |
+| 70+ | 13 | 62% | Mixed — watch for exhaustion | — | watch |
+
+**SHORTS:**
+| BTC RSI | Combined n | Combined WR | Pattern | Current config | Target if confirmed |
+|---|---|---|---|---|---|
+| **<30** | **23** | **83%** | **Best short zone — positive in ALL 4 samples** | min: 25 | keep (allows <30) |
+| 30-35 | 25 | 72% | Strong winner (positive in 2 of 3) | — | — |
+| 35-40 | 48 | 60% | Mixed — largest bucket but volatile | — | — |
+| 40-45 | 19 | 63% | Mixed — regime-dependent | — | — |
+| **45-50** | **14** | **36%** | **Consistent loser** (negative in both samples tested) | max: 60 | **max: 45** |
+| 50+ | 3 | 33% | Small sample, losing | — | — |
+
+### Quant methodology notes (avoid repeating mistakes)
+- **Never pool raw trades across different configs.** Each run = different strategy. Use cross-sample patterns only.
+- **Non-monotonic single-variable patterns are usually confounds.** If a mid-range bucket loses while both flanks win, something ELSE (ADX, gap, breadth, regime) is varying with that bucket. Don't filter on non-monotonic holes.
+- **Small N (<10 trades per bucket) is noise, not signal.** Apr 8's "EMA5 Stretch 0.16-0.20% = 100% WR" didn't replicate because it was 4-5 trades.
+- **2-sample confirmation raises confidence from "hypothesis" to "likely real."** 3-sample is "structural finding." 1-sample findings are hypotheses until replicated.
+- **Absolute P&L is leverage-dependent; WR and Avg% are leverage-invariant.** Compare samples using WR/Avg% to normalize across leverage changes.
+- **"More aligned filters" ≠ "higher edge."** Apr 13's Entry Quality Score table showed Score 3 (long) and Score 2-4 (short) were best, while Score 4-5 (long) and Score 5 (short) UNDERPERFORMED. Over-aligned conditions often signal exhaustion/overextension. Don't assume stricter = better.
+
+## Three-Phase Plan to Make the Bot Profitable
+
+### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)
+
+**Goal:** Build a clean sample at frozen Apr 14 config. Identify which setups have real positive expectancy vs which are noise.
+
+**Config:** Apr 14 locked baseline (see above). 1x leverage both confidence levels. NO CONFIG CHANGES.
+
+**Sample target:** ~100 trades, ideally ~50L + 50S for balance.
+
+**Exit criteria to advance to Phase 2:**
+1. PF > 1 overall (or clear on-track trajectory; PF 0.8-1.0 with correctable loss patterns is acceptable)
+2. At least 40 longs + 40 shorts collected (below this, bucket analysis is too noisy)
+3. Core 2-sample-confirmed patterns either replicate or clearly break
+
+**If Phase 1 fails** (PF < 0.5 or WR < 45%): stop and diagnose before Phase 2. Likely requires deeper exit-logic fix (FL2 weak-peak path) before filter changes can help.
+
+### Phase 2 — Redefine VERY_STRONG around confirmed edges (100-200 trades at 1x)
+
+**Goal:** Rebuild the two confidence levels around what ACTUALLY works. VERY_STRONG becomes "high-conviction setup" (confirmed edge), STRONG_BUY stays as catch-all default. Still 1x leverage — proving the edge before leveraging it.
+
+**Required code work before Phase 2 starts:**
+- Modify confidence-level logic in `services/indicators.py` (or wherever signal generation assigns confidence)
+- OLD VERY_STRONG rule (stricter ADX >22) → REMOVE (it pushes into the loser zone per Apr 13)
+- NEW VERY_STRONG rule: AND-combination of 2-sample-confirmed winning conditions
+- STRONG_BUY unchanged: current default filters
+- Add logging to record which VERY_STRONG criteria were met per trade (for post-sample analysis)
+
+**Pre-committed VERY_STRONG definition (lock this BEFORE seeing Phase 1 data to prevent overfitting):**
+
+*Long VERY_STRONG requires ALL of:*
+- `ema_gap_5_8 ≥ 0.08%` (2-sample confirmed: below is loss zone)
+- `range_position ≤ 75%` (2-sample confirmed: 75-100% underperforms)
+- `market_breadth in [50%, 65%]` (2-sample confirmed: 70%+ overextension loses)
+
+*Short VERY_STRONG requires ALL of (PENDING Phase 1 replication of short patterns):*
+- `ema_gap_5_8 ≥ 0.10%`
+- `ema5_stretch ≥ 0.20%` (Apr 13 showed 0.25-0.30% crushes)
+- `ADX in [25, 30]` (avoid 30+ overextension)
+
+*Rule:* Only activate short VERY_STRONG in Phase 2 if Phase 1 shorts replicate the Apr 13 stretch/gap/ADX patterns. If not replicated, short VERY_STRONG stays identical to STRONG_BUY at 1x (no gating).
+
+**What to expect at Phase 2 with proper definition:**
+- VERY_STRONG should be a RARE signal (~15-25% of all entries). If it fires on >40% of entries, the rule is too loose.
+- VERY_STRONG WR should be 75%+ if the rule is capturing real edge
+- VERY_STRONG avg $/trade should be higher than STRONG_BUY (not just WR — expectancy matters)
+- If VERY_STRONG looks identical to STRONG_BUY → the rules aren't capturing real edge. Redesign or abandon the tier system.
+
+**Exit criteria to advance to Phase 3:**
+1. VERY_STRONG at 1x shows WR ≥ 70% AND avg $/trade > STRONG_BUY avg $/trade by meaningful margin (>30% better expectancy)
+2. VERY_STRONG sample size ≥ 20 trades per direction (40+ total) — enough to trust the edge
+3. STRONG_BUY still near-breakeven or better (not gutted by VERY_STRONG siphoning the winners)
+
+**If Phase 2 fails** (VERY_STRONG ≈ STRONG_BUY): tier system doesn't work for this strategy. Stay at single-tier 1x, focus on filter tightening instead.
+
+### Phase 3 — Leverage the confirmed edge (100+ trades with split leverage)
+
+**Goal:** Apply leverage to VERY_STRONG setups whose edge was proven in Phase 2. STRONG_BUY stays 1x.
+
+**Config changes:**
+- `VERY_STRONG.leverage = 2.0` initially (NOT 5x or 10x — start conservative)
+- `STRONG_BUY.leverage = 1.0` (unchanged)
+- Everything else unchanged from Phase 2
+
+**What to measure in Phase 3:**
+- **Expected**: VERY_STRONG P&L ≈ 2× its Phase 2 P&L. WR unchanged. Avg % unchanged.
+- **Red flag**: VERY_STRONG WR drops in Phase 3 despite same entry rules → slippage/execution is worse at 2x (rare but possible if liquidity thin)
+- **Red flag**: VERY_STRONG losses widen relative to wins → variance is eating the edge. Consider reducing leverage to 1.5x.
+- **Safety check**: `|largest drawdown|` as % of balance. At 2x, a -0.9% SL = -1.8% of invested capital. If open position count × 1.8% > your risk tolerance, cap `max_open_positions` for VERY_STRONG.
+
+**Exit criteria to advance to Phase 4 (higher leverage):**
+1. VERY_STRONG at 2x shows real-dollar P&L ≥ 1.7× Phase 2 (confirms leverage isn't causing degradation)
+2. Max drawdown stays within acceptable range
+3. Sample size ≥ 50 VERY_STRONG trades at 2x (enough to confirm edge survives leverage)
+
+**If Phase 3 fails** (leveraged P&L < 1.5× unleveraged): stop increasing leverage. The edge exists but doesn't scale linearly due to execution/slippage/variance. Stay at 2x as a sweet spot.
+
+### Phase 4+ — Iterate (ongoing)
+
+Once Phase 3 validates 2x leverage:
+- Consider: `VERY_STRONG.leverage = 3.0` experiment
+- Consider: adding a third tier "PRIME" for even tighter setups at higher leverage
+- Consider: applying leverage logic to shorts separately from longs
+- Never increase leverage faster than one step per validated phase
+- Each leverage increase requires ≥50-trade validation before considering the next
+
+### Anti-overfit rules (MUST follow at every phase)
+
+1. **Lock the VERY_STRONG definition BEFORE seeing the data that would inform it.** Today (Apr 14) is the lock date. The definition above uses only 2-sample-confirmed criteria. Don't modify it based on Phase 1 data to "optimize" — that's textbook overfitting.
+
+2. **Minimum sample sizes are hard gates.** Don't advance a phase with fewer trades than required. 20 VERY_STRONG trades for tier validation, 50 for leverage validation.
+
+3. **If the rule produces near-zero signals, it's over-constrained.** Loosen one condition at a time until signal rate is 15-25% of entries. But loosen only within the 2-sample-confirmed range (don't introduce new criteria).
+
+4. **Never leverage a 1-sample finding.** Short VERY_STRONG must wait for Phase 1 replication. Leveraging something that appeared once is coin-flip gambling.
+
+5. **Symmetry check**: if Long VERY_STRONG has 3 criteria, Short VERY_STRONG should also have ~3 criteria of similar strictness. Asymmetric rules usually indicate one side is overfit.
+
+### Rough timeline (at 20 trades/day paper rate)
+- Phase 1 (100 trades): ~5 days
+- Phase 2 (100-200 trades): ~5-10 days
+- Phase 3 (100 trades): ~5 days
+- **Total: ~3 weeks minimum** to get to validated 2x leverage
+
+This is deliberately slow. Compressing the timeline is the most common way to blow up a new strategy.

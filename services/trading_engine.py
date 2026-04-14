@@ -488,26 +488,59 @@ class TradingEngine:
         count_24h = int(row_24h[1] or 0)
         
         result_12h = await db.execute(
-            select(func.coalesce(func.sum(Order.total_fee), 0)).where(
+            select(
+                func.coalesce(func.sum(Order.total_fee), 0),
+                func.count(Order.id),
+                func.min(Order.closed_at),
+            ).where(
                 and_(Order.status == "CLOSED", Order.closed_at >= cutoff_12h)
             )
         )
-        fees_12h = float(result_12h.scalar() or 0)
-        
-        # Use actual bot runtime (capped at 24h, floored at 1h) so burn rate
-        # is accurate for newly-started bots. Previously this was hardcoded to
-        # 24.0, which severely underestimated burn rate for bots running <24h
-        # and led to insufficient BNB provisioning (silently paying full fees).
-        runtime_seconds = (now - self.started_at).total_seconds() if self.started_at else 86400
-        runtime_hours = max(1.0, min(24.0, runtime_seconds / 3600.0))
-        hours_elapsed = runtime_hours if count_24h > 0 else 0
-        self._bnb_burn_rate = fees_24h / hours_elapsed if hours_elapsed > 0 else 0
+        row_12h = result_12h.one()
+        fees_12h = float(row_12h[0] or 0)
+        count_12h = int(row_12h[1] or 0)
+        oldest_12h = row_12h[2]
+
+        # Oldest closed trade inside the 24h window — used to measure the TRUE
+        # time span of the fee data, not bot runtime. The DB persists across
+        # bot restarts, so dividing fees_24h by runtime (as the previous version
+        # did) grossly overestimates burn rate immediately after a restart.
+        # Example: DB has 21 trades / $51 fees over the past day, bot restarted
+        # 5 min ago → old code computed $51 / 1h = $51/hr (24x inflated), which
+        # triggered a ~$1,200 scheduled BNB buy. Using data span gives $51/24h
+        # = $2.13/hr, the actual value.
+        result_oldest_24h = await db.execute(
+            select(func.min(Order.closed_at)).where(
+                and_(Order.status == "CLOSED", Order.closed_at >= cutoff_24h)
+            )
+        )
+        oldest_24h = result_oldest_24h.scalar()
+
+        if count_24h > 0 and oldest_24h:
+            span_24h_hours = max(1.0, min(24.0, (now - oldest_24h).total_seconds() / 3600.0))
+        else:
+            span_24h_hours = 0
+        self._bnb_burn_rate = fees_24h / span_24h_hours if span_24h_hours > 0 else 0
         self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
-        # Emergency threshold: scale to match the projected runway (12h worth of fees).
-        # Previously this used raw fees_12h which is stale for newly-started bots.
-        runtime_12h_hours = max(1.0, min(12.0, runtime_seconds / 3600.0))
-        burn_rate_12h = (fees_12h / runtime_12h_hours) if runtime_12h_hours > 0 else 0
+
+        # Same logic for 12h emergency threshold: measure actual data span.
+        if count_12h > 0 and oldest_12h:
+            span_12h_hours = max(1.0, min(12.0, (now - oldest_12h).total_seconds() / 3600.0))
+            burn_rate_12h = fees_12h / span_12h_hours
+        else:
+            burn_rate_12h = 0
         self._bnb_emergency_threshold = burn_rate_12h * 12.0
+
+        # Safety rail: burn_rate (in $/hr) can never exceed total fees when the
+        # window is >= 1h. If this ever trips, the span calculation is broken
+        # and we refuse to swap rather than over-spend.
+        if self._bnb_burn_rate > fees_24h and fees_24h > 0:
+            logger.error(
+                f"[BNB_CHECK] Burn rate sanity check failed: "
+                f"${self._bnb_burn_rate:.2f}/hr > ${fees_24h:.2f} total 24h fees. "
+                f"Refusing to swap. span_24h_hours={span_24h_hours}"
+            )
+            return
         
         if self._bnb_projected_need <= 0:
             logger.info("[BNB_CHECK] No fee history yet, skipping swap check")

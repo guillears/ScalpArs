@@ -2254,9 +2254,11 @@ class TradingEngine:
             realtime_peak = order.peak_pnl or 0
             realtime_trough = order.trough_pnl or 0
             realtime_peak_ema5_gap = order.peak_ema5_gap or 0
+            cached = None  # guard: may stay None for newly-opened trades not yet cached
             async with _cache_lock:
-                for cached in _open_orders_cache.get(order.pair, []):
-                    if cached['id'] == order.id:
+                for _cached_iter in _open_orders_cache.get(order.pair, []):
+                    if _cached_iter['id'] == order.id:
+                        cached = _cached_iter
                         realtime_peak = max(realtime_peak, cached.get('peak_pnl', 0))
                         realtime_trough = min(realtime_trough, cached.get('trough_pnl', 0))
                         realtime_peak_ema5_gap = max(realtime_peak_ema5_gap, cached.get('peak_ema5_gap', 0))
@@ -2352,20 +2354,21 @@ class TradingEngine:
             # Regime Neutral tracking: record when regime goes NEUTRAL, comes back, or goes opposite
             _favorable_regime = "BULLISH" if order.direction == "LONG" else "BEARISH"
             _opposite_regime = "BEARISH" if order.direction == "LONG" else "BULLISH"
-            if _current_btc_regime == "NEUTRAL" and not cached.get('regime_neutral_hit'):
-                cached['regime_neutral_hit'] = True
-                cached['regime_neutral_hit_at'] = datetime.utcnow()
-                cached['regime_neutral_pnl'] = round(pnl_pct, 4)
-                logger.info(f"[REGIME_NEUTRAL] {order.pair} {order.direction}: regime went NEUTRAL (pnl={pnl_pct:.4f}%)")
-            elif cached.get('regime_neutral_hit'):
-                if _current_btc_regime == _favorable_regime and not cached.get('regime_comeback_at'):
-                    cached['regime_comeback_at'] = datetime.utcnow()
-                    cached['regime_comeback_pnl'] = round(pnl_pct, 4)
-                    logger.info(f"[REGIME_COMEBACK] {order.pair} {order.direction}: regime back to {_favorable_regime} (pnl={pnl_pct:.4f}%)")
-                elif _current_btc_regime == _opposite_regime and not cached.get('regime_opposite_at'):
-                    cached['regime_opposite_at'] = datetime.utcnow()
-                    cached['regime_opposite_pnl'] = round(pnl_pct, 4)
-                    logger.info(f"[REGIME_OPPOSITE] {order.pair} {order.direction}: regime went {_opposite_regime} (pnl={pnl_pct:.4f}%)")
+            if cached is not None:
+                if _current_btc_regime == "NEUTRAL" and not cached.get('regime_neutral_hit'):
+                    cached['regime_neutral_hit'] = True
+                    cached['regime_neutral_hit_at'] = datetime.utcnow()
+                    cached['regime_neutral_pnl'] = round(pnl_pct, 4)
+                    logger.info(f"[REGIME_NEUTRAL] {order.pair} {order.direction}: regime went NEUTRAL (pnl={pnl_pct:.4f}%)")
+                elif cached.get('regime_neutral_hit'):
+                    if _current_btc_regime == _favorable_regime and not cached.get('regime_comeback_at'):
+                        cached['regime_comeback_at'] = datetime.utcnow()
+                        cached['regime_comeback_pnl'] = round(pnl_pct, 4)
+                        logger.info(f"[REGIME_COMEBACK] {order.pair} {order.direction}: regime back to {_favorable_regime} (pnl={pnl_pct:.4f}%)")
+                    elif _current_btc_regime == _opposite_regime and not cached.get('regime_opposite_at'):
+                        cached['regime_opposite_at'] = datetime.utcnow()
+                        cached['regime_opposite_pnl'] = round(pnl_pct, 4)
+                        logger.info(f"[REGIME_OPPOSITE] {order.pair} {order.direction}: regime went {_opposite_regime} (pnl={pnl_pct:.4f}%)")
 
             # REGIME_CHANGE: close when BTC macro regime flips against trade direction
             regime_exit_enabled = getattr(config.trading_config.thresholds, 'regime_change_exit_enabled', True)

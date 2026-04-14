@@ -330,15 +330,47 @@ class TradingEngine:
         return correct
 
     async def _deduct_fee_from_bnb(self, fee_usd: float, db: AsyncSession):
-        """Deduct a fee (in USDT) from the paper BNB balance and check emergency threshold."""
-        if not self.is_paper_mode or fee_usd <= 0:
+        """Check BNB reserve after a fee is paid; trigger emergency swap if low.
+
+        Paper mode: decrements in-memory paper BNB balance and checks threshold.
+        Live mode: queries actual Binance BNB balance and checks threshold.
+        Without this live-mode path, emergency swaps only happened every 6h
+        via bnb_scheduled_check, causing silent fee increases when BNB ran out
+        between checks.
+        """
+        tc = config.trading_config
+        if fee_usd <= 0 or not tc.bnb_swap_enabled:
             return
-        self.paper_bnb_balance_usd -= fee_usd
-        if self.paper_bnb_balance_usd < 0:
-            self.paper_bnb_balance_usd = 0
-        if config.trading_config.bnb_swap_enabled and self._bnb_emergency_threshold > 0:
-            if self.paper_bnb_balance_usd < self._bnb_emergency_threshold:
-                await self._execute_bnb_swap(db, swap_type="emergency")
+
+        if self.is_paper_mode:
+            self.paper_bnb_balance_usd -= fee_usd
+            if self.paper_bnb_balance_usd < 0:
+                self.paper_bnb_balance_usd = 0
+            current_bnb = self.paper_bnb_balance_usd
+        else:
+            # Live: query actual wallet BNB balance
+            try:
+                balance = await binance_service.get_balance()
+                bnb_price = await binance_service.get_bnb_price()
+                if bnb_price <= 0 or not balance:
+                    return
+                current_bnb = balance.get('bnb_total', 0) * bnb_price
+            except Exception as e:
+                logger.warning(f"[BNB_EMERGENCY] Failed to query live BNB balance: {e}")
+                return
+
+        # Fallback emergency threshold for cold-start (before first scheduled check).
+        # Uses 10% of initial BNB target as a conservative floor.
+        emergency_threshold = self._bnb_emergency_threshold
+        if emergency_threshold <= 0:
+            emergency_threshold = tc.paper_bnb_initial_usd * 0.1
+
+        if current_bnb < emergency_threshold:
+            logger.warning(
+                f"[BNB_EMERGENCY] {'Paper' if self.is_paper_mode else 'Live'} BNB ${current_bnb:.2f} "
+                f"< emergency threshold ${emergency_threshold:.2f} — triggering swap"
+            )
+            await self._execute_bnb_swap(db, swap_type="emergency")
 
     async def _execute_bnb_swap(self, db: AsyncSession, swap_type: str = "scheduled"):
         """Execute a USDT→BNB swap (paper or live)."""
@@ -462,10 +494,20 @@ class TradingEngine:
         )
         fees_12h = float(result_12h.scalar() or 0)
         
-        hours_elapsed = 24.0 if count_24h > 0 else 0
+        # Use actual bot runtime (capped at 24h, floored at 1h) so burn rate
+        # is accurate for newly-started bots. Previously this was hardcoded to
+        # 24.0, which severely underestimated burn rate for bots running <24h
+        # and led to insufficient BNB provisioning (silently paying full fees).
+        runtime_seconds = (now - self.started_at).total_seconds() if self.started_at else 86400
+        runtime_hours = max(1.0, min(24.0, runtime_seconds / 3600.0))
+        hours_elapsed = runtime_hours if count_24h > 0 else 0
         self._bnb_burn_rate = fees_24h / hours_elapsed if hours_elapsed > 0 else 0
         self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
-        self._bnb_emergency_threshold = fees_12h
+        # Emergency threshold: scale to match the projected runway (12h worth of fees).
+        # Previously this used raw fees_12h which is stale for newly-started bots.
+        runtime_12h_hours = max(1.0, min(12.0, runtime_seconds / 3600.0))
+        burn_rate_12h = (fees_12h / runtime_12h_hours) if runtime_12h_hours > 0 else 0
+        self._bnb_emergency_threshold = burn_rate_12h * 12.0
         
         if self._bnb_projected_need <= 0:
             logger.info("[BNB_CHECK] No fee history yet, skipping swap check")

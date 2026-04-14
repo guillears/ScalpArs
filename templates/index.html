@@ -4947,7 +4947,7 @@
                 // Period Performance table
                 const ppBody = document.getElementById('period-performance-body');
                 // Projected Balance: current balance × (1 + DCR)^days
-                const _ppCurrentBal = balData ? (balData.usdt_balance || 0) + (balData.usdt_in_orders || 0) : null;
+                const _ppCurrentBal = balData ? (balData.total_portfolio || ((balData.usdt_balance || 0) + (balData.usdt_in_orders || 0))) : null;
                 const _ppDCR = (data.daily_compound_return || 0) / 100; // convert % to decimal
                 const _ppDaysMap = {'Last 6h': 0.25, 'Last 12h': 0.5, '1 Day': 1, '2 Days': 2, '3 Days': 3, '5 Days': 5, '7 Days': 7, '15 Days': 15, '30 Days': 30, 'Total': null};
                 const _ppProjected = (period) => {

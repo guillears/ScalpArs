@@ -186,6 +186,24 @@ Three real options were presented to the user on Apr 11, decision deferred:
 
 ## April 14, 2026 — Locked Baseline for 100-Trade Fine-Tuning Sample
 
+### Filter design principle (how we make filter decisions)
+**Use raw BTC dimension tables, not regime labels.** The BTC regime classifier
+(`services/regime.py`) is a lossy summary of BTC ADX + RSI + Slope with arbitrary
+thresholds (ADX cutoff 28, slope flat 0.02%, RSI exhaustion 30/70). Filter decisions
+should be made on the raw dimension tables (`Performance by BTC ADX`,
+`Performance by BTC Entry RSI`, `Performance by BTC EMA20 Slope`) and cross-tabs
+(`BTC RSI × BTC ADX`, `BTC Slope × BTC ADX`) directly. Regime labels are retained
+for reporting/intuition only, not for gating logic.
+
+**Implementation target (Phase 2 code work):** Build a "BTC RSI × BTC ADX Cross-Filter"
+UI section at BTC level, mirroring the existing pair-level `RSI x ADX Cross-Filter`
+(see UI: "Restrict which ADX ranges are allowed per RSI range. Empty = allow all
+combinations."). Separate LONG rules and SHORT rules. Each rule says: "for BTC RSI
+range [min, max], require BTC ADX ≥ X" or "require BTC ADX ≤ X" or "block entirely."
+Empty = allow all combinations. This replaces the need for hard-coded conditional
+logic with flexible per-direction rules. Stored as `btc_rsi_adx_filter_long` and
+`btc_rsi_adx_filter_short` strings, same format as existing pair-level strings.
+
 ### Target sample
 **100 trades: ~50 longs + ~50 shorts** collected at 1x leverage under frozen config. This is the decision point for the first round of data-driven filter tuning. Paper mode.
 
@@ -289,17 +307,33 @@ When the fresh report arrives, answer these questions in order:
 14. **Long BTC RSI 60-65 still winning?** Historical: 44 combined trades, 73% WR, best zone. If confirmed → keep `btc_rsi_max_long: 65` or relax to 70.
 15. **Short BTC RSI <35 still winning?** Historical: 48 combined trades, 77% WR across Mar 30 + Apr 6 + Apr 12 + Apr 13. If confirmed → this is the golden short zone.
 16. **Short BTC RSI 45-50 still losing?** Historical: 14 combined trades, 36% WR. If confirmed → set `btc_rsi_max_short: 45`.
+17. **Short BTC RSI <30 × BTC ADX cross-tab — IS IT CONDITIONAL?** Early Apr 15 data (4 trades) showed <30 winning only when BTC ADX 20-25 (1/1 win), losing when BTC ADX 25+ (0/3 wins). Historical data had BTC RSI <30 mostly at BTC ADX 20-25 (Apr 13 had 6/7 of <30 shorts in that bucket, 83% WR). Hypothesis: the <30 short edge may be conditional on BTC being in moderate trend (ADX 20-25), not strong trend. At 100 trades, build the full BTC RSI <30 × BTC ADX cross-tab. Decision logic:
+    - If BTC RSI <30 + BTC ADX 20-25 wins (≥10 trades, ≥65% WR) AND BTC RSI <30 + BTC ADX 25+ loses (≥10 trades, ≤40% WR) → **conditional filter**: allow `btc_rsi < 30` entries ONLY when `btc_adx < 25`. Requires code change (not just config).
+    - If BTC RSI <30 loses across ALL BTC ADX buckets (≥15 trades combined, <45% WR) → **raise `btc_rsi_min_short: 30`** (remove <30 entirely).
+    - If BTC RSI <30 wins across all BTC ADX buckets → keep current setting, historical pattern confirmed.
+    - If N <10 → inconclusive, wait for 200-trade sample.
 
 Note: these filters currently only activate when `btc_global_filter_enabled = true` (which is OFF). Phase 2 code work: move them into "BTC Independent Filters" section (like BTC ADX range already is) so they can be applied without bundling BTC regime alignment.
 
+**BTC ADX × BTC Slope — 2-sample confirmed shorts finding (HIGHEST PRIORITY after Q13)**
+17b. **BTC ADX 18-27 + slope falling WINS; BTC ADX ≥28 + slope falling LOSES — 3rd-sample confirmation.** Apr 13 + Apr 15 combined:
+    - BTC ADX 18-27 + slope falling: **27 shorts, 81% WR, +$19.93** (equivalent to what the classifier calls HEALTHY_BEAR)
+    - BTC ADX ≥28 + slope falling: **27 shorts, 52% WR, -$10.71** (classifier: STRONG_BEAR + BEAR_EXHAUSTED)
+    - Same sample size, opposite outcomes. If 3rd sample replicates → **strongest short filter in the dataset.**
+    
+    Decision logic at 100 trades (TBD Phase 2 filter):
+    - If shorts in BTC ADX ≥28 + slope falling still lose (≥10 trades, ≤50% WR) AND shorts in BTC ADX 18-27 + slope falling still win (≥10 trades, ≥65% WR) → **implement raw-dimension filter**: block shorts when `btc_adx >= 28 AND btc_slope < 0`. Expressed in the proposed "BTC RSI × BTC ADX Cross-Filter" UI as: no direct RSI rule needed; a separate "BTC ADX max for shorts in downtrend" cap, or a rule that disallows the specific (BTC ADX ≥28, slope < 0) combination.
+    - If patterns don't replicate → reopen analysis.
+    - This overlaps Q17 (BTC RSI <30 × BTC ADX). Raw-dimension filters handle both: the conditional "BTC RSI <30 only when BTC ADX <25" and the "block ADX ≥28 + slope falling" are both expressible as cross-filter rules without needing a regime classifier.
+
 **New SHORT questions (Apr 13 was 1-sample)**
-17. Short EMA5 Stretch: 0.25-0.30% best, 0.16-0.20% worst? Replicates = add `short_min_ema5_stretch` filter.
-18. Short EMA5-EMA8 gap 0.18-0.20% best bucket replicate?
-19. Short ADX 25-30 > 30-35 replicate?
+18. Short EMA5 Stretch: 0.25-0.30% best, 0.16-0.20% worst? Replicates = add `short_min_ema5_stretch` filter.
+19. Short EMA5-EMA8 gap 0.18-0.20% best bucket replicate?
+20. Short ADX 25-30 > 30-35 replicate?
 
 **New exit validation (Apr 14 changes)**
-20. Did TP 0.50 / pullback 0.20 actually capture more of the post-peak move? Compare Apr 13 winners avg close +0.39% vs new sample winners avg close %.
-21. Any "Positive, No BE" regression (trades that used to exit profitably now hitting SL)?
+21. Did TP 0.50 / pullback 0.20 actually capture more of the post-peak move? Compare Apr 13 winners avg close +0.39% vs new sample winners avg close %.
+22. Any "Positive, No BE" regression (trades that used to exit profitably now hitting SL)?
 
 ### Known issues flagged for investigation AFTER 100-trade review
 - **VERY_STRONG**: disable if 2nd sample confirms underperformance
@@ -308,6 +342,12 @@ Note: these filters currently only activate when `btc_global_filter_enabled = tr
 - **Long ADX max**: cap at 22 vs leave at 25 — decide from 3rd sample
 - **Short-specific filters**: `short_min_ema5_stretch = 0.20` candidate if Apr 13 short pattern replicates
 - **BTC RSI independent filters** (Option B code refactor): Move `btc_rsi_min/max_long/short` and `btc_adx_dir_long/short` OUT of the `if btc_global_enabled:` block in `services/trading_engine.py:3067+` and INTO the independent BTC filter section (alongside BTC ADX range, which is already independent per code comment). Add UI toggles in "BTC Independent Filters" section. If Phase 1 confirms the 4-sample BTC RSI patterns, apply new ranges simultaneously: `btc_rsi_min_long: 55`, `btc_rsi_max_short: 45`. Ship the refactor + new ranges in one Phase 2 deploy.
+- **BTC RSI × BTC ADX Cross-Filter (Phase 2 code work — preferred implementation for all BTC-level conditional filters)**: Build a BTC-level RSI×ADX cross-filter section in the UI, mirroring the existing pair-level `RSI x ADX Cross-Filter`. Separate LONG rules and SHORT rules tables. Each rule: "for BTC RSI range [min, max], require BTC ADX in range [min, max] (or ≥ X, or ≤ X)." Empty = allow all combinations. Stored as config strings `btc_rsi_adx_filter_long` and `btc_rsi_adx_filter_short` (same string format as existing pair-level `rsi_adx_filter_long/short`). This single mechanism replaces:
+  - Hard-coded conditional "allow BTC RSI <30 only when BTC ADX <25" logic
+  - Regime-based blocking ("skip STRONG_BEAR shorts")
+  - Static `btc_rsi_min/max_long/short` caps (which the cross-filter can also express)
+
+  Advantages: no classifier to maintain, no arbitrary thresholds baked in, any future BTC conditional filter becomes a UI rule rather than code work. File locations to modify: `services/trading_engine.py` (filter evaluation), `config.py` (schema), `templates/index.html` (UI section).
 
 ### Cross-sample confirmed entry findings — BTC RSI (4 samples: Mar 30 + Apr 6 + Apr 12 + Apr 13)
 
@@ -328,12 +368,28 @@ These are the strongest cross-sample patterns in the entire dataset. Each bucket
 **SHORTS:**
 | BTC RSI | Combined n | Combined WR | Pattern | Current config | Target if confirmed |
 |---|---|---|---|---|---|
-| **<30** | **23** | **83%** | **Best short zone — positive in ALL 4 samples** | min: 25 | keep (allows <30) |
+| **<30** | **23 (+4 Apr 15)** | **83% historical, 25% Apr 15** | **⚠️ Possibly conditional on BTC ADX** — Apr 15 early data (4 trades) flipped to losing. Cross-tab hint: wins at BTC ADX 20-25, loses at BTC ADX 25+. Historical samples had BTC in moderate ADX; current sample has BTC in strong trend. | min: 25 | **Check Q17 at 100 trades** |
 | 30-35 | 25 | 72% | Strong winner (positive in 2 of 3) | — | — |
 | 35-40 | 48 | 60% | Mixed — largest bucket but volatile | — | — |
 | 40-45 | 19 | 63% | Mixed — regime-dependent | — | — |
 | **45-50** | **14** | **36%** | **Consistent loser** (negative in both samples tested) | max: 60 | **max: 45** |
 | 50+ | 3 | 33% | Small sample, losing | — | — |
+
+### Cross-sample confirmed entry findings — BTC ADX × Slope for SHORTS (Apr 13 + Apr 15)
+
+**2-sample confirmed — one of the strongest findings in the dataset.** Below is expressed in raw dimensions (BTC ADX bucket + BTC slope direction) rather than regime labels. Source tables archived at `reports/btc_regime_tables_not_in_main_reports.md` (Apr 13 per-regime breakdown was from a user-provided screenshot — retained for historical reference only, not for filter-design input).
+
+| Raw dimensions | Apr 13 | Apr 15 | **Combined (69 shorts)** | Verdict |
+|---|---|---|---|---|
+| **BTC ADX 18-27, slope falling** | 18 / 83% / +$14.17 | 9 / 78% / +$5.76 | **27 / 81% / +$19.93** | ★ BEST — winning zone, consistent both samples |
+| **BTC ADX ≥28, slope falling** | 20 / 50% / -$10.52 | 7 / 57% / -$0.19 | **27 / 52% / -$10.71** | ★ LOSER — same sample size, opposite result |
+| BTC ADX ≥28, slope falling, RSI ≤30 | 1 / 100% / +$0.81 | 2 / 0% / -$1.07 | 3 / 33% / -$0.26 | Small N, directionally negative (≡ classifier's BEAR_EXHAUSTED) |
+| BTC ADX <18 (any slope) | 7 / 43% / -$2.54 | — | 7 / 43% / -$2.54 | Losing (Apr 13 only) (≡ classifier's CHOPPY_WEAK) |
+| BTC ADX ≥18, `|slope|` <0.02% | 4 / 25% / -$2.69 | — | 4 / 25% / -$2.69 | Losing (Apr 13 only) (≡ classifier's CHOPPY_FLAT) |
+
+**Key insight:** The winning bucket and losing bucket differ ONLY by BTC ADX cutoff (27 vs 28 with slope falling). 27 trades each, opposite outcomes. This signal lives in raw dimensions — no regime label needed.
+
+**Phase 2 filter candidate (TBD — not yet committed):** Block short entries when BTC ADX ≥28 AND slope falling. Keep BTC ADX 18-27 + slope falling (the winning zone). Estimated impact on Apr 13 + Apr 15 combined: cut 41 losing trades (-$16), keep 27 winning trades (+$19.93), PF jumps from current ~1.1 to ~3. **Implementation mechanism:** the proposed BTC RSI × BTC ADX Cross-Filter UI (see "Filter design principle" section above). **Exact filter definition to be decided at 100-trade review based on confirmation in fresh data.**
 
 ### Quant methodology notes (avoid repeating mistakes)
 - **Never pool raw trades across different configs.** Each run = different strategy. Use cross-sample patterns only.

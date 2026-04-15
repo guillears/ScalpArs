@@ -315,6 +315,14 @@ When the fresh report arrives, answer these questions in order:
 
 Note: these filters currently only activate when `btc_global_filter_enabled = true` (which is OFF). Phase 2 code work: move them into "BTC Independent Filters" section (like BTC ADX range already is) so they can be applied without bundling BTC regime alignment.
 
+**Pre-committed BTC RSI × BTC ADX rule validation (5th-sample check)**
+17c. **Validate each pre-committed BTC RSI × BTC ADX rule against fresh data.** For each of the 4 HARD BLOCK rules (L-B1, S-B1, S-B2, S-B3) and 4 PREMIUM ZONE rules (L-P1, L-P2, S-P1, S-P2) documented in the Pre-committed Phase 2 section: count trades in the bucket, compute WR. Apply gates:
+    - HARD BLOCK rule shows ≥55% WR with ≥5 trades → drop the block (pattern broke in 5th sample)
+    - PREMIUM ZONE rule shows ≤55% WR with ≥5 trades → demote from VERY_STRONG (no leverage boost)
+    - <4 trades in bucket → insufficient data, ship rule unchanged, re-validate at 200 trades
+    
+    Special attention: `SHORT + <30 RSI + ADX 25-30` and `+ ADX 30-35` — currently PENDING. If Phase 1 confirms losing (≤50% WR with ≥5 trades), add them to HARD BLOCKS. If still winning (≥65% WR with ≥5 trades), add to PREMIUM ZONES.
+
 **BTC ADX × BTC Slope — 2-sample confirmed shorts finding (HIGHEST PRIORITY after Q13)**
 17b. **BTC ADX 18-27 + slope falling WINS; BTC ADX ≥28 + slope falling LOSES — 3rd-sample confirmation.** Apr 13 + Apr 15 combined:
     - BTC ADX 18-27 + slope falling: **27 shorts, 81% WR, +$19.93** (equivalent to what the classifier calls HEALTHY_BEAR)
@@ -440,6 +448,37 @@ These are the strongest cross-sample patterns in the entire dataset. Each bucket
 - `ADX in [25, 30]` (avoid 30+ overextension)
 
 *Rule:* Only activate short VERY_STRONG in Phase 2 if Phase 1 shorts replicate the Apr 13 stretch/gap/ADX patterns. If not replicated, short VERY_STRONG stays identical to STRONG_BUY at 1x (no gating).
+
+**Pre-committed BTC RSI × BTC ADX Cross-Filter rules (locked Apr 15, based on 4-5 sample cross-tab aggregation):**
+
+These rules are derived from aggregating the BTC RSI × BTC ADX cross-tab across Mar 30 + Apr 6 + Apr 12 + Apr 13 + Apr 15 samples. Each has N ≥ 4 trades combined, with consistent pattern across multiple samples under different configs. **Locked TODAY, before Phase 1 data arrives, to prevent overfitting.** Will be implemented via the BTC RSI × BTC ADX Cross-Filter UI (see Filter design principle above). At 100-trade review, each rule is re-validated against fresh sample — if 5th sample flips the sign meaningfully, the rule is dropped. Otherwise it ships as the default Phase 2 filter set.
+
+**HARD BLOCKS (never trade these conditions):**
+
+| Rule ID | Direction | BTC RSI | BTC ADX | Historical n | WR | Total $ | Samples |
+|---|---|---|---|---|---|---|---|
+| L-B1 | LONG | 50-55 | 25-30 | 6 | **17%** | **-$501** | 4 samples, negative in each |
+| S-B1 | SHORT | 35-40 | 15-20 | 9 | 44% | -$103 | 4 samples |
+| S-B2 | SHORT | 35-40 | 30-35 | 13 | 54% | -$130 | 3 samples |
+| S-B3 | SHORT | 45-50 | 15-20 | 8 | 37.5% | -$2 | 2 samples |
+
+**PREMIUM ZONES (candidates for VERY_STRONG tier if Phase 2 code supports per-bucket leverage):**
+
+| Rule ID | Direction | BTC RSI | BTC ADX | Historical n | WR | Total $ | Samples |
+|---|---|---|---|---|---|---|---|
+| L-P1 | LONG | 60-65 | 20-25 | **19** | **74%** | +$126 | 4 samples — largest N long bucket |
+| L-P2 | LONG | 60-65 | 30-35 | 4 | 100% | +$20 | 3 samples, 4/4 winners |
+| S-P1 | SHORT | <30 | 20-25 | 13 | 77% | +$32 (excl Mar 30 outlier) | 4 samples |
+| S-P2 | SHORT | 30-35 | 25-30 | 12 | 83% | +$1052 | 4 samples |
+
+**Rules NOT committed (need Phase 1 data before locking):**
+- `SHORT + <30 + ADX 25-30` and `SHORT + <30 + ADX 30-35`: historically winners but Apr 15 (4 trades) flipped sign. Hypothesis: <30 RSI edge may be conditional on ADX 20-25 only. Needs 5th sample to confirm.
+- `LONG + 50-55 + ADX 20-25` (-$8, 7 trades, 43% WR): directional loser but N small. Watch at 100 trades.
+
+**5th-sample validation gates at 100-trade review:**
+- If any HARD BLOCK rule shows ≥55% WR with ≥5 trades → drop the block (pattern broke)
+- If any PREMIUM ZONE rule shows ≤55% WR with ≥5 trades → demote to neutral (no VERY_STRONG boost)
+- If a rule gets <4 trades at 100 → insufficient 5th-sample data, ship rule unchanged, re-validate at 200 trades
 
 **What to expect at Phase 2 with proper definition:**
 - VERY_STRONG should be a RARE signal (~15-25% of all entries). If it fires on >40% of entries, the rule is too loose.

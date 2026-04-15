@@ -428,12 +428,22 @@ These are the strongest cross-sample patterns in the entire dataset. Each bucket
 
 **Goal:** Rebuild the two confidence levels around what ACTUALLY works. VERY_STRONG becomes "high-conviction setup" (confirmed edge), STRONG_BUY stays as catch-all default. Still 1x leverage — proving the edge before leveraging it.
 
+**IMPORTANT: BTC-level vs Pair-level filters are at different levels and must not be conflated:**
+- **BTC-level filters** (HARD BLOCKS, PREMIUM ZONES from pre-committed rules): macro entry gating based on BTC RSI × BTC ADX. Implemented via `btc_rsi_adx_filter_long/short` config (the proposed BTC-level Cross-Filter UI).
+- **Pair-level tier** (VERY_STRONG vs STRONG_BUY): per-pair setup quality based on pair ema_gap, range_position, breadth. Implemented via `confidence_levels.*` config.
+- A single trade has BOTH: BTC filter decides "allowed at all?", pair-level tier decides "STRONG_BUY or VERY_STRONG?".
+- PREMIUM ZONE rules (L-P1, L-P2, S-P1, S-P2) are BTC-level. They do NOT define VERY_STRONG — that's pair-level.
+
 **Required code work before Phase 2 starts:**
-- Modify confidence-level logic in `services/indicators.py` (or wherever signal generation assigns confidence)
-- OLD VERY_STRONG rule (stricter ADX >22) → REMOVE (it pushes into the loser zone per Apr 13)
-- NEW VERY_STRONG rule: AND-combination of 2-sample-confirmed winning conditions
-- STRONG_BUY unchanged: current default filters
-- Add logging to record which VERY_STRONG criteria were met per trade (for post-sample analysis)
+1. **Build BTC RSI × BTC ADX Cross-Filter UI** (mirrors existing pair-level `RSI x ADX Cross-Filter`). Stored as `btc_rsi_adx_filter_long` and `btc_rsi_adx_filter_short` strings. Separate LONG rules and SHORT rules tables.
+2. **Option B refactor**: move BTC RSI and BTC ADX Dir filters OUT of `if btc_global_enabled:` block in `services/trading_engine.py:3067+` into independent "BTC Independent Filters" section (like BTC ADX range already is).
+3. **Implement the 8 pre-committed BTC-level rules** (4 HARD BLOCKS + 4 PREMIUM ZONES from the Phase 2 pre-committed section above) as the default filter config that ships with Phase 2 code.
+4. **Redefine VERY_STRONG at PAIR level** using the documented pair-level rules:
+   - OLD VERY_STRONG rule (stricter ADX >22) → REMOVE (pushes into the loser zone per Apr 13)
+   - NEW VERY_STRONG rule: AND-combination of the 2-sample-confirmed pair-level winning conditions (see definition below)
+   - STRONG_BUY unchanged: current default filters
+   - Modify confidence-level logic in `services/indicators.py` (or wherever signal generation assigns confidence)
+5. **Logging is NOT needed as a separate work item** — existing logged dimensions (`btc_rsi_at_entry`, `btc_adx_at_entry`, `ema_gap_5_8_at_entry`, `range_position_at_entry`, `market_breadth_at_entry`, etc.) already capture everything needed to derive rule matches at report time. A post-sample report query/script can compute which rule each trade matched — no schema change needed unless a specific dimension is found missing.
 
 **Pre-committed VERY_STRONG definition (lock this BEFORE seeing Phase 1 data to prevent overfitting):**
 
@@ -493,36 +503,65 @@ These rules are derived from aggregating the BTC RSI × BTC ADX cross-tab across
 
 **If Phase 2 fails** (VERY_STRONG ≈ STRONG_BUY): tier system doesn't work for this strategy. Stay at single-tier 1x, focus on filter tightening instead.
 
-### Phase 3 — Leverage the confirmed edge (100+ trades with split leverage)
+### Phase 3 — Data-driven per-bucket leverage (100+ trades with variable leverage)
 
-**Goal:** Apply leverage to VERY_STRONG setups whose edge was proven in Phase 2. STRONG_BUY stays 1x.
+**Goal:** Apply leverage based on per-bucket expectancy data from Phase 2, NOT based on a crude tier system. Different BTC × pair setup combinations get different leverage based on their proven edge.
 
-**Config changes:**
-- `VERY_STRONG.leverage = 2.0` initially (NOT 5x or 10x — start conservative)
-- `STRONG_BUY.leverage = 1.0` (unchanged)
-- Everything else unchanged from Phase 2
+**Why NOT simple tier-based leverage (VERY_STRONG=2x, STRONG_BUY=1x):**
+- A VERY_STRONG long in a neutral BTC zone has different edge than a VERY_STRONG long in a PREMIUM ZONE (L-P1 or L-P2)
+- A STRONG_BUY short matching S-P2 (BTC RSI 30-35 × ADX 25-30, 83% WR historically) might have more edge than a VERY_STRONG long in a marginal zone
+- Leverage should follow $EDGE per trade, not tier labels
+
+**Phase 2 close deliverable (required INPUT for Phase 3):**
+
+At end of Phase 2, produce a per-bucket expectancy table from the fresh data:
+
+| Bucket | Direction | WR | Avg $ / trade | Expectancy | Variance | N | Recommended lev |
+|---|---|---|---|---|---|---|---|
+| S-P2 (RSI 30-35 × ADX 25-30) | SHORT | ? | ? | ? | ? | ? | ? |
+| S-P1 (RSI <30 × ADX 20-25) | SHORT | ? | ? | ? | ? | ? | ? |
+| L-P1 (RSI 60-65 × ADX 20-25) | LONG | ? | ? | ? | ? | ? | ? |
+| L-P2 (RSI 60-65 × ADX 30-35) | LONG | ? | ? | ? | ? | ? | ? |
+| VERY_STRONG + PREMIUM ZONE match | both | ? | ? | ? | ? | ? | ? |
+| VERY_STRONG alone (not in PZ) | both | ? | ? | ? | ? | ? | ? |
+| STRONG_BUY + PREMIUM ZONE match | both | ? | ? | ? | ? | ? | ? |
+| STRONG_BUY alone (not in PZ) | both | ? | ? | ? | ? | ? | ? |
+
+**Leverage assignment rules (derive from the above):**
+- Expectancy > +$0.50/trade AND variance acceptable AND N ≥ 20 → **2.5x-3x**
+- Expectancy +$0.20 to +$0.50/trade AND N ≥ 20 → **2x**
+- Expectancy 0 to +$0.20/trade OR 10 ≤ N < 20 → **1.5x**
+- Expectancy < 0 OR N < 10 → **1x** (default, conservative)
+- Expectancy strongly negative across 2+ samples → **add to HARD BLOCKS, 0x (skip)**
+
+**Implementation:**
+- Leverage lookup table stored in config (JSON), keyed by (BTC RSI bucket, BTC ADX bucket, direction, pair tier)
+- Engine computes applicable leverage at entry time
+- If a trade matches multiple buckets, use the highest applicable leverage (user safeguard: enforce a hard cap, e.g., 3x max)
+
+**Initial conservative starting point (Phase 3 entry):**
+- NO bucket gets more than 2x in first Phase 3 run, regardless of Phase 2 data
+- Step up to 2.5x / 3x only after 50-trade validation at 2x confirms edge survives leverage
 
 **What to measure in Phase 3:**
-- **Expected**: VERY_STRONG P&L ≈ 2× its Phase 2 P&L. WR unchanged. Avg % unchanged.
-- **Red flag**: VERY_STRONG WR drops in Phase 3 despite same entry rules → slippage/execution is worse at 2x (rare but possible if liquidity thin)
-- **Red flag**: VERY_STRONG losses widen relative to wins → variance is eating the edge. Consider reducing leverage to 1.5x.
-- **Safety check**: `|largest drawdown|` as % of balance. At 2x, a -0.9% SL = -1.8% of invested capital. If open position count × 1.8% > your risk tolerance, cap `max_open_positions` for VERY_STRONG.
+- Per-bucket: leveraged P&L / unleveraged Phase 2 P&L. Should be ≈ leverage multiplier. Materially lower = leverage eroding edge.
+- Variance per bucket: did drawdown widen disproportionately?
+- Correlation of losses: if multiple leveraged positions open simultaneously and all SL together, you get a drawdown cluster. Cap total leveraged position count.
 
-**Exit criteria to advance to Phase 4 (higher leverage):**
-1. VERY_STRONG at 2x shows real-dollar P&L ≥ 1.7× Phase 2 (confirms leverage isn't causing degradation)
-2. Max drawdown stays within acceptable range
-3. Sample size ≥ 50 VERY_STRONG trades at 2x (enough to confirm edge survives leverage)
+**Exit criteria to advance to Phase 4 (higher leverage on winning buckets):**
+1. Each leveraged bucket shows actual $ return ≥ 1.7× its Phase 2 unleveraged $ return
+2. Max drawdown across portfolio stays within acceptable range
+3. Sample size per leveraged bucket ≥ 20 trades
 
-**If Phase 3 fails** (leveraged P&L < 1.5× unleveraged): stop increasing leverage. The edge exists but doesn't scale linearly due to execution/slippage/variance. Stay at 2x as a sweet spot.
+**If Phase 3 fails** (leveraged P&L < 1.5× unleveraged for a bucket): drop that bucket back to 1x. Other buckets may still be fine — don't abandon the whole system.
 
-### Phase 4+ — Iterate (ongoing)
+### Phase 4+ — Scale up confirmed buckets, add new ones (ongoing)
 
-Once Phase 3 validates 2x leverage:
-- Consider: `VERY_STRONG.leverage = 3.0` experiment
-- Consider: adding a third tier "PRIME" for even tighter setups at higher leverage
-- Consider: applying leverage logic to shorts separately from longs
-- Never increase leverage faster than one step per validated phase
-- Each leverage increase requires ≥50-trade validation before considering the next
+Once Phase 3 validates per-bucket leverage:
+- Buckets that showed ≥1.7× scaling at 2x → consider 2.5x, then 3x (each a separate 50-trade validation)
+- Discover new buckets over time as sample sizes grow in currently-marginal zones
+- Cap maximum per-bucket leverage at 3x-5x (beyond this, slippage and liquidity become dominant risks on 5m timeframe)
+- Never increase a bucket's leverage faster than one step per validated 50-trade phase
 
 ### Anti-overfit rules (MUST follow at every phase)
 

@@ -1273,6 +1273,23 @@ async def _get_actual_fill_price(order) -> float:
 
 _reconcile_skip_counter = 0
 
+# Reconciler race guard (Apr 16 — SUIUSDT incident).
+# The bot sets Order.closing_in_progress=True + close_initiated_at=NOW() before
+# sending a close to Binance.  Reconciler skips such rows if the intent is
+# younger than CLOSE_INTENT_STALE_SECONDS, so the bot's own close path can
+# commit the real exit reason (TRAILING_STOP, BREAKEVEN_SL, FL_*, ...) without
+# being overwritten by EXTERNAL_CLOSE.  Older intents are treated as stale
+# (close path likely crashed) so the row is still reconciled eventually.
+#
+# Sizing: worst-case bot close flow =
+#   3 exit retries x 2s sleep                     = 6s
+#   3 exit retries x 5s DB busy_timeout           = 15s
+#   1s post-close verify sleep + API call         = ~1.5s
+#   5 DB commit retries x up to 5s each           = ~25s
+# Total realistic ceiling ~45-50s.  120s chosen as safety margin; beyond
+# that we assume the close path crashed and let the reconciler recover.
+CLOSE_INTENT_STALE_SECONDS = 120
+
 async def _reconcile_open_orders(db: AsyncSession) -> list:
     """Shared reconciliation: close DB orders that are OPEN but gone from Binance.
 
@@ -1344,6 +1361,25 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
     closed = []
     for order in open_orders:
         if order.pair not in binance_pairs:
+            # Reconciler race guard: the bot publishes closing_in_progress=True
+            # + close_initiated_at=NOW() before calling Binance.  If the flag is
+            # fresh, skip — the bot's own close path is in flight and will
+            # write the real exit reason.  Stale flags (>CLOSE_INTENT_STALE_SECONDS)
+            # are ignored so a crashed close path can still be reconciled.
+            if order.closing_in_progress and order.close_initiated_at is not None:
+                _age = (datetime.utcnow() - order.close_initiated_at).total_seconds()
+                if _age < CLOSE_INTENT_STALE_SECONDS:
+                    logger.info(
+                        f"[RECONCILE_SKIP] {order.pair} {order.direction}: bot close in progress "
+                        f"(age={_age:.1f}s < {CLOSE_INTENT_STALE_SECONDS}s) — skipping EXTERNAL_CLOSE"
+                    )
+                    continue
+                else:
+                    logger.warning(
+                        f"[RECONCILE_STALE_INTENT] {order.pair} {order.direction}: "
+                        f"close-intent stale (age={_age:.1f}s > {CLOSE_INTENT_STALE_SECONDS}s) — "
+                        f"proceeding as EXTERNAL_CLOSE (close path likely crashed)"
+                    )
             try:
                 exit_price = await _get_actual_fill_price(order)
                 order.status = "CLOSED"

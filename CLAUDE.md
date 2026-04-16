@@ -15,6 +15,16 @@ When responding:
 
 Your job is not just to execute instructions, but to act as the project's technical and quantitative expert, helping drive the best possible decisions.
 
+## Core Operating Principles
+
+These principles govern every engineering and analytical decision on this project. They override shortcut instincts — if a faster path conflicts with one of these, pause and flag it rather than silently taking the shortcut.
+
+- **Build everything to scale from day one. Never implement patchwork or temporary solutions. Every system, component, and decision should be designed to handle growth and be ready to scale to thousands of transactions reliably and efficiently.**
+
+- **Act as a top-tier crypto quant analyst whenever you receive a trading report. Your job is to identify the optimal combination of indicators, filters, and thresholds to maximize expectancy and therefore maximize long-term profitability, always prioritizing data-driven decisions over intuition.**
+
+- **When comparing results across different reports or batches, always use Avg P&L % instead of absolute P&L, because the invested amount may differ between batches. Percentage performance is the correct metric for apples-to-apples comparison.**
+
 ## Project Overview
 Python 3 / FastAPI trading bot for Binance Futures. Uses EMA, RSI, ADX indicators for signal generation with configurable break-even levels and stop-loss management.
 
@@ -435,6 +445,64 @@ These are the strongest cross-sample patterns in the entire dataset. Each bucket
 - **2-sample confirmation raises confidence from "hypothesis" to "likely real."** 3-sample is "structural finding." 1-sample findings are hypotheses until replicated.
 - **Absolute P&L is leverage-dependent; WR and Avg% are leverage-invariant.** Compare samples using WR/Avg% to normalize across leverage changes.
 - **"More aligned filters" ≠ "higher edge."** Apr 13's Entry Quality Score table showed Score 3 (long) and Score 2-4 (short) were best, while Score 4-5 (long) and Score 5 (short) UNDERPERFORMED. Over-aligned conditions often signal exhaustion/overextension. Don't assume stricter = better.
+
+## April 16, 2026 — SUIUSDT Reconciler Race Guard (EXTERNAL_CLOSE mislabeling bug)
+
+### What happened
+SUIUSDT LONG closed cleanly at 13:02:11.077 UTC on a trailing-stop L1 trigger (high=0.9839, fill=0.9789, pnl=+$0.9095, slippage 0%). The bot's trailing-stop path committed the correct exit reason (`TRAILING_STOP L1`) to the DB at 13:02:12.444. **55 ms later** the monitor reconciler overwrote the same row as `EXTERNAL_CLOSE @ 0.9789` because from its own session's view it saw "DB status=OPEN, Binance shows no position = orphan."
+
+The trade executed perfectly. Only the label was wrong. But that label is what the post-trade report uses to attribute exits, so trailing-stop effectiveness and the `EXTERNAL_CLOSE` rate in reports were both being silently distorted.
+
+### Root cause
+Two state-update paths write to the same Order row without coordination:
+1. **Trailing-stop close path** (`services/trading_engine.py::_close_position_locked`) — fires close, waits for Binance fill, commits `status=CLOSED, close_reason=TRAILING_STOP L1`.
+2. **Monitor reconciler** (`main.py::_reconcile_open_orders`, runs every 60 s in live mode) — polls Binance open positions, re-reads DB open orders, and for each DB row not found on Binance writes `close_reason=EXTERNAL_CLOSE`.
+
+When the reconciler tick lands inside the narrow window between "Binance filled the close" and "DB commit from close path settled," the reconciler's own SELECT sees the row as still OPEN (its session's snapshot was taken before the close path committed) and issues a conflicting UPDATE. Last write wins. The trailing-stop label loses.
+
+This is not a new code path — it became visible because the Apr 8 work made the bot correctly check Binance before retrying. The reconciler existed before but had enough other bugs masking this specific race.
+
+### Fix (Option 2: intent-to-close flag)
+
+Chose Option 2 over Option 1 (read-before-write `exit_reason` check) because Option 1's race window is only shrunk, not closed, and Option 2's pattern generalizes to every future close path without re-introducing the same race each time. Aligns with the "build to scale from day one" core principle — Option 1 would have held up at today's 20 trades/day but broken under the concurrency profile of thousands of trades/day. Option 2 is the same pattern that survives the Postgres migration, the multi-tenant rebuild, and the WebSocket-user-data-stream refactor without rework.
+
+**Mechanism:**
+- New columns on `Order`: `closing_in_progress` (bool, default False) and `close_initiated_at` (datetime, nullable).
+- Bot publishes intent **before** sending the Binance close order via `trading_engine._mark_close_in_progress(db, order_id)` — sets the flag and timestamp in its own committed transaction so other sessions can see it immediately.
+- Reconciler skips rows where `closing_in_progress=True AND close_initiated_at > now − CLOSE_INTENT_STALE_SECONDS` (120 s).
+- Stale flags (≥ 120 s, indicating a crashed close path) are ignored so orphan rows still get reconciled eventually.
+- Fails open: if the flag commit fails under lock contention (5-attempt retry), the close proceeds anyway and the guard is simply inactive for that one close. No regression vs pre-fix behaviour.
+
+**Files changed:**
+- `models.py` — added `closing_in_progress`, `close_initiated_at` columns with the incident attribution in the comment block.
+- `database.py` — auto-migrate stanza adds the columns to existing DBs.
+- `services/trading_engine.py` — `_mark_close_in_progress` helper + call site at top of `_close_position_locked` (live mode only).
+- `main.py` — `CLOSE_INTENT_STALE_SECONDS = 120` constant + flag check at top of `_close_orphan_orders` loop, logs `[RECONCILE_SKIP]` (fresh) or `[RECONCILE_STALE_INTENT]` (stale).
+- `tests/test_reconciler_race_guard.py` — 4 scenarios (baseline unset, fresh intent skipped, stale intent reconciled, null-timestamp safety). All pass.
+
+### Sizing of the 120 s stale threshold
+Worst-case bot close flow:
+- 3 exit retries × 2 s sleep = 6 s
+- 3 exit retries × 5 s DB busy_timeout = 15 s
+- 1 s post-close verify sleep + API = ~1.5 s
+- 5 DB commit retries × ~5 s each = ~25 s
+
+Realistic ceiling ~45-50 s. 120 s gives safety margin. Beyond that we assume the close path crashed and let the reconciler recover the row.
+
+### How to diagnose a recurrence
+Signs the race is back (or a new close path is bypassing the guard):
+1. **Report shows `EXTERNAL_CLOSE` trades** with non-zero P&L and exit_order_type `TAKER` (not `EXTERNAL`). Pre-fix Apr 16 SUIUSDT had these. A truly external close (user manually closed on Binance UI, liquidation, etc.) typically has `exit_order_type=EXTERNAL`.
+2. **No `[RECONCILE_SKIP]` log lines when `EXTERNAL_CLOSE` fires** inside a 60 s window where the bot also logged `[CLOSE_COMMITTED]` for the same pair. Either the flag wasn't set (bug in the close path that skipped `_mark_close_in_progress`) or was stale (close path took longer than 120 s — investigate lock contention).
+3. **`[CLOSE_INTENT_FAIL]` appearing frequently** — the intent commit is losing to lock contention. Root cause is SQLite write contention; real fix is the Postgres migration (C3).
+
+### Future analysis hooks
+- The `closing_in_progress` flag + `close_initiated_at` columns are stored even for successfully-closed orders (nothing clears them). They can be used for future audits:
+  - "How often did the guard activate?" → count orders with `close_initiated_at IS NOT NULL AND status='CLOSED'`
+  - "How long does the bot's close path actually take?" → `closed_at - close_initiated_at` per trade, bucket the distribution, confirm the 120 s ceiling is comfortably above p99.
+- If `[RECONCILE_STALE_INTENT]` ever fires in production, treat it as a first-class incident: the bot's own close path took > 120 s, which at current scale should never happen. Likely signal of lock starvation, greenlet deadlock, or a fresh infrastructure regression.
+
+### Impact on Phase 1b data integrity
+Any `EXTERNAL_CLOSE` trades in pre-Apr-16 samples may be mislabeled trailing-stop (or other bot-initiated) exits. When comparing new (post-fix) samples against historical data, do **not** treat pre-fix `EXTERNAL_CLOSE` counts as ground truth — they over-count external closes and under-count whichever exit type (likely TRAILING_STOP L1) lost the race. For 5th-sample and later report comparisons, expect `EXTERNAL_CLOSE` to drop toward ~0% and the corresponding gained trades to appear under their real bot-initiated reason.
 
 ## Three-Phase Plan to Make the Bot Profitable
 

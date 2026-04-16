@@ -1407,6 +1407,51 @@ class TradingEngine:
         async with _close_lock:
             return await self._close_position_locked(db, order, current_price, reason)
 
+    async def _mark_close_in_progress(self, db: AsyncSession, order_id: int) -> bool:
+        """Publish intent-to-close for this order so the monitor reconciler can
+        tell an in-flight bot close apart from a truly external close.
+
+        Writes closing_in_progress=True + close_initiated_at=NOW() and commits
+        immediately (separate transaction from the later status=CLOSED commit)
+        so the reconciler — which runs in its own AsyncSession — can observe
+        the flag.  Fails open: if the flag commit fails after retries the
+        close proceeds anyway.  Without the flag the reconciler race is still
+        bounded by the existing duplicate-close guard and SELECT ... WHERE
+        status='OPEN' filter, just not race-free.
+
+        Returns True on successful commit, False otherwise.
+        """
+        # 5 attempts with short progressive backoff: 0.1, 0.2, 0.3, 0.4s.
+        # Total worst case ~1s added to the close path under heavy SQLite
+        # contention — acceptable given the protection it provides.
+        for attempt in range(1, 6):
+            try:
+                await db.execute(
+                    update(Order)
+                    .where(and_(Order.id == order_id, Order.status == "OPEN"))
+                    .values(
+                        closing_in_progress=True,
+                        close_initiated_at=datetime.utcnow(),
+                    )
+                )
+                await db.commit()
+                return True
+            except Exception as _e:
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
+                if attempt < 5:
+                    await asyncio.sleep(0.1 * attempt)
+                else:
+                    logger.warning(
+                        f"[CLOSE_INTENT_FAIL] order_id={order_id}: could not publish "
+                        f"close-intent after {attempt} attempts ({str(_e)[:80]}); "
+                        f"proceeding with close — reconciler race guard disabled for this close"
+                    )
+                    return False
+        return False
+
     async def _close_position_locked(
         self,
         db: AsyncSession,
@@ -1431,7 +1476,15 @@ class TradingEngine:
         if current_price is None or current_price <= 0:
             logger.error(f"[CLOSE_BLOCKED] {order.pair}: Attempted to close with invalid price={current_price}, reason={reason}")
             return None
-        
+
+        # Publish intent-to-close BEFORE sending the Binance order so the
+        # monitor reconciler (main._reconcile_open_orders) can recognise this
+        # as a bot-initiated close in flight and skip it.  Live mode only —
+        # paper mode never hits the reconciler.  See CLAUDE.md "SUIUSDT
+        # reconciler race (Apr 16)" for the original incident.
+        if not self.is_paper_mode:
+            await self._mark_close_in_progress(db, order.id)
+
         # Attempt maker exit if enabled, otherwise use taker
         tc = config.trading_config
         maker_exit_enabled = getattr(tc, 'maker_exit_enabled', False)

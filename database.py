@@ -236,6 +236,14 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN fl2_flagged_at DATETIME"))
                 if 'fl2_flag_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN fl2_flag_pnl FLOAT"))
+                if 'closing_in_progress' not in columns:
+                    # Reconciler race guard (Apr 16 — SUIUSDT incident).  Set to
+                    # True by the bot before initiating a close on Binance; the
+                    # monitor reconciler honours the flag to avoid overwriting
+                    # in-flight bot closes with EXTERNAL_CLOSE.
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN closing_in_progress BOOLEAN NOT NULL DEFAULT 0"))
+                if 'close_initiated_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN close_initiated_at DATETIME"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

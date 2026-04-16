@@ -129,6 +129,16 @@ class Order(Base):
     # Slippage tracking: difference between decision price (WebSocket) and actual Binance fill
     exit_slippage_pct = Column(Float, nullable=True)  # positive = filled worse than expected
 
+    # Reconciler race guard (Apr 16 — SUIUSDT incident).
+    # The bot sets closing_in_progress=True and close_initiated_at=NOW() BEFORE
+    # sending the close order to Binance. The monitor reconciler
+    # (main._reconcile_open_orders) must skip rows with a fresh flag so it can
+    # tell a bot-initiated close in flight apart from a truly external close.
+    # A stale flag (older than CLOSE_INTENT_STALE_SECONDS in main.py) is ignored
+    # so crashed close paths can still be reconciled.
+    closing_in_progress = Column(Boolean, nullable=False, default=False)
+    close_initiated_at = Column(DateTime, nullable=True)
+
     # Exit quality: Price vs EMA5 at exit
     exit_price_vs_ema5_pct = Column(Float, nullable=True)
     exit_ema5_slope_pct = Column(Float, nullable=True)

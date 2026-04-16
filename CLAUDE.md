@@ -266,20 +266,49 @@ Earlier claim "FL is broken" was wrong. The `NetRecover` column in the Flagged E
 - **Regime Change Exit**: newly ON. Tests whether catching macro reversal improves weak-peak FL outcomes.
 - **RSI Momentum Exit**: OFF.
 
-### LOCKED Apr 14 config (DO NOT CHANGE until 100 fresh trades collected)
-- Leverage: **1x both VERY_STRONG and STRONG_BUY**
-- Trade mode: both, max 5 positions, equal_split, $100 fixed, 5% pct
-- `ema_gap_threshold_long = 0.02`, `ema_gap_threshold_short = 0.08`
-- `momentum_adx_max_long = 25` (leave ambiguous; data will decide)
-- `btc_adx_min_long = 25`, `btc_adx_min_short = 20`
+### Phase 1a (CLOSED) — 19 trades collected at tight config (Apr 14 baseline)
+- Collected ~19 trades (1L + 18S) from Apr 14 deploy → Apr 15 ~13:00
+- 1 long trade only: BTC filters + gap min starving long side
+- 18 shorts: acceptable rate, confirmed HEALTHY_BEAR winning / STRONG_BEAR losing 2-sample pattern
+- Archived as reference for comparison
+
+### Phase 1b (CURRENT) — Looser config for data collection (Apr 15 onwards)
+Rationale: Phase 1a was starving the long side. Four filter changes applied to unblock long entries and collect data on currently-unexplored buckets. The strategic decision: use the BTC RSI × BTC ADX cross-tab (Phase 2 code work) as the fine-grained filter, rather than multiple coarse per-variable mins that may be cutting good trades along with bad.
+
+**Changes from Phase 1a → Phase 1b:**
+| Config | Apr 14 (Phase 1a) | Apr 15 (Phase 1b) | Rationale |
+|---|---|---|---|
+| `btc_adx_min_long` | 25 | **20** | Historical BTC ADX 20-25 longs: 41 trades, 71% WR, +$124 across 4 samples — not a losing bucket |
+| `macro_trend_flat_threshold_long` | 0.06 | **0.02** | Match shorts (which were firing fine at 0.02). Expected to unblock longs in sideways BTC conditions |
+| `ema_gap_5_20_min_long` | 0.10 | **0.05** | Gap 5-20 is non-monotonic per 4-sample data. 0.12-0.15% was OK (17 trades, +$11.84), 0.15-0.20% was worst (40 trades, -$79). Lowering min explores 0.05-0.10% range (zero historical data) |
+| `ema_gap_5_20_min_short` | 0.15 | **0.05** | Historical short data only for 0.15+ bucket. Lowering explores uncharted 0.05-0.15% range |
+
+**Unchanged filters (still locked for Phase 1b):**
+- Leverage: 1x both VERY_STRONG and STRONG_BUY
+- Trade mode: both, max 5 positions, equal_split, $100 fixed
+- `ema_gap_threshold_long = 0.02`, `ema_gap_threshold_short = 0.08` (EMA5-EMA8 gap, separate from EMA5-EMA20)
+- `momentum_adx_max_long = 25` (not changed; let data decide)
+- `btc_adx_min_short = 20` (unchanged)
 - `momentum_ema20_slope_min_long = 0.0`, `momentum_ema20_slope_min_short = 0.04`
-- Exits: **TP 0.50 / pullback 0.20**, BE L1 0.15/0.10, Signal Lost Flag ON, FL1/FL2 ON, **Regime Change Exit ON**, Tick Momentum OFF, RSI Momentum OFF
+- Exits: TP 0.50 / pullback 0.20, BE L1 0.15/0.10, Signal Lost Flag ON, FL1/FL2 ON, Regime Change Exit ON, Tick Momentum OFF, RSI Momentum OFF
 - Market Breadth ON (30 bull L, 45 bear S, flat 0.02)
 - EMA Gap Expanding ON, RSI Momentum Filter ON
 - Spike Guard ON (3x vol, 1.5% price)
 
-### Rule for the next 100 trades
-**NO CONFIG CHANGES.** Every tweak invalidates the sample. If urgent, pause trading and document rather than flip parameters mid-stream. Save the config log at checkpoint to verify nothing drifted.
+### Rule for Phase 1b (the next 100 trades)
+**NO FURTHER CONFIG CHANGES.** Phase 1b starts fresh with the 4 changes above. From here to 100 trades: no tweaks. If long trade rate is still starved after Phase 1b, the issue is elsewhere (code bug, indicator calc, or truly no market opportunity).
+
+### How to analyze Phase 1b data
+At 100-trade checkpoint, in addition to the existing 22-question checklist:
+1. **Did long trade rate increase meaningfully?** Compare Phase 1a (~1 long/day) to Phase 1b rate.
+2. **What's the 0.05-0.10% gap 5-20 bucket performance (longs)?** First-ever data in this range.
+3. **What's the 0.05-0.15% gap 5-20 bucket performance (shorts)?** First-ever data in this range.
+4. **Did BTC ADX 20-25 long bucket replicate historical 71% WR?** 5th-sample confirmation.
+5. **Did BTC slope-flat longs perform OK now that threshold was lowered to 0.02%?** Previously blocked entirely.
+6. **Full BTC RSI × BTC ADX cross-tab** — the fine-grained filter that will eventually replace these blunt mins.
+
+### Pooling rule
+**Do NOT pool Phase 1a (19 trades) with Phase 1b raw data.** They were different configs. Use Phase 1a as a "pre" reference and Phase 1b as the "post" measurement.
 
 ### Checklist for the 100-trade report review
 When the fresh report arrives, answer these questions in order:

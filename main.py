@@ -724,15 +724,13 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                 _rsi_max = getattr(th, 'momentum_long_rsi_max', 100)
                 _rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
                 _gap58_max = getattr(th, 'ema_gap_5_8_max', 0)
-                # Check confidence-level gap limits
-                _conf_gap_min = 0
-                _conf_gap_max = 999
-                for _cn in ["VERY_STRONG", "STRONG_BUY"]:
-                    _cc = config.trading_config.confidence_levels.get(_cn)
-                    if _cc and _cc.enabled and _cc.trade_mode in ("long", "both"):
-                        _conf_gap_min = getattr(_cc, 'gap_min', 0)
-                        _conf_gap_max = getattr(_cc, 'gap_max', 999)
-                        break
+                # Read EMA5-EMA20 gap limits from thresholds (the source the real
+                # trading logic uses in services/indicators.py). Previous code read
+                # from confidence_levels.*.gap_min which is a legacy/unused field,
+                # producing misleading "min 0.15%" display when real long min is 0.10%.
+                _gap520_enabled = getattr(th, 'ema_gap_5_20_enabled', True)
+                _conf_gap_min = getattr(th, 'ema_gap_5_20_min_long', 0) if _gap520_enabled else 0
+                _conf_gap_max = getattr(th, 'ema_gap_5_20_max_long', 999) if _gap520_enabled else 999
                 _abs_gap = abs(gap) if gap is not None else None
                 if p.rsi and p.rsi > _rsi_max:
                     block_reason = f"RSI {p.rsi:.0f} > {_rsi_max:.0f}"
@@ -784,14 +782,10 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                 _rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
                 _rsi_min = getattr(th, 'momentum_short_rsi_min', 0)
                 _gap58_max = getattr(th, 'ema_gap_5_8_max', 0)
-                _conf_gap_min = 0
-                _conf_gap_max = 999
-                for _cn in ["VERY_STRONG", "STRONG_BUY"]:
-                    _cc = config.trading_config.confidence_levels.get(_cn)
-                    if _cc and _cc.enabled and _cc.trade_mode in ("short", "both"):
-                        _conf_gap_min = getattr(_cc, 'gap_min', 0)
-                        _conf_gap_max = getattr(_cc, 'gap_max', 999)
-                        break
+                # Read EMA5-EMA20 gap limits from thresholds (matches real trading logic).
+                _gap520_enabled = getattr(th, 'ema_gap_5_20_enabled', True)
+                _conf_gap_min = getattr(th, 'ema_gap_5_20_min_short', 0) if _gap520_enabled else 0
+                _conf_gap_max = getattr(th, 'ema_gap_5_20_max_short', 999) if _gap520_enabled else 999
                 _abs_gap = abs(gap) if gap is not None else None
                 if p.rsi and p.rsi > _rsi_max:
                     block_reason = f"RSI {p.rsi:.0f} > {_rsi_max:.0f}"

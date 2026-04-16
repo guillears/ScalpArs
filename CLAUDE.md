@@ -282,43 +282,53 @@ Earlier claim "FL is broken" was wrong. The `NetRecover` column in the Flagged E
 - 18 shorts: acceptable rate, confirmed HEALTHY_BEAR winning / STRONG_BEAR losing 2-sample pattern
 - Archived as reference for comparison
 
-### Phase 1b (CURRENT) — Looser config for data collection (Apr 15 onwards)
-Rationale: Phase 1a was starving the long side. Four filter changes applied to unblock long entries and collect data on currently-unexplored buckets. The strategic decision: use the BTC RSI × BTC ADX cross-tab (Phase 2 code work) as the fine-grained filter, rather than multiple coarse per-variable mins that may be cutting good trades along with bad.
+### Phase 1b (CURRENT) — Looser config for data collection (Apr 15 onwards, amended Apr 16)
+Rationale: Phase 1a was starving the long side. Four filter changes applied on Apr 15 to unblock long entries and collect data on currently-unexplored buckets. **Amended Apr 16** with two additional BTC ADX min changes to widen the entry surface further. The strategic decision: use the BTC RSI × BTC ADX cross-tab (Phase 2 code work) as the fine-grained filter, rather than multiple coarse per-variable mins that may be cutting good trades along with bad.
 
 **Changes from Phase 1a → Phase 1b:**
-| Config | Apr 14 (Phase 1a) | Apr 15 (Phase 1b) | Rationale |
-|---|---|---|---|
-| `btc_adx_min_long` | 25 | **20** | Historical BTC ADX 20-25 longs: 41 trades, 71% WR, +$124 across 4 samples — not a losing bucket |
-| `macro_trend_flat_threshold_long` | 0.06 | **0.02** | Match shorts (which were firing fine at 0.02). Expected to unblock longs in sideways BTC conditions |
-| `ema_gap_5_20_min_long` | 0.10 | **0.05** | Gap 5-20 is non-monotonic per 4-sample data. 0.12-0.15% was OK (17 trades, +$11.84), 0.15-0.20% was worst (40 trades, -$79). Lowering min explores 0.05-0.10% range (zero historical data) |
-| `ema_gap_5_20_min_short` | 0.15 | **0.05** | Historical short data only for 0.15+ bucket. Lowering explores uncharted 0.05-0.15% range |
+| Config | Apr 14 (Phase 1a) | Apr 15 (1b original) | Apr 16 (1b amended) | Rationale |
+|---|---|---|---|---|
+| `btc_adx_min_long` | 25 | 20 | **18** | Apr 15: historical BTC ADX 20-25 longs 41 trades, 71% WR, +$124 across 4 samples. Apr 16 further lowered to 18 to explore BTC ADX 18-20 long bucket (zero historical data in that range). |
+| `btc_adx_min_short` | 20 | 20 | **18** | Apr 16: cross-sample confirmed winning short zone is BTC ADX 18-27 + slope falling (27 trades, 81% WR, +$19.93). 18 is exactly the lower bound of that winning zone; keeps <18 CHOPPY_WEAK shorts (43% WR -$2.54) blocked. |
+| `macro_trend_flat_threshold_long` | 0.06 | **0.02** | 0.02 | Match shorts (which were firing fine at 0.02). Expected to unblock longs in sideways BTC conditions |
+| `ema_gap_5_20_min_long` | 0.10 | **0.05** | 0.05 | Gap 5-20 is non-monotonic per 4-sample data. 0.12-0.15% was OK (17 trades, +$11.84), 0.15-0.20% was worst (40 trades, -$79). Lowering min explores 0.05-0.10% range (zero historical data) |
+| `ema_gap_5_20_min_short` | 0.15 | **0.05** | 0.05 | Historical short data only for 0.15+ bucket. Lowering explores uncharted 0.05-0.15% range |
 
 **Unchanged filters (still locked for Phase 1b):**
 - Leverage: 1x both VERY_STRONG and STRONG_BUY
 - Trade mode: both, max 5 positions, equal_split, $100 fixed
 - `ema_gap_threshold_long = 0.02`, `ema_gap_threshold_short = 0.08` (EMA5-EMA8 gap, separate from EMA5-EMA20)
 - `momentum_adx_max_long = 25` (not changed; let data decide)
-- `btc_adx_min_short = 20` (unchanged)
 - `momentum_ema20_slope_min_long = 0.0`, `momentum_ema20_slope_min_short = 0.04`
 - Exits: TP 0.50 / pullback 0.20, BE L1 0.15/0.10, Signal Lost Flag ON, FL1/FL2 ON, Regime Change Exit ON, Tick Momentum OFF, RSI Momentum OFF
 - Market Breadth ON (30 bull L, 45 bear S, flat 0.02)
 - EMA Gap Expanding ON, RSI Momentum Filter ON
 - Spike Guard ON (3x vol, 1.5% price)
 
-### Rule for Phase 1b (the next 100 trades)
-**NO FURTHER CONFIG CHANGES.** Phase 1b starts fresh with the 4 changes above. From here to 100 trades: no tweaks. If long trade rate is still starved after Phase 1b, the issue is elsewhere (code bug, indicator calc, or truly no market opportunity).
+### Rule for Phase 1b (the remainder of the 100-trade window)
+**NO FURTHER CONFIG CHANGES from here.** Trade counting continues — the Apr 16 amendment does NOT reset the Phase 1b counter. Pre-Apr-16 trades (collected at `btc_adx_min=20`) and post-Apr-16 trades (at `btc_adx_min=18`) accumulate toward the same 100-trade target.
 
-### How to analyze Phase 1b data
-At 100-trade checkpoint, in addition to the existing 22-question checklist:
-1. **Did long trade rate increase meaningfully?** Compare Phase 1a (~1 long/day) to Phase 1b rate.
+**Methodological caveat for bucket analysis at 100-trade review:** the sample will have a mixed entry-criteria distribution. Any bucket with BTC ADX ≥ 20 has data from the full Phase 1b run; the BTC ADX 18-20 sub-bucket (both LONG and SHORT) has data only from Apr 16 onwards, so its N will be smaller than its share of the population would suggest. Bucket-level WR / Avg P&L % comparisons remain valid for BTC ADX ≥ 20 buckets; the 18-20 bucket should be flagged as "partial coverage" when reported.
+
+If long trade rate is still starved after this amendment, the issue is elsewhere (code bug, indicator calc, or truly no market opportunity).
+
+### How to analyze Phase 1b data (amended Apr 16)
+At 100-trade checkpoint (post Apr 16 amendment), in addition to the existing 22-question checklist:
+1. **Did long trade rate increase meaningfully?** Compare Phase 1a (~1 long/day) to Phase 1b-amended rate.
 2. **What's the 0.05-0.10% gap 5-20 bucket performance (longs)?** First-ever data in this range.
 3. **What's the 0.05-0.15% gap 5-20 bucket performance (shorts)?** First-ever data in this range.
 4. **Did BTC ADX 20-25 long bucket replicate historical 71% WR?** 5th-sample confirmation.
 5. **Did BTC slope-flat longs perform OK now that threshold was lowered to 0.02%?** Previously blocked entirely.
-6. **Full BTC RSI × BTC ADX cross-tab** — the fine-grained filter that will eventually replace these blunt mins.
+6. **NEW (Apr 16): What is BTC ADX 18-20 LONG bucket performance?** Zero historical data in this range before Apr 16. Treat as pure exploration — at least 10 trades needed before drawing any conclusion. If WR < 50% or avg P&L % clearly negative → `btc_adx_min_long` should return to 20 in Phase 2.
+7. **NEW (Apr 16): What is BTC ADX 18-20 SHORT bucket performance?** Expected to confirm the 81% WR winning zone extends down to 18 (per 2-sample BTC ADX 18-27 + slope falling pattern). If WR < 60% with ≥10 trades → the 18-20 sub-bucket was weaker than the 20-27 zone, raise `btc_adx_min_short` back to 20.
+8. **Full BTC RSI × BTC ADX cross-tab** — the fine-grained filter that will eventually replace these blunt mins. Cross-tab now needs explicit BTC ADX 18-20 row.
 
-### Pooling rule
+### Pooling rule (amended Apr 16)
 **Do NOT pool Phase 1a (19 trades) with Phase 1b raw data.** They were different configs. Use Phase 1a as a "pre" reference and Phase 1b as the "post" measurement.
+
+**Phase 1b pre- and post-Apr-16 trades are pooled** into the same 100-trade target — the counter keeps going through the amendment. When analyzing bucket-level results, be aware that BTC ADX ≥ 20 buckets cover the full Phase 1b window while BTC ADX 18-20 buckets only have post-Apr-16 coverage. Report N per bucket to expose this.
+
+Per Core Operating Principles: when comparing Phase 1b to earlier samples (Apr 6, 12, 13, Phase 1a) always use **Avg P&L %** — invested-amount-invariant, safe across batches with different position sizing.
 
 ### Checklist for the 100-trade report review
 When the fresh report arrives, answer these questions in order:

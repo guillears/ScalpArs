@@ -750,9 +750,9 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                     block_reason = f"Gap5-20 {_abs_gap:.3f}% < min {_conf_gap_min}%"
                 elif _abs_gap is not None and _conf_gap_max < 999 and _abs_gap > _conf_gap_max:
                     block_reason = f"Gap5-20 {_abs_gap:.3f}% > max {_conf_gap_max}%"
-                elif p.price and p.ema20 and p.price <= p.ema20:
+                elif getattr(th, 'momentum_ema20_filter_long', True) and p.price and p.ema20 and p.price <= p.ema20:
                     block_reason = "Price ≤ EMA20"
-                elif p.ema5_prev3 and p.ema20 and p.ema20 <= p.ema5_prev3:
+                elif getattr(th, 'momentum_ema20_slope_filter_long', True) and p.ema20_prev3 and p.ema20 and p.ema20 <= p.ema20_prev3:
                     block_reason = "EMA20 not rising"
                 elif getattr(th, 'market_breadth_filter_enabled', False) and _bull_pct < getattr(th, 'market_breadth_bull_threshold_long', 50.0):
                     block_reason = f"Breadth Bull {_bull_pct:.0f}% < {getattr(th, 'market_breadth_bull_threshold_long', 50.0):.0f}%"
@@ -809,9 +809,9 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
                     block_reason = f"Gap5-20 {_abs_gap:.3f}% < min {_conf_gap_min}%"
                 elif _abs_gap is not None and _conf_gap_max < 999 and _abs_gap > _conf_gap_max:
                     block_reason = f"Gap5-20 {_abs_gap:.3f}% > max {_conf_gap_max}%"
-                elif p.price and p.ema20 and p.price >= p.ema20:
+                elif getattr(th, 'momentum_ema20_filter_short', True) and p.price and p.ema20 and p.price >= p.ema20:
                     block_reason = "Price ≥ EMA20"
-                elif p.ema5_prev3 and p.ema20 and p.ema20 >= p.ema5_prev3:
+                elif getattr(th, 'momentum_ema20_slope_filter_short', True) and p.ema20_prev3 and p.ema20 and p.ema20 >= p.ema20_prev3:
                     block_reason = "EMA20 not falling"
                 elif getattr(th, 'market_breadth_filter_enabled', False) and _bear_pct < getattr(th, 'market_breadth_bear_threshold_short', 50.0):
                     block_reason = f"Breadth Bear {_bear_pct:.0f}% < {getattr(th, 'market_breadth_bear_threshold_short', 50.0):.0f}%"

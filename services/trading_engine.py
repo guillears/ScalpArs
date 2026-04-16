@@ -3390,6 +3390,7 @@ class TradingEngine:
             pair_data.ema8 = indicators.get('ema8')
             pair_data.ema13 = indicators.get('ema13')
             pair_data.ema20 = indicators.get('ema20')
+            pair_data.ema20_prev3 = indicators.get('ema20_prev3')
             pair_data.rsi = indicators.get('rsi')
             pair_data.rsi_prev1 = indicators.get('rsi_prev1')
             pair_data.rsi_prev2 = indicators.get('rsi_prev2')
@@ -3410,6 +3411,7 @@ class TradingEngine:
                 ema8=indicators.get('ema8'),
                 ema13=indicators.get('ema13'),
                 ema20=indicators.get('ema20'),
+                ema20_prev3=indicators.get('ema20_prev3'),
                 rsi=indicators.get('rsi'),
                 rsi_prev1=indicators.get('rsi_prev1'),
                 rsi_prev2=indicators.get('rsi_prev2'),

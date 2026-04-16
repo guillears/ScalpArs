@@ -328,6 +328,7 @@ class PairData(Base):
     ema8 = Column(Float, nullable=True)
     ema13 = Column(Float, nullable=True)
     ema20 = Column(Float, nullable=True)
+    ema20_prev3 = Column(Float, nullable=True)
     
     # Indicators
     rsi = Column(Float, nullable=True)

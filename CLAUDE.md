@@ -885,6 +885,73 @@ In addition to everything already documented:
 - **LONG BTC ADX 25-30 Avg P&L %** — if ≥+0.15% on ≥20 trades, the macro cap was correctly relaxed. If ≤−0.15%, re-consider a softer mechanism (e.g., allow 25-30 only for BTC RSI 60-65).
 - **LONG BTC ADX 30-35 N and performance** — L-P2 is thin (N=4 pre-committed). Want ≥5 Phase 1c trades in this specific cell to validate.
 
+### Pre-commit rule re-validation against 3-sample pool (Apr 17 PM cross-tab audit)
+
+Built the pooled BTC RSI × BTC ADX cross-tab from Apr 6 + Apr 13 + Apr 17 Phase 1b (Mar 30 excluded). This is a proper 3-sample validation of the pre-committed Phase 2 rules that were locked Apr 15 based on 4-sample aggregation (the original aggregation had Mar 30 carrying more weight than we realized). WR is the primary metric (leverage-invariant across the samples; Apr 6 used 20x-30x leverage so $ amounts aren't directly poolable with Apr 13/17 at 1x).
+
+Pool methodology: for each cell, sum trades across all 3 samples, sum wins, compute pool WR = total_wins / total_N. Cells with pooled N ≥ 5 are listed. Cells with N < 5 pooled are flagged as insufficient data.
+
+**LONG pool (cells with N ≥ 5):**
+
+| BTC RSI | BTC ADX | N pool | Pool WR | Apr 13 | Apr 6 | Apr 17 | Pre-commit | 3-sample verdict |
+|---|---|---|---|---|---|---|---|---|
+| 45-50 | 15-20 | 5 | 60% | 5 @ 60% | — | — | — | OK |
+| 50-55 | 20-25 | 6 | 50% | 5 @ 60% | 1 @ 0% | — | — | Inconclusive |
+| 55-60 | 15-20 | 7 | 71% | — | 7 @ 71% | — | — | WIN ZONE (undocumented) |
+| **55-60** | **20-25** | **9** | **78%** | 7 @ 71% | 2 @ 100% | — | — | **STRONG WIN (undocumented)** |
+| 60-65 | 15-20 | 5 | 80% | 1 @ 100% | 4 @ 75% | — | — | WIN ZONE |
+| **60-65** | **20-25** | **19** | **63%** | 9 @ 67% | 4 @ 75% | 6 @ 50% | **L-P1 PREMIUM** | **Confirmed winner, weaker than pre-commit** (pool 63% vs pre-commit 74%) |
+| 60-65 | 25-30 | 5 | 60% | 2 @ 100% | 3 @ 33% | — | — | Mixed / sample-divergent |
+
+**L-P2 (60-65 × 30-35): N=2 pooled without Mar 30.** The pre-commit's "4 trades, 100% WR across 3 samples" was heavily Mar 30-weighted. Without Mar 30, L-P2 essentially has no data — it's a hypothesis, not a validated rule.
+
+**SHORT pool (cells with N ≥ 5):**
+
+| BTC RSI | BTC ADX | N pool | Pool WR | Apr 13 | Apr 6 | Apr 17 | Pre-commit | 3-sample verdict |
+|---|---|---|---|---|---|---|---|---|
+| **<30** | **20-25** | **12** | **75%** | 6 @ 83% | 1 @ 100% | 5 @ 60% | **S-P1 PREMIUM** | **Validated** (pool 75% ≥ pre-commit 77%, consistent) |
+| 30-35 | 25-30 | 7 | **57%** | 3 @ 100% | 1 @ 0% | 3 @ 33% | S-P2 PREMIUM | **Weakened** (pre-commit 83% → pool 57%; Apr 17 33% the concerning divergence) |
+| 30-35 | 35+ | 7 | 43% | 7 @ 43% | — | — | — | LOSER (not pre-committed; already blocked by `btc_adx_max_short=30`) |
+| **35-40** | **15-20** | **7** | **43%** | 1 @ 0% | 3 @ 33% | 3 @ 67% | **S-B1 HARD BLOCK** | **Validated** (43% < 55% threshold) |
+| 35-40 | 20-25 | 10 | 50% | 7 @ 71% | 3 @ 0% | — | — | Sample-divergent (Apr 13 strong winner, Apr 6 strong loser) |
+| **35-40** | **30-35** | **5** | **40%** | 3 @ 33% | — | 2 @ 50% | **S-B2 HARD BLOCK** | **Validated** (40% < 55%) |
+| **45-50** | **15-20** | **6** | **33%** | 5 @ 40% | — | 1 @ 0% | **S-B3 HARD BLOCK** | **Validated** (33% clearly loser) |
+
+**Summary of pre-commit re-validation:**
+
+| Rule | Pre-commit label | Pre-commit WR | Pool WR (ex-Mar 30) | Pool N | Verdict |
+|---|---|---|---|---|---|
+| L-B1 (50-55 × 25-30) | HARD BLOCK | 17% | Only 3 trades pooled | 3 | **Insufficient data post-Mar-30** |
+| L-P1 (60-65 × 20-25) | PREMIUM | 74% | **63%** | 19 | Winner but weaker |
+| L-P2 (60-65 × 30-35) | PREMIUM | 100% | Only 2 trades pooled | 2 | **Insufficient data, barely exists** |
+| S-B1 (35-40 × 15-20) | HARD BLOCK | 44% | **43%** | 7 | Validated |
+| S-B2 (35-40 × 30-35) | HARD BLOCK | 54% | **40%** | 5 | Validated (stronger than pre-commit) |
+| S-B3 (45-50 × 15-20) | HARD BLOCK | 37.5% | **33%** | 6 | Validated |
+| S-P1 (<30 × 20-25) | PREMIUM | 77% | **75%** | 12 | Validated |
+| S-P2 (30-35 × 25-30) | PREMIUM | 83% | **57%** | 7 | **Weakened — Apr 17 contributed 33% WR** |
+
+**New WIN ZONE discovered in the pool (not pre-committed):**
+
+**LONG 55-60 × 20-25: N=9 pool, 78% WR.** Strongest N-to-WR ratio in the LONG cross-tab. Add as L-P3 candidate for Phase 2 pre-commit list, pending 100-trade validation.
+
+**What this means for Amendment #4's L-P2 preservation rationale:**
+
+Amendment #4 relaxed `btc_adx_max_long` from 25 → 35 specifically to preserve L-P2 at BTC ADX 30-35 × BTC RSI 60-65. Post-audit: L-P2 has N=2 pooled (ex-Mar 30), so preserving it is based on a rule that barely has data under current-era configs. The decision is NOT reverted (option c below), but the confidence is explicitly weaker than Amendment #4's original commit claimed. If Phase 1c data populates the L-P2 cell with losing trades, we revisit.
+
+**Rationale for keeping current config (Amendment #4's `btc_adx_max_long: 35`):**
+
+- Option (a) Keep at 35 + document weakness: current. Preserves L-P2 (thin) and allows 100-trade checkpoint to produce real data.
+- Option (b) Tighten to 30: would sacrifice L-P2 AND the thin-but-directional LONG 25-30 winners in Phase 1b (+0.27% N=17). More restrictive without strong evidence.
+- Option (c) Keep 35 AND explicitly flag L-P2 as weakest pre-commit: chosen.
+
+**Broader methodological takeaway:**
+
+The Apr 15 pre-commit rules were aggregated across 4 samples. When we exclude Mar 30 (which had unusual regime and different config), the N per cell shrinks dramatically — L-P2 and L-B1 both drop below the 3-trade threshold. This means: **much of the pre-committed Phase 2 rule set rests on Mar 30's weight.** At 100-trade checkpoint, fresh Phase 1c cross-tab data will re-test each of these rules with current-config trades, and several may be retired or redefined.
+
+**Rule for future decisions:**
+
+> Before deploying or reverting a BTC-level raw-magnitude cap, build the cross-tab from all samples considered relevant (not just the raw-magnitude column), confirm which cells inside the capped range have pool N ≥ 5 and WR signal, and only cap if the evidence across cells inside the range is uniformly negative OR there are no PREMIUM ZONE cells inside the range. This rule is now part of the Apr 14 Filter design principle.
+
 ### Changes considered and rejected during Phase 1c design (anti-overfit discipline)
 
 **1-sample-driven changes walked back after cross-sample check:**

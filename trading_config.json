@@ -17,9 +17,6 @@
   "trading_pairs_limit": 50,
   "pair_blacklist": "XAGUSDT,XAUUSDT,ZECUSDT,ENAUSDT,RAVEUSDT",
   "new_listing_filter_days": 180,
-  "protective_stops_enabled": true,
-  "protective_sl_pct": 1.5,
-  "protective_tp_pct": 5.0,
   "investment": {
     "mode": "equal_split",
     "fixed_amount": 200.0,

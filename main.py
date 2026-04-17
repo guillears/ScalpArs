@@ -334,12 +334,6 @@ class ConfigUpdate(BaseModel):
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None
     paper_bnb_initial_usd: Optional[float] = None
-    # Broker-side protective stops (Apr 17 — system-down insurance).  See
-    # config.py for semantics.  When enabled, the bot places STOP_MARKET
-    # + TAKE_PROFIT_MARKET orders on every live position open.
-    protective_stops_enabled: Optional[bool] = None
-    protective_sl_pct: Optional[float] = None
-    protective_tp_pct: Optional[float] = None
     investment: Optional[Dict] = None
     thresholds: Optional[Dict] = None
     confidence_levels: Optional[Dict] = None
@@ -1400,40 +1394,12 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
             try:
                 exit_price = await _get_actual_fill_price(order)
 
-                # Detect if this close was triggered by our broker-side protective
-                # stops (STOP_MARKET or TAKE_PROFIT_MARKET placed at position open).
-                # When the bot has been unresponsive, Binance fires these automatically,
-                # and the fill price will match the SL or TP trigger within a small
-                # tolerance for MARK_PRICE slippage + tick rounding.  Labelling
-                # BROKER_SL / BROKER_TP preserves analytical clarity (distinguishing
-                # "bot died, broker saved us" from a truly user-initiated external
-                # close).  Apr 17 system-down insurance.
-                _close_reason = "EXTERNAL_CLOSE"
-                _exit_order_type = "EXTERNAL"
-                if exit_price is not None and order.entry_price:
-                    _tc_cfg = config.trading_config
-                    _sl_pct = float(getattr(_tc_cfg, 'protective_sl_pct', 1.5))
-                    _tp_pct = float(getattr(_tc_cfg, 'protective_tp_pct', 5.0))
-                    _entry = float(order.entry_price)
-                    if order.direction == "LONG":
-                        _expected_sl = _entry * (1 - _sl_pct / 100.0)
-                        _expected_tp = _entry * (1 + _tp_pct / 100.0)
-                    else:
-                        _expected_sl = _entry * (1 + _sl_pct / 100.0)
-                        _expected_tp = _entry * (1 - _tp_pct / 100.0)
-                    # Tolerance: 0.15% of entry price — accounts for mark-vs-last
-                    # divergence at trigger + tick rounding.  Tighter than the
-                    # gap between SL (1.5%) and TP (5%) so they don't collide.
-                    _tol = _entry * 0.0015
-                    if abs(exit_price - _expected_sl) <= _tol:
-                        _close_reason = "BROKER_SL"
-                        _exit_order_type = "BROKER_SL"
-                    elif abs(exit_price - _expected_tp) <= _tol:
-                        _close_reason = "BROKER_TP"
-                        _exit_order_type = "BROKER_TP"
-
+                # Reconciler simply marks orphan orders as EXTERNAL_CLOSE.
+                # BROKER_SL / BROKER_TP labels were removed Apr 17 with the
+                # protective-stops feature (the feature was never functional
+                # for this account — see CLAUDE.md).
                 order.status = "CLOSED"
-                order.close_reason = _close_reason
+                order.close_reason = "EXTERNAL_CLOSE"
                 order.closed_at = datetime.utcnow()
                 order.exit_price = exit_price
                 if order.direction == "LONG":
@@ -1452,17 +1418,11 @@ async def _close_orphan_orders(db: AsyncSession, binance_pairs: set) -> list:
                     action=f"CLOSE_{order.direction}", price=order.exit_price,
                     quantity=order.quantity, investment=order.investment,
                     leverage=order.leverage, notional_value=order.notional_value,
-                    fee=order.exit_fee, order_type=_exit_order_type, is_paper=False
+                    fee=order.exit_fee, order_type="EXTERNAL", is_paper=False
                 )
                 db.add(tx)
-                closed.append({"pair": order.pair, "direction": order.direction, "pnl": order.pnl, "close_reason": _close_reason})
-                if _close_reason in ("BROKER_SL", "BROKER_TP"):
-                    logger.critical(
-                        f"[RECONCILE] {order.pair} {order.direction}: closed as {_close_reason} @ {order.exit_price} "
-                        f"(bot was unresponsive — broker-side protective stop fired, system-down insurance activated)"
-                    )
-                else:
-                    logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE @ {order.exit_price} (not found on Binance)")
+                closed.append({"pair": order.pair, "direction": order.direction, "pnl": order.pnl})
+                logger.warning(f"[RECONCILE] {order.pair} {order.direction}: closed as EXTERNAL_CLOSE @ {order.exit_price} (not found on Binance)")
             except Exception as e:
                 logger.error(f"[RECONCILE] {order.pair} {order.direction}: failed to close orphan order {order.id}: {e}")
 

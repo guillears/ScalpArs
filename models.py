@@ -139,15 +139,14 @@ class Order(Base):
     closing_in_progress = Column(Boolean, nullable=False, default=False)
     close_initiated_at = Column(DateTime, nullable=True)
 
-    # Broker-side protective stops (Apr 17 — system-down insurance).
-    # IDs of the STOP_MARKET and TAKE_PROFIT_MARKET orders placed on Binance
-    # with reduceOnly=true + closePosition=true at position open.  These fire
-    # only if the bot's own exits don't run (Apr 11 failure mode).
-    # closePosition=true means Binance auto-cancels them when the position
-    # closes by other means, so these IDs may point to auto-cancelled orders
-    # after normal exits.  Reconciler uses these to label close_reason as
-    # BROKER_SL / BROKER_TP instead of EXTERNAL_CLOSE when a broker stop
-    # actually fires.
+    # Broker-side protective stops feature REMOVED Apr 17 after 4 failed
+    # hotfix attempts (Binance -4120 / -2015 errors on this account).  These
+    # two columns are kept (not dropped) because removing columns requires a
+    # schema migration; leaving them NULL is harmless.  All existing rows
+    # have NULL values for these since no protective stop order ever placed
+    # successfully.  If the feature is ever re-attempted, these columns can
+    # be reused without schema change.  See CLAUDE.md "Broker-side Protective
+    # Stops removal" for the forensic trail.
     protective_sl_order_id = Column(String(50), nullable=True)
     protective_tp_order_id = Column(String(50), nullable=True)
 

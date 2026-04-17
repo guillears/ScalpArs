@@ -514,7 +514,61 @@ Signs the race is back (or a new close path is bypassing the guard):
 ### Impact on Phase 1b data integrity
 Any `EXTERNAL_CLOSE` trades in pre-Apr-16 samples may be mislabeled trailing-stop (or other bot-initiated) exits. When comparing new (post-fix) samples against historical data, do **not** treat pre-fix `EXTERNAL_CLOSE` counts as ground truth — they over-count external closes and under-count whichever exit type (likely TRAILING_STOP L1) lost the race. For 5th-sample and later report comparisons, expect `EXTERNAL_CLOSE` to drop toward ~0% and the corresponding gained trades to appear under their real bot-initiated reason.
 
-## April 17, 2026 — Broker-Side Protective Stops (system-down insurance)
+## April 17, 2026 — Broker-Side Protective Stops: REMOVED after failed rollout
+
+**Feature status: REMOVED.**  Originally shipped in commit `edb6970` and iterated through 4 hotfixes, the broker-side protective stops feature could not be made functional for this Binance account.  All code, UI, config, and tests related to the feature were removed in a single clean commit.  The `Order.protective_sl_order_id` / `protective_tp_order_id` columns were kept (all NULL) to avoid a schema migration and to permit future re-attempt without a column re-add.
+
+### Forensic trail — what we tried and why each failed
+
+| Hotfix | Commit | Change | Binance error |
+|---|---|---|---|
+| Initial | `edb6970` | `reduceOnly=true + closePosition=true` + `type='STOP_MARKET'` | `-1106` "Parameter 'reduceonly' sent when not required" |
+| #1 | `20c4e41` | Removed `reduceOnly`, kept `closePosition=true` | `-4120` "Order type not supported for this endpoint. Please use the Algo Order API endpoints instead." |
+| #2 | `bf1ceee` | Switched to `reduceOnly=true + amount=quantity`, dropped `closePosition` | `-4120` (same error) |
+| #3 | `ed920e0` | Added `portfolioMargin=True` (theory: account in PM mode) | `-2015` "Invalid API-key, IP, or permissions" — account confirmed NOT in Portfolio Margin |
+| #4 | `7a49a56` | Reverted PM, switched to CCXT unified syntax (`type='market' + stopLossPrice/takeProfitPrice`), dropped `GTE_GTC` | `-4120` (SAME error as hotfixes #1 and #2) |
+
+### Why we stopped
+
+After hotfix #4 produced the same `-4120` error as hotfixes #1 and #2 on the standard `/fapi/v1/order` endpoint, the root cause was determined to be something about this specific Binance account + CCXT version combination that does not yield to parameter-level fixes.  The Portfolio Margin routing alternative (`/papi/v1/um/conditional/order`) was ruled out (account not PM-enrolled).  Without empirical diagnostic against real Binance (would have required handing API keys to a diagnostic script), further blind hotfix iteration was deemed unsafe: each deploy risks an in-flight maker-order orphan like the DOTUSDT incident during the hotfix #4 deploy window.
+
+### Known production impact during the failed rollout
+
+One orphan position (DOTUSDT) was created on Binance without a corresponding DB Order row when the hotfix #2 deploy (bf1ceee) killed the bot process mid-way through a 20-second MAKER_ENTRY wait.  Binance filled the maker order during the restart gap.  The orphan was detected when Binance showed 5 open positions vs the bot's UI showing 4.  Resolution: user manually closed DOTUSDT on Binance UI.  The error-spam from `-4120` and `-2015` during the rollout did not cause any direct P&L impact — the bot's internal exits continued to work correctly throughout, and no positions were lost to the failed protective-stops logic.
+
+### Current risk management posture
+
+The bot relies exclusively on its **internal, in-process exits** for risk management.  These are unchanged from what has been running successfully since the Apr 14 baseline:
+- Main SL at `-0.9%`
+- Trailing stop with `TP 0.50 / pullback 0.20`
+- Signal Lost Flag + Security Gap at `-0.8% to -0.9%`
+- FL2 deep stop at `-1.0%`
+- FL_EMERGENCY_SL backstop at `-1.2%`
+- Regime Change Exit on opposite BTC regime flip
+
+These are well-tested and have been handling all closes during the rollout period.  **No code change is needed to restore normal behavior** — the removal is additive (takes away the non-functional broker layer, everything else continues unchanged).
+
+### What would need to be investigated before any re-attempt
+
+Do NOT re-attempt this feature without first:
+
+1. **Empirical diagnostic** — run a script that places STOP_MARKET with various parameter combinations against live Binance (requires API keys).  The `tests/diag_stop_market_binance.py` file was removed with this commit but the script design is documented in CLAUDE.md (git blame this section) if useful.
+2. **Check Binance account capabilities** — call `/fapi/v1/account` and `/fapi/v2/account` to inspect account type, margin mode, and feature flags.  Also check `exchange.load_markets()` for any per-symbol restrictions.
+3. **Check Binance API documentation for STOP_MARKET changes** — Binance may have deprecated `/fapi/v1/order` for conditional orders on some account tiers.  Verify the current documented endpoint for STOP_MARKET on standard USDⓈ-M Futures.
+4. **Verify CCXT 4.4.100+ behavior** — check if CCXT has a newer method specifically for Futures Algo Orders (separate from the Portfolio Margin `/papi/*` routing).
+5. **If all else fails, consider support ticket** — submit the exact request + error to Binance API support.
+
+### Alternative protection layers to consider instead of a re-attempt
+
+Since the broker-side stops primarily existed as **insurance for the Apr 11 failure mode** (instance replacement / bot outage leaving positions orphaned), other protections can address the same risk without requiring broker-side stop orders:
+
+- **C1 (S3 DB snapshot)** — pending from CLAUDE.md Apr 11 hardening.  If the bot restarts after an outage, it can recover the DB state and resume managing open positions normally.  Does not protect during the outage itself but reduces the orphan window from "unbounded" to "time-to-restart."
+- **CloudWatch alarms → auto-close via Binance Web API** — a Lambda function triggered by bot-health alarms that calls Binance directly to close all open positions.  Heavier infrastructure but achieves the same insurance goal.
+- **User-side manual monitoring** — a separate lightweight script/phone alert that notifies if the bot hasn't placed any API calls in N minutes.  User manually closes positions if alert fires.
+
+The broker-side protective stops approach is the simplest in theory but has proven technically incompatible with this Binance account's current configuration.  Alternative approaches above should be considered before any re-attempt of broker-side stops.
+
+## April 17, 2026 — Broker-Side Protective Stops (OLD — original design, kept for reference only)
 
 ### The gap this closes
 The bot's exit logic is in-process — trailing stops, BE levels, FL flags, regime change exits all run inside the monitor loop. If the bot dies, stalls, gets rate-limited, or the EC2 instance is replaced (Apr 11 scenario), **open positions drift unmanaged until recovery.** In the worst case that happened Apr 11, ~40 positions stayed open for 8 hours.

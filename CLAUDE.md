@@ -701,7 +701,7 @@ Every config change has ≥2-sample evidence OR is a targeted pair-specific kill
 |---|---|---|
 | 1 | `pair_blacklist`: add `RAVEUSDT` | 3L, 0% WR, -$6.17 — surgical kill, preserves RSI 50-55 for other pairs |
 | 2 | `adx_strong_long`: 15 → 18 | ADX 18-22 = 77.8% WR biggest winner; 15-18 = 40% WR. Net +$5.16 on retained subsample |
-| 3 | `btc_adx_max_long`: 40 → 35 | BTC ADX 35-40 = 40% WR -$5.54 (loss zone); 25-35 = 73% WR |
+| 3 | `btc_adx_max_long`: 40 → 35 → **25** (amended Apr 17 PM) | Initial change to 35 was 1-sample driven. 3-sample re-analysis (Apr 17 PM, see "Phase 1c amendment #2" below) showed the clean breakpoint is at 25, not 35. Kept as row 3 here with the full history; actual deployed value is 25. |
 
 **SHORT side:**
 
@@ -724,6 +724,68 @@ Every config change has ≥2-sample evidence OR is a targeted pair-specific kill
 |---|---|---|
 | 9 | BTC ADX Direction filter moved OUT of `if btc_global_enabled:` block in `services/trading_engine.py` | Pre-refactor: `btc_adx_dir_long/short` only fired when Macro Trend / BTC Global toggle was ON. Since user's config has `btc_global_filter_enabled: false`, the filter was effectively dead. Now runs independently (like BTC ADX range already did). Required for the change #7 to actually apply. |
 | 10 | UI: BTC ADX Direction dropdowns moved from "Macro Trend Regime" section to "BTC Independent Filters" section (`templates/index.html`) | Matches the backend — the UI now correctly represents that these filters run standalone. |
+
+### Phase 1c amendment #2 (deployed Apr 17 PM) — BTC ADX caps from 3-sample cross-analysis
+
+After the Apr 17 AM filter-tightening deploy, validation of the "late-cycle BTC ADX" SHORT watchlist hypothesis against the Apr 13 117-trade Entry Conditions by Close Reason table falsified the original pair-level signature (ADXΔ / RngPos / Breadth were identical across SHORT winners and losers). Re-aggregation on **raw BTC ADX magnitude** across 3 independent samples (Apr 6 + Apr 13 + Apr 17 Phase 1b = 259 trades) produced clean breakpoints that had been invisible in single-sample analysis. Mar 30 sample excluded (too old, different config). Per Core Operating Principle: Avg P&L % used throughout (invest amounts varied across batches).
+
+**3-sample BTC ADX bucket performance:**
+
+LONGs (126 trades, ex-MANUAL/EXTERNAL):
+
+| BTC ADX | N | Avg P&L % |
+|---|---|---|
+| <20 | 8 | +0.19% |
+| 20-25 | 52 | **+0.23%** |
+| 25-30 | 70 | **−0.17%** |
+| 30-35 | 5 | +0.52% (tiny N) |
+| 35-40 | 5 | −1.11% (tiny N) |
+
+SHORTs (133 trades):
+
+| BTC ADX | N | Avg P&L % |
+|---|---|---|
+| <20 | 12 | −0.53% |
+| 20-25 | 23 | +0.20% |
+| 25-30 | 48 | +0.05% (flat) |
+| 30-35 | 16 | **−0.63%** |
+| 35-40 | 8 | **−0.36%** |
+
+**Changes deployed Apr 17 PM:**
+
+| # | Change | Rationale |
+|---|---|---|
+| 11 | `btc_adx_max_long`: 35 → **25** | **Strongest finding in the entire dataset.** LONG 20-25 = +0.23% on N=52 across 3 samples; LONG 25-30 = −0.17% on N=70 across 3 samples. N=122 informs the 25-line. 3 independent samples, 3 independent configs, all consistent. Config-invariant macro mechanism (BTC over-stretched = late-cycle entry). |
+| 12 | `btc_adx_max_short`: 40 → **30** | Robust. SHORT 30-35 = −0.63% on N=16 across 3 samples (all negative direction); SHORT 35-40 = −0.36% on N=8 Phase 1b alone. Apr 13 FL_DEEP_STOP (10 @ −1.02%) = biggest single loss bucket in the entire dataset, exactly the trades this cap kills. |
+
+**HELD back (not deployed, N too thin):**
+
+| Change | Why held |
+|---|---|
+| `btc_adx_min_short`: 18 → 20 | SHORT <20 = −0.53% but only N=12 across 3 samples. Per CLAUDE.md's own anti-overfit rule ("Small N <10 per bucket is noise"), N=12 is marginal. Current min=18 already blocks the worst BTC ADX values seen (16.2, 16.9, 17.1). Re-evaluate at 200-trade sample. |
+
+**Ex-post what-if on the 259-trade 3-sample dataset (these filters applied):**
+
+| Metric | Before | After | Delta |
+|---|---|---|---|
+| Total trades | 259 | 131 | **−49%** |
+| LONG Avg P&L % | −0.01% | **+0.23%** | +0.24 pct-pt/trade |
+| SHORT Avg P&L % | −0.09% | **+0.10%** | +0.19 pct-pt/trade |
+| Combined Avg P&L % | −0.05% | **+0.16%** | +0.21 pct-pt/trade |
+| Projected PF | 0.8-1.0 | **1.5-1.7** | regime flip |
+
+**Important caveats:**
+1. The ex-post projection is not a forecast — it assumes the same market regimes and pair mixes persist. Forward P&L will differ.
+2. Apr 13 LONG 25-30 (N=44 @ −0.44%) dominates the LONG improvement. If Apr 13 was regime-specific, forward improvement will be smaller.
+3. Trade count halves (~5/day → ~2.5/day at same entry rate). The 100-trade Phase 1c sample will take ~2x longer to collect.
+4. The two big caps (LONG max 25, SHORT max 30) are the 95% of projected improvement. The held-back SHORT min ≥20 is marginal (5%).
+
+**Pooling rule (amended Apr 17 PM):** Pre-Apr-17-PM Phase 1c data (the Apr 17 AM 13-trade peek) and post-Apr-17-PM data should be **separated** at analysis time. The Apr 17 AM data is 1-config, 13-trade. The Apr 17 PM data is the real Phase 1c sample against which the 100-trade checkpoint should be run. If you want to reason about cumulative Phase 1c bucket counts, add the two sub-samples but flag N per sub-sample.
+
+**What to measure at 100-trade Phase 1c checkpoint (in addition to the existing 22-question checklist):**
+- **Did the caps work?** Count trades with `entry_btc_adx >= 25` (LONG) and `entry_btc_adx >= 30` (SHORT). Should be **zero**. Any non-zero count = filter not firing.
+- **Did the kept buckets perform?** LONG 20-25 at 3-sample avg +0.23% — does fresh sample show ≥+0.15% Avg on ≥30 trades? SHORT 25-30 at 3-sample avg +0.05% — does fresh sample show ≥0 Avg on ≥30 trades?
+- **Did the held-back <20 SHORT bucket get enough data to decide?** Target ≥10 SHORT trades in BTC ADX <20 in the fresh sample. If yes, decide on `btc_adx_min_short: 18 → 20` at the checkpoint rather than waiting for 200 trades.
 
 ### Changes considered and rejected during Phase 1c design (anti-overfit discipline)
 

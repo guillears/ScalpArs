@@ -839,6 +839,44 @@ Because the delay doesn't filter signals but just changes WHEN the order is plac
 **Why this is specifically a LONG-side finding (asymmetry note):**
 The Exit Quality table shows clear SL recovery on SHORTs (`FL_RECOVERED L1` at 100% recovery, `FL_TRAILING_STOP L1/L2/L3` all 100% recovery) that is completely absent on LONGs (all FL_* LONG buckets at 0% recovery). This is consistent with bearish regimes having more frequent bounces (pullbacks that recover) while bullish regimes showing more failed rallies (pullbacks that break through). If confirmed in 2nd sample, it justifies asymmetric exit handling (`signal_lost_flag_long_enabled` vs `..._short_enabled`).
 
+### Entry watchlist — SHORT "late-cycle BTC ADX" bad entry (Apr 17, cross-sample directional, needs Phase 1c confirmation)
+
+**Corrected framing (Apr 17, after cross-sample validation).** Earlier version of this entry claimed a pair-level "capitulation combo-filter" (rising BTC ADX + ADXΔ 0.84-1.41 + RangePos <25% + Breadth ≥85%) separated Phase 1c's 5/5 losing SHORTs from winners. **Validation against Apr 13's 117-trade Entry Conditions by Close Reason table showed those pair-level dimensions do NOT discriminate winners from losers** — they describe the bot's general short-entry profile. The real discriminator sits one layer upstream: macro BTC ADX magnitude.
+
+**What Phase 1c (Apr 17, 5S) actually tells us:** all 5 SHORTs lost via regime change during the trade. The new `btc_adx_dir_short: rising` filter was respected (100% had rising BTC ADX at entry) — but the filter only checks *direction*, not *absolute level*. A rising BTC ADX going 30→32 is a macro-trend reversal waiting to happen; a rising BTC ADX going 20→22 has room to run. Both pass our current filter.
+
+**The actual discriminator (Apr 13 117-trade Entry Conditions by Close Reason table):**
+
+| Bucket | # | BTC ADX | ADXΔ | RngPos | Breadth | Outcome |
+|---|---|---|---|---|---|---|
+| FL_DEEP_STOP L1 (S) | 10 | **31.7** | +1.10 | 12% | 72% | LOSS -$23.19 |
+| FL_RECOVERED L1 (S) | 7 | 28.5 | +0.57 | 13% | 68% | LOSS -$6.66 |
+| FL_STOP_LOSS L1 (S) | 2 | 28.1 | +0.91 | 6% | 80% | LOSS -$4.07 |
+| TRAILING_STOP L1 (S) | 12 | **28.2** | +1.12 | 13% | 73% | WIN +$10.06 |
+| TRAILING_STOP L2 (S) | 8 | 28.3 | +1.19 | 19% | 67% | WIN +$7.58 |
+| FL_TRAILING_STOP L1 (S) | 6 | 26.6 | +0.34 | 14% | 73% | WIN +$6.97 |
+| TRAILING_STOP L3/L4/L6+ (S) | 3 | **23.6-25.6** | +2.28 to +2.95 | 8-21% | 79-85% | BIG WIN |
+
+Pair-level ADXΔ, RngPos, Breadth: **identical across winners and losers** (ADXΔ +1.10 vs +1.12, RngPos 12 vs 13, Breadth 72 vs 73). BTC ADX magnitude: **cleanly separated** (weighted-avg losers ~29.5 vs winners ~26.8, with biggest winners clustering at 23-26 and biggest loser at 31.7).
+
+**Cross-sample status:** already 2-sample confirmed (Apr 13 + Apr 15, see "Cross-sample confirmed entry findings — BTC ADX × Slope for SHORTs" section). The 2-sample-confirmed rule: BTC ADX **18-27** with slope falling → WIN zone (27 trades, 81% WR, +$19.93); BTC ADX **≥28** with slope falling → LOSS zone (27 trades, 52% WR, -$10.71). Apr 17 Phase 1c regime-change cluster is directionally consistent with this but needs the full Entry Conditions by Close Reason table to confirm per-trade BTC ADX values.
+
+**What to check in next batch (Phase 1c full sample, target ≥15 SHORT losses):**
+
+1. **BTC ADX magnitude split.** For each SHORT loss bucket (REGIME_CHANGE, FL_REGIME_CHANGE, FL_DEEP_STOP, FL_STOP_LOSS) vs winner buckets (TRAILING_STOP L1/L2, FL_TRAILING_STOP), tabulate the AvgBTCADX column. Expect losers >29, winners <28.
+2. **3-sample structural check.** If Apr 17 Phase 1c data also shows losers at BTC ADX ~29-32 and winners at ~24-27 → **3-sample structural** finding, ship the filter at Phase 1c → Phase 2 transition.
+3. **Do NOT re-investigate the pair-level ADXΔ/RngPos/Breadth combo** — already falsified against Apr 13.
+
+**Candidate fix (already pre-committed elsewhere in this doc — no new mechanism needed):**
+
+Cap `btc_adx_max_short` at 28 (currently 40). This is the already-documented raw-dimension filter. Delivers via the pre-committed Phase 2 BTC RSI × BTC ADX cross-filter UI work, not a new combo-filter. If 3-sample confirms, raise from "candidate" to "ship in Phase 2 default config."
+
+**Do NOT ship the filter on Apr 17 1-sample evidence.** The 2-sample Apr 13 + Apr 15 confirmation already exists for the "BTC ADX 18-27 vs ≥28" raw-dimension pattern; what's pending is whether Apr 17 Phase 1c makes it 3-sample structural. Wait for Phase 1c to accumulate ≥15 SHORT losses before committing.
+
+**Methodological note — why this entry was corrected:**
+
+The original "pair-level combo-filter" framing was a cautionary lesson in **not validating a 1-sample pattern against the right comparison.** I noted the 5/5 losers shared a pair-level profile and treated it as discriminative without first asking "do winners share this same profile?" The correct procedure — which the Apr 13 Entry Conditions by Close Reason table immediately showed — is to compare losers' bucket averages against winners' bucket averages on every dimension. If winners and losers share a dimension's value, that dimension is not the discriminator, regardless of how clean the losers' profile looks in isolation. The real discriminator was one layer up (macro BTC ADX level), which only became visible by cross-sample + winner-vs-loser comparison. **Future 1-sample pattern claims must include this winner-vs-loser cross-check before being added to any watchlist.**
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

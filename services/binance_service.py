@@ -608,14 +608,27 @@ class BinanceService:
         self,
         symbol: str,
         direction: str,         # "LONG" or "SHORT" — the position direction
+        quantity: float,        # position size (base asset units)
         entry_price: float,
         sl_pct: float,          # e.g. 1.5 for -1.5% SL from entry
         tp_pct: float,          # e.g. 5.0 for +5.0% TP from entry
     ) -> Dict[str, Optional[str]]:
         """Place broker-side protective STOP_MARKET + TAKE_PROFIT_MARKET orders
-        for an existing position.  Both use reduceOnly=true + closePosition=true
-        so Binance auto-cancels them when the position closes by any other
-        means (no manual cleanup needed on normal bot-initiated exits).
+        for an existing position.  Both use reduceOnly=true with explicit
+        quantity (matches CCXT's reliable path on Binance Futures).  IMPORTANT:
+        we intentionally do NOT set closePosition=true — Binance rejects that
+        with error -4120 "Order type not supported for this endpoint" and
+        routes it to the Algo Order API which CCXT doesn't handle cleanly.
+        Using reduceOnly+quantity on the standard /fapi/v1/order endpoint is
+        the well-tested path.  Apr 17 hotfix after -4120 production failures.
+
+        Because we lose the closePosition=true auto-cancel behavior, the
+        close path (services/trading_engine._close_position_locked) MUST
+        explicitly call cancel_protective_stops after a bot-initiated close
+        to avoid orphan orders triggering on future positions on the same
+        pair.  reduceOnly prevents flip-into-new-position from orphans, but
+        they could still close a fresh position at a stale trigger price if
+        not cancelled.
 
         Fires ONLY if the bot's own exit logic doesn't run — system-down
         insurance (Apr 11 scenario).  SL is placed 0.3% below the bot's
@@ -672,14 +685,21 @@ class BinanceService:
             return round(math.floor(px / _tick) * _tick, 10) if direction == "LONG" else round(math.ceil(px / _tick) * _tick, 10)
 
         # Use MARK_PRICE so wicks / flash-crash false-triggers don't fire the stops.
-        # IMPORTANT: do NOT set reduceOnly alongside closePosition.  Binance
-        # Futures rejects this combination with error -1106 "Parameter
-        # 'reduceonly' sent when not required" because closePosition=true
-        # already implies close-only semantics (in fact it's STRONGER — it
-        # closes the entire position, not just reduces it).  Apr 17 hotfix
-        # after production verified the -1106 failures in CloudWatch.
+        # IMPORTANT: we intentionally do NOT use closePosition=true here.
+        # That flag routes STOP_MARKET / TAKE_PROFIT_MARKET through Binance's
+        # Algo Order API endpoint which CCXT's create_order does not reliably
+        # hit — observed in production with error -4120 "Order type not
+        # supported for this endpoint. Please use the Algo Order API endpoints
+        # instead." on both DOGE and BCH.  Using reduceOnly=true + explicit
+        # quantity keeps us on the standard /fapi/v1/order endpoint with a
+        # well-tested CCXT path.
+        #
+        # Trade-off: no auto-cancel when the position closes by other means.
+        # Caller (trading_engine._close_position_locked) MUST call
+        # cancel_protective_stops after a successful bot close to avoid
+        # orphan orders triggering against future positions on the same pair.
         common_params = {
-            'closePosition': True,    # Closes full position; auto-cancels on other exit
+            'reduceOnly': True,       # Can only close, not flip direction
             'workingType': 'MARK_PRICE',
             'timeInForce': 'GTE_GTC',
         }
@@ -692,19 +712,19 @@ class BinanceService:
                     symbol=symbol,
                     type='STOP_MARKET',
                     side=close_side,
-                    amount=None,
+                    amount=quantity,
                     price=None,
                     params={**common_params, 'stopPrice': _sl_trigger},
                 )
                 out["sl_order_id"] = str(sl_order.get('id')) if sl_order and sl_order.get('id') else None
                 logger.info(
                     f"[PROTECTIVE_STOPS] {symbol} {direction}: SL placed @ {_sl_trigger} "
-                    f"(-{sl_pct}% from entry {entry_price}) id={out['sl_order_id']}"
+                    f"(-{sl_pct}% from entry {entry_price}, qty={quantity}) id={out['sl_order_id']}"
                 )
             except Exception as _e:
                 logger.error(
                     f"[PROTECTIVE_STOPS] {symbol} {direction}: SL placement FAILED "
-                    f"({str(_e)[:120]}) — position is NOT protected on broker side"
+                    f"({str(_e)[:200]}) — position is NOT protected on broker side"
                 )
 
         # TP — TAKE_PROFIT_MARKET
@@ -715,19 +735,19 @@ class BinanceService:
                     symbol=symbol,
                     type='TAKE_PROFIT_MARKET',
                     side=close_side,
-                    amount=None,
+                    amount=quantity,
                     price=None,
                     params={**common_params, 'stopPrice': _tp_trigger},
                 )
                 out["tp_order_id"] = str(tp_order.get('id')) if tp_order and tp_order.get('id') else None
                 logger.info(
                     f"[PROTECTIVE_STOPS] {symbol} {direction}: TP placed @ {_tp_trigger} "
-                    f"(+{tp_pct}% from entry {entry_price}) id={out['tp_order_id']}"
+                    f"(+{tp_pct}% from entry {entry_price}, qty={quantity}) id={out['tp_order_id']}"
                 )
             except Exception as _e:
                 logger.error(
                     f"[PROTECTIVE_STOPS] {symbol} {direction}: TP placement FAILED "
-                    f"({str(_e)[:120]}) — upside protection NOT in place"
+                    f"({str(_e)[:200]}) — upside protection NOT in place"
                 )
 
         return out

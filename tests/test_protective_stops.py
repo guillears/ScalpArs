@@ -45,7 +45,9 @@ async def _setup_engine():
 
 async def test_place_protective_stops_long():
     """LONG: SL must be below entry, TP must be above. Binance called with
-    correct side (sell), reduceOnly, closePosition=True, MARK_PRICE."""
+    correct side (sell), reduceOnly=True, NO closePosition (Binance -4120
+    if closePosition=true is sent via standard endpoint), explicit quantity,
+    MARK_PRICE."""
     svc = BinanceService()
     svc._check_ban = AsyncMock()
     svc.load_markets = AsyncMock()
@@ -62,6 +64,7 @@ async def test_place_protective_stops_long():
     result = await svc.place_protective_stops(
         symbol="BTC/USDT:USDT",
         direction="LONG",
+        quantity=0.5,
         entry_price=100.0,
         sl_pct=1.5,
         tp_pct=5.0,
@@ -74,22 +77,27 @@ async def test_place_protective_stops_long():
     sl_call, tp_call = _calls
     assert sl_call["type"] == "STOP_MARKET"
     assert sl_call["side"] == "sell", "LONG close side = sell"
-    # closePosition=true implies close-only semantics; reduceOnly must NOT
-    # be present (Binance -1106: "Parameter 'reduceonly' sent when not required")
-    assert "reduceOnly" not in sl_call["params"], (
-        "reduceOnly must NOT be set when closePosition=true — Binance rejects it"
+    # reduceOnly=True ensures close-only (cannot flip). closePosition must NOT
+    # be present — Binance rejects closePosition=true on the standard endpoint
+    # with error -4120 "Order type not supported for this endpoint. Please
+    # use the Algo Order API endpoints instead."
+    assert sl_call["params"]["reduceOnly"] is True, "reduceOnly must be True"
+    assert "closePosition" not in sl_call["params"], (
+        "closePosition must NOT be set — Binance rejects it on /fapi/v1/order with -4120"
     )
-    assert sl_call["params"]["closePosition"] is True
+    assert sl_call["amount"] == 0.5, f"SL must use explicit quantity, got {sl_call['amount']}"
     assert sl_call["params"]["workingType"] == "MARK_PRICE"
     # SL price ≈ 100 * (1 - 0.015) = 98.5, rounded DOWN to 0.01 tick = 98.50
     assert abs(sl_call["params"]["stopPrice"] - 98.50) < 0.001, f"SL stopPrice={sl_call['params']['stopPrice']}"
 
     assert tp_call["type"] == "TAKE_PROFIT_MARKET"
     assert tp_call["side"] == "sell"
-    assert "reduceOnly" not in tp_call["params"], "reduceOnly must NOT be set when closePosition=true"
+    assert tp_call["params"]["reduceOnly"] is True
+    assert "closePosition" not in tp_call["params"]
+    assert tp_call["amount"] == 0.5
     # TP price ≈ 100 * 1.05 = 105.00
     assert abs(tp_call["params"]["stopPrice"] - 105.00) < 0.001, f"TP stopPrice={tp_call['params']['stopPrice']}"
-    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, closePosition set (no reduceOnly), MARK_PRICE used")
+    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, reduceOnly+qty+MARK_PRICE, NO closePosition")
 
 
 async def test_place_protective_stops_short():
@@ -107,16 +115,19 @@ async def test_place_protective_stops_short():
 
     result = await svc.place_protective_stops(
         symbol="BTC/USDT:USDT", direction="SHORT",
-        entry_price=100.0, sl_pct=1.5, tp_pct=5.0,
+        quantity=0.5, entry_price=100.0, sl_pct=1.5, tp_pct=5.0,
     )
     sl_call, tp_call = _calls
     assert sl_call["side"] == "buy", "SHORT close side = buy"
+    assert sl_call["params"]["reduceOnly"] is True
+    assert "closePosition" not in sl_call["params"]
+    assert sl_call["amount"] == 0.5
     # SL above entry: 100 * 1.015 = 101.50
     assert abs(sl_call["params"]["stopPrice"] - 101.50) < 0.001
     # TP below entry: 100 * 0.95 = 95.00
     assert abs(tp_call["params"]["stopPrice"] - 95.00) < 0.001
     assert result["sl_order_id"] and result["tp_order_id"]
-    print("  [OK] SHORT: SL @ 101.50, TP @ 95.00, close side = buy")
+    print("  [OK] SHORT: SL @ 101.50, TP @ 95.00, close side = buy, reduceOnly+qty")
 
 
 async def test_place_protective_stops_graceful_partial_failure():
@@ -137,7 +148,7 @@ async def test_place_protective_stops_graceful_partial_failure():
 
     result = await svc.place_protective_stops(
         symbol="BTC/USDT:USDT", direction="LONG",
-        entry_price=100.0, sl_pct=1.5, tp_pct=5.0,
+        quantity=0.5, entry_price=100.0, sl_pct=1.5, tp_pct=5.0,
     )
     assert result["sl_order_id"] == "sl-123"
     assert result["tp_order_id"] is None, "TP failure should surface as None"
@@ -152,7 +163,7 @@ async def test_place_protective_stops_invalid_direction():
 
     result = await svc.place_protective_stops(
         symbol="BTC/USDT:USDT", direction="BANANA",
-        entry_price=100.0, sl_pct=1.5, tp_pct=5.0,
+        quantity=0.5, entry_price=100.0, sl_pct=1.5, tp_pct=5.0,
     )
     assert result["sl_order_id"] is None
     assert result["tp_order_id"] is None

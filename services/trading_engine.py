@@ -1288,9 +1288,13 @@ class TradingEngine:
         # ── Broker-side protective stops (Apr 17 — system-down insurance) ──
         # Live mode only.  Fails open: a protective-order failure is logged
         # but does NOT affect the order record or roll back the trade.
-        # closePosition=true means Binance auto-cancels these orders when the
-        # position closes by any other means (trailing, FL2, manual exit),
-        # so no coordination is needed on the bot's close path.
+        # Uses reduceOnly + explicit quantity (not closePosition=true) because
+        # Binance rejects closePosition=true on the standard /fapi/v1/order
+        # endpoint with error -4120; see binance_service.place_protective_stops
+        # docstring.  This means the close path MUST explicitly cancel the
+        # protective orders on bot-initiated exit (wired below in
+        # _close_position_locked) to avoid orphans triggering on future
+        # positions on the same pair.
         if not self.is_paper_mode:
             _tc = config.trading_config
             _protective_enabled = bool(getattr(_tc, 'protective_stops_enabled', True))
@@ -1301,6 +1305,7 @@ class TradingEngine:
                     _protective = await binance_service.place_protective_stops(
                         symbol=symbol,
                         direction=direction,
+                        quantity=quantity,
                         entry_price=actual_price,
                         sl_pct=_sl_pct,
                         tp_pct=_tp_pct,
@@ -1313,7 +1318,7 @@ class TradingEngine:
                     # protection unavailable for this trade only.
                     logger.warning(
                         f"[PROTECTIVE_STOPS] {pair}: unexpected error "
-                        f"while placing protective stops ({str(_e)[:120]}) — "
+                        f"while placing protective stops ({str(_e)[:200]}) — "
                         f"position is NOT protected on broker side"
                     )
 
@@ -1916,6 +1921,34 @@ class TradingEngine:
                 f"Will be caught by next reconciliation cycle."
             )
             return None
+
+        # ── Cancel broker-side protective stops (Apr 17) ──
+        # With reduceOnly (not closePosition=true), Binance does NOT auto-cancel
+        # these when the position closes by other means.  If we don't cancel,
+        # an orphan STOP_MARKET from this closed position could close a FUTURE
+        # position on the same pair at the stale trigger price.  reduceOnly
+        # prevents flip-into-new-position but not stale-price close.
+        # Non-fatal: cancel_protective_stops internally treats Binance
+        # "unknown order" as success (already gone), and we log + continue
+        # on any other error.  Position is already closed; this is cleanup.
+        if not self.is_paper_mode and (
+            getattr(order, 'protective_sl_order_id', None) or
+            getattr(order, 'protective_tp_order_id', None)
+        ):
+            try:
+                _symbol = order_pair.replace('USDT', '/USDT:USDT')
+                await binance_service.cancel_protective_stops(
+                    symbol=_symbol,
+                    sl_order_id=getattr(order, 'protective_sl_order_id', None),
+                    tp_order_id=getattr(order, 'protective_tp_order_id', None),
+                )
+            except Exception as _pe:
+                logger.warning(
+                    f"[PROTECTIVE_STOPS] {order_pair}: cleanup cancel failed "
+                    f"({str(_pe)[:120]}) — orphan orders may exist on Binance; "
+                    f"will be cleaned up next time position opens on this pair or "
+                    f"manually via cancel_protective_stops(symbol)"
+                )
 
         # ═══════════════════════════════════════════════════════════════
         # PHASE 2: Optional metadata — failures here must NEVER revert

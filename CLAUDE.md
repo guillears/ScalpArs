@@ -725,6 +725,66 @@ Phase 1b data (81 trades pre-Apr-17) and Phase 1c data (post-Apr-17) are SEPARAT
 
 Phase 1c is now the active sample. Pre-Apr-17 data (Phase 1a, Phase 1b) becomes historical reference for cross-sample pattern validation.
 
+### Exit Quality watchlist — LONG "early flameout" pattern (Apr 17, 1-sample finding, validate next batch)
+
+Observed in the Phase 1b 81-trade sample (`reports/report_2026-04-17_phase1b_81trades.txt`) via the Exit Quality table: **LONG losers peak absurdly fast at absurdly low magnitude, then ride directly to the stop.**
+
+**The signature:**
+
+| Exit cell (LONG) | # | Peak % | PkMin (time to peak) | Close % |
+|---|---|---|---|---|
+| FL_DEEP_STOP L1 | 5 | **+0.04%** | **0.1 min (≈6 sec)** | −1.04% |
+| FL_REGIME_CHANGE L1 | 6 | **+0.07%** | **1.7 min** | −0.56% |
+| FL_EMERGENCY_SL L1 | 2 | +0.20% | 1.6 min | −1.32% |
+
+Compare to LONG winners:
+
+| Exit cell (LONG) | # | Peak % | PkMin | Close % |
+|---|---|---|---|---|
+| TRAILING_STOP L1 | 11 | +0.51% | 21 min | +0.46% |
+| TRAILING_STOP L2 | 10 | +0.67% | 39 min | +0.45% |
+
+**13 of 15 LONG losses in the sample follow the "flameout" path:** peak in under 2 minutes at under +0.10%, then ride to SL. Winners peak in 21–39 minutes at +0.5% to +0.7%.
+
+**Importantly, the flameout pattern is NOT evident on SHORTs.** `FL_RECOVERED L1` shorts peaked at +0.02% in 6.9 min (similar low-magnitude early peak) but 100% recovered to close at only −0.39%. Early flat peaks on SHORTs are NOT predictive of loss — they often reverse and recover. On LONGs, they predict the trade will die.
+
+**Hypothesis:** in choppy/mid-range markets, bullish signals fire at local intrabar tops. Price briefly confirms (0.04–0.10% bump within first candle) then sellers hit, trend fails, bot rides the full SL distance. This is structural "bought the top" behavior, not a filter-side issue (entry conditions for these flameouts vs winners are remarkably similar on single-variable axes).
+
+**What to check in next batch (Phase 1c, target ≥15 LONG losses):**
+
+1. **PkMin distribution of LONG losers vs winners.**
+   - If the next batch's LONG losses also cluster at PkMin < 2 min AND Peak < 0.15% → pattern is 2-sample structural.
+   - If losses are spread across PkMin ranges → pattern was 1-sample regime-specific noise.
+
+2. **What fraction of LONG winners had Peak ≥ 0.15% by minute 10?**
+   - This determines whether tightening `no_expansion_minutes` from 240 → 15 would cut legitimate winners.
+   - Cross-reference with Never-Positive Deep Dive + per-trade data if available.
+   - Want to see: winners hit +0.15% by minute 10 at ≥80% rate.
+
+3. **Does the pattern hold across BTC regimes or only BULLISH?**
+   - Phase 1b was pure-BULLISH LONG sample. Regime-specific pattern is weaker evidence.
+
+**Candidate fixes (ranked, if pattern confirmed):**
+
+| Option | What | Effort | Risk |
+|---|---|---|---|
+| 1 (⭐ preferred) | Tighten `no_expansion_minutes`: 240 → 15 | Config only, zero code | Low (some slow-start winners possibly cut) |
+| 2 | Tight initial SL (−0.3% for first 2–3 min, widen to −0.9% after) | ~15 lines in `_check_exit_conditions` | Medium (whipsaw risk) |
+| 3 | Entry momentum confirmation delay (wait 10–30s after signal, re-check) | ~50 lines; new tunable param | Medium, fits trend-following profile but adds complexity |
+
+**Analytical note on Option 3 — to evaluate empirically in the next batch:**
+
+> Option 3 (entry momentum confirmation delay) would change entry price, not entry frequency.  Could be better (entering at the reversal bottom — i.e., buying after the micro-spike that triggered the signal has exhausted) or worse (entering after the reversal has already started — i.e., buying into a fade).  **Unclear without simulation.**
+
+Because the delay doesn't filter signals but just changes WHEN the order is placed, it would require either (a) a backtest against historical intra-bar tick data, or (b) a shadow-mode implementation that logs "what would have happened with delay X" on live trades without actually trading.  **Do not ship Option 3 blind.**  If Options 1 and 2 prove insufficient after 2-sample validation, the next step for Option 3 is shadow-simulation, NOT a live deploy.
+
+**Default action at 2-sample confirmation: Option 1 (config-only) ships first.** Option 2 only if Option 1 insufficient.  Option 3 only after shadow-simulation justifies it.
+
+**Do NOT act on 1-sample evidence.** Wait for Phase 1c data.
+
+**Why this is specifically a LONG-side finding (asymmetry note):**
+The Exit Quality table shows clear SL recovery on SHORTs (`FL_RECOVERED L1` at 100% recovery, `FL_TRAILING_STOP L1/L2/L3` all 100% recovery) that is completely absent on LONGs (all FL_* LONG buckets at 0% recovery). This is consistent with bearish regimes having more frequent bounces (pullbacks that recover) while bullish regimes showing more failed rallies (pullbacks that break through). If confirmed in 2nd sample, it justifies asymmetric exit handling (`signal_lost_flag_long_enabled` vs `..._short_enabled`).
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

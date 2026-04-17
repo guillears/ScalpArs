@@ -78,12 +78,18 @@ async def test_place_protective_stops_long():
     assert sl_call["type"] == "STOP_MARKET"
     assert sl_call["side"] == "sell", "LONG close side = sell"
     # reduceOnly=True ensures close-only (cannot flip). closePosition must NOT
-    # be present — Binance rejects closePosition=true on the standard endpoint
-    # with error -4120 "Order type not supported for this endpoint. Please
-    # use the Algo Order API endpoints instead."
+    # be present — Binance rejects closePosition=true with -1106.
+    # portfolioMargin=True routes to /papi/v1/um/conditional/order (the
+    # "Algo Order API" Binance requires for conditional orders on PM
+    # accounts — without it, CCXT falls back to /fapi/v1/order which
+    # rejects conditional types with -4120).
     assert sl_call["params"]["reduceOnly"] is True, "reduceOnly must be True"
+    assert sl_call["params"]["portfolioMargin"] is True, (
+        "portfolioMargin must be True — routes to /papi/v1/um/conditional/order "
+        "(the Algo Order endpoint). Without it, Binance returns -4120."
+    )
     assert "closePosition" not in sl_call["params"], (
-        "closePosition must NOT be set — Binance rejects it on /fapi/v1/order with -4120"
+        "closePosition must NOT be set — Binance rejects it with -1106"
     )
     assert sl_call["amount"] == 0.5, f"SL must use explicit quantity, got {sl_call['amount']}"
     assert sl_call["params"]["workingType"] == "MARK_PRICE"
@@ -93,11 +99,12 @@ async def test_place_protective_stops_long():
     assert tp_call["type"] == "TAKE_PROFIT_MARKET"
     assert tp_call["side"] == "sell"
     assert tp_call["params"]["reduceOnly"] is True
+    assert tp_call["params"]["portfolioMargin"] is True, "portfolioMargin must be True for TP too"
     assert "closePosition" not in tp_call["params"]
     assert tp_call["amount"] == 0.5
     # TP price ≈ 100 * 1.05 = 105.00
     assert abs(tp_call["params"]["stopPrice"] - 105.00) < 0.001, f"TP stopPrice={tp_call['params']['stopPrice']}"
-    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, reduceOnly+qty+MARK_PRICE, NO closePosition")
+    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, reduceOnly+portfolioMargin+qty+MARK_PRICE, NO closePosition")
 
 
 async def test_place_protective_stops_short():
@@ -120,6 +127,7 @@ async def test_place_protective_stops_short():
     sl_call, tp_call = _calls
     assert sl_call["side"] == "buy", "SHORT close side = buy"
     assert sl_call["params"]["reduceOnly"] is True
+    assert sl_call["params"]["portfolioMargin"] is True
     assert "closePosition" not in sl_call["params"]
     assert sl_call["amount"] == 0.5
     # SL above entry: 100 * 1.015 = 101.50
@@ -127,7 +135,7 @@ async def test_place_protective_stops_short():
     # TP below entry: 100 * 0.95 = 95.00
     assert abs(tp_call["params"]["stopPrice"] - 95.00) < 0.001
     assert result["sl_order_id"] and result["tp_order_id"]
-    print("  [OK] SHORT: SL @ 101.50, TP @ 95.00, close side = buy, reduceOnly+qty")
+    print("  [OK] SHORT: SL @ 101.50, TP @ 95.00, close side = buy, reduceOnly+portfolioMargin+qty")
 
 
 async def test_place_protective_stops_graceful_partial_failure():
@@ -177,31 +185,59 @@ async def test_place_protective_stops_invalid_direction():
 # ────────────────────────────────────────────────────────────────────────────
 
 async def test_cancel_protective_stops_happy():
-    """Cancel succeeds → both flagged as cancelled."""
+    """Cancel succeeds → both flagged as cancelled.
+
+    CRITICAL: cancel_order must be called with portfolioMargin=True + trigger=True
+    so CCXT routes the cancel to /papi/v1/um/conditional/order DELETE (the
+    Portfolio Margin Conditional Order endpoint where the orders were placed).
+    Without these flags CCXT would hit /fapi/v1/order DELETE and return
+    "unknown order", which would be misinterpreted as "already gone" by our
+    benign-error handler, leaving real orders live.
+    """
     svc = BinanceService()
     svc._check_ban = AsyncMock()
     svc.load_markets = AsyncMock()
     svc.exchange = MagicMock()
-    svc.exchange.cancel_order = AsyncMock(return_value={"status": "canceled"})
+
+    # Capture cancel_order call args so we can verify PM flags are passed
+    _cancel_calls = []
+    async def _fake_cancel(oid, symbol, params=None):
+        _cancel_calls.append({"oid": oid, "symbol": symbol, "params": params})
+        return {"status": "canceled"}
+    svc.exchange.cancel_order = _fake_cancel
 
     out = await svc.cancel_protective_stops(
         symbol="BTC/USDT:USDT", sl_order_id="sl-1", tp_order_id="tp-1",
     )
     assert out["sl_cancelled"] is True
     assert out["tp_cancelled"] is True
-    assert svc.exchange.cancel_order.call_count == 2
-    print("  [OK] happy path: both cancelled successfully")
+    assert len(_cancel_calls) == 2, f"expected 2 cancel calls, got {len(_cancel_calls)}"
+    # Both cancels must pass portfolioMargin=True + trigger=True
+    for call in _cancel_calls:
+        assert call["params"] is not None, "cancel_order must receive params"
+        assert call["params"].get("portfolioMargin") is True, (
+            "cancel_order must pass portfolioMargin=True — orders were placed "
+            "on /papi endpoint, must be cancelled there"
+        )
+        assert call["params"].get("trigger") is True, (
+            "cancel_order must pass trigger=True — these are conditional orders"
+        )
+    print("  [OK] happy path: both cancelled with portfolioMargin+trigger flags")
 
 
 async def test_cancel_protective_stops_already_gone_is_success():
-    """Binance returns 'unknown order id' when the order was auto-cancelled
-    by closePosition=true (which is the normal case after a bot close).
-    This must be treated as SUCCESS, not failure."""
+    """Binance returns 'unknown order id' when the protective SL/TP fired
+    (i.e. position already closed via broker-side stop, then bot also tries
+    to cancel as part of its close path).  This must be treated as SUCCESS —
+    the order IS gone, which is what we wanted."""
     svc = BinanceService()
     svc._check_ban = AsyncMock()
     svc.load_markets = AsyncMock()
     svc.exchange = MagicMock()
-    svc.exchange.cancel_order = AsyncMock(side_effect=Exception("-2011 Unknown order sent."))
+
+    async def _fake_cancel(oid, symbol, params=None):
+        raise Exception("-2011 Unknown order sent.")
+    svc.exchange.cancel_order = _fake_cancel
 
     out = await svc.cancel_protective_stops(
         symbol="BTC/USDT:USDT", sl_order_id="gone-1", tp_order_id="gone-2",
@@ -209,7 +245,7 @@ async def test_cancel_protective_stops_already_gone_is_success():
     # Both should be marked as cancelled (they're gone, which is what we want)
     assert out["sl_cancelled"] is True, "Gone-order should count as cancelled"
     assert out["tp_cancelled"] is True
-    print("  [OK] 'order does not exist' from Binance treated as success (auto-cancelled)")
+    print("  [OK] 'order does not exist' from Binance treated as success")
 
 
 # ────────────────────────────────────────────────────────────────────────────

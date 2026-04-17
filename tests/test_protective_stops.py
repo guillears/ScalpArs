@@ -75,36 +75,48 @@ async def test_place_protective_stops_long():
     assert result["tp_order_id"] == "order-2"
 
     sl_call, tp_call = _calls
-    assert sl_call["type"] == "STOP_MARKET"
+    # CCXT unified syntax: type='market' + stopLossPrice/takeProfitPrice in params
+    # (NOT type='STOP_MARKET').  Binance rejects type='STOP_MARKET' with -4120
+    # when combined with GTE_GTC TIF and reduceOnly.  The CCXT helper
+    # create_stop_market_order uses exactly this pattern internally.
+    assert sl_call["type"] == "market", f"SL must use CCXT unified type='market', got {sl_call['type']}"
     assert sl_call["side"] == "sell", "LONG close side = sell"
-    # reduceOnly=True ensures close-only (cannot flip). closePosition must NOT
-    # be present — Binance rejects closePosition=true with -1106.
-    # portfolioMargin=True routes to /papi/v1/um/conditional/order (the
-    # "Algo Order API" Binance requires for conditional orders on PM
-    # accounts — without it, CCXT falls back to /fapi/v1/order which
-    # rejects conditional types with -4120).
     assert sl_call["params"]["reduceOnly"] is True, "reduceOnly must be True"
-    assert sl_call["params"]["portfolioMargin"] is True, (
-        "portfolioMargin must be True — routes to /papi/v1/um/conditional/order "
-        "(the Algo Order endpoint). Without it, Binance returns -4120."
+    # portfolioMargin must NOT be set — account is standard Futures, /papi returns -2015
+    assert "portfolioMargin" not in sl_call["params"], (
+        "portfolioMargin must NOT be set — user's account is standard USDⓈ-M "
+        "Futures, not Portfolio Margin.  /papi endpoints return -2015."
     )
-    assert "closePosition" not in sl_call["params"], (
-        "closePosition must NOT be set — Binance rejects it with -1106"
+    # closePosition must NOT be set — causes -1106 with reduceOnly
+    assert "closePosition" not in sl_call["params"]
+    # GTE_GTC timeInForce must NOT be set — only valid with closePosition=true;
+    # causes -4120 on reduceOnly STOP_MARKET orders
+    assert "timeInForce" not in sl_call["params"], (
+        "timeInForce must NOT be set — let CCXT/Binance default to GTC. "
+        "GTE_GTC is for closePosition orders and causes -4120 on reduceOnly."
     )
     assert sl_call["amount"] == 0.5, f"SL must use explicit quantity, got {sl_call['amount']}"
     assert sl_call["params"]["workingType"] == "MARK_PRICE"
+    # stopLossPrice (not stopPrice) is the CCXT unified param for SL.
+    # CCXT converts internally to Binance STOP_MARKET with stopPrice.
+    assert "stopLossPrice" in sl_call["params"], (
+        "SL must use stopLossPrice (CCXT unified), not stopPrice"
+    )
     # SL price ≈ 100 * (1 - 0.015) = 98.5, rounded DOWN to 0.01 tick = 98.50
-    assert abs(sl_call["params"]["stopPrice"] - 98.50) < 0.001, f"SL stopPrice={sl_call['params']['stopPrice']}"
+    assert abs(sl_call["params"]["stopLossPrice"] - 98.50) < 0.001, f"SL stopLossPrice={sl_call['params']['stopLossPrice']}"
 
-    assert tp_call["type"] == "TAKE_PROFIT_MARKET"
+    assert tp_call["type"] == "market", f"TP must use CCXT unified type='market', got {tp_call['type']}"
     assert tp_call["side"] == "sell"
     assert tp_call["params"]["reduceOnly"] is True
-    assert tp_call["params"]["portfolioMargin"] is True, "portfolioMargin must be True for TP too"
+    assert "portfolioMargin" not in tp_call["params"]
     assert "closePosition" not in tp_call["params"]
+    assert "timeInForce" not in tp_call["params"]
     assert tp_call["amount"] == 0.5
+    # takeProfitPrice (not stopPrice) is the CCXT unified param for TP.
+    assert "takeProfitPrice" in tp_call["params"]
     # TP price ≈ 100 * 1.05 = 105.00
-    assert abs(tp_call["params"]["stopPrice"] - 105.00) < 0.001, f"TP stopPrice={tp_call['params']['stopPrice']}"
-    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, reduceOnly+portfolioMargin+qty+MARK_PRICE, NO closePosition")
+    assert abs(tp_call["params"]["takeProfitPrice"] - 105.00) < 0.001, f"TP takeProfitPrice={tp_call['params']['takeProfitPrice']}"
+    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, CCXT unified (type=market+stopLossPrice/takeProfitPrice)")
 
 
 async def test_place_protective_stops_short():
@@ -125,17 +137,19 @@ async def test_place_protective_stops_short():
         quantity=0.5, entry_price=100.0, sl_pct=1.5, tp_pct=5.0,
     )
     sl_call, tp_call = _calls
+    assert sl_call["type"] == "market"
     assert sl_call["side"] == "buy", "SHORT close side = buy"
     assert sl_call["params"]["reduceOnly"] is True
-    assert sl_call["params"]["portfolioMargin"] is True
+    assert "portfolioMargin" not in sl_call["params"]
     assert "closePosition" not in sl_call["params"]
+    assert "timeInForce" not in sl_call["params"]
     assert sl_call["amount"] == 0.5
     # SL above entry: 100 * 1.015 = 101.50
-    assert abs(sl_call["params"]["stopPrice"] - 101.50) < 0.001
+    assert abs(sl_call["params"]["stopLossPrice"] - 101.50) < 0.001
     # TP below entry: 100 * 0.95 = 95.00
-    assert abs(tp_call["params"]["stopPrice"] - 95.00) < 0.001
+    assert abs(tp_call["params"]["takeProfitPrice"] - 95.00) < 0.001
     assert result["sl_order_id"] and result["tp_order_id"]
-    print("  [OK] SHORT: SL @ 101.50, TP @ 95.00, close side = buy, reduceOnly+portfolioMargin+qty")
+    print("  [OK] SHORT: SL @ 101.50, TP @ 95.00, close side = buy, CCXT unified (no PM, no GTE_GTC)")
 
 
 async def test_place_protective_stops_graceful_partial_failure():
@@ -149,8 +163,10 @@ async def test_place_protective_stops_graceful_partial_failure():
     call_count = {"n": 0}
     async def _fake_create_order(**kwargs):
         call_count["n"] += 1
-        if kwargs["type"] == "TAKE_PROFIT_MARKET":
-            raise Exception("Binance API: invalid stopPrice for TP")
+        # TP call carries takeProfitPrice (CCXT unified) — distinguish from SL
+        # which carries stopLossPrice
+        if 'takeProfitPrice' in kwargs.get('params', {}):
+            raise Exception("Binance API: invalid takeProfitPrice for TP")
         return {"id": "sl-123"}
     svc.exchange.create_order = _fake_create_order
 
@@ -187,19 +203,14 @@ async def test_place_protective_stops_invalid_direction():
 async def test_cancel_protective_stops_happy():
     """Cancel succeeds → both flagged as cancelled.
 
-    CRITICAL: cancel_order must be called with portfolioMargin=True + trigger=True
-    so CCXT routes the cancel to /papi/v1/um/conditional/order DELETE (the
-    Portfolio Margin Conditional Order endpoint where the orders were placed).
-    Without these flags CCXT would hit /fapi/v1/order DELETE and return
-    "unknown order", which would be misinterpreted as "already gone" by our
-    benign-error handler, leaving real orders live.
+    Hotfix #4: orders now live on standard /fapi/v1/order (not /papi), so the
+    cancel path uses CCXT's standard cancel_order with no special params.
     """
     svc = BinanceService()
     svc._check_ban = AsyncMock()
     svc.load_markets = AsyncMock()
     svc.exchange = MagicMock()
 
-    # Capture cancel_order call args so we can verify PM flags are passed
     _cancel_calls = []
     async def _fake_cancel(oid, symbol, params=None):
         _cancel_calls.append({"oid": oid, "symbol": symbol, "params": params})
@@ -212,17 +223,7 @@ async def test_cancel_protective_stops_happy():
     assert out["sl_cancelled"] is True
     assert out["tp_cancelled"] is True
     assert len(_cancel_calls) == 2, f"expected 2 cancel calls, got {len(_cancel_calls)}"
-    # Both cancels must pass portfolioMargin=True + trigger=True
-    for call in _cancel_calls:
-        assert call["params"] is not None, "cancel_order must receive params"
-        assert call["params"].get("portfolioMargin") is True, (
-            "cancel_order must pass portfolioMargin=True — orders were placed "
-            "on /papi endpoint, must be cancelled there"
-        )
-        assert call["params"].get("trigger") is True, (
-            "cancel_order must pass trigger=True — these are conditional orders"
-        )
-    print("  [OK] happy path: both cancelled with portfolioMargin+trigger flags")
+    print("  [OK] happy path: both cancelled successfully on /fapi endpoint")
 
 
 async def test_cancel_protective_stops_already_gone_is_success():

@@ -614,32 +614,33 @@ class BinanceService:
         tp_pct: float,          # e.g. 5.0 for +5.0% TP from entry
     ) -> Dict[str, Optional[str]]:
         """Place broker-side protective STOP_MARKET + TAKE_PROFIT_MARKET orders
-        for an existing position.  Uses reduceOnly=true with explicit quantity
-        AND portfolioMargin=true — the latter is critical and was missed by
-        earlier hotfix attempts.
+        for an existing position, using CCXT's UNIFIED stop syntax on the
+        standard /fapi/v1/order endpoint.
 
-        Apr 17 evolution of this function:
+        Apr 17 evolution (for debugging future regressions):
           1) Initial: reduceOnly+closePosition → Binance -1106 "Parameter
              'reduceonly' sent when not required" (closePosition implies reduce)
           2) Hotfix #1 (20c4e41): kept closePosition=true alone → Binance -4120
              "Order type not supported for this endpoint. Please use the Algo
-             Order API endpoints instead."
-          3) Hotfix #2 (bf1ceee): switched to reduceOnly+quantity → STILL -4120.
-             Root cause was NOT closePosition.  It was the account being in
-             Portfolio Margin mode, which requires conditional orders to go
-             through /papi/v1/um/conditional/order (the "Algo Order API" Binance
-             mentions).  CCXT's create_order routing (binance.py ~line 6077)
-             only reaches papiPostUmConditionalOrder when isPortfolioMargin
-             is True; otherwise it falls back to /fapi/v1/order which rejects
-             conditional types on PM accounts.
-          4) Hotfix #3 (this one): added 'portfolioMargin': True to params.
-             CCXT now routes to papiPostUmConditionalOrder and the order
-             places successfully.
-
-        Regular (non-conditional) market orders for entry/exit continue to
-        work through /fapi/v1/order because they aren't conditional.  Only
-        conditional orders (STOP_MARKET, TAKE_PROFIT_MARKET) need the
-        portfolioMargin flag to route to the Algo endpoint.
+             Order API endpoints instead."  Reasoning that closePosition+
+             STOP_MARKET routes incorrectly.
+          3) Hotfix #2 (bf1ceee): switched to type='STOP_MARKET' + reduceOnly
+             + quantity + timeInForce=GTE_GTC → STILL -4120.  Wrong theory.
+          4) Hotfix #3 (ed920e0): assumed account was Portfolio Margin, added
+             portfolioMargin=True to route to /papi/v1/um/conditional/order.
+             Got new error -2015 "Invalid API-key, IP, or permissions."  The
+             account is NOT in Portfolio Margin mode (confirmed via UI —
+             standard USDⓈ-M Futures), so /papi endpoints return -2015.
+          5) Hotfix #4 (THIS ONE): after eliminating PM hypothesis, the real
+             fix is to use CCXT's unified stop syntax on /fapi/v1/order:
+               - type='market' (NOT 'STOP_MARKET')
+               - stopLossPrice in params for SL (CCXT converts to STOP_MARKET)
+               - takeProfitPrice in params for TP (CCXT converts to TAKE_PROFIT_MARKET)
+             CCXT internally constructs the correct Binance-native request
+             with proper timeInForce and routing.  Additionally dropped the
+             GTE_GTC timeInForce (only valid with closePosition=true; causes
+             -4120 on reduceOnly orders).  This matches the pattern used by
+             CCXT's own create_stop_market_order helper.
 
         Because we use reduceOnly (not closePosition=true), Binance does NOT
         auto-cancel these orders when the position closes by other means.
@@ -701,35 +702,44 @@ class BinanceService:
             import math
             return round(math.floor(px / _tick) * _tick, 10) if direction == "LONG" else round(math.ceil(px / _tick) * _tick, 10)
 
-        # Use MARK_PRICE so wicks / flash-crash false-triggers don't fire the stops.
-        # CRITICAL FLAGS (learned the hard way across three hotfixes):
-        #   portfolioMargin=True — routes to /papi/v1/um/conditional/order (the
-        #     "Algo Order API" Binance's -4120 error insists on for conditional
-        #     orders on Portfolio Margin accounts).  Without this flag CCXT
-        #     falls back to /fapi/v1/order which Binance rejects with -4120 on
-        #     PM accounts.  See the function docstring for the full forensic
-        #     trail across hotfixes #1, #2, #3.
-        #   reduceOnly=True — position-reducing only, never flip.
-        #   No closePosition — breaks the CCXT routing; we explicitly cancel
-        #     on bot-initiated close instead.
+        # Apr 17 hotfix #4: use CCXT's UNIFIED stop syntax (type='market' +
+        # stopLossPrice / takeProfitPrice in params), not the Binance-native
+        # type='STOP_MARKET' / 'TAKE_PROFIT_MARKET'.
+        #
+        # Why: hotfix #3's portfolioMargin=True routed to /papi/v1/um/conditional/order
+        # which is only valid for Portfolio Margin accounts.  User's account is
+        # STANDARD USDⓈ-M Futures (confirmed via UI), so /papi returns -2015
+        # "Invalid API-key, IP, or permissions".  We must route to /fapi/v1/order.
+        #
+        # But passing type='STOP_MARKET' uppercase to CCXT.create_order with
+        # GTE_GTC timeInForce was rejected by Binance with -4120 "Order type not
+        # supported for this endpoint."  CCXT's own helper create_stop_market_order
+        # internally uses type='market' + stopPrice in params — the CCXT unified
+        # pattern.  We follow that pattern here using the more explicit
+        # stopLossPrice (SL) and takeProfitPrice (TP) to make intent clear.
+        # CCXT converts internally to the correct Binance order type with the
+        # right parameter set for the standard /fapi/v1/order endpoint.
+        #
+        # Also: timeInForce=GTE_GTC is specifically for closePosition=true orders
+        # and is invalid for reduceOnly STOP_MARKET without closePosition.
+        # Drop it entirely — Binance defaults to GTC which is correct.
         common_params = {
-            'reduceOnly': True,       # Can only close, not flip direction
-            'portfolioMargin': True,  # Route to /papi/v1/um/conditional/order (Algo endpoint)
-            'workingType': 'MARK_PRICE',
-            'timeInForce': 'GTE_GTC',
+            'reduceOnly': True,         # Can only close, not flip direction
+            'workingType': 'MARK_PRICE',  # Wick-resistant trigger
         }
 
-        # SL — STOP_MARKET
+        # SL — triggered at sl_price.  CCXT sees stopLossPrice and converts to
+        # Binance STOP_MARKET with stopPrice.
         if sl_pct > 0:
             try:
                 _sl_trigger = _round(sl_price)
                 sl_order = await self.exchange.create_order(
                     symbol=symbol,
-                    type='STOP_MARKET',
+                    type='market',          # CCXT unified base type
                     side=close_side,
                     amount=quantity,
                     price=None,
-                    params={**common_params, 'stopPrice': _sl_trigger},
+                    params={**common_params, 'stopLossPrice': _sl_trigger},
                 )
                 out["sl_order_id"] = str(sl_order.get('id')) if sl_order and sl_order.get('id') else None
                 logger.info(
@@ -742,17 +752,18 @@ class BinanceService:
                     f"({str(_e)[:200]}) — position is NOT protected on broker side"
                 )
 
-        # TP — TAKE_PROFIT_MARKET
+        # TP — triggered at tp_price.  CCXT sees takeProfitPrice and converts
+        # to Binance TAKE_PROFIT_MARKET with stopPrice.
         if tp_pct > 0:
             try:
                 _tp_trigger = _round(tp_price)
                 tp_order = await self.exchange.create_order(
                     symbol=symbol,
-                    type='TAKE_PROFIT_MARKET',
+                    type='market',          # CCXT unified base type
                     side=close_side,
                     amount=quantity,
                     price=None,
-                    params={**common_params, 'stopPrice': _tp_trigger},
+                    params={**common_params, 'takeProfitPrice': _tp_trigger},
                 )
                 out["tp_order_id"] = str(tp_order.get('id')) if tp_order and tp_order.get('id') else None
                 logger.info(
@@ -781,21 +792,17 @@ class BinanceService:
         Ignores Binance "unknown order id" errors — those are expected when
         Binance has already auto-cancelled.
         """
-        # CRITICAL: must pass portfolioMargin=True + trigger=True to route cancel
-        # to /papi/v1/um/conditional/order DELETE (the Portfolio Margin Conditional
-        # Order endpoint).  Orders were placed via that endpoint (see
-        # place_protective_stops), so they can only be cancelled there.  Without
-        # these flags CCXT routes to /fapi/v1/order DELETE which won't find the
-        # order and returns an "unknown order" error — we'd mis-interpret that as
-        # "already gone" and leave the real order live.
-        cancel_params = {'portfolioMargin': True, 'trigger': True}
+        # Standard /fapi/v1/order DELETE — no special params needed since
+        # place_protective_stops uses /fapi/v1/order (hotfix #4 reverted the
+        # short-lived /papi routing).  CCXT's cancel_order will find the order
+        # by id on the standard endpoint.
         out: Dict[str, bool] = {"sl_cancelled": False, "tp_cancelled": False}
         for label, oid, key in (("SL", sl_order_id, "sl_cancelled"), ("TP", tp_order_id, "tp_cancelled")):
             if not oid:
                 continue
             try:
                 await self.load_markets()
-                await self.exchange.cancel_order(oid, symbol, cancel_params)
+                await self.exchange.cancel_order(oid, symbol)
                 out[key] = True
                 logger.debug(f"[PROTECTIVE_STOPS] {symbol}: cancelled {label} order {oid}")
             except Exception as _e:

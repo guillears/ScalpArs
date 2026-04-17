@@ -835,6 +835,56 @@ If the losing trades in those pair-level buckets DO concentrate at the high-BTC-
 - Plus `adx_strong` short 22 (exploration)
 - Plus pair blacklist addition + new-listing filter + Option B refactor
 
+### Phase 1c amendment #4 (deployed Apr 17 PM, same day as #2/#3) — Soften LONG BTC ADX cap to preserve pre-committed PREMIUM ZONE L-P2
+
+**Methodological miss that triggered this amendment:** Amendment #2 used the raw `Performance by BTC ADX` column to set BTC ADX magnitude caps. This aggregates across all BTC RSI bands, mixing winning cells with losing cells inside the same magnitude bucket. The CLAUDE.md "Filter design principle" section (Apr 14) explicitly states the cross-tab is the correct tool. I didn't apply it.
+
+**What the raw-column aggregation hid:**
+
+Inside the LONG BTC ADX 25-30 bucket that Amendment #2 blocked (at `btc_adx_max_long: 25`):
+- BTC RSI 50-55 × BTC ADX 25-30: L-B1 HARD BLOCK (6 trades, 17% WR, loser in all 4 samples) — correctly blocked
+- BTC RSI 60-65 × BTC ADX 25-30: part of the 73% WR L-P1-adjacent winner zone — incorrectly blocked
+
+At LONG BTC ADX 30-35 (also blocked by Amendment #2):
+- **BTC RSI 60-65 × BTC ADX 30-35: L-P2 PREMIUM ZONE (4 trades, 100% WR across 3 samples) — pre-committed Apr 15, incorrectly blocked**
+
+Phase 1b data also showed LONG BTC ADX 25-30 at +0.27% on N=17 (winning in the most recent config), contradicting the 3-sample aggregate of −0.17%. The older Apr 13 + Apr 6 samples (different config, different regime) drove the negative aggregate.
+
+**Change:** `btc_adx_max_long`: 25 → **35** (restored to Amendment #1 value).
+
+**Why 35, not back to 40:** Phase 1b showed LONG BTC ADX 35-40 at N=5 @ −1.11%; no PREMIUM ZONE cells above 35; 35 preserves L-P2 (30-35) without re-admitting the clearly-bad 35-40 zone.
+
+**SHORT side kept at `btc_adx_max_short: 30`** — cross-tab confirms no PREMIUM ZONE cells above 30 for SHORTs (S-P2 sits at 25-30, inside the kept range; S-B2 HARD BLOCK sits at 30-35).
+
+**New methodological rule added to the filter design principle:**
+
+> **When a pre-committed PREMIUM ZONE or HARD BLOCK exists in the cross-tab, raw-dimension caps MUST NOT block a PREMIUM ZONE or leave a HARD BLOCK unblocked. Check the cross-tab first. Raw-magnitude caps are blunt instruments — only defensible when no cross-tab evidence exists for cells inside the capped range, OR the cross-tab evidence across cells inside the range is uniformly negative.**
+
+This rule is now part of the Apr 14 "Filter design principle" covenant and applies to all future BTC-level filter decisions.
+
+**Net config state after Amendments #1 + #2 + #3 + #4:**
+- All Apr 14 baseline pair-ADX values (`adx_strong_long=15`, `adx_very_strong=30`, `momentum_adx_max=33`)
+- `btc_adx_max_long`: **35** (restored from 25 — L-P2 preservation)
+- `btc_adx_max_short`: **30** (kept — cross-tab consistent)
+- `btc_adx_dir_short: rising`
+- `adx_strong` short 22 (exploration)
+- Pair blacklist addition, new-listing filter, Option B refactor
+
+**What this costs in expected P&L (vs Amendment #2's projection):**
+
+The Amendment #2 ex-post projection assumed −0.05% → +0.16% with `btc_adx_max_long: 25`. Relaxing to 35 re-admits LONG BTC ADX 25-35 trades (N=75 in the 3-sample data: 70 at 25-30 + 5 at 30-35). Their 3-sample Avg P&L % was −0.13%. So the headline projection softens from +0.16% to roughly +0.05% combined (directionally still positive, materially weaker).
+
+However: the projection was itself built on mixed-config data (Apr 6/13 high leverage, tick momentum ON, different exits). Under current config (Apr 14+ baseline exits), Phase 1b LONG 25-30 was +0.27%. So the "cost" of re-admitting 25-35 may be ≤0, not −0.13%. Phase 1c data will tell.
+
+**Trade-off accepted:** smaller headline P&L improvement from BTC ADX caps alone, but preserves cross-tab integrity and the pre-committed Phase 2 PREMIUM ZONE rule L-P2. The proper way to recover the extra P&L is Phase 2 cross-filter code work (blocks L-B1 specifically while keeping L-P2 open), not via blunter raw-magnitude caps.
+
+**What to measure at 100-trade Phase 1c checkpoint (updated):**
+
+In addition to everything already documented:
+- **BTC RSI × BTC ADX cross-tab** — compute Avg P&L % per cell on fresh Phase 1c data. Validate L-P2 (60-65 × 30-35) still wins ≥65% WR on ≥5 trades → keep open. Validate L-B1 (50-55 × 25-30) still loses ≤40% WR on ≥5 trades → build the Phase 2 cross-filter and block this cell specifically.
+- **LONG BTC ADX 25-30 Avg P&L %** — if ≥+0.15% on ≥20 trades, the macro cap was correctly relaxed. If ≤−0.15%, re-consider a softer mechanism (e.g., allow 25-30 only for BTC RSI 60-65).
+- **LONG BTC ADX 30-35 N and performance** — L-P2 is thin (N=4 pre-committed). Want ≥5 Phase 1c trades in this specific cell to validate.
+
 ### Changes considered and rejected during Phase 1c design (anti-overfit discipline)
 
 **1-sample-driven changes walked back after cross-sample check:**

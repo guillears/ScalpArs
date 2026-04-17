@@ -74,7 +74,7 @@
     "btc_rsi_min_short": 25,
     "btc_rsi_max_short": 60,
     "btc_adx_min_long": 18,
-    "btc_adx_max_long": 25,
+    "btc_adx_max_long": 35,
     "btc_adx_min_short": 18,
     "btc_adx_max_short": 30,
     "btc_adx_dir_long": "both",

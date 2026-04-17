@@ -672,8 +672,13 @@ class BinanceService:
             return round(math.floor(px / _tick) * _tick, 10) if direction == "LONG" else round(math.ceil(px / _tick) * _tick, 10)
 
         # Use MARK_PRICE so wicks / flash-crash false-triggers don't fire the stops.
+        # IMPORTANT: do NOT set reduceOnly alongside closePosition.  Binance
+        # Futures rejects this combination with error -1106 "Parameter
+        # 'reduceonly' sent when not required" because closePosition=true
+        # already implies close-only semantics (in fact it's STRONGER — it
+        # closes the entire position, not just reduces it).  Apr 17 hotfix
+        # after production verified the -1106 failures in CloudWatch.
         common_params = {
-            'reduceOnly': True,
             'closePosition': True,    # Closes full position; auto-cancels on other exit
             'workingType': 'MARK_PRICE',
             'timeInForce': 'GTE_GTC',

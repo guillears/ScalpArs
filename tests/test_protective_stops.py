@@ -74,7 +74,11 @@ async def test_place_protective_stops_long():
     sl_call, tp_call = _calls
     assert sl_call["type"] == "STOP_MARKET"
     assert sl_call["side"] == "sell", "LONG close side = sell"
-    assert sl_call["params"]["reduceOnly"] is True
+    # closePosition=true implies close-only semantics; reduceOnly must NOT
+    # be present (Binance -1106: "Parameter 'reduceonly' sent when not required")
+    assert "reduceOnly" not in sl_call["params"], (
+        "reduceOnly must NOT be set when closePosition=true — Binance rejects it"
+    )
     assert sl_call["params"]["closePosition"] is True
     assert sl_call["params"]["workingType"] == "MARK_PRICE"
     # SL price ≈ 100 * (1 - 0.015) = 98.5, rounded DOWN to 0.01 tick = 98.50
@@ -82,9 +86,10 @@ async def test_place_protective_stops_long():
 
     assert tp_call["type"] == "TAKE_PROFIT_MARKET"
     assert tp_call["side"] == "sell"
+    assert "reduceOnly" not in tp_call["params"], "reduceOnly must NOT be set when closePosition=true"
     # TP price ≈ 100 * 1.05 = 105.00
     assert abs(tp_call["params"]["stopPrice"] - 105.00) < 0.001, f"TP stopPrice={tp_call['params']['stopPrice']}"
-    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, reduceOnly+closePosition set, MARK_PRICE used")
+    print("  [OK] LONG: SL @ 98.50, TP @ 105.00, closePosition set (no reduceOnly), MARK_PRICE used")
 
 
 async def test_place_protective_stops_short():

@@ -787,6 +787,54 @@ SHORTs (133 trades):
 - **Did the kept buckets perform?** LONG 20-25 at 3-sample avg +0.23% — does fresh sample show ≥+0.15% Avg on ≥30 trades? SHORT 25-30 at 3-sample avg +0.05% — does fresh sample show ≥0 Avg on ≥30 trades?
 - **Did the held-back <20 SHORT bucket get enough data to decide?** Target ≥10 SHORT trades in BTC ADX <20 in the fresh sample. If yes, decide on `btc_adx_min_short: 18 → 20` at the checkpoint rather than waiting for 200 trades.
 
+### Phase 1c amendment #3 (deployed Apr 17 PM, same day as #2) — Revert pair-level ADX changes potentially confounded with BTC ADX
+
+After shipping the BTC ADX caps (Amendment #2), a second pass through Amendment #1 revealed that three pair-level ADX changes made earlier the same day were likely doing work that the new macro filter now handles. Specifically: the Apr 13 + Phase 1b evidence that drove those pair-level caps could have been driven by correlated BTC ADX (pair ADX and BTC ADX correlate ~0.5), meaning the "loser buckets" at pair-level 28-33 (shorts) and 15-18 (longs) may have been loser buckets *because* their BTC ADX was high, not because their pair ADX was. With `btc_adx_max_long: 25` and `btc_adx_max_short: 30` now enforcing the macro slice, the pair-level caps became candidates for over-restriction.
+
+**Reverted:**
+
+| # | Revert | Amendment #1 value | Restored to | Confidence |
+|---|---|---|---|---|
+| 2 | `adx_strong_long`: 18 → **15** | 18 (up from 15 in #1) | 15 (Apr 14 baseline) | HIGH — was 1-sample-driven, contradicted by Apr 13 data. Low conviction originally. |
+| 5 | `momentum_adx_max` (short): 28 → **33** | 28 (down from 33 in #1) | 33 (Apr 14 baseline) | MEDIUM — 2-sample evidence exists but likely BTC-ADX-confounded. Falsifiable at checkpoint. |
+| 6 | `adx_very_strong` (short): 28 → **30** | 28 (down from 30 in #1) | 30 (Apr 14 baseline) | MEDIUM — gated with #5, reverts together. |
+
+**Effective entry windows now:**
+
+| Side | Before (Amendment #2 only) | After Amendment #3 |
+|---|---|---|
+| LONG | Pair ADX [18, 25] AND BTC ADX [18, 25] | **Pair ADX [15, 25]** AND BTC ADX [18, 25] |
+| SHORT | Pair ADX [22, 28] AND BTC ADX [18, 30] rising | **Pair ADX [22, 33]** AND BTC ADX [18, 30] rising |
+
+**Falsification condition (what would overturn this revert):**
+
+If fresh Phase 1c data shows:
+- **LONG** pair ADX 15-18 bucket ≤0% Avg P&L on ≥10 trades, AND these trades are NOT concentrated at BTC ADX ≥23 (i.e., the loss isn't explained by the macro slice being near the cap) → re-tighten `adx_strong_long` to 18.
+- **SHORT** pair ADX 28-33 bucket ≤0% Avg P&L on ≥10 trades, AND these trades are NOT concentrated at BTC ADX ≥28 → re-tighten `momentum_adx_max` to 28.
+
+If the losing trades in those pair-level buckets DO concentrate at the high-BTC-ADX edge of our current macro filter, the revert is validated (BTC ADX filter is doing the real work; pair-level filter was confounded).
+
+**Rationale for reverting all three now (rather than waiting for checkpoint):**
+
+1. Over-restriction isn't free. Trade rate at Amendment #2 alone was projected to drop ~50% (5/day → 2.5/day). Adding redundant pair-level filters on top compounds the slowdown. Slower data = slower validation of the BTC ADX caps themselves.
+2. Under-restriction is bounded and correctable. SL = −0.9%. Worst case from re-admitted losers is ~0.5% per trade × N trades, observable within a week.
+3. Falsification is better than assumption. Keeping #5/#6 on the theory they're non-redundant meant never actually testing it. Revert + measure produces evidence.
+
+**What this does NOT revert:**
+- Pair blacklist (#1) — independent
+- `adx_strong` short 25 → 22 (#4) — exploration, independent
+- `btc_adx_dir_short` "both" → "rising" (#7) — 3-sample structural, non-redundant with magnitude cap
+- `new_listing_filter_days: 180` (#8) — independent
+- Option B refactor (#9/10) — infrastructure
+- BTC ADX caps from Amendment #2 — the core finding
+
+**Net config state after Amendments #1 + #2 + #3:**
+- All Apr 14 baseline pair-ADX values (`adx_strong_long=15`, `adx_very_strong=30`, `momentum_adx_max=33`)
+- Plus new BTC ADX caps: `btc_adx_max_long=25`, `btc_adx_max_short=30`
+- Plus `btc_adx_dir_short: rising`
+- Plus `adx_strong` short 22 (exploration)
+- Plus pair blacklist addition + new-listing filter + Option B refactor
+
 ### Changes considered and rejected during Phase 1c design (anti-overfit discipline)
 
 **1-sample-driven changes walked back after cross-sample check:**

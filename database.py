@@ -244,6 +244,14 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN closing_in_progress BOOLEAN NOT NULL DEFAULT 0"))
                 if 'close_initiated_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN close_initiated_at DATETIME"))
+                if 'protective_sl_order_id' not in columns:
+                    # Broker-side protective stops (Apr 17 — system-down insurance).
+                    # Binance order IDs for the STOP_MARKET + TAKE_PROFIT_MARKET
+                    # reduceOnly orders placed at position open.  Fire only if
+                    # bot's own exits don't run.
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN protective_sl_order_id VARCHAR(50)"))
+                if 'protective_tp_order_id' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN protective_tp_order_id VARCHAR(50)"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

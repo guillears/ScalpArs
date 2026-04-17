@@ -139,6 +139,18 @@ class Order(Base):
     closing_in_progress = Column(Boolean, nullable=False, default=False)
     close_initiated_at = Column(DateTime, nullable=True)
 
+    # Broker-side protective stops (Apr 17 — system-down insurance).
+    # IDs of the STOP_MARKET and TAKE_PROFIT_MARKET orders placed on Binance
+    # with reduceOnly=true + closePosition=true at position open.  These fire
+    # only if the bot's own exits don't run (Apr 11 failure mode).
+    # closePosition=true means Binance auto-cancels them when the position
+    # closes by other means, so these IDs may point to auto-cancelled orders
+    # after normal exits.  Reconciler uses these to label close_reason as
+    # BROKER_SL / BROKER_TP instead of EXTERNAL_CLOSE when a broker stop
+    # actually fires.
+    protective_sl_order_id = Column(String(50), nullable=True)
+    protective_tp_order_id = Column(String(50), nullable=True)
+
     # Exit quality: Price vs EMA5 at exit
     exit_price_vs_ema5_pct = Column(Float, nullable=True)
     exit_ema5_slope_pct = Column(Float, nullable=True)

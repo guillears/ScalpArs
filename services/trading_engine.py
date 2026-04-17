@@ -1281,10 +1281,42 @@ class TradingEngine:
             is_paper=self.is_paper_mode
         )
         db.add(transaction)
-        
+
         await db.commit()
         await db.refresh(order)
-        
+
+        # ── Broker-side protective stops (Apr 17 — system-down insurance) ──
+        # Live mode only.  Fails open: a protective-order failure is logged
+        # but does NOT affect the order record or roll back the trade.
+        # closePosition=true means Binance auto-cancels these orders when the
+        # position closes by any other means (trailing, FL2, manual exit),
+        # so no coordination is needed on the bot's close path.
+        if not self.is_paper_mode:
+            _tc = config.trading_config
+            _protective_enabled = bool(getattr(_tc, 'protective_stops_enabled', True))
+            _sl_pct = float(getattr(_tc, 'protective_sl_pct', 1.5))
+            _tp_pct = float(getattr(_tc, 'protective_tp_pct', 5.0))
+            if _protective_enabled:
+                try:
+                    _protective = await binance_service.place_protective_stops(
+                        symbol=symbol,
+                        direction=direction,
+                        entry_price=actual_price,
+                        sl_pct=_sl_pct,
+                        tp_pct=_tp_pct,
+                    )
+                    order.protective_sl_order_id = _protective.get("sl_order_id")
+                    order.protective_tp_order_id = _protective.get("tp_order_id")
+                    await db.commit()
+                except Exception as _e:
+                    # Non-fatal: position is open, entry committed; broker
+                    # protection unavailable for this trade only.
+                    logger.warning(
+                        f"[PROTECTIVE_STOPS] {pair}: unexpected error "
+                        f"while placing protective stops ({str(_e)[:120]}) — "
+                        f"position is NOT protected on broker side"
+                    )
+
         # Recalculate paper balance from DB (source of truth) and save
         if self.is_paper_mode:
             pre_usdt = self.paper_balance

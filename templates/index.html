@@ -2012,10 +2012,41 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Close if peak &lt; BE L1 Trig &amp; current &lt; BE L1 Off (0 = disabled)</p>
                         </div>
-                        <div class="md:col-span-4">
+                        <div class="md:col-span-3">
                             <label class="block text-sm text-gray-400 mb-2">Pair Blacklist</label>
                             <input type="text" id="config-pair-blacklist" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. XRPUSDT, DOGEUSDT" value="">
                             <p class="text-xs text-gray-500 mt-1">Comma-separated pairs to exclude from trading (only blocks new entries)</p>
+                        </div>
+                        <div class="md:col-span-1">
+                            <label class="block text-sm text-gray-400 mb-2">New-Listing Filter</label>
+                            <div class="flex">
+                                <input type="number" id="config-new-listing-filter-days" min="0" max="3650" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="0">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">days</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Skip pairs whose Binance onboardDate is within last N days (filters new/Seed-tagged pairs). 0 = disabled.</p>
+                        </div>
+                        <div class="md:col-span-4 border border-amber-500/20 bg-amber-500/5 rounded-lg p-3">
+                            <div class="flex items-center gap-3 mb-2">
+                                <label class="block text-sm text-amber-300 font-medium">Broker-Side Protective Stops</label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-protective-stops-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-amber-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    SL
+                                    <input type="number" step="0.1" min="0.1" max="50" id="config-protective-sl-pct" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.5">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    TP
+                                    <input type="number" step="0.1" min="0.1" max="50" id="config-protective-tp-pct" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="5.0">
+                                    <span class="ml-1">%</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-400">Places <code class="text-amber-300">STOP_MARKET</code> + <code class="text-amber-300">TAKE_PROFIT_MARKET</code> orders on Binance (reduceOnly, closePosition=true, MARK_PRICE) at every position open. Fires ONLY if the bot is unresponsive (system down / deadlock / crash). Defaults place SL 0.3% below FL_EMERGENCY_SL backstop and TP well above normal trailing exits — no interference with day-to-day operation. closePosition=true means Binance auto-cancels them when the position closes by other means. Triggered fills are labelled <code class="text-amber-300">BROKER_SL</code> / <code class="text-amber-300">BROKER_TP</code> in reports.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
@@ -8048,9 +8079,17 @@
                 document.getElementById('config-max-holding-time').value = config.investment.max_holding_time_minutes !== undefined ? config.investment.max_holding_time_minutes : 180;
                 document.getElementById('config-no-expansion').value = config.investment.no_expansion_minutes !== undefined ? config.investment.no_expansion_minutes : 15;
 
-                // Trading pairs limit & blacklist
+                // Trading pairs limit & blacklist + new-listing filter + protective stops
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
                 document.getElementById('config-pair-blacklist').value = config.pair_blacklist || '';
+                const _nlf = document.getElementById('config-new-listing-filter-days');
+                if (_nlf) _nlf.value = config.new_listing_filter_days !== undefined ? config.new_listing_filter_days : 0;
+                const _pse = document.getElementById('config-protective-stops-enabled');
+                if (_pse) _pse.checked = config.protective_stops_enabled !== undefined ? !!config.protective_stops_enabled : true;
+                const _psl = document.getElementById('config-protective-sl-pct');
+                if (_psl) _psl.value = config.protective_sl_pct !== undefined ? config.protective_sl_pct : 1.5;
+                const _ptp = document.getElementById('config-protective-tp-pct');
+                if (_ptp) _ptp.value = config.protective_tp_pct !== undefined ? config.protective_tp_pct : 5.0;
                 
                 updateInvestmentUnit();
                 updateReserveUnit();
@@ -8324,6 +8363,10 @@
                 maker_exit_offset_ticks: parseInt(document.getElementById('config-maker-exit-offset-ticks').value) || 2,
                 paper_balance: safeFloat(document.getElementById('config-paper-balance').value),
                 pair_blacklist: document.getElementById('config-pair-blacklist').value.trim(),
+                new_listing_filter_days: parseInt(document.getElementById('config-new-listing-filter-days')?.value) || 0,
+                protective_stops_enabled: document.getElementById('config-protective-stops-enabled')?.checked ?? true,
+                protective_sl_pct: safeFloat(document.getElementById('config-protective-sl-pct')?.value) || 1.5,
+                protective_tp_pct: safeFloat(document.getElementById('config-protective-tp-pct')?.value) || 5.0,
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,

@@ -603,6 +603,166 @@ class BinanceService:
         # To close a LONG, we sell. To close a SHORT, we buy.
         close_side = 'sell' if side == 'LONG' else 'buy'
         return await self.create_market_order(symbol, close_side, amount, is_close=True)
+
+    async def place_protective_stops(
+        self,
+        symbol: str,
+        direction: str,         # "LONG" or "SHORT" — the position direction
+        entry_price: float,
+        sl_pct: float,          # e.g. 1.5 for -1.5% SL from entry
+        tp_pct: float,          # e.g. 5.0 for +5.0% TP from entry
+    ) -> Dict[str, Optional[str]]:
+        """Place broker-side protective STOP_MARKET + TAKE_PROFIT_MARKET orders
+        for an existing position.  Both use reduceOnly=true + closePosition=true
+        so Binance auto-cancels them when the position closes by any other
+        means (no manual cleanup needed on normal bot-initiated exits).
+
+        Fires ONLY if the bot's own exit logic doesn't run — system-down
+        insurance (Apr 11 scenario).  SL is placed 0.3% below the bot's
+        -1.2% FL_EMERGENCY_SL backstop; TP is placed well above normal
+        trailing-stop exits.  See CLAUDE.md "Broker-side Protective Stops".
+
+        Fails open: if either order fails to place, returns the IDs of
+        whichever succeeded (or None).  Never raises — a protective-order
+        failure must NOT block the main trade.
+
+        Returns {"sl_order_id": str|None, "tp_order_id": str|None}.
+        """
+        out: Dict[str, Optional[str]] = {"sl_order_id": None, "tp_order_id": None}
+
+        if direction not in ("LONG", "SHORT"):
+            logger.error(f"[PROTECTIVE_STOPS] {symbol}: invalid direction={direction}")
+            return out
+        if entry_price is None or entry_price <= 0:
+            logger.error(f"[PROTECTIVE_STOPS] {symbol}: invalid entry_price={entry_price}")
+            return out
+        if sl_pct <= 0 or tp_pct <= 0:
+            logger.warning(
+                f"[PROTECTIVE_STOPS] {symbol}: sl_pct={sl_pct} tp_pct={tp_pct} — "
+                f"non-positive values disable that leg"
+            )
+
+        # Close side is the opposite of the position direction
+        close_side = 'sell' if direction == "LONG" else 'buy'
+
+        # Compute trigger prices.  For LONG:  SL is BELOW entry,  TP is ABOVE.
+        # For SHORT: SL is ABOVE entry, TP is BELOW.
+        if direction == "LONG":
+            sl_price = entry_price * (1 - sl_pct / 100.0)
+            tp_price = entry_price * (1 + tp_pct / 100.0)
+        else:
+            sl_price = entry_price * (1 + sl_pct / 100.0)
+            tp_price = entry_price * (1 - tp_pct / 100.0)
+
+        try:
+            await self.load_markets()
+        except Exception as _e:
+            logger.error(f"[PROTECTIVE_STOPS] {symbol}: load_markets failed ({_e}); skipping protective stops")
+            return out
+
+        # Round to Binance tick size so the exchange accepts the trigger prices
+        try:
+            _tick = await self.get_tick_size(symbol)
+        except Exception:
+            _tick = 0.0
+        def _round(px: float) -> float:
+            if not _tick or _tick <= 0:
+                return px
+            import math
+            return round(math.floor(px / _tick) * _tick, 10) if direction == "LONG" else round(math.ceil(px / _tick) * _tick, 10)
+
+        # Use MARK_PRICE so wicks / flash-crash false-triggers don't fire the stops.
+        common_params = {
+            'reduceOnly': True,
+            'closePosition': True,    # Closes full position; auto-cancels on other exit
+            'workingType': 'MARK_PRICE',
+            'timeInForce': 'GTE_GTC',
+        }
+
+        # SL — STOP_MARKET
+        if sl_pct > 0:
+            try:
+                _sl_trigger = _round(sl_price)
+                sl_order = await self.exchange.create_order(
+                    symbol=symbol,
+                    type='STOP_MARKET',
+                    side=close_side,
+                    amount=None,
+                    price=None,
+                    params={**common_params, 'stopPrice': _sl_trigger},
+                )
+                out["sl_order_id"] = str(sl_order.get('id')) if sl_order and sl_order.get('id') else None
+                logger.info(
+                    f"[PROTECTIVE_STOPS] {symbol} {direction}: SL placed @ {_sl_trigger} "
+                    f"(-{sl_pct}% from entry {entry_price}) id={out['sl_order_id']}"
+                )
+            except Exception as _e:
+                logger.error(
+                    f"[PROTECTIVE_STOPS] {symbol} {direction}: SL placement FAILED "
+                    f"({str(_e)[:120]}) — position is NOT protected on broker side"
+                )
+
+        # TP — TAKE_PROFIT_MARKET
+        if tp_pct > 0:
+            try:
+                _tp_trigger = _round(tp_price)
+                tp_order = await self.exchange.create_order(
+                    symbol=symbol,
+                    type='TAKE_PROFIT_MARKET',
+                    side=close_side,
+                    amount=None,
+                    price=None,
+                    params={**common_params, 'stopPrice': _tp_trigger},
+                )
+                out["tp_order_id"] = str(tp_order.get('id')) if tp_order and tp_order.get('id') else None
+                logger.info(
+                    f"[PROTECTIVE_STOPS] {symbol} {direction}: TP placed @ {_tp_trigger} "
+                    f"(+{tp_pct}% from entry {entry_price}) id={out['tp_order_id']}"
+                )
+            except Exception as _e:
+                logger.error(
+                    f"[PROTECTIVE_STOPS] {symbol} {direction}: TP placement FAILED "
+                    f"({str(_e)[:120]}) — upside protection NOT in place"
+                )
+
+        return out
+
+    async def cancel_protective_stops(
+        self,
+        symbol: str,
+        sl_order_id: Optional[str] = None,
+        tp_order_id: Optional[str] = None,
+    ) -> Dict[str, bool]:
+        """Defensive cancel of protective orders.  Normally NOT needed because
+        Binance auto-cancels closePosition=true orders when the position
+        closes by other means.  Called on bot startup to clean up any orphans
+        left by a crash mid-close, and as a belt-and-braces after manual close.
+
+        Ignores Binance "unknown order id" errors — those are expected when
+        Binance has already auto-cancelled.
+        """
+        out: Dict[str, bool] = {"sl_cancelled": False, "tp_cancelled": False}
+        for label, oid, key in (("SL", sl_order_id, "sl_cancelled"), ("TP", tp_order_id, "tp_cancelled")):
+            if not oid:
+                continue
+            try:
+                await self.load_markets()
+                await self.exchange.cancel_order(oid, symbol)
+                out[key] = True
+                logger.debug(f"[PROTECTIVE_STOPS] {symbol}: cancelled {label} order {oid}")
+            except Exception as _e:
+                _msg = str(_e).lower()
+                # These error substrings mean the order was already gone — expected case
+                _benign = any(s in _msg for s in (
+                    'unknown order', 'does not exist', 'order does not exist',
+                    '-2011', 'cancelrejected', 'order not exist'
+                ))
+                if _benign:
+                    logger.debug(f"[PROTECTIVE_STOPS] {symbol}: {label} order {oid} already gone (auto-cancelled) — OK")
+                    out[key] = True  # Treat as success: the order IS gone, which is what we wanted
+                else:
+                    logger.warning(f"[PROTECTIVE_STOPS] {symbol}: {label} cancel failed for {oid} ({_e})")
+        return out
     
     async def get_open_positions(self) -> Optional[List[Dict]]:
         """Get all open positions from Binance. Returns None on API error (distinct from empty list)."""

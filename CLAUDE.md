@@ -514,6 +514,111 @@ Signs the race is back (or a new close path is bypassing the guard):
 ### Impact on Phase 1b data integrity
 Any `EXTERNAL_CLOSE` trades in pre-Apr-16 samples may be mislabeled trailing-stop (or other bot-initiated) exits. When comparing new (post-fix) samples against historical data, do **not** treat pre-fix `EXTERNAL_CLOSE` counts as ground truth — they over-count external closes and under-count whichever exit type (likely TRAILING_STOP L1) lost the race. For 5th-sample and later report comparisons, expect `EXTERNAL_CLOSE` to drop toward ~0% and the corresponding gained trades to appear under their real bot-initiated reason.
 
+## April 17, 2026 — Broker-Side Protective Stops (system-down insurance)
+
+### The gap this closes
+The bot's exit logic is in-process — trailing stops, BE levels, FL flags, regime change exits all run inside the monitor loop. If the bot dies, stalls, gets rate-limited, or the EC2 instance is replaced (Apr 11 scenario), **open positions drift unmanaged until recovery.** In the worst case that happened Apr 11, ~40 positions stayed open for 8 hours.
+
+Broker-side protective stops fix this by placing `STOP_MARKET` + `TAKE_PROFIT_MARKET` orders on Binance immediately after each position opens. Binance's matching engine enforces them — they fire regardless of bot state.
+
+### Mechanism
+
+**On every live-mode position open** (`services/trading_engine.py::open_position`, right after the entry commit), the bot calls `binance_service.place_protective_stops(symbol, direction, entry_price, sl_pct, tp_pct)` which places two Binance Futures orders:
+
+| Order | Type | Side | Trigger (LONG) | Trigger (SHORT) | Flags |
+|---|---|---|---|---|---|
+| Protective SL | `STOP_MARKET` | Opposite of position | entry × (1 − sl_pct/100) | entry × (1 + sl_pct/100) | `reduceOnly=true`, `closePosition=true`, `workingType=MARK_PRICE`, `timeInForce=GTE_GTC` |
+| Protective TP | `TAKE_PROFIT_MARKET` | Opposite of position | entry × (1 + tp_pct/100) | entry × (1 − tp_pct/100) | same |
+
+### The `closePosition=true` flag — why it works so cleanly
+
+Binance auto-cancels a `closePosition=true` order as soon as the position it references is closed by any other means. This means:
+- When the bot's trailing stop fires → Binance automatically cancels our protective SL and TP. **No manual cleanup logic needed.**
+- When the bot's emergency backstop at -1.2% fires first → Binance auto-cancels the protective orders.
+- Only way for the protective orders to fill: the position is still open AND the price hits the trigger AND the bot hasn't closed it via other means.
+
+This is the exact behaviour we want for "insurance-only" stops. No coordination, no orphan cleanup, no race conditions with the bot's own exits.
+
+### Why `workingType=MARK_PRICE`
+
+Binance offers `MARK_PRICE` (smoothed index price) vs `CONTRACT_PRICE` (last traded price) as trigger reference. MARK_PRICE is safer for safety stops because:
+- Single-candle wick hunts don't fire false stops
+- Flash crashes on low-liquidity pairs don't cascade our SLs
+- Matches Binance's liquidation engine behaviour (consistency)
+
+Trade-off: a genuine panic-dump scenario will fire MARK_PRICE slightly later than CONTRACT_PRICE would. For bot-is-dead insurance, later is fine; false triggers while bot is alive are the bigger concern.
+
+### Default levels — 1.5% SL / 5% TP
+
+| Level | Value | Rationale |
+|---|---|---|
+| `protective_sl_pct` | **1.5%** | Sits 0.3% below bot's deepest in-process stop (FL_EMERGENCY_SL at -1.2%). In normal operation the bot always hits its own stops first. Only fires when bot is dead. |
+| `protective_tp_pct` | **5.0%** | Well above typical trailing exits (max observed in Apr 17 sample: +1.33%). Only fires on extreme spikes that the bot missed due to unresponsiveness. |
+
+**Both configurable in `trading_config.json` + UI.** Tighter TP (e.g. 3%) accepted as a trade-off if the user wants broker-side to occasionally capture extreme winners before the bot's trailing can react.
+
+### Reconciler integration — BROKER_SL / BROKER_TP close reasons
+
+When the monitor reconciler detects a closed position on Binance that the bot didn't initiate, it now checks the fill price against the expected SL and TP triggers (within 0.15% tolerance for MARK_PRICE slippage + tick rounding):
+
+- Fill within tolerance of expected SL → `close_reason = "BROKER_SL"` (vs generic `EXTERNAL_CLOSE`)
+- Fill within tolerance of expected TP → `close_reason = "BROKER_TP"`
+- Outside both windows → `EXTERNAL_CLOSE` (true user-initiated or liquidation)
+
+This preserves analytical clarity: a BROKER_SL/TP entry in the report means **"bot was unresponsive, broker-side insurance activated"** — a first-class incident worth investigating, not a routine external close. Logged at CRITICAL level.
+
+### Cost
+
+- **Unfilled orders: free** (Binance doesn't charge for resting STOP/TP orders).
+- **Filled orders: taker fee only** — same cost as the bot's own emergency exits. No additional cost.
+- **API cost:** +2 calls per position open, 0 on close (auto-cancel). At 20 trades/day = 40 extra calls/day — negligible vs 1200/min rate limit.
+- **Net steady-state cost: $0** unless the bot is actually unresponsive AND price hits a trigger.
+
+### Configuration
+
+```json
+"protective_stops_enabled": true,
+"protective_sl_pct": 1.5,
+"protective_tp_pct": 5.0
+```
+
+UI: "Broker-Side Protective Stops" panel in the config section (amber-bordered, next to Pair Blacklist / New-Listing Filter).
+
+### Fail-open safety
+
+If `place_protective_stops` fails for any reason (Binance API error, network timeout, invalid price rounding):
+- The main trade is already committed — NOT rolled back
+- `protective_sl_order_id` / `protective_tp_order_id` stay NULL on the Order row
+- Error is logged at ERROR level ("position is NOT protected on broker side")
+- Bot continues normal operation; this position is exposed to the Apr 11 failure mode only
+
+This is intentional: we never want protective-order failures to block trading or cause position state corruption.
+
+### What this does NOT replace — still-pending C1 S3 snapshot
+
+| Protection | Scope |
+|---|---|
+| **Protective stops (this)** | **Open positions** during bot outage — bounded loss, bounded gain |
+| **C1 S3 snapshot** (pending) | **Trade history + bot state** during DB loss — enables clean recovery to correct mode |
+
+Both are needed. Protective stops protect capital immediately. C1 protects analytical history and state integrity on infrastructure failure. Revisit C1 before moving off 1x leverage.
+
+### Files changed
+
+- `models.py` — `protective_sl_order_id`, `protective_tp_order_id` columns on Order
+- `database.py` — auto-migrate stanza for new columns
+- `config.py` — `protective_stops_enabled`, `protective_sl_pct`, `protective_tp_pct` fields
+- `trading_config.json` — default values
+- `services/binance_service.py` — `place_protective_stops`, `cancel_protective_stops` methods
+- `services/trading_engine.py` — wire-up in `open_position` after DB commit
+- `main.py` — reconciler BROKER_SL / BROKER_TP label detection; ConfigUpdate schema additions (also backfilled previously-dropped fields: `pair_blacklist`, `trading_pairs_limit`, `new_listing_filter_days`, BNB toggles)
+- `templates/index.html` — UI panel + JS load/save handlers
+- `tests/test_protective_stops.py` — 10 scenarios (price math, partial failure, cancel-is-success-when-gone, reconciler label detection). All pass.
+
+### ConfigUpdate Pydantic bug fix (side-effect of this work)
+
+While wiring the UI, I discovered that the `ConfigUpdate` Pydantic model was missing top-level fields that the UI had been sending for a while: `pair_blacklist`, `trading_pairs_limit`, `bnb_swap_enabled`, `paper_bnb_initial_usd`, `bnb_check_interval_hours`, `bnb_runway_hours`. Pydantic v2's default behaviour is to silently drop extras, so UI saves to these fields have been no-ops since introduction. All backfilled in the same commit. Future UI edits to blacklist / pair-limit / BNB settings will now actually persist.
+
 ## April 17, 2026 — Phase 1c Amendment (81-trade sample analysis + filter tightening)
 
 ### Sample that triggered Phase 1c

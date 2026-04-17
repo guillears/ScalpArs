@@ -239,6 +239,20 @@ class TradingConfig(BaseModel):
     # for the 5m EMA-based strategy.  Filtered BEFORE the top-N-by-volume cut,
     # so "top 50" always means "top 50 of eligible pairs."  0 = disabled.
     new_listing_filter_days: int = 0
+
+    # Broker-side protective stops (Apr 17 — system-down insurance).
+    # On every live-mode position open, the bot places a STOP_MARKET and
+    # TAKE_PROFIT_MARKET order on Binance with reduceOnly=true and
+    # closePosition=true.  These fire only if the bot's own exits can't run
+    # (instance down, deadlock, rate-limit ban, network outage — the Apr 11
+    # failure mode).  Defaults place the SL *below* the bot's -1.2%
+    # FL_EMERGENCY_SL backstop and the TP well above normal trailing exits
+    # so they do not interfere with day-to-day operation.  closePosition=true
+    # means Binance auto-cancels them when the position closes by any other
+    # means — no manual cleanup needed on normal exit.
+    protective_stops_enabled: bool = True
+    protective_sl_pct: float = 1.5   # % below entry (LONG) / above entry (SHORT)
+    protective_tp_pct: float = 5.0   # % above entry (LONG) / below entry (SHORT)
     
     # Investment settings
     investment: InvestmentConfig = InvestmentConfig()

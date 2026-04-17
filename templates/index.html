@@ -2515,6 +2515,23 @@
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
+                        <!-- BTC ADX Direction — moved from the Macro Trend block into BTC Independent Filters
+                             (Phase 1c Option B refactor, Apr 17). Works standalone regardless of
+                             the BTC Global toggle. 3-sample confirmed: Rising BTC ADX > Falling for SHORTs. -->
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                            <span class="text-xs text-gray-500 w-20">ADX Dir LONG:</span>
+                            <select id="config-btc-adx-dir-long" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                <option value="both">Both</option>
+                                <option value="rising">Rising only</option>
+                                <option value="falling">Falling only</option>
+                            </select>
+                            <span class="text-xs text-gray-500 w-20 ml-4">ADX Dir SHORT:</span>
+                            <select id="config-btc-adx-dir-short" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                <option value="both">Both</option>
+                                <option value="rising">Rising only</option>
+                                <option value="falling">Falling only</option>
+                            </select>
+                        </div>
                     </div>
                     <div class="mb-2 px-4">
                         <span class="text-sm text-gray-300">Macro Trend Regime (EMA20)</span>
@@ -2552,21 +2569,7 @@
                                 <input type="number" step="1" min="0" max="100" id="config-btc-rsi-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
                             </label>
                         </div>
-                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
-                            <span class="text-xs text-gray-500 w-20">ADX Dir LONG:</span>
-                            <select id="config-btc-adx-dir-long" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                <option value="both">Both</option>
-                                <option value="rising">Rising only</option>
-                                <option value="falling">Falling only</option>
-                            </select>
-                            <span class="text-xs text-gray-500 w-20 ml-4">ADX Dir SHORT:</span>
-                            <select id="config-btc-adx-dir-short" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                <option value="both">Both</option>
-                                <option value="rising">Rising only</option>
-                                <option value="falling">Falling only</option>
-                            </select>
-                        </div>
-                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC RSI/ADX in range + ADX direction)</p>
+                        <p class="text-xs text-blue-400/70 mt-1">BTC Global: uses BTC's EMA20 regime to gate ALL pairs (requires BTC + pair regime alignment + BTC RSI in range). BTC ADX range + ADX direction run independently (see section above).</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">BTC RSI x BTC ADX Cross-Filter</span>
@@ -4159,7 +4162,13 @@
             return lines;
         }
 
-        function _buildConfigLines(cfg, changelog, hr, hr2) {
+        function _buildConfigLines(cfg, changelog, hr, hr2, status) {
+            // status: optional /api/status response. When provided, is_paper_mode
+            // reflects the RUNTIME bot state (live vs paper toggle in the UI)
+            // rather than the static config file, which is only a startup default.
+            // Fixes Apr 17 mis-labeling bug where reports always said
+            // "Paper Trading: ON" because they read cfg.paper_trading (config file)
+            // instead of the actual live/paper state from bot_state DB.
             const lines = [];
             lines.push('\n## CONFIGURATION\n');
             const th = cfg.thresholds || {};
@@ -4183,7 +4192,18 @@
 
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
-            lines.push(`  Paper Trading: ${cfg.paper_trading ? 'ON' : 'OFF'}  |  Paper Balance: $${cfg.paper_balance || 0}`);
+            // Prefer RUNTIME mode from /api/status (the actual live/paper state);
+            // fall back to cfg.paper_trading (config file startup default) only if
+            // status wasn't passed.  Pre-Apr-17 reports used cfg.paper_trading which
+            // is a startup default and drifts from runtime once the UI toggle is used.
+            const isPaperRuntime = (status && typeof status.is_paper_mode === 'boolean')
+                ? status.is_paper_mode
+                : !!cfg.paper_trading;
+            const modeSource = (status && typeof status.is_paper_mode === 'boolean') ? 'runtime' : 'config-default';
+            const balanceDisplay = isPaperRuntime
+                ? `Paper Balance: $${(status && status.paper_balance) || cfg.paper_balance || 0}`
+                : 'LIVE mode — balance from Binance';
+            lines.push(`  Paper Trading: ${isPaperRuntime ? 'ON' : 'OFF'} (${modeSource})  |  ${balanceDisplay}`);
             lines.push(`  BNB Auto-Swap: ${cfg.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Paper BNB: $${cfg.paper_bnb_initial_usd || 500}  |  Check: ${cfg.bnb_check_interval_hours || 12}h  |  Runway: ${cfg.bnb_runway_hours || 24}h`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
             lines.push(`  Cooldown After Loss: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
@@ -4250,14 +4270,16 @@
             try {
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
-                const [perfRes, cfgRes, logRes] = await Promise.all([
+                const [perfRes, cfgRes, logRes, statusRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance${regimeParam}`),
                     fetch(`${API_BASE}/api/config`),
-                    fetch(`${API_BASE}/api/config/changelog?limit=50`)
+                    fetch(`${API_BASE}/api/config/changelog?limit=50`),
+                    fetch(`${API_BASE}/api/status`)
                 ]);
                 const perf = await perfRes.json();
                 const cfg = await cfgRes.json();
                 const changelog = logRes.ok ? await logRes.json() : [];
+                const status = statusRes.ok ? await statusRes.json() : null;
                 const lines = [];
                 const hr = '='.repeat(80);
                 const hr2 = '-'.repeat(60);
@@ -4268,7 +4290,7 @@
                 if (regimeFilter) lines.push(`Filter: ${regimeFilter} trades only`);
                 lines.push(hr);
 
-                lines.push(..._buildConfigLines(cfg, changelog, hr, hr2));
+                lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));
 
                 // --- OVERALL PERFORMANCE ---
                 lines.push(`\n${hr}`);
@@ -4860,16 +4882,18 @@
             btn.textContent = 'Loading...';
             btn.disabled = true;
             try {
-                const [perfBullRes, perfBearRes, cfgRes, logRes] = await Promise.all([
+                const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH`),
                     fetch(`${API_BASE}/api/config`),
-                    fetch(`${API_BASE}/api/config/changelog?limit=50`)
+                    fetch(`${API_BASE}/api/config/changelog?limit=50`),
+                    fetch(`${API_BASE}/api/status`)
                 ]);
                 const perfBull = await perfBullRes.json();
                 const perfBear = await perfBearRes.json();
                 const cfg = await cfgRes.json();
                 const changelog = logRes.ok ? await logRes.json() : [];
+                const status = statusRes.ok ? await statusRes.json() : null;
                 const lines = [];
                 const hr = '='.repeat(80);
                 const hr2 = '-'.repeat(60);
@@ -4880,7 +4904,7 @@
                 lines.push(`Generated: ${new Date().toISOString()}`);
                 lines.push(hr);
 
-                lines.push(..._buildConfigLines(cfg, changelog, hr, hr2));
+                lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));
 
                 lines.push(`\n${sectionHr}`);
                 lines.push('### BULLISH REGIME');

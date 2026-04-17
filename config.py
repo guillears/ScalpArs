@@ -233,6 +233,12 @@ class TradingConfig(BaseModel):
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 20  # 5, 10, 20, or 50
     pair_blacklist: str = ""  # Comma-separated pairs to exclude, e.g. "XRPUSDT,DOGEUSDT"
+    # Skip pairs whose Binance futures onboardDate is within the last N days.
+    # Binance flags early-stage pairs ("Seed Tag" / "Monitoring Tag") as
+    # higher-risk: low liquidity, wider spreads, manipulation-prone — poor fit
+    # for the 5m EMA-based strategy.  Filtered BEFORE the top-N-by-volume cut,
+    # so "top 50" always means "top 50 of eligible pairs."  0 = disabled.
+    new_listing_filter_days: int = 0
     
     # Investment settings
     investment: InvestmentConfig = InvestmentConfig()

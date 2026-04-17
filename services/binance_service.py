@@ -250,12 +250,24 @@ class BinanceService:
                 'total_portfolio': 0
             }
     
-    async def get_top_futures_pairs(self, limit: int = 20) -> List[Dict]:
-        """Get top futures pairs by 24h volume"""
+    async def get_top_futures_pairs(
+        self,
+        limit: int = 20,
+        new_listing_filter_days: int = 0,
+    ) -> List[Dict]:
+        """Get top USDT-perpetual futures pairs by 24h volume.
+
+        When ``new_listing_filter_days`` > 0, pairs whose Binance onboardDate
+        (from exchangeInfo, surfaced via CCXT ``markets[symbol]['info']``) is
+        within the last N days are excluded *before* the top-N-by-volume cut.
+        This filters out Binance's Seed Tag / Monitoring Tag pairs — low
+        liquidity, manipulation-prone, poor fit for 5m-EMA strategy.  See
+        CLAUDE.md Apr 17 analysis for the RAVEUSDT blow-up that motivated this.
+        """
         try:
             await self._check_ban()
             await self.load_public_markets()
-            
+
             tickers = None
             for attempt in range(3):
                 try:
@@ -280,11 +292,11 @@ class BinanceService:
                         await asyncio.sleep(wait)
                     else:
                         raise
-            
+
             if tickers is None:
                 logger.error("[BINANCE] Failed to fetch tickers after 3 attempts")
                 return []
-            
+
             # Filter USDT perpetual futures and sort by volume
             futures_pairs = []
             for symbol, ticker in tickers.items():
@@ -293,11 +305,11 @@ class BinanceService:
                     last_price = ticker.get('last')
                     quote_volume = ticker.get('quoteVolume')
                     percentage = ticker.get('percentage')
-                    
+
                     # Skip if no price data
                     if last_price is None:
                         continue
-                    
+
                     futures_pairs.append({
                         'symbol': symbol,
                         'pair': symbol.replace('/USDT:USDT', 'USDT'),
@@ -305,10 +317,51 @@ class BinanceService:
                         'volume_24h': float(quote_volume) if quote_volume is not None else 0.0,
                         'change_24h': float(percentage) if percentage is not None else 0.0
                     })
-            
+
+            # New-listing filter: drop pairs listed within the last N days,
+            # based on Binance's onboardDate in market metadata.  Applied
+            # BEFORE the top-N-by-volume cut so "top 50" stays "top 50 of
+            # eligible pairs."  Fails open: pairs without a parseable
+            # onboardDate are kept (conservative — don't accidentally block
+            # established pairs due to missing metadata).
+            if new_listing_filter_days > 0:
+                import time as _time
+                cutoff_ms = int((_time.time() - new_listing_filter_days * 86400) * 1000)
+                markets = self.public_exchange.markets or {}
+                before_count = len(futures_pairs)
+                filtered_pairs = []
+                filtered_out_names = []
+                for p in futures_pairs:
+                    market = markets.get(p['symbol'], {})
+                    info = market.get('info', {}) if isinstance(market, dict) else {}
+                    onboard_raw = info.get('onboardDate')
+                    if onboard_raw is None:
+                        # No metadata -> keep (fail open)
+                        filtered_pairs.append(p)
+                        continue
+                    try:
+                        onboard_ms = int(onboard_raw)
+                    except (ValueError, TypeError):
+                        filtered_pairs.append(p)
+                        continue
+                    if onboard_ms >= cutoff_ms:
+                        # Listed within the filter window -> skip
+                        filtered_out_names.append(p['pair'])
+                    else:
+                        filtered_pairs.append(p)
+                futures_pairs = filtered_pairs
+                if filtered_out_names:
+                    _preview = ', '.join(sorted(filtered_out_names)[:8])
+                    _extra = f" +{len(filtered_out_names) - 8} more" if len(filtered_out_names) > 8 else ""
+                    logger.info(
+                        f"[BINANCE] New-listing filter ({new_listing_filter_days}d): "
+                        f"excluded {len(filtered_out_names)}/{before_count} pairs "
+                        f"({_preview}{_extra})"
+                    )
+
             # Sort by volume descending
             futures_pairs.sort(key=lambda x: x['volume_24h'], reverse=True)
-            
+
             return futures_pairs[:limit]
         except Exception as e:
             self._detect_ban(e)

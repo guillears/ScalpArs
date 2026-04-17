@@ -137,13 +137,27 @@ class TradingEngine:
         self._last_bnb_check: Optional[datetime] = None
     
     async def initialize(self, db: AsyncSession):
-        """Initialize engine state from database (only on first call)"""
+        """Initialize engine state from database (only on first call).
+
+        Mode resolution:
+        - If BotState row exists (normal case): load is_paper_mode from DB.
+          This preserves any UI toggle the user has set.
+        - If BotState row does NOT exist (cold start on empty DB — the Apr 11
+          scenario): default to config.trading_config.paper_trading instead
+          of a hardcoded True.  Previous behaviour silently flipped the bot
+          to paper mode on any DB loss, which orphaned live positions for
+          8 hours on Apr 11.  Now the config file is the cold-start source
+          of truth, controllable by the user.
+
+        A loud [MODE] log is emitted on every init so any mode transition
+        is immediately visible in CloudWatch and post-mortem logs.
+        """
         if self._initialized:
             return
-        
+
         result = await db.execute(select(BotState).limit(1))
         state = result.scalar_one_or_none()
-        
+
         if state:
             self.is_running = state.is_running
             self.is_paper_mode = state.is_paper_mode
@@ -152,23 +166,40 @@ class TradingEngine:
             self.total_runtime_seconds = state.total_runtime_seconds
             if state.is_running and state.started_at:
                 self.started_at = state.started_at
+            logger.info(
+                f"[MODE] Loaded from BotState DB: is_paper_mode={self.is_paper_mode}, "
+                f"is_running={self.is_running} — runtime mode recovered from previous session."
+            )
         else:
-            # Create initial state
+            # Cold start: no BotState row. Read mode default from config file
+            # (config.trading_config.paper_trading) rather than a hardcoded True.
+            # See docstring above + CLAUDE.md Apr 11 incident for context.
+            _default_is_paper = bool(getattr(config.trading_config, 'paper_trading', True))
+            logger.critical(
+                f"[MODE] COLD START — no BotState row found in DB. "
+                f"Defaulting to config.trading_config.paper_trading={_default_is_paper}. "
+                f"If this is unexpected (DB wipe / instance replacement / migration), "
+                f"investigate immediately — live positions may be orphaned on Binance."
+            )
             state = BotState(
-                is_running=False,
-                is_paper_mode=True,
+                is_running=False,  # Never auto-start on cold boot (Apr 11 defense)
+                is_paper_mode=_default_is_paper,
                 paper_balance=config.trading_config.paper_balance,
                 paper_bnb_balance_usd=config.trading_config.paper_bnb_initial_usd,
                 total_runtime_seconds=0
             )
             db.add(state)
             await db.commit()
-        
+            self.is_running = False
+            self.is_paper_mode = _default_is_paper
+            self.paper_balance = config.trading_config.paper_balance
+            self.paper_bnb_balance_usd = config.trading_config.paper_bnb_initial_usd
+
         # Recalculate paper_balance from orders to self-heal any accumulated drift
         if self.is_paper_mode:
             await self._recalculate_paper_balance(db)
             await self.save_state(db)
-        
+
         self._initialized = True
     
     async def save_state(self, db: AsyncSession):
@@ -2947,9 +2978,15 @@ class TradingEngine:
         _scan_vol_sum = 0.0
         _scan_avg_vol_sum = 0.0
         
-        # Get top pairs based on config limit
+        # Get top pairs based on config limit.
+        # New-listing filter runs inside get_top_futures_pairs BEFORE the top-N
+        # cut, so the returned list is always "top N of eligible pairs."
         pairs_limit = config.trading_config.trading_pairs_limit
-        top_pairs = await binance_service.get_top_futures_pairs(pairs_limit)
+        _new_listing_days = getattr(config.trading_config, 'new_listing_filter_days', 0)
+        top_pairs = await binance_service.get_top_futures_pairs(
+            pairs_limit,
+            new_listing_filter_days=_new_listing_days,
+        )
         _blacklist_str = getattr(config.trading_config, 'pair_blacklist', '')
         _blacklist = set(p.strip() for p in _blacklist_str.split(',') if p.strip())
         if _blacklist:
@@ -3149,15 +3186,10 @@ class TradingEngine:
                     if (_rsi_lo > 0 and btc_rsi < _rsi_lo) or (_rsi_hi < 100 and btc_rsi > _rsi_hi):
                         btc_rsi_blocks = True
 
-                # BTC ADX range check moved outside btc_global gate (runs independently)
-
-                btc_adx_dir_blocks = False
-                if btc_adx is not None and btc_adx_prev is not None:
-                    _adx_dir_cfg = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
-                    if _adx_dir_cfg == 'rising' and btc_adx <= btc_adx_prev:
-                        btc_adx_dir_blocks = True
-                    elif _adx_dir_cfg == 'falling' and btc_adx >= btc_adx_prev:
-                        btc_adx_dir_blocks = True
+                # BTC ADX range check moved outside btc_global gate (runs independently).
+                # BTC ADX Direction check also moved outside — see independent block below
+                # (Phase 1c Option B refactor, Apr 17 — 3-sample confirmed structural signal
+                # for shorts: Rising BTC ADX > Falling BTC ADX across Apr 6, Apr 13, Apr 17).
 
                 pair_adx_dir_blocks = False
                 _pair_adx = indicators.get('adx')
@@ -3190,17 +3222,13 @@ class TradingEngine:
                             except (ValueError, TypeError):
                                 continue
 
-                if btc_blocks or pair_blocks or btc_rsi_blocks or btc_adx_dir_blocks or pair_adx_dir_blocks or btc_cross_blocks:
+                if btc_blocks or pair_blocks or btc_rsi_blocks or pair_adx_dir_blocks or btc_cross_blocks:
                     if btc_cross_blocks:
                         reason = btc_cross_reason
                     elif pair_adx_dir_blocks:
                         _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
                         _pd_want = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
                         reason = f"Pair ADX {_pd_label} ({_pair_adx:.1f} vs prev {_pair_adx_prev:.1f}), {signal} requires {_pd_want}"
-                    elif btc_adx_dir_blocks:
-                        _adx_dir_label = "Rising" if btc_adx > btc_adx_prev else "Falling"
-                        _adx_dir_want = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
-                        reason = f"BTC ADX {_adx_dir_label} ({btc_adx:.1f} vs prev {btc_adx_prev:.1f}), {signal} requires {_adx_dir_want}"
                     elif btc_rsi_blocks:
                         reason = f"BTC RSI {btc_rsi:.1f} out of {signal} range [{_rsi_lo}-{_rsi_hi}]"
                     elif btc_blocks:
@@ -3239,6 +3267,31 @@ class TradingEngine:
                     _btc_adx_hi = getattr(_th, 'btc_adx_max_short', 100)
                 if (_btc_adx_lo > 0 and btc_adx < _btc_adx_lo) or (_btc_adx_hi < 100 and btc_adx > _btc_adx_hi):
                     logger.info(f"[BTC_ADX_GATE] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} outside [{_btc_adx_lo}-{_btc_adx_hi}]")
+                    signal = "NO_TRADE"
+
+            # BTC ADX Direction check — runs independently of BTC global filter
+            # (Phase 1c Option B refactor, Apr 17).  Pre-refactor this lived inside
+            # the `if btc_global_enabled:` block, so turning off Macro Trend
+            # silently disabled the directional filter.  Moved here so
+            # btc_adx_dir_long / btc_adx_dir_short works standalone.
+            # Structural basis: 3-sample confirmation across Apr 6, Apr 13, Apr 17
+            # that SHORTS in Rising BTC ADX materially outperform SHORTS in
+            # Falling BTC ADX (exhausting downtrend = bounce risk).  "both" = no
+            # filter active.  "rising"/"falling" gates the entry.
+            if signal in ["LONG", "SHORT"] and btc_adx is not None and btc_adx_prev is not None:
+                _th = config.trading_config.thresholds
+                _adx_dir_cfg = getattr(_th, f'btc_adx_dir_{signal.lower()}', 'both')
+                _dir_blocks = False
+                if _adx_dir_cfg == 'rising' and btc_adx <= btc_adx_prev:
+                    _dir_blocks = True
+                elif _adx_dir_cfg == 'falling' and btc_adx >= btc_adx_prev:
+                    _dir_blocks = True
+                if _dir_blocks:
+                    _dir_label = "Rising" if btc_adx > btc_adx_prev else ("Falling" if btc_adx < btc_adx_prev else "Flat")
+                    logger.info(
+                        f"[BTC_ADX_DIR] {pair}: {signal} blocked — BTC ADX {_dir_label} "
+                        f"({btc_adx:.2f} vs prev {btc_adx_prev:.2f}), requires {_adx_dir_cfg}"
+                    )
                     signal = "NO_TRADE"
 
             # BTC Slope directional check — runs independently of Macro Trend toggle.

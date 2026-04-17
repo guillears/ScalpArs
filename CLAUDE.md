@@ -514,6 +514,112 @@ Signs the race is back (or a new close path is bypassing the guard):
 ### Impact on Phase 1b data integrity
 Any `EXTERNAL_CLOSE` trades in pre-Apr-16 samples may be mislabeled trailing-stop (or other bot-initiated) exits. When comparing new (post-fix) samples against historical data, do **not** treat pre-fix `EXTERNAL_CLOSE` counts as ground truth — they over-count external closes and under-count whichever exit type (likely TRAILING_STOP L1) lost the race. For 5th-sample and later report comparisons, expect `EXTERNAL_CLOSE` to drop toward ~0% and the corresponding gained trades to appear under their real bot-initiated reason.
 
+## April 17, 2026 — Phase 1c Amendment (81-trade sample analysis + filter tightening)
+
+### Sample that triggered Phase 1c
+81 trades (40 LONG BULLISH + 41 SHORT BEARISH) collected Apr 15-17, archived at `reports/report_2026-04-17_phase1b_81trades.txt`.
+
+Headline numbers (Avg P&L % per Core Operating Principles):
+- LONG: 62.5% WR, +0.01% Avg, PF 1.08 — marginally profitable, don't break it
+- SHORT: 46.3% WR, -0.09% Avg, PF 0.72 — drag on the system, needs fix
+- Combined: -$4.83 over 2.9 days, roughly -0.04% Avg/trade
+
+**Critical observations:**
+1. **Short regime-flip dominance:** 17 of 41 shorts (41%) closed on REGIME_CHANGE or FL_REGIME_CHANGE. SAME_REGIME shorts: 73.3% WR, +0.07% Avg (consistent with prior 4-sample short edge). REGIME_SHIFT shorts: 30.8% WR. **The short edge is intact — it's being obscured by regime chop in this window.**
+2. **Many prior multi-sample patterns broke** in this 5th sample (BTC RSI <30 shorts, BTC ADX 18-27+slope-falling shorts, EMA5-EMA8 0.08-0.12% shorts, Range Position 75-100% longs). These "broken" patterns do not justify deploying their opposites as filters — 1-sample break ≠ pattern reversal.
+3. **Pair-level loss concentration:** RAVEUSDT = 3L, 0% WR, -$6.17 (biggest single-pair drag on longs). All 3 trades at RSI 50-55. Classic confound: the "RSI 50-55 losing" bucket was entirely RAVEUSDT.
+4. **Pair ADX 18-22 is the single strongest winner bucket in the data:** 18 LONG trades, 77.8% WR, +0.30% Avg, +$9.94. Cleanest structural signal.
+5. **VERY_STRONG tier underperforms STRONG_BUY** (2-sample confirmed): LONG 58% vs 64% WR, SHORT 37% vs 48% WR.
+6. **Current short RSI×ADX cross-filter rule (`30-35:25,35-50:30`) funnels entries into toxic high-ADX zones** (RSI 30-35 × ADX 28-33 = 22% WR, -$5.85). The rule was inverting good logic.
+
+### Phase 1c config changes (deployed Apr 17)
+
+Every config change has ≥2-sample evidence OR is a targeted pair-specific kill. 1-sample-driven changes were considered and then walked back after cross-sample validation (see "Changes considered and rejected" below). Non-monotonic / broken-from-prior patterns were deliberately NOT touched.
+
+**LONG side:**
+
+| # | Change | Rationale |
+|---|---|---|
+| 1 | `pair_blacklist`: add `RAVEUSDT` | 3L, 0% WR, -$6.17 — surgical kill, preserves RSI 50-55 for other pairs |
+| 2 | `adx_strong_long`: 15 → 18 | ADX 18-22 = 77.8% WR biggest winner; 15-18 = 40% WR. Net +$5.16 on retained subsample |
+| 3 | `btc_adx_max_long`: 40 → 35 | BTC ADX 35-40 = 40% WR -$5.54 (loss zone); 25-35 = 73% WR |
+
+**SHORT side:**
+
+| # | Change | Rationale |
+|---|---|---|
+| 4 | `adx_strong` (short): 25 → 22 | Lowers SHORT STRONG_BUY floor. Explores previously-blocked ADX 22-25 zone. User decision: pure exploration, let the data validate. |
+| 5 | `momentum_adx_max` (short): 33 → 28 | 2-sample confirmed (Apr 13 + Apr 17): ADX 28+ shorts = weak zone. Blocks regime-flip-prone high-ADX entry profile |
+| 6 | `adx_very_strong` (short): 30 → 28 | Combined with max=28, VERY_STRONG short tier is effectively disabled (no ADX value can qualify for >28 and be ≤28) |
+| 7 | `btc_adx_dir_short`: `"both"` → `"rising"` | **3-sample structural** (Apr 6 + Apr 13 + Apr 17): Rising BTC ADX shorts > Falling BTC ADX shorts every sample. Apr 17 Falling bucket was 25% WR -$5.89 (92% of total short losses). Required the Option B refactor below to actually take effect. |
+
+**Pre-filter:**
+
+| # | Change | Rationale |
+|---|---|---|
+| 8 | New config field `new_listing_filter_days: 180` | Age-based proxy for Binance's Seed Tag. Drops pairs whose `onboardDate` is within last 180 days BEFORE the top-N-by-volume cut, so "top 50" stays "top 50 of eligible pairs." Known limitation: age ≠ Seed Tag perfectly; pairs like RAVEUSDT (124d old) are caught at 180d, but older Seed-tagged pairs like HYPE (322d) are not. Manual `pair_blacklist` still needed for known-risky older pairs. |
+
+**Code refactor (Phase 2 Option B):**
+
+| # | Change | Rationale |
+|---|---|---|
+| 9 | BTC ADX Direction filter moved OUT of `if btc_global_enabled:` block in `services/trading_engine.py` | Pre-refactor: `btc_adx_dir_long/short` only fired when Macro Trend / BTC Global toggle was ON. Since user's config has `btc_global_filter_enabled: false`, the filter was effectively dead. Now runs independently (like BTC ADX range already did). Required for the change #7 to actually apply. |
+| 10 | UI: BTC ADX Direction dropdowns moved from "Macro Trend Regime" section to "BTC Independent Filters" section (`templates/index.html`) | Matches the backend — the UI now correctly represents that these filters run standalone. |
+
+### Changes considered and rejected during Phase 1c design (anti-overfit discipline)
+
+**1-sample-driven changes walked back after cross-sample check:**
+
+| Change I proposed | Why I walked it back |
+|---|---|
+| `ema_gap_threshold_short: 0.08 → 0.04` | 1-sample only (Apr 17). Apr 13 data showed the OPPOSITE pattern (0.08+ wins). Non-monotonic and unstable. Kept at 0.08. |
+| `rsi_adx_filter_short: "30-35:25,35-50:30"` → remove | 1-sample-driven. Apr 9 data showed this rule's target cell had 84% WR. With new `momentum_adx_max: 28` the rule becomes a benign additional gate that blocks mediocre RSI 35-50 shorts. Kept the rule. |
+
+**Never proposed (rejected on evidence):**
+
+| Tempting change | Why rejected |
+|---|---|
+| Blacklist ETHUSDT, AAVEUSDT shorts | User decision: do not blacklist short pairs — not enough evidence, could be regime-specific |
+| Raise LONG RSI min above 40 | RAVEUSDT-specific finding; blacklist is surgical, pair-RSI-threshold would over-cut |
+| Cap LONG breadth max at 70% | 3-sample confirmed but signal weak (~-0.05%); drops 37% of long trades for marginal gain |
+| Tighten BTC RSI ranges (longs or shorts) | 4-sample patterns broke in 5th sample — unstable, wait for more data |
+| Deploy BTC ADX + slope conditional short rule | 2-sample pattern did NOT replicate in 5th sample |
+| Add volume filter for shorts | 1-sample only. Apr 13 data showed the Low/Low short bucket at 66.7% WR; Apr 17 flipped to 40% WR. Magnitudes differ too much across samples to trust as filter. |
+| Touch EMA5 Stretch buckets | Non-monotonic; over-cutting risk |
+| Touch Range Position filter | 2-sample pattern just reversed in 5th sample |
+| Re-admit ADX 28-30 zone for shorts via VERY_STRONG tier | User considered, then chose to skip. The 28-30 zone has 2-sample confirmed weakness (Apr 13 + Apr 17). Exploring only the unknown 22-25 zone is asymmetrically data-backed. |
+| Leverage increase (e.g. STRONG_BUY 20x / VERY_STRONG 10x) | User proposed, flagged strongly as premature given PF 0.72 on shorts + 1-sample validation gap. User confirmed: stay at 1x until Phase 1c data validates. |
+
+### About the `new_listing_filter_days` — known limitation
+
+The filter uses `onboardDate` from Binance's USDT-M futures `exchangeInfo`. This is an AGE-based proxy for Binance's **Seed Tag / Monitoring Tag** — not the tag itself. The two correlate but aren't identical:
+
+- Binance's Seed Tag list is published in announcements, NOT exposed via the standard futures API
+- `onboardDate` catches literally-recent listings (0-180d old), which is a subset of Seed-tagged pairs
+- Some Seed-tagged pairs (e.g. RAVEUSDT at 124d) ARE caught by the 180d filter
+- Some older pairs (HYPE 322d, FARTCOIN 483d) with Seed-tag-like characteristics are NOT caught
+- Pairs with missing `onboardDate` metadata are kept (fail-open, conservative)
+
+**Expected behavior:** the filter is a defensive first line. It does NOT replace `pair_blacklist` — it's a broader net that catches brand-new listings before they ever reach the top-50. Known-risky older pairs must still go in `pair_blacklist` manually (as RAVEUSDT does).
+
+**If the threshold proves too tight/loose:** adjustable in `trading_config.json` without code change. 180d was chosen as a balance between "catches most recent Seed Tags" (like RAVEUSDT) and "doesn't block established mid-age pairs." Revisit if the 200-trade review shows pairs sneaking through.
+
+### Exit criteria for Phase 1c → Phase 2
+
+Advance to Phase 2 when:
+1. ≥160-180 total trades collected under Phase 1c config (pre-Apr-17 data stays separate per pooling rule)
+2. LONG PF ≥ 1.2, SHORT PF ≥ 1.0 (both sides profitable, not just longs)
+3. Pair ADX 18-22 long bucket replicates ≥70% WR at N ≥ 30 (3-sample structural confirmation)
+4. Short side shows SAME_REGIME WR ≥ 70% on ≥30 same-regime trades (confirm short edge is real outside regime chop)
+
+If Phase 1c fails (LONG PF < 1 or SHORT PF < 0.8): code-level review of regime change exit logic + short entry filters, not more filter tuning.
+
+### Pooling rule update (Apr 17)
+
+Phase 1b data (81 trades pre-Apr-17) and Phase 1c data (post-Apr-17) are SEPARATE sub-samples. Different configs. Do NOT pool raw trades. Compare across sub-samples using Avg P&L % only (per Core Operating Principles).
+
+Phase 1c is now the active sample. Pre-Apr-17 data (Phase 1a, Phase 1b) becomes historical reference for cross-sample pattern validation.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

@@ -1,0 +1,318 @@
+================================================================================
+TRADING BOT SPLIT ANALYTICS REPORT
+Generated: 2026-04-17T13:20:48.526Z
+================================================================================
+
+## CONFIGURATION
+
+Signal Thresholds:
+  EMA Gap Threshold L: 0.02  |  S: 0.08  |  EMA Gap Max: 0.35
+  ADX Very Strong: L>22 S>30  |  ADX Strong: L>15 S>25  |  ADX Max: L25 S33
+  LONG RSI: 40 - 63  |  SHORT RSI: 25 - 40
+  RSI x ADX Filter L: (none)  |  S: 30-35:25,35-50:30
+  Macro Trend Filter: false  |  BTC Global: false  |  Neutral Mode: none
+  BTC RSI L: 40-65  |  BTC RSI S: 25-60  |  BTC ADX L: 18-40  |  BTC ADX S: 18-40  |  ADX Dir L: both  |  ADX Dir S: both
+  Pair ADX Dir L: rising  |  Pair ADX Dir S: rising
+  Global Vol Filter: false  |  Thresh L: 1.05  |  Thresh S: 1.05  |  Lookback: 48 bars
+  Pair Vol Filter: false  |  Thresh L: 1.1  |  Thresh S: 1.1  |  Lookback: 20 bars
+  Market Breadth Filter: true  |  Bull% >= 30% (LONGs)  |  Bear% >= 45% (SHORTs)  |  Flat Th: 0.02%
+  EMA20 Filter Long: true  |  Short: true
+  EMA20 Slope Long: true  |  Short: true  |  Min Slope L: 0%  |  Min Slope S: 0.04%
+  RSI Momentum Filter: true  (block LONG if RSI falling, block SHORT if RSI rising vs 3 candles ago)
+  EMA Gap Expanding Filter: true  (block entry if EMA5-EMA8 gap compressing vs prev candle)
+
+General Settings:
+  Paper Trading: ON  |  Paper Balance: $5000
+  BNB Auto-Swap: ON  |  Paper BNB: $500  |  Check: 6h  |  Runway: 24h
+  Investment Mode: equal_split  |  Max Open Positions: 5  |  Trading Pairs: 50
+  Cooldown After Loss: 5min  |  No Expansion: 240min
+  Pair Blacklist: XAGUSDT,XAUUSDT,ZECUSDT,ENAUSDT
+
+Fee & Maker Orders:
+  Taker Fee: 0.045%  |  Maker Fee: 0.018%
+  Maker Entry: ON  |  Timeout: 20s  |  Offset: 1 ticks
+  Maker Exit: OFF  |  Timeout: 10s  |  Offset: 1 ticks
+  Roundtrip: 0.063%  |  Full taker: 0.090%
+
+Exit Settings:
+  Regime Change Exit: true  (close on opposite BTC regime shift)
+  Signal Lost Exit: true  |  Signal Lost Range: [-0.9%, -0.5%]
+  Signal Lost Flag: true  |  Security Gap: [-0.9%, -0.8%]  |  TM Min P&L (Flagged): -0.25%
+  FL1[WIDE_SL]: true  |  Emergency Backstop: -1.2%  ||  FL2: true  |  Recovery: -0.4%  |  Deep Stop: -1%
+  RSI Momentum Exit: false  |  Range: [-0.8%, -0.45%]  (close on 2 consecutive RSI drops/rises)
+  Tick Momentum Exit: false  |  Min Profit: 0.03%  |  Min Deltas: 0.12%  |  Windows: 15,30,45s
+  Spike Guard: true  |  Vol Multiplier: 3x  |  Price Move: 1.5%
+  EMA5-20 Gap Filter: true  |  L Min: 0.05  L Max: 0.8  |  S Min: 0.05  S Max: 0.8
+
+Confidence Levels:
+  Level          Mode       Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   Stretch  TP Trail
+  VERY_STRONG    both       1x  -0.9%  -0.9%  BE:N  99%   99%  99%   99%  99%   99%  99%   2.5%  99%   4%  0.3    Y
+  STRONG_BUY     both       1x  -0.9%  -0.9%  BE:N  99%   99%  99%   99%  99%   99%  99%   2.5%  99%   4%  0.3    Y
+
+------------------------------------------------------------
+## CONFIG CHANGE LOG
+
+Time                 Field                                    Old             New
+16 Apr, 14:01        thresholds.ema_gap_threshold             0.05            0.02
+16 Apr, 14:01        maker_fee                                0.00018         0.00017999999999999998
+16 Apr, 14:01        thresholds.btc_adx_min_short             20.0            18.0
+16 Apr, 14:01        thresholds.btc_adx_min_long              20.0            18.0
+16 Apr, 14:01        investment.percentage                    30.0            5.0
+16 Apr, 14:01        investment.fixed_amount                  200.0           100.0
+14 Apr, 15:47        confidence_levels.STRONG_BUY.leverage    20.0            1.0
+14 Apr, 15:47        investment.percentage                    30.0            5.0
+14 Apr, 15:47        maker_fee                                0.00018         0.00017999999999999998
+14 Apr, 15:47        confidence_levels.VERY_STRONG.leverage   20.0            1.0
+14 Apr, 15:47        investment.fixed_amount                  200.0           100.0
+14 Apr, 15:47        thresholds.ema_gap_threshold             0.05            0.02
+14 Apr, 14:26        confidence_levels.VERY_STRONG.leverage   10.0            20.0
+14 Apr, 14:21        thresholds.btc_adx_min_long              20.0            25.0
+14 Apr, 14:21        sholds.macro_trend_flat_threshold_long   0.08            0.06
+14 Apr, 14:13        sholds.macro_trend_flat_threshold_long   0.06            0.08
+14 Apr, 13:29        sholds.macro_trend_flat_threshold_long   0.02            0.06
+14 Apr, 13:05        thresholds.regime_change_exit_enabled    False           True
+14 Apr, 12:44        resholds.market_breadth_flat_threshold   0.03            0.02
+14 Apr, 12:44        resholds.market_breadth_flat_threshold   0.0             0.03
+14 Apr, 04:54        thresholds.btc_adx_min_short             18.0            20.0
+14 Apr, 04:54        investment.percentage                    30.0            5.0
+14 Apr, 04:54        thresholds.btc_adx_min_long              18.0            20.0
+14 Apr, 04:54        maker_fee                                0.00018         0.00017999999999999998
+14 Apr, 04:54        investment.fixed_amount                  200.0           100.0
+14 Apr, 04:54        thresholds.ema_gap_threshold             0.05            0.02
+14 Apr, 03:04        sholds.macro_trend_flat_threshold_long   0.0             0.02
+14 Apr, 03:04        investment.fixed_amount                  200.0           100.0
+14 Apr, 03:04        maker_fee                                0.00018         0.00017999999999999998
+14 Apr, 03:04        thresholds.ema_gap_threshold             0.05            0.02
+14 Apr, 03:04        investment.percentage                    30.0            5.0
+13 Apr, 14:53        confidence_levels.STRONG_BUY.leverage    30.0            20.0
+13 Apr, 14:53        confidence_levels.VERY_STRONG.leverage   20.0            10.0
+13 Apr, 14:52        confidence_levels.STRONG_BUY.leverage    20.0            30.0
+13 Apr, 14:52        confidence_levels.VERY_STRONG.leverage   10.0            20.0
+13 Apr, 14:51        investment.percentage                    30.0            5.0
+13 Apr, 14:51        confidence_levels.STRONG_BUY.leverage    1.0             20.0
+13 Apr, 14:51        investment.fixed_amount                  200.0           100.0
+13 Apr, 14:51        confidence_levels.VERY_STRONG.leverage   1.0             10.0
+13 Apr, 14:51        maker_fee                                0.00018         0.00017999999999999998
+13 Apr, 14:51        thresholds.ema_gap_threshold             0.05            0.02
+12 Apr, 20:31        thresholds.ema_gap_threshold_short       0.05            0.08
+11 Apr, 21:18        nfidence_levels.VERY_STRONG.trade_mode   short           both
+11 Apr, 21:16        investment.percentage                    30.0            5.0
+11 Apr, 21:16        thresholds.ema_gap_threshold             0.05            0.02
+11 Apr, 21:16        maker_fee                                0.00018         0.00017999999999999998
+11 Apr, 21:16        nfidence_levels.VERY_STRONG.trade_mode   both            short
+11 Apr, 21:16        investment.fixed_amount                  200.0           100.0
+11 Apr, 21:15        maker_fee                                0.00018         0.00017999999999999998
+11 Apr, 21:15        thresholds.ema_gap_threshold             0.05            0.02
+
+################################################################################
+### BULLISH REGIME
+################################################################################
+
+================================================================================
+## OVERALL PERFORMANCE
+
+Total Trades: 40  (40L / 0S)
+Wins: 25  |  Losses: 15  |  Win Rate: 62.5%
+Win Rate Longs: 62.5%  |  Shorts: 0%
+Avg Win: $0.89  (L:$0.89 S:$0)
+Avg Loss: $-1.38  (L:$-1.38 S:$0)
+Expectancy: $0.04/trade
+Best Win L:$2.37 S:$0  |  Worst Loss L:$-2.54 S:$0
+Total P&L: $1.55 (0.02%)  |  Fees: $5.55
+Avg Duration: 00:34:33 (L:00:34:33 S:00:00:00)
+Avg Leverage: 1x  |  Return Multiple: 1.0017x
+Daily Compound Return: 0.0588%  |  Runtime: 2.9 days
+Investment L:$7222.64 S:$0
+
+[FULL REPORT CONTENT ARCHIVED — see git commit for original paste, this file is the immutable reference for the 81-trade Phase 1b sample analyzed on 2026-04-17.]
+
+--- BULLISH (LONG) section ---
+Performance by Macro Trend:
+  BULLISH    40L/0S   +0.01% Avg   62.5% WR   Total $1.55
+  BEARISH    0L/41S   -0.09% Avg   46.3% WR   Total -$6.38
+
+Performance by Confidence Level (LONG):
+  VERY_STRONG  12L  58.3% WR  -0.10% Avg  -$1.67
+  STRONG_BUY   28L  64.3% WR  +0.06% Avg  +$3.22
+
+Performance by BTC Regime at Entry (LONG):
+  HEALTHY_BULL    21L  52.4% WR  -$1.95  -0.06% avg
+  STRONG_BULL     14L  78.6% WR  +$3.63  +0.13% avg
+  BULL_EXHAUSTED   5L  60.0% WR  -$0.14  -0.04% avg
+
+Regime Transition (LONG):
+  SAME_REGIME    13  69.2% WR  +$0.78
+  REGIME_SHIFT   27  59.3% WR  +$0.76
+
+Entry RSI (LONG):
+  50-55   3L  0%    WR  -1.21% avg  -$6.17  (all RAVEUSDT)
+  55-60  17L 76.5%  WR  +0.09% avg  +$2.84
+  60-65  20L 60.0%  WR  +0.13% avg  +$4.88
+
+Entry ADX (LONG):
+  15-18  10L 40.0%  WR  -0.38% avg  -$6.72
+  18-22  18L 77.8%  WR  +0.30% avg  +$9.94  <-- BEST BUCKET
+  22-25  12L 58.3%  WR  -0.10% avg  -$1.67
+
+Entry Gap EMA5-EMA8 (LONG):
+  0.02-0.04%  13L  53.8% WR  -0.09% avg  -$1.81
+  0.04-0.06%   8L  75.0% WR  +0.06% avg  +$0.90
+  0.06-0.08%   4L 100.0% WR  +0.44% avg  +$3.19
+  0.08-0.10%   4L  50.0% WR  -0.19% avg  -$1.14
+  0.10-0.12%   5L  40.0% WR  -0.09% avg  -$0.60
+
+Entry Gap 5-20 (LONG):
+  0.12-0.15%   5L  40%  WR  -$1.64
+  0.15-0.20%   4L  50%  WR  -$2.21
+  0.20-0.25%   5L  60%  WR  -$0.07
+  0.25-0.30%   6L 66.7% WR  +$2.02
+  0.30-0.35%   2L  50%  WR  -$0.56
+  0.35-0.40%   2L  50%  WR  +$0.25
+  0.40-0.50%   2L 100%  WR  +$1.28
+  0.50-0.60%   1L   0%  WR  -$2.54  (RAVEUSDT)
+
+Range Position (LONG):
+  25-50%    3L  33.3% WR  -$2.72
+  50-75%   13L  53.8% WR  -$4.78
+  75-100%  24L  70.8% WR  +$9.05  <-- STRONG ZONE (breaks CLAUDE.md 2-sample pattern)
+
+Market Breadth (LONG):
+  40-45%    2L 100%   +$1.62
+  45-50%    1L   0%   -$1.24
+  50-55%    5L  40%   -$2.51
+  55-60%    4L  75%   +$0.62
+  60-65%    7L 85.7%  +$3.14  <-- BEST ZONE
+  65-70%    6L 66.7%  +$0.80
+  70%+     15L 53.3%  -$0.90  (3-sample confirmed underperformance)
+
+BTC RSI (LONG):
+  50-55    2L 100.0%  +$1.76
+  55-60   13L  53.8%  -$4.11  (diverges from 4-sample pattern)
+  60-65   13L  53.8%  +$0.83  (diverges from 4-sample 73% WR finding)
+  65-70    6L  83.3%  +$2.23  <-- 5-sample structural
+  70+      6L  66.7%  +$0.83
+
+BTC ADX (LONG):
+  15-20   5L  60.0%  +$0.10  (new 18-20 bucket, N low)
+  20-25   8L  50.0%  -$0.23
+  25-30  17L  70.6%  +$4.62  <-- WIN ZONE
+  30-35   5L  80.0%  +$2.59
+  35-40   5L  40.0%  -$5.54  <-- LOSS ZONE
+
+BTC RSI x BTC ADX (LONG):
+  60-65 x 20-25    6   50.0% WR  +$0.24  (L-P1 PREMIUM ZONE: DEMOTE — <55% WR, N>=5)
+  60-65 x 30-35    1  100.0%     +$0.64  (L-P2: ship unchanged, N<4)
+  50-55 x 15-20    2  100.0%     +$1.76
+
+Pair Winners (LONG):
+  XRPUSDT 5L  100%  +$3.69
+  DOGEUSDT 2L 100%  +$1.76
+  TAOUSDT 2L  100%  +$1.49
+
+Pair Losers (LONG):
+  RAVEUSDT 3L  0%  -$6.17  <-- BLACKLIST CANDIDATE
+  BTCUSDT 4L  25%  -$0.90
+  FARTCOINUSDT 1L 0% -$1.41
+  ADAUSDT 2L  50%  -$0.87
+
+--- BEARISH (SHORT) section ---
+Overall: 41S  46.3% WR  PF 0.72  -$6.38 total  -0.09% Avg
+
+Performance by Confidence (SHORT):
+  VERY_STRONG   8S  37.5% WR  -0.20% avg  -$2.78
+  STRONG_BUY   33S  48.5% WR  -0.06% avg  -$3.60
+
+BTC Regime at Entry (SHORT):
+  HEALTHY_BEAR    25S  52.0%  -$0.64
+  STRONG_BEAR     12S  41.7%  -$3.84
+  BEAR_EXHAUSTED   4S  25.0%  -$1.90
+
+Regime Transition (SHORT) -- smoking gun:
+  SAME_REGIME   15S  73.3% WR  +$1.96  +0.07% avg
+  REGIME_SHIFT  26S  30.8% WR  -$8.35  -0.18% avg
+  (41.5% of shorts close on REGIME_CHANGE or FL_REGIME_CHANGE)
+
+Entry RSI (SHORT):
+  20-30   18S  50.0%  +$2.29  +0.07%
+  30-35   23S  43.5%  -$8.67  -0.21%  <-- LOSS ZONE
+
+Entry ADX (SHORT):
+  25-28  25S  56.0%  -$1.89
+  28-30   8S  25.0%  -$1.71  <-- LOSS ZONE
+  30-33   8S  37.5%  -$2.78  <-- LOSS ZONE
+
+RSI x ADX (SHORT, pair-level):
+  20-30 x 25-28   11S  54.5%  +$0.93
+  20-30 x 28-30    4S  25.0%  +$0.05
+  20-30 x 30-33    3S  66.7%  +$1.31
+  30-35 x 25-28   14S  57.1%  -$2.82
+  30-35 x 28-30    4S  25.0%  -$1.76  <-- TOXIC
+  30-35 x 30-33    5S  20.0%  -$4.09  <-- TOXIC
+
+Entry Gap EMA5-EMA8 (SHORT):
+  0.08-0.10%  11S  45.5%  -$1.04
+  0.10-0.12%  11S  27.3%  -$3.85  <-- WORST
+  0.12-0.14%   4S  75.0%  +$0.53
+  0.14-0.16%   6S  50.0%  +$0.41
+  0.16-0.18%   5S  40.0%  -$2.63
+  0.18-0.20%   3S  66.7%  -$0.57
+  > 0.20%      1S 100.0%  +$0.78
+
+BTC RSI (SHORT) -- 4-sample patterns broke:
+  <30     10S  40.0%  -$0.55  (historical 77% WR -- BROKE)
+  30-35   10S  50.0%  +$1.36
+  35-40   12S  50.0%  -$4.45
+  40-45    7S  42.9%  -$1.51
+  45-50    2S  50.0%  -$1.23  (N low)
+
+BTC ADX (SHORT):
+  15-20    4S  50.0%  -$0.65  (new 18-20 bucket)
+  20-25   15S  53.3%  +$1.23
+  25-30    9S  33.3%  -$4.37
+  30-35    5S  60.0%  +$0.30
+  35-40    8S  37.5%  -$2.89
+
+BTC RSI x BTC ADX (SHORT) -- pre-committed rule validation:
+  <30   x 20-25   5   60.0%  +$1.84  (S-P1: ship unchanged)
+  30-35 x 25-30   3   33.3%  -$1.82  (S-P2: N<5, ship unchanged, flag for 200)
+  35-40 x 15-20   3   66.7%  +$0.07  (S-B1 HARD BLOCK: N<5, ship unchanged)
+  35-40 x 30-35   2   50.0%  -$0.71  (S-B2 HARD BLOCK: N<5, ship unchanged)
+  45-50 x 15-20   1    0.0%  -$0.72  (S-B3 HARD BLOCK: N<5, ship unchanged)
+
+BTC Slope x BTC ADX (SHORT) -- 2-sample pattern BROKE:
+  0.06-0.10% x 25-30   4S   0.0%  -$4.92  <-- toxic cell
+  (Overall: "BTC ADX 18-27 + slope falling" 81% WR pattern did NOT replicate)
+
+Pair Losers (SHORT):
+  ETHUSDT 4S   0%  -$1.63  <-- BLACKLIST CANDIDATE
+  AAVEUSDT 2S  0%  -$2.42  <-- BLACKLIST CANDIDATE
+  FILUSDT 1S   0%  -$2.20
+  ADAUSDT 2S   0%  -$2.00
+  BNBUSDT 2S   0%  -$1.82
+  SUIUSDT 4S  25%  -$1.42
+  1000PEPEUSDT 4S 50% -$1.96
+  NEARUSDT 2S 50% -$1.57
+
+Closing Reason Distribution (SHORT):
+  REGIME_CHANGE L1        9  -$3.29  avg 1h27m
+  FL_REGIME_CHANGE L1     8  -$10.28 avg 48m
+  FL_EMERGENCY_SL L1      3  -$6.65  avg 15m
+  FL_RECOVERED L1         3  -$2.15  avg 44m
+  TRAILING_STOP L1        7  +$5.62  avg 26m
+  TRAILING_STOP L2        6  +$5.46  avg 25m
+  FL_TRAILING_STOP L1-3   5  +$4.92  (recoveries)
+
+Exit Type Performance (SHORT):
+  MAKER          28S  46.4%  -$4.19
+  TAKER_FALLBACK 13S  46.2%  -$2.19
+  (MAKER > TAKER_FALLBACK gap did NOT replicate -- prior pattern was 1-sample)
+
+Day of Week (SHORT):
+  Tue  14S  71.4% WR  +0.26%  <-- best
+  Wed   5S  20.0% WR  -0.26%
+  Thu  18S  38.9% WR  -0.26%
+  Fri   4S  25.0% WR  -0.28%
+
+================================================================================
+END OF ARCHIVED REPORT
+================================================================================

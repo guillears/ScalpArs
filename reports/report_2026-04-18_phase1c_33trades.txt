@@ -1,0 +1,61 @@
+================================================================================
+ARCHIVED — Phase 1c report, 33 trades (12L + 21S) — Apr 18 14:40 UTC-3
+Archived 2026-04-18 for reference. This is the report that triggered
+Phase 1c amendment #5 (pair ADX cap + BTC ADX window shift for SHORTs).
+================================================================================
+
+## Headline numbers
+- LONG (BULLISH regime): 12 trades, 58.3% WR, -0.02% Avg, PF 0.93
+- SHORT (BEARISH regime): 21 trades, 23.8% WR, -0.29% Avg, PF 0.30
+- Combined: -$11 on $5.9k invested
+
+## Config at time of sample
+- btc_adx_min_long=18, btc_adx_max_long=35
+- btc_adx_min_short=18, btc_adx_max_short=30
+- btc_adx_dir_short=rising
+- adx_strong_long=15, adx_very_strong=30 (reverted from 28 in amendment #3)
+- momentum_adx_max=33 (reverted from 28 in amendment #3)
+- All Apr 14 baseline exit settings
+
+## Key findings that drove amendment #5
+
+### SHORT analysis — critical findings
+
+**BTC ADX inverted vs 3-sample pool:**
+  BTC ADX 20-25: 14 trades, 7.1% WR, -0.50%  (3-sample pool: +0.20%)
+  BTC ADX 25-30: 7 trades, 57.1% WR, +0.13%  (3-sample pool: +0.05%)
+
+**Pair ADX 28+ disaster (2-sample confirmed with Phase 1b):**
+  Pair ADX 22-25: 7 trades, 42.9% WR, -0.11%
+  Pair ADX 25-28: 7 trades, 28.6% WR, -0.12%
+  Pair ADX 28-30: 2 trades, 0% WR, -0.66%
+  Pair ADX 30-33: 5 trades, 0% WR, -0.62%  (all VERY_STRONG)
+
+**VERY_STRONG shorts: 5 trades, 0% WR, -0.62%**
+
+**BTC slope x BTC ADX — best cell:**
+  0.06-0.10% x 25-30: 4 trades, 100% WR, +0.50%
+
+**ADX delta watchlist:**
+  <2.0: 13 trades, 1 win, -0.50% avg
+  >=2.0: 8 trades, 4 wins, +0.06% avg
+
+**BTC RSI x BTC ADX in this sample:**
+  <30 x 25-30: 3 trades, 100% WR, +0.48%  (S-P1 validated at new ADX range)
+  <30 x 20-25: 4 trades, 25% WR, -0.33%  (pre-commit said winner, this sample losing)
+  30-35 x 20-25: 8 trades, 0% WR, -0.52%  (pre-commit zone, now losing)
+  30-35 x 25-30: 4 trades, 25% WR, -0.13%
+
+### LONG analysis
+- Sample too small (12 trades) for strong conclusions
+- BTC ADX 25-30 winning, 30-35 mixed, 15-20 losing
+- FL_EMERGENCY_SL fired on CRVUSDT -1.33% (watch pair)
+
+## Amendment #5 decisions
+Applied 4 config changes (see CLAUDE.md Phase 1c amendment #5 section):
+1. momentum_adx_max: 33 -> 28 (pair ADX cap, 2-sample confirmed)
+2. btc_adx_min_short: 18 -> 25 (current regime; cuts loser zone)
+3. adx_very_strong (short): 30 -> 28 (follows from #1)
+4. btc_adx_max_short: 30 -> 35 (exploration; re-opens 30-35 to collect data)
+
+ADX delta < 2.0 kept on watchlist for next batch.

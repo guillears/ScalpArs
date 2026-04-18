@@ -885,6 +885,88 @@ In addition to everything already documented:
 - **LONG BTC ADX 25-30 Avg P&L %** — if ≥+0.15% on ≥20 trades, the macro cap was correctly relaxed. If ≤−0.15%, re-consider a softer mechanism (e.g., allow 25-30 only for BTC RSI 60-65).
 - **LONG BTC ADX 30-35 N and performance** — L-P2 is thin (N=4 pre-committed). Want ≥5 Phase 1c trades in this specific cell to validate.
 
+## April 18, 2026 — Phase 1c amendment #5 (33-trade fresh data) — SHORT overhaul
+
+Fresh 33-trade Phase 1c sample (12L + 21S, runtime 0.98 days) archived at
+`reports/report_2026-04-18_phase1c_33trades.txt`. SHORT side PF 0.30, WR 23.8%,
+Avg −0.29% — the core loss driver. Analysis showed:
+
+### Critical falsification: Amendment #3's revert of `momentum_adx_max` was wrong
+
+Yesterday I reverted `momentum_adx_max: 28 → 33` under the hypothesis that
+Phase 1b's "pair ADX 28+ = loser" pattern was BTC-ADX-confounded. **Falsified.**
+Fresh sample: pair ADX ≥28 SHORTs = 7 trades, 0% WR, avg −0.62%. 2-sample
+confirmed now (Phase 1b + Apr 18). The pair-level pattern is real and
+independent of the BTC ADX filter.
+
+### Critical regime shift: BTC ADX pattern inverted vs 3-sample pool
+
+| BTC ADX | 3-sample pool | Apr 18 sample |
+|---|---|---|
+| 20-25 | +0.20% (N=23) | **−0.50% (N=14, 7.1% WR)** |
+| 25-30 | +0.05% (N=48) | **+0.13% (N=7, 57.1% WR)** |
+| 30-35 | −0.53% (N=18) | no data (was blocked) |
+
+The winning zone 25-30 is stable, but what surrounds it inverted. The Apr 17
+Amendment #2 decision to cut 30-35 was based on the 3-sample pool; the new
+sample shows 20-25 is now the bigger loser and we don't know about 30-35
+since it's been blocked.
+
+### Changes deployed Apr 18
+
+| # | Change | Confidence | Evidence |
+|---|---|---|---|
+| 1 | `momentum_adx_max` (short): 33 → **28** | HIGH (2-sample) | Pair ADX ≥28 SHORT: 0% WR across Phase 1b + Apr 18 combined |
+| 2 | `btc_adx_min_short`: 18 → **25** | HIGH in current regime | Apr 18: BTC ADX 20-25 = 7.1% WR on N=14. Cuts the new loser zone. |
+| 3 | `adx_very_strong` (short): 30 → **28** | HIGH (follows from #1) | VERY_STRONG shorts 0/5 in this sample; #1 makes tier functionally inactive |
+| 4 | `btc_adx_max_short`: 30 → **35** | EXPLORATION | User decision. Re-opens 30-35 to collect fresh-config data. Historical pool at 30-35 was -0.53% but under old configs. |
+
+### New SHORT entry window (net of #1, #2, #4)
+- Pair ADX: [22, 28] (was [22, 33])
+- BTC ADX: [25, 35] (was [18, 30])
+- BTC ADX direction: rising (unchanged)
+- BTC RSI: [25, 60] (unchanged — BTC RSI 30-35 pattern inverted in this sample but insufficient evidence to act)
+
+### What this sacrifices
+- SHORTs at BTC ADX 20-25 (cut — Apr 18 showed this as the loser zone; 3-sample pool said winner)
+- SHORTs with pair ADX 28-33 (cut — 2-sample loser)
+
+**Risk:** if the Apr 18 BTC ADX inversion is 1-sample noise and the 3-sample pool is
+actually right about 20-25, we just cut the winning zone. The trade-off: ship a
+filter that worked in the most recent sample (regime-current) OR ship a filter that
+worked across older samples (regime-stale). Given the loss velocity is −$11 in 24h,
+ship the regime-current filter and accept the risk.
+
+### ADX delta < 2.0 watchlist (NEW — do not deploy yet)
+
+Apr 18 sample showed:
+- SHORTs with ADXΔ < 2.0: 13 trades, 1 win, −0.50% avg
+- SHORTs with ADXΔ ≥ 2.0: 8 trades, 4 wins, +0.06% avg
+
+Clean breakpoint at 2.0. But 1-sample only — must replicate in next batch before becoming
+a filter. If next batch shows SHORTs with ADXΔ < 2.0 at ≤30% WR on ≥10 trades, add as
+`short_min_adx_delta: 2.0` filter.
+
+### BTC RSI 30-35 × BTC ADX — conflicting signal (do NOT tighten yet)
+
+Apr 18 sample:
+- BTC RSI 30-35 × 20-25: 8 trades, 0% WR, −0.52%
+- BTC RSI 30-35 × 25-30: 4 trades, 25% WR, −0.13%
+- BTC RSI <30 × 25-30: 3 trades, 100% WR, +0.48% ← S-P1 at new ADX range
+- BTC RSI <30 × 20-25: 4 trades, 25% WR, −0.33%
+
+4-sample pool had 30-35 × 25-30 at 83% WR (S-P2 PREMIUM). This sample shows 25% WR.
+The pre-commit rules are under stress. **Do NOT deploy `btc_rsi_max_short: 35`**
+(which would be attractive on Apr 18 data alone) — wait for next batch. If 2-sample
+confirms 30-35 as loser, tighten then.
+
+### Pooling rule for Phase 1c amendments
+Amendment #1 (Apr 17 AM, 13 trades), #2/3/4 (Apr 17 PM, same trades continuing +
+later), #5 (Apr 18, 33 trades). Each amendment is a config inflection point. Do NOT
+pool raw trades across amendments. When analyzing Phase 1c aggregate, treat each
+amendment window as a sub-sample, flag N per sub-sample, compare Avg P&L % per
+Core Operating Principles.
+
 ### Pre-commit rule re-validation against 3-sample pool (Apr 17 PM cross-tab audit)
 
 Built the pooled BTC RSI × BTC ADX cross-tab from Apr 6 + Apr 13 + Apr 17 Phase 1b (Mar 30 excluded). This is a proper 3-sample validation of the pre-committed Phase 2 rules that were locked Apr 15 based on 4-sample aggregation (the original aggregation had Mar 30 carrying more weight than we realized). WR is the primary metric (leverage-invariant across the samples; Apr 6 used 20x-30x leverage so $ amounts aren't directly poolable with Apr 13/17 at 1x).

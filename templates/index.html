@@ -6614,7 +6614,7 @@
                 // Entry Type Performance
                 const etBody = document.getElementById('entry-type-perf-body');
                 if (data.by_entry_type && Object.keys(data.by_entry_type).length > 0) {
-                    const etColors = { 'MAKER': 'text-emerald-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400' };
+                    const etColors = { 'MAKER': 'text-emerald-400', 'TAKER': 'text-gray-400', 'TAKER_FALLBACK': 'text-yellow-400', 'SIGNAL_EXPIRED': 'text-red-400' };
                     const etConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
                     const etOrder = ['MAKER', 'TAKER', 'TAKER_FALLBACK'];
                     const sortedTypes = etOrder.filter(t => data.by_entry_type[t]);
@@ -6648,6 +6648,28 @@
                     }).join('');
                     const totalPnlClass = totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const totalSavClass = totalSavings > 0 ? 'text-emerald-400' : 'text-gray-500';
+                    let expiredRow = '';
+                    // Amendment #7: SIGNAL_EXPIRED (aborted entries) shown below TOTAL, NOT in aggregations
+                    if (data.by_entry_type['SIGNAL_EXPIRED']) {
+                        const se = data.by_entry_type['SIGNAL_EXPIRED'];
+                        const seConfBadges = Object.entries(se.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${etConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
+                        expiredRow = `<tr class="border-t border-white/10 bg-red-900/10" title="Aborted entries: maker timeout + signal re-validation failed. No position opened. These are NOT included in the TOTAL above.">
+                            <td class="px-3 py-2 text-red-400 font-medium">SIGNAL_EXPIRED <span class="text-xs text-gray-500 font-normal">(aborted, no fill)</span></td>
+                            <td class="px-3 py-2 text-center">${se.trades}</td>
+                            <td class="px-3 py-2 text-center text-gray-500">—</td>
+                            <td class="px-3 py-2 text-center text-gray-500">—</td>
+                            <td class="px-3 py-2 text-right text-gray-500">—</td>
+                            <td class="px-3 py-2 text-right text-gray-500">—</td>
+                            <td class="px-3 py-2 text-right text-gray-500">—</td>
+                            <td class="px-3 py-2 text-right text-gray-500">—</td>
+                            <td class="px-3 py-2 text-right text-gray-500">—</td>
+                            <td class="px-3 py-2 text-right text-gray-500">—</td>
+                            <td class="px-3 py-2 text-center">${seConfBadges || '-'}</td>
+                        </tr>`;
+                    }
                     etBody.innerHTML = rows + `<tr class="border-t border-white/20 font-medium">
                         <td class="px-3 py-2 text-white">TOTAL</td>
                         <td class="px-3 py-2 text-center">${totalTrades}</td>
@@ -6660,7 +6682,7 @@
                         <td class="px-3 py-2 text-right text-yellow-400">${formatUSD(totalFees)}</td>
                         <td class="px-3 py-2 text-right ${totalSavClass}">${totalSavings > 0 ? '+' : ''}${formatUSD(totalSavings)}</td>
                         <td class="px-3 py-2 text-center">-</td>
-                    </tr>`;
+                    </tr>` + expiredRow;
                 } else {
                     etBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }

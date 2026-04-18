@@ -960,6 +960,78 @@ The pre-commit rules are under stress. **Do NOT deploy `btc_rsi_max_short: 35`**
 (which would be attractive on Apr 18 data alone) — wait for next batch. If 2-sample
 confirms 30-35 as loser, tighten then.
 
+### Phase 1c amendment #6 (deployed Apr 18) — Maker entry timeout experiment (20s → 40s)
+
+Hypothesis-driven experiment, not a structural change. Framed as a
+bounded test with explicit falsification criteria.
+
+**Hypothesis:** extending the maker entry timeout from 20s to 40s captures
+more pullback entries (higher maker fill rate) without degrading taker
+fallback quality enough to offset the fee savings and the pullback-entry
+structural advantage.
+
+**What the maker entry logic does today:**
+1. Signal fires, bot places LIMIT order at EMA5 ± 1 tick (offset configurable)
+2. Waits up to `maker_timeout_seconds` for fill
+3. If not filled: cancels limit, places MARKET order (TAKER_FALLBACK)
+
+**Effect of the change:** price that retraces to our limit within 20-40s
+now fills as MAKER instead of TAKER_FALLBACK. On fast-moving momentum
+trades (price runs away), the maker still never fills and the TAKER_FALLBACK
+fires at t=40s instead of t=20s — potentially worse slip.
+
+**Cross-sample maker-vs-taker data (inconsistent):**
+
+| Sample | MAKER LONG WR | TAKER LONG WR | MAKER SHORT WR | TAKER SHORT WR | Gap |
+|---|---|---|---|---|---|
+| Apr 13 (117 tr) | 70.6% | 59.4% | 65.6% | 52.6% | **+10-13% MAKER** |
+| Apr 17 Phase 1b (81 tr) | — | — | 46.4% | 46.2% | **None** |
+| Apr 18 (33 tr) | 57.1% | 60% | **8.3%** | **44.4%** | **MAKER lost by 36%** |
+
+The MAKER edge is regime-dependent. Apr 18 (current regime) showed MAKER
+SHORTS badly broken — possibly the fill mechanics themselves are the issue
+(entering on pullbacks into an already-reversing move), possibly regime-specific
+noise. Extending timeout is a clean test: if MAKER is structurally good, more
+maker fills = better overall WR. If MAKER is structurally broken in current
+regime, more maker fills = worse overall WR → revert.
+
+**Why NOT the "winners take time to peak" logic:**
+
+This is a documented conflation in the LONG flameout watchlist.
+- HOLD duration (entry to peak) = 20-40min for winners vs <2min for losers
+- ENTRY timing (signal to fill) = the 20-40s window
+
+The two are orthogonal. A 40s maker delay does not prevent a trade from
+flaming out at +0.04% in the next 2 minutes. The real argument for extending
+the timeout is the pullback-entry structural advantage, not the hold duration.
+
+**Falsification criteria at 30-trade checkpoint (post Apr 18 reset):**
+
+| Metric | Threshold to keep 40s | Threshold to revert |
+|---|---|---|
+| Maker fill rate | ≥65% (up from ~55% baseline) | <60% (timeout wasn't the constraint) |
+| MAKER vs TAKER WR gap | ≥+8% MAKER edge | ≤0% or MAKER worse |
+| TAKER_FALLBACK entry slippage | similar to baseline | widens by >0.02% (fast-runner penalty) |
+
+**Decision rule:**
+- Fill rate ↑ AND MAKER WR edge ≥8% → keep 40s
+- Fill rate ↑ but WR flat or reversed → revert, timeout wasn't the solution
+- Fill rate unchanged → revert, timeout wasn't the constraint
+- TAKER slippage widens materially → revert, cost of late fallback exceeds fee savings
+
+**Expected fee impact:**
+
+Fee savings per shifted entry: 0.045% (taker) − 0.018% (maker) = 0.027%.
+At 20 trades/day and ~10% fill-rate uplift (pure estimate), ~2 additional
+maker entries/day = ~0.054% savings/day. Material but small.
+
+**Risk assessment:**
+
+Low config risk (single integer change, easily revertable). Low code risk
+(mechanism already exists, just a parameter tweak). The cost of being wrong
+is taker slippage on ~2 additional trades/day × 1-2 days of observation =
+bounded downside.
+
 ### Pooling rule for Phase 1c amendments
 Amendment #1 (Apr 17 AM, 13 trades), #2/3/4 (Apr 17 PM, same trades continuing +
 later), #5 (Apr 18, 33 trades). Each amendment is a config inflection point. Do NOT

@@ -1087,6 +1087,34 @@ Infrastructure fix enabling Amendment #6's timeout extension to be safe.
 
 If SIGNAL_EXPIRED count is >20% of entry attempts: the 40s timeout is systematically causing signal staleness → revert Amendment #6 to 20s. If <5%: signal staleness isn't the dominant issue and Amendment #6 can stay. If 5-20%: middle ground, operator decides.
 
+### Phase 1c amendment #8 (deployed Apr 18) — Maker offset 1 → 2 ticks
+
+Builds on Amendment #6 (40s timeout) and Amendment #7 (signal re-validation). Now that stale-signal risk on taker fallbacks is mitigated, safe to deepen the maker offset.
+
+**Change:** `maker_offset_ticks: 1 → 2`
+
+Places the maker limit order 2 ticks deeper into the book (LONG bids 2 ticks below best_bid, SHORTs ask 2 ticks above best_ask). Acts as an implicit pullback-entry filter: trades that can't get 2 ticks of retracement within 40s are over-extended momentum → go to re-validated taker fallback or SIGNAL_EXPIRED.
+
+**Pair-variance note:** 2 ticks has very different meaning by pair:
+- BTCUSDT/ETHUSDT (large caps): 0.0003-0.0007% deeper = near-zero functional impact
+- SOLUSDT-tier (mid caps): ~0.013% deeper
+- DOGEUSDT/small caps: 0.05-0.15% deeper = meaningful pullback requirement
+
+The change primarily tightens entries on mid/small caps where momentum fakes are more frequent.
+
+**Expected effects (to measure at 30-trade checkpoint):**
+- MAKER fill rate: likely drops (offset harder to reach)
+- MAKER entry price quality: improves (filled closer to EMA5 pullback bottom)
+- TAKER_FALLBACK count: rises (but now re-validated per Amendment #7)
+- SIGNAL_EXPIRED count: may rise (more trades reach timeout + re-validation stage)
+
+**Decision rule at checkpoint:**
+- MAKER WR improves ≥8% vs TAKER_FALLBACK → keep offset 2 (quality filter working)
+- MAKER fill rate drops >30% AND WR unchanged → revert to offset 1 (over-restrictive)
+- SIGNAL_EXPIRED rate >25% → Amendment #6 timeout is too long (revert timeout to 20s first, keep offset 2)
+
+Config-only change, single integer, instant revert if needed.
+
 ### Pooling rule for Phase 1c amendments
 Amendment #1 (Apr 17 AM, 13 trades), #2/3/4 (Apr 17 PM, same trades continuing +
 later), #5 (Apr 18, 33 trades). Each amendment is a config inflection point. Do NOT

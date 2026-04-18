@@ -4,7 +4,7 @@
   "taker_fee": 0.00045,
   "maker_entry_enabled": true,
   "maker_timeout_seconds": 40,
-  "maker_offset_ticks": 1,
+  "maker_offset_ticks": 2,
   "maker_exit_enabled": false,
   "maker_exit_timeout_seconds": 10,
   "maker_exit_offset_ticks": 1,

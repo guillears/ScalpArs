@@ -1032,6 +1032,61 @@ Low config risk (single integer change, easily revertable). Low code risk
 is taker slippage on ~2 additional trades/day × 1-2 days of observation =
 bounded downside.
 
+### Phase 1c amendment #7 (deployed Apr 18) — Signal re-validation before taker fallback
+
+Infrastructure fix enabling Amendment #6's timeout extension to be safe.
+
+**Problem discovered by user:** current maker-entry flow at timeout unconditionally places a taker market order without re-checking that the signal is still valid. With the 20s → 40s timeout change (Amendment #6), the window for signal-staleness doubled — BTC regime can flip, pair ADX direction can reverse, RSI momentum can shift, any of which invalidate the original signal. Bot was potentially entering on stale signals after long waits.
+
+**Fix implemented (Option A from user decision tree):**
+
+1. **New method `_revalidate_entry_signal(symbol, pair, direction, confidence)`** in `services/trading_engine.py`:
+   - Re-fetches fresh 5m OHLCV for the pair and BTC
+   - Re-computes indicators
+   - Re-runs `get_signal(...)` — checks if (direction, confidence) still match
+   - Re-checks BTC-level filters: `btc_adx_dir_*` (rising/falling), BTC ADX range, BTC RSI range
+   - Returns `(is_valid, reason)` — FAILS OPEN on fetch/compute errors (defers to taker)
+
+2. **`_try_maker_entry` and `_simulate_maker_entry_paper` signatures extended** to accept `confidence`. If provided, at timeout (before taker fallback) they call `_revalidate_entry_signal`. If re-validation fails:
+   - Return `{'entry_order_type': 'SIGNAL_EXPIRED', 'skipped': True, 'reason': ...}`
+   - Caller `open_position` detects the skipped flag and:
+     - Calls `_record_signal_expired_order(...)` to persist a minimal Order row with `status='SIGNAL_EXPIRED'`, `entry_order_type='SIGNAL_EXPIRED'`, zero PnL/investment/quantity
+     - Logs `[SIGNAL_EXPIRED] pair direction confidence: reason — taker fallback aborted`
+     - Returns None (no position opened)
+
+3. **Reporting changes in `main.py`**:
+   - `_compute_performance` loads BOTH `status='CLOSED'` and `status='SIGNAL_EXPIRED'` orders
+   - `_compute_entry_type_stats(orders, signal_expired_orders=...)` now accepts the SIGNAL_EXPIRED list and adds a synthetic row to Entry Type Performance
+   - SIGNAL_EXPIRED rows have WR=0, Avg P&L=0 by construction (no trade happened) — the value is the **count** of aborted entries, broken down by confidence level
+   - All other aggregations (by-regime, by-RSI, by-ADX, etc.) only see `CLOSED` orders — SIGNAL_EXPIRED rows are excluded to avoid polluting PnL/WR analytics
+
+4. **What the operator sees:**
+   - Daily report's Entry Type Performance table now shows a SIGNAL_EXPIRED row with count + confidence breakdown
+   - Logs: `[SIGNAL_EXPIRED] DOGEUSDT SHORT STRONG_BUY: btc_adx_direction_not_rising — taker fallback aborted`
+   - No PnL contamination; no phantom trades in WR calculations
+
+**Re-validation reason codes logged:**
+- `signal_flipped_<from>_to_<to>` — core get_signal changed direction (e.g. SHORT→LONG, SHORT→NO_TRADE)
+- `confidence_lost` — signal still has direction but confidence is None/NO_TRADE
+- `btc_adx_direction_not_rising` / `not_falling` — BTC ADX direction requirement no longer met
+- `btc_adx_out_of_range_<value>` — BTC ADX moved outside the configured [min, max] window
+- `btc_rsi_out_of_range_<value>` — BTC RSI moved outside the configured [min, max] window
+- `fetch_failed_defer` / `indicators_failed_defer` / `error_defer` — infrastructure failure; FAILS OPEN (taker fallback still proceeds) to not block trading on transient issues
+
+**Fail-open design:** any exception or fetch failure in re-validation defers to the original taker fallback behavior. Rationale: better to occasionally enter on a stale signal than to systematically block entries when Binance rate-limits or the API hiccups. The cost of a false positive (aborting valid trade) is greater than the cost of a false negative (entering on stale signal) at current trade volume.
+
+**Files changed:**
+- `services/trading_engine.py` — `_revalidate_entry_signal`, `_record_signal_expired`, `_record_signal_expired_order`; `_try_maker_entry` and `_simulate_maker_entry_paper` signature + body updates; two caller sites in `open_position` (live + paper) updated to pass `confidence` and handle skipped result
+- `main.py` — `_compute_performance` queries SIGNAL_EXPIRED status; `_compute_entry_type_stats` accepts optional `signal_expired_orders` and adds synthetic row
+- `models.py` — **no schema change**. Uses existing `status` (String 15) and `entry_order_type` (String 15); "SIGNAL_EXPIRED" is 14 chars, fits.
+
+**Measurement at next checkpoint:**
+- SIGNAL_EXPIRED count per direction per day (tells us the rate of stale-signal rejections)
+- Reason breakdown (log-based, `grep SIGNAL_EXPIRED /var/log/web.stdout.log | sort | uniq -c`)
+- MAKER vs TAKER_FALLBACK WR gap (the original Amendment #6 falsification criterion — but now TAKER_FALLBACK trades are ONLY those with re-validated signals, cleaner signal)
+
+If SIGNAL_EXPIRED count is >20% of entry attempts: the 40s timeout is systematically causing signal staleness → revert Amendment #6 to 20s. If <5%: signal staleness isn't the dominant issue and Amendment #6 can stay. If 5-20%: middle ground, operator decides.
+
 ### Pooling rule for Phase 1c amendments
 Amendment #1 (Apr 17 AM, 13 trades), #2/3/4 (Apr 17 PM, same trades continuing +
 later), #5 (Apr 18, 33 trades). Each amendment is a config inflection point. Do NOT

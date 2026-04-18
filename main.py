@@ -1503,8 +1503,13 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
         }
 
 
-def _compute_entry_type_stats(orders):
-    """Compute performance breakdown by entry order type (MAKER / TAKER / TAKER_FALLBACK)."""
+def _compute_entry_type_stats(orders, signal_expired_orders=None):
+    """Compute performance breakdown by entry order type (MAKER / TAKER / TAKER_FALLBACK).
+
+    Amendment #7 (Apr 18): if signal_expired_orders is provided, include a
+    SIGNAL_EXPIRED row showing aborted-entry count by confidence. These trades
+    have pnl=0 by definition (never entered), so WR/PnL fields stay at 0.
+    """
     taker_fee_rate = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
     groups = {}
     for o in orders:
@@ -1518,6 +1523,14 @@ def _compute_entry_type_stats(orders):
             groups[etype]["wins"] += 1
         conf = getattr(o, 'confidence', 'UNKNOWN') or 'UNKNOWN'
         groups[etype]["by_confidence"][conf] = groups[etype]["by_confidence"].get(conf, 0) + 1
+
+    # Include SIGNAL_EXPIRED (aborted entries) as a synthetic row
+    if signal_expired_orders:
+        groups["SIGNAL_EXPIRED"] = {"trades": [], "pnl_sum": 0, "fee_sum": 0, "wins": 0, "by_confidence": {}}
+        for o in signal_expired_orders:
+            groups["SIGNAL_EXPIRED"]["trades"].append(o)
+            conf = getattr(o, 'confidence', 'UNKNOWN') or 'UNKNOWN'
+            groups["SIGNAL_EXPIRED"]["by_confidence"][conf] = groups["SIGNAL_EXPIRED"]["by_confidence"].get(conf, 0) + 1
 
     total_trades = len(orders)
     result = {}
@@ -2046,6 +2059,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
     )
     all_orders = result.scalars().all()
+
+    # Amendment #7 (Apr 18): also fetch SIGNAL_EXPIRED rows for Entry Type Performance.
+    # These are aborted entry attempts where the signal went stale during the maker wait.
+    # They are NOT real trades (no PnL, no fill) so they are excluded from every
+    # aggregation except the entry-type breakdown.
+    signal_expired_result = await db.execute(
+        select(Order)
+        .where(and_(Order.status == "SIGNAL_EXPIRED", Order.is_paper == trading_engine.is_paper_mode))
+    )
+    signal_expired_orders = signal_expired_result.scalars().all()
     
     # Compute by_macro_trend summary from ALL orders (before filtering)
     macro_trend_performance = {}
@@ -4216,7 +4239,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "rsi_adx_crosstab": rsi_adx_crosstab,
         "never_positive_deep_dive": never_positive_deep_dive,
         "performance_over_time": _compute_time_buckets(orders),
-        "by_entry_type": _compute_entry_type_stats(orders),
+        "by_entry_type": _compute_entry_type_stats(orders, signal_expired_orders=signal_expired_orders),
         "by_exit_type": _compute_exit_type_stats(orders),
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
         "hold_time_expectancy": hold_time_expectancy,

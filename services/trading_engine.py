@@ -129,6 +129,11 @@ class TradingEngine:
         self._initialized = False
         self._post_exit_tracking: Dict[int, dict] = {}
         self._rsi3_history: Dict[int, list] = {}  # per-order RSI history for 3-drop detection
+        # Signal re-validation tracking (Amendment #7 / Apr 18)
+        # Tracks entries aborted after maker timeout because the signal went stale.
+        self.signal_expired_reasons: Dict[str, int] = {}  # reason_code -> count
+        self.signal_expired_log_recent = []  # recent expirations for debugging (bounded)
+        self._signal_expired_log_max = 200
         # BNB fee management
         self.paper_bnb_balance_usd: float = config.trading_config.paper_bnb_initial_usd
         self._bnb_emergency_threshold: float = 0.0
@@ -663,12 +668,183 @@ class TradingEngine:
         
         return investment, leverage
 
+    async def _revalidate_entry_signal(
+        self, symbol: str, pair: str, original_direction: str, original_confidence: str
+    ) -> Tuple[bool, str]:
+        """Re-evaluate whether the original entry signal is still valid after maker timeout.
+
+        Amendment #7 (Apr 18): prevents the taker fallback from entering on stale signals
+        that have expired during the maker wait window. Re-fetches fresh indicators
+        and re-runs the core signal check + key BTC-level filters.
+
+        Returns (is_valid, reason):
+          - is_valid=True: signal still valid, proceed to taker fallback
+          - is_valid=False: signal expired, abort entry. reason describes why.
+
+        FAILS OPEN: if re-fetch fails, defer to taker (don't block on infra errors).
+        """
+        try:
+            ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
+            if not ohlcv:
+                return True, 'fetch_failed_defer'
+
+            tc = config.trading_config
+            pair_vol_bars = getattr(tc.thresholds, 'pair_volume_lookback_bars', 20)
+            global_vol_bars = getattr(tc.thresholds, 'global_volume_lookback_bars', 48)
+            indicators = calculate_indicators(
+                ohlcv, pair_volume_bars=pair_vol_bars, global_volume_bars=global_vol_bars
+            )
+            if not indicators:
+                return True, 'indicators_failed_defer'
+
+            # Re-run the core signal check
+            new_signal, new_confidence = get_signal(
+                ema5=indicators.get('ema5'),
+                ema8=indicators.get('ema8'),
+                ema13=indicators.get('ema13'),
+                ema20=indicators.get('ema20'),
+                rsi=indicators.get('rsi'),
+                adx=indicators.get('adx'),
+                volume=indicators.get('volume'),
+                avg_volume=indicators.get('avg_volume'),
+                price=indicators.get('price'),
+                ema20_prev3=indicators.get('ema20_prev3'),
+                ema50=indicators.get('ema50'),
+                ema50_prev12=indicators.get('ema50_prev12'),
+                rsi_prev3=indicators.get('rsi_prev3'),
+                ema5_prev1=indicators.get('ema5_prev1'),
+                ema8_prev1=indicators.get('ema8_prev1'),
+                ema5_prev2=indicators.get('ema5_prev2'),
+                ema8_prev2=indicators.get('ema8_prev2')
+            )
+
+            if new_signal != original_direction:
+                return False, f'signal_flipped_{original_direction}_to_{new_signal}'
+            if new_confidence is None or new_confidence == "NO_TRADE":
+                return False, 'confidence_lost'
+
+            # Check BTC-level filters (refetch BTC)
+            btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
+            if btc_ohlcv:
+                btc_ind = calculate_indicators(btc_ohlcv)
+                if btc_ind:
+                    new_btc_adx = btc_ind.get('adx')
+                    new_btc_adx_prev = btc_ind.get('adx_prev1')
+                    new_btc_rsi = btc_ind.get('rsi')
+
+                    th = tc.thresholds
+                    # BTC ADX direction filter (independent per Option B refactor)
+                    adx_dir_cfg = getattr(th, f'btc_adx_dir_{original_direction.lower()}', 'both')
+                    if new_btc_adx is not None and new_btc_adx_prev is not None:
+                        if adx_dir_cfg == 'rising' and new_btc_adx <= new_btc_adx_prev:
+                            return False, 'btc_adx_direction_not_rising'
+                        if adx_dir_cfg == 'falling' and new_btc_adx >= new_btc_adx_prev:
+                            return False, 'btc_adx_direction_not_falling'
+
+                    # BTC ADX range
+                    if original_direction == 'LONG':
+                        btc_adx_min = getattr(th, 'btc_adx_min_long', 0)
+                        btc_adx_max = getattr(th, 'btc_adx_max_long', 100)
+                    else:
+                        btc_adx_min = getattr(th, 'btc_adx_min_short', 0)
+                        btc_adx_max = getattr(th, 'btc_adx_max_short', 100)
+                    if new_btc_adx is not None and (new_btc_adx < btc_adx_min or new_btc_adx > btc_adx_max):
+                        return False, f'btc_adx_out_of_range_{round(new_btc_adx, 1)}'
+
+                    # BTC RSI range
+                    if original_direction == 'LONG':
+                        btc_rsi_min = getattr(th, 'btc_rsi_min_long', 0)
+                        btc_rsi_max = getattr(th, 'btc_rsi_max_long', 100)
+                    else:
+                        btc_rsi_min = getattr(th, 'btc_rsi_min_short', 0)
+                        btc_rsi_max = getattr(th, 'btc_rsi_max_short', 100)
+                    if new_btc_rsi is not None and (new_btc_rsi < btc_rsi_min or new_btc_rsi > btc_rsi_max):
+                        return False, f'btc_rsi_out_of_range_{round(new_btc_rsi, 1)}'
+
+            return True, 'ok'
+        except Exception as e:
+            logger.error(f"[REVALIDATE] {pair}: Error during signal re-validation: {e}")
+            return True, 'error_defer'  # FAIL OPEN
+
+    def _record_signal_expired(self, pair: str, direction: str, confidence: str, reason: str):
+        """Record a signal-expiration event for in-memory tracking (Amendment #7)."""
+        self.signal_expired_reasons[reason] = self.signal_expired_reasons.get(reason, 0) + 1
+        entry = {
+            'pair': pair,
+            'direction': direction,
+            'confidence': confidence,
+            'reason': reason,
+            'time': datetime.utcnow().isoformat(),
+        }
+        self.signal_expired_log_recent.append(entry)
+        if len(self.signal_expired_log_recent) > self._signal_expired_log_max:
+            self.signal_expired_log_recent.pop(0)
+        logger.warning(
+            f"[SIGNAL_EXPIRED] {pair} {direction} {confidence}: {reason} — taker fallback aborted"
+        )
+
+    async def _record_signal_expired_order(
+        self, db: AsyncSession, pair: str, direction: str, confidence: str,
+        reason: str, entry_price: float
+    ):
+        """Persist a signal-expired entry attempt as a minimal Order row for reporting.
+
+        Amendment #7 (Apr 18): these rows appear in Entry Type Performance with
+        entry_order_type='SIGNAL_EXPIRED' so the operator can see the rate of
+        aborted entries. status='SIGNAL_EXPIRED' keeps them out of PnL / WR
+        aggregations in _compute_performance queries (which filter on 'CLOSED').
+        """
+        try:
+            now = datetime.utcnow()
+            order = Order(
+                pair=pair,
+                direction=direction,
+                status="SIGNAL_EXPIRED",
+                entry_price=entry_price,
+                current_price=entry_price,
+                exit_price=entry_price,
+                investment=0.0,
+                leverage=1,
+                notional_value=0.0,
+                quantity=0.0,
+                confidence=confidence,
+                entry_fee=0.0,
+                exit_fee=0.0,
+                total_fee=0.0,
+                pnl=0.0,
+                pnl_percentage=0.0,
+                peak_pnl=0.0,
+                trough_pnl=0.0,
+                entry_order_type="SIGNAL_EXPIRED",
+                exit_order_type=None,
+                close_reason=f"SIGNAL_EXPIRED:{reason}",
+                opened_at=now,
+                closed_at=now,
+                is_paper=self.is_paper_mode,
+            )
+            db.add(order)
+            await db.commit()
+        except Exception as e:
+            logger.error(f"[SIGNAL_EXPIRED] {pair}: Failed to persist aborted-entry row: {e}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
     async def _try_maker_entry(
         self, symbol: str, side: str, amount: float, leverage: int,
         direction: str, pair: str, notional_value: float,
-        maker_fee_rate: float, taker_fee_rate: float
+        maker_fee_rate: float, taker_fee_rate: float,
+        confidence: Optional[str] = None,
     ) -> Optional[Dict]:
-        """Attempt a maker (limit) entry, falling back to taker (market) on timeout."""
+        """Attempt a maker (limit) entry, falling back to taker (market) on timeout.
+
+        Amendment #7 (Apr 18): if `confidence` is provided, re-validates the entry
+        signal at timeout before placing the taker fallback. Returns
+        `{'entry_order_type': 'SIGNAL_EXPIRED', 'skipped': True, 'reason': ...}`
+        when re-validation fails — caller should create a SIGNAL_EXPIRED Order row
+        for tracking but NOT open a position.
+        """
         tc = config.trading_config
         timeout = getattr(tc, 'maker_timeout_seconds', 15)
         offset_ticks = getattr(tc, 'maker_offset_ticks', 2)
@@ -755,8 +931,20 @@ class TradingEngine:
                 'entry_order_type': 'MAKER',
             }
 
-        # No fill at all -- fall back to market order
-        logger.info(f"[MAKER_ENTRY] {pair}: No fill, falling back to market order")
+        # No fill at all -- re-validate signal before taker fallback (Amendment #7)
+        if confidence is not None:
+            is_valid, revalidate_reason = await self._revalidate_entry_signal(
+                symbol, pair, direction, confidence
+            )
+            if not is_valid:
+                self._record_signal_expired(pair, direction, confidence, revalidate_reason)
+                return {
+                    'entry_order_type': 'SIGNAL_EXPIRED',
+                    'skipped': True,
+                    'reason': revalidate_reason,
+                }
+
+        logger.info(f"[MAKER_ENTRY] {pair}: No fill, signal re-validated, falling back to market order")
         result = await binance_service.create_market_order(symbol, side, amount, leverage)
         if not result:
             return None
@@ -771,9 +959,16 @@ class TradingEngine:
 
     async def _simulate_maker_entry_paper(
         self, pair: str, direction: str, current_price: float,
-        notional_value: float, maker_fee_rate: float, taker_fee_rate: float
+        notional_value: float, maker_fee_rate: float, taker_fee_rate: float,
+        confidence: Optional[str] = None,
     ) -> Dict:
-        """Simulate maker entry for paper trading using WebSocket prices."""
+        """Simulate maker entry for paper trading using WebSocket prices.
+
+        Amendment #7 (Apr 18): if `confidence` is provided, re-validates the entry
+        signal at timeout before falling back to taker. Returns
+        `{'entry_order_type': 'SIGNAL_EXPIRED', 'skipped': True, 'reason': ...}`
+        when re-validation fails.
+        """
         tc = config.trading_config
         timeout = getattr(tc, 'maker_timeout_seconds', 15)
         offset_ticks = getattr(tc, 'maker_offset_ticks', 2)
@@ -824,10 +1019,25 @@ class TradingEngine:
                     'entry_order_type': 'MAKER',
                 }
 
-        # No fill -- fallback to current price as taker
+        # No fill -- re-validate signal before taker fallback (Amendment #7)
+        if confidence is not None:
+            symbol_ccxt = pair.replace('USDT', '/USDT:USDT')
+            is_valid, revalidate_reason = await self._revalidate_entry_signal(
+                symbol_ccxt, pair, direction, confidence
+            )
+            if not is_valid:
+                self._record_signal_expired(pair, direction, confidence, revalidate_reason)
+                return {
+                    'entry_order_type': 'SIGNAL_EXPIRED',
+                    'skipped': True,
+                    'reason': revalidate_reason,
+                    'price': current_price,
+                    'entry_fee': 0.0,
+                }
+
         tracker = websocket_tracker.get_tracker(pair)
         fallback_price = tracker.last_price if tracker and tracker.last_price else current_price
-        logger.info(f"[MAKER_PAPER] {pair}: No fill after {timeout}s, taker fallback @ {fallback_price}")
+        logger.info(f"[MAKER_PAPER] {pair}: No fill after {timeout}s, signal re-validated, taker fallback @ {fallback_price}")
         return {
             'price': fallback_price,
             'entry_fee': notional_value * taker_fee_rate,
@@ -1176,8 +1386,17 @@ class TradingEngine:
                     symbol=symbol, side=side, amount=quantity,
                     leverage=int(leverage), direction=direction, pair=pair,
                     notional_value=notional_value,
-                    maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate
+                    maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate,
+                    confidence=confidence,
                 )
+                if result and result.get('skipped'):
+                    # Amendment #7: signal expired during maker wait → record + abort entry
+                    await self._record_signal_expired_order(
+                        db=db, pair=pair, direction=direction, confidence=confidence,
+                        reason=result.get('reason', 'unknown'),
+                        entry_price=current_price,
+                    )
+                    return None
                 if result:
                     binance_order_id = result['id']
                     actual_price = result['price']
@@ -1206,8 +1425,17 @@ class TradingEngine:
                 result = await self._simulate_maker_entry_paper(
                     pair=pair, direction=direction, current_price=current_price,
                     notional_value=notional_value,
-                    maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate
+                    maker_fee_rate=maker_fee_rate, taker_fee_rate=taker_fee_rate,
+                    confidence=confidence,
                 )
+                if result.get('skipped'):
+                    # Amendment #7: signal expired during maker wait → record + abort entry
+                    await self._record_signal_expired_order(
+                        db=db, pair=pair, direction=direction, confidence=confidence,
+                        reason=result.get('reason', 'unknown'),
+                        entry_price=current_price,
+                    )
+                    return None
                 actual_price = result['price']
                 entry_fee = result['entry_fee']
                 entry_order_type = result['entry_order_type']

@@ -1360,6 +1360,176 @@ Treat this section as the FIRST thing to look at when the next batch lands.
 - `main.py` — 6 new bucket-perf functions + payload integration in `_compute_performance`
 - `templates/index.html` — new "Exploration Analytics" UI section + 6 table renderers + text-export entries in both export sites
 
+## April 28, 2026 — LOCKED Phase 1c-Explore Plan (200-trade frozen exploration batch)
+
+### Why this is locked
+
+Past 6 weeks of iteration produced break-even-ish results (Avg P&L % oscillating
+in ~[-0.30%, +0.05%] band) across multiple amendment cycles. The honest read on
+that data is **confounded** — every sample was collected during active config
+change, so we have no clean test of "what does ANY frozen config produce."
+This plan fixes that. Exploration batch (this 200) → key-variable identification →
+validation batch (next 200 with adjustments). Decoupling exploration from
+validation is the discipline we've been missing.
+
+**Goal of THIS batch:** identify the key variables to adjust for the next batch.
+Not profitability. Profitability is the goal of the NEXT batch.
+
+### Locked config (frozen as of Apr 28)
+
+The Phase 1c-Explore config deployed Apr 28 (paper mode, looser filters than Apr 18).
+Specifically: `btc_adx_min_short: 18`, `momentum_adx_max_short: 33`, `adx_very_strong_short: 30`, `btc_adx_max_short: 40`, `btc_adx_max_long: 40`, plus the Tier 1 exploration analytics columns.
+
+**No amendments during the 200 trades. Period.** Even if the first 50 look catastrophic,
+even if a "clear pattern" emerges at 100 trades, even if user requests "small tweaks" —
+the answer is no. The whole analytical value of this batch depends on it being
+collected under one frozen config. Mid-batch amendments invalidate the entire sample.
+
+**The only exceptions** are operational (not strategic):
+- Bug fixes (data not persisting, capture pipeline broken, bot crash)
+- Infrastructure issues (DB durability, race conditions, etc.)
+- Pair blacklist additions for EMERGENT operational reasons (e.g., Binance delisting)
+
+Strategic config changes (filter values, thresholds, ADX caps, RSI ranges, leverage,
+exit parameters, maker timeout, offset ticks): **none, until 200 trades collected.**
+
+### Pre-committed analytical dimensions (locked BEFORE the data arrives)
+
+At 200 trades, analyze these dimensions and ONLY these dimensions. Looking at
+"everything" is multiple-comparisons hacking. Pre-commit list:
+
+**Tier 1 — new exploration dimensions (highest priority — never tested before):**
+1. **EMA50 alignment** (Aligned / Opposite / Flat vs trade direction) — best-EV hypothesis
+2. **DI spread** (|+DI − -DI|) — conviction-strength filter candidate
+3. **ATR %** (volatility regime per pair)
+4. **Funding rate** (positioning context, especially for shorts)
+5. **TtP ratio** (Time-to-Peak — distinguishes real edge from survival luck)
+
+**Tier 2 — cross-tabs for ablation testing (locked Apr 28):**
+6. **BTC ADX × EMA50 Alignment** (does Apr 18's BTC ADX cap need to be a real macro filter, or was it proxying for EMA50 misalignment?)
+7. **Pair ADX × DI Spread** (was momentum_adx_max really about high ADX, or about compressed DI spread within high ADX?)
+8. **BTC RSI × Funding Rate** (does positioning explain the BTC RSI patterns better than RSI value itself?)
+
+**Tier 3 — pre-existing dimensions for cross-validation only:**
+9. BTC RSI × BTC ADX cross-tab (validates 8 pre-committed Phase 2 rules at 5th sample)
+10. Pair ADX bucket × direction (does Apr 18's pair ADX 28+ SHORT loser pattern hold?)
+
+**Dimensions explicitly NOT to look at (avoid p-hacking):**
+- EMA5 stretch buckets (already extensively analyzed, non-monotonic)
+- Range Position (broke in 5th sample, unstable)
+- Market Breadth (broke in 5th sample, unstable)
+- Hour-of-day, day-of-week (no theoretical basis, pure data dredging)
+- Pair-level performance (informs blacklist, not strategy edge)
+- Anything not on this list
+
+### Promotion criteria — what makes a variable "the key adjustment"
+
+A variable qualifies for promotion to filter/threshold change in the validation
+batch ONLY if ALL of these are true:
+
+1. **N ≥ 20 trades per bucket** in the discriminating range (not just total N — the
+   specific buckets being compared each need ≥20)
+2. **WR gap between best and worst bucket ≥ 15 percentage points**
+3. **Avg P&L % gap between best and worst bucket ≥ 0.20 percentage points**
+4. **Pattern is direction-consistent OR has a documented theoretical reason for
+   asymmetry** (e.g., "longs need rising EMA50, shorts need falling" is symmetric and
+   theoretically grounded; "longs use criterion X but shorts use unrelated criterion Y"
+   is asymmetric and suspect)
+5. **TtP ratio sanity check**: the winning bucket should also have mean TtP ≤ 0.45
+   (peak in first half of hold). If winners peak late, it's survival luck not edge —
+   demote.
+6. **Cross-tab confirmation**: if the variable is in a pre-committed cross-tab, it
+   must hold up in the cross-tab too (not just the single-dimension table).
+
+A variable that meets bars 1-3 but fails 4-6 is flagged as **"hypothesis, hold for
+replication"** — not promoted to filter, watched in next batch.
+
+A variable that meets all 6 bars is promoted to filter for validation batch.
+
+### Stop rule for the validation batch (locked NOW)
+
+After identified key variables are applied to the next 200-trade batch:
+
+| Validation result | Verdict | Action |
+|---|---|---|
+| Avg P&L % combined ≥ +0.10% | Strategy has plausible edge | Advance to Phase 2 (tier system + leverage) |
+| Avg P&L % combined +0.00% to +0.10% | Marginal — could be edge or noise | One more 200-trade cycle allowed at validated config |
+| Avg P&L % combined -0.05% to +0.00% | Statistically indistinguishable from break-even | Strategy class likely lacks edge on 5m; structural pivot conversation |
+| Avg P&L % combined < -0.05% | Negative edge confirmed | Strategy class doesn't work; abandon current architecture |
+
+**These thresholds are LOCKED.** No moving the goalposts after the data arrives.
+If this batch produces -0.04% Avg, that is a "marginal/structural pivot" verdict,
+not a "let me explain why this time was special" verdict.
+
+### Paper-mode analytical scope (CRITICAL)
+
+This batch is in PAPER MODE. Paper's `_simulate_maker_entry_paper` over-fills
+relative to real orderbook competition (CLAUDE.md Apr 18). Therefore:
+
+**Paper-VALID for this batch (filter-layer findings):**
+- All Tier 1, 2, 3 dimensions above (pure indicator math, identical code path)
+- Bucket-level WR / Avg P&L %
+- Regime/cross-tab analysis
+- TtP ratio analysis
+
+**Paper-INVALID — DO NOT analyze in this batch:**
+- MAKER vs TAKER_FALLBACK WR gap (paper over-fills MAKER artificially)
+- Maker timeout effectiveness (Amendment #6 — paper biased)
+- Maker offset ticks effectiveness (Amendment #8 — paper biased)
+- Entry slippage distributions
+- Anything about fill mechanics
+
+Fill-mechanics questions require a separate LIVE batch later. Do not attempt to
+draw fill-mechanics conclusions from this paper batch.
+
+### Checkpoint structure
+
+| Checkpoint | Trades | Purpose | Decisions allowed |
+|---|---|---|---|
+| Health check | ~30-50 | Verify Tier 1 fields populating, no bot errors, data pipeline working | NONE strategic. Bug fixes only. |
+| Mid-batch sanity | ~100 | Confirm batch is on-track operationally | NONE strategic. |
+| Decision checkpoint | 200 | Full analysis per pre-committed dimensions | Identify key variables; commit to validation batch config |
+
+### Mutual commitments during the batch
+
+**Claude commits to:**
+1. Not propose strategic config changes during data collection. If user asks "should
+   we adjust X" mid-batch, the answer is always "no, we wait for 200."
+2. Not interpret partial-batch data as preliminary findings. Sub-200 checkpoints
+   are operational only.
+3. At 200 trades, perform the analysis with discipline: pre-committed dimensions only,
+   N ≥ 20 bucket bar enforced, no chasing of post-hoc patterns, no expanding the
+   dimension list because something interesting appeared.
+4. Be willing to declare "no clear key variable found" if the data doesn't support
+   one. Honest negative result is better than manufactured positive result.
+
+**User commits to:**
+1. Not request mid-batch config changes. The discipline is the whole point.
+2. Flag operational issues (bugs, capture failures) immediately — those ARE
+   actionable mid-batch.
+3. Accept the locked stop rule above. If validation batch hits -0.05% Avg, the
+   verdict is what the locked rule says, not a re-litigation of thresholds.
+
+### What success of THIS batch looks like
+
+Not "the bot was profitable." The bot is expected to be break-even-ish.
+
+Success = **at 200 trades, we can name 1-3 variables that meet the 6-criterion
+promotion bar, with documented evidence**, AND we have a defensible config for
+the validation batch built on those variables. That's it.
+
+If we end at 200 trades with zero variables meeting the promotion bar, that
+is ALSO a real result — it means filter-layer adjustments aren't the answer
+and we move to structural conversation (timeframe, strategy class, fee structure).
+
+### Why this plan is being locked in writing now
+
+Past amendments were each individually defensible but collectively undisciplined —
+the meta-question "is this exercise converging?" was never asked because each step
+felt small. Writing the rules down before the data arrives prevents the same
+failure mode this time. When mid-batch temptation arrives ("let's just tighten
+this one filter"), this section is the answer.
+
 ### Pooling rule for Phase 1c amendments
 Amendment #1 (Apr 17 AM, 13 trades), #2/3/4 (Apr 17 PM, same trades continuing +
 later), #5 (Apr 18, 33 trades). Each amendment is a config inflection point. Do NOT

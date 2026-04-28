@@ -317,11 +317,11 @@
                                 <th class="px-4 py-3 font-medium text-right">Investment</th>
                                 <th class="px-4 py-3 font-medium text-right">Leverage</th>
                                 <th class="px-4 py-3 font-medium text-right">Notional</th>
+                                <th class="px-4 py-3 font-medium text-right">Entry</th>
+                                <th class="px-4 py-3 font-medium text-right">Current</th>
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium text-center">Flag</th>
-                                <th class="px-4 py-3 font-medium text-right">Entry</th>
-                                <th class="px-4 py-3 font-medium text-right">Current</th>
                                 <th class="px-4 py-3 font-medium text-right">Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">High/Low</th>
                                 <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
@@ -8147,11 +8147,11 @@
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.notional_value)}</td>
+                            <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
+                            <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-center">${flagBadge || beBadge}</td>
-                            <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
-                            <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(highLow)}</td>
                             <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>

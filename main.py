@@ -3551,6 +3551,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
             adx_deltas = [o.entry_adx_delta for o in group if o.entry_adx_delta is not None]
             range_positions = [o.entry_range_position for o in group if o.entry_range_position is not None]
+            # Exploration Analytics fields (Apr 28) — observation-only
+            pos_dis = [o.entry_pos_di for o in group if getattr(o, 'entry_pos_di', None) is not None]
+            neg_dis = [o.entry_neg_di for o in group if getattr(o, 'entry_neg_di', None) is not None]
+            atr_pcts = [o.entry_atr_pct for o in group if getattr(o, 'entry_atr_pct', None) is not None]
+            ema50_slopes = [o.entry_ema50_slope for o in group if getattr(o, 'entry_ema50_slope', None) is not None]
+            funding_rates = [o.entry_funding_rate for o in group if getattr(o, 'entry_funding_rate', None) is not None]
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -3591,6 +3597,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_adx_delta": round(sum(adx_deltas) / len(adx_deltas), 4) if adx_deltas else None,
                 "avg_range_position": round(sum(range_positions) / len(range_positions), 1) if range_positions else None,
                 "avg_breadth": round(sum(breadths) / len(breadths), 1) if breadths else None,
+                # Exploration Analytics (Apr 28)
+                "avg_pos_di": round(sum(pos_dis) / len(pos_dis), 1) if pos_dis else None,
+                "avg_neg_di": round(sum(neg_dis) / len(neg_dis), 1) if neg_dis else None,
+                "avg_atr_pct": round(sum(atr_pcts) / len(atr_pcts), 4) if atr_pcts else None,
+                "avg_ema50_slope": round(sum(ema50_slopes) / len(ema50_slopes), 4) if ema50_slopes else None,
+                "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),

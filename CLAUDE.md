@@ -1164,7 +1164,32 @@ Switching from live to **paper trading** with the **Exploration Analytics** indi
 | LONG | [15, 25] | [18, 40] | both | [40, 65] |
 | SHORT | [22, 33] | [18, 40] | rising | [25, 60] |
 
-### What to measure at the 100-trade Phase 1c-Explore checkpoint
+### Sample size target — 150 trades (200 ideal), with multi-checkpoint structure
+
+The originally-documented 100-trade target was set when we had only single-dimension tables. **Cross-tabs split N across multiple cells, so the cell-level requirement (N≥10 per critical cell) drives a higher total-sample target.**
+
+**Bottleneck: BTC ADX × EMA50 Alignment SHORT cross-tab.** Critical cells that must populate to N≥10:
+- BTC ADX 18-25 × Aligned (re-admitted zone, primary ablation test)
+- BTC ADX 18-25 × Opposite (re-admitted zone, primary ablation test)
+- BTC ADX 25-30 × Aligned (baseline comparison)
+- BTC ADX 30-35 × Opposite (re-admitted zone)
+- BTC ADX 35-40 × any (re-admitted zone, S-B2 test)
+
+If these 5 cells together account for ~60-70% of total SHORTs (rest scatter to less-critical cells), need **~70 SHORTs** to populate them robustly. Same logic on LONG side. **~140 trades minimum, 150 target, 200 ideal.**
+
+**Three-checkpoint sequence:**
+
+| Checkpoint | Purpose | What's allowed at this point |
+|---|---|---|
+| **~50 trades — health check** | Verify all new fields populate (not NULL), tables render, no bot errors, zones starting to fill | Zero config decisions. Only fix data-pipeline bugs. |
+| **~100 trades — qualitative read** | First analytical pass; identify directional patterns; check zone population per Priority 1 below | Note hypotheses, do NOT promote to filter changes yet. |
+| **~150-200 trades — decision checkpoint** | Full ablation analysis; filter swaps decided; new filters from Tier 1 dimensions promoted | Ship config changes per locked decision rules below. |
+
+**Hard floor:** do NOT stop the batch before 100 trades. Below that, the cross-tabs won't deliver what they're designed for and we're back to single-dim analysis we already have.
+
+**Early-decision exception:** if a single cross-tab cell shows extreme signal (e.g., 10+ trades at 100% loss in a clearly-defined zone) at 100 trades, we can decide early on that specific filter while letting the rest of the analysis wait for 150-200.
+
+### What to measure at the Phase 1c-Explore decision checkpoint
 
 **Priority 1 — zone population.** Did we get ≥10 SHORT trades in EACH of: BTC ADX 18-25, pair ADX 28-33, BTC ADX 35-40? If any zone is empty, other filters are constraining it and we need to re-evaluate. ≥10 LONG trades at BTC ADX 35-40 also required for L-P2 test.
 

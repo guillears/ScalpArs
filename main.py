@@ -3557,6 +3557,26 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             atr_pcts = [o.entry_atr_pct for o in group if getattr(o, 'entry_atr_pct', None) is not None]
             ema50_slopes = [o.entry_ema50_slope for o in group if getattr(o, 'entry_ema50_slope', None) is not None]
             funding_rates = [o.entry_funding_rate for o in group if getattr(o, 'entry_funding_rate', None) is not None]
+            # Derived: DI Spread (|+DI - -DI|) per trade, then averaged
+            di_spreads = [
+                abs(o.entry_pos_di - o.entry_neg_di)
+                for o in group
+                if getattr(o, 'entry_pos_di', None) is not None and getattr(o, 'entry_neg_di', None) is not None
+            ]
+            # Derived: EMA50 Alignment counts (Aligned / Opposite / Flat) — flat threshold |slope| < 0.04%
+            ema50_aligned = 0
+            ema50_opposite = 0
+            ema50_flat = 0
+            for o in group:
+                v = getattr(o, 'entry_ema50_slope', None)
+                if v is None:
+                    continue
+                if abs(v) < 0.04:
+                    ema50_flat += 1
+                elif (v > 0 and (o.direction or 'LONG') == 'LONG') or (v < 0 and (o.direction or 'LONG') == 'SHORT'):
+                    ema50_aligned += 1
+                else:
+                    ema50_opposite += 1
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -3600,8 +3620,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 # Exploration Analytics (Apr 28)
                 "avg_pos_di": round(sum(pos_dis) / len(pos_dis), 1) if pos_dis else None,
                 "avg_neg_di": round(sum(neg_dis) / len(neg_dis), 1) if neg_dis else None,
+                "avg_di_spread": round(sum(di_spreads) / len(di_spreads), 1) if di_spreads else None,
                 "avg_atr_pct": round(sum(atr_pcts) / len(atr_pcts), 4) if atr_pcts else None,
                 "avg_ema50_slope": round(sum(ema50_slopes) / len(ema50_slopes), 4) if ema50_slopes else None,
+                "ema50_aligned": ema50_aligned,
+                "ema50_opposite": ema50_opposite,
+                "ema50_flat": ema50_flat,
                 "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),

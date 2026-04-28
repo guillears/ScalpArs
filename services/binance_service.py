@@ -86,7 +86,11 @@ class BinanceService:
         self._markets_loaded = False
         self._public_markets_loaded = False
         self._spot_markets_loaded = False
-    
+        # Funding rate cache (Apr 19, Exploration Analytics): {symbol: (rate, fetched_at_unix_seconds)}
+        # Funding intervals are 8h on Binance, so caching for ~8h saves API calls.
+        self._funding_rate_cache: Dict[str, Tuple[float, float]] = {}
+        self._funding_rate_ttl_seconds = 8 * 60 * 60  # 8 hours
+
     async def load_markets(self):
         """Load market data for private exchange"""
         if not self._markets_loaded:
@@ -675,6 +679,35 @@ class BinanceService:
             ]
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching trades for {symbol}: {e}")
+            return None
+
+    async def fetch_funding_rate(self, symbol: str) -> Optional[float]:
+        """Fetch the current funding rate for a futures symbol (Exploration Analytics, Apr 19).
+
+        Returns the rate as a decimal (e.g., 0.0001 = 0.01%) or None on error.
+        Cached per-symbol for 8h to match Binance's funding interval — first call
+        per scan-cycle hits the API, subsequent same-symbol calls within 8h reuse.
+        """
+        try:
+            now = time.time()
+            cached = self._funding_rate_cache.get(symbol)
+            if cached:
+                rate, fetched_at = cached
+                if (now - fetched_at) < self._funding_rate_ttl_seconds:
+                    return rate
+
+            await self.load_public_markets()
+            data = await self.public_exchange.fetch_funding_rate(symbol)
+            if data is None:
+                return None
+            rate = data.get('fundingRate')
+            if rate is None:
+                return None
+            rate_f = float(rate)
+            self._funding_rate_cache[symbol] = (rate_f, now)
+            return rate_f
+        except Exception as e:
+            logger.warning(f"[BINANCE] Error fetching funding rate for {symbol}: {e}")
             return None
 
 

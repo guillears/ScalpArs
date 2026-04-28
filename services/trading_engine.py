@@ -1286,7 +1286,13 @@ class TradingEngine:
         entry_range_position: float = None,
         entry_adx_delta: float = None,
         entry_quality_score: int = None,
-        entry_btc_regime: str = None
+        entry_btc_regime: str = None,
+        # Exploration Analytics (Apr 19, observation-only)
+        entry_pos_di: float = None,
+        entry_neg_di: float = None,
+        entry_atr_pct: float = None,
+        entry_ema50_slope: float = None,
+        entry_funding_rate: float = None,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -1479,6 +1485,12 @@ class TradingEngine:
             entry_quality_score=entry_quality_score,
             entry_btc_regime=entry_btc_regime,
             exit_btc_regime=entry_btc_regime,  # Initialize to entry; updated on close
+            # Exploration Analytics (Apr 19, observation-only)
+            entry_pos_di=entry_pos_di,
+            entry_neg_di=entry_neg_di,
+            entry_atr_pct=entry_atr_pct,
+            entry_ema50_slope=entry_ema50_slope,
+            entry_funding_rate=entry_funding_rate,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -3651,6 +3663,27 @@ class TradingEngine:
                     _market_bull_pct, _market_bear_pct, btc_adx, pair_ema20_slope_pct
                 )
                 entry_btc_regime = classify_btc_regime(btc_adx, btc_rsi, btc_ema20_slope_pct)
+
+                # Exploration Analytics (Apr 19) — observation-only fields
+                _entry_pos_di = indicators.get('pos_di')
+                _entry_neg_di = indicators.get('neg_di')
+                _entry_atr_pct = None
+                _atr = indicators.get('atr')
+                if _atr is not None and indicators.get('price') and indicators['price'] > 0:
+                    _entry_atr_pct = round((_atr / indicators['price']) * 100, 4)
+                _entry_ema50_slope = None
+                _ema50 = indicators.get('ema50')
+                _ema50_prev12 = indicators.get('ema50_prev12')
+                if _ema50 is not None and _ema50_prev12 is not None and _ema50_prev12 != 0:
+                    _entry_ema50_slope = round(((_ema50 - _ema50_prev12) / _ema50_prev12) * 100, 4)
+                _entry_funding_rate = None
+                try:
+                    _funding = await binance_service.fetch_funding_rate(symbol)
+                    if _funding is not None:
+                        _entry_funding_rate = round(_funding, 6)
+                except Exception:
+                    pass
+
                 order = await self.open_position(
                     db=db,
                     pair=pair,
@@ -3678,7 +3711,12 @@ class TradingEngine:
                     entry_range_position=round(((indicators['price'] - indicators['low_20']) / (indicators['high_20'] - indicators['low_20'])) * 100, 1) if indicators.get('high_20') and indicators.get('low_20') and indicators['high_20'] != indicators['low_20'] else None,
                     entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
                     entry_quality_score=entry_quality_score,
-                    entry_btc_regime=entry_btc_regime
+                    entry_btc_regime=entry_btc_regime,
+                    entry_pos_di=_entry_pos_di,
+                    entry_neg_di=_entry_neg_di,
+                    entry_atr_pct=_entry_atr_pct,
+                    entry_ema50_slope=_entry_ema50_slope,
+                    entry_funding_rate=_entry_funding_rate,
                 )
 
                 if order:

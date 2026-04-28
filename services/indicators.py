@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 from ta.trend import EMAIndicator, ADXIndicator
 from ta.momentum import RSIIndicator
+from ta.volatility import AverageTrueRange
 from typing import Dict, List, Optional, Tuple
 import config as config_module
 from config import ConfidenceLevel
@@ -40,10 +41,16 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
     # Calculate RSI (12 period as specified)
     rsi = RSIIndicator(close=df['close'], window=12).rsi()
     
-    # Calculate ADX (14 period default)
+    # Calculate ADX (14 period default) — also expose +DI / -DI for directional analysis
     adx_indicator = ADXIndicator(high=df['high'], low=df['low'], close=df['close'], window=14)
     adx = adx_indicator.adx()
-    
+    pos_di = adx_indicator.adx_pos()
+    neg_di = adx_indicator.adx_neg()
+
+    # ATR(14) for volatility context (Exploration Analytics, Apr 19)
+    atr_indicator = AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
+    atr = atr_indicator.average_true_range()
+
     avg_volume = df['volume'].rolling(window=pair_volume_bars).mean()
     avg_volume_global = df['volume'].rolling(window=global_volume_bars).mean()
     
@@ -68,6 +75,10 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'rsi_prev3': float(rsi.iloc[-4]) if len(rsi) >= 4 and not pd.isna(rsi.iloc[-4]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'adx_prev1': float(adx.iloc[-2]) if len(adx) >= 2 and not pd.isna(adx.iloc[-2]) else None,
+        # Exploration Analytics (Apr 19): +DI / -DI / ATR for next-batch bucket analysis
+        'pos_di': float(pos_di.iloc[-1]) if not pd.isna(pos_di.iloc[-1]) else None,
+        'neg_di': float(neg_di.iloc[-1]) if not pd.isna(neg_di.iloc[-1]) else None,
+        'atr': float(atr.iloc[-1]) if not pd.isna(atr.iloc[-1]) else None,
         'volume': float(df['volume'].ewm(span=5, adjust=False).mean().iloc[-1]),
         'avg_volume': float(avg_volume.iloc[-1]) if not pd.isna(avg_volume.iloc[-1]) else None,
         'avg_volume_global': float(avg_volume_global.iloc[-1]) if not pd.isna(avg_volume_global.iloc[-1]) else None,

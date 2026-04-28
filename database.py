@@ -253,6 +253,18 @@ async def init_db():
                 if 'protective_tp_order_id' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN protective_tp_order_id VARCHAR(50)"))
 
+                # Exploration Analytics (Apr 19) — observation-only fields for next-batch analysis.
+                if 'entry_pos_di' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pos_di FLOAT"))
+                if 'entry_neg_di' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_neg_di FLOAT"))
+                if 'entry_atr_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_atr_pct FLOAT"))
+                if 'entry_ema50_slope' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema50_slope FLOAT"))
+                if 'entry_funding_rate' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_funding_rate FLOAT"))
+
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]
                 if 'order_type' not in tx_columns:

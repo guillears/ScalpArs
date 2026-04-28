@@ -1116,6 +1116,94 @@ The change primarily tightens entries on mid/small caps where momentum fakes are
 
 Config-only change, single integer, instant revert if needed.
 
+## April 19, 2026 — Exploration Analytics (Tier 1 indicators added, observation-only)
+
+### What changed
+
+5 new `entry_*` columns on the Order model, captured at signal time. **Zero filter logic changes** — pure observation. Purpose: at the next 100-trade checkpoint, bucket-analyze the new dimensions and identify which discriminate winners from losers, before promoting any to filters.
+
+| Field | Source | What it captures |
+|---|---|---|
+| `entry_pos_di` | TA `ADXIndicator.adx_pos()` | +DI: directional component of ADX measuring upward pressure |
+| `entry_neg_di` | TA `ADXIndicator.adx_neg()` | -DI: directional component measuring downward pressure |
+| `entry_atr_pct` | TA `AverageTrueRange(14)` / price × 100 | ATR as % of price; volatility regime per pair |
+| `entry_ema50_slope` | (ema50 − ema50_prev12) / ema50_prev12 × 100 | 5m EMA50 slope ≈ 4 hours of higher-timeframe context |
+| `entry_funding_rate` | Binance `fetch_funding_rate(symbol)` cached 8h | Positioning context (negative = market heavily short) |
+
+### Why each was selected
+
+**+DI / −DI:** ADX magnitude alone tells you trend STRENGTH but not DIRECTION CONVICTION. ADX can rise in a choppy market when both +DI and −DI are jumping. Trades where the gap between +DI/−DI is compressing (low conviction) probably underperform same-ADX-magnitude trades with wide DI spread. Currently a known blind spot in our ADX usage.
+
+**ATR(14):** Our SL is fixed at −0.9% across all pairs. BTC/ETH (calm pairs) at −0.9% means hours of price action (SL too wide, losers ride too long). Small caps at −0.9% means single-candle noise (SL too tight, stops on noise). Even without changing SL logic yet, capturing ATR enables volatility-bucket analysis to confirm whether this hypothesis holds.
+
+**5m EMA50 slope:** Cheap proxy for higher-timeframe context. EMA50 on the 5m chart spans 50 candles ≈ 4 hours of trend — much longer than what we filter on currently (5m EMA Gap Expanding looks at 1 candle, RSI Momentum at 3 candles ≈ 15 minutes). The LONG flameout pattern (winners take 20-40min to peak, losers peak <2min and fail) and SHORT regime-change losses both look like "5m signal valid but fighting higher timeframe." If EMA50 slope alignment discriminates, the 4-hour TF context matters and the 5m momentum filters are missing it. Chosen instead of 15m candle fetch because the data is **already in our pipeline** — calculate_indicators already computes EMA50 and ema50_prev12; we just weren't storing the slope on Order.
+
+**Funding rate:** Free positioning data. SHORTS into very negative funding (e.g., < −0.05%) = market heavily short already, paying carry to hold, and over-positioning often resolves in violent squeezes against shorts. Particularly relevant given our SHORT side has been the loss leader. LONGS into very high positive funding (> +0.05%) = late to a crowded trade.
+
+### Why these specifically (vs other candidates)
+
+Held for later (after Tier 1 shows value):
+- **MACD histogram + divergence** — momentum confirmation, but partly redundant with EMA Gap Expanding + RSI Momentum
+- **Open Interest** — would add positioning depth but requires per-pair API call (already adding 1 call/pair for funding)
+- **VWAP distance** — institutional reference, useful but lower discrimination expected vs Tier 1
+
+Rejected:
+- **Bollinger %B / BB width** — overlaps with EMA stretch + ATR
+- **Stochastic** — overlaps with RSI
+- **Candle patterns** — statistically weak signal in crypto futures
+- **15m candle fetch** — escalation only if 5m EMA50 slope analysis shows higher-TF context matters
+
+### Dashboards added
+
+UI section: **"Exploration Analytics — Observation Only"** below Pair Performance. Six tables, each with bucket × direction × N × WR × Avg P&L %:
+
+1. **Performance by ATR** — buckets <0.3%, 0.3-0.6%, 0.6-1.0%, 1.0-1.5%, >1.5%
+2. **Performance by EMA50 Slope (raw)** — buckets <-0.10%, -0.10 to -0.04, -0.04 to +0.04 (flat), +0.04 to +0.10, >+0.10
+3. **Performance by EMA50 Alignment** — Aligned / Opposite / Flat (relative to trade direction)
+4. **Performance by Funding Rate** — buckets <-0.05%, -0.05 to -0.02, -0.02 to +0.02 (neutral), +0.02 to +0.05, >+0.05
+5. **Performance by DI Direction** — +DI > −DI / −DI > +DI / Tight (gap < 2)
+6. **Performance by DI Spread** — <2 / 2-5 / 5-10 / >10
+
+All tables also appear in text-exported reports (both export functions — clipboard copy + auto-saved file).
+
+### What to deeply analyze at next 100-trade checkpoint
+
+Treat this section as the FIRST thing to look at when the next batch lands.
+
+**Priority 1 — does EMA50 alignment matter?** This is the highest-expected-value test. If "Aligned" trades have ≥ +15% WR over "Opposite" trades on N ≥ 20 each, the LONG flameout pattern hypothesis is confirmed and we ship a filter: only enter when 5m EMA50 slope agrees with trade direction. Promotes to filter at next-batch deploy.
+
+**Priority 2 — does ATR explain pair-level variance?** Build "Pair × ATR bucket" cross-tab if N permits. If high-ATR pairs systematically lose (because −0.9% is too tight on noisy pairs) and low-ATR pairs systematically win, that's a strong case for volatility-aware stops (Phase 3 work) and possibly a coarser filter "skip pairs with ATR > 1.5%" in the interim.
+
+**Priority 3 — DI spread filter potential?** If "Tight (gap < 2)" trades are ≥ −0.2% Avg below "+DI > -DI" or "-DI > +DI" trades on N ≥ 15, the ADX-magnitude-only filter has a real gap. Filter candidate: require |+DI − -DI| ≥ 2 at entry, in addition to ADX-rising.
+
+**Priority 4 — funding rate filter for shorts?** If SHORTS at funding < −0.05% have meaningfully lower WR than SHORTS at neutral funding (≥ 5% gap on N ≥ 10), confirms positioning-fights-shorts hypothesis. Filter candidate: skip SHORT entry when funding < −0.05%.
+
+**Priority 5 — does +DI/−DI direction agree with trade?** Especially for LONG entries: if pair signal is LONG but +DI < −DI at entry (downward pressure dominant), that's contradiction. Cross-tab "Trade direction × DI dominance" would expose it.
+
+### Promotion rules (anti-overfit discipline)
+
+- **N ≥ 20 per bucket** for any filter promotion. Below that, single-sample noise.
+- **Cross-direction sanity check.** If a dimension matters for LONGS but not SHORTS (or vice versa), that's a real asymmetry to respect — don't promote symmetrically.
+- **2-sample replication required** before locking a filter. First batch = hypothesis, second batch confirms.
+- **Order of escalation:** ATR cap (coarse pair filter) → EMA50 alignment (entry filter) → DI spread (entry filter) → funding rate cap → ATR-normalized stops (Phase 3 SL change).
+
+### What this does NOT do
+
+- ❌ No filter logic changes — only observation
+- ❌ No SL changes — current −0.9% kept; ATR data informs future SL design
+- ❌ No 15m candle fetch — escalate only if EMA50 slope shows real signal
+- ❌ No cross-tabs in this build — single-dimension tables first; cross-tabs come at the next-next checkpoint when N is high enough per cell
+
+### Files changed
+
+- `models.py` — 5 nullable columns on Order
+- `database.py` — auto-migrate ADD COLUMN for existing DBs
+- `services/indicators.py` — expose `pos_di`, `neg_di`, `atr` in indicators dict (TA library already computed them)
+- `services/binance_service.py` — `fetch_funding_rate(symbol)` with 8h in-memory cache
+- `services/trading_engine.py` — capture path: compute slope from existing data, fetch funding, pass through to `open_position`, persist on Order
+- `main.py` — 6 new bucket-perf functions + payload integration in `_compute_performance`
+- `templates/index.html` — new "Exploration Analytics" UI section + 6 table renderers + text-export entries in both export sites
+
 ### Pooling rule for Phase 1c amendments
 Amendment #1 (Apr 17 AM, 13 trades), #2/3/4 (Apr 17 PM, same trades continuing +
 later), #5 (Apr 18, 33 trades). Each amendment is a config inflection point. Do NOT

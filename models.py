@@ -96,6 +96,17 @@ class Order(Base):
     entry_btc_regime = Column(String(20), nullable=True)
     exit_btc_regime = Column(String(20), nullable=True)
 
+    # Exploration Analytics (Phase 1c+, observation-only) — added Apr 19
+    # Captured at signal time, NOT used in any entry filter logic. Purpose:
+    # bucket-analysis at next 100-trade checkpoint to identify which dimensions
+    # discriminate winners from losers. Promote to filter only after cross-sample
+    # confirmation per anti-overfit discipline.
+    entry_pos_di = Column(Float, nullable=True)              # +DI (positive directional indicator) — directional component of ADX
+    entry_neg_di = Column(Float, nullable=True)              # -DI (negative directional indicator) — directional component of ADX
+    entry_atr_pct = Column(Float, nullable=True)             # ATR(14) as % of entry price; volatility regime per pair
+    entry_ema50_slope = Column(Float, nullable=True)         # 5m EMA50 slope vs prev12 candles (~4h higher-TF context proxy)
+    entry_funding_rate = Column(Float, nullable=True)        # Binance Futures funding rate at entry (positioning context)
+
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)
     exit_fee = Column(Float, nullable=True, default=0.0)

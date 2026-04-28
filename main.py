@@ -1830,6 +1830,154 @@ def _vol_bin_label(ratio):
     return _VOL_BINS[-1][0]
 
 
+def _bucket_perf(orders, bucket_fn, attr_filter=None):
+    """Generic bucketer for Exploration Analytics (Apr 19).
+
+    bucket_fn(order) -> bucket label (str) or None to skip.
+    Returns list of {bucket, direction, count, win_rate, avg_pnl_usd, avg_pnl_pct, total_pnl_usd, by_confidence}.
+    """
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for o in orders:
+        if attr_filter and attr_filter(o) is None:
+            continue
+        label = bucket_fn(o)
+        if label is None:
+            continue
+        for direction in ['LONG', 'SHORT']:
+            if (o.direction or 'LONG') != direction:
+                continue
+            groups[(label, direction)].append(o)
+    result = []
+    for (label, direction), grp in groups.items():
+        n = len(grp)
+        if n == 0:
+            continue
+        wins = sum(1 for o in grp if (o.pnl or 0) > 0)
+        pnl_sum = sum(o.pnl or 0 for o in grp)
+        pnl_pct_sum = sum(o.pnl_percentage or 0 for o in grp)
+        conf = {}
+        for o in grp:
+            c = o.confidence or 'UNKNOWN'
+            conf[c] = conf.get(c, 0) + 1
+        result.append({
+            'bucket': label,
+            'direction': direction,
+            'count': n,
+            'win_rate': round(wins / n * 100, 1),
+            'avg_pnl_usd': round(pnl_sum / n, 2),
+            'avg_pnl_pct': round(pnl_pct_sum / n, 4),
+            'total_pnl_usd': round(pnl_sum, 2),
+            'by_confidence': conf,
+        })
+    return result
+
+
+def _compute_atr_performance(orders):
+    """Performance by ATR(14) as % of entry price."""
+    def bucket(o):
+        v = getattr(o, 'entry_atr_pct', None)
+        if v is None:
+            return None
+        if v < 0.3: return '<0.3%'
+        if v < 0.6: return '0.3 - 0.6%'
+        if v < 1.0: return '0.6 - 1.0%'
+        if v < 1.5: return '1.0 - 1.5%'
+        return '>1.5%'
+    rows = _bucket_perf(orders, bucket)
+    bucket_order = ['<0.3%', '0.3 - 0.6%', '0.6 - 1.0%', '1.0 - 1.5%', '>1.5%']
+    rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
+    return rows
+
+
+def _compute_ema50_slope_performance(orders):
+    """Performance by raw 5m EMA50 slope %."""
+    def bucket(o):
+        v = getattr(o, 'entry_ema50_slope', None)
+        if v is None:
+            return None
+        if v < -0.10: return '<-0.10%'
+        if v < -0.04: return '-0.10 to -0.04%'
+        if v < 0.04: return '-0.04 to +0.04% (flat)'
+        if v < 0.10: return '+0.04 to +0.10%'
+        return '>+0.10%'
+    rows = _bucket_perf(orders, bucket)
+    bucket_order = ['<-0.10%', '-0.10 to -0.04%', '-0.04 to +0.04% (flat)', '+0.04 to +0.10%', '>+0.10%']
+    rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
+    return rows
+
+
+def _compute_ema50_alignment_performance(orders):
+    """Performance by EMA50 slope alignment with trade direction."""
+    def bucket(o):
+        v = getattr(o, 'entry_ema50_slope', None)
+        if v is None:
+            return None
+        if abs(v) < 0.04:
+            return 'Flat'
+        if (v > 0 and (o.direction or 'LONG') == 'LONG') or (v < 0 and (o.direction or 'LONG') == 'SHORT'):
+            return 'Aligned'
+        return 'Opposite'
+    rows = _bucket_perf(orders, bucket)
+    bucket_order = ['Aligned', 'Opposite', 'Flat']
+    rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
+    return rows
+
+
+def _compute_funding_rate_performance(orders):
+    """Performance by funding rate at entry (decimal, e.g. 0.0001 = 0.01%)."""
+    def bucket(o):
+        v = getattr(o, 'entry_funding_rate', None)
+        if v is None:
+            return None
+        v_pct = v * 100  # convert to %
+        if v_pct < -0.05: return '<-0.05%'
+        if v_pct < -0.02: return '-0.05 to -0.02%'
+        if v_pct < 0.02: return '-0.02 to +0.02% (neutral)'
+        if v_pct < 0.05: return '+0.02 to +0.05%'
+        return '>+0.05%'
+    rows = _bucket_perf(orders, bucket)
+    bucket_order = ['<-0.05%', '-0.05 to -0.02%', '-0.02 to +0.02% (neutral)', '+0.02 to +0.05%', '>+0.05%']
+    rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
+    return rows
+
+
+def _compute_di_direction_performance(orders):
+    """Performance by which directional indicator is dominant (+DI vs -DI)."""
+    def bucket(o):
+        p = getattr(o, 'entry_pos_di', None)
+        n = getattr(o, 'entry_neg_di', None)
+        if p is None or n is None:
+            return None
+        if abs(p - n) < 2:
+            return 'Tight (gap < 2)'
+        if p > n:
+            return '+DI > -DI'
+        return '-DI > +DI'
+    rows = _bucket_perf(orders, bucket)
+    bucket_order = ['+DI > -DI', '-DI > +DI', 'Tight (gap < 2)']
+    rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
+    return rows
+
+
+def _compute_di_spread_performance(orders):
+    """Performance by magnitude of |+DI - -DI| (directional conviction strength)."""
+    def bucket(o):
+        p = getattr(o, 'entry_pos_di', None)
+        n = getattr(o, 'entry_neg_di', None)
+        if p is None or n is None:
+            return None
+        spread = abs(p - n)
+        if spread < 2: return '< 2'
+        if spread < 5: return '2 - 5'
+        if spread < 10: return '5 - 10'
+        return '> 10'
+    rows = _bucket_perf(orders, bucket)
+    bucket_order = ['< 2', '2 - 5', '5 - 10', '> 10']
+    rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
+    return rows
+
+
 def _compute_pair_performance(orders):
     """Per-pair performance: one row per pair with L/S breakdown"""
     closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
@@ -4255,6 +4403,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "volume_crosstab": _compute_volume_crosstab(orders),
         "breadth_crosstab": _compute_breadth_crosstab(orders),
         "pair_performance": _compute_pair_performance(orders),
+        # Exploration Analytics (Apr 19, observation-only) — see "Exploration Analytics" UI section
+        "atr_performance": _compute_atr_performance(orders),
+        "ema50_slope_performance": _compute_ema50_slope_performance(orders),
+        "ema50_alignment_performance": _compute_ema50_alignment_performance(orders),
+        "funding_rate_performance": _compute_funding_rate_performance(orders),
+        "di_direction_performance": _compute_di_direction_performance(orders),
+        "di_spread_performance": _compute_di_spread_performance(orders),
     }
 
 

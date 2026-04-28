@@ -1780,6 +1780,115 @@
                             </table>
                         </div>
                     </div>
+
+                    <!-- Cross-tabs for ablation testing (Apr 28) -->
+                    <div class="mt-8 pt-6 border-t border-cyan-500/20">
+                        <h3 class="text-sm font-bold text-cyan-200 mb-1">Cross-tabs for ablation testing</h3>
+                        <p class="text-xs text-gray-500 mb-4">2D bucket × bucket views answering specific filter-ablation hypotheses (cell N / WR / Avg %).  See CLAUDE.md "Phase 1c-Explore" decision rules.</p>
+
+                        <!-- BTC ADX × EMA50 Alignment -->
+                        <div class="mt-4">
+                            <h4 class="text-xs font-semibold text-cyan-300 mb-1">BTC ADX × EMA50 Alignment</h4>
+                            <p class="text-xs text-gray-500 mb-2">Tests the BTC ADX cap loosening: do BTC ADX 18-25 SHORTs only fail when EMA50 slope is rising (Opposite)?</p>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-gray-400 text-left border-b border-white/10">
+                                            <th class="px-3 py-2 font-medium">Dir</th>
+                                            <th class="px-3 py-2 font-medium">BTC ADX</th>
+                                            <th class="px-3 py-2 font-medium">EMA50 Align</th>
+                                            <th class="px-3 py-2 font-medium text-center">#</th>
+                                            <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg$</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Total$</th>
+                                            <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="btc-adx-ema50-alignment-crosstab-body" class="divide-y divide-white/5">
+                                        <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Pair ADX × DI Spread -->
+                        <div class="mt-6">
+                            <h4 class="text-xs font-semibold text-cyan-300 mb-1">Pair ADX × DI Spread</h4>
+                            <p class="text-xs text-gray-500 mb-2">Tests the pair-ADX cap (momentum_adx_max): do pair ADX 28-33 SHORT failures concentrate at compressed DI spread (&lt; 2)?</p>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-gray-400 text-left border-b border-white/10">
+                                            <th class="px-3 py-2 font-medium">Dir</th>
+                                            <th class="px-3 py-2 font-medium">Pair ADX</th>
+                                            <th class="px-3 py-2 font-medium">DI Spread</th>
+                                            <th class="px-3 py-2 font-medium text-center">#</th>
+                                            <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg$</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Total$</th>
+                                            <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="pair-adx-di-spread-crosstab-body" class="divide-y divide-white/5">
+                                        <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- BTC RSI × Funding Rate -->
+                        <div class="mt-6">
+                            <h4 class="text-xs font-semibold text-cyan-300 mb-1">BTC RSI × Funding Rate</h4>
+                            <p class="text-xs text-gray-500 mb-2">Tests whether BTC RSI restrictions are confounded by positioning. Are RSI extremes really the loser, or is funding the real driver?</p>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-gray-400 text-left border-b border-white/10">
+                                            <th class="px-3 py-2 font-medium">Dir</th>
+                                            <th class="px-3 py-2 font-medium">BTC RSI</th>
+                                            <th class="px-3 py-2 font-medium">Funding</th>
+                                            <th class="px-3 py-2 font-medium text-center">#</th>
+                                            <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg$</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Total$</th>
+                                            <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="btc-rsi-funding-crosstab-body" class="divide-y divide-white/5">
+                                        <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Direction × EMA50 Alignment -->
+                        <div class="mt-6">
+                            <h4 class="text-xs font-semibold text-cyan-300 mb-1">Direction × EMA50 Alignment</h4>
+                            <p class="text-xs text-gray-500 mb-2">Confirms LONG vs SHORT asymmetry on the highest-expected-value new dimension. If the gap differs by side, ship asymmetric filters.</p>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="text-gray-400 text-left border-b border-white/10">
+                                            <th class="px-3 py-2 font-medium">Direction</th>
+                                            <th class="px-3 py-2 font-medium">EMA50 Align</th>
+                                            <th class="px-3 py-2 font-medium text-center">#</th>
+                                            <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg$</th>
+                                            <th class="px-3 py-2 font-medium text-right">Avg%</th>
+                                            <th class="px-3 py-2 font-medium text-right">Total$</th>
+                                            <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="direction-ema50-alignment-crosstab-body" class="divide-y divide-white/5">
+                                        <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Never Positive Deep Dive -->
@@ -4298,6 +4407,25 @@
                 }
             }
 
+            // --- EXPLORATION CROSS-TABS (Apr 28) ---
+            const _explorationCrosstabs = [
+                { key: 'btc_adx_ema50_alignment_crosstab', title: 'Cross-tab: BTC ADX × EMA50 Alignment', rowLabel: 'BTC ADX', colLabel: 'EMA50 Align' },
+                { key: 'pair_adx_di_spread_crosstab', title: 'Cross-tab: Pair ADX × DI Spread', rowLabel: 'Pair ADX', colLabel: 'DI Spread' },
+                { key: 'btc_rsi_funding_crosstab', title: 'Cross-tab: BTC RSI × Funding Rate', rowLabel: 'BTC RSI', colLabel: 'Funding' },
+                { key: 'direction_ema50_alignment_crosstab', title: 'Cross-tab: Direction × EMA50 Alignment', rowLabel: 'Dir', colLabel: 'EMA50 Align' },
+            ];
+            for (const t of _explorationCrosstabs) {
+                const rows = perf[t.key];
+                if (!rows || rows.length === 0) continue;
+                lines.push(`\n${hr2}`);
+                lines.push(`## ${t.title}\n`);
+                lines.push(`${'Dir'.padEnd(7)} ${t.rowLabel.padEnd(20)} ${t.colLabel.padEnd(22)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(9)} ${'Avg%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Conf'}`);
+                for (const r of rows) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.direction||'').padEnd(7)} ${String(r.row||'').padEnd(20)} ${String(r.col||'').padEnd(22)} ${String(r.trades).padEnd(5)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${('$'+(r.avg_pnl||0).toFixed(2)).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(4) + '%').padStart(10)} ${('$'+(r.total_pnl||0).toFixed(2)).padStart(10)} ${confStr}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by BTC Entry RSI\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
@@ -5000,6 +5128,25 @@
                     for (const r of rows) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.bucket||'').padEnd(28)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padStart(10)} ${('$'+(r.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(4) + '%').padStart(9)} ${confStr}`);
+                    }
+                }
+
+                // --- EXPLORATION CROSS-TABS (Apr 28) ---
+                const _explorationCrosstabs2 = [
+                    { key: 'btc_adx_ema50_alignment_crosstab', title: 'Cross-tab: BTC ADX × EMA50 Alignment', rowLabel: 'BTC ADX', colLabel: 'EMA50 Align' },
+                    { key: 'pair_adx_di_spread_crosstab', title: 'Cross-tab: Pair ADX × DI Spread', rowLabel: 'Pair ADX', colLabel: 'DI Spread' },
+                    { key: 'btc_rsi_funding_crosstab', title: 'Cross-tab: BTC RSI × Funding Rate', rowLabel: 'BTC RSI', colLabel: 'Funding' },
+                    { key: 'direction_ema50_alignment_crosstab', title: 'Cross-tab: Direction × EMA50 Alignment', rowLabel: 'Dir', colLabel: 'EMA50 Align' },
+                ];
+                for (const t of _explorationCrosstabs2) {
+                    const rows = perf[t.key];
+                    if (!rows || rows.length === 0) continue;
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## ${t.title}\n`);
+                    lines.push(`${'Dir'.padEnd(7)} ${t.rowLabel.padEnd(20)} ${t.colLabel.padEnd(22)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(9)} ${'Avg%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Conf'}`);
+                    for (const r of rows) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.direction||'').padEnd(7)} ${String(r.row||'').padEnd(20)} ${String(r.col||'').padEnd(22)} ${String(r.trades).padEnd(5)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${('$'+(r.avg_pnl||0).toFixed(2)).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(4) + '%').padStart(10)} ${('$'+(r.total_pnl||0).toFixed(2)).padStart(10)} ${confStr}`);
                     }
                 }
 
@@ -7448,6 +7595,73 @@
                 renderExplorationTable('funding-rate-performance-body', data.funding_rate_performance);
                 renderExplorationTable('di-direction-performance-body', data.di_direction_performance);
                 renderExplorationTable('di-spread-performance-body', data.di_spread_performance);
+
+                // Cross-tabs (Apr 28) — generic 2D renderer: row × col with N / WR / Avg / Total / Conf
+                function renderCrosstabTable(bodyId, rows, colspan = 9) {
+                    const tbody = document.getElementById(bodyId);
+                    if (!tbody) return;
+                    if (!rows || rows.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="${colspan}" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>`;
+                        return;
+                    }
+                    tbody.innerHTML = rows.map(r => {
+                        const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : r.win_rate >= 40 ? 'text-gray-300' : 'text-red-400';
+                        const totalClass = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgClass = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${explConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
+                        const avgPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(4) + '%';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                            <td class="px-3 py-2 text-cyan-300">${r.row}</td>
+                            <td class="px-3 py-2 text-cyan-300">${r.col}</td>
+                            <td class="px-3 py-2 text-center">${r.trades}</td>
+                            <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-3 py-2 text-right ${avgClass}">${formatUSD(r.avg_pnl || 0)}</td>
+                            <td class="px-3 py-2 text-right ${avgPctClass} font-medium">${avgPctStr}</td>
+                            <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl || 0)}</td>
+                            <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                        </tr>`;
+                    }).join('');
+                }
+                renderCrosstabTable('btc-adx-ema50-alignment-crosstab-body', data.btc_adx_ema50_alignment_crosstab);
+                renderCrosstabTable('pair-adx-di-spread-crosstab-body', data.pair_adx_di_spread_crosstab);
+                renderCrosstabTable('btc-rsi-funding-crosstab-body', data.btc_rsi_funding_crosstab);
+                // Direction × EMA50 has only 8 columns (Direction takes the row slot, no separate row label)
+                {
+                    const tbody = document.getElementById('direction-ema50-alignment-crosstab-body');
+                    const rows = data.direction_ema50_alignment_crosstab;
+                    if (!tbody) {} else if (!rows || rows.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                    } else {
+                        tbody.innerHTML = rows.map(r => {
+                            const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : r.win_rate >= 40 ? 'text-gray-300' : 'text-red-400';
+                            const totalClass = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const avgClass = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const avgPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                            const confBadges = Object.entries(r.by_confidence || {})
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([c, n]) => `<span class="${explConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                                .join(' ');
+                            const avgPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(4) + '%';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-cyan-300">${r.col}</td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${avgClass}">${formatUSD(r.avg_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right ${avgPctClass} font-medium">${avgPctStr}</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                        }).join('');
+                    }
+                }
             } catch (e) {
                 console.error('Error loading performance:', e);
                 showToast('Performance render error: ' + e.message, 'error');

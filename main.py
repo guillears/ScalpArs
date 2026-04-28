@@ -1978,6 +1978,183 @@ def _compute_di_spread_performance(orders):
     return rows
 
 
+def _crosstab_perf(orders, row_fn, col_fn, row_order, col_order):
+    """Generic 2D cross-tab for Exploration Analytics ablation testing (Apr 28).
+
+    row_fn(order), col_fn(order) → bucket label or None to skip.
+    Returns list of {direction, row, col, trades, win_rate, avg_pnl, avg_pnl_pct, total_pnl, by_confidence}.
+    """
+    from collections import defaultdict
+    buckets = defaultdict(list)
+    for o in orders:
+        rl = row_fn(o)
+        cl = col_fn(o)
+        if rl is None or cl is None:
+            continue
+        for direction in ["LONG", "SHORT"]:
+            if (o.direction or "LONG") != direction:
+                continue
+            buckets[(direction, rl, cl)].append(o)
+    result = []
+    for (direction, rl, cl), grp in buckets.items():
+        n = len(grp)
+        if n == 0:
+            continue
+        wins = sum(1 for o in grp if (o.pnl or 0) > 0)
+        pnl_sum = sum(o.pnl or 0 for o in grp)
+        pnl_pct_sum = sum(o.pnl_percentage or 0 for o in grp)
+        conf = {}
+        for o in grp:
+            c = o.confidence or 'UNKNOWN'
+            conf[c] = conf.get(c, 0) + 1
+        result.append({
+            'direction': direction,
+            'row': rl,
+            'col': cl,
+            'trades': n,
+            'win_rate': round(wins / n * 100, 1),
+            'avg_pnl': round(pnl_sum / n, 2),
+            'avg_pnl_pct': round(pnl_pct_sum / n, 4),
+            'total_pnl': round(pnl_sum, 2),
+            'by_confidence': conf,
+        })
+    # Stable sort: direction → row → col
+    def key(r):
+        ri = row_order.index(r['row']) if r['row'] in row_order else 99
+        ci = col_order.index(r['col']) if r['col'] in col_order else 99
+        return (r['direction'], ri, ci)
+    result.sort(key=key)
+    return result
+
+
+def _btc_adx_bucket(o):
+    v = getattr(o, 'entry_btc_adx', None)
+    if v is None:
+        return None
+    if v < 18: return '<18'
+    if v < 25: return '18-25'
+    if v < 30: return '25-30'
+    if v < 35: return '30-35'
+    return '35+'
+
+
+def _ema50_alignment_bucket(o):
+    v = getattr(o, 'entry_ema50_slope', None)
+    if v is None:
+        return None
+    if abs(v) < 0.04:
+        return 'Flat'
+    if (v > 0 and (o.direction or 'LONG') == 'LONG') or (v < 0 and (o.direction or 'LONG') == 'SHORT'):
+        return 'Aligned'
+    return 'Opposite'
+
+
+def _pair_adx_bucket(o):
+    v = getattr(o, 'entry_adx', None)
+    if v is None:
+        return None
+    if v < 18: return '<18'
+    if v < 22: return '18-22'
+    if v < 25: return '22-25'
+    if v < 28: return '25-28'
+    if v < 30: return '28-30'
+    if v < 33: return '30-33'
+    return '33+'
+
+
+def _di_spread_bucket(o):
+    p = getattr(o, 'entry_pos_di', None)
+    n = getattr(o, 'entry_neg_di', None)
+    if p is None or n is None:
+        return None
+    spread = abs(p - n)
+    if spread < 2: return '< 2'
+    if spread < 5: return '2 - 5'
+    if spread < 10: return '5 - 10'
+    return '> 10'
+
+
+def _btc_rsi_bucket(o):
+    v = getattr(o, 'entry_btc_rsi', None)
+    if v is None:
+        return None
+    if v < 30: return '<30'
+    if v < 35: return '30-35'
+    if v < 40: return '35-40'
+    if v < 45: return '40-45'
+    if v < 50: return '45-50'
+    if v < 55: return '50-55'
+    if v < 60: return '55-60'
+    if v < 65: return '60-65'
+    if v < 70: return '65-70'
+    return '70+'
+
+
+def _funding_rate_bucket(o):
+    v = getattr(o, 'entry_funding_rate', None)
+    if v is None:
+        return None
+    v_pct = v * 100
+    if v_pct < -0.05: return '<-0.05%'
+    if v_pct < -0.02: return '-0.05 to -0.02%'
+    if v_pct < 0.02: return '-0.02 to +0.02%'
+    if v_pct < 0.05: return '+0.02 to +0.05%'
+    return '>+0.05%'
+
+
+def _compute_btc_adx_ema50_alignment_crosstab(orders):
+    """Cross-tab: BTC ADX bucket × EMA50 alignment.
+    Tests the BTC ADX cap loosening hypothesis (Apr 28 ablation test).
+    """
+    return _crosstab_perf(
+        orders,
+        row_fn=_btc_adx_bucket,
+        col_fn=_ema50_alignment_bucket,
+        row_order=['<18', '18-25', '25-30', '30-35', '35+'],
+        col_order=['Aligned', 'Flat', 'Opposite'],
+    )
+
+
+def _compute_pair_adx_di_spread_crosstab(orders):
+    """Cross-tab: Pair ADX × DI Spread.
+    Tests the pair-ADX cap (momentum_adx_max) ablation hypothesis.
+    """
+    return _crosstab_perf(
+        orders,
+        row_fn=_pair_adx_bucket,
+        col_fn=_di_spread_bucket,
+        row_order=['<18', '18-22', '22-25', '25-28', '28-30', '30-33', '33+'],
+        col_order=['< 2', '2 - 5', '5 - 10', '> 10'],
+    )
+
+
+def _compute_btc_rsi_funding_crosstab(orders):
+    """Cross-tab: BTC RSI × Funding Rate.
+    Tests whether BTC RSI restrictions are confounded by funding-rate positioning.
+    """
+    return _crosstab_perf(
+        orders,
+        row_fn=_btc_rsi_bucket,
+        col_fn=_funding_rate_bucket,
+        row_order=['<30', '30-35', '35-40', '40-45', '45-50', '50-55', '55-60', '60-65', '65-70', '70+'],
+        col_order=['<-0.05%', '-0.05 to -0.02%', '-0.02 to +0.02%', '+0.02 to +0.05%', '>+0.05%'],
+    )
+
+
+def _compute_direction_ema50_alignment_crosstab(orders):
+    """Cross-tab: Trade Direction × EMA50 Alignment.
+    Confirms LONG vs SHORT asymmetry on the most important new dimension.
+    Output: row = direction, col = alignment.
+    """
+    return _crosstab_perf(
+        orders,
+        row_fn=lambda o: o.direction or 'LONG',
+        col_fn=_ema50_alignment_bucket,
+        row_order=['LONG', 'SHORT'],
+        col_order=['Aligned', 'Flat', 'Opposite'],
+    )
+
+
 def _compute_pair_performance(orders):
     """Per-pair performance: one row per pair with L/S breakdown"""
     closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
@@ -4410,6 +4587,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "funding_rate_performance": _compute_funding_rate_performance(orders),
         "di_direction_performance": _compute_di_direction_performance(orders),
         "di_spread_performance": _compute_di_spread_performance(orders),
+        # Exploration Analytics cross-tabs (Apr 28) — for ablation testing at next checkpoint
+        "btc_adx_ema50_alignment_crosstab": _compute_btc_adx_ema50_alignment_crosstab(orders),
+        "pair_adx_di_spread_crosstab": _compute_pair_adx_di_spread_crosstab(orders),
+        "btc_rsi_funding_crosstab": _compute_btc_rsi_funding_crosstab(orders),
+        "direction_ema50_alignment_crosstab": _compute_direction_ema50_alignment_crosstab(orders),
     }
 
 

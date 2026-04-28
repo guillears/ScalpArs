@@ -1247,6 +1247,21 @@ UI section: **"Exploration Analytics — Observation Only"** below Pair Performa
 
 All tables also appear in text-exported reports (both export functions — clipboard copy + auto-saved file).
 
+### Cross-tabs added Apr 28 (for ablation testing at next checkpoint)
+
+Four 2D bucket × bucket cross-tabs added under Exploration Analytics ("Cross-tabs for ablation testing" sub-section). Each directly answers one ablation hypothesis from Phase 1c-Explore:
+
+| Cross-tab | Hypothesis it tests | Decision rule |
+|---|---|---|
+| **BTC ADX × EMA50 Alignment** | Were BTC ADX 18-25 SHORTs only failing because of misaligned EMA50, not BTC ADX itself? | If 18-25 + Aligned cell ≥55% WR on N≥10 AND 18-25 + Opposite ≤30% WR → swap: keep `btc_adx_min_short: 18` + add EMA50-alignment filter. |
+| **Pair ADX × DI Spread** | Are pair ADX 28-33 SHORT failures concentrated at compressed DI spread (<2)? | If 28-33 + spread≥5 cell ≥50% WR on N≥10 AND 28-33 + spread<2 ≤30% WR → swap: keep `momentum_adx_max: 33` + add DI-spread filter. |
+| **BTC RSI × Funding Rate** | Are BTC RSI extremes confounded by positioning rather than RSI value? | If a particular RSI band is winning at neutral funding and losing at extreme funding → swap RSI cap for funding cap. |
+| **Direction × EMA50 Alignment** | Does EMA50 alignment matter equally for LONGs and SHORTs? | If gap between Aligned and Opposite is ≥15% WR on N≥10 each → ship asymmetric filter (e.g., LONG-only or SHORT-only EMA50 alignment requirement). |
+
+All cross-tabs follow same shape as existing BTC RSI × BTC ADX table: row × column with N / WR / Avg$ / Avg% / Total$ / Conf per cell. Cells with no data are dropped (no zero-fill rows).
+
+Cell N≥10 required before drawing any conclusion. Below that, cell content is a hypothesis at best.
+
 ### What to deeply analyze at next 100-trade checkpoint
 
 Treat this section as the FIRST thing to look at when the next batch lands.

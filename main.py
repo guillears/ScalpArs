@@ -1466,7 +1466,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "win_rate": 0, "win_rate_longs": 0, "win_rate_shorts": 0,
             "avg_win": 0, "avg_win_long": 0, "avg_win_short": 0,
             "avg_loss": 0, "avg_loss_long": 0, "avg_loss_short": 0,
-            "expectancy": 0,
+            "expectancy": 0, "expectancy_pct": 0,
             "best_win_long": 0, "best_win_short": 0,
             "worst_loss_long": 0, "worst_loss_short": 0,
             "total_pnl": 0, "total_pnl_percentage": 0,
@@ -2601,6 +2601,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     # Expectancy per trade: E = WR * AvgWin - (1 - WR) * |AvgLoss|
     wr = win_rate / 100
     expectancy = (wr * avg_win) - ((1 - wr) * abs(avg_loss)) if total_trades > 0 else 0
+
+    # Expectancy in % (leverage-/invest-invariant — preferred for cross-batch comparison)
+    avg_win_pct = sum(o.pnl_percentage or 0 for o in all_wins) / len(all_wins) if all_wins else 0
+    avg_loss_pct = sum(o.pnl_percentage or 0 for o in all_losses) / len(all_losses) if all_losses else 0
+    expectancy_pct = (wr * avg_win_pct) - ((1 - wr) * abs(avg_loss_pct)) if total_trades > 0 else 0
     
     # Best/worst - Best win should only count winning trades (pnl > 0)
     long_wins_pnls = [o.pnl for o in longs if (o.pnl or 0) > 0]
@@ -4604,6 +4609,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "avg_loss_long": round(avg_loss_long, 2),
         "avg_loss_short": round(avg_loss_short, 2),
         "expectancy": round(expectancy, 2),
+        "expectancy_pct": round(expectancy_pct, 2),
         "best_win_long": round(best_win_long, 2),
         "best_win_short": round(best_win_short, 2),
         "worst_loss_long": round(worst_loss_long, 2),

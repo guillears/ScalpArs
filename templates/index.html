@@ -533,7 +533,7 @@
                     </div>
                     <div>
                         <p class="text-xs text-gray-500 mb-1">Expectancy / Trade</p>
-                        <p id="perf-expectancy" class="text-xl font-bold">$0.00</p>
+                        <p id="perf-expectancy" class="text-xl font-bold">$0.00 (0%)</p>
                     </div>
                     <div>
                         <p class="text-xs text-gray-500 mb-1">Best Win Long</p>
@@ -3938,7 +3938,7 @@
             lines.push(`Win Rate Longs: ${perf.win_rate_longs}%  |  Shorts: ${perf.win_rate_shorts}%`);
             lines.push(`Avg Win: $${perf.avg_win}  (L:$${perf.avg_win_long} S:$${perf.avg_win_short})`);
             lines.push(`Avg Loss: $${perf.avg_loss}  (L:$${perf.avg_loss_long} S:$${perf.avg_loss_short})`);
-            lines.push(`Expectancy: $${perf.expectancy}/trade`);
+            lines.push(`Expectancy: $${perf.expectancy} (${perf.expectancy_pct}%)/trade`);
             lines.push(`Best Win L:$${perf.best_win_long} S:$${perf.best_win_short}  |  Worst Loss L:$${perf.worst_loss_long} S:$${perf.worst_loss_short}`);
             lines.push(`Total P&L: $${perf.total_pnl} (${perf.total_pnl_percentage}%)  |  Fees: $${perf.total_fees}`);
             lines.push(`Avg Duration: ${perf.avg_duration} (L:${perf.avg_duration_long} S:${perf.avg_duration_short})`);
@@ -4658,7 +4658,7 @@
                 lines.push(`Win Rate Longs: ${perf.win_rate_longs}%  |  Shorts: ${perf.win_rate_shorts}%`);
                 lines.push(`Avg Win: $${perf.avg_win}  (L:$${perf.avg_win_long} S:$${perf.avg_win_short})`);
                 lines.push(`Avg Loss: $${perf.avg_loss}  (L:$${perf.avg_loss_long} S:$${perf.avg_loss_short})`);
-                lines.push(`Expectancy: $${perf.expectancy}/trade`);
+                lines.push(`Expectancy: $${perf.expectancy} (${perf.expectancy_pct}%)/trade`);
                 lines.push(`Best Win L:$${perf.best_win_long} S:$${perf.best_win_short}  |  Worst Loss L:$${perf.worst_loss_long} S:$${perf.worst_loss_short}`);
                 lines.push(`Total P&L: $${perf.total_pnl} (${perf.total_pnl_percentage}%)  |  Fees: $${perf.total_fees}`);
                 lines.push(`Avg Duration: ${perf.avg_duration} (L:${perf.avg_duration_long} S:${perf.avg_duration_short})`);
@@ -5452,7 +5452,7 @@
                 document.getElementById('perf-avg-loss-long').textContent = formatUSD(data.avg_loss_long);
                 document.getElementById('perf-avg-loss-short').textContent = formatUSD(data.avg_loss_short);
                 const expectancyEl = document.getElementById('perf-expectancy');
-                expectancyEl.textContent = formatUSD(data.expectancy);
+                expectancyEl.textContent = `${formatUSD(data.expectancy)} (${data.expectancy_pct}%)`;
                 expectancyEl.className = `text-xl font-bold ${data.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
                 document.getElementById('perf-best-win-long').textContent = formatUSD(data.best_win_long);
                 document.getElementById('perf-best-win-short').textContent = formatUSD(data.best_win_short);

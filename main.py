@@ -1831,7 +1831,7 @@ def _vol_bin_label(ratio):
 
 
 def _bucket_perf(orders, bucket_fn, attr_filter=None):
-    """Generic bucketer for Exploration Analytics (Apr 19).
+    """Generic bucketer for Exploration Analytics (Apr 28).
 
     bucket_fn(order) -> bucket label (str) or None to skip.
     Returns list of {bucket, direction, count, win_rate, avg_pnl_usd, avg_pnl_pct, total_pnl_usd, by_confidence}.
@@ -4403,7 +4403,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "volume_crosstab": _compute_volume_crosstab(orders),
         "breadth_crosstab": _compute_breadth_crosstab(orders),
         "pair_performance": _compute_pair_performance(orders),
-        # Exploration Analytics (Apr 19, observation-only) — see "Exploration Analytics" UI section
+        # Exploration Analytics (Apr 28, observation-only) — see "Exploration Analytics" UI section
         "atr_performance": _compute_atr_performance(orders),
         "ema50_slope_performance": _compute_ema50_slope_performance(orders),
         "ema50_alignment_performance": _compute_ema50_alignment_performance(orders),

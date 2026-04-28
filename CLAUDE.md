@@ -1116,7 +1116,7 @@ The change primarily tightens entries on mid/small caps where momentum fakes are
 
 Config-only change, single integer, instant revert if needed.
 
-## April 19, 2026 — Exploration Analytics (Tier 1 indicators added, observation-only)
+## April 28, 2026 — Exploration Analytics (Tier 1 indicators added, observation-only)
 
 ### What changed
 

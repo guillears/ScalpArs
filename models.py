@@ -96,7 +96,7 @@ class Order(Base):
     entry_btc_regime = Column(String(20), nullable=True)
     exit_btc_regime = Column(String(20), nullable=True)
 
-    # Exploration Analytics (Phase 1c+, observation-only) — added Apr 19
+    # Exploration Analytics (Phase 1c+, observation-only) — added Apr 28
     # Captured at signal time, NOT used in any entry filter logic. Purpose:
     # bucket-analysis at next 100-trade checkpoint to identify which dimensions
     # discriminate winners from losers. Promote to filter only after cross-sample

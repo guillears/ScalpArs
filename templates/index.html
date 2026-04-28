@@ -1624,11 +1624,11 @@
                     </div>
                 </div>
 
-                <!-- Exploration Analytics — Observation Only (Apr 19) -->
+                <!-- Exploration Analytics — Observation Only (Apr 28) -->
                 <div class="mt-8 pt-6 border-t-2 border-cyan-500/40">
                     <div class="mb-4">
                         <h2 class="text-base font-bold text-cyan-300">Exploration Analytics — Observation Only</h2>
-                        <p class="text-xs text-gray-500 mt-1">Tier 1 indicators added Apr 19 for next-batch bucket analysis. Not used in any entry filter — pure observation. Promoted to filter only after cross-sample confirmation. See CLAUDE.md "Apr 19 Exploration Analytics" section.</p>
+                        <p class="text-xs text-gray-500 mt-1">Tier 1 indicators added Apr 28 for next-batch bucket analysis. Not used in any entry filter — pure observation. Promoted to filter only after cross-sample confirmation. See CLAUDE.md "Apr 28 Exploration Analytics" section.</p>
                     </div>
 
                     <!-- Performance by ATR -->
@@ -4277,7 +4277,7 @@
                 }
             }
 
-            // --- EXPLORATION ANALYTICS (Apr 19, observation-only) ---
+            // --- EXPLORATION ANALYTICS (Apr 28, observation-only) ---
             const _explorationTables = [
                 { key: 'atr_performance', title: 'Performance by ATR (volatility regime)' },
                 { key: 'ema50_slope_performance', title: 'Performance by EMA50 Slope (raw, higher-TF context)' },
@@ -4982,7 +4982,7 @@
                     }
                 }
 
-                // --- EXPLORATION ANALYTICS (Apr 19, observation-only) ---
+                // --- EXPLORATION ANALYTICS (Apr 28, observation-only) ---
                 const _explorationTables2 = [
                     { key: 'atr_performance', title: 'Performance by ATR (volatility regime)' },
                     { key: 'ema50_slope_performance', title: 'Performance by EMA50 Slope (raw, higher-TF context)' },
@@ -7408,7 +7408,7 @@
                     htBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
 
-                // -------- Exploration Analytics (Apr 19) --------
+                // -------- Exploration Analytics (Apr 28) --------
                 // Generic renderer for the 6 bucket-perf tables that share the same shape:
                 // {bucket, direction, count, win_rate, avg_pnl_usd, avg_pnl_pct, total_pnl_usd, by_confidence}
                 const explConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };

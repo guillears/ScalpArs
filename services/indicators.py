@@ -47,7 +47,7 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
     pos_di = adx_indicator.adx_pos()
     neg_di = adx_indicator.adx_neg()
 
-    # ATR(14) for volatility context (Exploration Analytics, Apr 19)
+    # ATR(14) for volatility context (Exploration Analytics, Apr 28)
     atr_indicator = AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
     atr = atr_indicator.average_true_range()
 
@@ -75,7 +75,7 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'rsi_prev3': float(rsi.iloc[-4]) if len(rsi) >= 4 and not pd.isna(rsi.iloc[-4]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'adx_prev1': float(adx.iloc[-2]) if len(adx) >= 2 and not pd.isna(adx.iloc[-2]) else None,
-        # Exploration Analytics (Apr 19): +DI / -DI / ATR for next-batch bucket analysis
+        # Exploration Analytics (Apr 28): +DI / -DI / ATR for next-batch bucket analysis
         'pos_di': float(pos_di.iloc[-1]) if not pd.isna(pos_di.iloc[-1]) else None,
         'neg_di': float(neg_di.iloc[-1]) if not pd.isna(neg_di.iloc[-1]) else None,
         'atr': float(atr.iloc[-1]) if not pd.isna(atr.iloc[-1]) else None,

@@ -86,7 +86,7 @@ class BinanceService:
         self._markets_loaded = False
         self._public_markets_loaded = False
         self._spot_markets_loaded = False
-        # Funding rate cache (Apr 19, Exploration Analytics): {symbol: (rate, fetched_at_unix_seconds)}
+        # Funding rate cache (Apr 28, Exploration Analytics): {symbol: (rate, fetched_at_unix_seconds)}
         # Funding intervals are 8h on Binance, so caching for ~8h saves API calls.
         self._funding_rate_cache: Dict[str, Tuple[float, float]] = {}
         self._funding_rate_ttl_seconds = 8 * 60 * 60  # 8 hours
@@ -682,7 +682,7 @@ class BinanceService:
             return None
 
     async def fetch_funding_rate(self, symbol: str) -> Optional[float]:
-        """Fetch the current funding rate for a futures symbol (Exploration Analytics, Apr 19).
+        """Fetch the current funding rate for a futures symbol (Exploration Analytics, Apr 28).
 
         Returns the rate as a decimal (e.g., 0.0001 = 0.01%) or None on error.
         Cached per-symbol for 8h to match Binance's funding interval — first call

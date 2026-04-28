@@ -1287,7 +1287,7 @@ class TradingEngine:
         entry_adx_delta: float = None,
         entry_quality_score: int = None,
         entry_btc_regime: str = None,
-        # Exploration Analytics (Apr 19, observation-only)
+        # Exploration Analytics (Apr 28, observation-only)
         entry_pos_di: float = None,
         entry_neg_di: float = None,
         entry_atr_pct: float = None,
@@ -1485,7 +1485,7 @@ class TradingEngine:
             entry_quality_score=entry_quality_score,
             entry_btc_regime=entry_btc_regime,
             exit_btc_regime=entry_btc_regime,  # Initialize to entry; updated on close
-            # Exploration Analytics (Apr 19, observation-only)
+            # Exploration Analytics (Apr 28, observation-only)
             entry_pos_di=entry_pos_di,
             entry_neg_di=entry_neg_di,
             entry_atr_pct=entry_atr_pct,
@@ -3664,7 +3664,7 @@ class TradingEngine:
                 )
                 entry_btc_regime = classify_btc_regime(btc_adx, btc_rsi, btc_ema20_slope_pct)
 
-                # Exploration Analytics (Apr 19) — observation-only fields
+                # Exploration Analytics (Apr 28) — observation-only fields
                 _entry_pos_di = indicators.get('pos_di')
                 _entry_neg_di = indicators.get('neg_di')
                 _entry_atr_pct = None

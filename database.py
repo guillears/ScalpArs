@@ -253,7 +253,7 @@ async def init_db():
                 if 'protective_tp_order_id' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN protective_tp_order_id VARCHAR(50)"))
 
-                # Exploration Analytics (Apr 19) — observation-only fields for next-batch analysis.
+                # Exploration Analytics (Apr 28) — observation-only fields for next-batch analysis.
                 if 'entry_pos_di' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pos_di FLOAT"))
                 if 'entry_neg_di' not in columns:

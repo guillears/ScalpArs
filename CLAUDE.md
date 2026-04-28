@@ -1116,6 +1116,87 @@ The change primarily tightens entries on mid/small caps where momentum fakes are
 
 Config-only change, single integer, instant revert if needed.
 
+## April 28, 2026 — Phase 1c-Explore (sub-phase) — Loosen restrictions for ablation testing
+
+### Strategic shift: validation → exploration
+
+Switching from live to **paper trading** with the **Exploration Analytics** indicators just added. Previous Phase 1c amendments (#1-#8) were progressively tightening filters under live mode to validate edge. Now the goal flips: collect data in **previously-blocked zones** to test whether the recent restrictions captured the **real driver** or were **proxy filters** for something else (e.g., EMA50 alignment, DI spread, funding rate).
+
+**The methodological argument:** an active filter blocks data in its target zone, so we can't ablation-test it. To answer "was `btc_adx_min_short: 25` a real driver or a proxy for EMA50 alignment?", we need data on BTC ADX 18-25 SHORTs trades **with the new dimensions captured**. Paper mode + fresh batch is the ideal experimental environment — exploration is free.
+
+### Config changes (deployed Apr 28)
+
+**SHORT side (the loss leader — needs the most exploration):**
+
+| # | Change | Restored to | Hypothesis to test |
+|---|---|---|---|
+| 1 | `btc_adx_min_short`: 25 → **18** | Apr 16 baseline | BTC ADX 18-25 SHORTs may only fail when EMA50 slope is rising (not because of BTC ADX). |
+| 2 | `momentum_adx_max` (short): 28 → **33** | Apr 14 baseline | Pair ADX 28-33 SHORT failures may concentrate at compressed DI spread (not high ADX per se). |
+| 3 | `adx_very_strong` (short): 28 → **30** | Apr 14 baseline | Gates with #2; restores VERY_STRONG SHORT tier so we can analyze it under new dimensions. |
+| 4 | `btc_adx_max_short`: 35 → **40** | Pre-Apr-14 | Re-admits BTC ADX 35-40 zone (zero current-config data). Tests S-B2 HARD BLOCK validity at high ADX. |
+
+**LONG side:**
+
+| # | Change | Restored to | Hypothesis to test |
+|---|---|---|---|
+| 5 | `btc_adx_max_long`: 35 → **40** | Pre-Apr-14 | Tests L-P2 PREMIUM ZONE (60-65 × 30-35) directly + admits BTC ADX 35-40 zone for fresh data. |
+
+**Paper-mode setup:**
+
+| Setting | Value | Purpose |
+|---|---|---|
+| `paper_balance` | $1,000 | Realistic small account size matching potential live deploy. |
+| `paper_bnb_initial_usd` | $50 | Realistic BNB fee runway. |
+
+### What is NOT loosened (kept tight)
+
+| Filter | Rationale to keep |
+|---|---|
+| `btc_adx_dir_short: rising` | **3-sample structural finding** (Apr 6 + Apr 13 + Apr 17). Strongest evidence in dataset; orthogonal axis to magnitude, not redundant with the loosened caps. |
+| Pair blacklist (RAVEUSDT) | Surgical pair-quality kill, validated. |
+| `new_listing_filter_days: 180` | Independent pair-quality filter. |
+| All EMA gap thresholds, RSI ranges, breadth filter | Untouched by recent amendments — not over-tightened. |
+
+### Effective new entry windows
+
+| Side | Pair ADX | BTC ADX | BTC ADX dir | BTC RSI |
+|---|---|---|---|---|
+| LONG | [15, 25] | [18, 40] | both | [40, 65] |
+| SHORT | [22, 33] | [18, 40] | rising | [25, 60] |
+
+### What to measure at the 100-trade Phase 1c-Explore checkpoint
+
+**Priority 1 — zone population.** Did we get ≥10 SHORT trades in EACH of: BTC ADX 18-25, pair ADX 28-33, BTC ADX 35-40? If any zone is empty, other filters are constraining it and we need to re-evaluate. ≥10 LONG trades at BTC ADX 35-40 also required for L-P2 test.
+
+**Priority 2 — ablation tests** (the core point of this sub-phase):
+
+For each loosened filter, build a 2D cross-tab against the most relevant new dimension:
+
+| Loosened filter | Cross-tab against | Decision rule |
+|---|---|---|
+| `btc_adx_min_short: 18` (re-admitted 18-25 zone) | EMA50 alignment | If 18-25 SHORTs only fail at EMA50 rising → ship `btc_adx_min_short: 18 + new filter "block SHORT if entry_ema50_slope > +0.04%"`. Loosen by replacement, not removal. |
+| `momentum_adx_max: 33` (re-admitted 28-33 zone) | DI spread | If 28-33 SHORTs only fail at DI spread <2 → ship `momentum_adx_max: 33 + new filter "block SHORT if DI spread <2"`. |
+| `btc_adx_max_short: 40` (re-admitted 35-40 zone) | EMA50 alignment + DI spread | Likely will be a loser zone regardless — confirms the prior cap. If so, restore `btc_adx_max_short: 35`. |
+| `btc_adx_max_long: 40` (re-admitted 35-40 zone) | EMA50 alignment + DI direction | Tests L-P2; if L-P2 cell still wins on N≥4, preserve. If it loses, restore `btc_adx_max_long: 35`. |
+
+**Priority 3 — Net Avg P&L %.** Sample-level Avg P&L % vs the prior 33-trade Apr 18 sample. Should be similar (±0.20%) or better. Materially worse → at least one of the loosened filters was a real driver, revert it specifically.
+
+**Priority 4 — Volume.** Expect ~+50-80% more entry attempts vs prior config. If volume drops or stays flat → other (untouched) filters are the binding constraint.
+
+**Priority 5 — SIGNAL_EXPIRED rate.** Amendment #7 will fire more often with looser entry windows. Watch the rate. If >25% of attempted entries expire, the macro filters are flickering on/off too fast — revert one of the looser ones.
+
+### Promotion rules at the Explore checkpoint
+
+- **Filter swap (recommended outcome):** loosened filter X stays loose AND new filter Y from Tier 1 dimensions is added. Net trade volume goes up, edge goes up.
+- **Revert (if ablation shows the original was right):** the loosened filter is restored to its prior tight value. New filter Y is NOT added (no evidence it discriminates).
+- **Keep loose, no Y filter (rare):** the re-admitted zone performs at parity. Zone is just neutral, no filter needed there.
+
+### Pooling rule for Phase 1c-Explore
+
+This sub-phase's data is **separate** from prior Phase 1c amendments #1-#8 data. Different config, different mode (paper vs live), different goal (explore vs validate). Do NOT pool raw trades across the boundary. Compare bucket-level WR / Avg P&L %, treating Phase 1c-Explore as its own sample.
+
+When eventually returning to live, **retest the winning config under live conditions** before treating any Phase 1c-Explore finding as live-deployable. Per the Apr 18 quant methodology note: paper data is comparable to live for filter/regime/bucket findings, NOT for fill-mechanics findings (Amendments #6/#8). The exploration here is filter-layer, so paper-OK.
+
 ## April 28, 2026 — Exploration Analytics (Tier 1 indicators added, observation-only)
 
 ### What changed

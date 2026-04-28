@@ -758,6 +758,7 @@
                                     <th class="px-3 py-2 font-medium text-right text-emerald-400" title="Avg 5m EMA50 slope vs prev12 — higher-TF context proxy (Exploration Analytics, Apr 28)">EMA50Slp</th>
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="EMA50 Alignment counts: Aligned / Opposite / Flat. Aligned = slope agrees with trade direction (Exploration Analytics, Apr 28)">EMA50Align</th>
                                     <th class="px-3 py-2 font-medium text-right text-pink-400" title="Avg Binance funding rate at entry (positioning context) — negative = market heavily short (Exploration Analytics, Apr 28)">Funding%</th>
+                                    <th class="px-3 py-2 font-medium text-right text-rose-400" title="Avg Time-to-Peak Ratio: where in the hold did peak P&L occur. <0.4 = fast directional (real edge). >0.7 = slow grind (survival luck) (Trade Quality, Apr 28)">TtPRatio</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgP&L%</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total P&L in USD">Total$</th>
@@ -765,7 +766,7 @@
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-reason-body" class="divide-y divide-white/5">
-                                <tr><td colspan="30" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="31" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1782,6 +1783,31 @@
                                     </tr>
                                 </thead>
                                 <tbody id="di-spread-performance-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Performance by Time-to-Peak Ratio (Trade Quality) -->
+                    <div class="mt-6">
+                        <h3 class="text-sm font-semibold text-gray-300 mb-2">Performance by Time-to-Peak Ratio (trade quality)</h3>
+                        <p class="text-xs text-gray-500 mb-2">Where in the hold did the peak P&L occur. <span class="text-emerald-400">Low ratio (&lt;0.4) = fast directional, real edge.</span> <span class="text-red-400">High ratio (&gt;0.7) = slow grind, often survival luck.</span> Use to distinguish real winners from "got lucky on regime change exit" wins.</p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead>
+                                    <tr class="text-gray-400 text-left border-b border-white/10">
+                                        <th class="px-3 py-2 font-medium">Ratio Range</th>
+                                        <th class="px-3 py-2 font-medium text-center">#</th>
+                                        <th class="px-3 py-2 font-medium text-center">Dir</th>
+                                        <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                        <th class="px-3 py-2 font-medium text-right">Total$</th>
+                                        <th class="px-3 py-2 font-medium text-right">Avg$</th>
+                                        <th class="px-3 py-2 font-medium text-right">Avg%</th>
+                                        <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ttp-ratio-performance-body" class="divide-y divide-white/5">
                                     <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
                                 </tbody>
                             </table>
@@ -4001,7 +4027,7 @@
 
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Close Reason\n');
-            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'}`);
+            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'}`);
             for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                 const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                 const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
@@ -4029,10 +4055,11 @@
                 const ema50SlpStr = r.avg_ema50_slope != null ? (r.avg_ema50_slope >= 0 ? '+' : '') + r.avg_ema50_slope.toFixed(2) + '%' : '-';
                 const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
                 const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
+                const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
                 const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                 const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                 const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
-                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${r.avg_duration || '-'}`);
+                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${r.avg_duration || '-'}`);
             }
 
             lines.push(`\n${hr2}`);
@@ -4409,6 +4436,7 @@
                 { key: 'funding_rate_performance', title: 'Performance by Funding Rate (positioning)' },
                 { key: 'di_direction_performance', title: 'Performance by DI Direction (+DI vs -DI dominance)' },
                 { key: 'di_spread_performance', title: 'Performance by DI Spread |+DI - -DI| (conviction)' },
+                { key: 'ttp_ratio_performance', title: 'Performance by Time-to-Peak Ratio (trade quality)' },
             ];
             for (const t of _explorationTables) {
                 const rows = perf[t.key];
@@ -4705,7 +4733,7 @@
                 // --- ENTRY CONDITIONS BY CLOSE REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Close Reason\n');
-                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'}`);
+                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'}`);
                 for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
@@ -4733,10 +4761,11 @@
                     const ema50SlpStr = r.avg_ema50_slope != null ? (r.avg_ema50_slope >= 0 ? '+' : '') + r.avg_ema50_slope.toFixed(2) + '%' : '-';
                     const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
                     const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
+                    const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
                     const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                     const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                     const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
-                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${r.avg_duration || '-'}`);
+                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${r.avg_duration || '-'}`);
                 }
 
                 // --- ENTRY TYPE PERFORMANCE ---
@@ -5141,6 +5170,7 @@
                     { key: 'funding_rate_performance', title: 'Performance by Funding Rate (positioning)' },
                     { key: 'di_direction_performance', title: 'Performance by DI Direction (+DI vs -DI dominance)' },
                     { key: 'di_spread_performance', title: 'Performance by DI Spread |+DI - -DI| (conviction)' },
+                    { key: 'ttp_ratio_performance', title: 'Performance by Time-to-Peak Ratio (trade quality)' },
                 ];
                 for (const t of _explorationTables2) {
                     const rows = perf[t.key];
@@ -5704,6 +5734,7 @@
                                 <td class="px-3 py-2 text-right text-emerald-400">${r.avg_ema50_slope != null ? (safe(r.avg_ema50_slope) >= 0 ? '+' : '') + safe(r.avg_ema50_slope).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${r.ema50_aligned||0}A</span>/<span class="text-red-400 text-xs">${r.ema50_opposite||0}O</span>/<span class="text-gray-400 text-xs">${r.ema50_flat||0}F</span></td>
                                 <td class="px-3 py-2 text-right text-pink-400">${r.avg_funding_rate != null ? (safe(r.avg_funding_rate) >= 0 ? '+' : '') + (safe(r.avg_funding_rate) * 100).toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-rose-400">${r.avg_ttp_ratio != null ? safe(r.avg_ttp_ratio).toFixed(2) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct) >= 0 ? '+' : ''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
@@ -5711,7 +5742,7 @@
                             </tr>`;
                         }).join('');
                 } else {
-                    ecrBody.innerHTML = '<tr><td colspan="30" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    ecrBody.innerHTML = '<tr><td colspan="31" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
                 // Performance by Entry Gap 5-20
@@ -7625,6 +7656,7 @@
                 renderExplorationTable('funding-rate-performance-body', data.funding_rate_performance);
                 renderExplorationTable('di-direction-performance-body', data.di_direction_performance);
                 renderExplorationTable('di-spread-performance-body', data.di_spread_performance);
+                renderExplorationTable('ttp-ratio-performance-body', data.ttp_ratio_performance);
 
                 // Cross-tabs (Apr 28) — generic 2D renderer: row × col with N / WR / Avg / Total / Conf
                 function renderCrosstabTable(bodyId, rows, colspan = 9) {

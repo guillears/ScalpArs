@@ -1821,6 +1821,36 @@ _VOL_BINS = [
     ("> 1.25", 1.25, 999.0),
 ]
 
+def _compute_ttp_ratio(o):
+    """Time-to-Peak Ratio (Apr 28, Trade Quality Metric).
+
+    Where in the hold did the trade reach its peak P&L?
+    - Ratio 0.0 = peaked at entry (instantaneous)
+    - Ratio 0.5 = peaked at midpoint of hold
+    - Ratio 1.0 = peaked at close (no give-back, but maybe just lucky on exit timing)
+
+    Returns None for trades that:
+    - Never went positive (peak_pnl <= 0)
+    - Don't have peak_reached_at recorded (older trades pre-tracking)
+    - Are still open (closed_at is None)
+    - Closed instantaneously (zero duration)
+    """
+    if o.closed_at is None or o.opened_at is None:
+        return None
+    if o.peak_pnl is None or o.peak_pnl <= 0:
+        return None
+    if o.peak_reached_at is None:
+        return None
+    total_secs = (o.closed_at - o.opened_at).total_seconds()
+    if total_secs <= 0:
+        return None
+    peak_secs = (o.peak_reached_at - o.opened_at).total_seconds()
+    if peak_secs < 0:
+        return None
+    ratio = peak_secs / total_secs
+    return max(0.0, min(1.0, ratio))
+
+
 def _vol_bin_label(ratio):
     if ratio is None:
         return None
@@ -1974,6 +2004,23 @@ def _compute_di_spread_performance(orders):
         return '> 10'
     rows = _bucket_perf(orders, bucket)
     bucket_order = ['< 2', '2 - 5', '5 - 10', '> 10']
+    rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
+    return rows
+
+
+def _compute_ttp_ratio_performance(orders):
+    """Performance by Time-to-Peak Ratio bucket (Apr 28, Trade Quality)."""
+    def bucket(o):
+        ratio = _compute_ttp_ratio(o)
+        if ratio is None:
+            return None
+        if ratio < 0.2: return '0.0 - 0.2 (fast directional)'
+        if ratio < 0.4: return '0.2 - 0.4 (early-mid)'
+        if ratio < 0.6: return '0.4 - 0.6 (mid)'
+        if ratio < 0.8: return '0.6 - 0.8 (late grind)'
+        return '0.8 - 1.0 (peaked at close)'
+    rows = _bucket_perf(orders, bucket)
+    bucket_order = ['0.0 - 0.2 (fast directional)', '0.2 - 0.4 (early-mid)', '0.4 - 0.6 (mid)', '0.6 - 0.8 (late grind)', '0.8 - 1.0 (peaked at close)']
     rows.sort(key=lambda r: (bucket_order.index(r['bucket']) if r['bucket'] in bucket_order else 99, r['direction']))
     return rows
 
@@ -3577,6 +3624,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     ema50_aligned += 1
                 else:
                     ema50_opposite += 1
+            # Trade Quality (Apr 28): Time-to-Peak Ratio per group
+            ttp_ratios = []
+            for o in group:
+                r = _compute_ttp_ratio(o)
+                if r is not None:
+                    ttp_ratios.append(r)
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -3627,6 +3680,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "ema50_opposite": ema50_opposite,
                 "ema50_flat": ema50_flat,
                 "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
+                "avg_ttp_ratio": round(sum(ttp_ratios) / len(ttp_ratios), 2) if ttp_ratios else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
@@ -4623,6 +4677,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "funding_rate_performance": _compute_funding_rate_performance(orders),
         "di_direction_performance": _compute_di_direction_performance(orders),
         "di_spread_performance": _compute_di_spread_performance(orders),
+        # Trade Quality (Apr 28): time-to-peak ratio reveals fast-decisive vs slow-grind wins
+        "ttp_ratio_performance": _compute_ttp_ratio_performance(orders),
         # Exploration Analytics cross-tabs (Apr 28) — for ablation testing at next checkpoint
         "btc_adx_ema50_alignment_crosstab": _compute_btc_adx_ema50_alignment_crosstab(orders),
         "pair_adx_di_spread_crosstab": _compute_pair_adx_di_spread_crosstab(orders),

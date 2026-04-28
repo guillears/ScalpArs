@@ -1287,6 +1287,41 @@ All cross-tabs follow same shape as existing BTC RSI × BTC ADX table: row × co
 
 Cell N≥10 required before drawing any conclusion. Below that, cell content is a hypothesis at best.
 
+### Trade Quality Metric — Time-to-Peak Ratio (added Apr 28)
+
+Added in response to user observation that trades surviving 2+ hours through regime chop and ending barely-positive look like edge but are actually survival luck. Pure WR doesn't distinguish "fast directional winners" from "slow-grind survivors."
+
+**Definition:** `(peak_reached_at − opened_at) / (closed_at − opened_at)` — where in the hold did the trade reach its peak P&L? Range 0.0 to 1.0.
+
+| Ratio | Interpretation |
+|---|---|
+| 0.0 - 0.2 | Peaked in first 20% — fast directional, real edge |
+| 0.2 - 0.4 | Peaked early-mid — directional with some lag |
+| 0.4 - 0.6 | Peaked mid-hold — mediocre |
+| 0.6 - 0.8 | Peaked late grind — survival, not skill |
+| 0.8 - 1.0 | Peaked at close — either pure skill or got lucky on exit timing |
+
+Computed on-the-fly from existing `peak_reached_at`, `opened_at`, `closed_at` fields. Returns None for trades that never went positive, are still open, or have zero duration. **No schema change.**
+
+**What this enables at the next checkpoint:**
+
+1. **Quality-adjust the WR signal.** When two setups have similar WR, the one with lower mean TtP (faster peaks) has the real edge. The other got lucky in current regime and won't generalize.
+
+2. **Cross-validate EMA50 Alignment.** If Aligned trades cluster at TtP < 0.4 → Alignment captures genuine directional edge → ship as entry filter. If Aligned trades cluster at TtP > 0.6 → Alignment is just regime correlation, not edge → don't promote.
+
+3. **Justify a time-based exit.** If TtP > 0.5 AND peak < +0.20% systematically results in negative or barely-positive close, evidence supports an exit rule: "close trade at 30 min if no peak above +0.20%."
+
+**Where it appears:**
+- New table: **Performance by Time-to-Peak Ratio** under Exploration Analytics — 5 buckets × direction
+- New column **TtPRatio** on Entry Conditions by Close Reason (avg per group)
+- Both text-export sites
+
+**What this does NOT do:** TtP is a quality lens, not a direct entry filter. It's computed at exit, so you can't filter on it at entry time. Its value is in interpreting WR honestly and validating which other dimensions are real edge vs regime correlation.
+
+**Promotion rule for using TtP at checkpoint:**
+- A setup is "real edge" only if it has WR ≥ baseline AND mean TtP ≤ 0.45 AND mean peak ≥ +0.30%
+- Setups failing the TtP test are flagged "survival wins, hold for cross-sample replication" — don't promote to filter from a single batch
+
 ### What to deeply analyze at next 100-trade checkpoint
 
 Treat this section as the FIRST thing to look at when the next batch lands.

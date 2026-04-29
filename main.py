@@ -976,11 +976,18 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
         cached_flagged = False
         cached_fl2_flagged = False
         cached_fl1_origin = None
+        # Cache peak/trough are updated by _realtime_callback on every WS tick,
+        # while DB peak/trough only get updated on monitor-loop polls. The cache
+        # is therefore fresher — use it preferentially for the open-orders display.
+        cached_peak_pnl = None
+        cached_trough_pnl = None
         for ci in _open_orders_cache.get(o.pair, []):
             if ci['id'] == o.id:
                 cached_flagged = ci.get('signal_lost_flagged', False)
                 cached_fl2_flagged = ci.get('fl2_flagged', False)
                 cached_fl1_origin = ci.get('fl1_origin')
+                cached_peak_pnl = ci.get('peak_pnl')
+                cached_trough_pnl = ci.get('trough_pnl')
                 break
         # Fall back to DB values if cache missing (rare — cache can lag briefly)
         if not cached_flagged and getattr(o, 'signal_lost_flagged', False):
@@ -1044,7 +1051,15 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "high_since_entry": o.high_price_since_entry,
             "low_since_entry": o.low_price_since_entry,
             "drop_from_peak": round(drop_from_peak, 2),
-            "peak_pnl": round(o.peak_pnl, 2),
+            # Display peak P&L: prefer cache (fresher than DB by up to one monitor-loop
+            # interval), then enforce invariant peak >= current. Without the clamp the UI
+            # can briefly show peak < current when WS price moves between monitor polls.
+            # Apr 29 — display-only fix; DB state unchanged, monitor loop still owns
+            # persistence. See CLAUDE.md "Peak/Trough P&L Invariant Bug + Option A Fix".
+            "peak_pnl": round(max(
+                cached_peak_pnl if cached_peak_pnl is not None else (o.peak_pnl or 0),
+                pnl_pct,
+            ), 2),
             "pnl": round(pnl, 2),
             "pnl_percentage": round(pnl_pct, 2),
             "duration": f"{hours:02d}:{minutes:02d}:{seconds:02d}",

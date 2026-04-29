@@ -972,40 +972,6 @@
                     </div>
                 </div>
 
-                <!-- Exit Quality -->
-                <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Exit Quality</h3>
-                    <p class="text-xs text-gray-500 mb-3">Trade lifecycle by close reason and direction — peak/trough timing, EMA5 momentum at key moments</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs text-gray-300">
-                            <thead>
-                                <tr class="text-gray-400 border-b border-white/10">
-                                    <th class="px-2 py-2 font-medium text-left">Reason</th>
-                                    <th class="px-2 py-2 font-medium text-center">Dir</th>
-                                    <th class="px-2 py-2 font-medium text-center">#</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="Avg trade duration in minutes">Dur</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="Avg close P&L %">Close%</th>
-                                    <th class="px-2 py-2 font-medium text-right text-orange-400" title="Avg peak P&L % reached during trade">Peak%</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="Avg minutes from open to peak P&L">Pk Min</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="Avg EMA5 distance at entry">E5 Entry</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="Avg EMA5 distance at peak P&L">E5 Peak</th>
-                                    <th class="px-2 py-2 font-medium text-right text-yellow-400" title="Delta EMA5% from entry to peak — negative = momentum fading">ΔE5</th>
-                                    <th class="px-2 py-2 font-medium text-right text-red-400" title="Avg trough (worst) P&L %">Trough%</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="Avg minutes from open to trough P&L">Tr Min</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="Avg EMA5 distance at trough">E5 Trgh</th>
-                                    <th class="px-2 py-2 font-medium text-right text-yellow-400" title="Delta EMA5% from peak to trough — momentum reversal">ΔE5 Tr</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="% of trades where EMA5 never went unfavorable">%Never</th>
-                                    <th class="px-2 py-2 font-medium text-right" title="% of trades where EMA5 went unfavorable but recovered">%Recov</th>
-                                    <th class="px-2 py-2 font-medium text-center">Conf</th>
-                                </tr>
-                            </thead>
-                            <tbody id="exit-quality-ema5-body" class="divide-y divide-white/5">
-                                <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
                 <!-- Flagged Exits (Signal Lost Flag System) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Flagged Exits</h3>
@@ -4213,19 +4179,6 @@
             }
 
 
-            if (perf.exit_quality_ema5 && perf.exit_quality_ema5.length > 0) {
-                lines.push(`\n${hr2}`);
-                lines.push('## Exit Quality\n');
-                const _fp = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
-                const _fm = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(10)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)} ${'Conf'.padStart(12)}`);
-                for (const r of perf.exit_quality_ema5.sort((a, b) => b.count - a.count)) {
-                    const dir = `${r.longs||0}L/${r.shorts||0}S`;
-                    const conf = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ') : '-';
-                    lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(10)} ${String(r.count).padEnd(4)} ${_fm(r.avg_duration).padStart(7)} ${_fp(r.avg_close_pnl).padStart(10)} ${_fp(r.avg_peak_pnl).padStart(10)} ${_fm(r.avg_peak_min).padStart(7)} ${_fp(r.avg_entry_ema5).padStart(10)} ${_fp(r.avg_peak_ema5).padStart(10)} ${_fp(r.avg_delta_ema5).padStart(10)} ${_fp(r.avg_trough).padStart(10)} ${_fm(r.avg_trough_min).padStart(7)} ${_fp(r.avg_trough_ema5).padStart(10)} ${_fp(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)} ${conf.padStart(12)}`);
-                }
-            }
-
             if (perf.flagged_exits && perf.flagged_exits.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Flagged Exits (Signal Lost Flag System)\n');
@@ -4933,20 +4886,6 @@
                         const ema5Slp = _perFp2(r.avg_exit_ema5_slope);
                         const ema5X = _perFpct2(r.exit_ema5_crossed_pct);
                         lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${_perFp2(r.avg_close_pnl).padStart(9)} ${_perFp2(r.avg_post_peak).padStart(10)} ${_perFm2(r.avg_peak_min).padStart(8)} ${_perFp2(r.avg_post_trough).padStart(10)} ${_perFm2(r.avg_trough_min).padStart(8)} ${_perFpct2(r.peak_first_pct).padStart(9)} ${_perFp2(r.avg_final_pnl).padStart(9)} ${_perFpct2(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
-                    }
-                }
-
-                // --- EXIT QUALITY ---
-                if (perf.exit_quality_ema5 && perf.exit_quality_ema5.length > 0) {
-                    lines.push(`\n${hr2}`);
-                    lines.push('## Exit Quality\n');
-                    const _fp2 = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
-                    const _fm2 = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                    lines.push(`${'Reason'.padEnd(26)} ${'Dir'.padEnd(10)} ${'#'.padEnd(4)} ${'Dur'.padStart(7)} ${'Close%'.padStart(10)} ${'Peak%'.padStart(10)} ${'PkMin'.padStart(7)} ${'E5Entry'.padStart(10)} ${'E5Peak'.padStart(10)} ${'ΔE5'.padStart(10)} ${'Trough%'.padStart(10)} ${'TrMin'.padStart(7)} ${'E5Trgh'.padStart(10)} ${'ΔE5Tr'.padStart(10)} ${'%Never'.padStart(7)} ${'%Recov'.padStart(7)} ${'Conf'.padStart(12)}`);
-                    for (const r of perf.exit_quality_ema5.sort((a, b) => b.count - a.count)) {
-                        const dir = `${r.longs||0}L/${r.shorts||0}S`;
-                        const conf = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ') : '-';
-                        lines.push(`${r.reason.padEnd(26)} ${dir.padEnd(10)} ${String(r.count).padEnd(4)} ${_fm2(r.avg_duration).padStart(7)} ${_fp2(r.avg_close_pnl).padStart(10)} ${_fp2(r.avg_peak_pnl).padStart(10)} ${_fm2(r.avg_peak_min).padStart(7)} ${_fp2(r.avg_entry_ema5).padStart(10)} ${_fp2(r.avg_peak_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5).padStart(10)} ${_fp2(r.avg_trough).padStart(10)} ${_fm2(r.avg_trough_min).padStart(7)} ${_fp2(r.avg_trough_ema5).padStart(10)} ${_fp2(r.avg_delta_ema5_trough).padStart(10)} ${(r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-').padStart(7)} ${(r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-').padStart(7)} ${conf.padStart(12)}`);
                     }
                 }
 
@@ -7487,50 +7426,6 @@
                     peBody.innerHTML = peRows;
                 } else {
                     peBody.innerHTML = '<tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
-                }
-
-                // Exit Quality
-                const eqBody = document.getElementById('exit-quality-ema5-body');
-                if (data.exit_quality_ema5 && data.exit_quality_ema5.length > 0) {
-                    eqBody.innerHTML = data.exit_quality_ema5
-                        .sort((a, b) => b.count - a.count)
-                        .map(r => {
-                            const closeClass = r.avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const peakClass = r.avg_peak_pnl != null ? (r.avg_peak_pnl >= 0 ? 'text-orange-400' : 'text-gray-400') : '';
-                            const fmtPct = (v) => v != null ? (v >= 0 ? '+' : '') + v.toFixed(4) + '%' : '-';
-                            const fmtMin = (v) => v != null ? v.toFixed(1) + 'm' : '-';
-                            const e5EntryClass = r.avg_entry_ema5 != null ? (r.avg_entry_ema5 >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
-                            const e5PeakClass = r.avg_peak_ema5 != null ? (r.avg_peak_ema5 >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
-                            const deltaClass = r.avg_delta_ema5 != null ? (r.avg_delta_ema5 >= 0 ? 'text-emerald-400' : 'text-yellow-400') : '';
-                            const troughClass = r.avg_trough < 0 ? 'text-red-400' : 'text-gray-400';
-                            const trE5Class = r.avg_trough_ema5 != null ? (r.avg_trough_ema5 >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
-                            const deltaTrClass = r.avg_delta_ema5_trough != null ? (r.avg_delta_ema5_trough >= 0 ? 'text-emerald-400' : 'text-yellow-400') : '';
-                            const neverClass = r.pct_never_neg != null && r.pct_never_neg >= 50 ? 'text-emerald-400' : 'text-gray-400';
-                            const recovClass = r.pct_recovered != null && r.pct_recovered > 0 ? 'text-yellow-400' : 'text-gray-400';
-                            const eqConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
-                            const eqConfBadges = r.by_confidence ? Object.entries(r.by_confidence).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<span class="${eqConfColors[c]||'text-gray-400'}">${c[0]}:${n}</span>`).join(' ') : '-';
-                            return `<tr class="hover:bg-white/5">
-                                <td class="px-2 py-1.5 font-medium text-cyan-400">${r.reason}</td>
-                                <td class="px-2 py-1.5 text-center"><span class="text-emerald-400">${r.longs||0}L</span> / <span class="text-red-400">${r.shorts||0}S</span></td>
-                                <td class="px-2 py-1.5 text-center">${r.count}</td>
-                                <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_duration)}</td>
-                                <td class="px-2 py-1.5 text-right ${closeClass} font-medium">${fmtPct(r.avg_close_pnl)}</td>
-                                <td class="px-2 py-1.5 text-right ${peakClass} font-medium">${fmtPct(r.avg_peak_pnl)}</td>
-                                <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_peak_min)}</td>
-                                <td class="px-2 py-1.5 text-right ${e5EntryClass}">${fmtPct(r.avg_entry_ema5)}</td>
-                                <td class="px-2 py-1.5 text-right ${e5PeakClass}">${fmtPct(r.avg_peak_ema5)}</td>
-                                <td class="px-2 py-1.5 text-right ${deltaClass} font-medium">${fmtPct(r.avg_delta_ema5)}</td>
-                                <td class="px-2 py-1.5 text-right ${troughClass} font-medium">${fmtPct(r.avg_trough)}</td>
-                                <td class="px-2 py-1.5 text-right text-gray-300">${fmtMin(r.avg_trough_min)}</td>
-                                <td class="px-2 py-1.5 text-right ${trE5Class}">${fmtPct(r.avg_trough_ema5)}</td>
-                                <td class="px-2 py-1.5 text-right ${deltaTrClass} font-medium">${fmtPct(r.avg_delta_ema5_trough)}</td>
-                                <td class="px-2 py-1.5 text-right ${neverClass}">${r.pct_never_neg != null ? r.pct_never_neg.toFixed(0) + '%' : '-'}</td>
-                                <td class="px-2 py-1.5 text-right ${recovClass}">${r.pct_recovered != null ? r.pct_recovered.toFixed(0) + '%' : '-'}</td>
-                                <td class="px-2 py-1.5 text-center text-xs">${eqConfBadges}</td>
-                            </tr>`;
-                        }).join('');
-                } else {
-                    eqBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No exit quality data yet</td></tr>';
                 }
 
                 // Flagged Exits

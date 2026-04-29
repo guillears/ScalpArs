@@ -1491,7 +1491,6 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
-            "exit_quality_ema5": [],
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2641,7 +2640,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
-            "exit_quality_ema5": [],
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -4459,124 +4457,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Hold-Time Expectancy: {e}\n{traceback.format_exc()}")
 
-    # Exit Quality — Trade Lifecycle
-    exit_quality_ema5 = []
-    try:
-        eq_groups = {}
-        for o in orders:
-            reason = o.close_reason or "UNKNOWN"
-            if " L" in reason:
-                parts = reason.split(" L")
-                base_reason = parts[0]
-                try:
-                    level = int(parts[1].replace("+", ""))
-                    if level >= 6:
-                        reason = f"{base_reason} L6+"
-                except ValueError:
-                    pass
-            eq_groups.setdefault(reason, []).append(o)
-
-        for reason in sorted(eq_groups.keys()):
-            group = eq_groups[reason]
-            count = len(group)
-            if count == 0:
-                continue
-
-            # Duration
-            durations = []
-            for o in group:
-                if o.opened_at and o.closed_at:
-                    durations.append((o.closed_at - o.opened_at).total_seconds() / 60.0)
-            avg_duration = round(sum(durations) / len(durations), 1) if durations else None
-
-            # Close P&L
-            avg_close_pnl = round(sum(o.pnl_percentage or 0 for o in group) / count, 4)
-
-            # Peak P&L (best P&L reached during the trade)
-            peak_pnls = [o.peak_pnl for o in group if o.peak_pnl is not None]
-            avg_peak_pnl = round(sum(peak_pnls) / len(peak_pnls), 4) if peak_pnls else None
-
-            # Peak minutes (from opened_at to peak_reached_at)
-            peak_mins = []
-            for o in group:
-                if o.opened_at and getattr(o, 'peak_reached_at', None):
-                    peak_mins.append((o.peak_reached_at - o.opened_at).total_seconds() / 60.0)
-            avg_peak_min = round(sum(peak_mins) / len(peak_mins), 1) if peak_mins else None
-
-            # EMA5% at entry
-            entry_ema5s = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
-            avg_entry_ema5 = round(sum(entry_ema5s) / len(entry_ema5s), 4) if entry_ema5s else None
-
-            # EMA5% at peak
-            peak_ema5s = [o.peak_ema5_dist_pct for o in group if getattr(o, 'peak_ema5_dist_pct', None) is not None]
-            avg_peak_ema5 = round(sum(peak_ema5s) / len(peak_ema5s), 4) if peak_ema5s else None
-
-            # Delta EMA5% (entry - peak): negative = momentum fading
-            delta_ema5s = []
-            for o in group:
-                if o.entry_price_vs_ema5_pct is not None and getattr(o, 'peak_ema5_dist_pct', None) is not None:
-                    delta_ema5s.append(o.peak_ema5_dist_pct - o.entry_price_vs_ema5_pct)
-            avg_delta_ema5 = round(sum(delta_ema5s) / len(delta_ema5s), 4) if delta_ema5s else None
-
-            # Trough P&L
-            troughs = [o.trough_pnl or 0 for o in group]
-            avg_trough = round(sum(troughs) / count, 4)
-
-            # Trough minutes
-            trough_mins = []
-            for o in group:
-                if o.opened_at and getattr(o, 'trough_reached_at', None):
-                    trough_mins.append((o.trough_reached_at - o.opened_at).total_seconds() / 60.0)
-            avg_trough_min = round(sum(trough_mins) / len(trough_mins), 1) if trough_mins else None
-
-            # EMA5% at trough
-            trough_ema5s = [o.trough_ema5_dist_pct for o in group if getattr(o, 'trough_ema5_dist_pct', None) is not None]
-            avg_trough_ema5 = round(sum(trough_ema5s) / len(trough_ema5s), 4) if trough_ema5s else None
-
-            # Delta EMA5% (peak - trough): momentum reversal from peak to trough
-            delta_ema5_trough_vals = []
-            for o in group:
-                pk = getattr(o, 'peak_ema5_dist_pct', None)
-                tr = getattr(o, 'trough_ema5_dist_pct', None)
-                if pk is not None and tr is not None:
-                    delta_ema5_trough_vals.append(tr - pk)
-            avg_delta_ema5_trough = round(sum(delta_ema5_trough_vals) / len(delta_ema5_trough_vals), 4) if delta_ema5_trough_vals else None
-
-            # EMA5 went negative stats
-            neg_values = [getattr(o, 'ema5_went_negative', None) for o in group]
-            neg_known = [v for v in neg_values if v is not None]
-            pct_never = round(sum(1 for v in neg_known if v == "NEVER") / len(neg_known) * 100, 1) if neg_known else None
-            pct_recovered = round(sum(1 for v in neg_known if v == "RECOVERED") / len(neg_known) * 100, 1) if neg_known else None
-            pct_ended_neg = round(sum(1 for v in neg_known if v == "ENDED_NEG") / len(neg_known) * 100, 1) if neg_known else None
-
-            eq_longs = sum(1 for o in group if o.direction == "LONG")
-            eq_shorts = count - eq_longs
-            eq_by_conf = {}
-            for o in group:
-                c = o.confidence or "UNKNOWN"
-                eq_by_conf[c] = eq_by_conf.get(c, 0) + 1
-            exit_quality_ema5.append({
-                "reason": reason,
-                "longs": eq_longs, "shorts": eq_shorts, "by_confidence": eq_by_conf,
-                "count": count,
-                "avg_duration": avg_duration,
-                "avg_close_pnl": avg_close_pnl,
-                "avg_peak_pnl": avg_peak_pnl,
-                "avg_peak_min": avg_peak_min,
-                "avg_entry_ema5": avg_entry_ema5,
-                "avg_peak_ema5": avg_peak_ema5,
-                "avg_delta_ema5": avg_delta_ema5,
-                "avg_trough": avg_trough,
-                "avg_trough_min": avg_trough_min,
-                "avg_trough_ema5": avg_trough_ema5,
-                "avg_delta_ema5_trough": avg_delta_ema5_trough,
-                "pct_never_neg": pct_never,
-                "pct_recovered": pct_recovered,
-                "pct_ended_neg": pct_ended_neg,
-            })
-    except Exception as e:
-        logger.error(f"[PERF] Error computing Exit Quality: {e}\n{traceback.format_exc()}")
-
     # Flagged Exits — trades that hit signal lost but were kept open via the flag system
     flagged_exits = []
     try:
@@ -4753,7 +4633,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
-        "exit_quality_ema5": exit_quality_ema5,
         "flagged_exits": flagged_exits,
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),

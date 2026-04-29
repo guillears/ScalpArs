@@ -827,7 +827,31 @@
                         </table>
                     </div>
                 </div>
-                
+
+                <!-- Signal Expired Breakdown (Amendment #7 reason-code aggregation) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Signal Expired Breakdown</h3>
+                    <p class="text-xs text-gray-500 mb-3">Why aborted entries (SIGNAL_EXPIRED) are firing during the maker wait, by reason category. Used to diagnose whether the cause is signal staleness (timeout too long), BTC filter flickering, or signal direction reversal. Each row aggregates the specific reason strings logged by Amendment #7's re-validation step.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Reason Category</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">% of Expired</th>
+                                    <th class="px-3 py-2 font-medium text-center">LONG</th>
+                                    <th class="px-3 py-2 font-medium text-center">SHORT</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                    <th class="px-3 py-2 font-medium">Top Specific Reasons</th>
+                                </tr>
+                            </thead>
+                            <tbody id="signal-expired-breakdown-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Stop Loss Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Stop Loss Deep Dive</h3>
@@ -4078,6 +4102,18 @@
                 lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_exit_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr}`);
             }
 
+            // Signal Expired Breakdown (Amendment #7 reason-code aggregation)
+            if (perf.signal_expired_breakdown && perf.signal_expired_breakdown.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Signal Expired Breakdown\n');
+                lines.push(`${'Reason Category'.padEnd(28)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'L'.padEnd(4)} ${'S'.padEnd(4)} ${'Conf'.padEnd(14)} Top Specific Reasons`);
+                for (const r of perf.signal_expired_breakdown) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                    const sampleReasons = (r.sample_reasons || []).join(', ') || '-';
+                    lines.push(`${r.category.padEnd(28)} ${String(r.count).padEnd(5)} ${(r.pct_of_total+'%').padEnd(7)} ${String(r.longs).padEnd(4)} ${String(r.shorts).padEnd(4)} ${confStr.padEnd(14)} ${sampleReasons}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Trade Outcome Distribution\n');
             lines.push(`${'Range'.padEnd(18)} ${'#'.padEnd(5)} ${'Avg P&L'.padEnd(10)}`);
@@ -4784,6 +4820,18 @@
                 for (const [etype, e] of Object.entries(perf.by_exit_type || {})) {
                     const confStr = Object.entries(e.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
                     lines.push(`${etype.padEnd(18)} ${String(e.trades).padEnd(5)} ${(e.pct_of_total+'%').padEnd(7)} ${(e.win_rate+'%').padEnd(7)} ${(e.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+(e.avg_pnl_usd||0).toFixed(2)).padStart(9)} ${('$'+(e.total_pnl||0).toFixed(2)).padStart(11)} ${('$'+(e.avg_exit_fee||0).toFixed(4)).padStart(11)} ${('$'+(e.total_fees||0).toFixed(2)).padStart(11)} ${('$'+(e.fee_savings||0).toFixed(2)).padStart(9)} ${confStr}`);
+                }
+
+                // --- SIGNAL EXPIRED BREAKDOWN ---
+                if (perf.signal_expired_breakdown && perf.signal_expired_breakdown.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Signal Expired Breakdown\n');
+                    lines.push(`${'Reason Category'.padEnd(28)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'L'.padEnd(4)} ${'S'.padEnd(4)} ${'Conf'.padEnd(14)} Top Specific Reasons`);
+                    for (const r of perf.signal_expired_breakdown) {
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                        const sampleReasons = (r.sample_reasons || []).join(', ') || '-';
+                        lines.push(`${r.category.padEnd(28)} ${String(r.count).padEnd(5)} ${(r.pct_of_total+'%').padEnd(7)} ${String(r.longs).padEnd(4)} ${String(r.shorts).padEnd(4)} ${confStr.padEnd(14)} ${sampleReasons}`);
+                    }
                 }
 
                 // --- OUTCOME DISTRIBUTION ---
@@ -7147,6 +7195,40 @@
                     </tr>`;
                 } else {
                     extBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
+                // Signal Expired Breakdown
+                const seBody = document.getElementById('signal-expired-breakdown-body');
+                if (data.signal_expired_breakdown && data.signal_expired_breakdown.length > 0) {
+                    const seConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                    const seCatColors = {
+                        'Signal Flipped': 'text-red-400',
+                        'Confidence Lost': 'text-yellow-400',
+                        'BTC ADX Direction Flipped': 'text-orange-400',
+                        'BTC ADX Out of Range': 'text-amber-400',
+                        'BTC RSI Out of Range': 'text-pink-400',
+                        'Other': 'text-gray-400',
+                    };
+                    const seRows = data.signal_expired_breakdown.map(r => {
+                        const catClass = seCatColors[r.category] || 'text-gray-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${seConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
+                        const sampleReasons = (r.sample_reasons || []).join(', ') || '-';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-3 py-2 ${catClass} font-medium">${r.category}</td>
+                            <td class="px-3 py-2 text-center">${r.count}</td>
+                            <td class="px-3 py-2 text-center">${r.pct_of_total}%</td>
+                            <td class="px-3 py-2 text-center text-emerald-400">${r.longs}</td>
+                            <td class="px-3 py-2 text-center text-red-400">${r.shorts}</td>
+                            <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            <td class="px-3 py-2 text-xs text-gray-400 font-mono">${sampleReasons}</td>
+                        </tr>`;
+                    }).join('');
+                    seBody.innerHTML = seRows;
+                } else {
+                    seBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No SIGNAL_EXPIRED data</td></tr>';
                 }
 
                 // Stop Loss Deep Dive

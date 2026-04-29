@@ -1562,6 +1562,89 @@ def _compute_entry_type_stats(orders, signal_expired_orders=None):
     return result
 
 
+def _compute_signal_expired_breakdown(signal_expired_orders):
+    """Aggregate SIGNAL_EXPIRED rows by reason category.
+
+    Amendment #7 (Apr 18) persists each aborted entry as an Order with
+    close_reason='SIGNAL_EXPIRED:<reason>'. This function buckets those
+    by reason category (signal_flipped / confidence_lost / btc_adx_direction
+    / btc_adx_out_of_range / btc_rsi_out_of_range / other) and includes
+    direction + confidence breakdowns per category.
+
+    Returns list of dicts sorted by count descending, with each row:
+      { category, count, pct_of_total, longs, shorts, by_confidence,
+        sample_reasons (top 3 specific reason strings in this category) }
+
+    Used at the 200-trade analysis to identify the dominant cause of
+    signal expirations and decide which filter or timeout to adjust.
+    """
+    if not signal_expired_orders:
+        return []
+
+    def _categorize(raw_reason: str) -> str:
+        # raw_reason example: "signal_flipped_LONG_to_NO_TRADE", "btc_adx_out_of_range_27.3"
+        if not raw_reason:
+            return "Other"
+        if raw_reason.startswith("signal_flipped_"):
+            return "Signal Flipped"
+        if raw_reason == "confidence_lost":
+            return "Confidence Lost"
+        if raw_reason.startswith("btc_adx_direction_"):
+            return "BTC ADX Direction Flipped"
+        if raw_reason.startswith("btc_adx_out_of_range"):
+            return "BTC ADX Out of Range"
+        if raw_reason.startswith("btc_rsi_out_of_range"):
+            return "BTC RSI Out of Range"
+        return "Other"
+
+    total = len(signal_expired_orders)
+    buckets = {}
+
+    for o in signal_expired_orders:
+        # close_reason = "SIGNAL_EXPIRED:<actual_reason>"
+        cr = o.close_reason or ""
+        raw_reason = cr.split(":", 1)[1] if ":" in cr else cr
+        category = _categorize(raw_reason)
+
+        if category not in buckets:
+            buckets[category] = {
+                "count": 0,
+                "longs": 0,
+                "shorts": 0,
+                "by_confidence": {},
+                "reason_counts": {},
+            }
+        b = buckets[category]
+        b["count"] += 1
+        if (o.direction or "LONG") == "LONG":
+            b["longs"] += 1
+        else:
+            b["shorts"] += 1
+        conf = o.confidence or "UNKNOWN"
+        b["by_confidence"][conf] = b["by_confidence"].get(conf, 0) + 1
+        b["reason_counts"][raw_reason] = b["reason_counts"].get(raw_reason, 0) + 1
+
+    rows = []
+    for category, b in buckets.items():
+        # Top 3 specific reason strings for diagnostic detail
+        top_reasons = sorted(
+            b["reason_counts"].items(), key=lambda x: x[1], reverse=True
+        )[:3]
+        sample_reasons = [f"{r} ({n})" for r, n in top_reasons]
+        rows.append({
+            "category": category,
+            "count": b["count"],
+            "pct_of_total": round(b["count"] / total * 100, 1) if total else 0,
+            "longs": b["longs"],
+            "shorts": b["shorts"],
+            "by_confidence": b["by_confidence"],
+            "sample_reasons": sample_reasons,
+        })
+
+    rows.sort(key=lambda r: r["count"], reverse=True)
+    return rows
+
+
 def _compute_exit_type_stats(orders):
     """Compute performance breakdown by exit order type (MAKER / TAKER / TAKER_FALLBACK) with close reason."""
     taker_fee_rate = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
@@ -4665,6 +4748,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "never_positive_deep_dive": never_positive_deep_dive,
         "performance_over_time": _compute_time_buckets(orders),
         "by_entry_type": _compute_entry_type_stats(orders, signal_expired_orders=signal_expired_orders),
+        "signal_expired_breakdown": _compute_signal_expired_breakdown(signal_expired_orders),
         "by_exit_type": _compute_exit_type_stats(orders),
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
         "hold_time_expectancy": hold_time_expectancy,

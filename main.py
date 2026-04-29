@@ -4673,6 +4673,9 @@ class InvestorWithdraw(BaseModel):
     investor_id: int
     amount: float
 
+class InvestorRename(BaseModel):
+    name: str
+
 
 async def _get_portfolio_value(db: AsyncSession) -> float:
     """Return the total USDT portfolio value (balance + open positions margin)."""
@@ -4793,6 +4796,19 @@ async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(g
     await db.flush()
 
     return {"ok": True, "shares_removed": round(shares_needed, 6), "nav": round(nav, 6)}
+
+
+@app.patch("/api/investors/{investor_id}")
+async def rename_investor(investor_id: int, body: InvestorRename, db: AsyncSession = Depends(get_db)):
+    inv = await db.get(Investor, investor_id)
+    if not inv:
+        raise HTTPException(404, "Investor not found")
+    new_name = (body.name or "").strip()
+    if not new_name:
+        raise HTTPException(400, "Name cannot be empty")
+    inv.name = new_name
+    await db.flush()
+    return {"ok": True, "id": investor_id, "name": new_name}
 
 
 @app.delete("/api/investors/{investor_id}")

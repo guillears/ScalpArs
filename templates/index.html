@@ -8366,8 +8366,8 @@
                 _investorsCache = data.investors || [];
 
                 document.getElementById('portfolio-total-value').textContent = `$${data.portfolio_value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-                document.getElementById('portfolio-nav').textContent = `$${data.nav_per_share.toFixed(6)}`;
-                document.getElementById('portfolio-total-shares').textContent = data.total_shares.toFixed(4);
+                document.getElementById('portfolio-nav').textContent = `$${data.nav_per_share.toFixed(4)}`;
+                document.getElementById('portfolio-total-shares').textContent = data.total_shares.toFixed(2);
 
                 const tbody = document.getElementById('investors-table-body');
                 if (!_investorsCache.length) {
@@ -8389,6 +8389,7 @@
                         <td class="px-3 py-2 text-right ${pnlCls} font-medium">${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-center">
                             <div class="flex gap-1 justify-center">
+                                <button onclick="renameInvestor(${inv.id})" class="px-2 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-400 rounded text-xs transition" title="Edit name">✎</button>
                                 <button onclick="openInvestorModal('deposit', ${inv.id})" class="px-2 py-1 bg-cyan-600/30 hover:bg-cyan-600/50 text-cyan-400 rounded text-xs transition" title="Deposit">+$</button>
                                 <button onclick="openInvestorModal('withdraw', ${inv.id})" class="px-2 py-1 bg-orange-600/30 hover:bg-orange-600/50 text-orange-400 rounded text-xs transition" title="Withdraw">-$</button>
                                 <button onclick="openInvestorModal('remove', ${inv.id})" class="px-2 py-1 bg-red-600/30 hover:bg-red-600/50 text-red-400 rounded text-xs transition" title="Remove">✕</button>
@@ -8398,6 +8399,34 @@
                 }).join('');
             } catch (e) {
                 console.error('Error loading investors:', e);
+            }
+        }
+
+        async function renameInvestor(investorId) {
+            const inv = (_investorsCache || []).find(i => i.id === investorId);
+            const currentName = inv ? inv.name : '';
+            const newName = prompt('Edit investor name:', currentName);
+            if (newName === null) return;  // cancelled
+            const trimmed = newName.trim();
+            if (!trimmed) {
+                alert('Name cannot be empty.');
+                return;
+            }
+            if (trimmed === currentName) return;  // no change
+            try {
+                const res = await fetch(`${API_BASE}/api/investors/${investorId}`, {
+                    method: 'PATCH',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: trimmed})
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(`Failed to rename: ${err.detail || res.statusText}`);
+                    return;
+                }
+                await loadInvestors();
+            } catch (e) {
+                alert(`Error: ${e.message}`);
             }
         }
 

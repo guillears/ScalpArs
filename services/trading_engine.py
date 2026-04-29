@@ -2044,6 +2044,33 @@ class TradingEngine:
                 order.exit_order_type = exit_order_type
                 order.pnl = pnl_data['pnl']
                 order.pnl_percentage = pnl_data['pnl_percentage']
+                # Enforce invariant: peak P&L must be ≥ close P&L, trough P&L must be ≤ close P&L.
+                # The realtime callback can miss intra-tick spikes (WS tick stream isn't continuous),
+                # so the cached peak/trough can lag. The actual exit price is always a real point
+                # the trade reached, so peak/trough must bracket it. Without this fix, reports show
+                # impossible cells like "peak +0.03% / close +0.35%" (Apr 29 closed-orders bug).
+                # Log every activation so we can quantify how often the cache lag is happening
+                # — frequent activations indicate an upstream realtime-callback issue worth
+                # investigating beyond this symptom-level guard.
+                _close_pct = pnl_data['pnl_percentage']
+                _old_peak = order.peak_pnl
+                _old_trough = order.trough_pnl
+                if order.peak_pnl is None or order.peak_pnl < _close_pct:
+                    order.peak_pnl = _close_pct
+                    if _old_peak is not None:
+                        logger.warning(
+                            f"[PEAK_INVARIANT_FIX] {order_pair} {_tx_direction}: "
+                            f"peak_pnl was {_old_peak:+.4f}% but close was {_close_pct:+.4f}% — "
+                            f"corrected (likely realtime-callback cache lag, reason={reason})"
+                        )
+                if order.trough_pnl is None or order.trough_pnl > _close_pct:
+                    order.trough_pnl = _close_pct
+                    if _old_trough is not None and _close_pct < 0:
+                        logger.warning(
+                            f"[TROUGH_INVARIANT_FIX] {order_pair} {_tx_direction}: "
+                            f"trough_pnl was {_old_trough:+.4f}% but close was {_close_pct:+.4f}% — "
+                            f"corrected (likely realtime-callback cache lag, reason={reason})"
+                        )
                 order.closed_at = _close_time
                 order.close_reason = reason
                 order.exit_slippage_pct = _slippage_pct

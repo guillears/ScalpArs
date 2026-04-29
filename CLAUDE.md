@@ -1756,6 +1756,104 @@ Cap `btc_adx_max_short` at 28 (currently 40). This is the already-documented raw
 
 The original "pair-level combo-filter" framing was a cautionary lesson in **not validating a 1-sample pattern against the right comparison.** I noted the 5/5 losers shared a pair-level profile and treated it as discriminative without first asking "do winners share this same profile?" The correct procedure — which the Apr 13 Entry Conditions by Close Reason table immediately showed — is to compare losers' bucket averages against winners' bucket averages on every dimension. If winners and losers share a dimension's value, that dimension is not the discriminator, regardless of how clean the losers' profile looks in isolation. The real discriminator was one layer up (macro BTC ADX level), which only became visible by cross-sample + winner-vs-loser comparison. **Future 1-sample pattern claims must include this winner-vs-loser cross-check before being added to any watchlist.**
 
+## April 29, 2026 — Peak/Trough P&L Invariant Bug + Option A Fix (forward guard + diagnostic logs)
+
+### What was observed
+A single closed FL_TRAILING_STOP L1 order in paper-mode Phase 1c-Explore showed:
+- Close P&L: $0.70 (+0.35%)
+- Peak P&L %: +0.03%
+
+This is logically impossible — peak P&L is *defined* as the maximum P&L reached during
+the trade, and the close is by construction a P&L the trade reached. Peak must be ≥ close.
+
+### Root cause
+Three-tier P&L tracking pipeline in `services/trading_engine.py`:
+1. **Realtime callback** (`_realtime_callback`, ~line 3897) updates `cache.peak_pnl` on every
+   WebSocket price tick. Discrete tick stream — can miss intra-tick spikes if the WS
+   callback isn't reached for that price level.
+2. **Monitor loop** (~line 3042) writes `order.peak_pnl = exit_result.get("peak_pnl")` from
+   the cache value at poll time.
+3. **Close path** (`_close_position_locked`, ~line 2046) sets `order.pnl_percentage` from
+   the actual exit price — but **never updates `order.peak_pnl`**.
+
+If the close price produces a P&L higher than any tick the realtime callback observed,
+`pnl_percentage` gets the correct value while `peak_pnl` stays stuck at the older cached
+value. Result: `peak < close` in DB.
+
+### Why this matters beyond cosmetics
+- Peak/trough columns feed downstream analytics: TtP ratio, peak-by-bucket tables,
+  flagged-exits NetRecover columns, post-exit regret deep dive
+- Silently wrong peak data undermines the 6-criterion promotion bar in the locked
+  Phase 1c-Explore plan
+- We only *noticed* this case because the peak-vs-close gap was large (+0.03% vs +0.35%).
+  Trades where close was +0.18% and peak should have been +0.20% would look subtly wrong
+  and we'd never spot them. **One observed = lower bound, not accurate count.**
+
+### Option A fix applied (deployed Apr 29, commit `1265e12`)
+
+**Forward invariant guard** in `_close_position_locked`:
+```python
+_close_pct = pnl_data['pnl_percentage']
+if order.peak_pnl is None or order.peak_pnl < _close_pct:
+    order.peak_pnl = _close_pct
+if order.trough_pnl is None or order.trough_pnl > _close_pct:
+    order.trough_pnl = _close_pct
+```
+
+Tautological invariant — peak ≥ close, trough ≤ close. Risk near zero (no P&L change,
+no close behavior change, no new branches; idempotent on already-correct rows).
+
+**Diagnostic logs** when the guard activates:
+- `[PEAK_INVARIANT_FIX] {pair} {direction}: peak_pnl was {old}% but close was {close}% — corrected (likely realtime-callback cache lag, reason={reason})`
+- `[TROUGH_INVARIANT_FIX] {pair} {direction}: trough_pnl was {old}% but close was {close}% — corrected (...)` (only fires when `_close_pct < 0` to avoid noise on winners)
+
+### What was deliberately NOT done
+- **No historical backfill.** A migration to fix existing `peak_pnl < pnl_percentage`
+  rows was considered (Option C) and rejected (Option A chosen instead). Backfilling
+  on a 1-observation hunch risked papering over an upstream cache-lag issue we don't
+  yet understand. Historical rows stay as captured. **The original FL_TRAILING_STOP
+  order will continue to show peak +0.03% / close +0.35% in reports** — known data
+  defect, not corrected.
+- **No upstream investigation yet.** The realtime callback might be missing ticks
+  systematically (worth investigating) or this might be a 1-in-200 fluke (not worth
+  the engineering time). The diagnostic logs are designed to tell us which.
+
+### Decision rule for follow-up at next checkpoint
+
+At the 200-trade Phase 1c-Explore decision checkpoint, count `[PEAK_INVARIANT_FIX]` and
+`[TROUGH_INVARIANT_FIX]` log lines:
+
+| Frequency | Verdict | Action |
+|---|---|---|
+| 0 lines in 200 trades | 1-in-200 fluke confirmed | Guard is dormant insurance, no upstream work |
+| 1-3 lines | Rare edge case (e.g., specific FL paths) | Guard is doing its job, no action |
+| 4-10 lines | Notable but bounded | Optionally investigate FL_TRAILING_STOP path specifically |
+| > 10 lines | Real upstream issue | Investigate `_realtime_callback` tick coverage, monitor poll cadence, cache contention |
+
+**To pull the count from logs:**
+```
+grep -c "PEAK_INVARIANT_FIX" /var/log/web.stdout.log
+grep -c "TROUGH_INVARIANT_FIX" /var/log/web.stdout.log
+```
+
+### What an upstream investigation would cover (if triggered)
+1. **WebSocket tick coverage** — measure tick-arrival cadence per pair vs the actual
+   price path on Binance. Missing ticks during high-volume moments = cache lag.
+2. **Monitor poll cadence vs price velocity** — if the monitor loop runs every 60s but
+   trailing-stop fires intra-poll on a fast move, the cache snapshot at the previous
+   poll is what gets persisted to DB.
+3. **Cache-write race** — `_realtime_callback` updates `order_info['peak_pnl']` without
+   locking; possible (but unlikely at single-bot scale) for two callbacks to race.
+4. **FL flow specifics** — does the FL system reset peak tracking on flag transition?
+   If FL2 entry resets peak_pnl in cache, post-FL trailing-stop trades would all show
+   incorrect peaks.
+
+### Why this entry exists in CLAUDE.md
+Forward guard masks the symptom by design. Without explicit follow-up tracking, we'd
+forget to check whether the underlying cache-lag is real and frequent. This section is
+the followup checklist — at the 200-trade checkpoint, run the grep, apply the decision
+rule, document the verdict here.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

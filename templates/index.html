@@ -322,9 +322,9 @@
                                 <th class="px-4 py-3 font-medium text-right">P&L</th>
                                 <th class="px-4 py-3 font-medium text-right">Duration</th>
                                 <th class="px-4 py-3 font-medium text-center">Flag</th>
+                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
                                 <th class="px-4 py-3 font-medium text-right">Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">High/Low</th>
-                                <th class="px-4 py-3 font-medium text-right">Peak P&L %</th>
                                 <th class="px-4 py-3 font-medium text-center">Action</th>
                             </tr>
                         </thead>
@@ -8129,9 +8129,9 @@
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
                             <td class="px-4 py-3 text-center">${flagBadge || beBadge}</td>
+                            <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(highLow)}</td>
-                            <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
                             <td class="px-4 py-3 text-center">
                                 <button onclick="closeOrder(${o.id})" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
                                     Close

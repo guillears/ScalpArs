@@ -1854,6 +1854,136 @@ forget to check whether the underlying cache-lag is real and frequent. This sect
 the followup checklist — at the 200-trade checkpoint, run the grep, apply the decision
 rule, document the verdict here.
 
+## April 30, 2026 — BTC RSI Re-Validation Filter Mismatch Bug (Phase 1c-Explore data partially contaminated)
+
+### What was observed
+67-trade Phase 1c-Explore sanity check showed SIGNAL_EXPIRED breakdown with **18 LONG
+entries blocked** under reason category "BTC RSI Out of Range" (avg BTC RSI ~69.3,
+range 65.0-78.6). The user spotted the obvious anomaly: **BTC Global filter is OFF
+in the current config (`btc_global_filter_enabled: false`)** — so BTC RSI shouldn't
+be blocking anything.
+
+### Root cause
+Filter logic mismatch between entry path and re-validation path:
+
+**At entry** (`services/trading_engine.py` ~line 3439):
+```python
+if signal in ["LONG", "SHORT"] and btc_global_enabled:
+    ...
+    if btc_rsi is not None:
+        # BTC RSI check is GATED inside this block
+        ...
+```
+With `btc_global_enabled = False`, the BTC RSI check is skipped at entry. Correct
+behavior — matches the UI which shows BTC RSI under "Macro Trend Regime" (disabled).
+
+**At re-validation** (`_revalidate_entry_signal`, `services/trading_engine.py` ~line 754):
+```python
+# BTC RSI range  ← UNCONDITIONAL, ignores btc_global_enabled
+if original_direction == 'LONG':
+    btc_rsi_min = getattr(th, 'btc_rsi_min_long', 0)
+    ...
+if new_btc_rsi is not None and (new_btc_rsi < btc_rsi_min or new_btc_rsi > btc_rsi_max):
+    return False, f'btc_rsi_out_of_range_{round(new_btc_rsi, 1)}'
+```
+The re-validation step ran the BTC RSI check unconditionally, ignoring the
+`btc_global_enabled` toggle. Result: signals that passed all entry filters then
+got rejected from taker fallback by a phantom filter that didn't apply at entry.
+
+### Why this slipped through analytical review for multiple sessions
+The SIGNAL_EXPIRED breakdown was added Apr 29 and the BTC RSI Out of Range row was
+visible from the first display. **Two sessions of analysis discussed "why is
+SIGNAL_EXPIRED blocking entries" without anyone (Claude or user) immediately asking
+"wait — is BTC RSI even an active filter in the current config?"** The user caught
+it Apr 30 by spotting the contradiction between the SIGNAL_EXPIRED data and the
+BTC Global toggle being off. **Lesson for future analysis: when a filter shows
+activity in a report, the first sanity check is whether the filter is actually
+enabled — before any interpretation of the data.**
+
+### Fix applied (deployed Apr 30, commit `605b29b`)
+
+Re-validation BTC RSI check now mirrors entry-time gating:
+```python
+btc_global = getattr(th, 'btc_global_filter_enabled', False)
+if btc_global:
+    # ... existing BTC RSI range check ...
+```
+
+The other re-validation checks (BTC ADX direction, BTC ADX range) are unchanged
+because those filters DO live in the BTC Independent Filters section (per Apr 17
+Option B refactor) — they correctly run unconditionally at both entry and
+re-validation.
+
+### Impact on Phase 1c-Explore current 67-trade dataset
+
+**What stays clean and valid (do NOT reset):**
+- All 67 closed trade rows: P&L, peak/trough, fees, all bucket assignments — unaffected
+- All filter-layer bucket analyses (RSI, ADX, gap, BTC slope, BTC RSI buckets at entry, etc.)
+- All cross-tabs (BTC ADX × EMA50 Align, Pair ADX × DI Spread, etc.)
+- Signal Flipped category in SIGNAL_EXPIRED breakdown (43 entries — legitimate, signals genuinely decayed)
+- BTC ADX Out of Range category (1 entry — BTC ADX filter is genuinely active in BTC Independent Filters)
+
+**What is contaminated:**
+- The 18 BTC RSI Out of Range entries in the SIGNAL_EXPIRED breakdown — these
+  represent phantom blocks, not real filter rejections. They should NOT be
+  interpreted as "filter caught a bad entry."
+- Any conclusion that "SIGNAL_EXPIRED is acting as a quality filter" should be
+  re-evaluated by mentally subtracting these 18.
+
+**What was lost (opportunity, not data):**
+- The 18 LONG signals that got blocked from taker fallback would have entered as
+  TAKER_FALLBACK trades. We have no P&L data for what they would have done.
+  The expectancy of "post-maker-timeout taker fallbacks under current config" is
+  measured on a smaller-than-it-should-be sample.
+
+### Decision: NOT resetting the batch counter
+
+User decision Apr 30: 67 valid trades is genuine data; resetting throws away
+clean P&L for a contamination that's isolated to one row of one breakdown table
+and trivially subtracted mentally. **Continue toward 200 trades. Treat the
+SIGNAL_EXPIRED breakdown's BTC RSI Out of Range row as "ignore this row in
+analysis" until it stops appearing post-fix.**
+
+### Follow-up at the 200-trade checkpoint
+
+1. **Verify the fix worked**: Count BTC RSI Out of Range entries in the
+   SIGNAL_EXPIRED breakdown for trades captured AFTER Apr 30 commit `605b29b`.
+   With `btc_global_filter_enabled: false`, this count should be **zero**. Any
+   non-zero count = fix didn't work or there's another path with the same bug.
+
+2. **Re-evaluate "SIGNAL_EXPIRED as quality filter" hypothesis**: Now that the
+   BTC RSI category will be empty (or non-spurious if BTC Global is later enabled),
+   the breakdown is clean. The remaining categories (Signal Flipped dominant,
+   BTC ADX Out of Range, BTC ADX Direction Flipped) are all legitimate per-trade
+   filter rejections. The hypothesis can now be tested without the noise.
+
+3. **Sub-batch annotation**: When analyzing the 200-trade aggregate, flag that
+   trades 1-67 ran under buggy re-validation, trades 68+ ran under fixed logic.
+   The actual P&L data is comparable across the boundary because the bug only
+   affected which trades happened, not how they were executed. So pooling is
+   acceptable — but if doing fine-grained SIGNAL_EXPIRED analysis specifically,
+   exclude trades 1-67 from the SIGNAL_EXPIRED count.
+
+### Phase 2 work this surfaces
+
+The proper long-term fix isn't this gating patch — it's the previously-documented
+Option B refactor: move `btc_rsi_min/max_long/short` OUT of the
+`if btc_global_enabled:` block at entry and INTO the BTC Independent Filters
+section (alongside BTC ADX range and BTC ADX direction, which were moved Apr 17).
+Once that ships, the BTC RSI filter runs independently of the BTC Global toggle
+and the entry-vs-revalidation paths converge naturally without conditional gating.
+
+This patch (gating re-validation on `btc_global_enabled`) is a stop-gap that
+keeps the two paths consistent under current code. When Phase 2 ships the
+refactor, this patch should be removed and replaced with an unconditional check
+on `btc_independent_rsi_enabled` (or whatever the new flag is named).
+
+### Why this entry exists in CLAUDE.md
+
+To follow up at the 200-trade checkpoint that the fix actually eliminated the
+spurious entries, AND to remember that this stop-gap needs to be replaced
+properly when the Option B refactor ships.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

@@ -1640,11 +1640,40 @@ def _compute_signal_expired_breakdown(signal_expired_orders):
 
     rows = []
     for category, b in buckets.items():
-        # Top 3 specific reason strings for diagnostic detail
-        top_reasons = sorted(
-            b["reason_counts"].items(), key=lambda x: x[1], reverse=True
-        )[:3]
-        sample_reasons = [f"{r} ({n})" for r, n in top_reasons]
+        # Numeric-suffixed reasons (btc_rsi_out_of_range_X.X, btc_adx_out_of_range_X.X)
+        # have a unique value embedded per trade — top-3 only captures the rare
+        # repeats. Detect those, parse the numeric, show count + range + avg
+        # for the whole prefix instead of cherry-picking 3 values out of 18.
+        # Discrete reasons (signal_flipped_*, confidence_lost, btc_adx_direction_*)
+        # repeat exactly, so top-3 captures their distribution well.
+        numeric_groups = {}  # prefix -> list of values
+        discrete_counts = {}
+        for raw_reason, n in b["reason_counts"].items():
+            # Try to detect "<prefix>_<float>" pattern
+            parts = raw_reason.rsplit("_", 1)
+            if len(parts) == 2:
+                try:
+                    val = float(parts[1])
+                    prefix = parts[0]
+                    numeric_groups.setdefault(prefix, []).extend([val] * n)
+                    continue
+                except ValueError:
+                    pass
+            discrete_counts[raw_reason] = discrete_counts.get(raw_reason, 0) + n
+
+        sample_reasons = []
+        # Numeric groups: show prefix with N + range + avg
+        for prefix, vals in numeric_groups.items():
+            n = len(vals)
+            vmin = min(vals)
+            vmax = max(vals)
+            vavg = sum(vals) / n
+            sample_reasons.append(f"{prefix} (N={n}, range {vmin:.1f}-{vmax:.1f}, avg {vavg:.1f})")
+        # Discrete reasons: top 3 by count
+        top_discrete = sorted(discrete_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+        for r, n in top_discrete:
+            sample_reasons.append(f"{r} ({n})")
+
         rows.append({
             "category": category,
             "count": b["count"],

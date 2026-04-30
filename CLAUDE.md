@@ -1984,6 +1984,144 @@ To follow up at the 200-trade checkpoint that the fix actually eliminated the
 spurious entries, AND to remember that this stop-gap needs to be replaced
 properly when the Option B refactor ships.
 
+## April 30, 2026 — Winner Exit Optimization Plan (200-trade counterfactual analysis)
+
+### The problem this addresses
+
+Apr 14 raised TP min 0.40 → 0.50 and pullback 0.08 → 0.20 to capture more of
+post-peak winners. At 67-trade Phase 1c-Explore checkpoint:
+- TRAILING_STOP L2 BULLISH: avg close +0.50%, post-peak runway +0.95%
+- TRAILING_STOP L2 BEARISH: avg close +0.52%, post-peak runway +1.77%
+
+The trailing stop is still exiting on mean-reversion mid-trend pullbacks while
+the trend continues. Bigger-peak trades have disproportionately bigger tails:
++0.71% peak → +0.95% post-peak; +0.72% peak → +1.77% post-peak. **Fixed pullback
+treats all peaks identically, which is structurally wrong for this distribution.**
+
+### Why naive solutions don't work (sanity-checked)
+
+Three options were debated:
+
+1. **Wider fixed pullback (0.20 → 0.30)** — same mechanism, just shifted. Trades
+   small-winner capture for marginal big-winner improvement. Doesn't address the
+   peak-vs-tail relationship.
+
+2. **RSI exhaustion exit at peak ≥ +0.50%** — fails because the trailing stop's
+   0.20% pullback fires before RSI exhaustion has time to develop. The post-peak
+   RSIEx data we keep observing is *post-exit*, meaning the bot was already gone
+   when RSI exhausted. Adding RSI exit at the same peak threshold without
+   loosening trailing = same outcomes as today. (User caught this via correct
+   reasoning Apr 30; original Claude framing was wrong.)
+
+3. **Tier-aware pullback formula** — pullback widens with peak. Keeps tight
+   exit on small winners, gives big winners room. The mechanism that actually
+   addresses the peak-vs-tail data signature.
+
+### Proposed analysis at 200-trade checkpoint
+
+This is **counterfactual analysis on existing trade data — no config change**.
+Per locked Phase 1c-Explore plan, no strategic changes during the batch. This
+is identification of the candidate rule for the next validation batch.
+
+**Step 1: Run counterfactual on each pullback rule using captured peak/trough/
+close data:**
+
+| Rule | Definition |
+|---|---|
+| A. Current (baseline) | Fixed 0.20% pullback |
+| B. Wider fixed | Fixed 0.30% pullback |
+| C. Slope 0.30 | `pullback = 0.20% + 0.30 × max(0, peak - 0.50%)` |
+| D. Slope 0.50 | `pullback = 0.20% + 0.50 × max(0, peak - 0.50%)` |
+| E. Hard threshold | < +0.80% peak: 0.20% pullback; ≥ +0.80%: trailing OFF, hold to signal/regime exit |
+
+**Step 2: Compute the comparison table:**
+
+| Rule | All winners Avg% | Tail (peak ≥ +0.80%) Avg% | Small (peak +0.50-0.70%) Avg% | N tail | N small |
+|---|---|---|---|---|---|
+| A: 0.20 fixed | ? | ? | ? | ? | ? |
+| B: 0.30 fixed | ? | ? | ? | ? | ? |
+| C: slope 0.30 | ? | ? | ? | ? | ? |
+| D: slope 0.50 | ? | ? | ? | ? | ? |
+| E: cutoff @ 0.80 | ? | ? | ? | ? | ? |
+
+**Step 3: Apply decision rule.** Winning rule must satisfy BOTH:
+- Tail capture improves ≥ +0.20 pp on big-winner Avg P&L %
+- Small-winner give-back ≤ -0.05 pp degradation
+
+If multiple rules pass, pick the simplest (slope formula > tier table > hard cutoff)
+to minimize parameters and overfitting risk.
+
+If NO rule passes both gates, conclusion is **"current trailing is approximately
+right; no exit change in next batch."** That's a valid negative result.
+
+### What gets tested in the validation batch (next 200 trades)
+
+The single winning rule from Step 3 gets deployed as the only strategic change
+for the next 200-trade batch. Pre-committed decision rule at end of validation:
+
+| Validation result | Verdict | Action |
+|---|---|---|
+| Combined Avg P&L % improves ≥ +0.10 pp vs current | Rule confirmed | Ship to live |
+| Combined Avg P&L % flat (±0.05 pp) | Counterfactual didn't predict live correctly | Revert; sample noise was driving counterfactual |
+| Combined Avg P&L % worse | Rule actively harmful | Revert; deeper investigation needed |
+
+### What is explicitly NOT proposed
+
+- **Not a multi-rule live experiment.** One change per validation batch — clean attribution.
+- **Not RSI exhaustion exit alone.** It can't fire during the trade with current
+  trailing in place. RSI overlay is at most a Layer 3 follow-up after wider
+  pullback validates.
+- **Not data-fitted tier breakpoints.** Slope formula has one design parameter;
+  tier breakpoints are multiple. Slope generalizes better, less overfitting.
+- **Not changes deployed mid-Phase-1c-Explore batch.** Per locked plan, this
+  analysis happens AT the 200-trade checkpoint, not before.
+
+### Counterfactual implementation notes (for whoever runs the analysis)
+
+The counterfactual is approximate — we have peak%, trough%, close%, peak_min,
+trough_min per trade, but not moment-by-moment tick data. Approximations:
+
+- For trades that closed via TRAILING_STOP, the actual exit was "first 0.20%
+  retrace from peak." Under rule X with pullback Y, the exit would be "first
+  Y% retrace from peak." Since trough < close ≤ peak, we know retrace size at
+  close was ≥ X%. Under wider Y > X, we'd hold longer.
+- For "hold longer" scenarios, terminal P&L is bounded by:
+  - Upper bound: peak + post-peak runway (if available; from PostPeak% column)
+  - Lower bound: trough (if widening pullback would let trade hit trough first)
+- Conservative simulation: assume trade hits peak + post-peak (continued trend),
+  then retraces by Y% to compute counterfactual close.
+
+This is directionally correct but not exact. If the counterfactual analysis at
+200 trades produces clear signal (>20 bp improvement on tail captures), the
+validation batch will tell us whether the directional read translates. If
+counterfactual is borderline (<10 bp), don't deploy — likely sample noise.
+
+### Caveats and follow-up
+
+1. **Whole framework assumes peak-vs-post-peak correlation persists.** Current
+   67-trade data shows bigger peaks → bigger tails. If 200-trade data breaks
+   this relationship (correlation drops below 0.3 across all winners), Option 3's
+   logic collapses. The counterfactual analysis verifies this implicitly — if
+   wider pullback doesn't outperform fixed pullback, the underlying assumption
+   was wrong.
+
+2. **Regime sensitivity.** Current data is two regimes (BULLISH choppy,
+   BEARISH trending). Big-tail data is concentrated in BEARISH SHORTs. If next
+   200 trades are pure BULLISH choppy, the big-tail population we're optimizing
+   for may not reappear.
+
+3. **RSI exhaustion overlay (Layer 3) is deferred** until Step 2 winning rule
+   is validated. Cannot test RSI overlay first — requires loosened trailing
+   to give RSI time to fire during trades.
+
+### Why this entry exists in CLAUDE.md
+
+The exit problem (post-peak runway loss) is real and recurring across multiple
+samples. The counterfactual approach is the highest-EV use of 200-trade data
+because it tests multiple rules without committing to any. This section is the
+analysis blueprint to run at the 200-trade checkpoint — exact rules, exact
+tables to compute, pre-committed decision criteria.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

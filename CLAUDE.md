@@ -2077,6 +2077,42 @@ for the next 200-trade batch. Pre-committed decision rule at end of validation:
 | Combined Avg P&L % flat (±0.05 pp) | Counterfactual didn't predict live correctly | Revert; sample noise was driving counterfactual |
 | Combined Avg P&L % worse | Rule actively harmful | Revert; deeper investigation needed |
 
+### Amendment (Apr 30) — Rule F added, Rule G dropped
+
+After discussion of the trailing-stop-vs-RSI-exhaustion competition dynamic, the
+rule menu narrows. Rules A-E in the table above all keep the trailing stop as
+the dominant exit mechanism (varying only the pullback width). The hypothesis
+that RSI exhaustion is a *better* exit signal than trailing pullback cannot be
+tested against any of A-E because trailing always fires first under current
+logic. New rule added to test the RSI hypothesis directly:
+
+| Rule | Definition |
+|---|---|
+| F. RSI-only at L2+, NO trailing | At peak ≥ L2 trigger, disable trailing entirely. Exit fires only on RSI exhaustion (or signal-lost / regime change / FL backstops). Cleanest test of the RSI-as-better-exit-signal hypothesis. |
+
+**Rule G (RSI exhaustion + current 0.20% trailing) was considered and dropped.**
+Reason: empirically the trailing stop fires before RSI exhaustion has time to
+develop on this distribution (Post-Exit Regret observation Apr 30 — RSI
+exhaustion data we keep observing is *post-exit*, meaning the bot was already
+gone by the time RSI exhausted). Adding RSI as a parallel exit at the same peak
+threshold without loosening trailing produces near-identical outcomes to
+current. No analytical value vs A-E.
+
+**Counterfactual approach for F:**
+F cannot be cleanly counterfactualed from current peak/trough/close data alone —
+it requires knowing intra-trade RSI trajectory (when RSI exhaustion would have
+fired). At the 200-trade checkpoint, if A-E counterfactual selects a
+wider-pullback rule as winner, validation batch ships that. If A-E shows no
+clear winner AND RSI exhaustion is still hypothesized as the dominant exit
+signal, the validation batch ships **F** (cleanest test).
+
+**Decision sequencing at 200-trade checkpoint:**
+1. Run counterfactual on A-E first (existing data sufficient)
+2. If a rule from A-E passes the dual gate (≥+0.20pp tail capture, ≤-0.05pp
+   small-winner give-back) → ship it for validation, defer F
+3. If no A-E rule passes → ship F for validation batch (RSI hypothesis gets a
+   real test)
+
 ### What is explicitly NOT proposed
 
 - **Not a multi-rule live experiment.** One change per validation batch — clean attribution.

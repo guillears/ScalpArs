@@ -3958,7 +3958,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         winning_orders = [o for o in orders if o.pnl and o.pnl > 0]
         win_by_reason = {}
         for o in winning_orders:
-            reason = (o.close_reason or "UNKNOWN").split(" L")[0]
+            reason = o.close_reason or "UNKNOWN"
             if reason not in win_by_reason:
                 win_by_reason[reason] = []
             win_by_reason[reason].append(o)

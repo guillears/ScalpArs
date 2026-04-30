@@ -751,15 +751,25 @@ class TradingEngine:
                     if new_btc_adx is not None and (new_btc_adx < btc_adx_min or new_btc_adx > btc_adx_max):
                         return False, f'btc_adx_out_of_range_{round(new_btc_adx, 1)}'
 
-                    # BTC RSI range
-                    if original_direction == 'LONG':
-                        btc_rsi_min = getattr(th, 'btc_rsi_min_long', 0)
-                        btc_rsi_max = getattr(th, 'btc_rsi_max_long', 100)
-                    else:
-                        btc_rsi_min = getattr(th, 'btc_rsi_min_short', 0)
-                        btc_rsi_max = getattr(th, 'btc_rsi_max_short', 100)
-                    if new_btc_rsi is not None and (new_btc_rsi < btc_rsi_min or new_btc_rsi > btc_rsi_max):
-                        return False, f'btc_rsi_out_of_range_{round(new_btc_rsi, 1)}'
+                    # BTC RSI range — ONLY checked when BTC Global is enabled.
+                    # Apr 30 bug fix: this previously ran unconditionally, while at
+                    # entry time (services/trading_engine.py ~line 3439) the BTC RSI
+                    # check is gated inside `if btc_global_enabled:`. The mismatch
+                    # caused legitimate entries to be blocked from taker fallback by
+                    # a filter that didn't actually apply at entry. The Phase 2 plan
+                    # is to move BTC RSI into "BTC Independent Filters" alongside
+                    # BTC ADX, but until that ships, re-validation must mirror entry
+                    # behaviour exactly.
+                    btc_global = getattr(th, 'btc_global_filter_enabled', False)
+                    if btc_global:
+                        if original_direction == 'LONG':
+                            btc_rsi_min = getattr(th, 'btc_rsi_min_long', 0)
+                            btc_rsi_max = getattr(th, 'btc_rsi_max_long', 100)
+                        else:
+                            btc_rsi_min = getattr(th, 'btc_rsi_min_short', 0)
+                            btc_rsi_max = getattr(th, 'btc_rsi_max_short', 100)
+                        if new_btc_rsi is not None and (new_btc_rsi < btc_rsi_min or new_btc_rsi > btc_rsi_max):
+                            return False, f'btc_rsi_out_of_range_{round(new_btc_rsi, 1)}'
 
             return True, 'ok'
         except Exception as e:

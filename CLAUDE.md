@@ -1224,6 +1224,18 @@ When eventually returning to live, **retest the winning config under live condit
 
 ## April 28, 2026 — Exploration Analytics (Tier 1 indicators added, observation-only)
 
+### Provisional status (added Apr 30)
+
+**The entire Exploration Analytics section may turn out to make no sense and is on probation.** The Tier 1 dimensions (EMA50 alignment, DI spread, ATR%, funding rate, TtP ratio) and the cross-tabs (BTC ADX × EMA50 Align, Pair ADX × DI Spread, BTC RSI × Funding, Direction × EMA50 Align) were added as exploratory hypotheses, not validated edge sources. At the 200-trade Phase 1c-Explore decision checkpoint:
+
+- If NO Tier 1 dimension meets the 6-criterion promotion bar (N≥20 per bucket, ≥15pp WR gap, ≥0.20pp Avg P&L gap, direction-consistent, TtP≤0.45 sanity check, cross-tab confirmation), AND none of the cross-tabs show meaningful discrimination → **remove the entire Exploration Analytics UI section, the 6 single-dim tables, the 4 cross-tabs, and the TtP table.** Keep the underlying `entry_*` DB columns (cheap, no harm in retaining captured data) but drop the rendering and the report-export entries.
+- If ONE OR TWO dimensions show signal → keep only those tables/cross-tabs, remove the rest.
+- If most/all dimensions show signal → keep the section as-is and proceed to filter promotion per the locked Phase 1c-Explore plan.
+
+**Do NOT remove anything before the 200-trade checkpoint** — the value of these analytics is precisely in being able to falsify them with real data, not in pre-emptive removal. The removal is conditional on the analysis confirming no signal.
+
+Files that would be touched on removal: `templates/index.html` (UI section + 6 table renderers + 4 cross-tab renderers + 2 text-export sites), `main.py` (`_compute_performance` payload sections, bucket-perf functions). Underlying capture (`models.py`, `services/trading_engine.py`, `services/binance_service.py::fetch_funding_rate`) stays — capture is cheap, removing only the analysis surface is the right granularity.
+
 ### What changed
 
 5 new `entry_*` columns on the Order model, captured at signal time. **Zero filter logic changes** — pure observation. Purpose: at the next 100-trade checkpoint, bucket-analyze the new dimensions and identify which discriminate winners from losers, before promoting any to filters.

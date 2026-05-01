@@ -2170,113 +2170,184 @@ because it tests multiple rules without committing to any. This section is the
 analysis blueprint to run at the 200-trade checkpoint — exact rules, exact
 tables to compute, pre-committed decision criteria.
 
-## May 1, 2026 — BE L1 Trigger Optimization Plan (sister analysis to Winner Exit)
+## May 1, 2026 — BE Layer Introduction Plan (sister analysis to Winner Exit)
 
-### What this addresses
+### Critical framing correction (vs the original Apr-30/May-1 draft)
 
-The "Positive, No BE" bucket in Stop Loss Deep Dive (and the new SL Profile
-column in Entry Conditions by Close Reason, May 1) captures trades that went
-green, never armed BE L1 (peaked below the 0.15% trigger), then rode all the
-way to the −0.9% SL. In the Apr-30 67-trade peek and the May 1 109-trade
-report, this bucket dominated SL losses — BULLISH 30/46 SL trades (peak
-+0.18% avg) and BEARISH 4/6. Lowering the L1 trigger below 0.15% would
-arm BE on those weak-peak trades and exit at the BE floor instead of −0.9%.
+The first draft of this plan called itself a "BE L1 Trigger Optimization Plan"
+and proposed lowering an active 0.15% trigger. **That framing was wrong.**
+Inspection of the live config on May 1 confirmed:
+
+```
+VERY_STRONG  ...  BE:N  99%  99%  99%  99%  ...
+STRONG_BUY   ...  BE:N  99%  99%  99%  99%  ...
+```
+
+BE L1 (and all BE levels L2-L5) are **disabled**. All triggers set to 99%.
+Active exit layers are: TP min 0.50% + pullback 0.20% trailing, FL system,
+Signal Lost, Regime Change Exit, hard SL at −0.9%.
+
+**Implication for the "Positive, No BE" bucket interpretation:**
+
+In the Stop Loss Deep Dive table and the SL Profile column added May 1, the
+"Positive, No BE" classification reads `peak >= be_level1_trigger` where the
+trigger value is loaded from config. Since `be_level1_trigger: 0.15` is still
+stored even though `be_active` is false, the report categorizes trades using
+that phantom 0.15% threshold. **Under current live behavior, BE physically
+cannot arm regardless of peak — so every positive-peak loser is in the
+Positive-No-BE bucket by definition.** The classification is descriptive, not
+diagnostic of an exit-layer failure.
+
+This means the question is not "should we lower an active trigger" — it is
+**"should we introduce BE as a new exit layer at all, and at what trigger?"**
+Structural decision, not parameter tuning.
+
+### What this plan now addresses
+
+In the May 1 109-trade report, positive-peak losers dominate the SL bucket:
+- BULLISH: 30/46 SL trades with avg peak +0.18%, closing at avg −0.48%
+- BEARISH: 4/6 SL trades with avg peak +0.22%, closing at avg −0.47%
+
+These trades went green, peaked at small positive values, then rode through
+the trailing-stop activation zone (TP min 0.50% never reached → trailing never
+armed) all the way to the −0.9% hard SL. Introducing a BE layer with trigger
+X < 0.50% (the trailing TP minimum) and a small positive offset Y would
+intercept these trades and lock in +Y instead of letting them ride to SL.
 
 This is the loser-side counterpart to the Winner Exit Optimization Plan
-(Apr 30). They affect different trade populations (low-peak losers vs
-high-peak winners) and can be analyzed independently at the same 200-trade
-checkpoint.
+(Apr 30, which targets high-peak winners getting exited too early on
+trailing pullback). Different trade populations, statistically independent,
+analyzable at the same 200-trade checkpoint.
 
-### What we already have per trade
+### What we have per trade
 
-`peak_pnl`, `trough_pnl`, `pnl_percentage` (close), `close_reason`. That's
-sufficient to simulate any (trigger, offset) pair without new instrumentation.
+`peak_pnl`, `trough_pnl`, `pnl_percentage` (close), `close_reason`. Sufficient
+to simulate any candidate (trigger X, offset Y) pair without new
+instrumentation.
 
-### The mechanic to simulate
+### The simulation mechanic
 
-For each closed trade, under candidate new trigger X (X < 0.15%) and offset Y:
-- **If peak ≥ X AND trough ≤ Y** → BE would have fired → simulated exit at +Y
+For each closed trade, under candidate BE layer (trigger X, offset Y) where
+X > 0 and Y > 0 and X > Y:
+- **If peak ≥ X AND trough ≤ Y** → BE would have armed and exit at +Y →
+  simulated close = +Y (replaces actual close)
 - **If peak < X** → BE never arms, original exit stands
-- **If peak ≥ X AND trough > Y** → BE armed but never retraced to floor,
-  original exit stands (likely a trailing/signal/regime exit, unaffected)
+- **If peak ≥ X AND trough > Y** → BE armed but never retraced to the floor,
+  original exit stands (means the trade either continued up to a trailing
+  exit or hit a non-SL exit reason like regime change or signal lost)
 
-This identifies trades that *currently* never armed BE but *would have* under
-the lower trigger.
+This identifies which currently-losing trades would have been intercepted by
+the new BE layer.
+
+### The key analytical question this answers
+
+The user's observation: with so many Positive-No-BE losers, it's hard to tell
+whether they're **bad entries** (peaks too small to ever be real winners) or
+**bad exits** (peak was real but exit failed to capture it).
+
+The simulation resolves this:
+
+| Simulation outcome | Interpretation | Action |
+|---|---|---|
+| Lowering trigger to 0.05-0.10% rescues most Positive-No-BE losers to +Y | **Exit is the problem.** Entries had real (small) momentum; we just had no mechanism to lock it in | Introduce BE layer, keep entry filters |
+| Even at trigger 0.05%, most trades hit trough < Y before peak retraced → still loss | **Entry is the problem.** These trades had no real momentum; peak was noise within the SL distance | Don't add BE; tighten entry filters (TtP < 0.4 buckets, EMA50 alignment, DI spread) |
+| Mixed: ~half saved by BE, ~half still die | **Both are problems.** Add a BE layer for the saveable subset; build entry filters from the cross-tab profile of the unsaveable subset | Two-pronged fix |
+
+This is the most informative single test we can run on existing data.
 
 ### Two distinct effects to measure separately
 
 | Effect | Sign | Where it shows up |
 |---|---|---|
-| **Save Positive-No-BE losers** | + | SL trades with peak ∈ [X, 0.15%) — currently rode to −0.9% SL, would now exit at +Y |
-| **Give-back on already-armed winners** | − only if offset Y also lowered | Currently armed trades whose close < old offset (would now exit at lower Y instead) |
-| **Steal from trailing winners** | ≈ 0 | Trailing only fires at peak ≥ TP min 0.50%. Lowering trigger from 0.15% to 0.10% adds arms in 0.10-0.15% peak band — those trades wouldn't have triggered trailing anyway. Effect is minimal IF only the trigger is lowered. |
+| **Save Positive-No-BE losers** | + | SL trades with peak ≥ X, currently rode to −0.9% SL, would now exit at +Y |
+| **Steal from currently-winning trailing trades** | − | Trades where trailing currently captures more than +Y, but BE armed earlier and floored at +Y |
+| **No effect on FL / signal-lost / regime exits** | 0 | Those exits fire on different conditions (peak/pullback irrelevant); BE layer is independent |
 
-The clean test is **lower trigger alone, hold offset constant at 0.10%**. That
-isolates the "save losers" effect with near-zero winner contamination.
+The "steal from winners" risk is real but bounded: trailing only activates
+at peak ≥ 0.50% (TP min). If we set BE trigger X < 0.50%, BE arms before
+trailing does. If trade then retraces to the BE floor before reaching trailing
+TP, we lock at +Y instead of riding to a higher trailing exit. Magnitude
+depends on how often trades crossed Y on the way down before reaching peak
+≥ 0.50%.
+
+### Counterfactual grid
+
+Simulate (trigger X, offset Y) pairs from this small grid:
+
+| X (trigger) | Y (offset) | Hypothesis being tested |
+|---|---|---|
+| 0.05% | 0.02% | Maximum sensitivity — catches even the weakest peaks, locks tiny profit |
+| 0.08% | 0.04% | Moderate — requires real positive movement, locks meaningful profit |
+| 0.10% | 0.05% | Conservative — only arms on trades that showed half the trailing-TP threshold |
+| 0.15% | 0.10% | The original disabled-default — BE arms only on trades that nearly reached trailing TP |
+
+Pick the (X, Y) pair that maximizes net Avg P&L % improvement while passing
+all promotion gates below.
 
 ### Pre-committed decision rule (locked May 1, before 200-trade data arrives)
 
-A trigger change qualifies for promotion to the validation batch only if ALL
+A new BE layer qualifies for promotion to the validation batch only if ALL
 of the following are true:
 
-1. **N ≥ 10 newly-armed trades** in the simulated bucket (statistical floor)
-2. **Net Avg P&L % across full sample improves ≥ +0.10pp** vs current config
+1. **N ≥ 10 newly-saved trades** in the simulated bucket (statistical floor)
+2. **Net Avg P&L % across full sample improves ≥ +0.10pp** vs current (no-BE) config
 3. **Positive-No-BE count drops by ≥ 50%** (the whole point of the change)
 4. **No winner-bucket Avg P&L % degrades by > 0.05pp** in the simulation
-5. **Same trigger value works on both LONG and SHORT subsets** (or has a
-   documented theoretical reason to be asymmetric)
+   (the "steal from winners" effect must be small)
+5. **Same (X, Y) pair works on both LONG and SHORT subsets** (or documented
+   theoretical reason for asymmetry)
 
-Run the simulation across this small grid: trigger ∈ {0.05%, 0.08%, 0.10%, 0.12%},
-offset held at current 0.10%. Pick the value that maximizes net improvement
-subject to all 5 gates. If no value passes all 5 gates → no change ships, keep
-current 0.15% trigger.
+If no (X, Y) pair passes all 5 gates → **don't introduce BE**; the
+Positive-No-BE losses are entry-driven, not exit-driven. In that case,
+attention shifts to entry-filter work (TtP, EMA50 alignment, DI spread cross-
+tabs at the same 200-trade checkpoint).
 
 ### What invalidates the test
 
 - **Sample skew**: if Positive-No-BE bucket is < 10 trades in the 200-trade
-  sample, decision is deferred to the 400-trade checkpoint (insufficient
-  statistical power to evaluate)
-- **Null trough_pnl**: trades closed before trough was logged have null trough.
-  Exclude those from the simulation (small subset, no impact on signal)
+  sample, decision deferred to 400-trade checkpoint
+- **Null trough_pnl**: trades closed before trough was logged have null
+  trough; exclude from simulation
 - **Regime confound**: if Positive-No-BE concentrates in one regime, the
-  saved-losers effect is regime-specific not structural. Cross-check the
-  simulated improvement against same-regime winners — if improvement is one-
-  sided regime-wise, document as conditional finding rather than universal
-- **Counterfactual ≠ live**: as with the Winner Exit Plan, the simulation is
-  approximate. The validation batch tells us whether the directional read
-  translates. Counterfactual showing < +10bp improvement → don't deploy
-  (likely sample noise)
+  saved-losers effect is regime-specific. Document as conditional, not
+  universal
+- **Counterfactual ≠ live**: simulation is approximate. < +10bp improvement
+  in counterfactual → don't deploy (likely sample noise)
+- **Peak-vs-trough sequencing assumption**: the simulation assumes peak was
+  reached before trough hit Y. If trough hit Y first (then peak rallied
+  back later), BE wouldn't actually fire because peak hadn't yet reached X.
+  The data has `peak_min` and `trough_min` (time-to-peak and time-to-trough)
+  on most trades — use these to filter out cases where trough preceded peak
 
 ### Implementation cost (when ready to ship)
 
-Config-only change in `trading_config.json` (and per-confidence-level if
-asymmetric is needed). Both VERY_STRONG and STRONG_BUY currently share
-`be_level1_trigger: 0.15`. Single field edit per tier, no code changes,
-instant revert if needed.
+Config change in `trading_config.json` per confidence level — change
+`be_level1_trigger` and `be_level1_offset` from 99 to the validated values,
+and ensure `be_active` flag is true. Single edit per tier, no code changes
+(BE logic exists, just disabled). Instant revert by re-setting trigger to 99.
 
 ### Validation batch decision rule (post-200-trade simulation, in next 200)
 
-If the simulation passes the 5 gates and a winning trigger is shipped, the
-next 200-trade validation batch is judged by:
+If simulation passes the 5 gates and a winning (X, Y) is shipped:
 
 | Validation result | Verdict | Action |
 |---|---|---|
-| Combined Avg P&L % improves ≥ +0.05pp vs current | Trigger change confirmed | Lock as new default |
-| Avg P&L % flat (±0.03pp) | Counterfactual didn't translate | Revert to 0.15% |
-| Avg P&L % worsens | Trigger change actively harmful | Revert; SL Profile bucket needs structural fix instead |
+| Combined Avg P&L % improves ≥ +0.05pp vs current no-BE | BE introduction confirmed | Lock as default |
+| Avg P&L % flat (±0.03pp) | Counterfactual didn't translate; BE adds friction without saving meaningful trades | Revert to BE disabled |
+| Avg P&L % worsens | BE actively harmful (likely stealing from winners more than saving losers) | Revert; entry-filter work becomes the only path |
 
 ### Coordination with Winner Exit Optimization Plan
 
-Both plans run their counterfactual analysis at the same 200-trade
-checkpoint. They are statistically independent (different trade populations).
+Both plans run their counterfactual at the same 200-trade checkpoint.
+Statistically independent (different trade populations).
 
-**However: ship them in SEPARATE validation batches**, one at a time. Per
-the locked Phase 1c-Explore plan: clean attribution requires single-variable
-changes per validation batch. Order of shipping (if both pass simulation
-gates):
+**Ship in SEPARATE validation batches**, one at a time. Per the locked
+Phase 1c-Explore plan: clean attribution requires single-variable changes per
+validation batch.
 
+Order if both pass simulation:
 1. **First**: whichever passes by larger projected magnitude
-2. **Second**: the other, after first is validated (or reverted if it failed)
+2. **Second**: the other, after first is validated (or reverted)
 
 If both pass simulation but neither delivers in validation, the strategy's
 edge is more fragile than the simulations suggested — escalate to structural
@@ -2284,11 +2355,24 @@ review, not more parameter tweaking.
 
 ### Why this entry exists in CLAUDE.md
 
-The Positive-No-BE pattern is the largest single addressable loss bucket in
-the dataset. Counterfactual on existing data is free (no new instrumentation,
-no new data collection). Locking the methodology now — before the 200-trade
-data arrives — prevents post-hoc parameter selection bias when the analysis
-runs. This section is the analytical blueprint and the pre-committed gates.
+The Positive-No-BE pattern is the largest single addressable loss bucket
+in the dataset. The current BE-disabled config means we have a clean test
+of "exit-layer absence" vs "entry-quality issue." The counterfactual on
+existing data resolves the ambiguity that the user correctly flagged on
+May 1 ("hard to tell if it's a bad entry or a bad exit"). Locking the
+methodology now — before the 200-trade data arrives — prevents post-hoc
+parameter selection bias.
+
+### What was wrong with the Apr-30/May-1 first draft of this section
+
+The first draft assumed BE was active at trigger 0.15% and proposed lowering
+it. That misread the config (`BE:N` flag in the report header). Lesson for
+future plans: when proposing changes to an exit/filter parameter, **first
+verify whether the parameter is currently active**. The phantom-trigger
+classification in Stop Loss Deep Dive masked the fact that BE wasn't
+running at all. Fixed by re-reading the report config block and matching it
+against the proposed change. This is a methodology-level lesson, not just a
+this-section bug.
 
 ## Three-Phase Plan to Make the Bot Profitable
 

@@ -2562,11 +2562,21 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     # These are aborted entry attempts where the signal went stale during the maker wait.
     # They are NOT real trades (no PnL, no fill) so they are excluded from every
     # aggregation except the entry-type breakdown.
-    signal_expired_result = await db.execute(
-        select(Order)
-        .where(and_(Order.status == "SIGNAL_EXPIRED", Order.is_paper == trading_engine.is_paper_mode))
-    )
-    signal_expired_orders = signal_expired_result.scalars().all()
+    #
+    # Split-report fix (May 1): SIGNAL_EXPIRED rows do not capture entry_macro_trend
+    # (no fill = no entry context persisted), so they cannot be attributed to a
+    # BULLISH/BEARISH/NEUTRAL bucket. Restrict them to the unfiltered (regime=None)
+    # report only — including them in regime sections produced duplicate rows and
+    # nonsense percentages like "315.4%" in BEARISH where N_signal_expired=82 was
+    # being divided by N_closed_shorts=26.
+    if regime is None:
+        signal_expired_result = await db.execute(
+            select(Order)
+            .where(and_(Order.status == "SIGNAL_EXPIRED", Order.is_paper == trading_engine.is_paper_mode))
+        )
+        signal_expired_orders = signal_expired_result.scalars().all()
+    else:
+        signal_expired_orders = []
     
     # Compute by_macro_trend summary from ALL orders (before filtering)
     macro_trend_performance = {}
@@ -3687,6 +3697,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     # Entry Conditions by Close Reason
     entry_conditions_by_reason = []
     try:
+        # Same trigger lookup used by Stop Loss Deep Dive (line ~3870) so the
+        # SL Profile column is consistent with that table's classification.
+        _ecr_tc = config.trading_config
         ecr_groups = {}
         for o in orders:
             reason = o.close_reason or "UNKNOWN"
@@ -3773,7 +3786,36 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             peaks = [o.peak_pnl or 0 for o in group]
             pnls = [o.pnl_percentage or 0 for o in group]
             total_pnl_usd = sum(o.pnl or 0 for o in group)
-            total_pnl_usd = sum(o.pnl or 0 for o in group)
+
+            # SL Profile classification — same logic as Stop Loss Deep Dive (line ~3879).
+            # For losing trades only (pnl <= 0), classify by peak P&L vs the confidence's
+            # be_level1_trigger:
+            #   P (positive_no_be)  : 0 < peak < trigger — went green but never armed BE
+            #   N (never_positive)  : peak <= 0          — never went green at all
+            #   BE (be_was_active)  : peak >= trigger    — BE armed but trade still lost
+            # Winners (pnl > 0) are excluded — they're positive by definition.
+            # Caveat: classification depends on the configured be_level1_trigger AT REPORT
+            # TIME. If triggers are changed across a sample, historical row classifications
+            # shift. Currently both VERY_STRONG and STRONG_BUY use the same trigger so this
+            # is uniform.
+            sl_p_count = 0  # Positive, No BE
+            sl_n_count = 0  # Never Positive
+            sl_be_count = 0  # BE Was Active (rare under current config)
+            for _o in group:
+                if (_o.pnl or 0) > 0:
+                    continue
+                _conf_cfg = _ecr_tc.confidence_levels.get(
+                    _o.confidence or "LOW",
+                    _ecr_tc.confidence_levels.get("LOW")
+                )
+                _trigger = _conf_cfg.be_level1_trigger if _conf_cfg else 0.15
+                _peak = _o.peak_pnl or 0
+                if _peak >= _trigger:
+                    sl_be_count += 1
+                elif _peak > 0:
+                    sl_p_count += 1
+                else:
+                    sl_n_count += 1
 
             avg_dur_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in group if o.closed_at and o.opened_at) / count
             hours, remainder = divmod(int(avg_dur_secs), 3600)
@@ -3819,6 +3861,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
                 "avg_duration": avg_dur_str,
+                # SL Profile counts for losing trades — render as "P:n N:n" (BE column
+                # included for completeness but typically zero under current config).
+                "sl_positive_no_be": sl_p_count,
+                "sl_never_positive": sl_n_count,
+                "sl_be_was_active": sl_be_count,
             })
     except Exception as e:
         logger.error(f"[PERF] Error computing entry conditions by reason: {e}\n{traceback.format_exc()}")

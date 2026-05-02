@@ -2374,6 +2374,95 @@ running at all. Fixed by re-reading the report config block and matching it
 against the proposed change. This is a methodology-level lesson, not just a
 this-section bug.
 
+## May 2, 2026 — Reporting granularity expansion (no strategy changes)
+
+Pure reporting changes deployed mid-Phase-1c-Explore to surface detail in
+buckets that were previously collapsed. **No filter, exit, or entry logic
+touched** — only the analytical surface widened. Locked Phase 1c-Explore plan
+remains in effect (frozen config until 200 trades).
+
+### What changed
+
+| Table | Before | After |
+|---|---|---|
+| **Performance by BTC Entry RSI** | Lowest bucket was `<30` (lump) | Split into `<20`, `20-25`, `25-30`. SHORT-side `<30` is the highest-WR bucket in the data — splitting reveals whether the edge concentrates in 25-30 or extends below |
+| **Performance by Pair EMA20 Slope (abs)** | Lowest bucket was `0.00-0.02%` then `0.02-0.04%` | Split into `<0.01%`, `0.01-0.02%`, `0.02-0.03%`, `0.03-0.04%`. The 0.02-0.04% bucket was where most activity concentrated; this exposes whether sub-buckets discriminate |
+| **Performance by BTC EMA20 Slope (abs)** | Same as Pair Slope (shared bucket definition) | Same split — symmetric change |
+| **BTC Slope × BTC ADX Cross-Tab** | Lowest slope row was `<0.06%` (lump containing most of the dataset) | Split into `<0.02%`, `0.02-0.04%`, `0.04-0.06%`. Refactored to **Dir-first** column format matching other cross-tabs (Dir / Slope / ADX / # / WR / Avg$ / Avg% / Total$ / Conf) |
+| **Pair EMA20 Slope × Pair ADX Cross-Tab** | Did not exist | NEW table, mirrors the BTC version but with pair-level slope and pair-level ADX. Same Dir-first format. Placed directly above the BTC version. Pair ADX bins match the existing "Performance by Entry ADX" cadence (`<15`, `15-18`, `18-22`, `22-25`, `25-28`, `28-30`, `30-33`, `33+`) — tighter than BTC bins because pair ADX clusters more narrowly under current filters |
+
+Backend lives in `main.py` (`_build_slope_adx_crosstab` helper covers both
+cross-tabs). UI section `Pair EMA20 Slope x Pair ADX Cross-Tab` placed above
+the BTC one in the Performance dashboard. Both new/refactored sections appear
+in both text-export sites. SL Profile column shipped May 1 still present.
+
+### Why this matters for the 200-trade decision checkpoint
+
+These finer buckets directly inform several pre-committed decisions:
+
+1. **BE Layer Introduction Plan (May 1) — N≥10 saved-trade gate.** The peak/trough
+   simulation needs to identify Positive-No-BE losers by their actual peak
+   distribution. The `<0.04%` Pair Slope splits give us per-bucket peak
+   characteristics; trades with peak <0.04% are the structural candidates for
+   "could a low-trigger BE have saved them?"
+
+2. **Pair Slope × Pair ADX cross-tab — entry filter design.** This is the missing
+   piece for the "is it bad entry or bad exit" question. If Positive-No-BE losers
+   cluster in specific (Pair Slope, Pair ADX) cells while winners cluster
+   elsewhere, the cross-tab makes the entry-filter signature visible at a glance.
+   Mirror the cell-by-cell analysis already done on BTC RSI × BTC ADX.
+
+3. **BTC Slope × BTC ADX low-end split.** Most current Phase 1c-Explore data
+   sits in BTC Slope `<0.06%`. Without the split we can't tell whether the
+   `<0.02%`/`0.02-0.04%`/`0.04-0.06%` sub-buckets behave differently. Apr 18
+   amendment #5 already showed BTC ADX 20-25 SHORT performance flipped in the
+   most recent regime — slope sub-buckets may explain why.
+
+4. **BTC Entry RSI `<30` SHORT split.** Currently 84% WR on N=19 in BEARISH —
+   strongest SHORT signal in the data. Splitting `<30` into `<20`/`20-25`/`25-30`
+   tests whether the edge is concentrated at one sub-zone (likely 25-30 given
+   where BTC RSI typically sits in bearish regimes). If `<25` shows different
+   WR than `25-30` on N≥10 each, this becomes a candidate refinement to the
+   pre-committed S-P1 PREMIUM ZONE rule.
+
+### Promotion rule for findings from the new buckets
+
+Same 6-criterion bar that applies to all Tier 1 dimensions (locked Apr 28):
+- N ≥ 20 trades per bucket in the discriminating range
+- WR gap between best/worst bucket ≥ 15 pp
+- Avg P&L % gap ≥ 0.20 pp
+- Direction-consistent OR documented theoretical asymmetry
+- TtP ≤ 0.45 sanity check on winning bucket
+- Cross-tab confirmation (the cell holds up in the 2D view, not just 1D)
+
+The new finer buckets make it MORE LIKELY that single-cell N falls below 20
+on the 200-trade sample. For example, `BTC RSI <20` may have N=0 or N=1 in
+the entire batch. **A bucket with N<10 contributes ZERO weight to promotion
+decisions** — it's exploratory data only. Don't lower the bar to fit smaller
+samples; either the bucket is well-populated and the signal is real, or it
+isn't and the conclusion defers to the 400-trade sample.
+
+### What this does NOT do
+
+- Does NOT change any filter, exit, or entry logic
+- Does NOT reset the 200-trade counter
+- Does NOT alter the locked Phase 1c-Explore plan or any pre-committed rule
+- Does NOT add new dimensions captured at trade time (uses fields already on
+  Order: `entry_btc_rsi`, `entry_ema20_slope`, `entry_btc_ema20_slope`,
+  `entry_adx`, `entry_btc_adx`)
+
+### Why this entry exists in CLAUDE.md
+
+When the 200-trade analysis runs, the analyst needs to know:
+1. The granularity of the new buckets (so cell-N expectations are calibrated)
+2. The pre-committed promotion bar applies — finer buckets don't relax it
+3. The new Pair Slope × Pair ADX cross-tab is the primary tool for the
+   "bad entry vs bad exit" attribution question on the Positive-No-BE bucket
+
+This section is the inventory of analytical surface available at the
+checkpoint. Without it, future-Claude might not realize the cross-tab exists
+and would re-run the same analysis on lower-resolution single-dimension tables.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

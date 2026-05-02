@@ -1495,7 +1495,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "btc_slope_adx_crosstab": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -2251,7 +2251,9 @@ def _btc_rsi_bucket(o):
     v = getattr(o, 'entry_btc_rsi', None)
     if v is None:
         return None
-    if v < 30: return '<30'
+    if v < 20: return '<20'
+    if v < 25: return '20-25'
+    if v < 30: return '25-30'
     if v < 35: return '30-35'
     if v < 40: return '35-40'
     if v < 45: return '40-45'
@@ -2309,7 +2311,7 @@ def _compute_btc_rsi_funding_crosstab(orders):
         orders,
         row_fn=_btc_rsi_bucket,
         col_fn=_funding_rate_bucket,
-        row_order=['<30', '30-35', '35-40', '40-45', '45-50', '50-55', '55-60', '60-65', '65-70', '70+'],
+        row_order=['<20', '20-25', '25-30', '30-35', '35-40', '40-45', '45-50', '50-55', '55-60', '60-65', '65-70', '70+'],
         col_order=['<-0.05%', '-0.05 to -0.02%', '-0.02 to +0.02%', '+0.02 to +0.05%', '>+0.05%'],
     )
 
@@ -2683,7 +2685,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "stretch_performance": [],
             "pair_slope_performance": [],
             "btc_slope_performance": [],
-            "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "btc_slope_adx_crosstab": [],
+            "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -2893,6 +2895,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     btc_adx_direction_performance = []
     adx_dir_crosstab = []
     btc_slope_adx_crosstab = []
+    pair_slope_adx_crosstab = []
     btc_rsi_performance = []
     btc_rsi_adx_crosstab = []
     quality_score_performance = []
@@ -3200,10 +3203,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "by_confidence": conf_breakdown
                 })
 
-        # Performance by Pair EMA20 Slope (absolute value, 0.02% buckets)
+        # Performance by Pair EMA20 Slope (absolute value, 0.01% buckets at the low
+        # end where activity concentrates, then widening). Split-out May 2 to surface
+        # detail in the formerly-collapsed 0.00-0.04% range.
         slope_ranges = [
-            ("0.00 - 0.02%", 0.00, 0.02),
-            ("0.02 - 0.04%", 0.02, 0.04),
+            ("< 0.01%", 0.00, 0.01),
+            ("0.01 - 0.02%", 0.01, 0.02),
+            ("0.02 - 0.03%", 0.02, 0.03),
+            ("0.03 - 0.04%", 0.03, 0.04),
             ("0.04 - 0.06%", 0.04, 0.06),
             ("0.06 - 0.08%", 0.06, 0.08),
             ("0.08 - 0.10%", 0.08, 0.10),
@@ -3395,41 +3402,80 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "by_confidence": dc_conf,
                     })
 
-        # BTC Slope x BTC ADX Cross-Tab
+        # BTC Slope x BTC ADX Cross-Tab AND Pair Slope x Pair ADX Cross-Tab
+        # (May 2): both refactored to Dir-first format, matching the EMA50/DI/Funding
+        # cross-tabs. BTC slope buckets split at the low end (was single <0.06% lump,
+        # now <0.02 / 0.02-0.04 / 0.04-0.06) to surface activity in the dominant zone.
         ct_slope_ranges = [
-            ("<0.06%", 0.00, 0.06), ("0.06-0.10%", 0.06, 0.10), ("0.10-0.16%", 0.10, 0.16),
+            ("<0.02%", 0.00, 0.02), ("0.02-0.04%", 0.02, 0.04), ("0.04-0.06%", 0.04, 0.06),
+            ("0.06-0.10%", 0.06, 0.10), ("0.10-0.16%", 0.10, 0.16),
             ("0.16-0.25%", 0.16, 0.25), ("0.25-0.40%", 0.25, 0.40), (">0.40%", 0.40, 999),
         ]
         ct_adx_ranges_bt = [
             ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
             ("25-30", 25, 30), ("30-35", 30, 35), ("35+", 35, 999),
         ]
-        ct_orders = [o for o in orders if o.entry_btc_ema20_slope is not None and o.entry_btc_adx is not None]
-        for sr_name, sr_min, sr_max in ct_slope_ranges:
-            for ar_name, ar_min, ar_max in ct_adx_ranges_bt:
-                bucket = [o for o in ct_orders if sr_min <= abs(o.entry_btc_ema20_slope) < sr_max and ar_min <= o.entry_btc_adx < ar_max]
-                if not bucket:
-                    continue
-                ct_wins = len([o for o in bucket if (o.pnl or 0) > 0])
-                ct_pnl_sum = sum(o.pnl or 0 for o in bucket)
-                ct_count = len(bucket)
-                ct_long_count = len([o for o in bucket if (o.direction or "LONG") == "LONG"])
-                ct_short_count = ct_count - ct_long_count
-                ct_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in bucket)
-                btc_slope_adx_crosstab.append({
-                    "slope_range": sr_name,
-                    "adx_range": ar_name,
-                    "trades": ct_count,
-                    "direction": f"{ct_long_count}L/{ct_short_count}S",
-                    "win_rate": round(ct_wins / ct_count * 100, 1),
-                    "avg_pnl": round(ct_pnl_sum / ct_count, 2),
-                    "avg_pnl_pct": round(ct_pnl_pct_sum / ct_count, 4),
-                    "total_pnl": round(ct_pnl_sum, 2),
-                })
+        # Pair-level ADX buckets match the existing "Performance by Entry ADX" cadence
+        # (15-18, 18-22, 22-25, 25-28, 28-30, 30-33, 33+) plus a <15 catch-all. Tighter
+        # than the BTC bins because pair ADX clusters more narrowly under current filters.
+        ct_adx_ranges_pair = [
+            ("<15", 0, 15), ("15-18", 15, 18), ("18-22", 18, 22), ("22-25", 22, 25),
+            ("25-28", 25, 28), ("28-30", 28, 30), ("30-33", 30, 33), ("33+", 33, 999),
+        ]
+
+        def _build_slope_adx_crosstab(orders_pool, slope_attr, adx_attr, adx_ranges):
+            """Build a Dir-first cross-tab over (slope, ADX) with per-direction rows.
+            Returns a list of dicts shaped like the other cross-tab tables.
+            """
+            rows = []
+            pool = [o for o in orders_pool
+                    if getattr(o, slope_attr, None) is not None
+                    and getattr(o, adx_attr, None) is not None]
+            for direction in ["LONG", "SHORT"]:
+                for sr_name, sr_min, sr_max in ct_slope_ranges:
+                    for ar_name, ar_min, ar_max in adx_ranges:
+                        bucket = [
+                            o for o in pool
+                            if (o.direction or "LONG") == direction
+                            and sr_min <= abs(getattr(o, slope_attr)) < sr_max
+                            and ar_min <= getattr(o, adx_attr) < ar_max
+                        ]
+                        if not bucket:
+                            continue
+                        b_count = len(bucket)
+                        b_wins = len([o for o in bucket if (o.pnl or 0) > 0])
+                        b_pnl = sum(o.pnl or 0 for o in bucket)
+                        b_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket)
+                        b_conf = {}
+                        for o in bucket:
+                            c = o.confidence or "UNKNOWN"
+                            b_conf[c] = b_conf.get(c, 0) + 1
+                        rows.append({
+                            "direction": direction,
+                            "slope_range": sr_name,
+                            "adx_range": ar_name,
+                            "trades": b_count,
+                            "win_rate": round(b_wins / b_count * 100, 1),
+                            "avg_pnl": round(b_pnl / b_count, 2),
+                            "avg_pnl_pct": round(b_pnl_pct / b_count, 4),
+                            "total_pnl": round(b_pnl, 2),
+                            "by_confidence": b_conf,
+                        })
+            return rows
+
+        # Pair Slope × Pair ADX (NEW, May 2) — placed before the BTC version in render
+        pair_slope_adx_crosstab = _build_slope_adx_crosstab(
+            orders, 'entry_ema20_slope', 'entry_adx', ct_adx_ranges_pair
+        )
+        # BTC Slope × BTC ADX (refactored)
+        btc_slope_adx_crosstab = _build_slope_adx_crosstab(
+            orders, 'entry_btc_ema20_slope', 'entry_btc_adx', ct_adx_ranges_bt
+        )
 
         # Performance by BTC Entry RSI
         btc_rsi_ranges = [
-            ("<30", 0, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50),
+            ("<20", 0, 20), ("20-25", 20, 25), ("25-30", 25, 30),
+            ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50),
             ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999),
         ]
         btc_rsi_orders = [o for o in orders if o.entry_btc_rsi is not None]
@@ -3468,7 +3514,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
         # BTC RSI x BTC ADX Cross-Tab
         ct_btc_rsi_ranges = [
-            ("<30", 0, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50),
+            ("<20", 0, 20), ("20-25", 20, 25), ("25-30", 25, 30),
+            ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50),
             ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999),
         ]
         ct_btc_adx_ranges = [
@@ -3609,6 +3656,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         btc_adx_direction_performance = []
         adx_dir_crosstab = []
         btc_slope_adx_crosstab = []
+        pair_slope_adx_crosstab = []
         btc_rsi_performance = []
         btc_rsi_adx_crosstab = []
         quality_score_performance = []
@@ -4285,7 +4333,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_btc_rsi_ranges = [("<30", 0, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999)]
+            np_btc_rsi_ranges = [("<20", 0, 20), ("20-25", 20, 25), ("25-30", 25, 30), ("30-35", 30, 35), ("35-40", 35, 40), ("40-45", 40, 45), ("45-50", 45, 50), ("50-55", 50, 55), ("55-60", 55, 60), ("60-65", 60, 65), ("65-70", 65, 70), ("70+", 70, 999)]
             np_btc_rsi_trades = [o for o in np_trades if o.entry_btc_rsi is not None]
             all_btc_rsi_trades = [o for o in orders if o.entry_btc_rsi is not None]
             for rng, lo, hi in np_btc_rsi_ranges:
@@ -4705,6 +4753,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "btc_adx_performance": btc_adx_performance,
         "btc_adx_direction_performance": btc_adx_direction_performance,
         "adx_dir_crosstab": adx_dir_crosstab,
+        "pair_slope_adx_crosstab": pair_slope_adx_crosstab,
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
         "btc_rsi_performance": btc_rsi_performance,
         "btc_rsi_adx_crosstab": btc_rsi_adx_crosstab,

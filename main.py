@@ -2979,10 +2979,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 })
 
         # Performance by Entry Gap EMA5-EMA8 (momentum gap)
+        # May 2: split low-end buckets (0.02-0.06) into 0.01-wide sub-buckets
+        # to match the granularity already done on the slope tables. Most data
+        # clusters in the 0.02-0.06 range so finer resolution there is high-EV.
         ema58_ranges = [
             ("0.00 - 0.02%", 0.00, 0.02),
-            ("0.02 - 0.04%", 0.02, 0.04),
-            ("0.04 - 0.06%", 0.04, 0.06),
+            ("0.02 - 0.03%", 0.02, 0.03),
+            ("0.03 - 0.04%", 0.03, 0.04),
+            ("0.04 - 0.05%", 0.04, 0.05),
+            ("0.05 - 0.06%", 0.05, 0.06),
             ("0.06 - 0.08%", 0.06, 0.08),
             ("0.08 - 0.10%", 0.08, 0.10),
             ("0.10 - 0.12%", 0.10, 0.12),

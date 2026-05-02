@@ -2390,6 +2390,7 @@ remains in effect (frozen config until 200 trades).
 | **Performance by BTC EMA20 Slope (abs)** | Same as Pair Slope (shared bucket definition) | Same split — symmetric change |
 | **BTC Slope × BTC ADX Cross-Tab** | Lowest slope row was `<0.06%` (lump containing most of the dataset) | Split into `<0.02%`, `0.02-0.04%`, `0.04-0.06%`. Refactored to **Dir-first** column format matching other cross-tabs (Dir / Slope / ADX / # / WR / Avg$ / Avg% / Total$ / Conf) |
 | **Pair EMA20 Slope × Pair ADX Cross-Tab** | Did not exist | NEW table, mirrors the BTC version but with pair-level slope and pair-level ADX. Same Dir-first format. Placed directly above the BTC version. Pair ADX bins match the existing "Performance by Entry ADX" cadence (`<15`, `15-18`, `18-22`, `22-25`, `25-28`, `28-30`, `30-33`, `33+`) — tighter than BTC bins because pair ADX clusters more narrowly under current filters |
+| **Entry Conditions by Outcome (Winners vs Losers)** | Did not exist | NEW summary table placed directly after `Entry Conditions by Close Reason`. Same column set, but collapsed to up to 4 rows: `Winners L`, `Losers L`, `Winners S`, `Losers S` (a row is omitted if its bucket has zero trades). Winner = `pnl > 0` after fees; Loser = `pnl <= 0`. Higher N per row makes cell-level statistics meaningful (e.g., 42 Winners L vs 76 Losers L on the May 2 sample, vs the close-reason table's avg ~10 trades per row). Purpose: enforce the Apr 17 methodological rule — when a pattern shows up in losers, compare against winners on the same dimensions before treating it as discriminative. SL Profile column populates only on Loser rows. Backend: new `entry_conditions_by_outcome` payload field built alongside `entry_conditions_by_reason` in `main.py::_compute_performance`. UI: `templates/index.html`, table id `entry-conditions-outcome-body`. Text exports: both clipboard and saved-file sites. **No filter/exit/entry logic touched** — pure reporting addition, allowed mid-Phase-1c-Explore-batch. |
 
 Backend lives in `main.py` (`_build_slope_adx_crosstab` helper covers both
 cross-tabs). UI section `Pair EMA20 Slope x Pair ADX Cross-Tab` placed above
@@ -2424,6 +2425,19 @@ These finer buckets directly inform several pre-committed decisions:
    where BTC RSI typically sits in bearish regimes). If `<25` shows different
    WR than `25-30` on N≥10 each, this becomes a candidate refinement to the
    pre-committed S-P1 PREMIUM ZONE rule.
+
+5. **Entry Conditions by Outcome — primary winner-vs-loser attribution view.**
+   When the 200-trade analysis runs, this is the FIRST table to look at for
+   any "is dimension X discriminative?" question. The 4-row summary collapses
+   the 11+ close-reason rows of the existing table into the comparison the
+   promotion bar actually requires (winners vs losers, per direction). For
+   any single-dimension finding (e.g., "EMA50 alignment matters"), check this
+   table first: if Winners L and Losers L don't differ on EMA50Align, the
+   dimension is not discriminative — period. This view also resolves the
+   May 1 BE Layer Plan's "is it bad entry or bad exit?" question more
+   cleanly than any other surface: if Winners L and Losers L have nearly
+   identical entry signatures, the loss source is exit-side; if their
+   signatures diverge, entry filtering has room.
 
 ### Promotion rule for findings from the new buckets
 

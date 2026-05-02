@@ -1506,6 +1506,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
+            "entry_conditions_by_outcome": [],
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2696,6 +2697,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "post_exit_regret_deep_dive": [],
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
+            "entry_conditions_by_outcome": [],
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -3918,6 +3920,173 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing entry conditions by reason: {e}\n{traceback.format_exc()}")
 
+    # Entry Conditions by Outcome (May 2 — Winner-vs-Loser comparison view).
+    # Same column set as Entry Conditions by Close Reason but collapsed to 4 buckets:
+    # Winners L, Losers L, Winners S, Losers S. Purpose: enforce the Apr 17
+    # methodological rule — when a pattern shows up in losers, compare against
+    # winners on the same dimensions before treating it as discriminative.
+    # Higher N per row makes cell-level statistics meaningful.
+    # "Winner" = pnl > 0 after fees; "Loser" = pnl <= 0.
+    entry_conditions_by_outcome = []
+    try:
+        _eco_tc = config.trading_config
+        eco_groups = {
+            ('LONG', True): [],
+            ('LONG', False): [],
+            ('SHORT', True): [],
+            ('SHORT', False): [],
+        }
+        for o in orders:
+            direction = o.direction or 'LONG'
+            if direction not in ('LONG', 'SHORT'):
+                continue
+            is_winner = (o.pnl or 0) > 0
+            eco_groups[(direction, is_winner)].append(o)
+
+        # Order rows: Winners L, Losers L, Winners S, Losers S
+        ordered_keys = [('LONG', True), ('LONG', False), ('SHORT', True), ('SHORT', False)]
+        for key in ordered_keys:
+            group = eco_groups[key]
+            count = len(group)
+            if count == 0:
+                continue
+            direction, is_winner = key
+            outcome = 'Winners' if is_winner else 'Losers'
+
+            ec_conf = {}
+            for o in group:
+                c = o.confidence or "UNKNOWN"
+                ec_conf[c] = ec_conf.get(c, 0) + 1
+
+            rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
+            adxs = [o.entry_adx for o in group if o.entry_adx is not None]
+            gaps = [o.entry_gap for o in group if o.entry_gap is not None]
+            gaps58 = [o.entry_ema_gap_5_8 for o in group if o.entry_ema_gap_5_8 is not None]
+            stretches = [o.entry_ema5_stretch for o in group if o.entry_ema5_stretch is not None]
+            slopes = [abs(o.entry_ema20_slope) for o in group if o.entry_ema20_slope is not None]
+            btc_slopes = [abs(o.entry_btc_ema20_slope) for o in group if o.entry_btc_ema20_slope is not None]
+            btc_adxs = [o.entry_btc_adx for o in group if o.entry_btc_adx is not None]
+            btc_rsis = [o.entry_btc_rsi for o in group if o.entry_btc_rsi is not None]
+
+            adx_rising = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx > o.entry_adx_prev)
+            adx_falling = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx <= o.entry_adx_prev)
+            btc_adx_rising = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx > o.entry_btc_adx_prev)
+            btc_adx_falling = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx <= o.entry_btc_adx_prev)
+            btc_rsi_rising = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi > o.entry_btc_rsi_prev)
+            btc_rsi_falling = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi <= o.entry_btc_rsi_prev)
+            ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
+            adx_deltas = [o.entry_adx_delta for o in group if o.entry_adx_delta is not None]
+            range_positions = [o.entry_range_position for o in group if o.entry_range_position is not None]
+            pos_dis = [o.entry_pos_di for o in group if getattr(o, 'entry_pos_di', None) is not None]
+            neg_dis = [o.entry_neg_di for o in group if getattr(o, 'entry_neg_di', None) is not None]
+            atr_pcts = [o.entry_atr_pct for o in group if getattr(o, 'entry_atr_pct', None) is not None]
+            ema50_slopes = [o.entry_ema50_slope for o in group if getattr(o, 'entry_ema50_slope', None) is not None]
+            funding_rates = [o.entry_funding_rate for o in group if getattr(o, 'entry_funding_rate', None) is not None]
+            di_spreads = [
+                abs(o.entry_pos_di - o.entry_neg_di)
+                for o in group
+                if getattr(o, 'entry_pos_di', None) is not None and getattr(o, 'entry_neg_di', None) is not None
+            ]
+            ema50_aligned = 0
+            ema50_opposite = 0
+            ema50_flat = 0
+            for o in group:
+                v = getattr(o, 'entry_ema50_slope', None)
+                if v is None:
+                    continue
+                if abs(v) < 0.04:
+                    ema50_flat += 1
+                elif (v > 0 and direction == 'LONG') or (v < 0 and direction == 'SHORT'):
+                    ema50_aligned += 1
+                else:
+                    ema50_opposite += 1
+            ttp_ratios = []
+            for o in group:
+                r = _compute_ttp_ratio(o)
+                if r is not None:
+                    ttp_ratios.append(r)
+            if direction == "LONG":
+                breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
+            else:
+                breadths = [o.entry_bear_pct for o in group if o.entry_bear_pct is not None]
+
+            peaks = [o.peak_pnl or 0 for o in group]
+            pnls = [o.pnl_percentage or 0 for o in group]
+            total_pnl_usd = sum(o.pnl or 0 for o in group)
+
+            # SL Profile only meaningful for losers — same classification rule as
+            # Stop Loss Deep Dive / Entry Conditions by Close Reason.
+            sl_p_count = 0
+            sl_n_count = 0
+            sl_be_count = 0
+            if not is_winner:
+                for _o in group:
+                    if (_o.pnl or 0) > 0:
+                        continue
+                    _conf_cfg = _eco_tc.confidence_levels.get(
+                        _o.confidence or "LOW",
+                        _eco_tc.confidence_levels.get("LOW")
+                    )
+                    _trigger = _conf_cfg.be_level1_trigger if _conf_cfg else 0.15
+                    _peak = _o.peak_pnl or 0
+                    if _peak >= _trigger:
+                        sl_be_count += 1
+                    elif _peak > 0:
+                        sl_p_count += 1
+                    else:
+                        sl_n_count += 1
+
+            avg_dur_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in group if o.closed_at and o.opened_at) / count
+            hours, remainder = divmod(int(avg_dur_secs), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            avg_dur_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+            entry_conditions_by_outcome.append({
+                "outcome": outcome,
+                "direction": direction,
+                "trades": count,
+                "by_confidence": ec_conf,
+                "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+                "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,
+                "adx_rising": adx_rising,
+                "adx_falling": adx_falling,
+                "avg_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
+                "avg_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
+                "avg_stretch": round(sum(stretches) / len(stretches), 4) if stretches else None,
+                "avg_ema20_slope": round(sum(slopes) / len(slopes), 4) if slopes else None,
+                "avg_btc_slope": round(sum(btc_slopes) / len(btc_slopes), 4) if btc_slopes else None,
+                "avg_btc_rsi": round(sum(btc_rsis) / len(btc_rsis), 1) if btc_rsis else None,
+                "avg_btc_adx": round(sum(btc_adxs) / len(btc_adxs), 1) if btc_adxs else None,
+                "btc_adx_rising": btc_adx_rising,
+                "btc_adx_falling": btc_adx_falling,
+                "btc_rsi_rising": btc_rsi_rising,
+                "btc_rsi_falling": btc_rsi_falling,
+                "avg_ema5_dist": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
+                "avg_adx_delta": round(sum(adx_deltas) / len(adx_deltas), 4) if adx_deltas else None,
+                "avg_range_position": round(sum(range_positions) / len(range_positions), 1) if range_positions else None,
+                "avg_breadth": round(sum(breadths) / len(breadths), 1) if breadths else None,
+                "avg_pos_di": round(sum(pos_dis) / len(pos_dis), 1) if pos_dis else None,
+                "avg_neg_di": round(sum(neg_dis) / len(neg_dis), 1) if neg_dis else None,
+                "avg_di_spread": round(sum(di_spreads) / len(di_spreads), 1) if di_spreads else None,
+                "avg_atr_pct": round(sum(atr_pcts) / len(atr_pcts), 4) if atr_pcts else None,
+                "avg_ema50_slope": round(sum(ema50_slopes) / len(ema50_slopes), 4) if ema50_slopes else None,
+                "ema50_aligned": ema50_aligned,
+                "ema50_opposite": ema50_opposite,
+                "ema50_flat": ema50_flat,
+                "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
+                "avg_ttp_ratio": round(sum(ttp_ratios) / len(ttp_ratios), 2) if ttp_ratios else None,
+                "avg_peak_pct": round(sum(peaks) / count, 4),
+                "avg_pnl_pct": round(sum(pnls) / count, 4),
+                "total_pnl_usd": round(total_pnl_usd, 2),
+                "avg_duration": avg_dur_str,
+                "sl_positive_no_be": sl_p_count,
+                "sl_never_positive": sl_n_count,
+                "sl_be_was_active": sl_be_count,
+            })
+    except Exception as e:
+        logger.error(f"[PERF] Error computing entry conditions by outcome: {e}\n{traceback.format_exc()}")
+        entry_conditions_by_outcome = []
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -4773,6 +4942,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "post_exit_regret_deep_dive": post_exit_regret_deep_dive,
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
+        "entry_conditions_by_outcome": entry_conditions_by_outcome,
         "flagged_exits": flagged_exits,
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),

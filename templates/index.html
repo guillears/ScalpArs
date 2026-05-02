@@ -773,6 +773,55 @@
                     </div>
                 </div>
 
+                <!-- Entry Conditions by Outcome (May 2 — Winner-vs-Loser comparison view) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Conditions by Outcome (Winners vs Losers)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Same columns as Entry Conditions by Close Reason but collapsed to 4 buckets. Higher N per row makes cell-level statistics meaningful. Use this to enforce the methodological rule: a pattern only matters if winners and losers actually differ on that dimension.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Outcome</th>
+                                    <th class="px-3 py-2 font-medium text-center">#</th>
+                                    <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgRSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgADX</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="ADX Direction at entry: Rising/Falling count">ADXDir</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average EMA20 gap at entry">AvgGap</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average EMA5-EMA8 gap at entry">Gap5-8</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average EMA5 stretch (price-to-EMA5 distance)">Stretch</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average absolute EMA20 slope">EMA20Slp</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average absolute BTC EMA20 slope">BTCSlp</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average BTC RSI at entry">BTCRSI</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Average BTC ADX at entry">BTCADX</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="BTC ADX Direction at entry: Rising/Falling count">BTCADXDir</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="BTC RSI Direction at entry: Rising/Falling count">BTCRSIDir</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Signed distance: price vs EMA5 at entry (positive = above)">EMA5%</th>
+                                    <th class="px-3 py-2 font-medium text-right text-orange-400" title="Average ADX delta (adx - adx_prev) at entry">ADXΔ</th>
+                                    <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Average price range position at entry (0%=bottom, 100%=top)">RngPos</th>
+                                    <th class="px-3 py-2 font-medium text-right text-blue-400" title="Avg market breadth at entry (Bull% for LONGs, Bear% for SHORTs)">Breadth</th>
+                                    <th class="px-3 py-2 font-medium text-right text-purple-400" title="Avg +DI">+DI</th>
+                                    <th class="px-3 py-2 font-medium text-right text-purple-400" title="Avg -DI">-DI</th>
+                                    <th class="px-3 py-2 font-medium text-right text-violet-400" title="Avg |+DI - -DI|">DISpread</th>
+                                    <th class="px-3 py-2 font-medium text-right text-amber-400" title="Avg ATR(14) % of price">ATR%</th>
+                                    <th class="px-3 py-2 font-medium text-right text-emerald-400" title="Avg 5m EMA50 slope">EMA50Slp</th>
+                                    <th class="px-3 py-2 font-medium text-center text-emerald-400" title="EMA50 Alignment: Aligned/Opposite/Flat">EMA50Align</th>
+                                    <th class="px-3 py-2 font-medium text-right text-pink-400" title="Avg funding rate">Funding%</th>
+                                    <th class="px-3 py-2 font-medium text-right text-rose-400" title="Avg Time-to-Peak Ratio">TtPRatio</th>
+                                    <th class="px-3 py-2 font-medium text-right text-cyan-400">AvgPeak%</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgP&L%</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Total P&L in USD">Total$</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="SL Profile for losing rows. Empty for winning rows.">SLProf</th>
+                                    <th class="px-3 py-2 font-medium text-center">Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="entry-conditions-outcome-body" class="divide-y divide-white/5">
+                                <tr><td colspan="32" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -4083,6 +4132,50 @@
             }
 
             lines.push(`\n${hr2}`);
+            lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
+            lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+            const _ecoOrder = (a, b) => {
+                const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
+                const outRank = (r) => r.outcome === 'Winners' ? 0 : 1;
+                return (dirRank(a) - dirRank(b)) || (outRank(a) - outRank(b));
+            };
+            for (const r of (perf.entry_conditions_by_outcome || []).slice().sort(_ecoOrder)) {
+                const dirSuffix = r.direction === 'LONG' ? ' L' : ' S';
+                const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
+                const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
+                const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
+                const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
+                const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
+                const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
+                const slopeStr = r.avg_ema20_slope != null ? r.avg_ema20_slope.toFixed(2) + '%' : '-';
+                const btcSlopeStr = r.avg_btc_slope != null ? r.avg_btc_slope.toFixed(2) + '%' : '-';
+                const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                const btcRsiStr = r.avg_btc_rsi != null ? r.avg_btc_rsi.toFixed(1) : '-';
+                const btcAdxStr = r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-';
+                const ema5DistStr = r.avg_ema5_dist != null ? (r.avg_ema5_dist >= 0 ? '+' : '') + r.avg_ema5_dist.toFixed(2) + '%' : '-';
+                const adxDeltaStr = r.avg_adx_delta != null ? (r.avg_adx_delta >= 0 ? '+' : '') + r.avg_adx_delta.toFixed(2) : '-';
+                const rngPosStr = r.avg_range_position != null ? r.avg_range_position.toFixed(0) + '%' : '-';
+                const breadthStr = r.avg_breadth != null ? r.avg_breadth.toFixed(1) + '%' : '-';
+                const posDiStr = r.avg_pos_di != null ? r.avg_pos_di.toFixed(1) : '-';
+                const negDiStr = r.avg_neg_di != null ? r.avg_neg_di.toFixed(1) : '-';
+                const diSpreadStr = r.avg_di_spread != null ? r.avg_di_spread.toFixed(1) : '-';
+                const atrPctStr = r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(2) + '%' : '-';
+                const ema50SlpStr = r.avg_ema50_slope != null ? (r.avg_ema50_slope >= 0 ? '+' : '') + r.avg_ema50_slope.toFixed(2) + '%' : '-';
+                const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
+                const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
+                const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
+                const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
+                const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
+                const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
+                const _isWinner = r.outcome === 'Winners';
+                const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
+                const slProfStr = (_isWinner || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
+                lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+            }
+
+            lines.push(`\n${hr2}`);
             lines.push('## Entry Type Performance\n');
             lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
             for (const [etype, e] of Object.entries(perf.by_entry_type || {})) {
@@ -4798,6 +4891,51 @@
                     const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
                     const slProfStr = (_slP + _slN + _slBE) === 0 ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                     lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                }
+
+                // --- ENTRY CONDITIONS BY OUTCOME (Winners vs Losers, May 2) ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
+                lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+                const _ecoOrder2 = (a, b) => {
+                    const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
+                    const outRank = (r) => r.outcome === 'Winners' ? 0 : 1;
+                    return (dirRank(a) - dirRank(b)) || (outRank(a) - outRank(b));
+                };
+                for (const r of (perf.entry_conditions_by_outcome || []).slice().sort(_ecoOrder2)) {
+                    const dirSuffix = r.direction === 'LONG' ? ' L' : ' S';
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
+                    const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
+                    const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
+                    const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
+                    const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
+                    const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
+                    const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
+                    const slopeStr = r.avg_ema20_slope != null ? r.avg_ema20_slope.toFixed(2) + '%' : '-';
+                    const btcSlopeStr = r.avg_btc_slope != null ? r.avg_btc_slope.toFixed(2) + '%' : '-';
+                    const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                    const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                    const btcRsiStr = r.avg_btc_rsi != null ? r.avg_btc_rsi.toFixed(1) : '-';
+                    const btcAdxStr = r.avg_btc_adx != null ? r.avg_btc_adx.toFixed(1) : '-';
+                    const ema5DistStr = r.avg_ema5_dist != null ? (r.avg_ema5_dist >= 0 ? '+' : '') + r.avg_ema5_dist.toFixed(2) + '%' : '-';
+                    const adxDeltaStr = r.avg_adx_delta != null ? (r.avg_adx_delta >= 0 ? '+' : '') + r.avg_adx_delta.toFixed(2) : '-';
+                    const rngPosStr = r.avg_range_position != null ? r.avg_range_position.toFixed(0) + '%' : '-';
+                    const breadthStr = r.avg_breadth != null ? r.avg_breadth.toFixed(1) + '%' : '-';
+                    const posDiStr = r.avg_pos_di != null ? r.avg_pos_di.toFixed(1) : '-';
+                    const negDiStr = r.avg_neg_di != null ? r.avg_neg_di.toFixed(1) : '-';
+                    const diSpreadStr = r.avg_di_spread != null ? r.avg_di_spread.toFixed(1) : '-';
+                    const atrPctStr = r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(2) + '%' : '-';
+                    const ema50SlpStr = r.avg_ema50_slope != null ? (r.avg_ema50_slope >= 0 ? '+' : '') + r.avg_ema50_slope.toFixed(2) + '%' : '-';
+                    const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
+                    const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
+                    const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
+                    const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
+                    const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
+                    const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
+                    const _isWinner = r.outcome === 'Winners';
+                    const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
+                    const slProfStr = (_isWinner || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
+                    lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
                 }
 
                 // --- ENTRY TYPE PERFORMANCE ---
@@ -5791,7 +5929,86 @@
                 } else {
                     ecrBody.innerHTML = '<tr><td colspan="32" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
-                
+
+                // Entry Conditions by Outcome (May 2 — Winners vs Losers, L vs S)
+                const ecoBody = document.getElementById('entry-conditions-outcome-body');
+                if (data.entry_conditions_by_outcome && data.entry_conditions_by_outcome.length > 0) {
+                    const ecoConfColors = {
+                        'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400',
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400',
+                        'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400'
+                    };
+                    // Preserve fixed order: Winners L, Losers L, Winners S, Losers S
+                    const ecoOrder = (a, b) => {
+                        const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
+                        const outRank = (r) => r.outcome === 'Winners' ? 0 : 1;
+                        return (dirRank(a) - dirRank(b)) || (outRank(a) - outRank(b));
+                    };
+                    ecoBody.innerHTML = data.entry_conditions_by_outcome
+                        .slice()
+                        .sort(ecoOrder)
+                        .map(r => {
+                            const isWinner = r.outcome === 'Winners';
+                            const pnlClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const peakClass = r.avg_peak_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                            const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
+                            const outcomeColor = isWinner ? 'text-emerald-400' : 'text-red-400';
+                            const confBadges = Object.entries(r.by_confidence || {})
+                                .sort((a, b) => b[1] - a[1])
+                                .map(([c, n]) => `<span class="${ecoConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                                .join(' ') || '-';
+                            const adxDirStr = `<span class="text-emerald-400 text-xs">${r.adx_rising}R</span>/<span class="text-red-400 text-xs">${r.adx_falling}F</span>`;
+                            const btcAdxDirStr = `<span class="text-emerald-400 text-xs">${r.btc_adx_rising}R</span>/<span class="text-red-400 text-xs">${r.btc_adx_falling}F</span>`;
+                            const btcRsiDirStr = `<span class="text-emerald-400 text-xs">${r.btc_rsi_rising || 0}R</span>/<span class="text-red-400 text-xs">${r.btc_rsi_falling || 0}F</span>`;
+                            const ema5DistVal = r.avg_ema5_dist;
+                            const ema5DistClass = ema5DistVal != null ? (ema5DistVal >= 0 ? 'text-emerald-400' : 'text-red-400') : '';
+                            const totalPnlUsd = r.total_pnl_usd || 0;
+                            const totalPnlClass = totalPnlUsd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${outcomeColor}">${r.outcome} <span class="${dirColor} text-xs font-normal">${dirLabel}</span></td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-center">${confBadges}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_rsi != null ? safe(r.avg_rsi).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_adx != null ? safe(r.avg_adx).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-center">${adxDirStr}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_gap != null ? safe(r.avg_gap).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_gap58 != null ? safe(r.avg_gap58).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_stretch != null ? safe(r.avg_stretch).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_ema20_slope != null ? safe(r.avg_ema20_slope).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_slope != null ? safe(r.avg_btc_slope).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_rsi != null ? safe(r.avg_btc_rsi).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right">${r.avg_btc_adx != null ? safe(r.avg_btc_adx).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-center">${btcAdxDirStr}</td>
+                                <td class="px-3 py-2 text-center">${btcRsiDirStr}</td>
+                                <td class="px-3 py-2 text-right ${ema5DistClass}">${ema5DistVal != null ? (safe(ema5DistVal) >= 0 ? '+' : '') + safe(ema5DistVal).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-orange-400">${r.avg_adx_delta != null ? (safe(r.avg_adx_delta) >= 0 ? '+' : '') + safe(r.avg_adx_delta).toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-cyan-400">${r.avg_range_position != null ? safe(r.avg_range_position).toFixed(0) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-blue-400">${r.avg_breadth != null ? safe(r.avg_breadth).toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-purple-400">${r.avg_pos_di != null ? safe(r.avg_pos_di).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-purple-400">${r.avg_neg_di != null ? safe(r.avg_neg_di).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-violet-400">${r.avg_di_spread != null ? safe(r.avg_di_spread).toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-amber-400">${r.avg_atr_pct != null ? safe(r.avg_atr_pct).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-emerald-400">${r.avg_ema50_slope != null ? (safe(r.avg_ema50_slope) >= 0 ? '+' : '') + safe(r.avg_ema50_slope).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${r.ema50_aligned||0}A</span>/<span class="text-red-400 text-xs">${r.ema50_opposite||0}O</span>/<span class="text-gray-400 text-xs">${r.ema50_flat||0}F</span></td>
+                                <td class="px-3 py-2 text-right text-pink-400">${r.avg_funding_rate != null ? (safe(r.avg_funding_rate) >= 0 ? '+' : '') + (safe(r.avg_funding_rate) * 100).toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-rose-400">${r.avg_ttp_ratio != null ? safe(r.avg_ttp_ratio).toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct) >= 0 ? '+' : ''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
+                                <td class="px-3 py-2 text-center text-xs">${
+                                    isWinner || ((r.sl_positive_no_be||0) + (r.sl_never_positive||0) + (r.sl_be_was_active||0)) === 0
+                                        ? '<span class="text-gray-500">-</span>'
+                                        : `<span class="text-amber-400">P:${r.sl_positive_no_be||0}</span> <span class="text-red-400">N:${r.sl_never_positive||0}</span>${(r.sl_be_was_active||0) > 0 ? ` <span class="text-orange-400">BE:${r.sl_be_was_active}</span>` : ''}`
+                                }</td>
+                                <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.avg_duration || '-'}</td>
+                            </tr>`;
+                        }).join('');
+                } else {
+                    ecoBody.innerHTML = '<tr><td colspan="32" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
                 // Performance by Entry Gap 5-20
                 const gapBody = document.getElementById('gap-performance-body');
                 if (data.gap_performance && data.gap_performance.length > 0) {

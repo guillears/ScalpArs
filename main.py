@@ -3567,6 +3567,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     ct_pnl_sum = sum(o.pnl or 0 for o in bucket)
                     ct_count = len(bucket)
                     ct_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in bucket)
+                    # May 2: Never Positive count per cell — see Performance by RSI x ADX
+                    ct_never_positive = sum(1 for o in bucket if (o.peak_pnl or 0) <= 0)
                     btc_rsi_adx_crosstab.append({
                         "direction": direction,
                         "btc_rsi_range": rsi_name,
@@ -3576,6 +3578,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "avg_pnl": round(ct_pnl_sum / ct_count, 2),
                         "avg_pnl_pct": round(ct_pnl_pct_sum / ct_count, 4),
                         "total_pnl": round(ct_pnl_sum, 2),
+                        "never_positive": ct_never_positive,
+                        "never_positive_pct": round(ct_never_positive / ct_count * 100, 1) if ct_count else 0,
                     })
 
         # Quality Score Performance
@@ -4387,6 +4391,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     ct_wins = sum(1 for o in bucket if (o.pnl or 0) > 0)
                     ct_pnl = sum(o.pnl or 0 for o in bucket)
                     ct_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket)
+                    # May 2: Never Positive count per cell — distinguishes
+                    # bad-entry cells (high NP%) from bad-exit cells (low NP%, lots of losers).
+                    ct_never_positive = sum(1 for o in bucket if (o.peak_pnl or 0) <= 0)
                     rsi_adx_crosstab.append({
                         "direction": direction,
                         "rsi_range": rsi_name,
@@ -4396,6 +4403,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         "total_pnl": round(ct_pnl, 2),
                         "avg_pnl": round(ct_pnl / ct_count, 2),
                         "avg_pnl_pct": round(ct_pnl_pct / ct_count, 4),
+                        "never_positive": ct_never_positive,
+                        "never_positive_pct": round(ct_never_positive / ct_count * 100, 1) if ct_count else 0,
                     })
     except Exception as e:
         logger.error(f"[PERF] Error computing RSI x ADX cross-tab: {e}\n{traceback.format_exc()}")

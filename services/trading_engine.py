@@ -795,17 +795,59 @@ class TradingEngine:
 
     async def _record_signal_expired_order(
         self, db: AsyncSession, pair: str, direction: str, confidence: str,
-        reason: str, entry_price: float
+        reason: str, entry_price: float,
+        # Wait-time capture (May 2 enrichment) — actual maker-wait elapsed before
+        # re-validation killed the entry. opened_at is back-dated so closed_at -
+        # opened_at == real wait. None means "wait time not tracked" (legacy path).
+        wait_seconds: Optional[float] = None,
+        # Entry-indicator capture (May 2 enrichment) — same fields as a CLOSED
+        # Order. All optional; missing fields stay NULL in DB. Available in scope
+        # at open_position call sites because they're already function params.
+        entry_gap: Optional[float] = None,
+        entry_ema_gap_5_8: Optional[float] = None,
+        entry_ema5_stretch: Optional[float] = None,
+        entry_rsi: Optional[float] = None,
+        entry_adx: Optional[float] = None,
+        entry_adx_prev: Optional[float] = None,
+        entry_ema20_slope: Optional[float] = None,
+        entry_btc_ema20_slope: Optional[float] = None,
+        entry_btc_adx: Optional[float] = None,
+        entry_btc_adx_prev: Optional[float] = None,
+        entry_btc_rsi: Optional[float] = None,
+        entry_btc_rsi_prev: Optional[float] = None,
+        entry_price_vs_ema5_pct: Optional[float] = None,
+        entry_global_volume_ratio: Optional[float] = None,
+        entry_pair_volume_ratio: Optional[float] = None,
+        entry_bull_pct: Optional[float] = None,
+        entry_bear_pct: Optional[float] = None,
+        entry_range_position: Optional[float] = None,
+        entry_adx_delta: Optional[float] = None,
+        entry_quality_score: Optional[int] = None,
+        entry_btc_regime: Optional[str] = None,
+        entry_pos_di: Optional[float] = None,
+        entry_neg_di: Optional[float] = None,
+        entry_atr_pct: Optional[float] = None,
+        entry_ema50_slope: Optional[float] = None,
+        entry_funding_rate: Optional[float] = None,
     ):
         """Persist a signal-expired entry attempt as a minimal Order row for reporting.
 
-        Amendment #7 (Apr 18): these rows appear in Entry Type Performance with
-        entry_order_type='SIGNAL_EXPIRED' so the operator can see the rate of
-        aborted entries. status='SIGNAL_EXPIRED' keeps them out of PnL / WR
-        aggregations in _compute_performance queries (which filter on 'CLOSED').
+        Amendment #7 (Apr 18) shipped this with status='SIGNAL_EXPIRED' so the
+        operator could see the rate of aborted entries via Entry Type Performance.
+        status='SIGNAL_EXPIRED' keeps these rows out of PnL/WR aggregations
+        (which filter on 'CLOSED'/'SIGNAL_EXPIRED' separately).
+
+        May 2 enrichment: now also persists entry-indicator values + wait_seconds
+        so aborted entries can be compared against Winners L / Losers L on the
+        same dimensions (Entry Conditions by Outcome). Without this we could not
+        tell whether re-validation was correctly self-protecting (aborts match
+        loser profile) or murdering good trades (aborts match winner profile).
+        Historical SIGNAL_EXPIRED rows persisted before this change have NULL
+        indicator values forever — only post-deploy aborts are analyzable.
         """
         try:
             now = datetime.utcnow()
+            opened_at = (now - timedelta(seconds=wait_seconds)) if wait_seconds is not None else now
             order = Order(
                 pair=pair,
                 direction=direction,
@@ -828,9 +870,36 @@ class TradingEngine:
                 entry_order_type="SIGNAL_EXPIRED",
                 exit_order_type=None,
                 close_reason=f"SIGNAL_EXPIRED:{reason}",
-                opened_at=now,
+                opened_at=opened_at,
                 closed_at=now,
                 is_paper=self.is_paper_mode,
+                # Entry indicators (May 2)
+                entry_gap=entry_gap,
+                entry_ema_gap_5_8=entry_ema_gap_5_8,
+                entry_ema5_stretch=entry_ema5_stretch,
+                entry_rsi=entry_rsi,
+                entry_adx=entry_adx,
+                entry_adx_prev=entry_adx_prev,
+                entry_ema20_slope=entry_ema20_slope,
+                entry_btc_ema20_slope=entry_btc_ema20_slope,
+                entry_btc_adx=entry_btc_adx,
+                entry_btc_adx_prev=entry_btc_adx_prev,
+                entry_btc_rsi=entry_btc_rsi,
+                entry_btc_rsi_prev=entry_btc_rsi_prev,
+                entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
+                entry_global_volume_ratio=entry_global_volume_ratio,
+                entry_pair_volume_ratio=entry_pair_volume_ratio,
+                entry_bull_pct=entry_bull_pct,
+                entry_bear_pct=entry_bear_pct,
+                entry_range_position=entry_range_position,
+                entry_adx_delta=entry_adx_delta,
+                entry_quality_score=entry_quality_score,
+                entry_btc_regime=entry_btc_regime,
+                entry_pos_di=entry_pos_di,
+                entry_neg_di=entry_neg_di,
+                entry_atr_pct=entry_atr_pct,
+                entry_ema50_slope=entry_ema50_slope,
+                entry_funding_rate=entry_funding_rate,
             )
             db.add(order)
             await db.commit()
@@ -942,6 +1011,8 @@ class TradingEngine:
             }
 
         # No fill at all -- re-validate signal before taker fallback (Amendment #7)
+        # Wait time = full timeout window since we polled until exhaustion (May 2)
+        wait_seconds_elapsed = float(timeout)
         if confidence is not None:
             is_valid, revalidate_reason = await self._revalidate_entry_signal(
                 symbol, pair, direction, confidence
@@ -952,6 +1023,7 @@ class TradingEngine:
                     'entry_order_type': 'SIGNAL_EXPIRED',
                     'skipped': True,
                     'reason': revalidate_reason,
+                    'wait_seconds': wait_seconds_elapsed,
                 }
 
         logger.info(f"[MAKER_ENTRY] {pair}: No fill, signal re-validated, falling back to market order")
@@ -1030,6 +1102,8 @@ class TradingEngine:
                 }
 
         # No fill -- re-validate signal before taker fallback (Amendment #7)
+        # Wait time = full timeout window since we polled until exhaustion (May 2)
+        wait_seconds_elapsed = float(timeout)
         if confidence is not None:
             symbol_ccxt = pair.replace('USDT', '/USDT:USDT')
             is_valid, revalidate_reason = await self._revalidate_entry_signal(
@@ -1043,6 +1117,7 @@ class TradingEngine:
                     'reason': revalidate_reason,
                     'price': current_price,
                     'entry_fee': 0.0,
+                    'wait_seconds': wait_seconds_elapsed,
                 }
 
         tracker = websocket_tracker.get_tracker(pair)
@@ -1406,11 +1481,40 @@ class TradingEngine:
                     confidence=confidence,
                 )
                 if result and result.get('skipped'):
-                    # Amendment #7: signal expired during maker wait → record + abort entry
+                    # Amendment #7: signal expired during maker wait → record + abort entry.
+                    # May 2: forward all entry indicators + wait_seconds so aborted entries
+                    # land in Entry Conditions by Outcome with full attribution data.
                     await self._record_signal_expired_order(
                         db=db, pair=pair, direction=direction, confidence=confidence,
                         reason=result.get('reason', 'unknown'),
                         entry_price=current_price,
+                        wait_seconds=result.get('wait_seconds'),
+                        entry_gap=entry_gap,
+                        entry_ema_gap_5_8=entry_ema_gap_5_8,
+                        entry_ema5_stretch=entry_ema5_stretch,
+                        entry_rsi=entry_rsi,
+                        entry_adx=entry_adx,
+                        entry_adx_prev=entry_adx_prev,
+                        entry_ema20_slope=entry_ema20_slope,
+                        entry_btc_ema20_slope=entry_btc_ema20_slope,
+                        entry_btc_adx=entry_btc_adx,
+                        entry_btc_adx_prev=entry_btc_adx_prev,
+                        entry_btc_rsi=entry_btc_rsi,
+                        entry_btc_rsi_prev=entry_btc_rsi_prev,
+                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
+                        entry_global_volume_ratio=entry_global_volume_ratio,
+                        entry_pair_volume_ratio=entry_pair_volume_ratio,
+                        entry_bull_pct=entry_bull_pct,
+                        entry_bear_pct=entry_bear_pct,
+                        entry_range_position=entry_range_position,
+                        entry_adx_delta=entry_adx_delta,
+                        entry_quality_score=entry_quality_score,
+                        entry_btc_regime=entry_btc_regime,
+                        entry_pos_di=entry_pos_di,
+                        entry_neg_di=entry_neg_di,
+                        entry_atr_pct=entry_atr_pct,
+                        entry_ema50_slope=entry_ema50_slope,
+                        entry_funding_rate=entry_funding_rate,
                     )
                     return None
                 if result:
@@ -1445,11 +1549,40 @@ class TradingEngine:
                     confidence=confidence,
                 )
                 if result.get('skipped'):
-                    # Amendment #7: signal expired during maker wait → record + abort entry
+                    # Amendment #7: signal expired during maker wait → record + abort entry.
+                    # May 2: forward all entry indicators + wait_seconds so aborted entries
+                    # land in Entry Conditions by Outcome with full attribution data.
                     await self._record_signal_expired_order(
                         db=db, pair=pair, direction=direction, confidence=confidence,
                         reason=result.get('reason', 'unknown'),
                         entry_price=current_price,
+                        wait_seconds=result.get('wait_seconds'),
+                        entry_gap=entry_gap,
+                        entry_ema_gap_5_8=entry_ema_gap_5_8,
+                        entry_ema5_stretch=entry_ema5_stretch,
+                        entry_rsi=entry_rsi,
+                        entry_adx=entry_adx,
+                        entry_adx_prev=entry_adx_prev,
+                        entry_ema20_slope=entry_ema20_slope,
+                        entry_btc_ema20_slope=entry_btc_ema20_slope,
+                        entry_btc_adx=entry_btc_adx,
+                        entry_btc_adx_prev=entry_btc_adx_prev,
+                        entry_btc_rsi=entry_btc_rsi,
+                        entry_btc_rsi_prev=entry_btc_rsi_prev,
+                        entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
+                        entry_global_volume_ratio=entry_global_volume_ratio,
+                        entry_pair_volume_ratio=entry_pair_volume_ratio,
+                        entry_bull_pct=entry_bull_pct,
+                        entry_bear_pct=entry_bear_pct,
+                        entry_range_position=entry_range_position,
+                        entry_adx_delta=entry_adx_delta,
+                        entry_quality_score=entry_quality_score,
+                        entry_btc_regime=entry_btc_regime,
+                        entry_pos_di=entry_pos_di,
+                        entry_neg_di=entry_neg_di,
+                        entry_atr_pct=entry_atr_pct,
+                        entry_ema50_slope=entry_ema50_slope,
+                        entry_funding_rate=entry_funding_rate,
                     )
                     return None
                 actual_price = result['price']

@@ -2477,6 +2477,140 @@ This section is the inventory of analytical surface available at the
 checkpoint. Without it, future-Claude might not realize the cross-tab exists
 and would re-run the same analysis on lower-resolution single-dimension tables.
 
+## May 2, 2026 — SIGNAL_EXPIRED enrichment (Aborted entries become first-class analytical population)
+
+### Problem this addresses
+
+Amendment #7 (Apr 18) introduced re-validation of the entry signal at maker-wait
+timeout: if BTC ADX direction has flipped, BTC ADX/RSI moved out of range, or the
+core get_signal output has changed, the bot aborts the taker fallback and
+persists a SIGNAL_EXPIRED Order row. By the May 2 67-trade Phase 1c-Explore
+checkpoint, **97 SIGNAL_EXPIRED rows had accumulated — roughly 62% the size of
+the 156 CLOSED trade count.** Yet we knew nothing about them beyond reason-category
+counts.
+
+The user correctly flagged: that's not a footnote. It's a parallel population of
+"what the bot almost did but didn't" — and right now the only thing we measure is
+the *reason category*. We have no idea whether those 97 were good calls (kill
+switch saved bad trades) or bad calls (we're cutting winners and never seeing
+them).
+
+The Apr 18 `_record_signal_expired_order` persisted a "minimal" Order row:
+`pair`, `direction`, `confidence`, `status`, `entry_price`, `close_reason`,
+`opened_at = closed_at = now`. **All entry indicator fields were NULL.** The
+maker-wait elapsed time was discarded too (opened_at == closed_at).
+
+### What was added
+
+**Code changes (services/trading_engine.py — ~150 lines, all in one file):**
+
+1. **`_record_signal_expired_order` signature extended** with all entry-indicator
+   parameters (~25 fields) plus `wait_seconds`. All are optional and default to
+   None — legacy call sites still work; new call sites populate everything.
+2. **opened_at is back-dated** when `wait_seconds` is provided:
+   `opened_at = now - timedelta(seconds=wait_seconds)`. So `closed_at - opened_at`
+   = real maker wait elapsed before re-validation killed the entry. Pre-deploy
+   rows have `opened_at == closed_at` (wait=0) and are excluded from wait-time
+   medians by the reporting code.
+3. **`_try_maker_entry` and `_simulate_maker_entry_paper`** now return
+   `wait_seconds: float(timeout)` in the SIGNAL_EXPIRED skipped dict. Since
+   re-validation only fires after the full maker-poll loop has exhausted, the
+   wait equals the configured `maker_timeout_seconds` (currently 40s).
+4. **Both call sites in `open_position`** (the live and paper branches) forward
+   all the entry indicators they already had in scope (no recomputation, no
+   refetch — the params were always there) plus `wait_seconds` from the result
+   dict.
+
+**Critical: no schema migration needed.** All required `entry_*` columns already
+existed on the Order model. The fields just weren't being populated for
+SIGNAL_EXPIRED rows.
+
+**Reporting (main.py + templates/index.html):**
+
+5. **Entry Conditions by Outcome extended** — was 4 buckets (Winners L / Losers L /
+   Winners S / Losers S), now up to 6 (adds Aborted L / Aborted S). Aborted rows
+   render in amber to distinguish from Winners (emerald) and Losers (red). Same
+   column set as the existing rows. SL Profile column shows `-` for Aborted (peak
+   is always 0 on never-opened entries; classification would be misleading). Sort
+   order: Winners L, Losers L, Aborted L, Winners S, Losers S, Aborted S.
+
+6. **Signal Expired Breakdown gets MedWait / p90Wait / MaxWait columns.**
+   Computed per category from `closed_at - opened_at` on SIGNAL_EXPIRED rows
+   where `wait_seconds > 0` (i.e., post-deploy rows only — historical zeros are
+   filtered out by the wait_seconds > 0 check, not by date).
+
+### Why this matters for the 200-trade decision checkpoint
+
+Three scenarios become testable for the first time:
+
+| Aborted L/S profile vs Winners L/S, Losers L/S | Verdict | Action at checkpoint |
+|---|---|---|
+| Matches Loser profile (similar avg RSI/ADX/etc.) | Re-validation correctly self-protecting | Keep on; count as silent edge |
+| Matches Winner profile | Re-validation murdering good trades | Tighten/remove specific re-validation criteria |
+| Neither — own profile | Aborted are a third population, neutral expectancy | Revisit Amendment #6 (40s timeout may be too long) |
+
+The wait-time stats answer a different question:
+- If MedWait clusters near 40s → Amendment #6's 40s timeout is the cause; reverting
+  to 20s would cut abort rate
+- If MedWait near 0 → flaky signal generator producing momentary signals; timeout
+  is irrelevant
+
+### Caveats
+
+1. **Historical SIGNAL_EXPIRED rows persisted before this commit have NULL
+   indicator values forever.** Only post-deploy aborts populate the new fields.
+   The 97 rows in the May 2 67-trade sample stay analytically dark. Timing
+   matters: this shipped before the 200-trade checkpoint so post-deploy aborts
+   should accumulate enough N for analysis.
+
+2. **The Apr 30 BTC RSI re-validation bug contaminated 18 of the legacy 97 rows**
+   (CLAUDE.md Apr 30 entry — pre-`605b29b` re-validation ran BTC RSI check
+   ungated even though `btc_global_filter_enabled=false`). Those 18 are
+   analytically dark already; the new fields on post-deploy rows are immune to
+   that bug since the gating fix shipped Apr 30.
+
+3. **Aborted rows show pnl=0, peak=0, trough=0 by construction** — they never
+   opened. Avg P&L%, Avg Peak%, Total$ all show 0 in the table. That's not
+   missing data; it's the correct value ("we don't know what would have
+   happened, and the trade did not affect the account"). Don't interpret these
+   zeros as "Aborted entries are break-even" — they didn't trade.
+
+4. **Aborted row durations are wait time, not hold time.** Reading "Aborted L
+   avg duration 00:00:40" means "average maker wait was 40s before the abort,"
+   not "average position lasted 40s." This is intentional — wait time is what
+   matters for diagnosing the timeout — but worth noting if future-Claude
+   confuses the two.
+
+### The "Tier 3" follow-up that was deliberately deferred
+
+A 60-min post-expiry counterfactual ("what did price do in the next 60 min after
+the abort fired?") would tell us whether aborted entries would have made or lost
+money. That requires either a background task watching expired entries for 60min
+or a backfill that re-fetches OHLCV. **Not free engineering.** Skipped for now —
+if Tier 1 (entry-condition comparison) shows aborts cleanly match the Loser
+profile, we don't need Tier 3. Revisit only if Tier 1 results are ambiguous.
+
+### Files changed
+
+- `services/trading_engine.py` — `_record_signal_expired_order` signature +
+  body (~80 lines added); `_try_maker_entry` and `_simulate_maker_entry_paper`
+  return `wait_seconds`; both `open_position` call sites forward indicators +
+  wait
+- `main.py` — `entry_conditions_by_outcome` builder accepts SIGNAL_EXPIRED
+  orders as Aborted bucket; `_compute_signal_expired_breakdown` adds wait-time
+  median/p90/max
+- `templates/index.html` — Entry Conditions by Outcome JS renderer handles
+  Aborted outcome (amber color, no SL Profile); Signal Expired Breakdown table
+  + JS adds 3 wait columns; both text-export sites updated for both tables
+
+### Why this entry exists in CLAUDE.md
+
+To follow up at the 200-trade checkpoint with the correct analysis question
+("does Aborted match Loser or Winner profile?") and the correct decision rule
+(see table above). Without this section future-Claude would treat the new
+Aborted rows as another mysterious data point rather than a structured test of
+re-validation correctness.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

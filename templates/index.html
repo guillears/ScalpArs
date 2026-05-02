@@ -892,11 +892,14 @@
                                     <th class="px-3 py-2 font-medium text-center">LONG</th>
                                     <th class="px-3 py-2 font-medium text-center">SHORT</th>
                                     <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Median maker-wait elapsed before re-validation killed the entry. May 2 enrichment — only post-deploy aborted rows are counted (legacy rows had no wait_seconds capture).">MedWait</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="90th percentile of wait time. If MedWait and p90 cluster near maker_timeout_seconds, the timeout is the cause; if near 0, signal generator is producing flaky momentary signals.">p90Wait</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Maximum wait observed in this category (seconds).">MaxWait</th>
                                     <th class="px-3 py-2 font-medium">Top Specific Reasons</th>
                                 </tr>
                             </thead>
                             <tbody id="signal-expired-breakdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4136,7 +4139,7 @@
             lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
             const _ecoOrder = (a, b) => {
                 const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
-                const outRank = (r) => r.outcome === 'Winners' ? 0 : 1;
+                const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
                 return (dirRank(a) - dirRank(b)) || (outRank(a) - outRank(b));
             };
             for (const r of (perf.entry_conditions_by_outcome || []).slice().sort(_ecoOrder)) {
@@ -4170,8 +4173,9 @@
                 const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                 const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
                 const _isWinner = r.outcome === 'Winners';
+                const _isAborted = r.outcome === 'Aborted';
                 const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
-                const slProfStr = (_isWinner || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
+                const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                 lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
             }
 
@@ -4195,11 +4199,14 @@
             if (perf.signal_expired_breakdown && perf.signal_expired_breakdown.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Signal Expired Breakdown\n');
-                lines.push(`${'Reason Category'.padEnd(28)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'L'.padEnd(4)} ${'S'.padEnd(4)} ${'Conf'.padEnd(14)} Top Specific Reasons`);
+                lines.push(`${'Reason Category'.padEnd(28)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'L'.padEnd(4)} ${'S'.padEnd(4)} ${'Conf'.padEnd(14)} ${'MedWait'.padEnd(8)} ${'p90Wait'.padEnd(8)} ${'MaxWait'.padEnd(8)} Top Specific Reasons`);
                 for (const r of perf.signal_expired_breakdown) {
                     const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
                     const sampleReasons = (r.sample_reasons || []).join(', ') || '-';
-                    lines.push(`${r.category.padEnd(28)} ${String(r.count).padEnd(5)} ${(r.pct_of_total+'%').padEnd(7)} ${String(r.longs).padEnd(4)} ${String(r.shorts).padEnd(4)} ${confStr.padEnd(14)} ${sampleReasons}`);
+                    const medW = r.median_wait != null ? r.median_wait.toFixed(1) + 's' : '-';
+                    const p90W = r.p90_wait != null ? r.p90_wait.toFixed(1) + 's' : '-';
+                    const maxW = r.max_wait != null ? r.max_wait.toFixed(1) + 's' : '-';
+                    lines.push(`${r.category.padEnd(28)} ${String(r.count).padEnd(5)} ${(r.pct_of_total+'%').padEnd(7)} ${String(r.longs).padEnd(4)} ${String(r.shorts).padEnd(4)} ${confStr.padEnd(14)} ${medW.padEnd(8)} ${p90W.padEnd(8)} ${maxW.padEnd(8)} ${sampleReasons}`);
                 }
             }
 
@@ -4899,7 +4906,7 @@
                 lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
                 const _ecoOrder2 = (a, b) => {
                     const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
-                    const outRank = (r) => r.outcome === 'Winners' ? 0 : 1;
+                    const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
                     return (dirRank(a) - dirRank(b)) || (outRank(a) - outRank(b));
                 };
                 for (const r of (perf.entry_conditions_by_outcome || []).slice().sort(_ecoOrder2)) {
@@ -4933,8 +4940,9 @@
                     const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                     const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
                     const _isWinner = r.outcome === 'Winners';
+                    const _isAborted = r.outcome === 'Aborted';
                     const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
-                    const slProfStr = (_isWinner || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
+                    const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                     lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
                 }
 
@@ -4960,11 +4968,14 @@
                 if (perf.signal_expired_breakdown && perf.signal_expired_breakdown.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Signal Expired Breakdown\n');
-                    lines.push(`${'Reason Category'.padEnd(28)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'L'.padEnd(4)} ${'S'.padEnd(4)} ${'Conf'.padEnd(14)} Top Specific Reasons`);
+                    lines.push(`${'Reason Category'.padEnd(28)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'L'.padEnd(4)} ${'S'.padEnd(4)} ${'Conf'.padEnd(14)} ${'MedWait'.padEnd(8)} ${'p90Wait'.padEnd(8)} ${'MaxWait'.padEnd(8)} Top Specific Reasons`);
                     for (const r of perf.signal_expired_breakdown) {
                         const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
                         const sampleReasons = (r.sample_reasons || []).join(', ') || '-';
-                        lines.push(`${r.category.padEnd(28)} ${String(r.count).padEnd(5)} ${(r.pct_of_total+'%').padEnd(7)} ${String(r.longs).padEnd(4)} ${String(r.shorts).padEnd(4)} ${confStr.padEnd(14)} ${sampleReasons}`);
+                        const medW = r.median_wait != null ? r.median_wait.toFixed(1) + 's' : '-';
+                        const p90W = r.p90_wait != null ? r.p90_wait.toFixed(1) + 's' : '-';
+                        const maxW = r.max_wait != null ? r.max_wait.toFixed(1) + 's' : '-';
+                        lines.push(`${r.category.padEnd(28)} ${String(r.count).padEnd(5)} ${(r.pct_of_total+'%').padEnd(7)} ${String(r.longs).padEnd(4)} ${String(r.shorts).padEnd(4)} ${confStr.padEnd(14)} ${medW.padEnd(8)} ${p90W.padEnd(8)} ${maxW.padEnd(8)} ${sampleReasons}`);
                     }
                 }
 
@@ -5938,10 +5949,10 @@
                         'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400',
                         'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400'
                     };
-                    // Preserve fixed order: Winners L, Losers L, Winners S, Losers S
+                    // Preserve fixed order: Winners L, Losers L, Aborted L, Winners S, Losers S, Aborted S
                     const ecoOrder = (a, b) => {
                         const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
-                        const outRank = (r) => r.outcome === 'Winners' ? 0 : 1;
+                        const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
                         return (dirRank(a) - dirRank(b)) || (outRank(a) - outRank(b));
                     };
                     ecoBody.innerHTML = data.entry_conditions_by_outcome
@@ -5949,11 +5960,14 @@
                         .sort(ecoOrder)
                         .map(r => {
                             const isWinner = r.outcome === 'Winners';
+                            const isAborted = r.outcome === 'Aborted';
                             const pnlClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const peakClass = r.avg_peak_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                             const dirLabel = r.direction === 'LONG' ? 'L' : 'S';
-                            const outcomeColor = isWinner ? 'text-emerald-400' : 'text-red-400';
+                            // Aborted = re-validation killed the entry; render in amber to
+                            // distinguish from Winners (emerald) and Losers (red).
+                            const outcomeColor = isWinner ? 'text-emerald-400' : (isAborted ? 'text-amber-400' : 'text-red-400');
                             const confBadges = Object.entries(r.by_confidence || {})
                                 .sort((a, b) => b[1] - a[1])
                                 .map(([c, n]) => `<span class="${ecoConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
@@ -5998,7 +6012,7 @@
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
                                 <td class="px-3 py-2 text-center text-xs">${
-                                    isWinner || ((r.sl_positive_no_be||0) + (r.sl_never_positive||0) + (r.sl_be_was_active||0)) === 0
+                                    isWinner || isAborted || ((r.sl_positive_no_be||0) + (r.sl_never_positive||0) + (r.sl_be_was_active||0)) === 0
                                         ? '<span class="text-gray-500">-</span>'
                                         : `<span class="text-amber-400">P:${r.sl_positive_no_be||0}</span> <span class="text-red-400">N:${r.sl_never_positive||0}</span>${(r.sl_be_was_active||0) > 0 ? ` <span class="text-orange-400">BE:${r.sl_be_was_active}</span>` : ''}`
                                 }</td>
@@ -7457,6 +7471,9 @@
                             .map(([c, n]) => `<span class="${seConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
                             .join(' ');
                         const sampleReasons = (r.sample_reasons || []).join(', ') || '-';
+                        // May 2: wait-time columns. Format short — '32s' style.
+                        const fmtWait = v => v == null ? '<span class="text-gray-600">-</span>' : `${v.toFixed(1)}s`;
+                        const waitNote = r.wait_n > 0 ? '' : '';
                         return `<tr class="hover:bg-white/5">
                             <td class="px-3 py-2 ${catClass} font-medium">${r.category}</td>
                             <td class="px-3 py-2 text-center">${r.count}</td>
@@ -7464,12 +7481,15 @@
                             <td class="px-3 py-2 text-center text-emerald-400">${r.longs}</td>
                             <td class="px-3 py-2 text-center text-red-400">${r.shorts}</td>
                             <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            <td class="px-3 py-2 text-right text-xs">${fmtWait(r.median_wait)}</td>
+                            <td class="px-3 py-2 text-right text-xs">${fmtWait(r.p90_wait)}</td>
+                            <td class="px-3 py-2 text-right text-xs">${fmtWait(r.max_wait)}</td>
                             <td class="px-3 py-2 text-xs text-gray-400 font-mono">${sampleReasons}</td>
                         </tr>`;
                     }).join('');
                     seBody.innerHTML = seRows;
                 } else {
-                    seBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No SIGNAL_EXPIRED data</td></tr>';
+                    seBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No SIGNAL_EXPIRED data</td></tr>';
                 }
 
                 // Stop Loss Deep Dive

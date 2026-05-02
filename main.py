@@ -1628,6 +1628,7 @@ def _compute_signal_expired_breakdown(signal_expired_orders):
                 "shorts": 0,
                 "by_confidence": {},
                 "reason_counts": {},
+                "wait_seconds": [],  # May 2: per-row wait time before re-validation killed entry
             }
         b = buckets[category]
         b["count"] += 1
@@ -1638,6 +1639,13 @@ def _compute_signal_expired_breakdown(signal_expired_orders):
         conf = o.confidence or "UNKNOWN"
         b["by_confidence"][conf] = b["by_confidence"].get(conf, 0) + 1
         b["reason_counts"][raw_reason] = b["reason_counts"].get(raw_reason, 0) + 1
+        # May 2: capture wait_seconds = closed_at - opened_at. Pre-enrichment rows
+        # have opened_at == closed_at (wait=0); skip them so historical zeros don't
+        # pollute the median.
+        if o.opened_at and o.closed_at:
+            wait_s = (o.closed_at - o.opened_at).total_seconds()
+            if wait_s > 0:
+                b["wait_seconds"].append(wait_s)
 
     rows = []
     for category, b in buckets.items():
@@ -1675,6 +1683,20 @@ def _compute_signal_expired_breakdown(signal_expired_orders):
         for r, n in top_discrete:
             sample_reasons.append(f"{r} ({n})")
 
+        # May 2: wait-time distribution (median / p90 / max) — None when no
+        # post-enrichment rows in this bucket yet.
+        waits = sorted(b.get("wait_seconds", []))
+        if waits:
+            n = len(waits)
+            median_wait = waits[n // 2] if n % 2 == 1 else (waits[n // 2 - 1] + waits[n // 2]) / 2
+            p90_idx = max(0, min(n - 1, int(round(0.9 * (n - 1)))))
+            p90_wait = waits[p90_idx]
+            max_wait = waits[-1]
+            wait_n = n
+        else:
+            median_wait = p90_wait = max_wait = None
+            wait_n = 0
+
         rows.append({
             "category": category,
             "count": b["count"],
@@ -1683,6 +1705,10 @@ def _compute_signal_expired_breakdown(signal_expired_orders):
             "shorts": b["shorts"],
             "by_confidence": b["by_confidence"],
             "sample_reasons": sample_reasons,
+            "wait_n": wait_n,
+            "median_wait": round(median_wait, 1) if median_wait is not None else None,
+            "p90_wait": round(p90_wait, 1) if p90_wait is not None else None,
+            "max_wait": round(max_wait, 1) if max_wait is not None else None,
         })
 
     rows.sort(key=lambda r: r["count"], reverse=True)
@@ -3930,28 +3956,46 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     entry_conditions_by_outcome = []
     try:
         _eco_tc = config.trading_config
+        # Outcome buckets: 'Winners' (closed pnl>0), 'Losers' (closed pnl<=0),
+        # 'Aborted' (SIGNAL_EXPIRED rows from Amendment #7 — entries killed at
+        # re-validation, never opened). May 2: aborted rows now carry full
+        # entry-indicator data so they can be compared against winners/losers
+        # on the same dimensions.
         eco_groups = {
-            ('LONG', True): [],
-            ('LONG', False): [],
-            ('SHORT', True): [],
-            ('SHORT', False): [],
+            ('LONG', 'Winners'): [],
+            ('LONG', 'Losers'): [],
+            ('LONG', 'Aborted'): [],
+            ('SHORT', 'Winners'): [],
+            ('SHORT', 'Losers'): [],
+            ('SHORT', 'Aborted'): [],
         }
         for o in orders:
             direction = o.direction or 'LONG'
             if direction not in ('LONG', 'SHORT'):
                 continue
-            is_winner = (o.pnl or 0) > 0
-            eco_groups[(direction, is_winner)].append(o)
+            outcome_label = 'Winners' if (o.pnl or 0) > 0 else 'Losers'
+            eco_groups[(direction, outcome_label)].append(o)
+        # Aborted bucket — signal_expired_orders is loaded earlier in this
+        # function (line ~2580) when regime is None. Empty list when
+        # per-regime computation is requested.
+        for o in (signal_expired_orders or []):
+            direction = o.direction or 'LONG'
+            if direction not in ('LONG', 'SHORT'):
+                continue
+            eco_groups[(direction, 'Aborted')].append(o)
 
-        # Order rows: Winners L, Losers L, Winners S, Losers S
-        ordered_keys = [('LONG', True), ('LONG', False), ('SHORT', True), ('SHORT', False)]
+        # Order rows: Winners L, Losers L, Aborted L, Winners S, Losers S, Aborted S
+        ordered_keys = [
+            ('LONG', 'Winners'), ('LONG', 'Losers'), ('LONG', 'Aborted'),
+            ('SHORT', 'Winners'), ('SHORT', 'Losers'), ('SHORT', 'Aborted'),
+        ]
         for key in ordered_keys:
             group = eco_groups[key]
             count = len(group)
             if count == 0:
                 continue
-            direction, is_winner = key
-            outcome = 'Winners' if is_winner else 'Losers'
+            direction, outcome = key
+            is_winner = outcome == 'Winners'
 
             ec_conf = {}
             for o in group:
@@ -4019,7 +4063,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             sl_p_count = 0
             sl_n_count = 0
             sl_be_count = 0
-            if not is_winner:
+            # SL Profile only meaningful for Losers (closed at a loss).
+            # Aborted rows never opened — peak/trough are always 0, classification
+            # would be misleading. Winners are positive by definition.
+            if outcome == 'Losers':
                 for _o in group:
                     if (_o.pnl or 0) > 0:
                         continue

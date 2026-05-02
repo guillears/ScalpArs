@@ -303,7 +303,8 @@ def get_signal(
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
                 prev_gap_pct = ((ema5_prev1 - ema8_prev1) / ema8_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema8_prev1 > 0 else None
                 prev2_gap_pct = ((ema5_prev2 - ema8_prev2) / ema8_prev2) * 100 if ema5_prev2 and ema8_prev2 and ema8_prev2 > 0 else None
-                ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
+                # May 2: per-direction EMA5-EMA8 max with auto-fallback to legacy single field.
+                ema_gap_max = getattr(th, 'ema_gap_5_8_max_long', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= long_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
@@ -346,7 +347,8 @@ def get_signal(
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
                 prev_gap_pct = ((ema8_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema5_prev1 > 0 else None
                 prev2_gap_pct = ((ema8_prev2 - ema5_prev2) / ema5_prev2) * 100 if ema5_prev2 and ema8_prev2 and ema5_prev2 > 0 else None
-                ema_gap_max = getattr(th, 'ema_gap_5_8_max', 0)
+                # May 2: per-direction EMA5-EMA8 max with auto-fallback to legacy single field.
+                ema_gap_max = getattr(th, 'ema_gap_5_8_max_short', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= short_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:

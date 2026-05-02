@@ -73,7 +73,13 @@ class SignalThresholds(BaseModel):
     ema_gap_threshold: float = 3.0  # % minimum EMA5-EMA8 gap for momentum signals (legacy fallback)
     ema_gap_threshold_long: float = 0.02  # Min EMA5-EMA8 gap for LONG entries
     ema_gap_threshold_short: float = 0.05  # Min EMA5-EMA8 gap for SHORT entries
-    ema_gap_5_8_max: float = 0.0  # Max EMA5-EMA8 gap % for entry (0 = disabled)
+    ema_gap_5_8_max: float = 0.0  # Max EMA5-EMA8 gap % for entry (0 = disabled) — DEPRECATED, kept for back-compat. Use ema_gap_5_8_max_long/_short below.
+    # May 2: split EMA5-EMA8 max by direction (mirrors existing min split). When
+    # both _long and _short are set, those override the legacy ema_gap_5_8_max.
+    # Auto-migration in code: if legacy field is set and direction-split fields
+    # are zero, populate both from legacy on first read.
+    ema_gap_5_8_max_long: float = 0.0  # Max EMA5-EMA8 gap % for LONG entries (0 = disabled)
+    ema_gap_5_8_max_short: float = 0.0  # Max EMA5-EMA8 gap % for SHORT entries (0 = disabled)
     adx_strong: float = 16.0  # ADX threshold for STRONG_BUY (SHORT)
     adx_very_strong: float = 30.0  # ADX threshold for VERY_STRONG (SHORT)
     adx_strong_long: float = 16.0  # ADX threshold for STRONG_BUY (LONG)
@@ -85,6 +91,17 @@ class SignalThresholds(BaseModel):
     momentum_ema20_slope_filter_short: bool = True
     momentum_ema20_slope_min_long: float = 0.0
     momentum_ema20_slope_min_short: float = 0.0
+    # May 2: per-pair EMA20 slope MAX filter (new). Block entry when
+    # abs(pair_ema20_slope) > max — guards against over-extended pair trends.
+    # 0 = disabled.
+    momentum_ema20_slope_max_long: float = 0.0  # Max abs EMA20 slope % for LONG entries (0 = disabled)
+    momentum_ema20_slope_max_short: float = 0.0  # Max abs EMA20 slope % for SHORT entries (0 = disabled)
+    # May 2: BTC EMA20 slope MAX filter (new). Block entry when
+    # abs(btc_ema20_slope) > max — guards against over-extended BTC trends
+    # (late-cycle entries when BTC has already run too far).
+    # 0 = disabled.
+    btc_ema20_slope_max_long: float = 0.0  # Max abs BTC EMA20 slope % for LONG entries (0 = disabled)
+    btc_ema20_slope_max_short: float = 0.0  # Max abs BTC EMA20 slope % for SHORT entries (0 = disabled)
     macro_trend_filter_enabled: bool = True
     macro_trend_neutral_mode: str = "both"  # "both" or "none"
     macro_trend_flat_threshold: float = 0.07  # DEPRECATED — kept for backward compat

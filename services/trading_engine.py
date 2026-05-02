@@ -3772,6 +3772,32 @@ class TradingEngine:
                         logger.info(f"[BTC_SLOPE_GATE] {pair}: SHORT blocked — BTC slope {btc_ema20_slope_pct:+.4f}% > max -{_flat_th}%")
                         signal = "NO_TRADE"
 
+            # May 2: BTC EMA20 slope MAX guard. Block over-extended BTC trends
+            # (late-cycle entries when BTC has already run too far). 0 = disabled.
+            if signal in ["LONG", "SHORT"] and btc_ema20_slope_pct is not None:
+                _th = config.trading_config.thresholds
+                _btc_max = getattr(_th, f'btc_ema20_slope_max_{signal.lower()}', 0)
+                if _btc_max and _btc_max > 0 and abs(btc_ema20_slope_pct) > _btc_max:
+                    logger.info(f"[BTC_SLOPE_MAX_GATE] {pair}: {signal} blocked — abs(BTC slope) {abs(btc_ema20_slope_pct):.4f}% > max {_btc_max}%")
+                    signal = "NO_TRADE"
+
+            # May 2: per-pair EMA20 slope MAX guard. Block over-extended pair trends.
+            # Computes the slope locally from indicators (pair_ema20_slope_pct is
+            # only computed later in the entry-payload section). Matches the
+            # formula used by momentum_ema20_slope_min_* check in services/indicators.py.
+            # 0 = disabled.
+            if signal in ["LONG", "SHORT"]:
+                _th = config.trading_config.thresholds
+                _pair_max = getattr(_th, f'momentum_ema20_slope_max_{signal.lower()}', 0)
+                if _pair_max and _pair_max > 0:
+                    _ema20_now = indicators.get('ema20')
+                    _ema20_p3 = indicators.get('ema20_prev3')
+                    if _ema20_now is not None and _ema20_p3 is not None and _ema20_p3 != 0:
+                        _pair_slope_abs = abs((_ema20_now - _ema20_p3) / _ema20_p3 * 100)
+                        if _pair_slope_abs > _pair_max:
+                            logger.info(f"[PAIR_SLOPE_MAX_GATE] {pair}: {signal} blocked — abs(pair slope) {_pair_slope_abs:.4f}% > max {_pair_max}%")
+                            signal = "NO_TRADE"
+
             if signal in ["LONG", "SHORT"]:
                 _th = config.trading_config.thresholds
                 global_vol_blocks = False

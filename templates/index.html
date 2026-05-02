@@ -2750,10 +2750,12 @@
                                         <input type="number" step="0.01" id="config-ema-gap-threshold-long" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
                                         <span class="text-xs text-gray-500 ml-1">S Min</span>
                                         <input type="number" step="0.01" id="config-ema-gap-threshold-short" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.05">
-                                        <span class="text-xs text-gray-500 ml-1">Max</span>
-                                        <input type="number" step="0.01" id="config-ema-gap-5-8-max" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                        <span class="text-xs text-gray-500 ml-1">L Max</span>
+                                        <input type="number" step="0.01" id="config-ema-gap-5-8-max-long" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.35">
+                                        <span class="text-xs text-gray-500 ml-1">S Max</span>
+                                        <input type="number" step="0.01" id="config-ema-gap-5-8-max-short" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.35">
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; L/S min &amp; &le; max + ADX &gt; very_strong</td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; L/S min &amp; &le; L/S max + ADX &gt; very_strong</td>
                                 </tr>
                                 <tr>
                                     <td class="px-4 py-3">
@@ -2777,10 +2779,12 @@
                                         <span class="text-sm text-gray-400" id="config-ema-gap-min-long-mirror"></span>
                                         <span class="text-xs text-gray-500 ml-1">S Min</span>
                                         <span class="text-sm text-gray-400" id="config-ema-gap-min-short-mirror"></span>
-                                        <span class="text-xs text-gray-500 ml-1">Max</span>
-                                        <span class="text-sm text-gray-400" id="config-ema-gap-max-mirror"></span>
+                                        <span class="text-xs text-gray-500 ml-1">L Max</span>
+                                        <span class="text-sm text-gray-400" id="config-ema-gap-max-long-mirror"></span>
+                                        <span class="text-xs text-gray-500 ml-1">S Max</span>
+                                        <span class="text-sm text-gray-400" id="config-ema-gap-max-short-mirror"></span>
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; L/S min &amp; &le; max + ADX strong..very_strong</td>
+                                    <td class="px-4 py-3 text-xs text-gray-400">gap &ge; L/S min &amp; &le; L/S max + ADX strong..very_strong</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -2869,16 +2873,26 @@
                                 <span class="ml-2 text-sm text-gray-400">SHORT: EMA20 falling</span>
                             </label>
                         </div>
-                        <p class="text-xs text-gray-500 mt-2 mb-1">Minimum EMA20 slope magnitude (abs %) — 0 = disabled</p>
-                        <div class="flex items-center gap-4 mt-1">
+                        <p class="text-xs text-gray-500 mt-2 mb-1">Minimum &amp; Maximum EMA20 slope magnitude (abs %) — 0 = disabled (May 2: max guards against over-extended pair trends)</p>
+                        <div class="flex items-center gap-4 mt-1 flex-wrap">
                             <div class="flex items-center gap-1">
                                 <span class="text-xs text-gray-400">LONG min:</span>
                                 <input type="number" id="config-ema20-slope-min-long" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0">
                                 <span class="text-xs text-gray-500">%</span>
                             </div>
                             <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">LONG max:</span>
+                                <input type="number" id="config-ema20-slope-max-long" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.40">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                            <div class="flex items-center gap-1">
                                 <span class="text-xs text-gray-400">SHORT min:</span>
                                 <input type="number" id="config-ema20-slope-min-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">SHORT max:</span>
+                                <input type="number" id="config-ema20-slope-max-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.40">
                                 <span class="text-xs text-gray-500">%</span>
                             </div>
                         </div>
@@ -2907,6 +2921,16 @@
                             <span class="text-xs text-gray-500 ml-2">S:</span>
                             <label class="flex items-center text-sm text-gray-400">
                                 <input type="number" step="0.01" id="config-macro-trend-flat-threshold-short" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.02">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <span class="text-xs text-gray-500 ml-4" title="Maximum |BTC EMA20 slope %| allowed for entry (May 2). Blocks late-cycle entries when BTC has already run too far. 0 = disabled.">Max BTC EMA20 Slope L:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.01" id="config-btc-slope-max-long" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.35">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <span class="text-xs text-gray-500 ml-2">S:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.01" id="config-btc-slope-max-short" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.35">
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
@@ -4678,7 +4702,12 @@
             lines.push('\n## CONFIGURATION\n');
             const th = cfg.thresholds || {};
             lines.push('Signal Thresholds:');
-            lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  EMA Gap Max: ${th.ema_gap_5_8_max || 0}`);
+            // May 2: split EMA5-EMA8 max into L/S; auto-fallback to legacy field for old configs
+            const _gap58_max_l = th.ema_gap_5_8_max_long !== undefined ? th.ema_gap_5_8_max_long : (th.ema_gap_5_8_max || 0);
+            const _gap58_max_s = th.ema_gap_5_8_max_short !== undefined ? th.ema_gap_5_8_max_short : (th.ema_gap_5_8_max || 0);
+            lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  L Max: ${_gap58_max_l}  |  S Max: ${_gap58_max_s}`);
+            lines.push(`  Pair EMA20 Slope Max L: ${th.momentum_ema20_slope_max_long !== undefined ? th.momentum_ema20_slope_max_long : 0}%  |  S: ${th.momentum_ema20_slope_max_short !== undefined ? th.momentum_ema20_slope_max_short : 0}%  (May 2: 0 = disabled)`);
+            lines.push(`  BTC EMA20 Slope Max L: ${th.btc_ema20_slope_max_long !== undefined ? th.btc_ema20_slope_max_long : 0}%  |  S: ${th.btc_ema20_slope_max_short !== undefined ? th.btc_ema20_slope_max_short : 0}%  (May 2: 0 = disabled)`);
             lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
             lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
             const rsiAdxL = th.rsi_adx_filter_long || '(none)';
@@ -9013,7 +9042,16 @@
                 document.getElementById('config-momentum-adx-max').value = config.thresholds.momentum_adx_max !== undefined ? config.thresholds.momentum_adx_max : 100;
                 document.getElementById('config-rsi-momentum-filter-enabled').checked = config.thresholds.rsi_momentum_filter_enabled !== undefined ? config.thresholds.rsi_momentum_filter_enabled : true;
                 document.getElementById('config-ema-gap-expanding-filter').checked = config.thresholds.ema_gap_expanding_filter !== undefined ? config.thresholds.ema_gap_expanding_filter : true;
-                document.getElementById('config-ema-gap-5-8-max').value = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
+                // May 2: split EMA5-EMA8 max with auto-fallback to legacy single field
+                const _legacy_gap58_max = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
+                document.getElementById('config-ema-gap-5-8-max-long').value = config.thresholds.ema_gap_5_8_max_long !== undefined ? config.thresholds.ema_gap_5_8_max_long : _legacy_gap58_max;
+                document.getElementById('config-ema-gap-5-8-max-short').value = config.thresholds.ema_gap_5_8_max_short !== undefined ? config.thresholds.ema_gap_5_8_max_short : _legacy_gap58_max;
+                // May 2: per-pair EMA20 slope max
+                document.getElementById('config-ema20-slope-max-long').value = config.thresholds.momentum_ema20_slope_max_long !== undefined ? config.thresholds.momentum_ema20_slope_max_long : 0.40;
+                document.getElementById('config-ema20-slope-max-short').value = config.thresholds.momentum_ema20_slope_max_short !== undefined ? config.thresholds.momentum_ema20_slope_max_short : 0.40;
+                // May 2: BTC EMA20 slope max
+                document.getElementById('config-btc-slope-max-long').value = config.thresholds.btc_ema20_slope_max_long !== undefined ? config.thresholds.btc_ema20_slope_max_long : 0.35;
+                document.getElementById('config-btc-slope-max-short').value = config.thresholds.btc_ema20_slope_max_short !== undefined ? config.thresholds.btc_ema20_slope_max_short : 0.35;
                 document.getElementById('config-ema-gap-5-20-enabled').checked = config.thresholds.ema_gap_5_20_enabled !== undefined ? config.thresholds.ema_gap_5_20_enabled : true;
                 document.getElementById('config-ema-gap-5-20-min-long').value = config.thresholds.ema_gap_5_20_min_long !== undefined ? config.thresholds.ema_gap_5_20_min_long : 0.15;
                 document.getElementById('config-ema-gap-5-20-min-short').value = config.thresholds.ema_gap_5_20_min_short !== undefined ? config.thresholds.ema_gap_5_20_min_short : 0.15;
@@ -9024,7 +9062,8 @@
                 document.getElementById('config-adx-max-mirror-long').textContent = document.getElementById('config-adx-very-strong-long').value;
                 document.getElementById('config-ema-gap-min-long-mirror').textContent = document.getElementById('config-ema-gap-threshold-long').value;
                 document.getElementById('config-ema-gap-min-short-mirror').textContent = document.getElementById('config-ema-gap-threshold-short').value;
-                document.getElementById('config-ema-gap-max-mirror').textContent = document.getElementById('config-ema-gap-5-8-max').value;
+                document.getElementById('config-ema-gap-max-long-mirror').textContent = document.getElementById('config-ema-gap-5-8-max-long').value;
+                document.getElementById('config-ema-gap-max-short-mirror').textContent = document.getElementById('config-ema-gap-5-8-max-short').value;
                 loadRsiAdxFilter('long', config.thresholds.rsi_adx_filter_long || '');
                 loadRsiAdxFilter('short', config.thresholds.rsi_adx_filter_short || '');
                 loadBtcRsiAdxFilter('long', config.thresholds.btc_rsi_adx_filter_long || '');
@@ -9191,8 +9230,12 @@
         document.getElementById('config-ema-gap-threshold-short').addEventListener('input', function() {
             document.getElementById('config-ema-gap-min-short-mirror').textContent = this.value;
         });
-        document.getElementById('config-ema-gap-5-8-max').addEventListener('input', function() {
-            document.getElementById('config-ema-gap-max-mirror').textContent = this.value;
+        // May 2: split EMA5-EMA8 max — sync both mirrors on input
+        document.getElementById('config-ema-gap-5-8-max-long').addEventListener('input', function() {
+            document.getElementById('config-ema-gap-max-long-mirror').textContent = this.value;
+        });
+        document.getElementById('config-ema-gap-5-8-max-short').addEventListener('input', function() {
+            document.getElementById('config-ema-gap-max-short-mirror').textContent = this.value;
         });
 
         // Locale-safe float parser: handles comma decimal separators (e.g. "0,018" -> 0.018)
@@ -9305,7 +9348,13 @@
                     momentum_adx_max: safeFloat(document.getElementById('config-momentum-adx-max').value),
                     rsi_momentum_filter_enabled: document.getElementById('config-rsi-momentum-filter-enabled').checked,
                     ema_gap_expanding_filter: document.getElementById('config-ema-gap-expanding-filter').checked,
-                    ema_gap_5_8_max: safeFloat(document.getElementById('config-ema-gap-5-8-max').value),
+                    // May 2: split EMA5-EMA8 max + new pair/BTC slope max guards
+                    ema_gap_5_8_max_long: safeFloat(document.getElementById('config-ema-gap-5-8-max-long').value),
+                    ema_gap_5_8_max_short: safeFloat(document.getElementById('config-ema-gap-5-8-max-short').value),
+                    momentum_ema20_slope_max_long: safeFloat(document.getElementById('config-ema20-slope-max-long').value),
+                    momentum_ema20_slope_max_short: safeFloat(document.getElementById('config-ema20-slope-max-short').value),
+                    btc_ema20_slope_max_long: safeFloat(document.getElementById('config-btc-slope-max-long').value),
+                    btc_ema20_slope_max_short: safeFloat(document.getElementById('config-btc-slope-max-short').value),
                     ema_gap_5_20_enabled: document.getElementById('config-ema-gap-5-20-enabled').checked,
                     ema_gap_5_20_min_long: safeFloat(document.getElementById('config-ema-gap-5-20-min-long').value),
                     ema_gap_5_20_min_short: safeFloat(document.getElementById('config-ema-gap-5-20-min-short').value),

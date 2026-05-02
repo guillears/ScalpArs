@@ -2748,6 +2748,88 @@ If at the 100-trade checkpoint the test produces ambiguous results (within ±5bp
 
 If the test cleanly fails (revert verdict), the next iteration is informed but we have to accept the lost batch as the cost of running a real test rather than analyzing forever.
 
+## May 2, 2026 — Three new max-guard filters (split + new), feature ships permissive
+
+Three new entry-filter parameters added today, all per-direction (LONG/SHORT). All
+**ship permissive** — defaults at deploy match or exceed any value seen in current
+data, so behavior is unchanged. User tightens later via UI when ready, post 200-trade
+checkpoint per the locked Phase 1c-Explore plan.
+
+| Filter | Field name | Default | What it blocks |
+|---|---|---|---|
+| EMA5-EMA8 Gap Max — split | `ema_gap_5_8_max_long` / `ema_gap_5_8_max_short` | 0.35 / 0.35 | Same gate as before, just direction-aware |
+| Pair EMA20 Slope Max (NEW) | `momentum_ema20_slope_max_long` / `momentum_ema20_slope_max_short` | 0.40 / 0.40 | Over-extended pair trend (`abs(ema20_slope) > max`) |
+| BTC EMA20 Slope Max (NEW) | `btc_ema20_slope_max_long` / `btc_ema20_slope_max_short` | 0.35 / 0.35 | Late-cycle BTC entries (`abs(btc_slope) > max`) |
+
+### Why these specifically
+
+Looking at the 163-trade May 2 BULLISH report:
+- **BTC slope >0.10% buckets are losers**: `0.10-0.12%` -0.37%, `0.16-0.18%` -0.46%, `0.20-0.25%` -1.00%. Capping at 0.35% is permissive (catches almost nothing in current data) but provides the lever to tighten as evidence accumulates.
+- **Pair slope ≥0.14% LONGs lose**: `0.14-0.16%` 0% WR -0.67%, `0.18-0.20%` 0% WR -1.17%. Cap at 0.40% is again permissive but creates the structure.
+- **EMA5-EMA8 gap split**: structural — splitting the existing single max into per-direction lets you tune asymmetrically when data shows asymmetric patterns. Today no asymmetric tuning, just refactor.
+
+### Auto-migration
+
+Existing configs with the old single `ema_gap_5_8_max` field auto-fallback in three
+places:
+- `services/indicators.py::get_signal` LONG block: `getattr(th, 'ema_gap_5_8_max_long', 0) or getattr(th, 'ema_gap_5_8_max', 0)`
+- Same pattern for SHORT block
+- UI load handler: `_legacy_gap58_max` fallback when split fields are undefined
+
+So existing trading_config.json files with the old field name keep working. New default
+trading_config.json now writes both new fields explicitly + leaves the legacy field for back-compat.
+
+### Implementation sites
+
+**Config schema (`config.py`):**
+- `ema_gap_5_8_max_long: float = 0.0` (NEW, default disabled — actual default in trading_config.json is 0.35)
+- `ema_gap_5_8_max_short: float = 0.0` (same pattern)
+- `momentum_ema20_slope_max_long: float = 0.0` (NEW)
+- `momentum_ema20_slope_max_short: float = 0.0` (NEW)
+- `btc_ema20_slope_max_long: float = 0.0` (NEW)
+- `btc_ema20_slope_max_short: float = 0.0` (NEW)
+
+**Filter checks:**
+- EMA5-EMA8 max: `services/indicators.py::get_signal` lines ~306 (LONG) and ~349 (SHORT) — replaces the legacy single-field lookup with direction-aware lookup + fallback
+- Pair EMA20 slope max: `services/trading_engine.py` post-`get_signal` gate, computes slope locally from `indicators.get('ema20')` and `indicators.get('ema20_prev3')`, blocks via `signal = "NO_TRADE"` with `[PAIR_SLOPE_MAX_GATE]` log
+- BTC EMA20 slope max: same location, uses already-computed `btc_ema20_slope_pct`, logs `[BTC_SLOPE_MAX_GATE]`
+
+**UI changes (`templates/index.html`):**
+- VERY_STRONG row of confidence-thresholds table: single Max input replaced with L Max + S Max inputs
+- STRONG_BUY mirror row: single Max display replaced with L Max + S Max displays (with corresponding sync handlers)
+- Pair EMA20 Slope filter card: added LONG max + SHORT max inputs alongside existing min inputs
+- BTC Independent Filters: added Max BTC EMA20 Slope L + S inputs alongside existing Min inputs
+- Load handlers (~line 9040): three new pairs of fields populated from config with legacy fallback for `ema_gap_5_8_max`
+- Save handlers (~line 9342): old single field replaced with the six new fields
+- Mirror sync (`config-ema-gap-max-long-mirror` / `-short-mirror`): replace single mirror with split
+- Text export (~line 4682): single "EMA Gap Max" line replaced with "L Max / S Max" + two new lines for pair slope max and BTC slope max
+
+### Phase 1c-Explore lock — these filters are permissive only
+
+Per the locked Phase 1c-Explore plan, **strategic config tightening mid-batch is forbidden**. These ship at values that don't filter any real-world entries seen so far:
+- BTC slope max 0.35% catches ~3-4 historical losing entries (mostly already losing via other gates)
+- Pair slope max 0.40% catches almost nothing
+- EMA5-8 max 0.35% L/S preserves current behavior exactly
+
+The fields exist as **structural infrastructure** — to be tuned at the 200-trade checkpoint
+based on validated data. Tuning them down NOW would violate the lock. Wait for the checkpoint.
+
+### What to look for at 200-trade checkpoint
+
+When the locked Phase 1c-Explore decision happens:
+1. **Pair slope >0.14% LONG bucket** at 200 trades: still negative? If yes, recommend `momentum_ema20_slope_max_long: 0.14` as filter promotion.
+2. **BTC slope 0.10-0.18% buckets at 200 trades**: still negative? If yes, recommend `btc_ema20_slope_max_*: 0.10` (per direction depending on data).
+3. **EMA5-8 max asymmetry**: if SHORT 0.18-0.20% bucket is winner (it is in the 38-trade BEARISH sample) but LONG 0.10-0.12% is loser, the split lets you keep SHORT permissive (0.35) and tighten LONG (e.g., 0.10).
+
+### Why this entry exists in CLAUDE.md
+
+Future-Claude will see new max fields in config and might think they're already
+filtering. They're not — they're permissive starting values waiting for tuning. Without
+this section, future analysis might mistake these as active filters and miss the
+opportunity to actually use them at the 200-trade checkpoint.
+
+The Phase 1c-Explore lock applies. Don't tighten until 200 trades + validated data. Hold the line.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

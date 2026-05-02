@@ -2409,6 +2409,23 @@
                             <p class="text-xs text-gray-500 mt-1">Close positions when BTC macro regime flips against trade direction (BULLISH closes SHORTs, BEARISH closes LONGs)</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">RSI Handoff (Phase 1d-ExitTest)</label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-rsi-handoff-active" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-amber-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Handoff at L≥
+                                    <input type="number" step="1" min="2" max="10" id="config-rsi-handoff-level" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="3">
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">When ON, disables trailing-stop pullback past the configured TP level and uses 2-drop RSI exit instead. Tests "RSI is the better winner-exit signal once trade has proven itself." With <code>tp_min=0.25%</code>, L3 ≈ today's L2 promotion (peak ≥ 0.50% with trend).</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Signal Lost Exit</label>
                             <div class="flex items-center gap-4">
                                 <label class="flex items-center cursor-pointer">
@@ -4707,6 +4724,7 @@
 
             lines.push('\nExit Settings:');
             lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
+            lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
             lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.8}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
             lines.push(`  FL1[WIDE_SL]: ${th.fl1_for_wide_sl_enabled !== undefined ? th.fl1_for_wide_sl_enabled : true}  |  Emergency Backstop: ${th.fl1_wide_sl_backstop !== undefined ? th.fl1_wide_sl_backstop : -1.2}%  ||  FL2: ${th.fl2_enabled !== undefined ? th.fl2_enabled : true}  |  Recovery: ${th.fl2_recovery_target !== undefined ? th.fl2_recovery_target : -0.4}%  |  Deep Stop: ${th.fl2_deep_stop !== undefined ? th.fl2_deep_stop : -1.0}%`);
@@ -9012,6 +9030,8 @@
                 loadBtcRsiAdxFilter('long', config.thresholds.btc_rsi_adx_filter_long || '');
                 loadBtcRsiAdxFilter('short', config.thresholds.btc_rsi_adx_filter_short || '');
                 document.getElementById('config-regime-change-exit-enabled').checked = config.thresholds.regime_change_exit_enabled !== undefined ? config.thresholds.regime_change_exit_enabled : true;
+                document.getElementById('config-rsi-handoff-active').checked = config.thresholds.rsi_handoff_active !== undefined ? config.thresholds.rsi_handoff_active : false;
+                document.getElementById('config-rsi-handoff-level').value = config.thresholds.rsi_handoff_level !== undefined ? config.thresholds.rsi_handoff_level : 3;
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
@@ -9296,6 +9316,8 @@
                     btc_rsi_adx_filter_long: collectBtcRsiAdxFilter('long'),
                     btc_rsi_adx_filter_short: collectBtcRsiAdxFilter('short'),
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,
+                    rsi_handoff_active: document.getElementById('config-rsi-handoff-active').checked,
+                    rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     signal_lost_max_profit: safeFloat(document.getElementById('config-signal-lost-max-profit').value),

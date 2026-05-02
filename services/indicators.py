@@ -646,7 +646,23 @@ def check_exit_conditions(
             else:
                 logger.warning(f"[TRAILING_CHECK] SHORT L{current_tp_level}: LOW_PRICE NOT SET! entry={entry_price:.4f}, current={current_price:.4f}, low={low_price}")
     
-    if trailing_stop_active:
+    # Phase 1d-ExitTest (May 2): RSI handoff disables trailing stop past
+    # `rsi_handoff_level`. The actual RSI 2-drop exit fires in the live monitor
+    # loop where pair_data is available; this block just suppresses the trailing
+    # check so it doesn't pre-empt the handoff. Default OFF — feature inert.
+    _rsi_handoff_active = False
+    try:
+        from config import trading_config as _tc
+        if getattr(_tc.thresholds, 'rsi_handoff_active', False):
+            _handoff_level = getattr(_tc.thresholds, 'rsi_handoff_level', 3)
+            if (current_tp_level or 1) >= _handoff_level:
+                _rsi_handoff_active = True
+                logger.info(f"[RSI_HANDOFF] {direction} L{current_tp_level}: trailing suppressed (handoff_level={_handoff_level}, RSI exit will handle)")
+    except Exception:
+        # Fail safe: if config read fails, behave as before (handoff inactive)
+        pass
+
+    if trailing_stop_active and not _rsi_handoff_active:
         if direction == "LONG" and high_price and high_price > 0:
             # For LONG: check if price dropped X% from highest
             price_drop_pct = ((high_price - current_price) / high_price) * 100

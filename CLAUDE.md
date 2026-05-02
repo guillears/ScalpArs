@@ -2611,6 +2611,143 @@ To follow up at the 200-trade checkpoint with the correct analysis question
 Aborted rows as another mysterious data point rather than a structured test of
 re-validation correctness.
 
+## May 2, 2026 — Phase 1d-ExitTest plan (RSI handoff at high TP levels — code shipped INERT)
+
+### Why this exists
+
+Phase 1c-Explore is at ~156 trades. The May 2 67-trade and 156-trade reports both show the same headline pattern: **the bot is cutting winners early, especially BEARISH winners with big tails.** From the May 2 BULLISH+BEARISH split:
+
+| Bucket | N | Current close | Post-peak missed | Severity |
+|---|---|---|---|---|
+| BULLISH TRAILING_STOP L2 | 24 | +0.50% | +0.42% above exit | Mild |
+| BEARISH TRAILING_STOP L2 | 10 | +0.53% | +0.87% above exit | Severe |
+| BULLISH FL_TRAILING_STOP L2 | 4 | +0.40% | +0.81% above exit | N too small |
+
+For the same trades, the post-exit watcher records when 2-drop RSI **would have** fired (already in `post_exit_rsi_exit_pnl`, since Apr 18 instrumentation):
+
+| Bucket | N | Current close | RSI counterfactual | Improvement |
+|---|---|---|---|---|
+| BULLISH TRAILING_STOP L2 | 24 | +0.4971% | +0.5076% | +1bp (marginal) |
+| BEARISH TRAILING_STOP L2 | 10 | +0.5275% | +0.8463% | **+32bp (strong)** |
+| BULLISH FL_TRAILING_STOP L2 | 4 | +0.40% | +0.60% | +20bp |
+
+**Hypothesis:** past today's L2 promotion threshold (peak ≥ 0.50% with trend continuation), trailing-stop pullback is exiting trades before momentum genuinely reverses. RSI exhaustion catches the actual reversal point. BEARISH side benefits significantly; BULLISH side marginally.
+
+The user proposed and locked the test design after a long iteration on Rules A-G grid (see prior conversation logs / git history): **lower TP_min from 0.50 to 0.25, keep pullback at 0.20, and at the new L3 promotion (= today's L2 = peak ≥ 0.50% with trend) switch from trailing to RSI exit.**
+
+The 0.25 TP value is intentional: with `tp_min = 0.25`, the level math gives:
+- new L1 promotion = peak ≥ 0.25% (catches some currently-failing Positive-No-BE trades that peaked 0.25-0.50% then went to SL)
+- new L2 promotion = peak ≥ 0.50% with trend (this is just an intermediate level)
+- new L3 promotion = peak ≥ 0.75% with trend — **but the *crossing* into L3 territory happens at peak ≥ 0.50%**, which is today's L2 boundary
+
+So setting `rsi_handoff_level = 3` means RSI takes over at exactly today's L2 boundary, with an expanded trailing-armed band in the 0.25-0.50% peak zone for catching some currently-failing trades.
+
+### What was built (May 2)
+
+Code ships **INERT** — feature is wired through but disabled by default. User flips two UI toggles to activate when ready to test live.
+
+**Two new config fields (`config.py`, top-level on `thresholds`):**
+- `rsi_handoff_active: bool = False` — master toggle
+- `rsi_handoff_level: int = 3` — promote-past level at which trailing disables and RSI takes over
+
+**Exit logic changes (no schema migration):**
+
+1. **`services/indicators.py::check_exit_conditions`** — when `rsi_handoff_active` AND `current_tp_level >= rsi_handoff_level`, the trailing-stop pullback block is **skipped entirely** (logged as `[RSI_HANDOFF]`). Live RSI exit fires through the monitor-loop handler. Fail-open: if config read fails for any reason, behaves as before (trailing remains active). Default `rsi_handoff_active=False` means the entire change is a no-op.
+
+2. **`services/trading_engine.py` monitor loop** — new handler runs **before** the existing `rsi_momentum_exit` block. Fires when:
+   - `rsi_handoff_active=True`
+   - `order.current_tp_level >= rsi_handoff_level`
+   - 2-drop RSI sequence confirmed (LONG: `_rsi < _rsi1 < _rsi2`; SHORT: `_rsi > _rsi1 > _rsi2`)
+   - Any P&L (no profit-zone gate, unlike the existing rsi_momentum_exit)
+
+   Closes with reason `RSI_HANDOFF_EXIT L{level}` for analytical separation from the existing `RSI_MOMENTUM_EXIT` close reason.
+
+3. **`services/trading_engine.py` realtime trailing block** — same handoff guard added so the realtime trailing check can't race the monitor-loop RSI handler.
+
+**UI controls (`templates/index.html`):**
+- New row in the exit-config panel labeled "RSI Handoff (Phase 1d-ExitTest)"
+- Toggle for `rsi_handoff_active` (amber color to distinguish from green Enabled toggles — signals "experimental")
+- Number input for `rsi_handoff_level` (default 3, range 2-10)
+- Description explains the level math (with `tp_min=0.25%`, L3 ≈ today's L2 promotion)
+- Load + save handlers wired (`document.getElementById('config-rsi-handoff-active'/...-level')`)
+- Text export config dump includes both fields
+
+**Default `trading_config.json` values:**
+- `rsi_handoff_active: false`
+- `rsi_handoff_level: 3`
+- `tp_min` **NOT changed** (stays at 0.50 until user flips the test ON via UI and sets it to 0.25 manually)
+
+### Why it ships INERT
+
+The locked Phase 1c-Explore plan is still in effect at 156 trades — strategic config changes are forbidden mid-batch. Shipping the code with both toggles OFF means:
+- No behavior change in production
+- Phase 1c-Explore continues uninterrupted
+- When user is ready (likely at 200-trade checkpoint), they flip toggles via UI without needing a code deploy
+- Easy revert: flip back OFF
+
+### Pre-committed test plan (Phase 1d-ExitTest)
+
+When user activates this feature, the test config and falsification criteria are locked **NOW** (before any data arrives) to prevent post-hoc parameter selection bias:
+
+**Activation config (when user flips ON):**
+- `tp_min`: 0.50 → **0.25**
+- `pullback_trigger`: 0.20 (unchanged)
+- `rsi_handoff_active`: false → **true**
+- `rsi_handoff_level`: 3 (default)
+
+**Pre-committed falsification criteria** (over ~100 new trades after activation, separate from Phase 1c-Explore data):
+
+| Outcome | Verdict |
+|---|---|
+| Combined Avg P&L improves ≥ +8bp/trade vs Phase 1c-Explore baseline | **Win** — keep config |
+| Combined Avg P&L within ±5bp of baseline | **Inconclusive** — extend test 100 more trades |
+| Combined Avg P&L worsens > 8bp/trade | **Revert** to defaults (toggles OFF, tp_min back to 0.50) |
+| BEARISH improves AND BULLISH worsens | **Partial win** — keep RSI handoff for SHORTs only via per-direction config (would require additional code), or revert TP=0.25 only |
+
+Lower threshold (+8bp) than the Apr 30 Winner Exit plan (+10bp) reflects the smaller expected upside of this variant vs straight Rule G.
+
+### Honest caveats locked at design time
+
+1. **Bundled test = harder attribution.** Lowering `tp_min` and enabling RSI handoff change two things at once. If the test fails, we don't know which piece hurt. Cleaner alternatives (sequential one-at-a-time) were considered and rejected by the user in favor of speed.
+
+2. **Sample size for BEARISH side will be tight.** ~10 BEARISH L2+ trades expected per 100-trade batch. Combined-direction view will dominate; per-direction analysis stays exploratory.
+
+3. **Sequencing bias on the climb.** Trades that today succeed past today's L2 (peak ≥ 0.50% with trend continuation) might exit earlier under the new config if they had a 0.20% intra-climb retrace from the new arming point at peak 0.25%. We can't see this from the current data — it's a known unknown.
+
+4. **The `post_exit_rsi_exit_pnl` data the hypothesis is built on is an UPPER BOUND.** It records the first 2-drop RSI **after our trailing exit**. If a 2-drop RSI fired during the trade (between L2 promotion and trailing exit), we don't see it. Real Rule F effect could be weaker than the +32bp estimate. The shadow-tracker idea proposed earlier (intra-trade RSI tracking) was deferred — fixable in a future iteration if results are ambiguous.
+
+5. **Pooling rule.** Phase 1d-ExitTest data is **separate** from Phase 1c-Explore. Don't pool raw trades. Compare aggregates using Avg P&L %.
+
+### How to activate (operator instructions)
+
+When the user is ready to start Phase 1d-ExitTest:
+
+1. Open the config UI
+2. In the exit panel, find the "RSI Handoff (Phase 1d-ExitTest)" row
+3. Toggle the amber switch to ON
+4. Verify "Handoff at L≥" is set to 3 (or pick another level for variant testing)
+5. Find the `tp_min` field in confidence-level config and change from 0.50 to 0.25 for both VERY_STRONG and STRONG_BUY tiers
+6. Save the config — change takes effect on the next trade open
+
+Counter starts at the next trade. Target ~100 trades for first decision checkpoint.
+
+### Files changed (May 2)
+
+- `config.py` — `rsi_handoff_active`, `rsi_handoff_level` fields
+- `trading_config.json` — defaults (false, 3)
+- `services/indicators.py::check_exit_conditions` — handoff suppresses trailing block (~15 lines added)
+- `services/trading_engine.py` — new RSI_HANDOFF_EXIT handler in monitor loop (~30 lines), realtime trailing guard (~10 lines)
+- `templates/index.html` — UI panel + load/save handlers + text export
+- This CLAUDE.md amendment
+
+### Why this entry exists in CLAUDE.md
+
+When the user activates the test, the falsification criteria above must be the gates — not whatever feels right at decision time. Anchoring risk is real after looking at partial-batch numbers. This section is the locked rule the future-Claude (and user) is held to.
+
+If at the 100-trade checkpoint the test produces ambiguous results (within ±5bp of baseline), the temptation will be to "just tweak the level to 4 and re-run." That's the discipline-erosion failure mode. The decision rule says: **inconclusive = extend 100 more trades**, not "tune and re-run." Hold the line.
+
+If the test cleanly fails (revert verdict), the next iteration is informed but we have to accept the lost batch as the cost of running a real test rather than analyzing forever.
+
 ## Three-Phase Plan to Make the Bot Profitable
 
 ### Phase 1 — Validate the baseline (CURRENT: 0-100 trades at 1x)

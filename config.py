@@ -155,6 +155,13 @@ class SignalThresholds(BaseModel):
     tick_momentum_exit_min_deltas: str = ""  # Per-window deltas, comma-separated (overrides min_delta when set)
     tick_momentum_exit_windows: str = "15,30,60"  # Comma-separated rolling window sizes in seconds
     regime_change_exit_enabled: bool = True  # Close positions when BTC macro regime flips against trade direction
+    # Phase 1d-ExitTest (May 2): RSI handoff at high TP levels. When ON, disables
+    # trailing-stop pullback past `rsi_handoff_level` and enables 2-drop RSI
+    # momentum exit (any P&L) at that level instead. Tests "RSI is the better
+    # winner-exit signal once trade has proven itself." Default OFF — feature
+    # ships inert; user enables via UI when ready to test live.
+    rsi_handoff_active: bool = False  # Master toggle for RSI handoff at high TP levels
+    rsi_handoff_level: int = 3  # Promote-past level at which trailing disables and RSI takes over
     rsi_adx_filter_long: str = ""  # RSI x ADX cross-filter for LONGs, e.g. "55-60:18,60-65:25" (empty = allow all)
     rsi_adx_filter_short: str = ""  # RSI x ADX cross-filter for SHORTs, e.g. "30-35:25,35-50:30" (empty = allow all)
     btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all)

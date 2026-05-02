@@ -2976,6 +2976,40 @@ class TradingEngine:
                         })
                     continue
 
+            # Phase 1d-ExitTest (May 2): RSI Handoff exit — fires when:
+            #   - rsi_handoff_active=True (master toggle, default OFF)
+            #   - current_tp_level >= rsi_handoff_level (default L3)
+            #   - 2-drop RSI sequence confirmed (any P&L, including profitable)
+            # This is the WINNER-EXIT counterpart to rsi_momentum_exit (which is
+            # the LOSS-CUTTING tool). Hypothesis: past the handoff level, RSI
+            # exhaustion is a better exit signal than trailing pullback.
+            handoff_active = getattr(config.trading_config.thresholds, 'rsi_handoff_active', False)
+            handoff_level = getattr(config.trading_config.thresholds, 'rsi_handoff_level', 3)
+            if handoff_active and (order.current_tp_level or 1) >= handoff_level and pair_data:
+                _rsi_h = pair_data.rsi
+                _rsi_h1 = pair_data.rsi_prev1
+                _rsi_h2 = pair_data.rsi_prev2
+                if _rsi_h is not None and _rsi_h1 is not None and _rsi_h2 is not None:
+                    handoff_fading = False
+                    if order.direction == "LONG" and _rsi_h < _rsi_h1 < _rsi_h2:
+                        handoff_fading = True
+                    elif order.direction == "SHORT" and _rsi_h > _rsi_h1 > _rsi_h2:
+                        handoff_fading = True
+                    if handoff_fading:
+                        tp_level = order.current_tp_level or 1
+                        logger.info(f"[RSI_HANDOFF_EXIT] {order.pair} {order.direction} L{tp_level}: RSI fading ({_rsi_h2:.1f}->{_rsi_h1:.1f}->{_rsi_h:.1f}), pnl={pnl_pct:.4f}% (handoff_level={handoff_level})")
+                        closed_order = await self.close_position(db, order, current_price, f"RSI_HANDOFF_EXIT L{tp_level}")
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id,
+                                "pair": closed_order.pair,
+                                "action": "CLOSED",
+                                "reason": f"RSI_HANDOFF_EXIT L{tp_level}",
+                                "pnl": closed_order.pnl,
+                                "tp_level": tp_level
+                            })
+                        continue
+
             # RSI Momentum Exit: two consecutive RSI drops (LONG) or rises (SHORT) within P&L range
             rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
             rsi_exit_min_profit = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)
@@ -4529,8 +4563,20 @@ class TradingEngine:
                             logger.error(f"[REALTIME_MOMENTUM_EXIT] Error closing {pair}: {e}")
                         continue
             
-            # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled)
-            if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', False):
+            # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled).
+            # Phase 1d-ExitTest (May 2): also suppress when RSI handoff is active for this trade
+            # (current_tp_level >= rsi_handoff_level). The realtime RSI exit fires through the
+            # monitor-loop handler — this guard just prevents trailing from racing it.
+            _handoff_suppress = False
+            try:
+                if getattr(config.trading_config.thresholds, 'rsi_handoff_active', False):
+                    _hl = getattr(config.trading_config.thresholds, 'rsi_handoff_level', 3)
+                    if order_info.get('current_tp_level', 1) >= _hl:
+                        _handoff_suppress = True
+            except Exception:
+                pass
+
+            if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', False) and not _handoff_suppress:
                 should_close_trailing = False
                 tp_level = order_info.get('current_tp_level', 1)
                 

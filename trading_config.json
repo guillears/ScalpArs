@@ -117,6 +117,8 @@
     "tick_momentum_exit_min_deltas": "",
     "tick_momentum_exit_windows": "15,30,45",
     "regime_change_exit_enabled": true,
+    "rsi_handoff_active": false,
+    "rsi_handoff_level": 3,
     "rsi_adx_filter_long": "",
     "rsi_adx_filter_short": "30-35:25,35-50:30",
     "btc_rsi_adx_filter_long": "",

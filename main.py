@@ -3278,6 +3278,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
                 avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
                 pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
+                never_positive = sum(1 for o in dir_orders if (o.peak_pnl or 0) <= 0)
                 pair_slope_performance.append({
                     "range": range_name,
                     "direction": direction,
@@ -3289,7 +3290,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "by_confidence": conf_breakdown,
                     "avg_rsi": avg_rsi,
                     "avg_adx": avg_adx,
-                    "avg_gap": avg_gap
+                    "avg_gap": avg_gap,
+                    "never_positive": never_positive,
+                    "never_positive_pct": round(never_positive / count * 100, 1) if count else 0,
                 })
 
         # Performance by BTC EMA20 Slope (absolute value, 0.02% buckets)
@@ -3313,6 +3316,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
                 avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
                 pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
+                never_positive = sum(1 for o in dir_orders if (o.peak_pnl or 0) <= 0)
                 btc_slope_performance.append({
                     "range": range_name,
                     "direction": direction,
@@ -3324,7 +3328,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "by_confidence": conf_breakdown,
                     "avg_rsi": avg_rsi,
                     "avg_adx": avg_adx,
-                    "avg_gap": avg_gap
+                    "avg_gap": avg_gap,
+                    "never_positive": never_positive,
+                    "never_positive_pct": round(never_positive / count * 100, 1) if count else 0,
                 })
 
         # Performance by BTC ADX at entry
@@ -3479,6 +3485,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         b_wins = len([o for o in bucket if (o.pnl or 0) > 0])
                         b_pnl = sum(o.pnl or 0 for o in bucket)
                         b_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket)
+                        # Never Positive count per cell — same definition as Performance by RSI x ADX
+                        b_never_positive = sum(1 for o in bucket if (o.peak_pnl or 0) <= 0)
                         b_conf = {}
                         for o in bucket:
                             c = o.confidence or "UNKNOWN"
@@ -3492,6 +3500,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                             "avg_pnl": round(b_pnl / b_count, 2),
                             "avg_pnl_pct": round(b_pnl_pct / b_count, 4),
                             "total_pnl": round(b_pnl, 2),
+                            "never_positive": b_never_positive,
+                            "never_positive_pct": round(b_never_positive / b_count * 100, 1) if b_count else 0,
                             "by_confidence": b_conf,
                         })
             return rows

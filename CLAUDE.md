@@ -3005,3 +3005,123 @@ Once Phase 3 validates per-bucket leverage:
 - **Total: ~3 weeks minimum** to get to validated 2x leverage
 
 This is deliberately slow. Compressing the timeline is the most common way to blow up a new strategy.
+
+## May 3, 2026 — Cross-sample SHORT findings to validate at 200-trade Phase 1c-Explore checkpoint
+
+Two findings emerged from a cross-sample exercise on the partial 171-trade Phase 1c-Explore data (126L BULLISH + 45S BEARISH), comparing against historical RSI×ADX and BTC-RSI×BTC-ADX cross-tabs from Apr 09 (97tr), Apr 12 (53tr), and Apr 13 (117tr). **Locked here as pre-committed cells to re-validate at the 200-trade checkpoint** — if they survive the 5th sample with their direction intact, they become candidates for investment-doubling in the Phase 2 → Phase 3 transition. If they fail, drop them.
+
+### Methodology used (the user's proposed approach, validated)
+
+1. Pull RSI×ADX and BTC-RSI×BTC-ADX cells from each historical report at native bucket boundaries.
+2. Where buckets differ across samples (Apr 13 uses fine ADX bins 15-18/18-22/22-25, Apr 09/12 use coarse 15-20/20-25/25-30), collapse the finer-bucket sample down to the coarser scheme using a 50/50 split for the overlapping bin (e.g. "18-22" → half to 15-20, half to 20-25). This introduces ~10-15% rounding error per cell, acceptable for cross-sample directional reads.
+3. Cells qualify as cross-sample winners only when **direction is consistent across ≥4 samples**, **N ≥ 5 per sample with combined N ≥ 30**, and the most recent sample replicates (not just historical agreement that has since decayed).
+4. **Critical anti-overfit lesson learned during this exercise:** `SHORT 30-35 × 25-30` was the historical 3-sample winner (84-82-68% WR across Apr 09 + Apr 12 + Apr 13, total N=58). Sizing up on historical-only data without checking current sample would have been wrong — current sample shows 50% WR, the cell has decayed. Cross-sample confirmation **including the current/most-recent sample** protects against this. Historical-only is not sufficient.
+
+### Finding #1 — Pair-level: SHORT RSI 20-30 × ADX 25-30 (5-sample confirmed)
+
+| Sample | N | WR | Avg P&L % |
+|---|---|---|---|
+| Apr 09 (97tr post-tightening) | 8 | 75% | −0.00% |
+| Apr 12 (53tr partial) | 9 | 67% | +0.30% |
+| Apr 13 (117tr full) | 10 | 70% | +0.32% |
+| Phase 1c-Explore @ ~150 trades | 12 | 75% | +0.11% |
+| Phase 1c-Explore @ 171 trades | 13 | 77% | +0.13% |
+| **Pooled** | **48** | **~73%** | **~+0.18% weighted** |
+
+5 samples, all WR ≥ 67%, 4 of 5 positive Avg %, the one zero is essentially flat not negative. Cleanest cross-sample pair-level cell in the dataset. Note current report uses fine ADX buckets 25-28 (N=10) + 28-30 (N=3) which collapse to historical 25-30; computation reflects that.
+
+**Supporting cell** — `SHORT RSI 20-30 × ADX 30-35`: positive in all 4 samples that had data (Apr 09 +0.02%, Apr 12 +1.97% N=1 ignore, Apr 13 +0.17%, Current +0.35%). Directional consistency confirmed but cell-level N is thinner (~17 pooled excluding tiny cells). Treat as a same-family signal: "SHORT with oversold pair RSI <30 in moderate-to-strong ADX 25-35."
+
+### Finding #2 — BTC-level: SHORT BTC RSI 25-30 (the pre-committed S-P1 PREMIUM ZONE, now 5-sample confirmed)
+
+The pre-committed S-P1 rule (BTC RSI <30 × BTC ADX 20-25) was validated in the Apr 17 cross-tab audit at 75% pooled WR on N=12. Phase 1c-Explore data extends this pattern to the BTC RSI 25-30 single-dimension cell (any BTC ADX):
+
+| Sample | BTC RSI 25-30 SHORT cell | WR | Avg % |
+|---|---|---|---|
+| Phase 1c-Explore @ 38 SHORTs | 6 trades | 100% | +0.45% |
+| Phase 1c-Explore @ 45 SHORTs | **9 trades** | **100%** | **+0.43%** |
+
+This sub-cell is now the strongest BTC-level signal in the entire dataset — 9 of 9 winners in current sample. Combines with historical 4-sample evidence on BTC RSI <30 (S-P1 cell) to suggest "**BTC RSI 25-30 is a PREMIUM-tier macro condition for SHORTs regardless of BTC ADX**".
+
+Per-cell breakdown of BTC RSI 25-30 in current sample:
+- × BTC ADX 20-25 (4t, 100% WR, +0.49%) — extension of S-P1
+- × BTC ADX 25-30 (2t, 100% WR, +0.37%)
+- × BTC ADX 30-35 (1t, 100% WR, +0.32%)
+- × BTC ADX 35+ (2t, 100% WR, +0.44%)
+
+The pattern is uniform across BTC ADX magnitude when BTC RSI is in 25-30. This is materially stronger than the original S-P1 (which was conditional on BTC ADX 20-25).
+
+### Counter-finding — what NOT to size up
+
+`SHORT 30-35 × 25-30` (the pre-committed S-P2 PREMIUM ZONE) — already weakened in the Apr 17 audit (pool WR dropped from pre-commit 83% → 57%) and current Phase 1c-Explore data shows it still losing (1 trade in current sample at 0% WR, −1.01%). The Apr 17 audit verdict holds: **S-P2 should NOT be promoted, has decayed across recent samples.** Sizing up here would be the trap that historical-only analysis would set.
+
+### What to do at the 200-trade Phase 1c-Explore checkpoint
+
+For each of the two findings above, repeat the cross-sample exercise with the full 200-trade dataset:
+
+**Validation gates for promotion to "size-up candidate" in Phase 2/3:**
+
+1. `SHORT 20-30 × 25-30` qualifies for 2x sizing if:
+   - Phase 1c-Explore final N ≥ 15 in this cell
+   - WR remains ≥ 65% in the final 200-trade aggregate
+   - Avg P&L % remains ≥ +0.10%
+   - Combined 5-sample WR stays ≥ 70% on pooled N ≥ 50
+2. `SHORT BTC RSI 25-30` qualifies for 2x sizing if:
+   - Phase 1c-Explore final N ≥ 12 in this cell
+   - WR remains ≥ 80%
+   - Avg P&L % remains ≥ +0.30%
+   - The uniformity across BTC ADX magnitude holds (no single BTC ADX bucket within this cell drops below 50% WR with N ≥ 3)
+
+**If both findings pass their gates:** the size-up candidate set for Phase 3 includes both — with the practical understanding that they're partly overlapping (a SHORT that satisfies pair RSI 20-30 × ADX 25-30 may often also be in BTC RSI 25-30). The actual leveraged-bucket logic should AND the cells (cell qualifies for 2x only when BOTH pair-level and BTC-level conditions hold), not OR them, to keep the size-up surface narrow and high-conviction.
+
+**If only one passes:** ship that one alone. Don't compromise the other to keep symmetry.
+
+**If neither passes:** the cells decayed in the final batch, exactly like S-P2 did from Apr 13 → Apr 17. Don't ship sizing changes — accept the negative result and stay at 1x.
+
+### Live-validation requirement (paper-data caveat)
+
+Both findings come from PAPER mode. Per the Apr 18 quant methodology note in CLAUDE.md, filter-layer findings (which these are — RSI/ADX cell selection is pure indicator math) are paper-OK. **However, sizing up doubles real-money exposure on these cells when we eventually go live.** Before doubling in live mode, run a separate live batch (~50 trades hitting these cells) at 1x to confirm fill mechanics don't bias the cell-level WR downward (MAKER over-fill in paper would inflate WR for cells that frequently hit MAKER entries). Only after live 1x confirmation does the 2x sizing ship to live.
+
+### Why this entry exists in CLAUDE.md
+
+Two reasons:
+1. **Pre-committed validation gates locked before the 200-trade data lands.** Same discipline as the existing Apr 28 Phase 1c-Explore plan: rules first, data second. Prevents post-hoc bar-lowering when the actual numbers come in slightly under threshold.
+2. **The S-P2 cautionary lesson is preserved here.** The exact same methodology that produces these two findings also catches the S-P2 decay. If at the 200-trade checkpoint the user is tempted to size up on a different cell that "looks like a winner historically," the S-P2 example in this section is the answer for why historical-only is not enough.
+
+## May 3, 2026 — Pair blacklist candidates for 200-trade Phase 1c-Explore review
+
+Four pairs flagged for blacklist evaluation at the 200-trade checkpoint based on a cross-report 0% WR scan run May 3 against the partial 188-trade sample. **No action taken yet** — locked here for re-validation when the full Phase 1c-Explore batch completes.
+
+### Candidates and current evidence
+
+| Pair | Direction | Evidence |
+|---|---|---|
+| **HYPEUSDT** | SHORT (and LONG concerning) | SHORT: 6 trades / 0 wins across 3 reports (Apr 06 + Apr 12 + Apr 13). Strongest cross-sample 0% WR signal in dataset. LONG in current sample: 9 trades, 22% WR, −$6.26 (worst $-loss pair this batch). Already flagged in CLAUDE.md Apr 17 as known-risky older pair (322 days old, slips through the 180d new-listing filter). |
+| **DOGEUSDT** | SHORT | 4 trades / 0 wins across 2 reports (Apr 13 + current). Different configs, same outcome. Meets 2-sample confirmation bar. |
+| **RIVERUSDT** | LONG | 4 trades / 0 wins across 2 reports (Apr 06 + current). Apr 06 was a very different config era (20-30x leverage), but pattern holds despite that gap — actually stronger structural signal because the loss survives across config eras. |
+| **1000LUNCUSDT** | LONG | 2 trades / 0 wins / −1.01% Avg / −$4.02 — but **1-sample only** (current Phase 1c-Explore). Below the 2-sample anti-overfit bar (CLAUDE.md rule #4). User decision was to flag for monitoring rather than wait separately. Worst single-pair $-loss after RIVERUSDT in current sample. |
+
+### Decision rule at 200-trade checkpoint
+
+For each of the 4 candidates, recompute the per-pair WR across the full 200-trade sample, then apply this gate:
+
+| Outcome at 200 trades | Verdict |
+|---|---|
+| Pair shows ≥6 trades total across 2+ reports AND WR ≤25% | **Blacklist** — add to `pair_blacklist` config |
+| Pair shows ≥4 trades AND WR 0% (any sample size) | **Blacklist** |
+| Pair shows ≥4 trades but WR climbs to 30-50% on the new data alone | **Hold for 400-trade checkpoint** — single-batch reversion possible |
+| Pair shows fresh wins on N≥3 in new batch (e.g., 1000LUNC wins 2 of 3 next trades) | **Drop from candidate list** — was 1-sample noise |
+| Pair stops firing entirely (no new trades) | **Hold** — insufficient data, re-evaluate at 400 trades |
+
+### Special handling for HYPEUSDT
+
+HYPEUSDT has **directional asymmetry**: SHORT side is the cross-sample 0% WR finding, LONG side has a separate but related "weak performance" signal in current sample. Two options at the 200-trade decision:
+
+1. **Full pair blacklist** (block both directions). Safer, simpler, costs more opportunity if LONG side recovers.
+2. **Direction-specific blacklist** (block only SHORT side). Requires code work — current `pair_blacklist` is binary per-pair, not per-direction. Adding direction-specific would be a small enhancement (~10 lines in the entry filter chain in `services/trading_engine.py`).
+
+If 200-trade SHORT data on HYPE remains 0% WR, ship Option 1 immediately. Option 2 only if LONG side shows ≥50% WR on N≥5 in the fresh data — meaning there's a real LONG edge worth preserving.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor four specific candidate decisions at the 200-trade checkpoint with pre-committed gates, preventing post-hoc bar-lowering when the actual numbers come in. Same discipline as the May 3 cross-sample SHORT findings entry directly above. The 1000LUNCUSDT inclusion is a deliberate exception to anti-overfit rule #4 (1-sample) — flagged here so the rationale is explicit and the bar at 200 trades enforces the 2-sample requirement before action.

@@ -1547,7 +1547,12 @@ def _compute_entry_type_stats(orders, signal_expired_orders=None):
             conf = getattr(o, 'confidence', 'UNKNOWN') or 'UNKNOWN'
             groups["SIGNAL_EXPIRED"]["by_confidence"][conf] = groups["SIGNAL_EXPIRED"]["by_confidence"].get(conf, 0) + 1
 
-    total_trades = len(orders)
+    # Total used as denominator for pct_of_total. SIGNAL_EXPIRED rows aren't in
+    # `orders` (synthetic row), so include their count in the denom — otherwise
+    # SIGNAL_EXPIRED count / closed-only total can exceed 100% in regime slices
+    # where aborts > closes (the historical 315.4% bug from May 1). Including
+    # them keeps all pct values internally consistent and bounded ≤100%.
+    total_trades = len(orders) + (len(signal_expired_orders) if signal_expired_orders else 0)
     result = {}
     for etype, data in groups.items():
         count = len(data["trades"])
@@ -2592,19 +2597,33 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     # They are NOT real trades (no PnL, no fill) so they are excluded from every
     # aggregation except the entry-type breakdown.
     #
-    # Split-report fix (May 1): SIGNAL_EXPIRED rows do not capture entry_macro_trend
-    # (no fill = no entry context persisted), so they cannot be attributed to a
-    # BULLISH/BEARISH/NEUTRAL bucket. Restrict them to the unfiltered (regime=None)
-    # report only — including them in regime sections produced duplicate rows and
-    # nonsense percentages like "315.4%" in BEARISH where N_signal_expired=82 was
-    # being divided by N_closed_shorts=26.
+    # Split-report fix (May 3, supersedes May 1):
+    # SIGNAL_EXPIRED rows don't capture entry_macro_trend (no fill = no regime
+    # context). Earlier code zeroed them out entirely for regime sections,
+    # which fixed the 315.4% bug (SIGNAL_EXPIRED count / closed-shorts) but
+    # also dropped the Aborted row from Entry Conditions by Outcome AND the
+    # entire Signal Expired Breakdown table from split reports.
+    #
+    # Fix: always load all SIGNAL_EXPIRED orders. For regime-filtered calls,
+    # filter by DIRECTION so BULLISH section sees LONG aborts only and
+    # BEARISH section sees SHORT aborts only. This is correct because the
+    # split report itself is direction-segregated (BULLISH = LONG-only,
+    # BEARISH = SHORT-only). The 315.4% bug is fixed separately in
+    # _compute_entry_type_stats by computing pct_of_total against an
+    # aborts-inclusive denominator.
+    signal_expired_result = await db.execute(
+        select(Order)
+        .where(and_(Order.status == "SIGNAL_EXPIRED", Order.is_paper == trading_engine.is_paper_mode))
+    )
+    _all_signal_expired = signal_expired_result.scalars().all()
     if regime is None:
-        signal_expired_result = await db.execute(
-            select(Order)
-            .where(and_(Order.status == "SIGNAL_EXPIRED", Order.is_paper == trading_engine.is_paper_mode))
-        )
-        signal_expired_orders = signal_expired_result.scalars().all()
+        signal_expired_orders = _all_signal_expired
+    elif regime == 'BULLISH':
+        signal_expired_orders = [o for o in _all_signal_expired if (o.direction or 'LONG') == 'LONG']
+    elif regime == 'BEARISH':
+        signal_expired_orders = [o for o in _all_signal_expired if (o.direction or 'LONG') == 'SHORT']
     else:
+        # NEUTRAL or any other regime — no clean direction mapping
         signal_expired_orders = []
     
     # Compute by_macro_trend summary from ALL orders (before filtering)

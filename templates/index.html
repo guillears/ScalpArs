@@ -3769,11 +3769,14 @@
 
         // Update timer display
         function updateTimer(seconds) {
-            const h = Math.floor(seconds / 3600);
+            // Format: HH:MM:SS for runs <24h, "Nd HH:MM:SS" for runs ≥24h.
+            // Matches Linux uptime / kubectl / Docker convention.
+            const days = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
             const m = Math.floor((seconds % 3600) / 60);
             const s = seconds % 60;
-            document.getElementById('timer').textContent = 
-                `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            const hms = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            document.getElementById('timer').textContent = days > 0 ? `${days}d ${hms}` : hms;
         }
 
         // Load bot status

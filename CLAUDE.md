@@ -3125,3 +3125,130 @@ If 200-trade SHORT data on HYPE remains 0% WR, ship Option 1 immediately. Option
 ### Why this entry exists in CLAUDE.md
 
 To anchor four specific candidate decisions at the 200-trade checkpoint with pre-committed gates, preventing post-hoc bar-lowering when the actual numbers come in. Same discipline as the May 3 cross-sample SHORT findings entry directly above. The 1000LUNCUSDT inclusion is a deliberate exception to anti-overfit rule #4 (1-sample) — flagged here so the rationale is explicit and the bar at 200 trades enforces the 2-sample requirement before action.
+
+## May 3, 2026 — Phase 3 Position Multiplier Mechanism (DESIGN, post-200-trade bonus)
+
+This entry documents the **design plan** for the per-cell position multiplier mechanism — the Phase 3 sizing layer described in the existing "Three-Phase Plan to Make the Bot Profitable" section. Reviewed and locked here as a post-200-trade bonus item: implementation should be considered AFTER the 200-trade checkpoint completes AND all filter-level reviews (BTC RSI, EMA50 alignment, pair blacklist candidates, exit optimizations) are decided. Multipliers are the LAST mechanism to ship in the Phase 1c-Explore → Phase 2 → Phase 3 progression — they amplify whatever edge survives filter validation. Shipping multipliers before filter validation amplifies whatever's left in the system, edge or noise.
+
+### What this mechanism does
+
+Allows per-cell position sizing based on RSI × ADX bucket. A trade matching a configured cell (e.g., LONG RSI 60-65 × ADX 18-22) gets its position scaled by a multiplier (e.g., 2.0×). Cells not configured default to 1.0× (no change). This is the natural extension of the existing pair-level RSI×ADX cross-filter — same dimensions, additive size effect instead of binary block.
+
+### Architecture (4 layers)
+
+**Layer 1 — Config schema** (in `config.py` on `SignalThresholds`):
+```
+rsi_adx_multiplier_long: str = ""    # format: "RSI_band:ADX_band:multiplier,..."
+rsi_adx_multiplier_short: str = ""   # same format
+rsi_adx_multiplier_target: str = "investment"  # "investment" or "leverage"
+```
+Example value: `"60-65:18-22:2.0,55-60:22-25:1.5"` — two rules. Empty string = mechanism inert.
+
+**Layer 2 — UI panel** in `templates/index.html`, mirrors the existing pair-level RSI×ADX Cross-Filter UI:
+- Toggle: "Apply multiplier to" → Investment / Leverage radio
+- Two tables (LONG / SHORT), each with rows: `RSI band dropdown | ADX band dropdown | multiplier input | remove button`
+- "+ Add rule" button per direction
+- Multiplier input clamped to [0.25, 5.0]
+- Visual indicator: rows with multiplier ≥1.5 highlighted amber, ≥2.5 highlighted red
+- RSI/ADX band dropdowns MUST use the same boundaries as the analytics report cells (50-55, 55-60, ..., 70+ for RSI; 15-18, 18-22, 22-25, 25-30, 30-33, 33+ for ADX) so cells in the multiplier UI map 1:1 to cells in performance reports
+
+**Layer 3 — Engine logic** in `services/trading_engine.py::open_position`, ~30 lines, after all filters pass and confidence is assigned:
+```python
+base_investment, base_leverage = self._calculate_position_size(...)
+cell_multiplier, cell_id = self._lookup_rsi_adx_multiplier(direction, rsi, adx)
+cell_multiplier = min(cell_multiplier, 3.0)  # HARD CAP — non-negotiable safety guard
+
+if multiplier_target == 'investment':
+    investment = base_investment * cell_multiplier
+elif multiplier_target == 'leverage':
+    leverage = int(base_leverage * cell_multiplier)
+
+order.cell_multiplier = cell_multiplier
+order.cell_multiplier_source = cell_id  # e.g., "LONG_60-65_18-22"
+```
+
+**Layer 4 — Tracking** (2 new columns on Order, no schema migration risk):
+- `cell_multiplier: Float, default=1.0` — what was actually applied
+- `cell_multiplier_source: String(40), nullable` — which cell rule fired, NULL if default 1.0
+
+### Tracking table — Multiplier Cell Performance
+
+New report section (LONG + SHORT separated). Critical columns:
+
+| Cell | Multi | N | WR | Avg P&L% | Total$ | Δ vs 1x baseline | Verdict |
+
+The "Δ vs 1x baseline" column is the diagnostic that matters most:
+- Computed as actual $ minus simulated 1x $ (`Total$ × (1 - 1/multi)` for the boost contribution)
+- Tells you if the boost actually helped or just amplified noise
+
+Verdict logic (automated):
+- ★ WORKING: multiplied $ ≥ 1.7× the 1x simulated $
+- ✓ Marginal: 1.0×–1.7× scaling
+- ⚠ DRAG: <1.0× (boost reduced effective edge — variance widened too much)
+- ✗ HARMFUL: net negative under multiplier — revert immediately
+
+### Critical design decisions (locked here, reasoned-through)
+
+**1. Default to investment-size multiplier, not leverage.** Reasons:
+- Investment doesn't compound with the existing per-tier leverage setting. Leverage does (VERY_STRONG at 2x leverage × 2x cell multiplier = 4x effective exposure — confusing and dangerous).
+- Investment has simpler mental model ("I'm doubling this trade")
+- Both produce identical P&L in paper mode; difference is only margin efficiency in live mode
+- At SCALPARS' SL distance (-0.9%), liquidation isn't a concern at any reasonable multiplier on either mechanism
+
+User can switch to leverage via the toggle if they specifically want capital efficiency, but default is investment.
+
+**2. Hard cap at 3.0× regardless of UI input.** Even if user enters 5.0 in a cell, engine clamps to 3.0. Single-line safety check in `open_position`. Non-negotiable. This is insurance against typos and against escalating multipliers in a phase of mistaken confidence.
+
+**3. Manual cell configuration, NOT automatic adaptive sizing.** This was debated and rejected for Phase 3 scope. Documented reasoning:
+
+Adaptive sizing (bot watches WR/PF, auto-adjusts multipliers) sounds like an upgrade but is structurally wrong at retail scale. Why:
+- At our N (5-50 trades per cell), rolling WR is dominated by noise, not edge. An adaptive system reads variance and reinforces it.
+- The S-P2 cell decay we identified (May 3 cross-sample exercise — 84% → 82% → 68% → 57% → 0% across 5 samples) would have caused an adaptive system to boost during the winning phase and reduce too late after damage was taken.
+- Adaptive sizing requires ≥10,000 trades per cell + multiple uncorrelated strategies + professional risk infrastructure to be mathematically stable. We have none of those.
+- It removes operator judgment from the loop — the exact discipline that's been working in CLAUDE.md.
+
+Manual cell configuration is structurally correct for our scale. Static rules + cross-sample validation gates + multi-sample confirmation. The boring answer is the right answer.
+
+**4. Decay-alert mechanism (compromise — surface decay without auto-adjust).** When a cell with multiplier >1.0 has accumulated ≥10 trades since deploy AND current WR has dropped >15pp below the baseline that justified the multiplier, the UI flashes a non-blocking warning on that cell's row: "⚠ REVIEW: Cell X is at WR 52% (baseline was 73%). Consider reducing multiplier."
+
+The bot does NOT auto-adjust. It alerts. Human reads, decides whether to act. ~20 lines of UI logic. Best of both worlds: keeps human in the loop, surfaces decay early, zero feedback-loop risk.
+
+This is a Layer 5 / phase-3.5 add-on after the base manual mechanism is shipped and has been live for ~50 trades.
+
+### Implementation order
+
+If/when this ships:
+1. **Commit 1**: Schema + DB columns + engine logic with `rsi_adx_multiplier_*` defaulting to empty strings (= no behavior change). Mechanism inert by default.
+2. **Commit 2**: UI panel (still defaults to no rules).
+3. **Commit 3**: Multiplier Cell Performance reporting table.
+4. **THEN**: User fills in cells based on validated findings from the 200-trade checkpoint, per the locked rules in the May 3 cross-sample SHORT findings entry above.
+5. **~50 trades after first multiplier ships**: Add decay-alert mechanism (Layer 5).
+
+This staged approach ships infrastructure with zero behavior risk, then activates multipliers only on cells that pass the cross-sample validation gates.
+
+### Pre-conditions for shipping (do NOT ship before these)
+
+1. **200-trade Phase 1c-Explore checkpoint complete** with full cross-sample analysis on RSI×ADX, BTC RSI×BTC ADX, and Tier 1 dimensions (EMA50 alignment, DI spread, etc.)
+2. **At least one cell from the May 3 saved findings has passed its locked validation gate** (SHORT 20-30 × 25-30 OR SHORT BTC RSI 25-30) — if neither passed, multiplier mechanism has nothing to multiply, defer until Phase 2 produces a validated cell.
+3. **Pair blacklist decisions resolved** for HYPEUSDT, DOGEUSDT, RIVERUSDT, 1000LUNCUSDT (May 3 candidates entry) — sizing up while a known-bad pair is still active compounds the wrong way.
+4. **Filter-layer optimizations decided** — exit changes (RSI Handoff, BE layer if any), entry filter additions from EMA50/funding/DI cross-tabs.
+
+In summary: **filters first, sizing last.** Multipliers amplify whatever edge survives the filter pass. Wrong sizing on right filters loses less than right sizing on wrong filters.
+
+### Files that would change
+
+| Layer | File | Estimate |
+|---|---|---|
+| Config schema | `config.py` | 3 fields on SignalThresholds |
+| Defaults | `trading_config.json` | Empty strings + target="investment" |
+| Engine | `services/trading_engine.py::open_position` | ~30 lines |
+| DB | `models.py` + `database.py` auto-migrate | 2 nullable columns on Order |
+| API | `main.py::_compute_performance` | New `multiplier_cell_performance` payload section + lookup helper |
+| UI | `templates/index.html` | ~200 lines: panel + load/save + tracking table renderer |
+| Text export | `templates/index.html` (both export sites) | New tracking table rows |
+
+Total: ~150-250 lines of new code across the stack. No schema migration risk (only adds columns, doesn't modify existing).
+
+### Why this entry exists in CLAUDE.md
+
+To preserve the design + the reasoning behind two specific decisions (investment vs leverage, manual vs adaptive) so they don't have to be re-debated when implementation time arrives. Also to lock the pre-conditions explicitly so the mechanism doesn't ship prematurely. The "filters first, sizing last" rule is the most important takeaway — multipliers without validated cells are a faster path to losing money than helpful sizing.

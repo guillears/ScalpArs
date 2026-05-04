@@ -4036,3 +4036,59 @@ For ASTERUSDT: this is the 1-sample defensive case. If next batch's "would-have-
 
 ### Why this entry exists in CLAUDE.md
 To document the asymmetric treatment of HYPEUSDT (multi-sample, strict-bar passing) vs ASTERUSDT (1-sample, defensive judgment call by user given 20× leverage context). Future-Claude should know that ASTER was a discretionary blacklist, not a multi-sample structural conclusion — different evidence threshold.
+
+## May 4, 2026 — Multiplier Cell Performance: Δ vs BL redesigned to dollar terms
+
+### Why changed
+User flagged: with the original "Δ vs BL %" column, a multiplied cell that LOST money in $ terms could still show a positive (green) Δ vs BL %. The first multiplied trade in the May 4 evening micro-batch:
+- BTC_60-65_20-25 at 2.0× → 1 trade, AVG P&L % = -0.262%, Total $ = **-$25.48**
+- Baseline AVG P&L % = -0.283%
+- Δ vs BL = -0.262 − (-0.283) = **+0.021% (green)**
+
+This was internally consistent (Avg P&L% IS invariant to multiplier — multiplying scales both numerator and denominator) but operationally misleading: at 2.0× the trade lost $25.48 vs would-have-lost $12.74 at baseline 1× multiplier. **The multiplier amplified the loss by $12.74 yet the column showed green.**
+
+### Redesign
+
+| Field | Before | After |
+|---|---|---|
+| `delta_vs_baseline` | percentage (Cell Avg P&L% − Baseline Avg P&L%) | **`delta_vs_baseline_dollars`** (Total $ × (1 − 1/multiplier)) |
+| Column header | "Δ vs BL" | **"Δ$ vs BL"** |
+| `simulated_1x_dollars` | "what if multiplier was 1×" — confusing because "1×" sounds like leverage | **`simulated_baseline_dollars`** — explicitly tied to baseline multiplier reference, not leverage |
+
+### New formula
+```
+Δ$ vs BL = Total $ × (1 − 1/multiplier)
+```
+- 2.0× cell with -$25.48 total → Δ$ = -$12.74 (red, correctly)
+- 2.0× cell with +$40 total → Δ$ = +$20 (green, correctly)
+- 1.5× cell with +$5 total → Δ$ = +$1.67 (green, modest)
+- Baseline rows (multi=1.0×): Δ$ = $0 (no boost contribution)
+
+### Independence from confidence-level leverage (key user point)
+
+The redesign uses "baseline" terminology instead of "1×" because the multiplier is **independent** of confidence-level leverage:
+- Future scenario: confidence-level leverage = 1× for both VERY_STRONG and STRONG_BUY, with cells getting 2× LEVERAGE multiplier (target=leverage)
+- Future scenario: confidence-level leverage = 20×, with cells getting 2× INVESTMENT multiplier (target=investment)
+- Both scenarios: the comparison is "what would these same trades have made at multiplier=1.0×, keeping the same leverage?"
+
+The math `Total $ × (1 − 1/multiplier)` works in all cases because it operates on multiplier-vs-baseline-multiplier, not on absolute leverage.
+
+### Updated verdict logic
+
+Now uses dollar delta instead of percentage delta:
+- **★ WORKING**: Δ$ > +$1 (multiplier extracted positive boost) AND total $ positive AND N ≥ 5
+- **✓ Marginal**: |Δ$| ≤ $1 (multiplier neither helped nor hurt meaningfully)
+- **⚠ DRAG**: Δ$ < -$1 (multiplier amplified losses but cell still net positive)
+- **✗ HARMFUL**: total $ negative (cell lost money under leverage; multiplier amplified)
+- **⚠ Low N**: N < 5 (insufficient data, no decision)
+
+`HARMFUL` takes priority over `DRAG` because total $ negative is more operationally serious than just amplified losses.
+
+### Files changed
+- `main.py::_compute_multiplier_cell_performance`: formula + field names
+- `templates/index.html`: column headers (2 sites), JS renderer color logic + cell content, text exports (2 sites), summary lines (UI + 2 text exports)
+
+### Why this entry exists in CLAUDE.md
+The original Δ vs BL % was technically correct as an "edge identification" metric but operationally misleading as a "multiplier impact" metric. The redesign aligns the column with the operational question: **did the multiplier help or hurt in dollars?** This matches the summary line at the bottom of the table (which already showed dollar uplift correctly) and gives consistent meaning across the row + summary.
+
+If a future use case needs the original percentage edge metric back (e.g., for cell discovery / promotion gates that compare WR/Avg% to baseline), it can be added as a SEPARATE column without conflict.

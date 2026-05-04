@@ -841,7 +841,7 @@
                                     <th class="text-right px-2">Expect$/tr</th>
                                     <th class="text-right px-2">PF</th>
                                     <th class="text-right px-2">BL Avg%</th>
-                                    <th class="text-right px-2">Δ vs BL</th>
+                                    <th class="text-right px-2" title="Dollar impact of multiplier vs same trades at baseline (1.0× multiplier). Positive = multiplier extracted boost. Negative = multiplier amplified losses.">Δ$ vs BL</th>
                                     <th class="text-right px-2">Capped</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
@@ -865,7 +865,7 @@
                                     <th class="text-right px-2">Expect$/tr</th>
                                     <th class="text-right px-2">PF</th>
                                     <th class="text-right px-2">BL Avg%</th>
-                                    <th class="text-right px-2">Δ vs BL</th>
+                                    <th class="text-right px-2" title="Dollar impact of multiplier vs same trades at baseline (1.0× multiplier). Positive = multiplier extracted boost. Negative = multiplier amplified losses.">Δ$ vs BL</th>
                                     <th class="text-right px-2">Capped</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
@@ -4072,19 +4072,19 @@
             const _renderMultExport = (rows, label, summary) => {
                 lines.push(`\n${hr2}`);
                 lines.push(`## Multiplier Cell Performance — ${label}\n`);
-                lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
+                lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ$ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
                 if (!rows || !rows.length) {
                     lines.push('  (no multiplied trades yet)');
                 } else {
                     for (const r of rows) {
                         const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                         const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
-                        const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline >= 0 ? '+' : '') + r.delta_vs_baseline.toFixed(3));
+                        const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
                         lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                     }
                 }
                 if (summary && summary.multiplied_trades_n) {
-                    lines.push(`\nTotal uplift from multipliers: ${summary.uplift_dollars >= 0 ? '+$' : '-$'}${Math.abs(summary.uplift_dollars).toFixed(2)} (actual $${summary.actual_total_dollars.toFixed(2)} vs simulated 1× $${summary.simulated_1x_dollars.toFixed(2)} on ${summary.multiplied_trades_n} multiplied trades)`);
+                    lines.push(`\nTotal uplift from multipliers: ${summary.uplift_dollars >= 0 ? '+$' : '-$'}${Math.abs(summary.uplift_dollars).toFixed(2)} (actual $${summary.actual_total_dollars.toFixed(2)} vs simulated baseline (1× multi) $${summary.simulated_baseline_dollars.toFixed(2)} on ${summary.multiplied_trades_n} multiplied trades)`);
                 }
             };
             const _mcp1 = perf.multiplier_cell_performance || {};
@@ -4841,19 +4841,19 @@
                 const _renderMultExport2 = (rows, label, summary) => {
                     lines.push(`\n${hr2}`);
                     lines.push(`## Multiplier Cell Performance — ${label}\n`);
-                    lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
+                    lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ$ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
                     if (!rows || !rows.length) {
                         lines.push('  (no multiplied trades yet)');
                     } else {
                         for (const r of rows) {
                             const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                             const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
-                            const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline >= 0 ? '+' : '') + r.delta_vs_baseline.toFixed(3));
+                            const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
                             lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                         }
                     }
                     if (summary && summary.multiplied_trades_n) {
-                        lines.push(`\nTotal uplift from multipliers: ${summary.uplift_dollars >= 0 ? '+$' : '-$'}${Math.abs(summary.uplift_dollars).toFixed(2)} (actual $${summary.actual_total_dollars.toFixed(2)} vs simulated 1× $${summary.simulated_1x_dollars.toFixed(2)} on ${summary.multiplied_trades_n} multiplied trades)`);
+                        lines.push(`\nTotal uplift from multipliers: ${summary.uplift_dollars >= 0 ? '+$' : '-$'}${Math.abs(summary.uplift_dollars).toFixed(2)} (actual $${summary.actual_total_dollars.toFixed(2)} vs simulated baseline (1× multi) $${summary.simulated_baseline_dollars.toFixed(2)} on ${summary.multiplied_trades_n} multiplied trades)`);
                     }
                 };
                 const _mcp2 = perf.multiplier_cell_performance || {};
@@ -5925,7 +5925,7 @@
                             'text-gray-500');
                         const totalClass = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const avgClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                        const dvbClass = r.delta_vs_baseline > 0 ? 'text-emerald-400' : (r.delta_vs_baseline < 0 ? 'text-red-400' : 'text-gray-500');
+                        const dvbClass = r.delta_vs_baseline_dollars > 0 ? 'text-emerald-400' : (r.delta_vs_baseline_dollars < 0 ? 'text-red-400' : 'text-gray-500');
                         const sourceColor = (
                             isDefault ? 'text-gray-400' :
                             r.multiplier >= 2.5 ? 'text-red-400' :
@@ -5942,7 +5942,7 @@
                             <td class="px-2 py-1 text-right">$${r.expect_per_trade.toFixed(3)}</td>
                             <td class="px-2 py-1 text-right">${pfStr}</td>
                             <td class="px-2 py-1 text-right text-gray-500">${r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-'}</td>
-                            <td class="px-2 py-1 text-right ${dvbClass}">${isDefault ? '-' : (r.delta_vs_baseline >= 0 ? '+' : '') + r.delta_vs_baseline.toFixed(3)}</td>
+                            <td class="px-2 py-1 text-right ${dvbClass}">${isDefault ? '-' : (r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2)}</td>
                             <td class="px-2 py-1 text-right text-amber-300">${r.capped_count || 0}</td>
                             <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
                         </tr>`;
@@ -5959,7 +5959,7 @@
                         const upL = sl.uplift_dollars;
                         const upS = ss.uplift_dollars;
                         const fmt = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                        sumEl.innerHTML = `LONG: ${sl.multiplied_trades_n || 0} multiplied trades, actual ${fmt(sl.actual_total_dollars)}, simulated 1× ${fmt(sl.simulated_1x_dollars)}, uplift <span class="font-semibold ${upL >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upL)}</span> &nbsp; | &nbsp; SHORT: ${ss.multiplied_trades_n || 0} multiplied trades, uplift <span class="font-semibold ${upS >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upS)}</span>`;
+                        sumEl.innerHTML = `LONG: ${sl.multiplied_trades_n || 0} multiplied trades, actual ${fmt(sl.actual_total_dollars)}, simulated baseline ${fmt(sl.simulated_baseline_dollars)}, uplift <span class="font-semibold ${upL >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upL)}</span> &nbsp; | &nbsp; SHORT: ${ss.multiplied_trades_n || 0} multiplied trades, uplift <span class="font-semibold ${upS >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upS)}</span>`;
                     }
                 }
 

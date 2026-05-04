@@ -4898,28 +4898,36 @@ def _compute_multiplier_cell_performance(orders):
             capped = sum(1 for o in os_ if getattr(o, 'cell_multiplier_capped', False))
 
             is_default = (src == '[Default 1.0x]')
+            mult = data['multi']
+            # Δ$ vs Baseline (May 4 redesign per user feedback): dollar impact of the
+            # multiplier vs same trades at baseline (1.0× multiplier).  Formula:
+            #   delta_dollars = total_$ × (1 − 1/multiplier)
+            # This isolates the multiplier's $-contribution.  Independent of confidence-
+            # level leverage — both actual and counterfactual use the same leverage.
+            # Positive Δ$ = multiplier extracted positive boost.  Negative Δ$ = multiplier
+            # amplified losses.
+            if is_default or mult == 1.0:
+                delta_dollars = 0.0
+            else:
+                delta_dollars = total_d * (1.0 - 1.0 / mult)
+
             if is_default:
                 verdict = '(baseline reference)'
-                delta_vs_bl = 0.0
             else:
-                bl_val = baseline if baseline is not None else 0.0
-                delta_vs_bl = avg_pct - bl_val
                 if n < 5:
                     verdict = '⚠ Low N'
                 elif total_d < 0:
                     verdict = '✗ HARMFUL'
-                elif delta_vs_bl >= 0.10 and total_d > 0:
+                elif delta_dollars > 1.0:
                     verdict = '★ WORKING'
-                elif abs(delta_vs_bl) < 0.10:
+                elif abs(delta_dollars) <= 1.0:
                     verdict = '✓ Marginal'
-                elif delta_vs_bl < -0.10:
-                    verdict = '⚠ DRAG'
                 else:
-                    verdict = '✓ Marginal'
+                    verdict = '⚠ DRAG'
 
             rows.append({
                 'source': src,
-                'multiplier': round(data['multi'], 2),
+                'multiplier': round(mult, 2),
                 'n': n,
                 'wr_pct': round(wr, 1),
                 'avg_pnl_pct': round(avg_pct, 4),
@@ -4927,7 +4935,7 @@ def _compute_multiplier_cell_performance(orders):
                 'expect_per_trade': round(expect_d, 3),
                 'profit_factor': round(pf, 2) if pf != float('inf') else 999.99,
                 'baseline_avg_pct': round(baseline, 4) if baseline is not None else None,
-                'delta_vs_baseline': round(delta_vs_bl, 4),
+                'delta_vs_baseline_dollars': round(delta_dollars, 2),
                 'capped_count': capped,
                 'verdict': verdict,
             })
@@ -4938,17 +4946,21 @@ def _compute_multiplier_cell_performance(orders):
     longs = _bucket_for_direction('LONG')
     shorts = _bucket_for_direction('SHORT')
 
-    # Summary uplift line — per CLAUDE.md May 3 spec
+    # Summary uplift line — per CLAUDE.md May 3 spec.  May 4 redesign:
+    # rename "1x" → "baseline" terminology to avoid confusion with leverage
+    # (multiplier is independent of confidence-level leverage).
     def _uplift(rows):
         boosted = [r for r in rows if r['source'] != '[Default 1.0x]' and r['multiplier'] != 1.0]
         actual_total = sum(r['total_dollars'] for r in boosted)
-        # Counterfactual at 1x = total / multiplier (linear scaling assumption)
-        sim_1x = sum(r['total_dollars'] / r['multiplier'] for r in boosted if r['multiplier'])
+        # Counterfactual at baseline (multi=1.0) = total / multiplier (linear scaling).
+        # "Baseline" here means "what the same trades would have made if cell multiplier
+        # was 1.0", regardless of confidence-level leverage.
+        sim_baseline = sum(r['total_dollars'] / r['multiplier'] for r in boosted if r['multiplier'])
         return {
             'multiplied_trades_n': sum(r['n'] for r in boosted),
             'actual_total_dollars': round(actual_total, 2),
-            'simulated_1x_dollars': round(sim_1x, 2),
-            'uplift_dollars': round(actual_total - sim_1x, 2),
+            'simulated_baseline_dollars': round(sim_baseline, 2),
+            'uplift_dollars': round(actual_total - sim_baseline, 2),
         }
 
     return {

@@ -8283,6 +8283,24 @@
                         const _fl1Label = o.fl1_origin === 'WIDE_SL' ? 'FL1·W' : 'FL1';
                         flagBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 animate-pulse" title="${_fl1Title}">${_fl1Label}</span>`;
                     }
+
+                    // TP-Tier badge (May 4, 2026): trailing-stop arming status.
+                    // Shown when peak >= dynamic TP target (trade has armed trailing).
+                    // L1 = first arming, L2 = promoted (peak ≥ 2× TP min), L3+ = RSI handoff zone.
+                    // Coexists with FL flags (orthogonal info: FL = adverse state, TP-tier = profitable state).
+                    let tpTierBadge = '';
+                    const _tpPeak = o.peak_pnl || 0;
+                    const _tpTarget = o.tp_target || 0.20;
+                    const _tpLvl = o.tp_level || 1;
+                    if (_tpPeak >= _tpTarget && _tpPeak > 0) {
+                        if (_tpLvl >= 3) {
+                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/25 text-purple-300" title="L3+ — RSI handoff zone (trailing disabled, exits via 2-drop RSI). Floor: peak − pullback already passed; protected from full SL.">🛡 L3·RSI</span>`;
+                        } else if (_tpLvl === 2) {
+                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/25 text-cyan-300" title="L2 — trailing armed at second level (peak ≥ 2× TP min). Worst case: peak − pullback. Protected from full SL.">🛡 L2</span>`;
+                        } else {
+                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/25 text-emerald-300" title="L1 — trailing armed (peak ≥ TP min). Worst case: peak − pullback. Protected from full SL.">🛡 L1</span>`;
+                        }
+                    }
                     
                     return `
                         <tr class="hover:bg-white/5 transition">
@@ -8298,7 +8316,7 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
                             <td class="px-4 py-3 text-right font-mono">${o.duration}</td>
-                            <td class="px-4 py-3 text-center">${flagBadge || beBadge}</td>
+                            <td class="px-4 py-3 text-center">${(flagBadge || tpTierBadge) ? (flagBadge + tpTierBadge) : beBadge}</td>
                             <td class="px-4 py-3 text-right text-white font-medium">${o.peak_pnl >= 0 ? '+' : ''}${o.peak_pnl.toFixed(2)}%</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(highLow)}</td>

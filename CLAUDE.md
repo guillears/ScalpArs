@@ -3252,3 +3252,84 @@ Total: ~150-250 lines of new code across the stack. No schema migration risk (on
 ### Why this entry exists in CLAUDE.md
 
 To preserve the design + the reasoning behind two specific decisions (investment vs leverage, manual vs adaptive) so they don't have to be re-debated when implementation time arrives. Also to lock the pre-conditions explicitly so the mechanism doesn't ship prematurely. The "filters first, sizing last" rule is the most important takeaway — multipliers without validated cells are a faster path to losing money than helpful sizing.
+
+## May 3, 2026 — Decision to revert Amendments #6 and #8 (40s→20s timeout, 2→1 tick offset) at 200-trade checkpoint
+
+### What's being reverted
+
+| Amendment | Field | Current (Phase 1c-Explore) | Revert target | Rationale source |
+|---|---|---|---|---|
+| #6 (Apr 18) | `maker_timeout_seconds` | 40 | **20** | Hold-Time Expectancy + Aborted-population analysis (this entry) |
+| #8 (Apr 18) | `maker_offset_ticks` | 2 | **1** | Bundled with #6; offset depth is independent question but reverting both restores the pre-Apr-18 fill-mechanics baseline cleanly |
+
+### Why — the analytical chain that produced this decision
+
+At 196 trades in the Phase 1c-Explore batch, three independent observations converged:
+
+**1. Aborted population sits in over-extended entry conditions on both sides.**
+Aborted L (89): AvgRSI 63.8, BTCRSI 66.4, BTCADX 29.0 — late-cycle uptrend.
+Aborted S (14): AvgRSI 26.0, BTCRSI 22.9, Funding +0.046% — squeeze-prone deep oversold.
+Initially read as "re-validator catching the right population to skip."
+
+**2. Signal Expired Breakdown shows every abort fires at exactly t=40.0s.**
+MedWait, p90Wait, MaxWait all = 40.0s. Zero aborts fire earlier. Means signal flips during the partial-bar re-validation at the timeout boundary — the 20s window almost never produces a flip on its own (otherwise we'd see early aborts).
+
+**3. Hold-Time Expectancy table: winners peak/close FASTER than losers.**
+This is the load-bearing observation. If winners are time-sensitive and move fast off the signal, then a 40s wait burns through the front of the move. By the time re-validation runs, the fast-winner's initial leg has already played out, the partial bar shows momentum cooling, signal flips, abort fires → **we systematically miss the fast-winner population**.
+
+The reframing that follows from #3:
+- "Signal Flipped" ≠ re-validator catching bad entries
+- "Signal Flipped" = re-validator catching trades whose move already happened during our wait
+- The 40s timeout was added (Amendment #6) on the hypothesis that more pullback-entry maker fills would improve overall WR
+- For a fast-winner strategy, that hypothesis was structurally wrong — the extra 20s isn't capturing pullback fills, it's burning the entry window
+
+The fact that aborts cluster in over-extended conditions (#1) is consistent with this: those are exactly the conditions where 40s of price action is enough to reverse the local micro-trend. Late-cycle uptrend at RSI 63 + 40s of mean reversion = signal flips. Deep oversold + 40s of squeeze rally = signal flips.
+
+### What earlier analysis got wrong
+
+The original "Aborts are net-protective" read (this conversation, earlier turn) was built on an unverified assumption that Losers L profile resembled Aborted L profile. **That comparison was not actually pulled from the table.** Once the user flagged the Hold-Time Expectancy pattern, the protective-effect interpretation no longer holds. Aborts are not protective — they're missed entries on the fastest-moving population.
+
+Methodological lesson (locked here): when claiming "X profile resembles Y profile" in a cross-bucket comparison, **pull the actual numbers from the table.** Asserting similarity from memory or impression is the failure mode that produced this round-trip.
+
+### Paper-mode caveat (CLAUDE.md Apr 18)
+
+Amendments #6 and #8 are **fill-mechanics changes**, which paper data is biased on (paper's `_simulate_maker_entry_paper` over-fills relative to live orderbook competition). Strict reading of the Apr 18 rule says these amendments cannot be evaluated in paper.
+
+However, the evidence chain above does NOT rest on fill-mechanics metrics:
+- "Winners peak fast" is pure indicator-math (paper-OK)
+- "Aborts cluster at over-extended RSI/BTC RSI" is filter-layer (paper-OK)
+- "All aborts fire at t=40.0s" is timing observation (paper-OK)
+
+The decision to revert rests on filter-layer + timing evidence, not on paper MAKER-vs-TAKER WR claims (which would be paper-biased). So the Apr 18 caveat applies to the *expected post-revert effect* (we can't predict the new MAKER fill rate accurately from paper), not to the *decision logic* itself.
+
+### Decision and timing
+
+**Decision:** Revert `maker_timeout_seconds: 40 → 20` and `maker_offset_ticks: 2 → 1` at the 200-trade Phase 1c-Explore checkpoint.
+
+**Timing:** Ship together with whatever other config changes the 200-trade analysis decides. Per the locked Phase 1c-Explore plan (Apr 28), strategic config changes happen at the checkpoint, not before. We're at 196/200 — wait for the remaining 4.
+
+**Bundling rationale:** #6 and #8 ship together because they were deployed together as a package and the analytical logic above treats them as a fill-mechanics package. Cleaner attribution: revert the package, observe new package's behavior, decide if either piece needs to be reverted again independently.
+
+### Pre-committed validation criteria for the post-revert sample
+
+Once reverted, the next batch (target ~100 trades) is the validation. Locked criteria:
+
+| Outcome | Verdict |
+|---|---|
+| SIGNAL_EXPIRED rate drops materially (≥ 50% reduction in "Signal Flipped" count per 100 trades) | Revert confirmed working as designed |
+| Combined Avg P&L % improves ≥ +5bp/trade vs Phase 1c-Explore | Revert is net positive, lock 20s/1-tick as default |
+| Combined Avg P&L % flat (±5bp) | Revert is neutral on edge but reduces abort rate; keep for cleaner data |
+| Combined Avg P&L % worsens > 5bp/trade | Aborts WERE net-protective; consider re-extending timeout but with re-validation logic fix first |
+| MAKER fill rate drops > 30% (live mode) | The shorter timeout cost too many maker fills; revisit offset (try 1-tick first, 2-tick second) |
+
+### What this revert does NOT do
+
+- Does NOT fix the underlying fragility of `_revalidate_entry_signal` re-running full `get_signal()` on a partial bar. That's a separate Phase 1d candidate (replace with `is_signal_direction_active()` directional check). Reverting timeout reduces how often the fragile path is hit, but doesn't fix the path itself.
+- Does NOT change Amendment #7 (signal re-validation infrastructure). The re-validation still fires; it just fires at t=20s instead of t=40s.
+- Does NOT touch any entry filter, exit parameter, or BTC/pair-level config. Pure fill-mechanics revert.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the revert decision and its evidence chain so that at the 200-trade checkpoint the change ships without re-litigation. Also to preserve the methodological lesson (don't assert profile-similarity without pulling numbers) and the Hold-Time Expectancy reframing — both of which inform future analysis discipline.
+
+The Apr 18 paper-mode caveat is acknowledged but the decision is defensible because the evidence chain doesn't rest on fill-mechanics paper data. If the post-revert validation says otherwise, the revert itself gets reverted — that's what the locked criteria above are for.

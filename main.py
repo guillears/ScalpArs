@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
@@ -1134,6 +1134,61 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
         })
 
     return orders_data
+
+
+@app.get("/api/orders/export.csv")
+async def export_orders_csv(db: AsyncSession = Depends(get_db)):
+    """Export ALL orders (CLOSED + SIGNAL_EXPIRED) for current paper/live mode as CSV.
+
+    No row limit. Includes every column on the Order model so downstream analysis
+    (Winner Exit / BE Layer counterfactuals, cross-sample re-binning, Aborted
+    distribution analysis) can run from a single download.
+    """
+    import csv
+    import io
+
+    await trading_engine.initialize(db)
+
+    result = await db.execute(
+        select(Order)
+        .where(and_(
+            Order.status.in_(["CLOSED", "SIGNAL_EXPIRED"]),
+            Order.is_paper == trading_engine.is_paper_mode,
+        ))
+        .order_by(desc(Order.opened_at))
+    )
+    orders = result.scalars().all()
+
+    # Use Order's table column order as the canonical schema — futureproof against
+    # new columns being added (no need to update this endpoint).
+    column_names = [c.name for c in Order.__table__.columns]
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(column_names)
+
+    for o in orders:
+        row = []
+        for col in column_names:
+            val = getattr(o, col, None)
+            if isinstance(val, datetime):
+                row.append(val.isoformat())
+            elif val is None:
+                row.append("")
+            else:
+                row.append(val)
+        writer.writerow(row)
+
+    buffer.seek(0)
+    mode = "paper" if trading_engine.is_paper_mode else "live"
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filename = f"scalpars_orders_{mode}_{timestamp}.csv"
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/transactions")

@@ -3943,3 +3943,50 @@ To eliminate any ambiguity about what's being tested at next batch and what the 
 - No "let's discuss whether to revert" debates — the criteria already say what to do
 
 If next batch shows results that are **clearly worse** in the loss buckets where these changes were targeted (e.g., LONG Positive-No-BE bucket grows instead of shrinks under TP=0.20), that's evidence the counterfactual model itself is wrong — and we step back to re-examine the analytical methodology, not just the parameter values.
+
+## May 4, 2026 — Toggle for signal re-validation at maker timeout (`revalidate_on_taker_fallback`)
+
+### Why added
+User raised: "Can we eliminate the recheck after the timeout? We didn't have it in previous batches (not the one we analysed today)."
+
+The signal re-validation was added Apr 18 as Phase 1c Amendment #7, motivated by the simultaneous Amendment #6 (timeout 20s → 40s). Logic: longer wait = more chance signal staleness, so re-check before firing taker fallback.
+
+But Amendment #6 was **reverted today** (timeout back to 20s per CLAUDE.md May 3 locked decision). With the shorter wait, signal-staleness exposure is materially lower. The re-validation may now be filtering trades unnecessarily.
+
+Per the May 4 224-trade analysis, SIGNAL_EXPIRED rate was 35-44% of all entry attempts (90 LONG aborts + 20 SHORT aborts). Of LONG aborts, 71 were "Signal Flipped" (legitimate) but 18 were spurious "BTC RSI Out of Range" (bug fixed Apr 30) — even after the fix, ~70% abort rate at timeout means the gate fires often.
+
+### Toggle mechanism
+New top-level config field `revalidate_on_taker_fallback: bool = False` (default OFF per user direction May 4):
+- **OFF (default — pre-Apr 18 behaviour, May 4+ baseline)**: at timeout, taker fallback fires immediately. No re-validation.
+- **ON (Apr 18+ behaviour)**: after maker timeout exhausts, re-evaluate the signal's BTC ADX direction, BTC ADX range, BTC RSI range, and core get_signal output. If any check fails, abort entry as `SIGNAL_EXPIRED` (no taker fires).
+
+Both maker-entry call sites (live `_try_maker_entry`, paper `_simulate_maker_entry_paper`) wrap the existing re-validation block in:
+```python
+revalidate_enabled = getattr(config.trading_config, 'revalidate_on_taker_fallback', True)
+if revalidate_enabled and confidence is not None:
+    is_valid, revalidate_reason = await self._revalidate_entry_signal(...)
+    if not is_valid:
+        return SIGNAL_EXPIRED + log
+```
+When the toggle is OFF, the entire re-validation block is skipped and `[MAKER_ENTRY] {pair}: No fill, re-validation disabled, falling back to market order` is logged.
+
+### UI
+Toggle appears next to Maker Entry settings labeled "Re-validate Signal at Timeout". Defaults to OFF (May 4+). User can toggle without restart (config save flushes immediately).
+
+### Files changed
+- `config.py`: +1 field (`revalidate_on_taker_fallback: bool = False`)
+- `trading_config.json`: +1 default `false`
+- `services/trading_engine.py`: 2 wrapping conditionals (~6 lines)
+- `templates/index.html`: UI toggle + load + save handlers (load fallback default `false`)
+- `main.py`: ConfigUpdate Pydantic model field
+
+### Validation discipline
+Toggle ships with default **OFF** per user direction May 4. This is a behaviour change from the Apr 18+ default — re-validation no longer fires unless explicitly toggled ON.
+
+In the next batch (with re-validation OFF), watch:
+- **SIGNAL_EXPIRED count should drop to ~0** (only signal-flipped at moment of taker order will appear, which is much rarer)
+- **TAKER_FALLBACK count should rise** by approximately the count of previously-aborted trades
+- **Signal-flipped TAKER trades**: these are the ones Amendment #7 was meant to protect against. Look for them in the new batch's losers — if a meaningful number of TAKER_FALLBACK trades show entry-signal != close-state regime mismatch and lose money, the re-validation was doing useful work and should be re-enabled
+
+### Why this entry exists in CLAUDE.md
+To anchor the design choice (toggle, not hard-remove): re-validation may have analytical value in some configurations even though it appears suspect under current 20s timeout. Toggle keeps both paths testable.

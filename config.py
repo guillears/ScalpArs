@@ -252,6 +252,16 @@ class TradingConfig(BaseModel):
     maker_entry_enabled: bool = False
     maker_timeout_seconds: int = 15
     maker_offset_ticks: int = 2
+    # Signal re-validation before taker fallback (Apr 18 Phase 1c Amendment #7).
+    # When ON: after maker timeout exhausts, re-evaluate the original signal's
+    # filters; if signal is no longer valid, abort entry and persist as
+    # SIGNAL_EXPIRED row (no taker fallback fires).  When OFF: taker fallback
+    # fires immediately at timeout (pre-Apr-18 behaviour).  Toggle added May 4,
+    # 2026 because (a) maker timeout reverted to 20s (Amendment #6 revert)
+    # which materially reduces signal-staleness exposure, and (b) some users
+    # want the option to disable re-validation entirely as it can systematically
+    # block trades that would have entered cleanly under the looser pre-Apr-18 path.
+    revalidate_on_taker_fallback: bool = False  # default OFF (May 4 user-directed; pre-Apr-18 behaviour as base)
     
     # Maker exit settings
     maker_exit_enabled: bool = False

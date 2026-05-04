@@ -2049,6 +2049,16 @@
                                 </div>
                             </div>
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Re-validate Signal at Timeout</label>
+                            <div class="flex items-center gap-4 h-[42px]">
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-revalidate-on-taker-fallback" class="sr-only peer">
+                                    <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                                </label>
+                                <span class="text-xs text-gray-500" title="When ON, after maker timeout the bot re-checks signal validity before falling back to taker. If signal flipped, abort entry as SIGNAL_EXPIRED. When OFF, taker fires immediately at timeout (pre-Apr 18 behaviour).">Re-check before taker fallback</span>
+                            </div>
+                        </div>
                     </div>
                     <!-- Maker Exit -->
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mt-3">
@@ -8738,6 +8748,7 @@
                 document.getElementById('config-maker-entry-enabled').checked = config.maker_entry_enabled || false;
                 document.getElementById('config-maker-timeout').value = config.maker_timeout_seconds || 15;
                 document.getElementById('config-maker-offset-ticks').value = config.maker_offset_ticks || 2;
+                document.getElementById('config-revalidate-on-taker-fallback').checked = config.revalidate_on_taker_fallback !== undefined ? config.revalidate_on_taker_fallback : false;
                 document.getElementById('config-maker-exit-enabled').checked = config.maker_exit_enabled || false;
                 document.getElementById('config-maker-exit-timeout').value = config.maker_exit_timeout_seconds || 10;
                 document.getElementById('config-maker-exit-offset-ticks').value = config.maker_exit_offset_ticks || 2;
@@ -9107,6 +9118,7 @@
                 maker_entry_enabled: document.getElementById('config-maker-entry-enabled').checked,
                 maker_timeout_seconds: parseInt(document.getElementById('config-maker-timeout').value) || 15,
                 maker_offset_ticks: parseInt(document.getElementById('config-maker-offset-ticks').value) || 2,
+                revalidate_on_taker_fallback: document.getElementById('config-revalidate-on-taker-fallback').checked,
                 maker_exit_enabled: document.getElementById('config-maker-exit-enabled').checked,
                 maker_exit_timeout_seconds: parseInt(document.getElementById('config-maker-exit-timeout').value) || 10,
                 maker_exit_offset_ticks: parseInt(document.getElementById('config-maker-exit-offset-ticks').value) || 2,

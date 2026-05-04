@@ -318,6 +318,7 @@ class ConfigUpdate(BaseModel):
     maker_entry_enabled: Optional[bool] = None
     maker_timeout_seconds: Optional[int] = None
     maker_offset_ticks: Optional[int] = None
+    revalidate_on_taker_fallback: Optional[bool] = None
     maker_exit_enabled: Optional[bool] = None
     maker_exit_timeout_seconds: Optional[int] = None
     maker_exit_offset_ticks: Optional[int] = None

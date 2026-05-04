@@ -1078,10 +1078,12 @@ class TradingEngine:
                 'entry_order_type': 'MAKER',
             }
 
-        # No fill at all -- re-validate signal before taker fallback (Amendment #7)
-        # Wait time = full timeout window since we polled until exhaustion (May 2)
+        # No fill at all -- re-validate signal before taker fallback (Amendment #7).
+        # Toggle (May 4, 2026): if `revalidate_on_taker_fallback` is False, skip
+        # re-validation and fall back to taker immediately (pre-Apr-18 behaviour).
         wait_seconds_elapsed = float(timeout)
-        if confidence is not None:
+        revalidate_enabled = getattr(config.trading_config, 'revalidate_on_taker_fallback', True)
+        if revalidate_enabled and confidence is not None:
             is_valid, revalidate_reason = await self._revalidate_entry_signal(
                 symbol, pair, direction, confidence
             )
@@ -1093,8 +1095,9 @@ class TradingEngine:
                     'reason': revalidate_reason,
                     'wait_seconds': wait_seconds_elapsed,
                 }
-
-        logger.info(f"[MAKER_ENTRY] {pair}: No fill, signal re-validated, falling back to market order")
+            logger.info(f"[MAKER_ENTRY] {pair}: No fill, signal re-validated, falling back to market order")
+        else:
+            logger.info(f"[MAKER_ENTRY] {pair}: No fill, re-validation disabled, falling back to market order")
         result = await binance_service.create_market_order(symbol, side, amount, leverage)
         if not result:
             return None
@@ -1169,10 +1172,12 @@ class TradingEngine:
                     'entry_order_type': 'MAKER',
                 }
 
-        # No fill -- re-validate signal before taker fallback (Amendment #7)
-        # Wait time = full timeout window since we polled until exhaustion (May 2)
+        # No fill -- re-validate signal before taker fallback (Amendment #7).
+        # Toggle (May 4, 2026): if `revalidate_on_taker_fallback` is False, skip
+        # re-validation and fall back to taker immediately (pre-Apr-18 behaviour).
         wait_seconds_elapsed = float(timeout)
-        if confidence is not None:
+        revalidate_enabled = getattr(config.trading_config, 'revalidate_on_taker_fallback', True)
+        if revalidate_enabled and confidence is not None:
             symbol_ccxt = pair.replace('USDT', '/USDT:USDT')
             is_valid, revalidate_reason = await self._revalidate_entry_signal(
                 symbol_ccxt, pair, direction, confidence

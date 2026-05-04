@@ -5,6 +5,7 @@
   "maker_entry_enabled": true,
   "maker_timeout_seconds": 20,
   "maker_offset_ticks": 1,
+  "revalidate_on_taker_fallback": false,
   "maker_exit_enabled": false,
   "maker_exit_timeout_seconds": 10,
   "maker_exit_offset_ticks": 1,

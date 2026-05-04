@@ -161,6 +161,17 @@ class Order(Base):
     protective_sl_order_id = Column(String(50), nullable=True)
     protective_tp_order_id = Column(String(50), nullable=True)
 
+    # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
+    # cell_multiplier = the multiplier ACTUALLY applied to this trade after hard-cap clamping.
+    # cell_multiplier_source = which rule fired, format "PAIR_<RSI>_<ADX>" or "BTC_<RSI>_<ADX>",
+    #   or NULL if no rule matched (default 1.0×).  When both pair- and BTC-level rules match,
+    #   the HIGHER multiplier wins (per design); source identifies which rule was the winner.
+    # cell_multiplier_capped = True if available balance forced sub-target investment
+    #   (multiplier wanted X but only Y available; trade still proceeds at Y).
+    cell_multiplier = Column(Float, nullable=False, default=1.0)
+    cell_multiplier_source = Column(String(40), nullable=True)
+    cell_multiplier_capped = Column(Boolean, nullable=False, default=False)
+
     # Exit quality: Price vs EMA5 at exit
     exit_price_vs_ema5_pct = Column(Float, nullable=True)
     exit_ema5_slope_pct = Column(Float, nullable=True)

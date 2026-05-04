@@ -611,28 +611,41 @@ class TradingEngine:
             balance = await binance_service.get_balance()
             return balance['usdt_free']
     
-    def calculate_position_size(self, available_balance: float, confidence: str, total_portfolio: float = None) -> Tuple[float, float]:
+    def calculate_position_size(
+        self, available_balance: float, confidence: str, total_portfolio: float = None,
+        cell_multiplier: float = 1.0, multiplier_target: str = "investment",
+    ) -> Tuple[float, float, bool]:
         """
-        Calculate position size and leverage based on config
-        
+        Calculate position size and leverage based on config.
+
+        Premium Multiplier (May 4, 2026 — per CLAUDE.md May 3 design):
+        - cell_multiplier (1.0 = no boost) is applied AFTER confidence-level multiplier
+          and BEFORE the tradeable cap.  When the cap kicks in, the trade still
+          proceeds at the available amount — capital cap is the natural ceiling
+          (no abort).
+        - multiplier_target = "investment" multiplies position size $;
+          "leverage" multiplies the leverage factor.
+
         Returns:
-            Tuple of (investment_amount, leverage)
+            Tuple of (investment_amount, leverage, capped_by_balance)
+            where capped_by_balance=True if the cell multiplier wanted more
+            than tradeable allowed (logged via [CELL_MULT_CAPPED] in caller).
         """
         tc = config.trading_config
         conf_level = tc.confidence_levels.get(confidence)
-        
+
         if not conf_level or not conf_level.enabled:
-            return 0, 0
-        
+            return 0, 0, False
+
         # Calculate safe reserve
         if tc.investment.reserve_mode == "percentage":
             reserve = available_balance * (tc.investment.reserve_percentage / 100)
         else:
             reserve = tc.investment.reserve_fixed
-        
+
         # Available after reserve
         tradeable = max(0, available_balance - reserve)
-        
+
         # Calculate base investment
         if tc.investment.mode == "percentage":
             investment = tradeable * (tc.investment.percentage / 100)
@@ -646,27 +659,82 @@ class TradingEngine:
             investment = max(0, base - reserve_from_total) / max_pos
         else:
             investment = min(tc.investment.fixed_amount, tradeable)
-        
+
         # Apply investment multiplier for higher confidence levels
-        multiplier = getattr(conf_level, 'investment_multiplier', 1.0)
-        investment = investment * multiplier
-        
-        # Ensure investment doesn't exceed tradeable balance
+        conf_multiplier = getattr(conf_level, 'investment_multiplier', 1.0)
+        investment = investment * conf_multiplier
+
+        # === Premium Multiplier: investment-target path ===
+        # Track desired-vs-actual to surface capital-cap fallback to the caller.
+        capped_by_balance = False
+        if multiplier_target == "investment" and cell_multiplier and cell_multiplier != 1.0:
+            target_investment = investment * cell_multiplier
+            if target_investment > tradeable + 0.01:
+                capped_by_balance = True
+            investment = target_investment
+
+        # Ensure investment doesn't exceed tradeable balance.  When the cell
+        # multiplier wanted more than tradeable (capped_by_balance flag set
+        # above), this min() is what executes the fallback: invest all available.
         investment = min(investment, tradeable)
-        
+
         # Clamp investment to min/max size limits
         investment = max(investment, tc.investment.min_investment_size)
         investment = min(investment, tc.investment.max_investment_size)
-        
+
         # If clamped min exceeds available tradeable balance, skip the trade
         if investment > tradeable:
             logger.warning(f"Min investment size ({tc.investment.min_investment_size}) exceeds tradeable balance ({tradeable:.2f}), skipping")
-            return 0, 0
-        
+            return 0, 0, False
+
         # Get leverage from config
         leverage = conf_level.leverage
-        
-        return investment, leverage
+
+        # === Premium Multiplier: leverage-target path ===
+        if multiplier_target == "leverage" and cell_multiplier and cell_multiplier != 1.0:
+            leverage = max(1, int(round(leverage * cell_multiplier)))
+
+        return investment, leverage, capped_by_balance
+
+    def _lookup_rsi_adx_multiplier(
+        self, rsi_val: Optional[float], adx_val: Optional[float],
+        rule_string: str, source_prefix: str,
+    ) -> Tuple[float, Optional[str]]:
+        """
+        Premium Multiplier (May 4, 2026) — parse RSI×ADX multiplier rule string
+        and return (multiplier, source_label) if any rule matches the trade's RSI/ADX.
+
+        Rule string format: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>,..."
+        Example: "55-60:22-25:2.0,60-65:18-22:1.5"
+        Both ranges are half-open [min, max).
+        Returns (1.0, None) if no rule matches or inputs are missing.
+        Malformed rules are silently skipped (logged at WARNING level).
+
+        source_prefix is "PAIR" or "BTC" — embedded in the returned source_label
+        so the tracking table can attribute which rule fired (e.g., "PAIR_55-60_22-25").
+        """
+        if rsi_val is None or adx_val is None or not rule_string:
+            return 1.0, None
+        for rule in rule_string.split(','):
+            rule = rule.strip()
+            if not rule:
+                continue
+            try:
+                parts = rule.split(':')
+                if len(parts) != 3:
+                    logger.warning(f"[CELL_MULT] Malformed rule '{rule}' (expected 3 parts), skipping")
+                    continue
+                rsi_part, adx_part, mult_part = parts
+                rsi_min, rsi_max = map(float, rsi_part.split('-'))
+                adx_min, adx_max = map(float, adx_part.split('-'))
+                mult = float(mult_part)
+                if rsi_min <= rsi_val < rsi_max and adx_min <= adx_val < adx_max:
+                    label = f"{source_prefix}_{rsi_part}_{adx_part}"
+                    return mult, label
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[CELL_MULT] Failed to parse rule '{rule}': {e}, skipping")
+                continue
+        return 1.0, None
 
     async def _revalidate_entry_signal(
         self, symbol: str, pair: str, original_direction: str, original_confidence: str
@@ -1444,7 +1512,42 @@ class TradingEngine:
             )
         )
         total_portfolio = available + (open_margin_result.scalar() or 0)
-        investment, leverage = self.calculate_position_size(available, confidence, total_portfolio=total_portfolio)
+
+        # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
+        # Look up cell multiplier from BOTH pair-level (Pair RSI × Pair ADX) and BTC-level
+        # (BTC RSI × BTC ADX) rule strings.  When both match, take HIGHER (max) — not multiply
+        # — to prevent compounding past the hard cap.  Hard cap is UI-configurable, default 2.0×.
+        # Capital cap fallback: if cell-multiplied investment exceeds tradeable balance,
+        # the existing min(investment, tradeable) inside calculate_position_size invests
+        # all available; capped_by_balance flag tells us so we can log + persist.
+        _th = config.trading_config.thresholds
+        _mult_target = getattr(_th, 'rsi_adx_multiplier_target', 'investment')
+        _hard_cap = getattr(_th, 'rsi_adx_multiplier_hard_cap', 2.0)
+        _pair_rules = getattr(_th, f'rsi_adx_multiplier_{direction.lower()}', '')
+        _btc_rules = getattr(_th, f'btc_rsi_adx_multiplier_{direction.lower()}', '')
+        _pair_mult, _pair_src = self._lookup_rsi_adx_multiplier(entry_rsi, entry_adx, _pair_rules, 'PAIR')
+        _btc_mult, _btc_src = self._lookup_rsi_adx_multiplier(entry_btc_rsi, entry_btc_adx, _btc_rules, 'BTC')
+        if _pair_mult >= _btc_mult:
+            cell_mult, cell_src = _pair_mult, _pair_src
+        else:
+            cell_mult, cell_src = _btc_mult, _btc_src
+        # Hard cap clamp — non-negotiable safety guard
+        if cell_mult > _hard_cap:
+            logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested {cell_mult}x, hard-capped to {_hard_cap}x")
+            cell_mult = _hard_cap
+        cell_mult = max(0.5, cell_mult)  # safety floor
+
+        investment, leverage, cell_capped = self.calculate_position_size(
+            available, confidence, total_portfolio=total_portfolio,
+            cell_multiplier=cell_mult, multiplier_target=_mult_target,
+        )
+        if cell_capped:
+            logger.info(
+                f"[CELL_MULT_CAPPED] {pair} {direction}: target multiplier {cell_mult}x via {cell_src} "
+                f"({_mult_target} target), capped by available balance — proceeded at ${investment:.2f}"
+            )
+        if cell_mult != 1.0 and not cell_capped:
+            logger.info(f"[CELL_MULT] {pair} {direction}: applied {cell_mult}x via {cell_src} ({_mult_target} target)")
         logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x")
         
         if investment <= 0:
@@ -1641,6 +1744,10 @@ class TradingEngine:
             high_price_since_entry=actual_price if direction == "LONG" else None,
             low_price_since_entry=actual_price if direction == "SHORT" else None,
             is_paper=self.is_paper_mode,
+            # Premium Multiplier (May 4, 2026) — track which RSI×ADX cell rule fired
+            cell_multiplier=cell_mult,
+            cell_multiplier_source=cell_src,
+            cell_multiplier_capped=cell_capped,
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min

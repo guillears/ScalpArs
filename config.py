@@ -183,6 +183,20 @@ class SignalThresholds(BaseModel):
     rsi_adx_filter_short: str = ""  # RSI x ADX cross-filter for SHORTs, e.g. "30-35:25,35-50:30" (empty = allow all)
     btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all)
     btc_rsi_adx_filter_short: str = ""  # BTC RSI x ADX cross-filter for SHORTs (empty = allow all)
+    # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
+    # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
+    # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.
+    # Empty = no rules active (everything 1.0×). Cells not listed default to 1.0×.
+    # Hard cap clamps any per-cell value to `rsi_adx_multiplier_hard_cap` regardless of UI input — safety guard.
+    # Conflict resolution: when a single trade matches BOTH a pair-level rule AND a BTC-level rule,
+    # the HIGHER multiplier applies (max, not multiply). Rationale: independent confirmation bonus
+    # would compound past the hard cap; HIGHER is safer + intuitive.
+    rsi_adx_multiplier_long: str = ""  # Pair-level RSI x ADX multiplier rules for LONG
+    rsi_adx_multiplier_short: str = ""  # Pair-level RSI x ADX multiplier rules for SHORT
+    btc_rsi_adx_multiplier_long: str = ""  # BTC-level BTC RSI x BTC ADX multiplier rules for LONG
+    btc_rsi_adx_multiplier_short: str = ""  # BTC-level multiplier rules for SHORT
+    rsi_adx_multiplier_target: str = "investment"  # "investment" (multiply position size $) or "leverage"
+    rsi_adx_multiplier_hard_cap: float = 2.0  # UI-configurable safety cap; engine clamps any cell to this
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # Min global volume ratio to allow LONGs
     global_volume_threshold_short: float = 1.05  # Min global volume ratio to allow SHORTs

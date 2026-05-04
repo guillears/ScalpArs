@@ -253,6 +253,16 @@ async def init_db():
                 if 'protective_tp_order_id' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN protective_tp_order_id VARCHAR(50)"))
 
+                # Premium Multiplier (May 4, 2026) — Phase 3 Position Multiplier per CLAUDE.md May 3.
+                # Tracks which RSI×ADX cell rule fired and what multiplier was applied.
+                # cell_multiplier_capped flags trades where balance forced sub-target investment.
+                if 'cell_multiplier' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier FLOAT NOT NULL DEFAULT 1.0"))
+                if 'cell_multiplier_source' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier_source VARCHAR(40)"))
+                if 'cell_multiplier_capped' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier_capped BOOLEAN NOT NULL DEFAULT 0"))
+
                 # Exploration Analytics (Apr 28) — observation-only fields for next-batch analysis.
                 if 'entry_pos_di' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pos_di FLOAT"))

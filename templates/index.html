@@ -823,6 +823,61 @@
                     </div>
                 </div>
 
+                <!-- Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) -->
+                <div class="mt-6 pt-6 border-t border-amber-900/40">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">💰 Multiplier Cell Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3">Per-cell breakdown of Premium Multiplier impact. Verdict ★ WORKING means cell beats baseline; ✗ HARMFUL = cell broke under leverage, revert.</p>
+                    <div class="text-xs text-emerald-400 mb-1">LONG cells</div>
+                    <div class="overflow-x-auto mb-4">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Source</th>
+                                    <th class="text-right px-2">Multi</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Avg P&amp;L%</th>
+                                    <th class="text-right px-2">Total$</th>
+                                    <th class="text-right px-2">Expect$/tr</th>
+                                    <th class="text-right px-2">PF</th>
+                                    <th class="text-right px-2">BL Avg%</th>
+                                    <th class="text-right px-2">Δ vs BL</th>
+                                    <th class="text-right px-2">Capped</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mult-cell-perf-long-body" class="divide-y divide-white/5">
+                                <tr><td colspan="12" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="text-xs text-red-400 mb-1">SHORT cells</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Source</th>
+                                    <th class="text-right px-2">Multi</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Avg P&amp;L%</th>
+                                    <th class="text-right px-2">Total$</th>
+                                    <th class="text-right px-2">Expect$/tr</th>
+                                    <th class="text-right px-2">PF</th>
+                                    <th class="text-right px-2">BL Avg%</th>
+                                    <th class="text-right px-2">Δ vs BL</th>
+                                    <th class="text-right px-2">Capped</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mult-cell-perf-short-body" class="divide-y divide-white/5">
+                                <tr><td colspan="12" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="mult-cell-perf-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -3090,6 +3145,67 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Premium Multipliers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) -->
+                    <div class="mt-4 mb-2 px-4 border-t border-amber-900/40 pt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-amber-300 font-semibold">💰 Premium Multipliers (RSI &times; ADX cells)</span>
+                            <span class="text-xs text-gray-500">Boost position size or leverage on validated cells</span>
+                        </div>
+                        <div class="flex items-center gap-6 mb-3 flex-wrap">
+                            <label class="flex items-center text-sm text-gray-400">
+                                Apply multiplier to:
+                                <select id="config-mult-target" class="ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                    <option value="investment">Investment Size</option>
+                                    <option value="leverage">Leverage</option>
+                                </select>
+                            </label>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Hard cap (max):
+                                <input type="number" step="0.1" min="1.0" max="5.0" id="config-mult-hard-cap" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="2.0">
+                                <span class="ml-1 text-gray-500">x</span>
+                            </label>
+                            <span class="text-xs text-gray-500">When pair- AND BTC-level cells both match, the HIGHER multiplier wins (not multiplied).</span>
+                        </div>
+                        <div class="text-xs text-amber-400/80 mb-2">⚠ PAIR-level (Pair RSI &times; Pair ADX)</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <tbody id="rsi-adx-mult-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addMultRow('long','pair')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add LONG rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <tbody id="rsi-adx-mult-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addMultRow('short','pair')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add SHORT rule</button>
+                            </div>
+                        </div>
+                        <div class="text-xs text-amber-400/80 mb-2 mt-3">⚠ BTC-level (BTC RSI &times; BTC ADX)</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <tbody id="btc-rsi-adx-mult-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addMultRow('long','btc')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add LONG rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <tbody id="btc-rsi-adx-mult-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addMultRow('short','btc')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add SHORT rule</button>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">Defaults to 1.0× for any cell not listed. Per-cell value clamped to [0.5, hard cap]. If available balance &lt; multiplied target, trade uses all available (logged as <code>[CELL_MULT_CAPPED]</code>) — never aborts on capital alone.</p>
+                    </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI Momentum Filter</span>
                         <div class="flex items-center gap-6 mt-1">
@@ -4234,6 +4350,29 @@
                 lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
             }
 
+            // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+            const _renderMultExport = (rows, label, summary) => {
+                lines.push(`\n${hr2}`);
+                lines.push(`## Multiplier Cell Performance — ${label}\n`);
+                lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
+                if (!rows || !rows.length) {
+                    lines.push('  (no multiplied trades yet)');
+                } else {
+                    for (const r of rows) {
+                        const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
+                        const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
+                        const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline >= 0 ? '+' : '') + r.delta_vs_baseline.toFixed(3));
+                        lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                    }
+                }
+                if (summary && summary.multiplied_trades_n) {
+                    lines.push(`\nTotal uplift from multipliers: ${summary.uplift_dollars >= 0 ? '+$' : '-$'}${Math.abs(summary.uplift_dollars).toFixed(2)} (actual $${summary.actual_total_dollars.toFixed(2)} vs simulated 1× $${summary.simulated_1x_dollars.toFixed(2)} on ${summary.multiplied_trades_n} multiplied trades)`);
+                }
+            };
+            const _mcp1 = perf.multiplier_cell_performance || {};
+            _renderMultExport(_mcp1.longs, 'LONGs', (_mcp1.summary || {}).longs);
+            _renderMultExport(_mcp1.shorts, 'SHORTs', (_mcp1.summary || {}).shorts);
+
             lines.push(`\n${hr2}`);
             lines.push('## Entry Type Performance\n');
             lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
@@ -5020,6 +5159,29 @@
                     const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                     lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
                 }
+
+                // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+                const _renderMultExport2 = (rows, label, summary) => {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## Multiplier Cell Performance — ${label}\n`);
+                    lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
+                    if (!rows || !rows.length) {
+                        lines.push('  (no multiplied trades yet)');
+                    } else {
+                        for (const r of rows) {
+                            const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
+                            const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
+                            const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline >= 0 ? '+' : '') + r.delta_vs_baseline.toFixed(3));
+                            lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                        }
+                    }
+                    if (summary && summary.multiplied_trades_n) {
+                        lines.push(`\nTotal uplift from multipliers: ${summary.uplift_dollars >= 0 ? '+$' : '-$'}${Math.abs(summary.uplift_dollars).toFixed(2)} (actual $${summary.actual_total_dollars.toFixed(2)} vs simulated 1× $${summary.simulated_1x_dollars.toFixed(2)} on ${summary.multiplied_trades_n} multiplied trades)`);
+                    }
+                };
+                const _mcp2 = perf.multiplier_cell_performance || {};
+                _renderMultExport2(_mcp2.longs, 'LONGs', (_mcp2.summary || {}).longs);
+                _renderMultExport2(_mcp2.shorts, 'SHORTs', (_mcp2.summary || {}).shorts);
 
                 // --- ENTRY TYPE PERFORMANCE ---
                 lines.push(`\n${hr2}`);
@@ -6106,6 +6268,63 @@
                         }).join('');
                 } else {
                     ecoBody.innerHTML = '<tr><td colspan="32" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                }
+
+                // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier)
+                const _renderMultRows = (rows, tbodyId) => {
+                    const tb = document.getElementById(tbodyId);
+                    if (!tb) return;
+                    if (!rows || !rows.length) {
+                        tb.innerHTML = '<tr><td colspan="12" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>';
+                        return;
+                    }
+                    tb.innerHTML = rows.map(r => {
+                        const isDefault = (r.source === '[Default 1.0x]');
+                        const verdictColor = (
+                            r.verdict.includes('★') ? 'text-emerald-400' :
+                            r.verdict.includes('✗') ? 'text-red-500' :
+                            r.verdict.includes('DRAG') ? 'text-red-400' :
+                            r.verdict.includes('✓') ? 'text-blue-400' :
+                            r.verdict.includes('Low N') ? 'text-amber-400' :
+                            'text-gray-500');
+                        const totalClass = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const dvbClass = r.delta_vs_baseline > 0 ? 'text-emerald-400' : (r.delta_vs_baseline < 0 ? 'text-red-400' : 'text-gray-500');
+                        const sourceColor = (
+                            isDefault ? 'text-gray-400' :
+                            r.multiplier >= 2.5 ? 'text-red-400' :
+                            r.multiplier >= 1.5 ? 'text-amber-300' :
+                            'text-gray-300');
+                        const pfStr = r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2);
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${r.source}</td>
+                            <td class="px-2 py-1 text-right ${sourceColor}">${r.multiplier.toFixed(2)}x</td>
+                            <td class="px-2 py-1 text-right">${r.n}</td>
+                            <td class="px-2 py-1 text-right">${r.wr_pct.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${avgClass}">${(r.avg_pnl_pct >= 0 ? '+' : '')}${r.avg_pnl_pct.toFixed(3)}%</td>
+                            <td class="px-2 py-1 text-right ${totalClass}">$${r.total_dollars.toFixed(2)}</td>
+                            <td class="px-2 py-1 text-right">$${r.expect_per_trade.toFixed(3)}</td>
+                            <td class="px-2 py-1 text-right">${pfStr}</td>
+                            <td class="px-2 py-1 text-right text-gray-500">${r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-'}</td>
+                            <td class="px-2 py-1 text-right ${dvbClass}">${isDefault ? '-' : (r.delta_vs_baseline >= 0 ? '+' : '') + r.delta_vs_baseline.toFixed(3)}</td>
+                            <td class="px-2 py-1 text-right text-amber-300">${r.capped_count || 0}</td>
+                            <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
+                        </tr>`;
+                    }).join('');
+                };
+                if (data.multiplier_cell_performance) {
+                    const mcp = data.multiplier_cell_performance;
+                    _renderMultRows(mcp.longs, 'mult-cell-perf-long-body');
+                    _renderMultRows(mcp.shorts, 'mult-cell-perf-short-body');
+                    const sumEl = document.getElementById('mult-cell-perf-summary');
+                    if (sumEl && mcp.summary) {
+                        const sl = mcp.summary.longs || {};
+                        const ss = mcp.summary.shorts || {};
+                        const upL = sl.uplift_dollars;
+                        const upS = ss.uplift_dollars;
+                        const fmt = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        sumEl.innerHTML = `LONG: ${sl.multiplied_trades_n || 0} multiplied trades, actual ${fmt(sl.actual_total_dollars)}, simulated 1× ${fmt(sl.simulated_1x_dollars)}, uplift <span class="font-semibold ${upL >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upL)}</span> &nbsp; | &nbsp; SHORT: ${ss.multiplied_trades_n || 0} multiplied trades, uplift <span class="font-semibold ${upS >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upS)}</span>`;
+                    }
                 }
 
                 // Performance by Entry Gap 5-20
@@ -9122,6 +9341,13 @@
                 loadRsiAdxFilter('short', config.thresholds.rsi_adx_filter_short || '');
                 loadBtcRsiAdxFilter('long', config.thresholds.btc_rsi_adx_filter_long || '');
                 loadBtcRsiAdxFilter('short', config.thresholds.btc_rsi_adx_filter_short || '');
+                // Premium Multipliers (May 4, 2026)
+                loadMultRules('long', 'pair', config.thresholds.rsi_adx_multiplier_long || '');
+                loadMultRules('short', 'pair', config.thresholds.rsi_adx_multiplier_short || '');
+                loadMultRules('long', 'btc', config.thresholds.btc_rsi_adx_multiplier_long || '');
+                loadMultRules('short', 'btc', config.thresholds.btc_rsi_adx_multiplier_short || '');
+                document.getElementById('config-mult-target').value = config.thresholds.rsi_adx_multiplier_target || 'investment';
+                document.getElementById('config-mult-hard-cap').value = config.thresholds.rsi_adx_multiplier_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_hard_cap : 2.0;
                 document.getElementById('config-regime-change-exit-enabled').checked = config.thresholds.regime_change_exit_enabled !== undefined ? config.thresholds.regime_change_exit_enabled : true;
                 document.getElementById('config-rsi-handoff-active').checked = config.thresholds.rsi_handoff_active !== undefined ? config.thresholds.rsi_handoff_active : false;
                 document.getElementById('config-rsi-handoff-level').value = config.thresholds.rsi_handoff_level !== undefined ? config.thresholds.rsi_handoff_level : 3;
@@ -9242,6 +9468,56 @@
                 const rMax = row.querySelector('.btc-rsi-adx-max').value.trim();
                 const adx = row.querySelector('.btc-rsi-adx-adx').value.trim();
                 if (rMin && rMax && adx) rules.push(`${rMin}-${rMax}:${adx}`);
+            });
+            return rules.join(',');
+        }
+
+        // Premium Multiplier helpers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+        // Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>"
+        // scope = 'pair' or 'btc'  (which body element to target)
+        function _multBodyId(direction, scope) {
+            return scope === 'btc' ? `btc-rsi-adx-mult-${direction}-body` : `rsi-adx-mult-${direction}-body`;
+        }
+        function _multClassPrefix(scope) { return scope === 'btc' ? 'btc-mult' : 'pair-mult'; }
+        function addMultRow(direction, scope, rsiMin='', rsiMax='', adxMin='', adxMax='', mult='') {
+            const tbody = document.getElementById(_multBodyId(direction, scope));
+            const cls = _multClassPrefix(scope);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs ${cls}-rsi-min" value="${rsiMin}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs ${cls}-rsi-max" value="${rsiMax}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs ${cls}-adx-min" value="${adxMin}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs ${cls}-adx-max" value="${adxMax}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-14 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs font-semibold ${cls}-multi" value="${mult}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadMultRules(direction, scope, rulesStr) {
+            const tbody = document.getElementById(_multBodyId(direction, scope));
+            tbody.innerHTML = '';
+            if (!rulesStr || !rulesStr.trim()) return;
+            for (const rule of rulesStr.split(',')) {
+                const r = rule.trim();
+                if (!r) continue;
+                const parts = r.split(':');
+                if (parts.length !== 3) continue;
+                const [rsiPart, adxPart, mult] = parts;
+                const [rsiMin, rsiMax] = rsiPart.split('-');
+                const [adxMin, adxMax] = adxPart.split('-');
+                addMultRow(direction, scope, rsiMin, rsiMax, adxMin, adxMax, mult);
+            }
+        }
+        function collectMultRules(direction, scope) {
+            const cls = _multClassPrefix(scope);
+            const rows = document.querySelectorAll(`#${_multBodyId(direction, scope)} tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const rMin = row.querySelector(`.${cls}-rsi-min`).value.trim();
+                const rMax = row.querySelector(`.${cls}-rsi-max`).value.trim();
+                const aMin = row.querySelector(`.${cls}-adx-min`).value.trim();
+                const aMax = row.querySelector(`.${cls}-adx-max`).value.trim();
+                const m = row.querySelector(`.${cls}-multi`).value.trim();
+                if (rMin && rMax && aMin && aMax && m) rules.push(`${rMin}-${rMax}:${aMin}-${aMax}:${m}`);
             });
             return rules.join(',');
         }
@@ -9418,6 +9694,13 @@
                     rsi_adx_filter_short: collectRsiAdxFilter('short'),
                     btc_rsi_adx_filter_long: collectBtcRsiAdxFilter('long'),
                     btc_rsi_adx_filter_short: collectBtcRsiAdxFilter('short'),
+                    // Premium Multipliers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+                    rsi_adx_multiplier_long: collectMultRules('long', 'pair'),
+                    rsi_adx_multiplier_short: collectMultRules('short', 'pair'),
+                    btc_rsi_adx_multiplier_long: collectMultRules('long', 'btc'),
+                    btc_rsi_adx_multiplier_short: collectMultRules('short', 'btc'),
+                    rsi_adx_multiplier_target: document.getElementById('config-mult-target').value || 'investment',
+                    rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,
                     rsi_handoff_active: document.getElementById('config-rsi-handoff-active').checked,
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,

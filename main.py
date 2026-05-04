@@ -1562,6 +1562,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
+            "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2798,6 +2799,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
+            "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -5112,6 +5114,127 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "pair_adx_di_spread_crosstab": _compute_pair_adx_di_spread_crosstab(orders),
         "btc_rsi_funding_crosstab": _compute_btc_rsi_funding_crosstab(orders),
         "direction_ema50_alignment_crosstab": _compute_direction_ema50_alignment_crosstab(orders),
+        # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+        "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
+    }
+
+
+def _compute_multiplier_cell_performance(orders):
+    """Premium Multiplier tracking — per CLAUDE.md May 3 design.
+
+    Groups CLOSED orders by cell_multiplier_source and reports per-source:
+      Source / Multi / N / WR / Avg P&L% / Total$ / Expect$/tr / PF / BL Avg% / Δ vs BL / Capped / Verdict
+
+    Baseline (BL) = the same direction's overall Avg P&L% from trades that did NOT
+    fire a multiplier rule (i.e., cell_multiplier == 1.0). This isolates the
+    cell's effect from baseline regime drag.
+
+    Verdict (per CLAUDE.md May 3 framework):
+      ★ WORKING — cell Avg P&L% ≥ baseline AND total $ positive AND N ≥ 5
+      ⚠ Low N — N < 5 (insufficient data, no verdict)
+      ✓ Marginal — within ±0.10pp of baseline
+      ⚠ DRAG — materially below baseline (cell hurt under leverage)
+      ✗ HARMFUL — total $ negative (cell broke under leverage; revert immediately)
+    """
+    closed = [o for o in orders if (o.status == 'CLOSED')]
+    if not closed:
+        return {"longs": [], "shorts": [], "summary": {}}
+
+    def _direction_baseline(direction):
+        """Avg P&L% of NON-multiplied trades for this direction."""
+        base_trades = [o for o in closed
+                       if o.direction == direction and (o.cell_multiplier or 1.0) == 1.0
+                       and o.pnl_percentage is not None]
+        if not base_trades:
+            return None
+        return sum(o.pnl_percentage for o in base_trades) / len(base_trades)
+
+    def _bucket_for_direction(direction):
+        baseline = _direction_baseline(direction)
+        # Group by source (NULL = baseline 1.0×)
+        groups = {}
+        for o in closed:
+            if o.direction != direction:
+                continue
+            mult = o.cell_multiplier if o.cell_multiplier is not None else 1.0
+            src = o.cell_multiplier_source or '[Default 1.0x]'
+            groups.setdefault(src, {'multi': mult, 'orders': []})['orders'].append(o)
+
+        rows = []
+        for src, data in groups.items():
+            os_ = data['orders']
+            n = len(os_)
+            if n == 0:
+                continue
+            wins = [o for o in os_ if (o.pnl or 0) > 0]
+            losses = [o for o in os_ if (o.pnl or 0) <= 0]
+            wr = 100.0 * len(wins) / n
+            avg_pct = sum((o.pnl_percentage or 0) for o in os_) / n
+            total_d = sum((o.pnl or 0) for o in os_)
+            expect_d = total_d / n
+            win_d = sum((o.pnl or 0) for o in wins)
+            loss_d = abs(sum((o.pnl or 0) for o in losses))
+            pf = (win_d / loss_d) if loss_d > 0 else (float('inf') if win_d > 0 else 0)
+            capped = sum(1 for o in os_ if getattr(o, 'cell_multiplier_capped', False))
+
+            is_default = (src == '[Default 1.0x]')
+            if is_default:
+                verdict = '(baseline reference)'
+                delta_vs_bl = 0.0
+            else:
+                bl_val = baseline if baseline is not None else 0.0
+                delta_vs_bl = avg_pct - bl_val
+                if n < 5:
+                    verdict = '⚠ Low N'
+                elif total_d < 0:
+                    verdict = '✗ HARMFUL'
+                elif delta_vs_bl >= 0.10 and total_d > 0:
+                    verdict = '★ WORKING'
+                elif abs(delta_vs_bl) < 0.10:
+                    verdict = '✓ Marginal'
+                elif delta_vs_bl < -0.10:
+                    verdict = '⚠ DRAG'
+                else:
+                    verdict = '✓ Marginal'
+
+            rows.append({
+                'source': src,
+                'multiplier': round(data['multi'], 2),
+                'n': n,
+                'wr_pct': round(wr, 1),
+                'avg_pnl_pct': round(avg_pct, 4),
+                'total_dollars': round(total_d, 2),
+                'expect_per_trade': round(expect_d, 3),
+                'profit_factor': round(pf, 2) if pf != float('inf') else 999.99,
+                'baseline_avg_pct': round(baseline, 4) if baseline is not None else None,
+                'delta_vs_baseline': round(delta_vs_bl, 4),
+                'capped_count': capped,
+                'verdict': verdict,
+            })
+        # Sort: rules first (by multiplier desc), default last
+        rows.sort(key=lambda r: (r['source'] == '[Default 1.0x]', -r['multiplier']))
+        return rows
+
+    longs = _bucket_for_direction('LONG')
+    shorts = _bucket_for_direction('SHORT')
+
+    # Summary uplift line — per CLAUDE.md May 3 spec
+    def _uplift(rows):
+        boosted = [r for r in rows if r['source'] != '[Default 1.0x]' and r['multiplier'] != 1.0]
+        actual_total = sum(r['total_dollars'] for r in boosted)
+        # Counterfactual at 1x = total / multiplier (linear scaling assumption)
+        sim_1x = sum(r['total_dollars'] / r['multiplier'] for r in boosted if r['multiplier'])
+        return {
+            'multiplied_trades_n': sum(r['n'] for r in boosted),
+            'actual_total_dollars': round(actual_total, 2),
+            'simulated_1x_dollars': round(sim_1x, 2),
+            'uplift_dollars': round(actual_total - sim_1x, 2),
+        }
+
+    return {
+        'longs': longs,
+        'shorts': shorts,
+        'summary': {'longs': _uplift(longs), 'shorts': _uplift(shorts)},
     }
 
 

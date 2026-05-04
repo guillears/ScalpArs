@@ -3553,3 +3553,393 @@ Once the bot has run a few trades through the multiplier mechanism:
 ### Why this entry exists in CLAUDE.md
 
 To anchor the May 4 decisions: which cells were activated, why two of them violate strict CLAUDE.md gates, what the explicit revert criteria are, and how the mechanism handles the user-flagged edge case (insufficient capital → invest all available, not abort).
+
+## May 4, 2026 — RSI Handoff activated for LONG L3+ (against this-batch counterfactual)
+
+User-directed activation per explicit request, despite the May 4 224-trade
+counterfactual showing the feature is slightly net-negative for LONG side at
+this sample (-$3 to -$5 across various L3 thresholds vs no-handoff baseline).
+
+### Config change
+- `rsi_handoff_active`: false → **true**
+- `rsi_handoff_level`: 3 (unchanged)
+
+### Mechanism (per CLAUDE.md May 2 Phase 1d-ExitTest design)
+With `tp_min=0.20`, the bot's TP-level promotion structure is:
+- L1 = peak ≥ 0.20%, trailing arms (target = peak − 0.15)
+- L2 ≈ peak ≥ 0.40%
+- **L3 ≈ peak ≥ 0.60% (handoff trigger)**
+
+When a trade promotes to L3 (or higher), trailing-stop pullback is **disabled**
+and exit fires only on **2-drop RSI** (live RSI exit handler in monitor loop).
+Close reason = `RSI_HANDOFF_EXIT L{level}`, distinct from `RSI_MOMENTUM_EXIT`
+for analytical separation.
+
+### Why activate despite the counterfactual saying it hurts
+
+1. **Counterfactual mechanics may be biased.** The simulation used
+   `post_exit_rsi_exit_pnl` which is recorded AFTER the actual trailing exit
+   fired. Under the new rule, the trade wouldn't have trailing-exited; it
+   would have continued to whatever peak materialized. The simulation
+   approximates this with the existing post-exit data, which may understate
+   the upside (a few of the 4 RSI-better trades captured +0.79pp to +0.85pp
+   gains via RSI on extended runs that current trailing missed).
+2. **Sample is regime-specific.** This batch was BULLISH-choppy with heavy
+   regime shifts. In a more directional regime, big-tail LONG winners may
+   benefit more from RSI exit (lets them run past trailing arming point).
+3. **L3+ population is small** in current data (only 28 LONG trades reached
+   peak ≥ 0.60% in this batch). The counterfactual sample for the LONG L3+
+   regret comparison is narrow; real outcome at next batch may differ.
+4. **User explicitly requested the activation** to test the live behavior
+   against the counterfactual prediction.
+
+### Where it appears in reports
+- **Post-Exit Regret Deep Dive**: `RSI_HANDOFF_EXIT L3` (and L4/L5 if any)
+  will appear automatically as separate rows. The table picks up any
+  close reason with post-exit tracking data — no whitelist filtering since
+  the Apr 17 unification refactor (see comment at `main.py:4760`).
+- **Closing Reason Summary**: same — automatic.
+- **Entry Conditions by Close Reason**: same — automatic.
+- **Multiplier Cell Performance**: cell-multiplier trades that exit via
+  RSI handoff are still attributable to their multiplier cell in that table.
+
+### Pre-committed revert criteria (next-batch validation)
+
+Per CLAUDE.md discipline, locked NOW:
+
+| Outcome at next 100 LONG trades | Verdict |
+|---|---|
+| `RSI_HANDOFF_EXIT L3+` trades show Avg Close% ≥ what trailing would have locked (counterfactual via post-exit peak data) AND Total $ on those trades ≥ -$2 | **Keep enabled** |
+| `RSI_HANDOFF_EXIT L3+` trades show Avg Close% materially below trailing counterfactual on N≥5 | **Revert: rsi_handoff_active back to false** |
+| Fewer than 5 trades reach L3 in next batch | **Inconclusive — extend test 100 more trades** |
+| Specific cell-multiplier trades (L-P1, etc.) get hurt by RSI handoff vs other exits | Consider per-cell exit override (Phase 4 work) |
+
+No goalpost moving at next-batch checkpoint. The counterfactual evidence
+already says this is borderline-negative for LONG; the activation is to
+let live data prove or refute the counterfactual on its own terms.
+
+### Note on current LONG-side exit stack with handoff active
+- L1 zone (peak 0.20-0.40%): trailing exits at peak − 0.15
+- L2 zone (peak 0.40-0.60%): trailing exits at peak − 0.15
+- **L3+ zone (peak ≥ 0.60%): trailing DISABLED, RSI handoff exits**
+- All other exits (SL at -0.9%, FL system, regime change, signal lost) still apply
+- Cell multipliers still apply at entry — cell-boosted trades that reach L3+
+  exit via RSI handoff with the boosted position size
+
+### What did NOT change
+- SHORT-side: handoff also fires for SHORTs since the toggle is direction-agnostic.
+  This is intentional — CLAUDE.md May 2 originally motivated handoff via BEARISH
+  +$1.77 post-peak runway data. SHORT-side L3+ effect is untested in this batch
+  (61 SHORTs total, very few reaching L3). Will land in next-batch SHORT analysis.
+- All other exits (TP, BE, FL, regime, signal lost, momentum exits): unchanged.
+
+## May 4, 2026 — Phase 1c-Explore SHORT-side analysis & config changes (224-trade checkpoint, SHORT subset)
+
+### Sample analyzed
+SHORT subset of the May 4 224-trade Phase 1c-Explore checkpoint: 61 SHORT trades in BEARISH regime, 5.87 days, paper, 1x leverage. Same batch as the LONG-side analysis above; separate session focused on SHORT.
+
+### SHORT performance summary
+- Total $: -$0.75 (essentially breakeven, vs LONG -$45.24)
+- WR: 59.0% (vs LONG 38.7%)
+- PF: 0.97 (right at breakeven)
+- Never Positive: 16.4% (10 trades, vs LONG 19.4%)
+- **SAME_REGIME (16 trades): 100% WR, +$12.86** — pure edge when BTC stays bearish
+- **REGIME_SHIFT (45 trades): 44.4% WR, -$13.61** — same regime-shift dominance as LONG (74% of SHORTs)
+
+### Counterfactual exit findings (SHORT-specific)
+
+The May 4 LONG exit changes (TP=0.20, PB=0.15) ALSO benefit SHORTs significantly:
+
+| Exit config | SHORT Total $ | Δ |
+|---|---|---|
+| Old (TP 0.50, PB 0.20) | -$0.75 | baseline |
+| **New (TP 0.20, PB 0.15)** — already deployed | **+$8.68** | **+$9.43** |
+
+**RSI Handoff at L3 HELPS SHORTs** (opposite to LONG counterfactual):
+- L3+ SHORTs (peak ≥ 0.60%, N=11 with RSI data)
+- Actual via trailing: +$11.73
+- RSI handoff would have: +$15.83
+- **Δ = +$4.10 better with RSI handoff for SHORTs**
+- Mechanism: BEARISH reversals are more violent and faster than bullish pullbacks (per CLAUDE.md May 2 original Phase 1d-ExitTest hypothesis). RSI catches the bottom cleanly; trailing PB locks lower.
+- The LONG-side handoff drag (-$3 to -$5) is approximately offset by the SHORT-side gain. **Net handoff effect across both directions is neutral-to-positive.**
+
+### Cross-sample SHORT cell validation (this batch vs CLAUDE.md May 3 saved findings)
+
+| Pre-commit cell | CLAUDE.md status | This batch | Verdict |
+|---|---|---|---|
+| **S-P1 (BTC RSI <30 × BTC ADX 20-25)** | 5-sample, pool 75% WR | This batch maps to BTC RSI 25-30 × ADX 20-25 = 5/80% WR / +$3.08 | ★ **5-sample structural CONFIRMED** |
+| S-P2 (BTC RSI 30-35 × BTC ADX 25-30) | Already weakened in CLAUDE.md Apr 17 audit (was 83% pool, dropped to 57%) | 5/20% WR / -$4.85 | ✗ **CONFIRMS demotion** — drop from PREMIUM list permanently |
+| S-B1 (35-40 × 15-20) HARD BLOCK | 7 pool, 43% WR | 2/0% WR / -$1.92 | ★ Direction-consistent |
+| S-B3 (45-50 × 15-20) HARD BLOCK | 6 pool, 33% WR | 1/0% / -$0.80 | ★ Direction-consistent |
+| **Pair RSI 20-30 × Pair ADX 25-30** | 5-sample, pool 73% WR (N=48) | 22/50% WR / -$7.11 | ⚠ **WEAKENED in this batch** — sub-cell ADX 28-30 is the problem (9 trades, 33% WR, -$6.29) |
+
+### Config changes deployed May 4 (SHORT-side)
+
+| Field | Old | New | Rationale |
+|---|---|---|---|
+| `macro_trend_flat_threshold_short` | 0.02 | **0.03** | Block weak BTC slope SHORTs. Data: BTC slope abs 0.02-0.03 = 4 trades, 0% WR, -$4.71. Adjacent bucket 0.03-0.04 = 5 trades, 80% WR, +$2.54. Clean breakpoint at 0.03. **1-sample but direction sharp.** Locked revert: if next batch shows BTC slope 0.02-0.03 SHORT cell at ≥45% WR on N≥6, revert to 0.02. |
+| `btc_adx_min_short` | 18 | **20** | Replaces 3 user-proposed small-N cell filters (BTC RSI 30-35/35-40/45-50 × ADX 15-20, each N=1-2). Cleaner one-parameter fix. Aggregate evidence: BTC ADX 15-20 SHORTs (across all RSI cells) = 6 trades, 17% WR (1 winner), -$3.03. Locked revert: if next batch shows BTC ADX 18-20 SHORT cell at ≥50% WR on N≥10, revert to 18. |
+| `pair_blacklist` | adds **DOGEUSDT** | (was XAG,XAU,ZEC,ENA,RAVE; now +DOGE) | DOGEUSDT SHORT this batch: 4 trades, 0% WR, -$5.62. CLAUDE.md May 3 cross-sample SHORT: 4/0/0% Apr 13. Combined N=8, 0 wins. Multi-sample multi-direction toxic (LONG also losing this batch). Meets May 3 blacklist gate. |
+
+### What did NOT change — SHORT user-proposed but pushed-back
+
+| Filter | Why not deployed |
+|---|---|
+| BTC EMA20 Slope MAX 0.25 | N=1 in cap zone (this batch). Adjacent 0.15-0.20 bucket = 100% WR / N=7. No evidence to cap. **Revisit at next batch** if more data lands in 0.20+ slope zone. |
+
+### What did NOT change — premium multipliers (SHORT side stays empty for now)
+
+Per CLAUDE.md May 3 strict locked promotion gates:
+- **Pair RSI 20-30 × ADX 25-30**: requires N≥15 + WR≥65% in batch. **This batch: 22/50% — FAILS WR gate.** Defer.
+- **BTC RSI 25-30 (broader cell)**: requires N≥12 + WR≥80% + uniformity (no sub-cell <50% WR). **This batch: 18/72% pooled — FAILS WR gate AND uniformity** (the BTC ADX 30-35 sub-cell at 5/40% breaks uniformity). Defer.
+- **S-P1 (BTC RSI 25-30 × BTC ADX 20-25)** specifically: 5/80% in this batch is direction-consistent with 5-sample pool but N=5 is below the strict bar. **Defer** to keep symmetry with how strict bar was applied to LONG L-P1 (which we activated despite this — but here we want to be more disciplined since LONG already has 3 multiplier cells in the wild).
+- **Pair RSI 25-30 × Pair ADX 30-33** (this batch's strongest pair-level winner cell at 7/100%): 1-sample only. Defer.
+
+**No SHORT cells activated for multiplier this batch.** Re-evaluate at next 100-trade SHORT batch with fresh data. If S-P1 (BTC RSI 25-30 × BTC ADX 20-25) replicates ≥75% WR on N≥10, ship at 2.0× then.
+
+### Estimated impact of SHORT changes deployed May 4
+
+| Stack | Total $ | Notes |
+|---|---|---|
+| SHORT current pre-changes | -$0.75 | baseline (61 trades) |
+| + TP=0.20/PB=0.15 (deployed earlier today) | ~+$8.68 | +$9.43 swing |
+| + RSI handoff @ L3 (deployed earlier today) | adds ~+$4 to L3+ subset | net positive for SHORTs |
+| + macro_trend_flat_threshold 0.03 + btc_adx_min 20 + DOGE blacklist | ~+$3 to +$6 additional | filter out -$3 BTC ADX 15-20 + -$5.62 DOGE |
+| **Total projected** | **~+$15 to +$20** | from -$0.75 baseline |
+
+Combined LONG (today's deploys: -$45 → ~+$15-20) + SHORT (today's deploys: -$0.75 → ~+$15-20) = **bot becomes meaningfully profitable on this batch's regime if all changes hold up at next-batch validation.**
+
+### Validation discipline at next 100-trade SHORT batch
+
+For each new filter, locked revert:
+- `macro_trend_flat_threshold_short=0.03`: revert if BTC slope 0.02-0.03 SHORT cell shows ≥45% WR on N≥6
+- `btc_adx_min_short=20`: revert if BTC ADX 18-20 SHORT cell shows ≥50% WR on N≥10
+- DOGEUSDT blacklist: re-evaluate after 200 more trades worth of "would-have-been DOGEUSDT" signals (logged via existing skip mechanism). If DOGEUSDT signals stop appearing toxic in observation, consider removing.
+
+For multipliers (still empty for SHORT):
+- S-P1 promotion gate at next batch: ≥75% WR on N≥10 → activate at 2.0× (looser than CLAUDE.md May 3's 80% gate, since we already broke the strict bar for LONG L-P1; symmetric treatment)
+
+### Why this entry exists in CLAUDE.md
+To anchor the May 4 SHORT-side decisions: which filters were validated, which were deferred, why no multipliers shipped on SHORT side (despite cross-sample evidence existing for S-P1), and what the explicit revert criteria are for next-batch validation.
+
+The contrast vs LONG-side (3 multiplier cells shipped, 2 of them 1-sample) is intentional: LONG was a fresh feature deploy where some 1-sample activation was acceptable to test the mechanism. SHORT comes after — by then the strict bar should reassert. If next batch validates SHORT cells cleanly, ship them at multiplier with confidence.
+
+## May 4, 2026 — SHORT Premium Multiplier cells activated (4 cells at 2.0×)
+
+Per user direction following methodological correction (cross-sample pool was not properly applied in initial SHORT analysis — see "## May 4, 2026 — Phase 1c-Explore SHORT-side analysis" entry above which originally argued for 0 SHORT cells, then revised after pooling).
+
+### Activated cells (all at 2.0×, investment-target via existing UI toggle)
+
+**BTC-level (`btc_rsi_adx_multiplier_short`):**
+| Cell | This batch | Cross-sample basis |
+|---|---|---|
+| BTC RSI 25-30 × BTC ADX 20-25 (S-P1) | 5 trades, 80% WR, +$3.08 | **5-sample structural** (Apr 17 ex-Mar30 audit pool: N=12, 75% WR; combined N=17 at ~76% WR) — passes locked S-P1 promotion gate |
+| BTC RSI 25-30 × BTC ADX 25-30 | 6 trades, 83% WR, +$2.97 | 1-sample. Sub-cell of broader BTC RSI 25-30 zone (cross-sample pool 27 trades, ~81% WR per CLAUDE.md May 3 + this batch). Direction-supported but uniformity caveat — adjacent BTC ADX 30-35 sub-cell broke this batch (5/40%) |
+
+**Pair-level (`rsi_adx_multiplier_short`):**
+| Cell | This batch | Cross-sample basis |
+|---|---|---|
+| Pair RSI 20-30 × Pair ADX 30-33 | 7 trades, 100% WR, +$4.79 | **1-sample only.** Sub-cell of broader Pair RSI 20-30 × ADX 25-30 zone (5-sample pool 73% WR). Sub-cell over-fitting risk: parent zone weakened to ~67% pool WR after this batch (the 28-30 ADX sub-cell broke at 9/33%). Activation is a directional bet on the ADX 30-33 tail being where the edge actually lives. |
+| Pair RSI 30-35 × Pair ADX 25-28 | 6 trades, 83% WR, +$2.88 | **1-sample only.** Outside the documented 5-sample S-P1/S-P2 pre-commit zones. Directional pattern from this batch. |
+
+### Multiplier rule strings deployed
+```
+rsi_adx_multiplier_short: "20-30:30-33:2.0,30-35:25-28:2.0"
+btc_rsi_adx_multiplier_short: "25-30:20-25:2.0,25-30:25-30:2.0"
+```
+
+### Why 4 cells instead of 1 (S-P1 only) — symmetric to LONG approach
+
+LONG side shipped 3 multiplier cells today (1 confirmed, 2 1-sample). User extended same approach to SHORT side: ship the 5-sample-confirmed cell PLUS 3 strongest 1-sample cells from this batch's cross-tabs.
+
+This is more aggressive than my Option A revised recommendation (S-P1 only) and accepts higher 1-sample noise. **The user's tradeoff is explicit:** test the multiplier mechanism on more cells; accept that some will revert at next batch.
+
+### Pre-committed revert criteria (locked NOW, validated at next batch)
+
+For each cell, if next batch shows on N≥5:
+- **★ WORKING**: WR ≥ 70% AND Total $ positive → keep at 2.0×
+- **⚠ Marginal**: 50-70% WR → drop to 1.5×
+- **✗ HARMFUL**: WR ≤ 40% OR Total $ negative → revert to 1.0× (drop the rule entirely)
+- **⚠ Low N (<5 trades fired)**: extend test, no decision
+
+Specific concerns to watch:
+- **S-P1 (BTC RSI 25-30 × BTC ADX 20-25)**: highest expected reliability (5-sample confirmed). Should hold up. If not, the cross-sample pool itself is breaking and we have a regime-shift problem at the multiplier level.
+- **BTC RSI 25-30 × BTC ADX 25-30**: 1-sample. Watch closely — the parent zone (BTC RSI 25-30 broad) had a uniformity break in this batch (the 30-35 ADX sub-cell at 5/40%). If next batch's 25-30 sub-cell drops below 65% WR, revert.
+- **Pair RSI 20-30 × Pair ADX 30-33**: 1-sample 7/100%. Most aggressive bet. The parent Pair RSI 20-30 × ADX 25-30 zone WEAKENED to 50% in this batch from 73% pool. Activating a sub-cell of a weakening parent is risky. Most likely revert candidate.
+- **Pair RSI 30-35 × Pair ADX 25-28**: 1-sample 6/83%. Pure new bet outside documented patterns. Watch for replication.
+
+### Capital interaction with activated cells
+
+Multiplier conflict resolution unchanged: HIGHER (max) wins when both pair-level and BTC-level cells match. Possible conflict scenarios for SHORT:
+- A trade with Pair RSI 28, Pair ADX 31, BTC RSI 27, BTC ADX 22 → matches BOTH pair (PAIR_20-30_30-33 = 2.0×) AND BTC (BTC_25-30_20-25 = 2.0×). HIGHER = 2.0× via either source. Logged source = whichever rule was found first.
+
+Capital cap fallback unchanged: `min(target_investment, tradeable_balance)`. With 5 max open positions and equal-split mode, a 2.0× cell on a low-balance scenario will lock at all available rather than abort.
+
+### Files changed (May 4 SHORT multiplier activation)
+
+- `trading_config.json`: `rsi_adx_multiplier_short` and `btc_rsi_adx_multiplier_short` populated with 4 cells
+
+### Combined LONG + SHORT multiplier landscape after this deploy
+
+| Side | Cells active | Multipliers | Cross-sample basis |
+|---|---|---|---|
+| LONG (deployed earlier today) | 3 | 2.0× each | 1 confirmed + 2 1-sample |
+| **SHORT (this entry)** | **4** | **2.0× each** | **1 confirmed + 3 1-sample** |
+| Total active cells | 7 | hard cap 2.0× | mixed |
+
+Hard cap at 2.0× and the HIGHER-conflict resolution mean no trade gets boosted above 2.0× regardless of how many cells it matches. Multiplier mechanism stays in safe operational range.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor today's SHORT multiplier activation with explicit revert criteria for each of the 4 cells, and to honestly document that the activation is more aggressive than my initial recommendation (S-P1 only). The user-driven 4-cell activation is explicitly accepted as a higher-variance bet on the multiplier mechanism. Next-batch validation will tell which cells deserved the boost.
+
+If 3 of 4 cells revert at next batch, that's a methodological lesson about 1-sample multiplier activation — and the locked criteria above ensure the revert decisions happen automatically rather than being re-litigated.
+
+## May 4, 2026 — Exploration Analytics section REMOVED
+
+Per the CLAUDE.md April 30 conditional-removal plan ("Provisional status (added Apr 30)"), the Exploration Analytics — Observation Only section is removed from the UI and reports. User assessment confirmed at this checkpoint: "it does not add any value at all".
+
+The April 30 plan said: *"if NO Tier 1 dimension meets the 6-criterion promotion bar... AND none of the cross-tabs show meaningful discrimination → remove the entire Exploration Analytics UI section, the 6 single-dim tables, the 4 cross-tabs, and the TtP table. Keep the underlying entry_* DB columns (cheap, no harm in retaining captured data) but drop the rendering and the report-export entries."*
+
+That's exactly what was done.
+
+### What was removed
+
+**templates/index.html (~482 lines total removed):**
+- "Exploration Analytics — Observation Only" UI panel (1 H2 + 6 single-dim tables + 4 cross-tabs section, ~292 lines)
+- JS renderers `renderExplorationTable` and `renderCrosstabTable` (~108 lines)
+- Both text-export site renderers `_explorationTables`/`_explorationCrosstabs` and `_explorationTables2`/`_explorationCrosstabs2` (~82 lines)
+
+**main.py (~281 lines total removed):**
+- 7 single-dim bucket-performance helpers: `_compute_atr_performance`, `_compute_ema50_slope_performance`, `_compute_ema50_alignment_performance`, `_compute_funding_rate_performance`, `_compute_di_direction_performance`, `_compute_di_spread_performance`, `_compute_ttp_ratio_performance`
+- 4 cross-tab helpers: `_compute_btc_adx_ema50_alignment_crosstab`, `_compute_pair_adx_di_spread_crosstab`, `_compute_btc_rsi_funding_crosstab`, `_compute_direction_ema50_alignment_crosstab`
+- 2 generic infrastructure helpers (only used by the above): `_bucket_perf`, `_crosstab_perf`
+- 11 payload entries from `_compute_performance` and the empty-data fallback branch
+- 3 explanatory comment lines
+
+### What was DELIBERATELY RETAINED (per CLAUDE.md April 30 plan)
+
+**Order DB columns** — capture is cheap, removing only the analysis surface is the right granularity:
+- `entry_pos_di`, `entry_neg_di`, `entry_atr_pct`, `entry_ema50_slope`, `entry_funding_rate`
+
+**Per-trade `_compute_ttp_ratio()` helper** — used by integrated Entry Conditions by Outcome / Entry Conditions by Close Reason tables (which DO have analytical value, unlike the standalone bucket aggregates). Different from `_compute_ttp_ratio_performance()` which was the bucket aggregator and got removed.
+
+**Entry Conditions by Outcome / Reason table columns** that USE these underlying fields (TtP ratio, EMA50 align/slope, ATR%, +DI/-DI/spread, funding) — these stay because they're embedded in the proven-useful winner-vs-loser comparison view. Those tables are NOT what was removed; only the standalone Exploration Analytics section was.
+
+**Data capture in `services/trading_engine.py`** — `entry_pos_di` etc. continue to be recorded on every Order (no change to the capture path). If a future analytical need arises, the data exists in the DB.
+
+### Why this is safe
+
+1. **Schema unchanged** — no DB migration. `entry_pos_di`/etc. columns stay; just no UI displays them as bucket aggregates anymore
+2. **Per-trade column data in Entry Conditions tables still works** — the integrated views use the same data via `_compute_ttp_ratio()` (kept) and direct attribute reads (no helper functions touched)
+3. **API parses cleanly** — AST validated; no orphan references
+4. **All Premium Multiplier / filter changes from earlier today still work** — none of those depend on the removed exploration helpers
+
+### Reactivation path (if ever needed)
+
+Should a future regime show one of these dimensions becoming meaningful:
+1. The DB columns are already populated for every trade since Apr 28 — no historical data lost
+2. Re-add specific bucket-performance helper from git history (this commit's parent contains the pre-removal code)
+3. Add UI section back targeted to ONLY the dimension that became meaningful (don't re-add the whole section)
+
+### Files changed
+
+- `templates/index.html`: -482 lines (10,116 → ~9,303 incl earlier multiplier additions)
+- `main.py`: -281 lines (5,571 → 5,292)
+
+### Why this entry exists in CLAUDE.md
+
+To anchor that the removal followed the April 30 conditional-removal protocol exactly: bar wasn't met, no signal in the data, removed cleanly while preserving the underlying capture for future re-analysis. Also so future-Claude knows that re-adding bucket-aggregate UI for ATR/EMA50/funding/DI is a deliberate REVERSAL of a documented decision, not a fresh build.
+
+## May 4, 2026 — LOCKED next-batch validation plan (reference baseline + revert criteria)
+
+### Reference baseline = May 4 224-trade batch
+All next-batch comparisons measure changes against this snapshot:
+- Reports: `reports/report_2026-05-04_phase1c_explore_224trades.txt` + `reports/orders_2026-05-04_phase1c_explore_224trades.csv`
+- LONG: 163 trades, 38.7% WR, **-$45.24**, -0.14% Avg
+- SHORT: 61 trades, 59.0% WR, **-$0.75**, -0.01% Avg
+- Combined: 224 trades, 44.2% WR, **-$45.99**
+
+### Layer 1 — Filter changes (block losing trades)
+
+| Change | Side | Pre-committed revert criterion |
+|---|---|---|
+| `btc_adx_dir_long: rising` | LONG | If BTC falling LONG cell shows ≥45% WR on N≥15 → revert to "both" |
+| `btc_rsi_adx_filter_long: "70-100:35"` | LONG | If cell shows ≥55% WR on N≥10 → drop the rule |
+| `momentum_long_rsi_max: 65` | LONG | If Pair RSI 65-70 LONG shows ≥45% WR on N≥10 → raise back toward 70 |
+| `macro_trend_flat_threshold_short: 0.03` | SHORT | If BTC slope 0.02-0.03 SHORT cell shows ≥45% WR on N≥6 → revert to 0.02 |
+| `btc_adx_min_short: 20` | SHORT | If BTC ADX 18-20 SHORT shows ≥50% WR on N≥10 → revert to 18 |
+| `pair_blacklist += DOGEUSDT` | both | Re-evaluate after observation; if next batch shows DOGE signals would have been profitable, remove |
+
+### Layer 2 — Exit changes (capture small wins, address breakeven cluster)
+
+| Change | Pre-committed validation |
+|---|---|
+| `tp_min: 0.20` (both directions) | Counterfactual predicted +$48 LONG, +$9 SHORT swing. **Keep if actual swing ≥+$30 LONG AND ≥+$5 SHORT.** Revert if swing < +$10 combined. |
+| `pullback_trigger: 0.15` (both) | Watch "trades stuck at breakeven" count. Should drop from ~22 (LONG baseline) to ~11. **Revert PB to 0.20 if BE-bucket stays ≥18 trades.** |
+| `rsi_handoff_active: true` (L3+) | **Revert if L3+ `RSI_HANDOFF_EXIT` trades show net < counterfactual trailing exit on N≥5.** Note: counterfactual showed -$3 to -$5 for LONG, +$4 for SHORT in the May 4 batch. Live data may differ. |
+
+### Layer 3 — Maker entry revert
+
+| Change | Pre-committed validation |
+|---|---|
+| `maker_timeout_seconds: 20` | SIGNAL_EXPIRED rate (per direction) should drop **≥50%** vs May 4 batch (90 LONG aborts + 20 SHORT aborts). If rate doesn't drop ≥50% → investigate (signal-flip mechanic, not timeout, may be the real issue). |
+| `maker_offset_ticks: 1` | MAKER fill rate should rise. Revert to 2 ticks if fill rate **drops >30%** from baseline. |
+
+### Layer 4 — Premium Multipliers (per-cell verdict)
+
+7 cells active at 2.0×, hard cap 2.0×, HIGHER conflict resolution. Per-cell pre-committed verdict at next batch:
+
+| Verdict criterion | Action |
+|---|---|
+| ★ WORKING: WR ≥70% AND Total $ positive AND N ≥5 | Keep at 2.0× |
+| ✓ Marginal: 50-70% WR | Drop to 1.5× |
+| ✗ HARMFUL: WR ≤40% OR Total $ negative | Revert to 1.0× (drop the rule entirely) |
+| ⚠ Low N: <5 trades fired | Extend test, no decision |
+
+Per-cell expected revert risk:
+
+| Cell | Cross-sample basis | Risk |
+|---|---|---|
+| LONG L-P1 (BTC RSI 60-65 × BTC ADX 20-25) | 5-sample ★ | Lowest |
+| LONG BTC RSI 65-70 × BTC ADX 25-30 | 1-sample | Medium |
+| LONG Pair RSI 55-60 × Pair ADX 22-25 | 1-sample | Medium |
+| SHORT S-P1 (BTC RSI 25-30 × BTC ADX 20-25) | 5-sample ★ | Lowest |
+| SHORT BTC RSI 25-30 × BTC ADX 25-30 | 1-sample | Medium |
+| SHORT Pair RSI 20-30 × Pair ADX 30-33 | 1-sample (sub-cell of weakening parent) | **Highest** — most likely revert |
+| SHORT Pair RSI 30-35 × Pair ADX 25-28 | 1-sample (new bet) | Medium-high |
+
+### Combined projected outcome (if everything holds)
+
+| Side | Baseline | Projected after stack |
+|---|---|---|
+| LONG | -$45.24 | **+$15 to +$25** |
+| SHORT | -$0.75 | **+$15 to +$22** |
+| **Combined** | **-$45.99** | **~+$30 to +$45** |
+
+**Strategy validated if combined ≥ +$10 at next batch.**
+**Marginal (per-rule reverts needed) if combined -$5 to +$5.**
+**Major reconsideration if combined < -$10** (likely regime-related, not filter-related).
+
+### Watchlist (NOT yet shipped, evaluate at next batch)
+
+- **F4 LONG**: Pair RSI 55-60 × Pair ADX 15-18. Activate if next batch shows WR ≤35% on N≥15 in this cell.
+- **F5 LONG pair blacklist**: HYPEUSDT, RIVERUSDT (defensive). Activate if next batch shows continued losing.
+- **Pair watchlist**: SOLUSDT, BTCUSDT, WLFIUSDT, 1000LUNCUSDT — blacklist if 2nd-sample confirmation (≥6 trades + WR≤25%).
+- **BTC EMA20 Slope MAX 0.25 SHORT** (user pushback held today). Activate if more data lands in 0.20+ slope zone showing losses on N≥4.
+
+### Discipline lock
+
+Every revert criterion above is **pre-committed**. At next-batch checkpoint:
+1. Apply criteria mechanically — no re-litigation
+2. Anything interesting outside these criteria → goes on watchlist for the BATCH AFTER, not actioned mid-evaluation
+3. Goalposts don't move. If a rule says "revert if WR ≤40%" and the rule shows 41% WR on N=8, that's NOT "close enough to keep" — that's a marginal case that drops to 1.5× per the verdict matrix
+
+### Why this entry exists in CLAUDE.md
+
+To eliminate any ambiguity about what's being tested at next batch and what the decisions will be. With this single locked plan in writing:
+- Future-Claude opens CLAUDE.md, finds this entry, runs the matrix
+- Future-User can read the plan and know exactly what each metric means
+- No "let's discuss whether to revert" debates — the criteria already say what to do
+
+If next batch shows results that are **clearly worse** in the loss buckets where these changes were targeted (e.g., LONG Positive-No-BE bucket grows instead of shrinks under TP=0.20), that's evidence the counterfactual model itself is wrong — and we step back to re-examine the analytical methodology, not just the parameter values.

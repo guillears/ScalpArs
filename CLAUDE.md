@@ -3990,3 +3990,49 @@ In the next batch (with re-validation OFF), watch:
 
 ### Why this entry exists in CLAUDE.md
 To anchor the design choice (toggle, not hard-remove): re-validation may have analytical value in some configurations even though it appears suspect under current 20s timeout. Toggle keeps both paths testable.
+
+## May 4, 2026 — Pair blacklist additions: HYPEUSDT + ASTERUSDT
+
+User-directed blacklist after sanity check of May 4 evening micro-batch + cross-sample historical review.
+
+### HYPEUSDT — multi-sample structural loser
+
+Cross-sample pool from CLAUDE.md May 3 saved findings + report archive:
+
+| Sample | Side | N | WR | Total $ |
+|---|---|---|---|---|
+| Apr 06 split report | LONG | 3 | 67% | -$41.23 |
+| Apr 06 split report | SHORT | 2 | 0% | -$43.30 |
+| Apr 12 partial | LONG | 4 | 75% | -$0.17 |
+| Apr 12 partial | SHORT | 1 | 0% | -$0.90 |
+| Apr 13 117-trade | LONG | 6 | 83% | +$1.68 |
+| Apr 13 117-trade | SHORT | 3 | 0% | -$4.09 |
+| **May 4 224-trade** | LONG | 9 | 22% | -$6.26 |
+| **May 4 224-trade** | SHORT | 4 | 75% | +$1.75 |
+| May 4 evening micro (20× lev) | LONG | 1 | 0% | **-$33.15** (REGIME_CHANGE) |
+
+**Combined: ~33 trades, ~-$125 net** across 5 samples. Meets CLAUDE.md May 3 multi-sample blacklist gate (≥6 trades, ≤25% WR cross-sample, multi-direction toxicity).
+
+### ASTERUSDT — defensive blacklist (1-sample but regime-shift exposure)
+
+| Sample | N | WR | Total $ | Pattern |
+|---|---|---|---|---|
+| **May 4 224-trade** | 4 LONG | 25% | -$0.86 | 3 of 4 closed via REGIME_CHANGE/FL_REGIME_CHANGE; 1 winner was clean TRAILING_STOP L2 (+0.61%) |
+
+**Strict CLAUDE.md anti-overfit rule says wait for 2-sample confirmation.** User chose to blacklist defensively because:
+1. 20× leverage now active — single-pair regime-shift exposure is no longer cheap
+2. 3 of 4 losers all REGIME_CHANGE-driven — same pattern that's been killing leveraged trades
+3. Pair has only 4 trades of history total; cost of a false-positive blacklist is small (occasional missed trade) vs. cost of leveraged regime-change loss is large
+
+### Config change
+- `pair_blacklist`: was `"XAGUSDT,XAUUSDT,ZECUSDT,ENAUSDT,RAVEUSDT,DOGEUSDT"` (6 entries)
+- Now: `"XAGUSDT,XAUUSDT,ZECUSDT,ENAUSDT,RAVEUSDT,DOGEUSDT,HYPEUSDT,ASTERUSDT"` (8 entries)
+
+### Re-evaluation criteria
+
+For HYPEUSDT: blacklist is supported by 5-sample evidence; would only revisit if a structural change to BTC market regime suggests previous patterns no longer apply. Even then, would need ≥10 cross-sample trades at ≥60% WR before considering removal.
+
+For ASTERUSDT: this is the 1-sample defensive case. If next batch's "would-have-been ASTER" signals look healthy in observation logs (e.g., signals that fire when BTC regime is stable and would have closed via TRAILING_STOP), reconsider. If pattern continues to be REGIME_CHANGE-prone, blacklist confirmed.
+
+### Why this entry exists in CLAUDE.md
+To document the asymmetric treatment of HYPEUSDT (multi-sample, strict-bar passing) vs ASTERUSDT (1-sample, defensive judgment call by user given 20× leverage context). Future-Claude should know that ASTER was a discretionary blacklist, not a multi-sample structural conclusion — different evidence threshold.

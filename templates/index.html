@@ -8587,6 +8587,8 @@
                     const pnl = inv.value_usd - inv.total_deposited + inv.total_withdrawn;
                     const pnlCls = pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const pnlSign = pnl >= 0 ? '+' : '-';
+                    const pnlPct = inv.total_deposited > 0 ? (pnl / inv.total_deposited) * 100 : null;
+                    const pnlPctStr = pnlPct === null ? '—' : `${pnlSign}${Math.abs(pnlPct).toFixed(2)}%`;
                     return `<tr class="border-b border-white/5 hover:bg-white/5">
                         <td class="px-3 py-2 text-left text-white font-medium">${inv.name}</td>
                         <td class="px-3 py-2 text-right text-gray-300">${inv.shares.toFixed(4)}</td>
@@ -8594,7 +8596,7 @@
                         <td class="px-3 py-2 text-right text-white font-medium">$${inv.value_usd.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-right text-gray-400">$${inv.total_deposited.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-right text-gray-400">$${inv.total_withdrawn.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-                        <td class="px-3 py-2 text-right ${pnlCls} font-medium">${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                        <td class="px-3 py-2 text-right ${pnlCls} font-medium">${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} <span class="text-xs opacity-80">(${pnlPctStr})</span></td>
                         <td class="px-3 py-2 text-center">
                             <div class="flex gap-1 justify-center">
                                 <button onclick="renameInvestor(${inv.id})" class="px-2 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-400 rounded text-xs transition" title="Edit name">✎</button>

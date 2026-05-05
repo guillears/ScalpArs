@@ -4219,3 +4219,103 @@ If zero `[BTC_RSI_ADX_CROSS]` log entries fire across 100+ trades, either (a) th
 2. **Anchor the fix.** Mirror of Apr 17 Option B refactor pattern, same risk profile, low.
 3. **Document the asymmetric design choice.** BTC RSI min/max stays gated, cross-filter is independent — these are now two different things and future code work shouldn't conflate them.
 4. **Provide a verification path.** `[BTC_RSI_ADX_CROSS]` log entries are the test that the fix is doing real work.
+
+## May 5, 2026 — Cross-Filter syntax extension: range-form (block when ADX > X)
+
+### What was added
+
+Both pair-level (`rsi_adx_filter_long/short` in `services/indicators.py::_passes_rsi_adx_filter`) and BTC-level (`btc_rsi_adx_filter_long/short` in `services/trading_engine.py`) cross-filters now accept an optional ADX RANGE in place of just MIN_ADX. **Backward compatible** — all existing single-number rules still work unchanged.
+
+### Syntax
+
+| Form | Meaning | Example | Blocks |
+|---|---|---|---|
+| `RSI_LO-RSI_HI:MIN_ADX` (existing) | require ADX ≥ MIN_ADX | `70-100:35` | RSI 70-100 with ADX < 35 |
+| `RSI_LO-RSI_HI:MIN-MAX` (NEW) | require MIN ≤ ADX ≤ MAX | `65-70:0-34` | RSI 65-70 with ADX > 34 |
+| Combined | multi-rule via comma | `70-100:35,65-70:0-34` | Both rules apply (first match wins) |
+
+Bounds are inclusive on both sides for the range form (consistent with the single-number form, which is also inclusive at MIN).
+
+### Why this was needed
+
+The original single-number form expresses "minimum ADX required" — useful for blocking the LOW-ADX edge of an RSI band. But several losing cells live at the HIGH-ADX edge (e.g., LONG BTC RSI 65-70 × BTC ADX 35+, where the macro is over-extended). Without the range form, those cells could not be expressed as filter rules.
+
+The new syntax is purely additive: existing rules behave identically, new rules unlock cell-shaped blocking on either end of the ADX dimension.
+
+### Where it applies
+
+| Filter field | File | Used for |
+|---|---|---|
+| `rsi_adx_filter_long` | `services/indicators.py` | Pair-level RSI × ADX cross-filter, LONG |
+| `rsi_adx_filter_short` | same | Pair-level, SHORT |
+| `btc_rsi_adx_filter_long` | `services/trading_engine.py` | BTC-level RSI × ADX cross-filter, LONG |
+| `btc_rsi_adx_filter_short` | same | BTC-level, SHORT |
+
+All four parsers updated identically. Both LONG and SHORT, both pair-level and BTC-level.
+
+### UI status
+
+UI currently exposes only the MIN_ADX field. Range-form rules can be configured via direct edits to `trading_config.json`. UI extension (adding a "Max ADX" field) is deferred until an actual range-form rule ships and is validated. Config-only deploys are sufficient for now.
+
+### Files changed
+
+- `services/indicators.py::_passes_rsi_adx_filter` — accepts `MIN-MAX` form, falls back to `MIN` only
+- `services/trading_engine.py` (BTC cross-filter block at ~line 3854) — same pattern
+
+### Tests verified
+
+- Backward compat: `30-35:25,35-50:30` (existing SHORT rules) → identical behavior
+- New form: `65-70:0-34` blocks ADX > 34, allows ADX ≤ 34
+- Combined: `70-100:35,65-70:0-34` — both rules evaluated correctly, first match wins
+- Edge cases: rules with malformed ADX part are skipped (continues to next rule)
+
+### Why this entry exists in CLAUDE.md
+
+To document the new syntax for any future filter design decision. Without this entry, future-Claude would assume the cross-filter only does MIN-ADX semantics and might propose code work to add MAX semantics that already exists. The MAX form is now an available expressive primitive — use it whenever a HARD BLOCK candidate sits at the high-ADX edge of an RSI band.
+
+## May 5, 2026 — Watchlist: LONG BTC RSI 65-70 × BTC ADX 35+
+
+### Cell description
+LONG entries when BTC RSI in [65, 70) AND BTC ADX ≥ 35. Macro context: BTC has been trending up (RSI 65-70 = approaching overbought), trend conviction is very strong (ADX 35+). Hypothesis: this is the over-extended top of a BTC uptrend — entries this late are likely to be sold into climax.
+
+### Cross-sample evidence as of May 5
+
+| Sample | N | WR | Total $ |
+|---|---|---|---|
+| May 4 224-trade | 2 | 0% | -$1.65 |
+| May 5 partial 30-trade | 1 | 0% | -$22.94 |
+| **Pooled** | **3** | **0%** | **-$24.59** |
+
+Direction-consistent (3 of 3 negative) but **N=3 fails the locked HARD BLOCK promotion bar** (≤40% WR on N≥10 across multi-sample, direction-consistent across samples).
+
+### Locked promotion gate
+
+If at next 100-trade checkpoint (or any future batch) the cumulative pool reaches:
+
+- **N ≥ 7 across ≥2 samples AND WR ≤ 30%** → ship as HARD BLOCK
+- **N ≥ 10 across ≥2 samples AND WR ≤ 40%** → ship as HARD BLOCK (standard bar)
+- **N ≥ 7 AND WR ≥ 50%** → drop from watchlist (cell may be regime-specific noise that decayed)
+- **N still <7 across all samples** → keep watching, no decision
+
+### Implementation when promoted
+
+The May 5 cross-filter range syntax extension supports this rule directly:
+
+```
+"btc_rsi_adx_filter_long": "70-100:35,65-70:0-34"
+```
+
+Adds the second rule: "for BTC RSI 65-70, require BTC ADX ≤ 34" (i.e., block when ADX > 34, equivalent to "block 35+").
+
+### Why this is on watchlist not shipped
+
+Anti-overfit discipline. CLAUDE.md core principle: never leverage a 1-2-sample finding into a HARD BLOCK. The S-P2 demotion (Apr 17 → May 4) is the cautionary lesson — pre-committed PREMIUM zones built on small samples can decay. The same logic applies in reverse: small-sample HARD BLOCKS may turn out to be noise. Ship only with multi-sample N ≥ 10.
+
+### Why this entry exists in CLAUDE.md
+
+So that at the next checkpoint, future-Claude (or future-User) doesn't:
+1. Forget this cell exists and need to re-discover the pattern
+2. Lower the bar to ship on weaker evidence
+3. Re-litigate whether to ship at smaller N
+
+The gate is locked. Apply mechanically when the data arrives.

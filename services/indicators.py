@@ -119,7 +119,15 @@ def determine_macro_regime(ema_current: float, ema_prev: float, flat_threshold: 
 
 
 def _passes_rsi_adx_filter(direction: str, rsi: float, adx: float, th) -> bool:
-    """Check RSI x ADX cross-filter rules. Returns True if the entry is allowed."""
+    """Check RSI x ADX cross-filter rules. Returns True if the entry is allowed.
+
+    Rule formats supported (backward compatible):
+      "RSI_LO-RSI_HI:MIN_ADX"          → require ADX >= MIN_ADX (existing)
+      "RSI_LO-RSI_HI:MIN_ADX-MAX_ADX"  → require MIN_ADX <= ADX <= MAX_ADX (May 5)
+
+    The range form lets us express "block when ADX > X" by setting MIN low.
+    Example: "65-70:0-34" blocks RSI 65-70 entries when ADX > 34.
+    """
     key = 'rsi_adx_filter_long' if direction == 'LONG' else 'rsi_adx_filter_short'
     filter_str = getattr(th, key, '')
     if not filter_str or not filter_str.strip():
@@ -129,10 +137,18 @@ def _passes_rsi_adx_filter(direction: str, rsi: float, adx: float, th) -> bool:
         if not rule or ':' not in rule:
             continue
         try:
-            rsi_part, min_adx_str = rule.split(':')
+            rsi_part, adx_part = rule.split(':')
             rsi_min, rsi_max = map(float, rsi_part.split('-'))
             if rsi_min <= rsi < rsi_max:
-                return adx >= float(min_adx_str)
+                bounds = adx_part.split('-')
+                if len(bounds) == 1:
+                    return adx >= float(bounds[0])
+                elif len(bounds) == 2:
+                    min_adx = float(bounds[0])
+                    max_adx = float(bounds[1])
+                    return min_adx <= adx <= max_adx
+                else:
+                    continue
         except (ValueError, TypeError):
             continue
     return True

@@ -3851,6 +3851,12 @@ class TradingEngine:
             # (current default).  Discovered May 5 when a BTC RSI 76.2 x BTC ADX 32.5 LONG fired
             # despite the "70-100:35" rule.  Same Apr 17 Option B refactor pattern as BTC ADX
             # direction/range moved out before.
+            # Cross-filter rule formats supported (backward compatible):
+            #   "RSI_LO-RSI_HI:MIN_ADX"          → require ADX >= MIN_ADX (existing)
+            #   "RSI_LO-RSI_HI:MIN_ADX-MAX_ADX"  → require MIN_ADX <= ADX <= MAX_ADX (new May 5)
+            # The new range form lets us express "block when BTC ADX > X" by setting
+            # MIN_ADX low (e.g. 0).  Example: "65-70:0-34" blocks BTC RSI 65-70 entries
+            # when BTC ADX > 34 (i.e., the over-extended high-ADX edge of that band).
             if signal in ["LONG", "SHORT"] and btc_rsi is not None and btc_adx is not None:
                 _th = config.trading_config.thresholds
                 _cf_key = 'btc_rsi_adx_filter_long' if signal == 'LONG' else 'btc_rsi_adx_filter_short'
@@ -3861,14 +3867,25 @@ class TradingEngine:
                         if not _cf_rule or ':' not in _cf_rule:
                             continue
                         try:
-                            _cf_rsi_part, _cf_min_adx = _cf_rule.split(':')
+                            _cf_rsi_part, _cf_adx_part = _cf_rule.split(':')
                             _cf_rsi_min, _cf_rsi_max = map(float, _cf_rsi_part.split('-'))
+                            _adx_bounds = _cf_adx_part.split('-')
+                            if len(_adx_bounds) == 1:
+                                _cf_min_adx = float(_adx_bounds[0])
+                                _cf_max_adx = float('inf')
+                                _cf_label = f"requires ADX>={_cf_min_adx}"
+                            elif len(_adx_bounds) == 2:
+                                _cf_min_adx = float(_adx_bounds[0])
+                                _cf_max_adx = float(_adx_bounds[1])
+                                _cf_label = f"requires {_cf_min_adx}<=ADX<={_cf_max_adx}"
+                            else:
+                                continue
                             if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
-                                if btc_adx < float(_cf_min_adx):
+                                if btc_adx < _cf_min_adx or btc_adx > _cf_max_adx:
                                     logger.info(
                                         f"[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — "
                                         f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) "
-                                        f"requires ADX>={_cf_min_adx}, got {btc_adx:.1f}"
+                                        f"{_cf_label}, got {btc_adx:.1f}"
                                     )
                                     signal = "NO_TRADE"
                                 break

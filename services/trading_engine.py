@@ -4251,7 +4251,10 @@ class TradingEngine:
                     entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
                     entry_quality_score=entry_quality_score,
                     entry_btc_regime=entry_btc_regime,
-                    entry_btc_trend_gap_pct=globals().get('_current_btc_trend_gap_pct'),
+                    # entry_btc_trend_gap_pct is handled inside open_position via globals lookup
+                    # (see line ~1840 — Order() constructor reads _current_btc_trend_gap_pct directly).
+                    # Passing it as a kwarg was a bug — open_position's signature doesn't accept it,
+                    # which TypeError'd every scan loop and prevented ALL position openings (May 5).
                     entry_pos_di=_entry_pos_di,
                     entry_neg_di=_entry_neg_di,
                     entry_atr_pct=_entry_atr_pct,

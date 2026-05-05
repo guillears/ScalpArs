@@ -5337,3 +5337,44 @@ If confirmed, the natural filter is an entry requirement: `pair_ema20_ema50_gap_
 ### Why this entry exists in CLAUDE.md
 
 To anchor the observation-only status (no filter deployed yet), the locked promotion criteria (can't be lowered post-hoc when data arrives), and the filter form if promoted — so future-Claude doesn't ship a filter from this dimension without meeting the bar, and knows exactly what shape the filter would take if the data supports it.
+
+## May 5, 2026 — RSI Handoff level changed L3 → L2, RSI Handoff Performance table added
+
+### Config change
+- `rsi_handoff_level`: 3 → **2** in `trading_config.json`
+
+### New handoff threshold
+With `tp_min = 0.20` (both confidence levels), the handoff threshold is `tp_min × rsi_handoff_level`:
+- **Old (L3):** `0.20 × 3 = 0.60%` — trailing disables only after peak ≥ 0.60%
+- **New (L2):** `0.20 × 2 = 0.40%` — trailing disables sooner, at peak ≥ 0.40%
+
+Rationale: the May 4 224-trade batch showed very few trades reaching L3 (peak ≥ 0.60%) — the handoff zone was rarely populated, making the feature nearly inactive. Lowering to L2 (0.40%) expands the handoff-eligible population to a meaningful sample size, enabling the RSI Handoff Performance table to accumulate real data for evaluation.
+
+### RSI Handoff Performance table added
+New analytical table in the dashboard and both text exports. Tracks whether RSI exit actually captures more post-peak value than the trailing-stop counterfactual.
+
+**What it shows:** For closed trades with peak ≥ handoff threshold (0.40%), splits into two groups:
+- **RSI_HANDOFF_EXIT** — RSI 2-drop exhaustion fired and closed the trade
+- **Backstop (SL/FL/regime)** — trailing was disabled but a non-RSI exit caught the trade
+
+**Columns:** Exit Path | Dir | N | Avg Peak% | Avg Close% | Trailing CF% (= avg peak − 0.15% pullback) | Δ vs Trail | Total$ | Verdict
+
+**Verdict thresholds:**
+- ★ WORKING: Δ > +0.05% (RSI captured meaningfully more than trailing would have)
+- ✓ Marginal: Δ ≥ -0.05% (neutral — neither clearly better nor worse)
+- ⚠ DRAG: Δ < -0.05% (RSI exit cost money vs trailing)
+- ⚠ Low N: < 5 trades in the group
+
+### Pre-committed evaluation criteria (at next 100-trade checkpoint)
+
+| Outcome | Verdict | Action |
+|---|---|---|
+| RSI_HANDOFF_EXIT rows show ★ WORKING (Δ > +0.05%) on N≥5 per direction | RSI exit is beating trailing at L2+ | Lock L2 as default |
+| Backstop rows dominate (RSI rarely fires before backstop) | RSI exit never gets a chance to fire | Investigate RSI parameters or widen handoff zone |
+| RSI_HANDOFF_EXIT rows show ⚠ DRAG on N≥5 | Trailing would have done better | Revert `rsi_handoff_level` back to 3, or disable RSI handoff |
+| Both groups < 5 trades | L2 still not generating enough handoff-zone trades | Lower `tp_min` further or accept low-frequency feature |
+
+### Files changed
+- `trading_config.json` — `rsi_handoff_level: 3 → 2`
+- `main.py` — `_compute_rsi_handoff_performance()` helper + payload call + both empty-data fallback sections
+- `templates/index.html` — RSI Handoff Performance UI table + JS renderer + both text export sites (`copyReport` and `copySplitReport`)

@@ -1565,6 +1565,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
+            "rsi_handoff_performance": {"rows": [], "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2538,6 +2539,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
+            "rsi_handoff_performance": {"rows": [], "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -4848,6 +4850,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     except Exception as e:
         logger.error(f"[PERF] Error computing Flagged Exits: {e}\n{traceback.format_exc()}")
 
+    # Pre-compute RSI Handoff config variables
+    _rhi_sb = config.trading_config.confidence_levels.get('STRONG_BUY')
+    _rhi_tp_min = getattr(_rhi_sb, 'tp_min', 0.20) if _rhi_sb else 0.20
+    _rhi_level = getattr(config.trading_config.thresholds, 'rsi_handoff_level', 2)
+    _rhi_pullback = getattr(_rhi_sb, 'pullback_trigger', 0.15) if _rhi_sb else 0.15
+
     return {
         "total_trades": total_trades,
         "total_longs": total_longs,
@@ -4946,6 +4954,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "pair_performance": _compute_pair_performance(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
+        # RSI Handoff Performance (May 5, 2026 — tracks whether RSI exit beats trailing counterfactual)
+        "rsi_handoff_performance": _compute_rsi_handoff_performance(
+            orders,
+            handoff_threshold_pct=_rhi_tp_min * _rhi_level,
+            pullback_pct=_rhi_pullback,
+        ),
     }
 
 
@@ -5077,6 +5091,73 @@ def _compute_multiplier_cell_performance(orders):
         'longs': longs,
         'shorts': shorts,
         'summary': {'longs': _uplift(longs), 'shorts': _uplift(shorts)},
+    }
+
+
+def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct):
+    """RSI Handoff Performance — per CLAUDE.md May 5, 2026.
+
+    Shows whether RSI_HANDOFF_EXIT captures more post-peak value than the
+    trailing-stop counterfactual (avg_peak - pullback_trigger).
+
+    Only considers closed trades that reached the handoff zone (peak >= threshold).
+    Groups into:
+      - RSI_HANDOFF_EXIT: RSI 2-drop exhaustion fired
+      - Backstop: trailing disabled but SL/FL/regime/signal-lost caught them
+    """
+    closed = [o for o in orders if o.status == 'CLOSED' and o.peak_pnl is not None]
+    handoff_zone = [o for o in closed if (o.peak_pnl or 0) >= handoff_threshold_pct]
+
+    if not handoff_zone:
+        return {"rows": [], "handoff_threshold_pct": handoff_threshold_pct, "pullback_pct": pullback_pct}
+
+    def _group_stats(trades, exit_path, direction):
+        if not trades:
+            return None
+        n = len(trades)
+        avg_peak = sum(o.peak_pnl for o in trades) / n
+        avg_close = sum((o.pnl_percentage or 0) for o in trades) / n
+        trailing_cf = avg_peak - pullback_pct
+        delta = avg_close - trailing_cf
+        total_d = sum((o.pnl or 0) for o in trades)
+        if n < 5:
+            verdict = '⚠ Low N'
+        elif delta > 0.05:
+            verdict = '★ WORKING'
+        elif delta >= -0.05:
+            verdict = '✓ Marginal'
+        else:
+            verdict = '⚠ DRAG'
+        return {
+            'exit_path': exit_path,
+            'direction': direction,
+            'n': n,
+            'avg_peak_pct': round(avg_peak, 4),
+            'avg_close_pct': round(avg_close, 4),
+            'trailing_counterfactual_pct': round(trailing_cf, 4),
+            'delta_vs_trailing_pct': round(delta, 4),
+            'total_dollars': round(total_d, 2),
+            'verdict': verdict,
+        }
+
+    rows = []
+    for direction in ['LONG', 'SHORT']:
+        dir_trades = [o for o in handoff_zone if o.direction == direction]
+        if not dir_trades:
+            continue
+        rsi_trades = [o for o in dir_trades if o.close_reason and o.close_reason.startswith('RSI_HANDOFF_EXIT')]
+        backstop_trades = [o for o in dir_trades if not (o.close_reason and o.close_reason.startswith('RSI_HANDOFF_EXIT'))]
+        s = _group_stats(rsi_trades, 'RSI_HANDOFF_EXIT', direction)
+        if s:
+            rows.append(s)
+        s = _group_stats(backstop_trades, 'Backstop (SL/FL/regime)', direction)
+        if s:
+            rows.append(s)
+
+    return {
+        'rows': rows,
+        'handoff_threshold_pct': handoff_threshold_pct,
+        'pullback_pct': pullback_pct,
     }
 
 

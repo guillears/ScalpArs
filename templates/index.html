@@ -877,6 +877,32 @@
                     <div id="mult-cell-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- RSI Handoff Performance (May 5, 2026 — CLAUDE.md) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-violet-300 mb-2">📊 RSI Handoff Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3" id="rsi-handoff-perf-desc">Trades that reached the handoff zone (peak ≥ threshold). Compares RSI exit vs trailing-stop counterfactual (avg peak − pullback). ★ WORKING = RSI captured more than trailing would have.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Exit Path</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">Avg Peak%</th>
+                                    <th class="text-right px-2">Avg Close%</th>
+                                    <th class="text-right px-2">Trailing CF%</th>
+                                    <th class="text-right px-2" title="Avg Close% minus trailing counterfactual. Positive = RSI exit got more than trailing would have.">Δ vs Trail</th>
+                                    <th class="text-right px-2">Total$</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rsi-handoff-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No handoff zone trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -4263,6 +4289,24 @@
             _renderMultExport(_mcp1.longs, 'LONGs', (_mcp1.summary || {}).longs);
             _renderMultExport(_mcp1.shorts, 'SHORTs', (_mcp1.summary || {}).shorts);
 
+            // RSI Handoff Performance (May 5, 2026 — CLAUDE.md)
+            const _rhp1 = perf.rsi_handoff_performance || {};
+            lines.push(`\n${hr2}`);
+            lines.push(`## RSI Handoff Performance (Threshold: ${(_rhp1.handoff_threshold_pct || 0.40).toFixed(2)}% | Trailing CF = peak − ${(_rhp1.pullback_pct || 0.15).toFixed(2)}%)\n`);
+            lines.push(`${'Exit Path'.padEnd(28)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgPeak%'.padEnd(10)} ${'AvgClose%'.padEnd(11)} ${'TrailCF%'.padEnd(10)} ${'Δ vs Trail'.padEnd(12)} ${'Total$'.padEnd(10)} Verdict`);
+            if (!_rhp1.rows || !_rhp1.rows.length) {
+                lines.push('  (no handoff zone trades yet)');
+            } else {
+                for (const r of _rhp1.rows) {
+                    const peakStr = '+' + (r.avg_peak_pct || 0).toFixed(3) + '%';
+                    const closeStr = (r.avg_close_pct >= 0 ? '+' : '') + (r.avg_close_pct || 0).toFixed(3) + '%';
+                    const cfStr = (r.trailing_counterfactual_pct >= 0 ? '+' : '') + (r.trailing_counterfactual_pct || 0).toFixed(3) + '%';
+                    const deltaStr = (r.delta_vs_trailing_pct >= 0 ? '+' : '') + (r.delta_vs_trailing_pct || 0).toFixed(3) + '%';
+                    const totalStr = '$' + (r.total_dollars || 0).toFixed(2);
+                    lines.push(`${r.exit_path.padEnd(28)} ${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${peakStr.padEnd(10)} ${closeStr.padEnd(11)} ${cfStr.padEnd(10)} ${deltaStr.padEnd(12)} ${totalStr.padEnd(10)} ${r.verdict}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Entry Type Performance\n');
             lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
@@ -5041,6 +5085,24 @@
                 const _mcp2 = perf.multiplier_cell_performance || {};
                 _renderMultExport2(_mcp2.longs, 'LONGs', (_mcp2.summary || {}).longs);
                 _renderMultExport2(_mcp2.shorts, 'SHORTs', (_mcp2.summary || {}).shorts);
+
+                // RSI Handoff Performance (May 5, 2026 — CLAUDE.md)
+                const _rhp2 = perf.rsi_handoff_performance || {};
+                lines.push(`\n${hr2}`);
+                lines.push(`## RSI Handoff Performance (Threshold: ${(_rhp2.handoff_threshold_pct || 0.40).toFixed(2)}% | Trailing CF = peak − ${(_rhp2.pullback_pct || 0.15).toFixed(2)}%)\n`);
+                lines.push(`${'Exit Path'.padEnd(28)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgPeak%'.padEnd(10)} ${'AvgClose%'.padEnd(11)} ${'TrailCF%'.padEnd(10)} ${'Δ vs Trail'.padEnd(12)} ${'Total$'.padEnd(10)} Verdict`);
+                if (!_rhp2.rows || !_rhp2.rows.length) {
+                    lines.push('  (no handoff zone trades yet)');
+                } else {
+                    for (const r of _rhp2.rows) {
+                        const peakStr = '+' + (r.avg_peak_pct || 0).toFixed(3) + '%';
+                        const closeStr = (r.avg_close_pct >= 0 ? '+' : '') + (r.avg_close_pct || 0).toFixed(3) + '%';
+                        const cfStr = (r.trailing_counterfactual_pct >= 0 ? '+' : '') + (r.trailing_counterfactual_pct || 0).toFixed(3) + '%';
+                        const deltaStr = (r.delta_vs_trailing_pct >= 0 ? '+' : '') + (r.delta_vs_trailing_pct || 0).toFixed(3) + '%';
+                        const totalStr = '$' + (r.total_dollars || 0).toFixed(2);
+                        lines.push(`${r.exit_path.padEnd(28)} ${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${peakStr.padEnd(10)} ${closeStr.padEnd(11)} ${cfStr.padEnd(10)} ${deltaStr.padEnd(12)} ${totalStr.padEnd(10)} ${r.verdict}`);
+                    }
+                }
 
                 // --- ENTRY TYPE PERFORMANCE ---
                 lines.push(`\n${hr2}`);
@@ -6166,6 +6228,46 @@
                         const upS = ss.uplift_dollars;
                         const fmt = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
                         sumEl.innerHTML = `LONG: ${sl.multiplied_trades_n || 0} multiplied trades, actual ${fmt(sl.actual_total_dollars)}, simulated baseline ${fmt(sl.simulated_baseline_dollars)}, uplift <span class="font-semibold ${upL >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upL)}</span> &nbsp; | &nbsp; SHORT: ${ss.multiplied_trades_n || 0} multiplied trades, uplift <span class="font-semibold ${upS >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upS)}</span>`;
+                    }
+                }
+
+                // RSI Handoff Performance (May 5, 2026 — CLAUDE.md)
+                if (data.rsi_handoff_performance) {
+                    const rhp = data.rsi_handoff_performance;
+                    const rhpDesc = document.getElementById('rsi-handoff-perf-desc');
+                    if (rhpDesc) {
+                        rhpDesc.textContent = `Trades with peak ≥ ${(rhp.handoff_threshold_pct || 0.40).toFixed(2)}% (handoff zone). Trailing counterfactual = avg peak − ${(rhp.pullback_pct || 0.15).toFixed(2)}%. ★ WORKING = RSI exit captured more than trailing would have.`;
+                    }
+                    const rhpBody = document.getElementById('rsi-handoff-perf-body');
+                    if (rhpBody) {
+                        if (!rhp.rows || !rhp.rows.length) {
+                            rhpBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No handoff zone trades yet</td></tr>';
+                        } else {
+                            rhpBody.innerHTML = rhp.rows.map(r => {
+                                const isRsi = r.exit_path === 'RSI_HANDOFF_EXIT';
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const closeClass = r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const deltaClass = r.delta_vs_trailing_pct > 0.05 ? 'text-emerald-400' : (r.delta_vs_trailing_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const totalClass = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const verdictColor = (
+                                    r.verdict.includes('★') ? 'text-emerald-400' :
+                                    r.verdict.includes('DRAG') ? 'text-red-400' :
+                                    r.verdict.includes('✓') ? 'text-blue-400' :
+                                    r.verdict.includes('Low N') ? 'text-amber-400' :
+                                    'text-gray-500');
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${isRsi ? 'text-violet-300 font-medium' : 'text-gray-400'}">${r.exit_path}</td>
+                                    <td class="px-2 py-1 ${dirColor}">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right text-amber-300">+${(r.avg_peak_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${closeClass}">${(r.avg_close_pct >= 0 ? '+' : '')}${(r.avg_close_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right text-gray-500">${(r.trailing_counterfactual_pct >= 0 ? '+' : '')}${(r.trailing_counterfactual_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${deltaClass}">${(r.delta_vs_trailing_pct >= 0 ? '+' : '')}${(r.delta_vs_trailing_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${totalClass}">$${(r.total_dollars || 0).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
                     }
                 }
 

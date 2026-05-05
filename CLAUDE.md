@@ -4319,3 +4319,66 @@ So that at the next checkpoint, future-Claude (or future-User) doesn't:
 3. Re-litigate whether to ship at smaller N
 
 The gate is locked. Apply mechanically when the data arrives.
+
+## May 5, 2026 — Return Multiple bug fix (paper mode): immutable initial baseline + BNB inclusion
+
+### Bug observed
+Dashboard showed Return Multiple 1.09x with realized P&L of only $25.39 on a $1,200 paper baseline. Expected: 1.0212x. Actual displayed: 1.09x. Reconciles only if `current_balance` ≈ $1,308 — about $83 of phantom gain that doesn't exist in realized P&L.
+
+Daily Compound Return inherited the same inflation: 1.09^(1/0.75) - 1 ≈ +12.2% (matched the displayed +12.80%) — formula is correct, but the input `return_multiple` was wrong, so the displayed compound was also wrong.
+
+### Two root causes
+
+**1. Initial baseline read from current config (mutable).** `main.py:_compute_performance` paper branch read `initial_balance = config.trading_config.paper_balance`. When the operator edits paper_balance in config mid-run (the May 4 17:05 change log shows this), the runtime `trading_engine.paper_balance` does NOT reset, but `initial_balance` for the calc DOES change. The two fall out of sync.
+
+**2. BNB excluded from paper-mode current_balance.** Live mode already includes BNB (`current_balance = balance['usdt_total'] + bnb_usd`). Paper mode read `current_balance = trading_engine.paper_balance + used_margin` — BNB allocation ($300) was simply dropped. Asymmetric treatment.
+
+### What was fixed (Parts A + B per user direction May 5)
+
+**Part A — immutable baseline persisted in BotState.** New column `runtime_initial_total_usd` set ONCE at cold start to `paper_balance + paper_bnb_initial_usd` (= $1,500 in current config). Never updated on config edits. This is the denominator the metric uses going forward.
+
+**Part B — paper current_balance includes BNB.** Now reads `paper_balance (free) + used_margin (locked) + paper_bnb_balance_usd (BNB equivalent)`. Symmetric with what live mode already does.
+
+### What was deliberately NOT fixed (per user May 5)
+
+**Unrealized P&L on open positions is intentionally excluded from current_balance** — neither paper nor live tracks the mark-to-market value of open positions in this metric. Rationale: keeps Return Multiple as a "realized edge" measure rather than a "what-if-I-closed-now" measure. Consistent across modes.
+
+Live mode unrealized P&L distortion (documented as a known issue in this conversation) remains unfixed by user direction. The live mode reverse-derivation `initial = current - total_pnl` continues to keep return_multiple internally consistent with displayed P&L by construction; the only distortion is that `current` (from Binance API) reflects mark-to-market on open positions while `total_pnl` is realized-only. Not addressed here.
+
+### Files changed
+
+- `models.py` — `BotState.runtime_initial_total_usd: Float, nullable=True`
+- `database.py` — auto-migrate `ADD COLUMN` for existing DBs
+- `services/trading_engine.py` — set on cold-start `BotState` insert; one-time backfill for legacy rows where column is NULL (uses current paper_balance + paper_bnb_balance_usd as the baseline-from-now); logs `[BOTSTATE] Backfilled runtime_initial_total_usd=...`
+- `main.py::_compute_performance` — paper branch reads `runtime_initial_total_usd` from BotState (with config fallback), includes `paper_bnb_balance_usd` in `current_balance`. Same fix applied to the early-return path (~line 2473) for the no-closed-orders edge case.
+
+### Backfill behavior for in-flight bots
+
+When this code lands on a running bot:
+1. Auto-migration adds `runtime_initial_total_usd` column (NULL for existing row)
+2. On next `initialize` call, code detects NULL and backfills with **current** `paper_balance + paper_bnb_balance_usd` (NOT the original cold-start value, which is no longer recoverable)
+3. Logs `[BOTSTATE] Backfilled runtime_initial_total_usd=$X` at WARN level
+4. Going forward, baseline is locked to that backfilled value
+
+**Trade-off accepted**: legacy bots get a "from now on" baseline rather than a true cold-start baseline. The displayed Return Multiple will reset to ~1.0x at the moment of backfill. This is honest — we don't know what the original baseline was, so claiming a fixed historical number would be invented data. New cold starts (no existing BotState row) get the proper init.
+
+### Validation after deploy
+
+When the bot next starts up post-deploy, expected logs:
+```
+[BOTSTATE] Backfilled runtime_initial_total_usd=$XYZ.XX for existing BotState row.
+This is a one-time migration — Return Multiple will use this as the immutable baseline going forward.
+```
+
+After backfill, displayed Return Multiple should be approximately:
+- ≈1.0x immediately (current ≈ initial because we just set initial = current)
+- Drift upward as new realized P&L accumulates
+- Sanity check: `(return_multiple - 1) × initial_balance ≈ realized_P&L_since_backfill`
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The exact fix scope (Parts A + B only, NOT C/D unrealized handling).
+2. The trade-off accepted on legacy bots (backfill from "now," not from "true start").
+3. The verification path (`[BOTSTATE] Backfilled` log line + expected ~1.0x reset).
+4. The known-unfixed live-mode unrealized issue, so future-Claude doesn't think the calc is fully resolved.

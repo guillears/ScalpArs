@@ -301,6 +301,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN ban_until FLOAT DEFAULT 0.0"))
                 if 'paper_bnb_balance_usd' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN paper_bnb_balance_usd FLOAT DEFAULT 500.0"))
+                if 'runtime_initial_total_usd' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN runtime_initial_total_usd FLOAT"))
 
             if 'investors' not in inspector.get_table_names():
                 connection.execute(text("""

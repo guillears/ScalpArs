@@ -3710,6 +3710,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 r = _compute_ttp_ratio(o)
                 if r is not None:
                     ttp_ratios.append(r)
+            # BTC Trend Filter gap at entry (May 5) — diagnostic for rollback validation
+            btc_trend_gaps = [o.entry_btc_trend_gap_pct for o in group if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -3790,6 +3792,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "ema50_flat": ema50_flat,
                 "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
                 "avg_ttp_ratio": round(sum(ttp_ratios) / len(ttp_ratios), 2) if ttp_ratios else None,
+                # BTC Trend Filter gap at entry (May 5)
+                "avg_btc_trend_gap": round(sum(btc_trend_gaps) / len(btc_trend_gaps), 4) if btc_trend_gaps else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
@@ -3906,6 +3910,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 r = _compute_ttp_ratio(o)
                 if r is not None:
                     ttp_ratios.append(r)
+            # BTC Trend Filter gap at entry (May 5) — diagnostic for rollback validation
+            btc_trend_gaps = [o.entry_btc_trend_gap_pct for o in group if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -3979,6 +3985,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "ema50_flat": ema50_flat,
                 "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
                 "avg_ttp_ratio": round(sum(ttp_ratios) / len(ttp_ratios), 2) if ttp_ratios else None,
+                # BTC Trend Filter gap at entry (May 5)
+                "avg_btc_trend_gap": round(sum(btc_trend_gaps) / len(btc_trend_gaps), 4) if btc_trend_gaps else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),

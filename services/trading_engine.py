@@ -129,6 +129,10 @@ class TradingEngine:
         self._initialized = False
         self._post_exit_tracking: Dict[int, dict] = {}
         self._rsi3_history: Dict[int, list] = {}  # per-order RSI history for 3-drop detection
+        # BTC regime tracking (May 5 — regime stability instrumentation).
+        # Populated by initialize() (back-walks history) + scan loop (live updates).
+        # Captured on each Order at entry time as entry_btc_regime_started_at.
+        self._btc_regime_started_at: Optional[datetime] = None
         # Signal re-validation tracking (Amendment #7 / Apr 18)
         # Tracks entries aborted after maker timeout because the signal went stale.
         self.signal_expired_reasons: Dict[str, int] = {}  # reason_code -> count
@@ -169,6 +173,8 @@ class TradingEngine:
             self.paper_balance = state.paper_balance
             self.paper_bnb_balance_usd = getattr(state, 'paper_bnb_balance_usd', None) or config.trading_config.paper_bnb_initial_usd
             self.total_runtime_seconds = state.total_runtime_seconds
+            # Restore BTC regime tracking from persisted state (May 5).
+            self._btc_regime_started_at = getattr(state, 'btc_regime_started_at', None)
             # Backfill runtime_initial_total_usd if NULL (column added May 5).
             # One-time backfill: set to current paper_balance + paper_bnb_balance_usd
             # so the baseline reflects "wherever we are now" for existing runs that
@@ -226,6 +232,91 @@ class TradingEngine:
             await self.save_state(db)
 
         self._initialized = True
+
+        # Back-walk BTC OHLCV history to find true regime start time if persisted
+        # state is null or stale. Runs in background to avoid blocking init.
+        # See CLAUDE.md May 5 entry on regime stability instrumentation.
+        try:
+            asyncio.create_task(self._init_btc_regime_started_at(db))
+        except Exception as _e:
+            logger.warning(f"[BTC_REGIME_INIT] Failed to schedule back-walk: {_e}")
+
+    async def _init_btc_regime_started_at(self, db_unused):
+        """Back-walk BTC 5m OHLCV to find when current regime began.
+        Runs once at startup. Updates self._btc_regime_started_at and persists
+        to BotState. If walk-back finds no boundary in 24h window, sets the
+        oldest fetched candle's timestamp as the boundary (regime is at least
+        24h old).
+        See CLAUDE.md May 5 entry on regime stability instrumentation.
+        """
+        try:
+            # Wait briefly for first scan to populate _current_btc_regime
+            for _ in range(30):
+                if globals().get('_current_btc_regime'):
+                    break
+                await asyncio.sleep(1)
+            current_regime = globals().get('_current_btc_regime')
+            if not current_regime:
+                logger.warning("[BTC_REGIME_INIT] No current regime after 30s wait, deferring")
+                return
+
+            # Fetch 24h of BTC 5m candles (288 candles)
+            ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 288)
+            if not ohlcv or len(ohlcv) < 10:
+                logger.warning("[BTC_REGIME_INIT] Insufficient BTC OHLCV for back-walk")
+                return
+
+            # Compute regime classification at each historical candle.
+            # determine_macro_regime needs (ema20_now, ema20_prev3, flat_th).
+            # We synthesize ema20 from the OHLCV closes.
+            import pandas as pd
+            df = pd.DataFrame(ohlcv, columns=['ts', 'o', 'h', 'l', 'c', 'v'])
+            df['ema20'] = df['c'].ewm(span=20, adjust=False).mean()
+
+            _flat_l = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_long',
+                              config.trading_config.thresholds.macro_trend_flat_threshold)
+            _flat_s = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_short',
+                              config.trading_config.thresholds.macro_trend_flat_threshold)
+            flat_th = min(_flat_l, _flat_s)
+
+            from datetime import datetime as _dt_mod
+            boundary_idx = None
+            # Walk backward from latest candle; we need at least 3 prior candles
+            # to compute slope (ema20 vs ema20[i-3]).
+            for i in range(len(df) - 1, 2, -1):
+                ema20_now = df['ema20'].iloc[i]
+                ema20_prev3 = df['ema20'].iloc[i - 3]
+                if not ema20_prev3 or ema20_prev3 == 0:
+                    continue
+                hist_regime = determine_macro_regime(ema20_now, ema20_prev3, flat_th)
+                if hist_regime != current_regime:
+                    # Found the candle BEFORE the current regime started.
+                    # The current regime started at the next candle (i+1).
+                    boundary_idx = i + 1
+                    break
+
+            if boundary_idx is None:
+                # No boundary in 24h window — current regime is at least 24h old
+                boundary_idx = 0
+
+            boundary_ts_ms = int(df['ts'].iloc[boundary_idx])
+            self._btc_regime_started_at = _dt_mod.utcfromtimestamp(boundary_ts_ms / 1000)
+            logger.info(
+                f"[BTC_REGIME_INIT] Back-walk found regime {current_regime} started at "
+                f"{self._btc_regime_started_at.isoformat()}Z "
+                f"(age = {(_dt_mod.utcnow() - self._btc_regime_started_at).total_seconds() / 60:.1f} min)"
+            )
+
+            # Persist to BotState
+            async with AsyncSessionLocal() as _bs_db:
+                _bs_result = await _bs_db.execute(select(BotState).limit(1))
+                _bs = _bs_result.scalar_one_or_none()
+                if _bs:
+                    _bs.current_btc_regime = current_regime
+                    _bs.btc_regime_started_at = self._btc_regime_started_at
+                    await _bs_db.commit()
+        except Exception as _e:
+            logger.exception(f"[BTC_REGIME_INIT] Back-walk failed: {_e}")
     
     async def save_state(self, db: AsyncSession):
         """Save engine state to database"""
@@ -983,6 +1074,7 @@ class TradingEngine:
                 entry_adx_delta=entry_adx_delta,
                 entry_quality_score=entry_quality_score,
                 entry_btc_regime=entry_btc_regime,
+                entry_btc_regime_started_at=self._btc_regime_started_at,
                 entry_pos_di=entry_pos_di,
                 entry_neg_di=entry_neg_di,
                 entry_atr_pct=entry_atr_pct,
@@ -1638,6 +1730,7 @@ class TradingEngine:
                         entry_adx_delta=entry_adx_delta,
                         entry_quality_score=entry_quality_score,
                         entry_btc_regime=entry_btc_regime,
+                        entry_btc_regime_started_at=self._btc_regime_started_at,
                         entry_pos_di=entry_pos_di,
                         entry_neg_di=entry_neg_di,
                         entry_atr_pct=entry_atr_pct,
@@ -1706,6 +1799,7 @@ class TradingEngine:
                         entry_adx_delta=entry_adx_delta,
                         entry_quality_score=entry_quality_score,
                         entry_btc_regime=entry_btc_regime,
+                        entry_btc_regime_started_at=self._btc_regime_started_at,
                         entry_pos_di=entry_pos_di,
                         entry_neg_di=entry_neg_di,
                         entry_atr_pct=entry_atr_pct,
@@ -1755,6 +1849,7 @@ class TradingEngine:
             entry_adx_delta=entry_adx_delta,
             entry_quality_score=entry_quality_score,
             entry_btc_regime=entry_btc_regime,
+            entry_btc_regime_started_at=self._btc_regime_started_at,
             exit_btc_regime=entry_btc_regime,  # Initialize to entry; updated on close
             # Exploration Analytics (Apr 28, observation-only)
             entry_pos_di=entry_pos_di,
@@ -3625,10 +3720,35 @@ class TradingEngine:
                 if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
                     btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
         global _current_btc_regime, _btc_ema20_slope_pct, _current_btc_adx, _current_btc_rsi
+        # Detect regime transition vs prior cycle to update _btc_regime_started_at
+        _prev_btc_regime = _current_btc_regime
         _current_btc_regime = btc_regime
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
         _current_btc_adx = btc_adx
         _current_btc_rsi = btc_rsi
+        # Persist BTC regime transitions in BotState. Cold-start initialize() is
+        # responsible for back-walking history to set the proper started_at; here
+        # we just detect new flips during normal operation.
+        # See CLAUDE.md May 5 entry on regime stability instrumentation.
+        if btc_regime and btc_regime != _prev_btc_regime:
+            from datetime import datetime as _dt_mod
+            self._btc_regime_started_at = _dt_mod.utcnow()
+            logger.info(f"[BTC_REGIME] flipped {_prev_btc_regime} → {btc_regime} at {self._btc_regime_started_at.isoformat()}Z")
+            try:
+                async with AsyncSessionLocal() as _bs_db:
+                    _bs_result = await _bs_db.execute(select(BotState).limit(1))
+                    _bs = _bs_result.scalar_one_or_none()
+                    if _bs:
+                        _bs.current_btc_regime = btc_regime
+                        _bs.btc_regime_started_at = self._btc_regime_started_at
+                        await _bs_db.commit()
+            except Exception as _e:
+                logger.warning(f"[BTC_REGIME] Failed to persist regime transition: {_e}")
+        elif btc_regime and not getattr(self, '_btc_regime_started_at', None):
+            # Same regime but no started_at yet (e.g. first cycle after deploy
+            # before initialize() back-walk completes) — set to now as fallback.
+            from datetime import datetime as _dt_mod
+            self._btc_regime_started_at = _dt_mod.utcnow()
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
         
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
@@ -4101,6 +4221,7 @@ class TradingEngine:
                     entry_adx_delta=round(entry_adx - entry_adx_prev, 4) if entry_adx is not None and entry_adx_prev is not None else None,
                     entry_quality_score=entry_quality_score,
                     entry_btc_regime=entry_btc_regime,
+                    entry_btc_regime_started_at=self._btc_regime_started_at,
                     entry_pos_di=_entry_pos_di,
                     entry_neg_di=_entry_neg_di,
                     entry_atr_pct=_entry_atr_pct,

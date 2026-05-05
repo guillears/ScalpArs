@@ -265,6 +265,9 @@ async def init_db():
                 # Regime stability instrumentation (May 5)
                 if 'entry_btc_regime_started_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_regime_started_at DATETIME"))
+                # BTC Trend Filter diagnostic (May 5)
+                if 'entry_btc_trend_gap_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_trend_gap_pct FLOAT"))
 
                 # Exploration Analytics (Apr 28) — observation-only fields for next-batch analysis.
                 if 'entry_pos_di' not in columns:

@@ -765,6 +765,7 @@
                                     <th class="px-3 py-2 font-medium text-center text-emerald-400" title="EMA50 Alignment counts: Aligned / Opposite / Flat. Aligned = slope agrees with trade direction (Exploration Analytics, Apr 28)">EMA50Align</th>
                                     <th class="px-3 py-2 font-medium text-right text-pink-400" title="Avg Binance funding rate at entry (positioning context) — negative = market heavily short (Exploration Analytics, Apr 28)">Funding%</th>
                                     <th class="px-3 py-2 font-medium text-right text-rose-400" title="Avg Time-to-Peak Ratio: where in the hold did peak P&L occur. <0.4 = fast directional (real edge). >0.7 = slow grind (survival luck) (Trade Quality, Apr 28)">TtPRatio</th>
+                                    <th class="px-3 py-2 font-medium text-right text-cyan-400" title="BTC EMA20 vs EMA50 gap at entry (% of EMA50). Positive = BTC in macro uptrend. Negative = downtrend. Diagnostic for BTC Trend Filter (May 5)">BTCTrend</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgP&L%</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total P&L in USD">Total$</th>
@@ -4052,7 +4053,7 @@
 
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Close Reason\n');
-            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'BTCTrend'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
             for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                 const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                 const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
@@ -4081,17 +4082,18 @@
                 const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
                 const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
                 const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
+                const btcTrendStr = r.avg_btc_trend_gap != null ? ((r.avg_btc_trend_gap >= 0 ? '+' : '') + r.avg_btc_trend_gap.toFixed(2) + '%') : '-';
                 const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                 const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                 const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
                 const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
                 const slProfStr = (_slP + _slN + _slBE) === 0 ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
-                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${btcTrendStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
             }
 
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
-            lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+            lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'BTCTrend'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
             const _ecoOrder = (a, b) => {
                 const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
                 const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
@@ -4124,6 +4126,7 @@
                 const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
                 const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
                 const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
+                const btcTrendStr = r.avg_btc_trend_gap != null ? ((r.avg_btc_trend_gap >= 0 ? '+' : '') + r.avg_btc_trend_gap.toFixed(2) + '%') : '-';
                 const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                 const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                 const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
@@ -4131,7 +4134,7 @@
                 const _isAborted = r.outcome === 'Aborted';
                 const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
                 const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
-                lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${btcTrendStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
             }
 
             // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
@@ -4820,7 +4823,7 @@
                 // --- ENTRY CONDITIONS BY CLOSE REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Close Reason\n');
-                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'BTCTrend'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
                 for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
                     const confStr = Object.entries(r.by_confidence || {}).sort((a,b) => b[1]-a[1]).map(([c,n]) => `${c[0]}:${n}`).join(' ');
@@ -4849,18 +4852,19 @@
                     const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
                     const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
                     const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
+                    const btcTrendStr = r.avg_btc_trend_gap != null ? ((r.avg_btc_trend_gap >= 0 ? '+' : '') + r.avg_btc_trend_gap.toFixed(2) + '%') : '-';
                     const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                     const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                     const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
                     const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
                     const slProfStr = (_slP + _slN + _slBE) === 0 ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
-                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${btcTrendStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
                 }
 
                 // --- ENTRY CONDITIONS BY OUTCOME (Winners vs Losers, May 2) ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
-                lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+                lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'EMA5%'.padEnd(8)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'+DI'.padEnd(7)} ${'-DI'.padEnd(7)} ${'DISpread'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'EMA50Slp'.padEnd(10)} ${'EMA50Align'.padEnd(13)} ${'Funding%'.padEnd(11)} ${'TtPRatio'.padEnd(9)} ${'BTCTrend'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
                 const _ecoOrder2 = (a, b) => {
                     const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
                     const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
@@ -4893,6 +4897,7 @@
                     const ema50AlignStr = `${r.ema50_aligned||0}A/${r.ema50_opposite||0}O/${r.ema50_flat||0}F`;
                     const fundingStr = r.avg_funding_rate != null ? (r.avg_funding_rate >= 0 ? '+' : '') + (r.avg_funding_rate * 100).toFixed(4) + '%' : '-';
                     const ttpStr = r.avg_ttp_ratio != null ? r.avg_ttp_ratio.toFixed(2) : '-';
+                    const btcTrendStr = r.avg_btc_trend_gap != null ? ((r.avg_btc_trend_gap >= 0 ? '+' : '') + r.avg_btc_trend_gap.toFixed(2) + '%') : '-';
                     const peakStr = (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(4) + '%';
                     const pnlStr = (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(4) + '%';
                     const totalUsdStr = '$' + (r.total_pnl_usd || 0).toFixed(2);
@@ -4900,7 +4905,7 @@
                     const _isAborted = r.outcome === 'Aborted';
                     const _slP = r.sl_positive_no_be||0, _slN = r.sl_never_positive||0, _slBE = r.sl_be_was_active||0;
                     const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
-                    lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                    lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${ema5DistStr.padEnd(8)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${posDiStr.padEnd(7)} ${negDiStr.padEnd(7)} ${diSpreadStr.padEnd(9)} ${atrPctStr.padEnd(8)} ${ema50SlpStr.padEnd(10)} ${ema50AlignStr.padEnd(13)} ${fundingStr.padEnd(11)} ${ttpStr.padEnd(9)} ${btcTrendStr.padEnd(10)} ${peakStr.padEnd(10)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
                 }
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
@@ -5885,6 +5890,7 @@
                                 <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${r.ema50_aligned||0}A</span>/<span class="text-red-400 text-xs">${r.ema50_opposite||0}O</span>/<span class="text-gray-400 text-xs">${r.ema50_flat||0}F</span></td>
                                 <td class="px-3 py-2 text-right text-pink-400">${r.avg_funding_rate != null ? (safe(r.avg_funding_rate) >= 0 ? '+' : '') + (safe(r.avg_funding_rate) * 100).toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-rose-400">${r.avg_ttp_ratio != null ? safe(r.avg_ttp_ratio).toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400'}">${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? '+' : '') + safe(r.avg_btc_trend_gap).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct) >= 0 ? '+' : ''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
@@ -5967,6 +5973,7 @@
                                 <td class="px-3 py-2 text-center"><span class="text-emerald-400 text-xs">${r.ema50_aligned||0}A</span>/<span class="text-red-400 text-xs">${r.ema50_opposite||0}O</span>/<span class="text-gray-400 text-xs">${r.ema50_flat||0}F</span></td>
                                 <td class="px-3 py-2 text-right text-pink-400">${r.avg_funding_rate != null ? (safe(r.avg_funding_rate) >= 0 ? '+' : '') + (safe(r.avg_funding_rate) * 100).toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-rose-400">${r.avg_ttp_ratio != null ? safe(r.avg_ttp_ratio).toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400'}">${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? '+' : '') + safe(r.avg_btc_trend_gap).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct) >= 0 ? '+' : ''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>

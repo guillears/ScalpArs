@@ -100,6 +100,11 @@ class Order(Base):
     # Diagnostic for "did this trade enter on a fresh / volatile regime that flips
     # quickly, or an aged / stable one?". See CLAUDE.md May 5 regime stability entry.
     entry_btc_regime_started_at = Column(DateTime, nullable=True)
+    # BTC EMA20 vs EMA50 gap at entry (% of EMA50). Captured at entry to support
+    # post-hoc analysis of "did this trade pass the BTC Trend Filter? by how much?"
+    # at the next-batch rollback validation checkpoint. See CLAUDE.md May 5 entry
+    # on filter-rollback candidates and BTC Trend Filter.
+    entry_btc_trend_gap_pct = Column(Float, nullable=True)
 
     # Exploration Analytics (Phase 1c+, observation-only) — added Apr 28
     # Captured at signal time, NOT used in any entry filter logic. Purpose:

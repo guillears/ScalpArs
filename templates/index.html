@@ -5519,19 +5519,29 @@
                 document.getElementById('perf-win-rate').textContent = data.win_rate + '%';
                 document.getElementById('perf-win-rate-longs').textContent = data.win_rate_longs + '%';
                 document.getElementById('perf-win-rate-shorts').textContent = data.win_rate_shorts + '%';
-                document.getElementById('perf-avg-win').textContent = formatUSD(data.avg_win);
-                document.getElementById('perf-avg-win-long').textContent = formatUSD(data.avg_win_long);
-                document.getElementById('perf-avg-win-short').textContent = formatUSD(data.avg_win_short);
-                document.getElementById('perf-avg-loss').textContent = formatUSD(data.avg_loss);
-                document.getElementById('perf-avg-loss-long').textContent = formatUSD(data.avg_loss_long);
-                document.getElementById('perf-avg-loss-short').textContent = formatUSD(data.avg_loss_short);
+                // Helper: format "$X.XX (Y%)" with NaN/undefined fallback to 0
+                const _dollarPct = (dollarVal, pctVal) => {
+                    const d = Number(dollarVal) || 0;
+                    const p = Number(pctVal);
+                    const pStr = Number.isFinite(p) ? p : 0;
+                    return `${formatUSD(d)} (${pStr}%)`;
+                };
+                document.getElementById('perf-avg-win').textContent = _dollarPct(data.avg_win, data.avg_win_pct);
+                document.getElementById('perf-avg-win-long').textContent = _dollarPct(data.avg_win_long, data.avg_win_long_pct);
+                document.getElementById('perf-avg-win-short').textContent = _dollarPct(data.avg_win_short, data.avg_win_short_pct);
+                document.getElementById('perf-avg-loss').textContent = _dollarPct(data.avg_loss, data.avg_loss_pct);
+                document.getElementById('perf-avg-loss-long').textContent = _dollarPct(data.avg_loss_long, data.avg_loss_long_pct);
+                document.getElementById('perf-avg-loss-short').textContent = _dollarPct(data.avg_loss_short, data.avg_loss_short_pct);
                 const expectancyEl = document.getElementById('perf-expectancy');
-                expectancyEl.textContent = `${formatUSD(data.expectancy)} (${data.expectancy_pct}%)`;
-                expectancyEl.className = `text-xl font-bold ${data.expectancy >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
-                document.getElementById('perf-best-win-long').textContent = formatUSD(data.best_win_long);
-                document.getElementById('perf-best-win-short').textContent = formatUSD(data.best_win_short);
-                document.getElementById('perf-worst-loss-long').textContent = formatUSD(data.worst_loss_long);
-                document.getElementById('perf-worst-loss-short').textContent = formatUSD(data.worst_loss_short);
+                const _exp = Number(data.expectancy) || 0;
+                const _expPct = Number(data.expectancy_pct);
+                const _expPctStr = Number.isFinite(_expPct) ? _expPct : 0;
+                expectancyEl.textContent = `${formatUSD(_exp)} (${_expPctStr}%)`;
+                expectancyEl.className = `text-xl font-bold ${_exp >= 0 ? 'text-emerald-400' : 'text-red-400'}`;
+                document.getElementById('perf-best-win-long').textContent = _dollarPct(data.best_win_long, data.best_win_long_pct);
+                document.getElementById('perf-best-win-short').textContent = _dollarPct(data.best_win_short, data.best_win_short_pct);
+                document.getElementById('perf-worst-loss-long').textContent = _dollarPct(data.worst_loss_long, data.worst_loss_long_pct);
+                document.getElementById('perf-worst-loss-short').textContent = _dollarPct(data.worst_loss_short, data.worst_loss_short_pct);
                 
                 const pnlEl = document.getElementById('perf-total-pnl');
                 pnlEl.textContent = `${formatUSD(data.total_pnl)} (${data.total_pnl_percentage}%)`;

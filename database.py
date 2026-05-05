@@ -262,6 +262,9 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier_source VARCHAR(40)"))
                 if 'cell_multiplier_capped' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier_capped BOOLEAN NOT NULL DEFAULT 0"))
+                # Regime stability instrumentation (May 5)
+                if 'entry_btc_regime_started_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_regime_started_at DATETIME"))
 
                 # Exploration Analytics (Apr 28) — observation-only fields for next-batch analysis.
                 if 'entry_pos_di' not in columns:
@@ -303,6 +306,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN paper_bnb_balance_usd FLOAT DEFAULT 500.0"))
                 if 'runtime_initial_total_usd' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN runtime_initial_total_usd FLOAT"))
+                if 'current_btc_regime' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN current_btc_regime VARCHAR(20)"))
+                if 'btc_regime_started_at' not in bs_columns:
+                    connection.execute(text("ALTER TABLE bot_state ADD COLUMN btc_regime_started_at DATETIME"))
 
             if 'investors' not in inspector.get_table_names():
                 connection.execute(text("""

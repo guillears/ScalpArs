@@ -1527,7 +1527,77 @@
                         </table>
                     </div>
             </div>
-            
+
+                <!-- Regime Stability Diagnostics (May 5) — see CLAUDE.md -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Flat Distance (regime stability diagnostic)</h3>
+                    <p class="text-xs text-gray-500 mb-3">FlatΔ = |BTC EMA20 slope| − flat threshold (per direction). Low values = BTC was just past flat threshold at entry, regime flip-prone. High values = BTC deeply in regime.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">FlatΔ Range</th>
+                                    <th class="px-3 py-2 font-medium">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center">N</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="btc-flat-distance-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Regime Age at Entry (regime stability diagnostic)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Time elapsed between BTC's regime classification flip and trade entry. Fresh regimes (< 15min) flip more frequently than aged ones.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Regime Age</th>
+                                    <th class="px-3 py-2 font-medium">Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center">N</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="btc-regime-age-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Regime Stability Cross-Tab (BTC FlatΔ × Regime Age)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Direct test of "regime detection vs ADX" hypothesis. If REGIME_CHANGE losers cluster at low FlatΔ × short age → marginal-and-fresh regime is the issue.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Dir</th>
+                                    <th class="px-3 py-2 font-medium">FlatΔ</th>
+                                    <th class="px-3 py-2 font-medium">Regime Age</th>
+                                    <th class="px-3 py-2 font-medium text-center">N</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win%</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total $</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="regime-stability-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by BTC Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Entry RSI</h3>
@@ -4431,6 +4501,32 @@
                 }
             }
 
+            // Regime Stability Diagnostics (May 5)
+            if (perf.btc_flat_distance_performance && perf.btc_flat_distance_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC Flat Distance (regime stability diagnostic)\n');
+                lines.push(`${'FlatΔ'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                for (const r of perf.btc_flat_distance_performance) {
+                    lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                }
+            }
+            if (perf.btc_regime_age_performance && perf.btc_regime_age_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC Regime Age at Entry\n');
+                lines.push(`${'Regime Age'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                for (const r of perf.btc_regime_age_performance) {
+                    lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                }
+            }
+            if (perf.regime_stability_crosstab && perf.regime_stability_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Regime Stability Cross-Tab (BTC FlatΔ × Regime Age)\n');
+                lines.push(`${'Dir'.padEnd(6)} ${'FlatΔ'.padEnd(13)} ${'RegAge'.padEnd(11)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg%'.padEnd(9)}`);
+                for (const r of perf.regime_stability_crosstab) {
+                    lines.push(`${(r.direction||'').padEnd(6)} ${(r.flat_distance||'').padEnd(13)} ${(r.regime_age||'').padEnd(11)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                }
+            }
+
             if (perf.volume_crosstab && perf.volume_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Volume Cross-Tab (Global x Pair)\n');
@@ -5221,6 +5317,32 @@
                     for (const r of perf.btc_adx_direction_performance) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.btc_adx_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- REGIME STABILITY DIAGNOSTICS (May 5) ---
+                if (perf.btc_flat_distance_performance && perf.btc_flat_distance_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by BTC Flat Distance (regime stability diagnostic)\n');
+                    lines.push(`${'FlatΔ'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                    for (const r of perf.btc_flat_distance_performance) {
+                        lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                    }
+                }
+                if (perf.btc_regime_age_performance && perf.btc_regime_age_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by BTC Regime Age at Entry\n');
+                    lines.push(`${'Regime Age'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                    for (const r of perf.btc_regime_age_performance) {
+                        lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                    }
+                }
+                if (perf.regime_stability_crosstab && perf.regime_stability_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Regime Stability Cross-Tab (BTC FlatΔ × Regime Age)\n');
+                    lines.push(`${'Dir'.padEnd(6)} ${'FlatΔ'.padEnd(13)} ${'RegAge'.padEnd(11)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg%'.padEnd(9)}`);
+                    for (const r of perf.regime_stability_crosstab) {
+                        lines.push(`${(r.direction||'').padEnd(6)} ${(r.flat_distance||'').padEnd(13)} ${(r.regime_age||'').padEnd(11)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
                     }
                 }
 
@@ -6546,6 +6668,58 @@
                     }).join('');
                 } else {
                     btcAdxDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX direction)</td></tr>';
+                }
+
+                // Regime Stability Diagnostics (May 5)
+                const _renderBucketRow = (r, rangeKey) => {
+                    const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                    const totalCls = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const avgUsdCls = (r.avg_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const avgPctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                    return `
+                        <tr class="hover:bg-white/5">
+                            <td class="px-3 py-2 font-medium text-cyan-400">${r[rangeKey]}</td>
+                            <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                            <td class="px-3 py-2 text-center">${r.count}</td>
+                            <td class="px-3 py-2 text-right ${wrClass} font-medium">${(r.win_rate || 0).toFixed(0)}%</td>
+                            <td class="px-3 py-2 text-right ${totalCls} font-medium">${formatUSD(r.total_usd || 0)}</td>
+                            <td class="px-3 py-2 text-right ${avgUsdCls} font-medium">${formatUSD(r.avg_usd || 0)}</td>
+                            <td class="px-3 py-2 text-right ${avgPctCls} font-medium">${r.avg_pct != null ? (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(2) + '%' : '-'}</td>
+                        </tr>`;
+                };
+                const fdBody = document.getElementById('btc-flat-distance-performance-body');
+                if (data.btc_flat_distance_performance && data.btc_flat_distance_performance.length > 0) {
+                    fdBody.innerHTML = data.btc_flat_distance_performance.map(r => _renderBucketRow(r, 'range')).join('');
+                } else {
+                    fdBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
+                }
+                const raBody = document.getElementById('btc-regime-age-performance-body');
+                if (data.btc_regime_age_performance && data.btc_regime_age_performance.length > 0) {
+                    raBody.innerHTML = data.btc_regime_age_performance.map(r => _renderBucketRow(r, 'range')).join('');
+                } else {
+                    raBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
+                }
+                const rsBody = document.getElementById('regime-stability-crosstab-body');
+                if (data.regime_stability_crosstab && data.regime_stability_crosstab.length > 0) {
+                    rsBody.innerHTML = data.regime_stability_crosstab.map(r => {
+                        const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                        const totalCls = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-cyan-400">${r.flat_distance}</td>
+                                <td class="px-3 py-2 text-cyan-400">${r.regime_age}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${(r.win_rate || 0).toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalCls} font-medium">${formatUSD(r.total_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${avgPctCls} font-medium">${r.avg_pct != null ? (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(2) + '%' : '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    rsBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
                 }
 
                 // Performance by BTC Entry RSI

@@ -95,6 +95,11 @@ class Order(Base):
     # BTC regime classification at entry (frozen) and exit (current)
     entry_btc_regime = Column(String(20), nullable=True)
     exit_btc_regime = Column(String(20), nullable=True)
+    # When the current BTC regime began (frozen at entry). Used at report time
+    # to compute btc_regime_age_seconds = opened_at - entry_btc_regime_started_at.
+    # Diagnostic for "did this trade enter on a fresh / volatile regime that flips
+    # quickly, or an aged / stable one?". See CLAUDE.md May 5 regime stability entry.
+    entry_btc_regime_started_at = Column(DateTime, nullable=True)
 
     # Exploration Analytics (Phase 1c+, observation-only) — added Apr 28
     # Captured at signal time, NOT used in any entry filter logic. Purpose:
@@ -324,7 +329,13 @@ class BotState(Base):
     # In paper mode: paper_balance + paper_bnb_initial_usd at first init.
     # See CLAUDE.md May 5 entry on Return Multiple bug fix.
     runtime_initial_total_usd = Column(Float, nullable=True)
-    
+
+    # BTC regime tracking — persisted across restarts so regime age survives
+    # downtime. Updated each scan cycle when BTC regime classification changes.
+    # See CLAUDE.md May 5 entry on regime stability instrumentation.
+    current_btc_regime = Column(String(20), nullable=True)
+    btc_regime_started_at = Column(DateTime, nullable=True)
+
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)
     

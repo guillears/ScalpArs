@@ -4653,3 +4653,104 @@ NOT:
 4. To document the rationale (config pollution from rapid changes, not a strategy reversal)
 
 The pre-reset 35-trade sample is preserved in `reports/` for any future cross-config analysis. It is NOT to be pooled with the new batch.
+
+## May 5, 2026 — Regime Stability Instrumentation (BTC Flat Distance + BTC Regime Age)
+
+### Diagnostic question this exists to answer
+
+REGIME_CHANGE / FL_REGIME_CHANGE exits have been the largest single loss bucket across multiple batches (May 4 224-trade, May 5 pre-reset 35-trade, May 5 fresh-start 5-trade SHORT). The hypothesis is two-pronged:
+
+1. **Marginal regime entries**: trades opened when BTC slope was just past the flat threshold (e.g., -0.025% past a 0.02% threshold) flip back to NEUTRAL on normal slope volatility within minutes.
+2. **Fresh regime entries**: trades opened in a regime that just started flip more often than aged regimes.
+
+Without instrumentation we couldn't distinguish these from "ADX 28-30 is structurally bad" or other hypotheses. This entry adds the data we need.
+
+### What was added
+
+**Three pieces of data captured per trade and BotState:**
+
+1. **`BotState.current_btc_regime`** + **`BotState.btc_regime_started_at`** — runtime state of BTC's regime classification, persisted across restarts.
+2. **`Order.entry_btc_regime_started_at`** — frozen at trade entry time. Used at report time to compute `btc_regime_age_seconds = opened_at - entry_btc_regime_started_at`.
+3. **Derived at report time (no schema): `btc_flat_distance_pct = abs(entry_btc_ema20_slope) - macro_trend_flat_threshold_*`** (per direction). Negative values mean entry was below threshold (which shouldn't happen given the entry filter, but conceivable on edge cases).
+
+### Engine logic
+
+**Live tracking (`services/trading_engine.py` scan loop):**
+- Each cycle, compute `btc_regime` via `determine_macro_regime()` (already happens).
+- Compare to `_current_btc_regime`.
+- If different → regime flipped, set `self._btc_regime_started_at = utcnow()`, log `[BTC_REGIME] flipped X → Y at TIMESTAMP`, persist to BotState in a separate session.
+- If same → keep `_btc_regime_started_at` unchanged.
+- Fallback: if same regime but `_btc_regime_started_at` is null (e.g., first cycle before back-walk completes), set to now.
+
+**Cold-start back-walk (`services/trading_engine.py::_init_btc_regime_started_at`):**
+- Scheduled as background task at end of `initialize()`.
+- Waits up to 30s for first scan to populate `_current_btc_regime`.
+- Fetches 24h of BTC 5m OHLCV (288 candles).
+- Computes EMA20 via pandas `.ewm()` over the historical closes.
+- Walks backward from latest candle: at each candle, computes what `determine_macro_regime()` would have returned. The first candle whose classification differs from current is the boundary; the next candle's timestamp is `btc_regime_started_at`.
+- If no boundary found in 24h, regime is at least 24h old — set started_at to oldest fetched candle's timestamp.
+- Persists to BotState.
+
+**Capture at entry (`services/trading_engine.py::open_position`):**
+- All 5 Order creation sites now include `entry_btc_regime_started_at=self._btc_regime_started_at`. Trade is permanently tagged with "BTC was in this regime since X."
+
+### Reporting layer
+
+**Three new tables surfaced in dashboard + text exports:**
+
+1. **Performance by BTC Flat Distance** — buckets: <0.02% / 0.02-0.05% / 0.05-0.10% / 0.10-0.20% / ≥0.20% × direction. Shows whether marginal-regime entries are systematically worse.
+2. **Performance by BTC Regime Age at Entry** — buckets: <5min / 5-15min / 15-30min / 30-60min / 1-2h / 2-4h / 4h+ × direction. Shows whether fresh regimes are flip-prone.
+3. **Regime Stability Cross-Tab (BTC FlatΔ × Regime Age)** — 2D: 4 flat buckets × 4 age buckets × direction. Cell-level WR / Avg P&L %. The diagnostic answer.
+
+**Existing tables also extended:**
+- `Entry Conditions by Close Reason` — 2 new derived dims (`avg_btc_flat_distance`, `avg_btc_regime_age_sec`)
+- `Entry Conditions by Outcome (Winners vs Losers)` — same 2 dims
+
+Note: UI column display for `avg_btc_flat_distance` / `avg_btc_regime_age_sec` in the Entry Conditions tables is plumbed through the data payload but the rendered column header strings still need to be updated in a follow-up if you want them visible inline. The text exports work on the payload directly so they capture them.
+
+### What we expect to see
+
+If Hypothesis B (regime detection sensitivity) is correct:
+- REGIME_CHANGE losers cluster at low FlatΔ (<0.02%)
+- REGIME_CHANGE losers cluster at short Regime Age (<15min)
+- The (low FlatΔ × short Age) cell of the cross-tab shows worst WR
+
+If Hypothesis A (ADX-driven) is correct:
+- FlatΔ and Regime Age don't discriminate
+- Loser clustering shows up only on pair-level dimensions (ADX 28-30)
+
+If neither shows clean discrimination → the regime-change exits are probably noise at small N, no filter change warranted.
+
+### Operational caveat
+
+**Pre-deploy trades have `entry_btc_regime_started_at = NULL`.** They predate the capture. Reports will show `RegAge: -` for those rows and exclude them from regime-age bucket performance. New trades from this deploy onward will populate properly.
+
+For the current 5-trade SHORT batch and all earlier batches: `entry_btc_regime_started_at` is NULL. We won't be able to backfill regime age for historical trades.
+
+**The diagnostic answer to "why do regime-change exits keep happening" will only be available for trades from deploy onward.**
+
+### Validation plan
+
+After ~30 trades on the deployed instrumentation:
+1. Confirm `btc_regime_started_at` populates correctly via DB inspection
+2. Run the report and check: do REGIME_CHANGE losers cluster in low-FlatΔ / short-age cells?
+3. If yes (signal confirmed): consider widening flat threshold OR adding hysteresis to regime classification (separate change)
+4. If no (signal absent): retire the hypothesis, focus elsewhere
+
+### Files changed
+
+- `models.py` — `BotState.current_btc_regime`, `BotState.btc_regime_started_at`, `Order.entry_btc_regime_started_at`
+- `database.py` — auto-migrate ADD COLUMN for all three
+- `services/trading_engine.py` — runtime state, persistence, scan loop transition detection, cold-start back-walk method, entry-time capture at all 5 Order creation sites
+- `main.py` — 3 new bucket-performance helpers (`_compute_btc_flat_distance_performance`, `_compute_btc_regime_age_performance`, `_compute_regime_stability_crosstab`); 2 new fields in Entry Conditions builders; payload entries; empty-data fallback paths
+- `templates/index.html` — 3 new UI tables + JS renderers; both text-export sites updated
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To document:
+1. The two competing hypotheses we're trying to discriminate (regime sensitivity vs ADX structure)
+2. The exact diagnostic table that answers it (Regime Stability Cross-Tab)
+3. The data limitation (historical trades pre-deploy can't be analyzed)
+4. The pre-committed validation plan for the next ~30 trades on deployed instrumentation
+5. The next-step decision tree (widen threshold, add hysteresis, or retire hypothesis) so future-Claude doesn't have to re-derive the analytical context

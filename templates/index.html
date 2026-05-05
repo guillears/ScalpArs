@@ -8289,9 +8289,11 @@
                     // L1 = first arming, L2 = promoted (peak ≥ 2× TP min), L3+ = RSI handoff zone.
                     // Coexists with FL flags (orthogonal info: FL = adverse state, TP-tier = profitable state).
                     let tpTierBadge = '';
-                    const _tpPeak = o.peak_pnl || 0;
-                    const _tpTarget = o.tp_target || 0.20;
+                    const _tpPeak = (typeof o.peak_pnl === 'number') ? o.peak_pnl : 0;
+                    const _tpTarget = (typeof o.tp_target === 'number' && o.tp_target > 0) ? o.tp_target : 0.20;
                     const _tpLvl = o.tp_level || 1;
+                    // DIAGNOSTIC (May 4 — investigating why badge not showing): log every row's values
+                    console.log(`[TP-BADGE] ${o.pair} ${o.direction}: peak=${_tpPeak} (raw: ${JSON.stringify(o.peak_pnl)}) target=${_tpTarget} (raw: ${JSON.stringify(o.tp_target)}) lvl=${_tpLvl} (raw: ${JSON.stringify(o.tp_level)}) — armed=${_tpPeak >= _tpTarget && _tpPeak > 0}`);
                     if (_tpPeak >= _tpTarget && _tpPeak > 0) {
                         if (_tpLvl >= 3) {
                             tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/25 text-purple-300" title="L3+ — RSI handoff zone (trailing disabled, exits via 2-drop RSI). Floor: peak − pullback already passed; protected from full SL.">🛡 L3·RSI</span>`;

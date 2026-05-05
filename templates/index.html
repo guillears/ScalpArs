@@ -2777,7 +2777,7 @@
                             <div>
                                 <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th class="text-left px-1">Max ADX</th><th></th></tr></thead>
                                     <tbody id="btc-rsi-adx-filter-long-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addBtcRsiAdxRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
@@ -2785,7 +2785,7 @@
                             <div>
                                 <span class="text-xs text-red-400 font-medium">SHORT rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th class="text-left px-1">Max ADX</th><th></th></tr></thead>
                                     <tbody id="btc-rsi-adx-filter-short-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addBtcRsiAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
@@ -2848,7 +2848,7 @@
                             <div>
                                 <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th class="text-left px-1">Max ADX</th><th></th></tr></thead>
                                     <tbody id="rsi-adx-filter-long-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addRsiAdxRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
@@ -2856,7 +2856,7 @@
                             <div>
                                 <span class="text-xs text-red-400 font-medium">SHORT rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">Min ADX</th><th class="text-left px-1">Max ADX</th><th></th></tr></thead>
                                     <tbody id="rsi-adx-filter-short-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addRsiAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
@@ -8972,13 +8972,16 @@
         }
 
         // RSI x ADX Cross-Filter helpers
-        function addRsiAdxRow(direction, rsiMin='', rsiMax='', minAdx='') {
+        // Rule format (May 5): "RSI_LO-RSI_HI:MIN_ADX" OR "RSI_LO-RSI_HI:MIN_ADX-MAX_ADX"
+        // Max ADX is OPTIONAL — leave blank to use min-only (require ADX >= MIN).
+        function addRsiAdxRow(direction, rsiMin='', rsiMax='', minAdx='', maxAdx='') {
             const tbody = document.getElementById(`rsi-adx-filter-${direction}-body`);
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs rsi-adx-min" value="${rsiMin}"></td>
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs rsi-adx-max" value="${rsiMax}"></td>
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs rsi-adx-adx" value="${minAdx}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" placeholder="∞" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs rsi-adx-adx-max" value="${maxAdx}"></td>
                 <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
             tbody.appendChild(tr);
         }
@@ -8989,9 +8992,12 @@
             for (const rule of filterStr.split(',')) {
                 const r = rule.trim();
                 if (!r || !r.includes(':')) continue;
-                const [rsiPart, minAdx] = r.split(':');
+                const [rsiPart, adxPart] = r.split(':');
                 const [rsiMin, rsiMax] = rsiPart.split('-');
-                addRsiAdxRow(direction, rsiMin, rsiMax, minAdx);
+                const adxBounds = adxPart.split('-');
+                const minAdx = adxBounds[0] || '';
+                const maxAdx = adxBounds.length === 2 ? adxBounds[1] : '';
+                addRsiAdxRow(direction, rsiMin, rsiMax, minAdx, maxAdx);
             }
         }
         function collectRsiAdxFilter(direction) {
@@ -9001,19 +9007,25 @@
                 const rMin = row.querySelector('.rsi-adx-min').value.trim();
                 const rMax = row.querySelector('.rsi-adx-max').value.trim();
                 const adx = row.querySelector('.rsi-adx-adx').value.trim();
-                if (rMin && rMax && adx) rules.push(`${rMin}-${rMax}:${adx}`);
+                const adxMaxEl = row.querySelector('.rsi-adx-adx-max');
+                const adxMax = adxMaxEl ? adxMaxEl.value.trim() : '';
+                if (rMin && rMax && adx) {
+                    rules.push(adxMax ? `${rMin}-${rMax}:${adx}-${adxMax}` : `${rMin}-${rMax}:${adx}`);
+                }
             });
             return rules.join(',');
         }
 
         // BTC RSI x BTC ADX Cross-Filter helpers
-        function addBtcRsiAdxRow(direction, rsiMin='', rsiMax='', minAdx='') {
+        // Same rule format as pair-level (see above). Max ADX optional.
+        function addBtcRsiAdxRow(direction, rsiMin='', rsiMax='', minAdx='', maxAdx='') {
             const tbody = document.getElementById(`btc-rsi-adx-filter-${direction}-body`);
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs btc-rsi-adx-min" value="${rsiMin}"></td>
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs btc-rsi-adx-max" value="${rsiMax}"></td>
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs btc-rsi-adx-adx" value="${minAdx}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" placeholder="∞" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs btc-rsi-adx-adx-max" value="${maxAdx}"></td>
                 <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
             tbody.appendChild(tr);
         }
@@ -9024,9 +9036,12 @@
             for (const rule of filterStr.split(',')) {
                 const r = rule.trim();
                 if (!r || !r.includes(':')) continue;
-                const [rsiPart, minAdx] = r.split(':');
+                const [rsiPart, adxPart] = r.split(':');
                 const [rsiMin, rsiMax] = rsiPart.split('-');
-                addBtcRsiAdxRow(direction, rsiMin, rsiMax, minAdx);
+                const adxBounds = adxPart.split('-');
+                const minAdx = adxBounds[0] || '';
+                const maxAdx = adxBounds.length === 2 ? adxBounds[1] : '';
+                addBtcRsiAdxRow(direction, rsiMin, rsiMax, minAdx, maxAdx);
             }
         }
         function collectBtcRsiAdxFilter(direction) {
@@ -9036,7 +9051,11 @@
                 const rMin = row.querySelector('.btc-rsi-adx-min').value.trim();
                 const rMax = row.querySelector('.btc-rsi-adx-max').value.trim();
                 const adx = row.querySelector('.btc-rsi-adx-adx').value.trim();
-                if (rMin && rMax && adx) rules.push(`${rMin}-${rMax}:${adx}`);
+                const adxMaxEl = row.querySelector('.btc-rsi-adx-adx-max');
+                const adxMax = adxMaxEl ? adxMaxEl.value.trim() : '';
+                if (rMin && rMax && adx) {
+                    rules.push(adxMax ? `${rMin}-${rMax}:${adx}-${adxMax}` : `${rMin}-${rMax}:${adx}`);
+                }
             });
             return rules.join(',');
         }

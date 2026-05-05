@@ -2100,6 +2100,7 @@ def _compute_btc_flat_distance_performance(orders):
     for (label, direction), group in sorted(rows.items(), key=lambda kv: (bucket_order[kv[0][0]], kv[0][1])):
         n = len(group)
         wins = sum(1 for o in group if (o.pnl or 0) > 0)
+        np_count = sum(1 for o in group if (o.peak_pnl or 0) <= 0)
         total = sum(o.pnl or 0 for o in group)
         avg_pct = sum(o.pnl_percentage or 0 for o in group) / n if n > 0 else 0
         out.append({
@@ -2110,6 +2111,8 @@ def _compute_btc_flat_distance_performance(orders):
             'total_usd': round(total, 2),
             'avg_usd': round(total / n, 2) if n > 0 else 0,
             'avg_pct': round(avg_pct, 4),
+            'np_count': np_count,
+            'np_pct': round(np_count / n * 100, 0) if n > 0 else 0,
         })
     return out
 
@@ -2146,6 +2149,7 @@ def _compute_btc_regime_age_performance(orders):
     for (label, direction), group in sorted(rows.items(), key=lambda kv: (bucket_order[kv[0][0]], kv[0][1])):
         n = len(group)
         wins = sum(1 for o in group if (o.pnl or 0) > 0)
+        np_count = sum(1 for o in group if (o.peak_pnl or 0) <= 0)
         total = sum(o.pnl or 0 for o in group)
         avg_pct = sum(o.pnl_percentage or 0 for o in group) / n if n > 0 else 0
         out.append({
@@ -2156,6 +2160,8 @@ def _compute_btc_regime_age_performance(orders):
             'total_usd': round(total, 2),
             'avg_usd': round(total / n, 2) if n > 0 else 0,
             'avg_pct': round(avg_pct, 4),
+            'np_count': np_count,
+            'np_pct': round(np_count / n * 100, 0) if n > 0 else 0,
         })
     return out
 
@@ -2205,6 +2211,7 @@ def _compute_regime_stability_crosstab(orders):
     ):
         n = len(group)
         wins = sum(1 for o in group if (o.pnl or 0) > 0)
+        np_count = sum(1 for o in group if (o.peak_pnl or 0) <= 0)
         total = sum(o.pnl or 0 for o in group)
         avg_pct = sum(o.pnl_percentage or 0 for o in group) / n if n > 0 else 0
         out.append({
@@ -2215,6 +2222,8 @@ def _compute_regime_stability_crosstab(orders):
             'win_rate': round(wins / n * 100, 1) if n > 0 else 0,
             'total_usd': round(total, 2),
             'avg_pct': round(avg_pct, 4),
+            'np_count': np_count,
+            'np_pct': round(np_count / n * 100, 0) if n > 0 else 0,
         })
     return out
 

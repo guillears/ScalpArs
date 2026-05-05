@@ -1543,10 +1543,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg $</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                    <th class="px-3 py-2 font-medium text-center">NP</th>
                                 </tr>
                             </thead>
                             <tbody id="btc-flat-distance-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1566,10 +1567,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg $</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                    <th class="px-3 py-2 font-medium text-center">NP</th>
                                 </tr>
                             </thead>
                             <tbody id="btc-regime-age-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1589,10 +1591,11 @@
                                     <th class="px-3 py-2 font-medium text-right">Win%</th>
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                    <th class="px-3 py-2 font-medium text-center">NP</th>
                                 </tr>
                             </thead>
                             <tbody id="regime-stability-crosstab-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4502,28 +4505,29 @@
             }
 
             // Regime Stability Diagnostics (May 5)
+            const _npStr = (r) => (r.np_count != null) ? `${r.np_count} (${(r.np_pct||0).toFixed(0)}%)` : '-';
             if (perf.btc_flat_distance_performance && perf.btc_flat_distance_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by BTC Flat Distance (regime stability diagnostic)\n');
-                lines.push(`${'FlatΔ'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                lines.push(`${'FlatΔ'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'NP'.padEnd(10)}`);
                 for (const r of perf.btc_flat_distance_performance) {
-                    lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                    lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)} ${_npStr(r).padEnd(10)}`);
                 }
             }
             if (perf.btc_regime_age_performance && perf.btc_regime_age_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by BTC Regime Age at Entry\n');
-                lines.push(`${'Regime Age'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                lines.push(`${'Regime Age'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'NP'.padEnd(10)}`);
                 for (const r of perf.btc_regime_age_performance) {
-                    lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                    lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)} ${_npStr(r).padEnd(10)}`);
                 }
             }
             if (perf.regime_stability_crosstab && perf.regime_stability_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Regime Stability Cross-Tab (BTC FlatΔ × Regime Age)\n');
-                lines.push(`${'Dir'.padEnd(6)} ${'FlatΔ'.padEnd(13)} ${'RegAge'.padEnd(11)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg%'.padEnd(9)}`);
+                lines.push(`${'Dir'.padEnd(6)} ${'FlatΔ'.padEnd(13)} ${'RegAge'.padEnd(11)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg%'.padEnd(9)} ${'NP'.padEnd(10)}`);
                 for (const r of perf.regime_stability_crosstab) {
-                    lines.push(`${(r.direction||'').padEnd(6)} ${(r.flat_distance||'').padEnd(13)} ${(r.regime_age||'').padEnd(11)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                    lines.push(`${(r.direction||'').padEnd(6)} ${(r.flat_distance||'').padEnd(13)} ${(r.regime_age||'').padEnd(11)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)} ${_npStr(r).padEnd(10)}`);
                 }
             }
 
@@ -5321,28 +5325,29 @@
                 }
 
                 // --- REGIME STABILITY DIAGNOSTICS (May 5) ---
+                const _npStr2 = (r) => (r.np_count != null) ? `${r.np_count} (${(r.np_pct||0).toFixed(0)}%)` : '-';
                 if (perf.btc_flat_distance_performance && perf.btc_flat_distance_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by BTC Flat Distance (regime stability diagnostic)\n');
-                    lines.push(`${'FlatΔ'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                    lines.push(`${'FlatΔ'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'NP'.padEnd(10)}`);
                     for (const r of perf.btc_flat_distance_performance) {
-                        lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                        lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)} ${_npStr2(r).padEnd(10)}`);
                     }
                 }
                 if (perf.btc_regime_age_performance && perf.btc_regime_age_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by BTC Regime Age at Entry\n');
-                    lines.push(`${'Regime Age'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)}`);
+                    lines.push(`${'Regime Age'.padEnd(13)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'NP'.padEnd(10)}`);
                     for (const r of perf.btc_regime_age_performance) {
-                        lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                        lines.push(`${(r.range||'').padEnd(13)} ${(r.direction||'').padEnd(6)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${('$'+(r.avg_usd||0).toFixed(2)).padStart(10)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)} ${_npStr2(r).padEnd(10)}`);
                     }
                 }
                 if (perf.regime_stability_crosstab && perf.regime_stability_crosstab.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Regime Stability Cross-Tab (BTC FlatΔ × Regime Age)\n');
-                    lines.push(`${'Dir'.padEnd(6)} ${'FlatΔ'.padEnd(13)} ${'RegAge'.padEnd(11)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg%'.padEnd(9)}`);
+                    lines.push(`${'Dir'.padEnd(6)} ${'FlatΔ'.padEnd(13)} ${'RegAge'.padEnd(11)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Total$'.padEnd(11)} ${'Avg%'.padEnd(9)} ${'NP'.padEnd(10)}`);
                     for (const r of perf.regime_stability_crosstab) {
-                        lines.push(`${(r.direction||'').padEnd(6)} ${(r.flat_distance||'').padEnd(13)} ${(r.regime_age||'').padEnd(11)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)}`);
+                        lines.push(`${(r.direction||'').padEnd(6)} ${(r.flat_distance||'').padEnd(13)} ${(r.regime_age||'').padEnd(11)} ${String(r.count).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+(r.total_usd||0).toFixed(2)).padStart(11)} ${(((r.avg_pct||0) >= 0 ? '+' : '') + (r.avg_pct||0).toFixed(2) + '%').padStart(9)} ${_npStr2(r).padEnd(10)}`);
                     }
                 }
 
@@ -6677,6 +6682,7 @@
                     const avgUsdCls = (r.avg_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const avgPctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                     const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                    const npStr = (r.np_count != null) ? `${r.np_count} (${(r.np_pct || 0).toFixed(0)}%)` : '-';
                     return `
                         <tr class="hover:bg-white/5">
                             <td class="px-3 py-2 font-medium text-cyan-400">${r[rangeKey]}</td>
@@ -6686,19 +6692,20 @@
                             <td class="px-3 py-2 text-right ${totalCls} font-medium">${formatUSD(r.total_usd || 0)}</td>
                             <td class="px-3 py-2 text-right ${avgUsdCls} font-medium">${formatUSD(r.avg_usd || 0)}</td>
                             <td class="px-3 py-2 text-right ${avgPctCls} font-medium">${r.avg_pct != null ? (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(2) + '%' : '-'}</td>
+                            <td class="px-3 py-2 text-center text-gray-300">${npStr}</td>
                         </tr>`;
                 };
                 const fdBody = document.getElementById('btc-flat-distance-performance-body');
                 if (data.btc_flat_distance_performance && data.btc_flat_distance_performance.length > 0) {
                     fdBody.innerHTML = data.btc_flat_distance_performance.map(r => _renderBucketRow(r, 'range')).join('');
                 } else {
-                    fdBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
+                    fdBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
                 }
                 const raBody = document.getElementById('btc-regime-age-performance-body');
                 if (data.btc_regime_age_performance && data.btc_regime_age_performance.length > 0) {
                     raBody.innerHTML = data.btc_regime_age_performance.map(r => _renderBucketRow(r, 'range')).join('');
                 } else {
-                    raBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
+                    raBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
                 }
                 const rsBody = document.getElementById('regime-stability-crosstab-body');
                 if (data.regime_stability_crosstab && data.regime_stability_crosstab.length > 0) {
@@ -6707,6 +6714,7 @@
                         const totalCls = (r.total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const avgPctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const npStr = (r.np_count != null) ? `${r.np_count} (${(r.np_pct || 0).toFixed(0)}%)` : '-';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
@@ -6716,10 +6724,11 @@
                                 <td class="px-3 py-2 text-right ${wrClass} font-medium">${(r.win_rate || 0).toFixed(0)}%</td>
                                 <td class="px-3 py-2 text-right ${totalCls} font-medium">${formatUSD(r.total_usd || 0)}</td>
                                 <td class="px-3 py-2 text-right ${avgPctCls} font-medium">${r.avg_pct != null ? (r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center text-gray-300">${npStr}</td>
                             </tr>`;
                     }).join('');
                 } else {
-                    rsBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
+                    rsBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting)</td></tr>';
                 }
 
                 // Performance by BTC Entry RSI

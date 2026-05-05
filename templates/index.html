@@ -2194,6 +2194,19 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Skip pairs whose Binance onboardDate is within last N days (filters new/Seed-tagged pairs). 0 = disabled.</p>
                         </div>
+                        <div class="md:col-span-1">
+                            <label class="block text-sm text-gray-400 mb-2">Alpha Subtype Filter</label>
+                            <div class="flex items-center gap-4 py-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-alpha-subtype-filter-enabled" class="sr-only peer" checked>
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-amber-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Auto-exclude pairs Binance flags as <span class="text-amber-400 font-mono">underlyingSubType: ["Alpha"]</span> (launchpad / Innovation Zone tier — high volatility, thin liquidity, "do your own research" warning). Catches pairs like LABUSDT before they ever trade. Independent of listing age.</p>
+                        </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
                             <div class="flex items-center gap-4">
@@ -8948,6 +8961,8 @@
                 document.getElementById('config-pair-blacklist').value = config.pair_blacklist || '';
                 const _nlf = document.getElementById('config-new-listing-filter-days');
                 if (_nlf) _nlf.value = config.new_listing_filter_days !== undefined ? config.new_listing_filter_days : 0;
+                const _asf = document.getElementById('config-alpha-subtype-filter-enabled');
+                if (_asf) _asf.checked = config.alpha_subtype_filter_enabled !== false;
                 
                 updateInvestmentUnit();
                 updateReserveUnit();
@@ -9316,6 +9331,7 @@
                 paper_balance: safeFloat(document.getElementById('config-paper-balance').value),
                 pair_blacklist: document.getElementById('config-pair-blacklist').value.trim(),
                 new_listing_filter_days: parseInt(document.getElementById('config-new-listing-filter-days')?.value) || 0,
+                alpha_subtype_filter_enabled: !!document.getElementById('config-alpha-subtype-filter-enabled')?.checked,
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,

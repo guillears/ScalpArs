@@ -18,6 +18,7 @@
   "trading_pairs_limit": 50,
   "pair_blacklist": "XAGUSDT,XAUUSDT,ZECUSDT,ENAUSDT,RAVEUSDT,DOGEUSDT,HYPEUSDT,ASTERUSDT,LABUSDT",
   "new_listing_filter_days": 180,
+  "alpha_subtype_filter_enabled": true,
   "investment": {
     "mode": "equal_split",
     "fixed_amount": 200.0,

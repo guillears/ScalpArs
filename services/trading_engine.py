@@ -3757,10 +3757,13 @@ class TradingEngine:
                     if (_rsi_lo > 0 and btc_rsi < _rsi_lo) or (_rsi_hi < 100 and btc_rsi > _rsi_hi):
                         btc_rsi_blocks = True
 
+                # BTC RSI x BTC ADX cross-filter moved outside btc_global gate (May 5 fix —
+                # was dead code when btc_global_filter_enabled=false, the current default).
                 # BTC ADX range check moved outside btc_global gate (runs independently).
                 # BTC ADX Direction check also moved outside — see independent block below
                 # (Phase 1c Option B refactor, Apr 17 — 3-sample confirmed structural signal
                 # for shorts: Rising BTC ADX > Falling BTC ADX across Apr 6, Apr 13, Apr 17).
+                # BTC RSI min/max stays GATED by btc_global_enabled per user direction May 5.
 
                 pair_adx_dir_blocks = False
                 _pair_adx = indicators.get('adx')
@@ -3772,31 +3775,8 @@ class TradingEngine:
                     elif _pair_adx_dir_cfg == 'falling' and _pair_adx >= _pair_adx_prev:
                         pair_adx_dir_blocks = True
 
-                btc_cross_blocks = False
-                btc_cross_reason = ""
-                if btc_rsi is not None and btc_adx is not None:
-                    _cf_key = 'btc_rsi_adx_filter_long' if signal == 'LONG' else 'btc_rsi_adx_filter_short'
-                    _cf_str = getattr(_th, _cf_key, '')
-                    if _cf_str and _cf_str.strip():
-                        for _cf_rule in _cf_str.split(','):
-                            _cf_rule = _cf_rule.strip()
-                            if not _cf_rule or ':' not in _cf_rule:
-                                continue
-                            try:
-                                _cf_rsi_part, _cf_min_adx = _cf_rule.split(':')
-                                _cf_rsi_min, _cf_rsi_max = map(float, _cf_rsi_part.split('-'))
-                                if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
-                                    if btc_adx < float(_cf_min_adx):
-                                        btc_cross_blocks = True
-                                        btc_cross_reason = f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) requires ADX>={_cf_min_adx}, got {btc_adx:.1f}"
-                                    break
-                            except (ValueError, TypeError):
-                                continue
-
-                if btc_blocks or pair_blocks or btc_rsi_blocks or pair_adx_dir_blocks or btc_cross_blocks:
-                    if btc_cross_blocks:
-                        reason = btc_cross_reason
-                    elif pair_adx_dir_blocks:
+                if btc_blocks or pair_blocks or btc_rsi_blocks or pair_adx_dir_blocks:
+                    if pair_adx_dir_blocks:
                         _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
                         _pd_want = getattr(_th, f'adx_dir_{signal.lower()}', 'both')
                         reason = f"Pair ADX {_pd_label} ({_pair_adx:.1f} vs prev {_pair_adx_prev:.1f}), {signal} requires {_pd_want}"
@@ -3864,6 +3844,36 @@ class TradingEngine:
                         f"({btc_adx:.2f} vs prev {btc_adx_prev:.2f}), requires {_adx_dir_cfg}"
                     )
                     signal = "NO_TRADE"
+
+            # BTC RSI x BTC ADX Cross-Filter — runs independently of BTC global filter (May 5 fix).
+            # Pre-fix this lived inside the `if btc_global_enabled:` block, so the cross-filter
+            # rules in btc_rsi_adx_filter_long/short were dead code when Macro Trend was off
+            # (current default).  Discovered May 5 when a BTC RSI 76.2 x BTC ADX 32.5 LONG fired
+            # despite the "70-100:35" rule.  Same Apr 17 Option B refactor pattern as BTC ADX
+            # direction/range moved out before.
+            if signal in ["LONG", "SHORT"] and btc_rsi is not None and btc_adx is not None:
+                _th = config.trading_config.thresholds
+                _cf_key = 'btc_rsi_adx_filter_long' if signal == 'LONG' else 'btc_rsi_adx_filter_short'
+                _cf_str = getattr(_th, _cf_key, '')
+                if _cf_str and _cf_str.strip():
+                    for _cf_rule in _cf_str.split(','):
+                        _cf_rule = _cf_rule.strip()
+                        if not _cf_rule or ':' not in _cf_rule:
+                            continue
+                        try:
+                            _cf_rsi_part, _cf_min_adx = _cf_rule.split(':')
+                            _cf_rsi_min, _cf_rsi_max = map(float, _cf_rsi_part.split('-'))
+                            if _cf_rsi_min <= btc_rsi < _cf_rsi_max:
+                                if btc_adx < float(_cf_min_adx):
+                                    logger.info(
+                                        f"[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — "
+                                        f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) "
+                                        f"requires ADX>={_cf_min_adx}, got {btc_adx:.1f}"
+                                    )
+                                    signal = "NO_TRADE"
+                                break
+                        except (ValueError, TypeError):
+                            continue
 
             # BTC Slope directional check — runs independently of Macro Trend toggle.
             # For LONG: require BTC slope >= +flat_threshold_long (BTC rising meaningfully)

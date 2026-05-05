@@ -4092,3 +4092,130 @@ Now uses dollar delta instead of percentage delta:
 The original Δ vs BL % was technically correct as an "edge identification" metric but operationally misleading as a "multiplier impact" metric. The redesign aligns the column with the operational question: **did the multiplier help or hurt in dollars?** This matches the summary line at the bottom of the table (which already showed dollar uplift correctly) and gives consistent meaning across the row + summary.
 
 If a future use case needs the original percentage edge metric back (e.g., for cell discovery / promotion gates that compare WR/Avg% to baseline), it can be added as a SEPARATE column without conflict.
+
+## May 5, 2026 — S-P2 promoted to HARD BLOCK + S-B1 activated (`btc_rsi_adx_filter_short: "30-35:30,35-40:20"`)
+
+Promotes the May 4 demotion of S-P2 (BTC RSI 30-35 × BTC ADX 25-30 SHORT) one step further: from "no longer eligible for PREMIUM multiplier" to "blocked at entry."
+
+### Pooled evidence (current-era samples, ex-Mar 30)
+
+| Sample | N | WR | Total $ |
+|---|---|---|---|
+| Apr 17 cross-tab audit pool | 7 | 57% | mixed |
+| May 4 224-trade | 5 | 20% | -$4.85 |
+| May 5 partial 28-trade | 2 | 0% | -$108.21 (20× lev — $ inflated, WR is the signal) |
+| **Pooled** | **14** | **~36%** | uniformly negative direction |
+
+Three independent samples, three independent configs. WR consistently below 55%; pooled at ~36%. Meets the locked Phase 2 HARD BLOCK promotion bar (≤40% WR on N≥10 across multi-sample, direction-consistent across samples).
+
+### Rule chosen
+
+`btc_rsi_adx_filter_short: "30-35:30"` — "for BTC RSI 30-35 SHORTs, require BTC ADX ≥ 30."
+
+Cleanest expression in the existing min-ADX-per-RSI-band syntax. Blocks the target S-P2 cell (25-30) plus collateral cuts of two adjacent weak cells:
+
+| BTC RSI 30-35 × BTC ADX | N (May 4) | WR | Effect |
+|---|---|---|---|
+| 15-20 | 2 | 0% | Cut (loser) |
+| 20-25 | 8 | 50% | Cut (breakeven, no edge lost) |
+| **25-30 (S-P2)** | **5** | **20%** | **Cut — primary target** |
+| 30-35 | 4 | 75% | Preserved |
+| 35+ | 1 | 100% | Preserved |
+
+50% of BTC RSI 30-35 SHORT volume preserved (the winning sub-cells); losing/breakeven half blocked.
+
+### Pre-committed revert criterion (locked May 5)
+
+At next 100-trade SHORT batch:
+- If would-have-been-blocked trades (BTC RSI 30-35 × BTC ADX 15-30) show ≥55% WR on N≥5 in observation logs → revert
+- If WR ≤ 50% on N≥5 → confirmed, lock as default
+- If <5 would-have-been-blocked trades → extend test to next batch
+
+### Why this shipped now (vs waiting for 100-trade checkpoint)
+
+Locked Phase 1c-Explore plan forbids strategic changes mid-batch — but this is a HARD BLOCK on a 3-sample-confirmed loss cell, not exploration or tightening of an unvalidated zone. The cell decay was already documented May 4 (demotion); blocking it is the same logic, one step further. Treated as operational (kill known losing zone) rather than strategic (tune unknown zone).
+
+### S-B1 activation (same deploy)
+
+Bundled with the S-P2 block: ship the pre-committed S-B1 HARD BLOCK rule (BTC RSI 35-40 × BTC ADX 15-20 SHORT) as `35-40:20`. S-B1 was 5-sample structurally validated in the Apr 17 cross-tab audit (pool 7 / 43% WR) and reconfirmed in the May 4 224-trade batch (2 / 0% / -$1.92). Direction-consistent across all samples; meets the locked HARD BLOCK promotion bar. Activating it now alongside S-P2 since both are pre-validated and no reason to delay.
+
+**S-B2 caveat:** the pre-committed S-B2 (BTC RSI 35-40 × BTC ADX 30-35) is also a HARD BLOCK rule but cannot be expressed in the current min-ADX-per-RSI-band syntax (would require range exclusion: "block <20 AND ≥30"). Deferred until cross-filter syntax is extended. Engineering work for future Phase 2 expansion.
+
+**Skipped (1-sample only):** BTC RSI 35-40 × BTC ADX 20-25 (1/0% in May 4 batch). No cross-sample backing; per anti-overfit discipline, wait.
+
+### Files changed
+
+- `trading_config.json`: `btc_rsi_adx_filter_short` from `""` to `"30-35:30,35-40:20"` (S-P2 block + S-B1 block)
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The progression of S-P2 (PREMIUM → demoted → HARD BLOCK) with evidence at each step. Cell history: Apr 15 pre-committed PREMIUM (4-sample, Mar 30-weighted, 83% WR) → Apr 17 audit weakened (ex-Mar 30 pool 57%) → May 4 demoted from PREMIUM (224-trade 20% WR) → **May 5 blocked at entry (3-sample pool ~36% WR)**.
+2. The activation of S-B1 from pre-committed status (Apr 15) to actual deployed filter (May 5).
+3. The known S-B2 syntax limitation (deferred), so future-Claude knows it's a known gap, not an oversight.
+4. The locked revert criteria for both rules at next checkpoint.
+
+## May 5, 2026 — CRITICAL BUG FIX: BTC RSI × BTC ADX Cross-Filter was dead code
+
+### What was wrong
+The cross-filter check (`btc_rsi_adx_filter_long/short`) lived inside the `if signal in ["LONG", "SHORT"] and btc_global_enabled:` block at `services/trading_engine.py:3728+`. With `btc_global_filter_enabled: false` (current and default config), the entire block was skipped → **the cross-filter was never evaluated.**
+
+### How it was discovered
+A LONG trade fired in the May 5 partial 28-trade batch with:
+- BTC RSI = 76.2
+- BTC ADX = 32.5
+- Should have been blocked by the May 4 deployed rule `btc_rsi_adx_filter_long: "70-100:35"` (requires BTC ADX ≥35 when BTC RSI in [70, 100))
+- But fired anyway, closed as NO_EXPANSION at -$2.19
+
+User flagged the contradiction; investigation traced it to the gating issue.
+
+### Implications
+
+**The May 4 224-trade analysis attributing -$14 LONG savings to F2 (`btc_rsi_adx_filter_long: "70-100:35"`) was wrong.** The cross-filter wasn't actually firing. The real LONG-side improvements documented in CLAUDE.md May 4 came from F1 (`btc_adx_dir_long: rising` — already independent) and F3 (`momentum_long_rsi_max: 65` — independent). F2's projected impact was phantom.
+
+**Today's earlier shipping of `btc_rsi_adx_filter_short: "30-35:30,35-40:20"` (S-P2 + S-B1)** was also dead code until this fix landed.
+
+### The fix (May 5, services/trading_engine.py)
+
+Pattern mirrors the Apr 17 Option B refactor for BTC ADX direction/range:
+- **MOVED**: `btc_rsi_adx_filter_long/short` evaluation OUT of the `if btc_global_enabled:` block, into a new independent check (~line 3849, after BTC ADX Direction, before BTC Slope)
+- **NEW LOG**: `[BTC_RSI_ADX_CROSS] {pair}: {signal} blocked — BTC RSI X.X in [Y-Z) requires ADX>=W, got V.V`
+- **KEPT GATED (per user direction May 5)**: `btc_rsi_min_long/max_long/min_short/max_short` stays inside the `if btc_global_enabled:` block. User explicitly said "we are not using BTC RSI filters, they are within Global Regime" — only the cross-tab filter should run independently.
+
+### What now runs independently of `btc_global_filter_enabled`
+
+| Check | Refactor source |
+|---|---|
+| Pair ADX Direction | (already independent) |
+| BTC ADX range (`btc_adx_min/max_long/short`) | (already independent) |
+| BTC ADX Direction (`btc_adx_dir_long/short`) | Apr 17 Option B |
+| BTC Slope directional (`macro_trend_flat_threshold_long/short`) | (already independent) |
+| **BTC RSI × BTC ADX Cross-Filter (`btc_rsi_adx_filter_long/short`)** | **May 5 (this fix)** |
+
+### What stays GATED by `btc_global_filter_enabled`
+
+- Macro Trend regime alignment (BULLISH/BEARISH/NEUTRAL gating)
+- BTC RSI min/max ranges (per user direction May 5: kept gated)
+- Pair regime vs BTC regime alignment
+
+### Validation at next checkpoint
+
+The fix should be visible in next-batch logs as `[BTC_RSI_ADX_CROSS]` lines. Expect:
+- LONG side: blocked entries when BTC RSI ≥ 70 AND BTC ADX < 35
+- SHORT side: blocked entries when BTC RSI in [30, 35) AND BTC ADX < 30, OR BTC RSI in [35, 40) AND BTC ADX < 20
+
+If zero `[BTC_RSI_ADX_CROSS]` log entries fire across 100+ trades, either (a) the rules genuinely don't catch any signals (unlikely given current config), or (b) there's another bug.
+
+### Files changed
+
+- `services/trading_engine.py`: 
+  - Removed cross-filter check from inside the `btc_global_enabled` gate (lines 3775-3794 of pre-fix code)
+  - Added new independent block (lines ~3849-3873 of post-fix code)
+  - Restored BTC RSI min/max check inside the gated block per user May 5 direction
+
+### Why this entry exists in CLAUDE.md
+
+1. **Document the bug honestly.** The May 4 ex-post analysis attributed savings to F2 that F2 wasn't producing. Future-Claude needs to know the F2 evaluation in CLAUDE.md May 4 is overstated and the next-batch validation should re-establish F2's real contribution from a clean baseline.
+2. **Anchor the fix.** Mirror of Apr 17 Option B refactor pattern, same risk profile, low.
+3. **Document the asymmetric design choice.** BTC RSI min/max stays gated, cross-filter is independent — these are now two different things and future code work shouldn't conflate them.
+4. **Provide a verification path.** `[BTC_RSI_ADX_CROSS]` log entries are the test that the fix is doing real work.

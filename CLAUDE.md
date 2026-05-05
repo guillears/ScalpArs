@@ -4982,3 +4982,120 @@ To prevent the next checkpoint from devolving into ad-hoc filter assessment:
 4. The methodological lesson (Winners≈Losers signals missing macro dimension) preserved as a future heuristic
 
 When the next 100-trade batch arrives, future-Claude (or future-User) opens this entry, applies the gates mechanically, and decides — no re-litigation.
+
+## May 5, 2026 — Filter Block counter instrumentation (Option B shipped)
+
+Reverses the "deferred for now" decision documented earlier today in the
+"Filter-rollback candidates locked for next-batch validation" entry.  Reason
+for the reversal: the operator does not have access to server logs, only the
+text report and CSV.  Without instrumentation, there was no way for them to
+self-service answer "did the BTC Trend Filter actually fire?" at the 100-trade
+checkpoint.  Log-grep was the deferral's escape hatch, and it isn't an option
+on the user side.
+
+### What was added
+
+In-memory per-filter, per-direction counters surfaced via `/api/status` and a
+new "Filter Blocks (since bot start, in-memory)" panel in the dashboard.  Plus
+the same data appended to both text-export sites under the heading
+`## Filter Blocks (since bot start, in-memory)`.
+
+**Engine (`services/trading_engine.py`):**
+- `self._filter_block_counts: Dict[tuple, int]` initialized in `__init__`
+- `_record_filter_block(filter_name, direction)` helper increments
+  `counts[(filter_name, direction)] += 1`.
+- `_get_filter_block_summary()` returns sorted-by-total payload:
+  `{"rows": [{"filter", "long", "short", "any", "total"}, ...],
+    "total_long", "total_short", "total_any", "total"}`.
+- Surfaced as `filter_block_counts` field on the existing `get_status()` dict
+  (no new endpoint).
+
+**Call sites (12 filter categories, 16 call sites):**
+| Filter name (matches log tag) | Sites |
+|---|---|
+| `BTC_REGIME` | Macro Trend regime gate |
+| `PAIR_ADX_DIR` | Pair ADX direction (rising/falling), 2 branches |
+| `BTC_ADX_GATE` | BTC ADX [min, max] range |
+| `BTC_ADX_DIR` | BTC ADX rising/falling |
+| `BTC_RSI_ADX_CROSS` | BTC RSI × BTC ADX cross-filter |
+| `BTC_TREND_FILTER` | EMA20 vs EMA50, separate LONG/SHORT recording |
+| `BTC_SLOPE_GATE` | BTC slope flat threshold, separate LONG/SHORT recording |
+| `BTC_SLOPE_MAX_GATE` | BTC slope absolute max |
+| `PAIR_SLOPE_MAX_GATE` | Pair slope absolute max |
+| `VOL_GATE` | Global / pair volume threshold |
+| `BREADTH_GATE` | Market breadth (Bull% / Bear% min), separate LONG/SHORT recording |
+| `SPIKE_GUARD` | Volume spike + price move guard |
+
+**UI (`templates/index.html`):**
+- New panel below "Signal Expired Breakdown" with table: Filter / LONG / SHORT
+  / Other / Total, sorted by total descending, plus TOTAL footer row.
+- `renderFilterBlocks()` JS function called from `loadStatus()` on every
+  status poll.
+- `window._lastFilterBlockCounts` stash in `loadStatus()` so both text-export
+  sites can include the data without a separate fetch.
+
+### What it does NOT do
+
+- Does NOT persist to DB.  Counters reset on every bot restart (and therefore
+  on every code deploy on EB).  Persistence to BotState is the natural next
+  iteration — flagged but not shipped today.
+- Does NOT capture entry indicators (RSI, ADX, etc.) on blocked entries.  The
+  actual edge question ("would blocked entries have profited?") still requires
+  Option C.
+- Does NOT track which filters block trades that would have ALSO failed
+  downstream filters.  First filter that fires is the only one credited.
+  This is a known limitation: a trade blocked by BTC Trend Filter may also
+  have failed BTC RSI×ADX, but only BTC Trend gets the increment.
+
+### How this is used at the 100-trade checkpoint
+
+Look at the Filter Blocks panel (or the section in the text export) and
+answer:
+
+1. **BTC Trend Filter row total ≥ 10?** Yes → filter fired enough to be
+   evaluable.  No → market conditions didn't trigger the filter often,
+   decision deferred.
+2. **Per-direction breakdown align with regime?**  In a BULLISH-dominant
+   batch, expect BTC_TREND_FILTER SHORT count > LONG count (uptrend blocks
+   counter-trend SHORTs).  Inverted ratio = unexpected, investigate.
+3. **Filter block count vs trade count.**  If BTC_TREND_FILTER total > total
+   entries × 1.5, filter is over-active — likely chopping the entry surface
+   too aggressively.
+4. **Cross-reference with the May 5 rollback gates.**  Filters that block
+   heavily AND the trades that pass them still show ≥55% WR on N≥10 → strong
+   rollback signal (existing filters were redundant safety nets the trend
+   filter alone could have provided).
+
+### Counter persistence (deferred to next iteration)
+
+Currently counters reset on bot restart, including every code deploy.  Given
+the deploy frequency during active development, this can lose mid-batch
+data.  Persistence path documented for the next iteration:
+
+- New nullable `BotState.filter_block_counts_json: String` column
+- Auto-migrate `ADD COLUMN`
+- Restore on engine init via JSON parse (NULL = empty, fail-open on parse
+  error)
+- Periodic flush (every ~60s in scan loop, NOT every increment)
+- Manual reset hook tied to paper_balance reset for clean batch boundaries
+
+Not shipped today — Option B as in-memory is functional during single-deploy
+intervals and the persistence layer can be added without breaking any current
+behavior.
+
+### Why not Option C (per-block row persistence)
+
+Option C was discussed and deferred per the lock discipline: build only what
+the checkpoint gates actually need.  Option B answers "did the filter fire"
+which is the only diagnostic that's missing today.  Option C would answer
+"would blocked entries have profited", which is a richer question but not on
+the critical path for any locked decision gate.  If at the 100-trade
+checkpoint the data from B is ambiguous and we genuinely need the per-block
+edge analysis, Option C is the next iteration with documented justification.
+
+### Files changed
+
+- `services/trading_engine.py` — counter init, helper, summary method, 16
+  call sites at filter blocks, surfaced in `get_status()` payload
+- `templates/index.html` — UI panel, `renderFilterBlocks()` JS,
+  status-payload stash for export sites, both text-export sites updated

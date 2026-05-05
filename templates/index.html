@@ -8285,23 +8285,41 @@
                     }
 
                     // TP-Tier badge (May 4, 2026): trailing-stop arming status.
-                    // Shown when peak >= dynamic TP target (trade has armed trailing).
-                    // L1 = first arming, L2 = promoted (peak ≥ 2× TP min), L3+ = RSI handoff zone.
-                    // Coexists with FL flags (orthogonal info: FL = adverse state, TP-tier = profitable state).
+                    //
+                    // Correct armed check (per user feedback): peak >= base_tp_min, regardless
+                    // of tp_level state.  tp_level=1 trades that have crossed tp_min ARE armed
+                    // (the bot's monitor loop will promote them to tp_level=2 on next cycle, but
+                    // the trailing protection is already in effect).
+                    //
+                    // base_tp_min derived from API: tp_target = tp_level × tp_min, so
+                    // tp_min = tp_target / tp_level (defensive fallback to 0.20 if data missing).
+                    //
+                    // Display L{tp_level} matches bot internal terminology.  Color tiers:
+                    //   L1: emerald (first arming)
+                    //   L2: cyan
+                    //   L3+: purple with ·RSI suffix (RSI handoff zone per rsi_handoff_level=3)
                     let tpTierBadge = '';
                     const _tpPeak = (typeof o.peak_pnl === 'number') ? o.peak_pnl : 0;
-                    const _tpTarget = (typeof o.tp_target === 'number' && o.tp_target > 0) ? o.tp_target : 0.20;
                     const _tpLvl = o.tp_level || 1;
-                    // DIAGNOSTIC (May 4 — investigating why badge not showing): log every row's values
-                    console.log(`[TP-BADGE] ${o.pair} ${o.direction}: peak=${_tpPeak} (raw: ${JSON.stringify(o.peak_pnl)}) target=${_tpTarget} (raw: ${JSON.stringify(o.tp_target)}) lvl=${_tpLvl} (raw: ${JSON.stringify(o.tp_level)}) — armed=${_tpPeak >= _tpTarget && _tpPeak > 0}`);
-                    if (_tpPeak >= _tpTarget && _tpPeak > 0) {
+                    const _tpTargetRaw = (typeof o.tp_target === 'number' && o.tp_target > 0) ? o.tp_target : (_tpLvl * 0.20);
+                    const _baseTpMin = _tpLvl > 0 ? (_tpTargetRaw / _tpLvl) : 0.20;
+                    const _armed = _tpPeak >= _baseTpMin && _tpPeak > 0;
+                    if (_armed) {
+                        let bgClass, textClass, label, title;
                         if (_tpLvl >= 3) {
-                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/25 text-purple-300" title="L3+ — RSI handoff zone (trailing disabled, exits via 2-drop RSI). Floor: peak − pullback already passed; protected from full SL.">🛡 L3·RSI</span>`;
+                            bgClass = 'bg-purple-500/25'; textClass = 'text-purple-300';
+                            label = `🛡 L${_tpLvl}·RSI`;
+                            title = `L${_tpLvl} — RSI handoff zone (trailing replaced by 2-drop RSI exit). Peak ${_tpPeak.toFixed(2)}% crossed L${_tpLvl - 1} threshold (${((_tpLvl - 1) * _baseTpMin).toFixed(2)}%). Protected from full SL.`;
                         } else if (_tpLvl === 2) {
-                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-500/25 text-cyan-300" title="L2 — trailing armed at second level (peak ≥ 2× TP min). Worst case: peak − pullback. Protected from full SL.">🛡 L2</span>`;
+                            bgClass = 'bg-cyan-500/25'; textClass = 'text-cyan-300';
+                            label = `🛡 L2`;
+                            title = `L2 — trailing armed at second tier. Peak ${_tpPeak.toFixed(2)}% crossed L1 threshold (${_baseTpMin.toFixed(2)}%). Worst case: peak − pullback. Protected from full SL.`;
                         } else {
-                            tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/25 text-emerald-300" title="L1 — trailing armed (peak ≥ TP min). Worst case: peak − pullback. Protected from full SL.">🛡 L1</span>`;
+                            bgClass = 'bg-emerald-500/25'; textClass = 'text-emerald-300';
+                            label = `🛡 L1`;
+                            title = `L1 — trailing armed (peak ${_tpPeak.toFixed(2)}% ≥ TP min ${_baseTpMin.toFixed(2)}%). Worst case: peak − pullback. Protected from full SL.`;
                         }
+                        tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${bgClass} ${textClass}" title="${title}">${label}</span>`;
                     }
                     
                     return `

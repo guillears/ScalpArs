@@ -62,6 +62,11 @@ def _calculate_quality_score(direction: str, entry_rsi, entry_adx, entry_gap,
 # Computed at end of each scan, used by next scan cycle as a market regime gate.
 _global_volume_ratio: float = 1.0
 _btc_ema20_slope_pct: float = 0.0
+# BTC Trend Filter state (May 5) — EMA20 vs EMA50 medium-term trend.
+# Updated in BTC scan loop. Surfaced in /api/engine/state for header badge.
+_current_btc_ema20: Optional[float] = None
+_current_btc_ema50: Optional[float] = None
+_current_btc_trend_gap_pct: Optional[float] = None
 # Module-level BTC indicators for regime classification at exit time
 _current_btc_adx: float = None
 _current_btc_rsi: float = None
@@ -305,6 +310,12 @@ class TradingEngine:
             "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "global_volume_ratio": round(_global_volume_ratio, 4),
             "btc_ema20_slope_pct": round(_btc_ema20_slope_pct, 4),
+            # BTC Trend Filter state (May 5) — EMA20 vs EMA50 medium-term trend.
+            # Header badge uses these to show macro trend + filter state.
+            "btc_ema20": round(_current_btc_ema20, 2) if _current_btc_ema20 else None,
+            "btc_ema50": round(_current_btc_ema50, 2) if _current_btc_ema50 else None,
+            "btc_trend_gap_pct": round(_current_btc_trend_gap_pct, 4) if _current_btc_trend_gap_pct is not None else None,
+            "btc_trend_filter_enabled": bool(getattr(config.trading_config.thresholds, 'btc_trend_filter_enabled', False)),
             "market_bull_pct": round(_market_bull_pct, 1),
             "market_bear_pct": round(_market_bear_pct, 1),
             "breadth_n_bull": _breadth_n_bull,
@@ -3597,6 +3608,7 @@ class TradingEngine:
         btc_global_enabled = getattr(config.trading_config.thresholds, 'btc_global_filter_enabled', False)
         btc_ema20 = None
         btc_ema20_prev3 = None
+        btc_ema50 = None
         btc_regime = "NEUTRAL"
         btc_ema20_slope_pct = None
         btc_adx = None
@@ -3610,6 +3622,7 @@ class TradingEngine:
             if btc_indicators:
                 btc_ema20 = btc_indicators.get('ema20')
                 btc_ema20_prev3 = btc_indicators.get('ema20_prev3')
+                btc_ema50 = btc_indicators.get('ema50')
                 btc_adx = btc_indicators.get('adx')
                 btc_adx_prev = btc_indicators.get('adx_prev1')
                 btc_rsi = btc_indicators.get('rsi')
@@ -3625,10 +3638,20 @@ class TradingEngine:
                 if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
                     btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
         global _current_btc_regime, _btc_ema20_slope_pct, _current_btc_adx, _current_btc_rsi
+        global _current_btc_ema20, _current_btc_ema50, _current_btc_trend_gap_pct
         _current_btc_regime = btc_regime
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
         _current_btc_adx = btc_adx
         _current_btc_rsi = btc_rsi
+        # BTC Trend Filter state (May 5)
+        _current_btc_ema20 = btc_ema20
+        _current_btc_ema50 = btc_ema50
+        if btc_ema20 is not None and btc_ema50 is not None and btc_ema50 != 0:
+            # Use BTC's last close (≈btc_ema20 for normalization purposes; close is a fine
+            # denominator since EMAs track price closely on 5m). Compute gap as % of EMA50.
+            _current_btc_trend_gap_pct = round(((btc_ema20 - btc_ema50) / btc_ema50) * 100, 4)
+        else:
+            _current_btc_trend_gap_pct = None
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
         
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──
@@ -3911,6 +3934,30 @@ class TradingEngine:
                                 break
                         except (ValueError, TypeError):
                             continue
+
+            # BTC Trend Filter — runs independently of Macro Trend toggle (May 5).
+            # Compares BTC EMA20 vs BTC EMA50 on the 5m chart (~4 hours of context).
+            # Blocks countertrend entries:
+            #   EMA20 > EMA50 → BTC in medium-term uptrend → block SHORTs
+            #   EMA20 < EMA50 → BTC in medium-term downtrend → block LONGs
+            # Addresses the case where short-horizon (15min) BTC slope flips
+            # bearish during a brief pullback within a multi-hour bullish trend
+            # (and vice versa). See CLAUDE.md May 5 entry on BTC Trend Filter.
+            if (signal in ["LONG", "SHORT"]
+                    and getattr(config.trading_config.thresholds, 'btc_trend_filter_enabled', False)
+                    and btc_ema20 is not None and btc_ema50 is not None):
+                if signal == "LONG" and btc_ema20 < btc_ema50:
+                    logger.info(
+                        f"[BTC_TREND_FILTER] {pair}: LONG blocked — BTC EMA20 {btc_ema20:.2f} < EMA50 {btc_ema50:.2f} "
+                        f"(macro downtrend, countertrend LONG blocked)"
+                    )
+                    signal = "NO_TRADE"
+                elif signal == "SHORT" and btc_ema20 > btc_ema50:
+                    logger.info(
+                        f"[BTC_TREND_FILTER] {pair}: SHORT blocked — BTC EMA20 {btc_ema20:.2f} > EMA50 {btc_ema50:.2f} "
+                        f"(macro uptrend, countertrend SHORT blocked)"
+                    )
+                    signal = "NO_TRADE"
 
             # BTC Slope directional check — runs independently of Macro Trend toggle.
             # For LONG: require BTC slope >= +flat_threshold_long (BTC rising meaningfully)

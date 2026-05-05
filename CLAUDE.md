@@ -4790,3 +4790,84 @@ To document:
 3. The data limitation (historical trades pre-deploy can't be analyzed)
 4. The pre-committed validation plan for the next ~30 trades on deployed instrumentation
 5. The next-step decision tree (widen threshold, add hysteresis, or retire hypothesis) so future-Claude doesn't have to re-derive the analytical context
+
+## May 5, 2026 — BTC Trend Filter (EMA20 vs EMA50, ~4h macro context)
+
+### Problem this addresses
+
+All existing SHORT entry filters operate on a **15-min lookback** (BTC EMA20 slope over 3 candles). On May 5 a 5-trade SHORT batch fired during a brief 15-min BTC pullback that the 5m regime classifier registered as BEARISH while the larger trend was unmistakably UP for 30+ hours. 3 of those 5 trades died via REGIME_CHANGE_EXIT within 8 minutes when BTC reverted.
+
+The system had **no filter looking at multi-hour BTC context.** A bullish-for-30-hours BTC briefly dipping triggered the bearish 5m regime, which let SHORTs through.
+
+### What was added
+
+**BTC Trend Filter** — independent gate that compares BTC EMA20 vs BTC EMA50 on the 5m chart:
+- EMA20 > EMA50 → BTC in medium-term uptrend → blocks SHORTs (countertrend)
+- EMA20 < EMA50 → BTC in medium-term downtrend → blocks LONGs (countertrend)
+
+EMA50 on 5m candles spans 50 candles (~4 hours), giving a much longer context than the 3-candle (15min) slope check.
+
+### Implementation
+
+- `config.py`: new field `btc_trend_filter_enabled: bool = False` (default OFF in code; trading_config.json sets it `true`)
+- `services/indicators.py`: BTC EMA50 was already computed by `calculate_indicators()` — no change needed
+- `services/trading_engine.py`: BTC scan now captures `btc_ema50 = btc_indicators.get('ema50')`. New independent filter block before BTC Slope directional check, mirroring the Apr 17 Option B refactor pattern. Logs `[BTC_TREND_FILTER] {pair}: SHORT blocked — BTC EMA20 X.XX > EMA50 Y.YY (macro uptrend, countertrend SHORT blocked)` (and the symmetric LONG case).
+- `templates/index.html`: toggle in BTC Independent Filters section (~line 2728), load + save handlers wired
+- `trading_config.json`: `"btc_trend_filter_enabled": true` (active by default given evidence)
+
+### What this filter does NOT do
+
+- Does NOT change anything when both EMAs are tightly aligned (EMA20 ≈ EMA50): trades pass through other filters normally.
+- Does NOT prevent the 5m regime classifier from registering BEARISH/BULLISH; it sits ON TOP of regime as a longer-context veto.
+- Does NOT consider volume, ADX, RSI — purely a price-trend filter.
+
+### Pre-committed revert criteria (locked May 5)
+
+If next ~30 trades show:
+- `[BTC_TREND_FILTER]` log lines fire → filter is doing real work
+- SHORT trades drop materially during sustained BTC uptrends
+- LONG trades drop materially during sustained BTC downtrends
+- REGIME_CHANGE / FL_REGIME_CHANGE exit count drops
+- Trade-level Avg P&L % improves
+
+→ Lock filter as default, leave on.
+
+If we see:
+- Filter blocks legitimate reversal trades at the start of a real trend change (visible by examining post-block BTC trajectory: did BTC continue in the original direction or genuinely reverse?)
+- Trade rate drops > 50% with no edge improvement
+- Specifically blocks trades that would have been winners (verify by spot-check)
+
+→ Add a buffer/hysteresis: require EMA20 to be below EMA50 by some delta (e.g., 0.3%) before allowing SHORTs. Keeps filter active during deep crossovers but lets reversal trades through near crossover.
+
+If filter does nothing detectable (no [BTC_TREND_FILTER] logs because EMA20 always near EMA50, no Avg P&L change) → revert toggle to OFF, conclude this market doesn't have enough BTC trend persistence to make the filter useful.
+
+### Risk
+
+Low. New independent filter, default-enabled via JSON. Uses existing `btc_indicators.get('ema50')` value already computed — no new calculations. Easy revert via UI toggle.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The specific problem case from May 5 (5 SHORTs entered during a 15-min pullback within a 30+hr bullish trend, 3 killed by REGIME_CHANGE)
+2. The semantic difference: existing filters check 15-min context, this one checks ~4-hour context
+3. The locked revert criteria so the next-batch validation has clear gates
+4. The "buffer/hysteresis" fallback if the binary filter is too restrictive
+
+The user's specific observation prompted this fix: looking at the live BTC chart, it was visually obvious that SHORTs were countertrend; the system had no filter that captured that visual judgment in code. This is the missing primitive.
+
+### Header badge (May 5, same deploy)
+
+A `BTC Trend` badge sits in the Market Regime Bar between BTC slope and BTC ADX, showing:
+- `↑ UP +0.18%` (emerald) when EMA20 > EMA50 — SHORTs blocked when filter is on
+- `↓ DOWN -0.12%` (red) when EMA20 < EMA50 — LONGs blocked when filter is on
+- `≈ FLAT` (yellow) when |gap| < 0.05% — cosmetic threshold; filter is still binary
+- `OFF` (dim gray) when no data
+- `Filter ON` tag appears when `btc_trend_filter_enabled = true`; badge dims when filter is off (informational only)
+
+Data flow: `services/trading_engine.py` populates global `_current_btc_ema20`, `_current_btc_ema50`, `_current_btc_trend_gap_pct` in the BTC scan loop. These are exported via `/api/engine/state` as `btc_ema20`, `btc_ema50`, `btc_trend_gap_pct`, `btc_trend_filter_enabled`. UI dashboard refresh (`fetchEngineState`) reads these and renders the badge.
+
+Why the operator gets value from this:
+1. Quick visual check that filter is acting on current macro context as expected
+2. Magnitude: small gap (<0.05%) warns that trend is fragile and could flip
+3. Asymmetry: if BTC chart shows clear bullish trend but badge shows DOWN, something's off — diagnostic hook
+4. Stays informative even when filter is disabled (badge still shows trend state, just dimmed)

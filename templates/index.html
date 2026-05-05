@@ -153,6 +153,11 @@
                 <span id="btc-ema20-slope" class="text-gray-400 text-xs font-mono">--</span>
                 <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
                 <span class="text-gray-500">|</span>
+                <span class="text-gray-400 font-medium">BTC Trend:</span>
+                <span id="btc-trend-badge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-400">--</span>
+                <span id="btc-trend-gap" class="text-xs font-mono text-gray-400">--</span>
+                <span id="btc-trend-filter-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-500/20 text-blue-400">Filter ON</span>
+                <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC ADX:</span>
                 <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
                 <span id="btc-adx-dir-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide">--</span>
@@ -2731,6 +2736,17 @@
                                 <option value="falling">Falling only</option>
                             </select>
                         </div>
+                        <!-- BTC Trend Filter (May 5) — EMA20 vs EMA50 medium-term trend gate.
+                             Blocks countertrend entries: BTC EMA20 > EMA50 blocks SHORTs (macro
+                             uptrend), EMA20 < EMA50 blocks LONGs (macro downtrend). ~4h context. -->
+                        <div class="flex items-center gap-3 mt-3">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-btc-trend-filter-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">BTC Trend Filter (EMA20 vs EMA50)</span>
+                            </label>
+                            <span class="text-xs text-gray-500">Blocks countertrend entries: macro uptrend → no SHORTs, macro downtrend → no LONGs (~4h context)</span>
+                        </div>
                     </div>
                     <div class="mb-2 px-4">
                         <span class="text-sm text-gray-300">Macro Trend Regime (EMA20)</span>
@@ -3641,6 +3657,56 @@
                     slopeEl.className = slope > flatTh ? 'text-emerald-400 text-xs font-mono' :
                                         slope < -flatTh ? 'text-red-400 text-xs font-mono' :
                                         'text-yellow-400 text-xs font-mono';
+                }
+
+                // BTC Trend badge (May 5) — EMA20 vs EMA50 medium-term trend.
+                // Shows UP / DOWN / FLAT based on the gap. Filter tag shown when
+                // btc_trend_filter_enabled is true, badge dimmed when false.
+                const trendBadge = document.getElementById('btc-trend-badge');
+                const trendGapEl = document.getElementById('btc-trend-gap');
+                const trendFilterTag = document.getElementById('btc-trend-filter-tag');
+                const gap = data.btc_trend_gap_pct;
+                const filterOn = !!data.btc_trend_filter_enabled;
+                if (trendBadge && gap != null) {
+                    // Threshold for FLAT classification (badge label only, not filter logic).
+                    // Filter itself is binary: > 0 blocks SHORTs, < 0 blocks LONGs.
+                    const flatThreshold = 0.05; // % — purely cosmetic
+                    let label, badgeCls;
+                    if (Math.abs(gap) < flatThreshold) {
+                        label = '≈ FLAT';
+                        badgeCls = 'px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-500/20 text-yellow-400';
+                    } else if (gap > 0) {
+                        label = '↑ UP';
+                        badgeCls = 'px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-400';
+                    } else {
+                        label = '↓ DOWN';
+                        badgeCls = 'px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/20 text-red-400';
+                    }
+                    if (!filterOn) {
+                        // Dim if filter is disabled — informational only
+                        badgeCls = badgeCls.replace('/20', '/10').replace('-400', '-500');
+                    }
+                    trendBadge.textContent = label;
+                    trendBadge.className = badgeCls;
+                    if (trendGapEl) {
+                        const sign = gap >= 0 ? '+' : '';
+                        trendGapEl.textContent = `${sign}${gap.toFixed(2)}%`;
+                        const gapColor = filterOn
+                            ? (gap > 0 ? 'text-emerald-400' : gap < 0 ? 'text-red-400' : 'text-yellow-400')
+                            : 'text-gray-500';
+                        trendGapEl.className = `text-xs font-mono ${gapColor}`;
+                    }
+                    if (trendFilterTag) {
+                        trendFilterTag.classList.toggle('hidden', !filterOn);
+                    }
+                } else if (trendBadge) {
+                    trendBadge.textContent = 'OFF';
+                    trendBadge.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-500';
+                    if (trendGapEl) {
+                        trendGapEl.textContent = '--';
+                        trendGapEl.className = 'text-xs font-mono text-gray-500';
+                    }
+                    if (trendFilterTag) trendFilterTag.classList.add('hidden');
                 }
 
                 // Global volume ratio display
@@ -8876,6 +8942,7 @@
                 document.getElementById('config-btc-adx-min-short').value = config.thresholds.btc_adx_min_short !== undefined ? config.thresholds.btc_adx_min_short : 0;
                 document.getElementById('config-btc-adx-max-short').value = config.thresholds.btc_adx_max_short !== undefined ? config.thresholds.btc_adx_max_short : 100;
                 document.getElementById('config-btc-adx-dir-long').value = config.thresholds.btc_adx_dir_long || 'both';
+                document.getElementById('config-btc-trend-filter-enabled').checked = !!config.thresholds.btc_trend_filter_enabled;
                 document.getElementById('config-btc-adx-dir-short').value = config.thresholds.btc_adx_dir_short || 'both';
                 document.getElementById('config-adx-dir-long').value = config.thresholds.adx_dir_long || 'both';
                 document.getElementById('config-adx-dir-short').value = config.thresholds.adx_dir_short || 'both';
@@ -9259,6 +9326,7 @@
                     btc_adx_min_short: safeFloat(document.getElementById('config-btc-adx-min-short').value),
                     btc_adx_max_short: safeFloat(document.getElementById('config-btc-adx-max-short').value),
                     btc_adx_dir_long: document.getElementById('config-btc-adx-dir-long').value,
+                    btc_trend_filter_enabled: document.getElementById('config-btc-trend-filter-enabled').checked,
                     btc_adx_dir_short: document.getElementById('config-btc-adx-dir-short').value,
                     adx_dir_long: document.getElementById('config-adx-dir-long').value,
                     adx_dir_short: document.getElementById('config-adx-dir-short').value,

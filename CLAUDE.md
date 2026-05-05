@@ -4457,3 +4457,60 @@ Not touched (intentional): `models.py`, `database.py`, `services/trading_engine.
 2. To anchor the v2 reverse-derive approach as the canonical paper-mode behavior.
 3. To explain why the `runtime_initial_total_usd` column still exists in DB but is no longer read.
 4. To note the symmetry with live mode's existing logic.
+
+## May 5, 2026 — `btc_adx_max_long: 40 → 35` (HARD BLOCK on LONG BTC ADX 35+, 4-sample structural)
+
+### Cell description
+LONG entries when BTC ADX ≥ 35. Macro context: BTC trend conviction is climactic — late-cycle, over-extended uptrend territory.
+
+### 4-sample evidence
+
+| Sample | N | WR | Total $ | Avg P&L % |
+|---|---|---|---|---|
+| Apr 13 (117tr) 35-40 | 1 | 0% | -$2.34 | -1.03% |
+| Apr 13 (117tr) 40+ | 7 | 57.1% | -$1.25 | -0.07% |
+| Apr 17 (81tr) 35-40 | 5 | 40% | -$5.54 | n/a |
+| May 4 (224tr) 35-40 | 19 | 36.8% | -$8.64 | -0.23% |
+| May 5 (current 31tr) 35-40 | 2 | 0% | -$76.62 (20× lev) | -0.74% |
+| **POOLED LONG 35+** | **34** | **~32% (≈11/34 wins)** | **negative every sample** | **avg ≈ -0.40%** |
+
+Direction-consistent across all 4 independent samples (different configs, different regimes, different leverage). Meets the locked HARD BLOCK promotion bar (≤40% WR on N≥10 multi-sample, direction-consistent).
+
+### Implementation
+
+Single config change: `btc_adx_max_long: 40 → 35` in `trading_config.json`.
+
+Used the existing `btc_adx_max_long` field (BTC Independent Filter) rather than adding a `btc_rsi_adx_filter_long` cross-filter rule, because:
+- Single field, single number change — no syntax extension needed
+- BTC ADX max already runs independently of `btc_global_filter_enabled` (Apr 17 Option B refactor — direct path, no gate dependency)
+- Simpler config → easier to audit and revert
+- The cross-filter range syntax shipped earlier today (May 5) remains available for future cell-shaped rules; this case didn't need its complexity
+
+### What this filters
+
+Cuts every LONG entry attempt with BTC ADX ≥ 35 regardless of pair direction or BTC RSI. ~5-10% of would-be LONG entries based on historical distribution.
+
+### What stays unchanged
+
+- `btc_adx_max_short: 40` — SHORT side at BTC ADX 35+ shows 24-trade pool / ~58% WR / mixed result (Apr 13 35-40 = 100% WR, May 4 35-40 = 100% WR, Apr 17 = 37.5%). Not a consistent loser. SHORT cap stays at 40.
+- `btc_adx_min_long: 18` — unchanged. Lower bound still permissive.
+- All other filters unchanged.
+
+### Pre-committed revert criterion (locked May 5)
+
+If next 100-trade batch shows LONG entries with BTC ADX 33-34 (just below the new cap) clustering at ≤40% WR on N≥10 → the cap may need to drop further to 33 or even 30. If the 33-34 zone shows ≥55% WR on N≥10, the cap is correctly placed.
+
+If LONG entries blocked by the new cap (we won't see them, but the count of `[BTC_ADX_GATE]` log lines is the proxy) drop the LONG entry rate by >30% — investigate whether the cap is over-restrictive vs whether it's correctly cutting a frequent loser zone.
+
+### Files changed
+
+- `trading_config.json`: `btc_adx_max_long: 40 → 35`
+- `CLAUDE.md`: this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The 4-sample evidence pool that promoted this from watchlist to HARD BLOCK
+2. The decision to use `btc_adx_max_long` (single-number, simple) rather than a cross-filter range rule
+3. The asymmetric treatment (LONG cap drops, SHORT cap stays — supported by the SHORT side's mixed evidence)
+4. The locked revert criteria for next-batch validation

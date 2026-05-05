@@ -4514,3 +4514,142 @@ To anchor:
 2. The decision to use `btc_adx_max_long` (single-number, simple) rather than a cross-filter range rule
 3. The asymmetric treatment (LONG cap drops, SHORT cap stays — supported by the SHORT side's mixed evidence)
 4. The locked revert criteria for next-batch validation
+
+## May 5, 2026 — Fresh start: pre-reset batch archived, new batch begins on locked config
+
+### Reset rationale
+
+Today made multiple structural changes to the bot in rapid succession (4 hours):
+- Cross-filter dead-code bug fix (`services/trading_engine.py` Option B refactor extension)
+- SHORT cross-filter shipped: `btc_rsi_adx_filter_short: "30-35:30,35-40:20"` (S-P2 + S-B1 HARD BLOCKS)
+- LONG ADX cap tightened: `btc_adx_max_long: 40 → 35` (4-sample HARD BLOCK on LONG ADX 35+)
+- Cross-filter range syntax extension (`MIN-MAX` form for max-ADX rules)
+- Return Multiple v2 (reverse-derive, fixes paper-mode metric)
+- Premium Multiplier UI tracking columns redesigned to dollar terms
+
+The 35 trades collected May 4 17:05 → May 5 14:07 ran under at least 4 different active filter configurations across that period. Per CLAUDE.md anti-overfit core principle: *"Don't pool raw trades across different configs. Each run = different strategy."* The batch is config-polluted.
+
+Concrete examples of trades in the archived batch that would NOT exist under current locked config:
+- Two AXLUSDT SHORTs (one +$6.68 winner, one -$55.90 loser) — both BTC RSI 30-35 × BTC ADX 25-30 → blocked by S-P2 rule
+- LINKUSDT SHORT (-$52.31) — BTC RSI 33 × BTC ADX 27.6 → blocked by S-P2
+- NEARUSDT LONG (-$22.94) — BTC ADX 35.5 → blocked by `btc_adx_max_long: 35`
+- LTCUSDT LONG (-$53.68) — BTC ADX 37.9 → blocked by `btc_adx_max_long: 35`
+
+~$130+ of P&L in the archived batch reflects trades the current config would not execute. Better to reset and measure the locked config from a clean baseline than to retroactively annotate a polluted sample.
+
+### Archived files
+
+- `reports/report_2026-05-05_pre_reset_31L_4S.txt` — full split analytics for the 35-trade pre-reset batch (31 LONG BULLISH + 4 SHORT BEARISH, runtime 0.78 days)
+- `reports/orders_2026-05-05_pre_reset_31L_4S.csv` — per-trade CSV with all entry indicator columns
+
+### Locked starting config (snapshot at reset, May 5 ~14:10 UTC)
+
+**Capital:**
+- `paper_balance`: $1200 (USDT)
+- `paper_bnb_initial_usd`: $300 (BNB allocation)
+- **Total starting capital: $1,500**
+- `max_open_positions`: 5, `equal_split` mode
+
+**Leverage:** Both VERY_STRONG and STRONG_BUY at **20×**
+
+**LONG entry filters:**
+- Pair RSI: [40, 65]
+- Pair ADX: VERY_STRONG > 22, STRONG > 15, max 25
+- Pair ADX direction: rising
+- BTC ADX: [18, 35] — locked TODAY, cap drop to 35 (4-sample HARD BLOCK)
+- BTC ADX direction: rising
+- BTC RSI × BTC ADX cross-filter: `"70-100:35"` (block BTC RSI ≥70 with ADX <35)
+- Pair RSI × ADX cross-filter: empty
+- `momentum_long_rsi_max`: 65
+- All other filters per CLAUDE.md May 4 entries
+
+**SHORT entry filters:**
+- Pair RSI: [25, 40]
+- Pair ADX: VERY_STRONG > 30, STRONG > 22, max 33
+- Pair ADX direction: rising
+- BTC ADX: [20, 40]
+- BTC ADX direction: rising
+- BTC RSI × BTC ADX cross-filter: `"30-35:30,35-40:20"` (S-P2 + S-B1 HARD BLOCKS)
+- Pair RSI × ADX cross-filter: `"30-35:25,35-50:30"`
+
+**Premium Multipliers (per Phase 3 May 4 deploy, hard cap 2.0×):**
+- LONG cells: `BTC_60-65_20-25` (L-P1 5-sample), `BTC_65-70_25-30` (1-sample), pair `55-60:22-25` — each at 2.0×
+- SHORT cells: `BTC_25-30_20-25` (S-P1 5-sample), `BTC_25-30_25-30` (1-sample), pair `20-30:30-33` (1-sample), pair `30-35:25-28` (1-sample) — each at 2.0×
+
+**Exit settings:**
+- TP min: 0.20%, pullback trigger: 0.15% (May 4 retune)
+- RSI handoff at L3+ (peak ≥ 0.60% with TP=0.20)
+- BE levels: all disabled (99)
+- Stop loss: -0.9% main, -1.2% emergency backstop, -1.0% deep stop
+- Signal Lost Flag + Security Gap: ON
+- FL1 wide SL + FL2: ON
+- Regime Change Exit: ON
+- Tick Momentum Exit: OFF, RSI Momentum Exit: OFF
+
+**Maker entry:**
+- `maker_timeout_seconds`: 20
+- `maker_offset_ticks`: 1
+- `revalidate_on_taker_fallback`: false (May 4)
+
+**Pair blacklist:** XAGUSDT, XAUUSDT, ZECUSDT, ENAUSDT, RAVEUSDT, DOGEUSDT, HYPEUSDT, ASTERUSDT
+
+**Other:**
+- Market Breadth filter: ON (Bull% ≥ 30 LONG, Bear% ≥ 45 SHORT, flat 0.02%)
+- New listing filter: 180 days
+- Spike Guard: ON (3× vol, 1.5% price, 2% EMA20 distance)
+
+### Reset procedure expected
+
+User will trigger the bot reset (whatever mechanism the UI exposes) which should:
+1. Close any remaining open paper positions (or mark them for closure)
+2. Reset paper_balance to $1200 + $300 BNB = $1500 starting
+3. Clear the orders table (or at minimum the paper-mode rows)
+4. Reset BotState runtime tracking
+
+Post-reset, Return Multiple should read 1.0x and Daily Compound 0% until the first closed trade lands.
+
+### How to identify the new batch
+
+The "first batch on locked config" can be unambiguously identified by:
+- Earliest `opened_at` timestamp ≥ 2026-05-05T14:10:00Z (this entry's reset time, approximately)
+- All trades in this batch will run under the snapshot config above
+- No further strategic config changes until the first checkpoint
+
+### Pre-committed checkpoint cadence
+
+| Checkpoint | Trades | Purpose | Decisions allowed |
+|---|---|---|---|
+| Health | ~30 | Verify filters firing as expected (`[BTC_RSI_ADX_CROSS]`, `[BTC_ADX_GATE]` log lines), no errors, multiplier cells activating correctly | None strategic. Bug fixes only. |
+| Mid-batch | ~75 | Operational sanity check, sample size monitoring | None strategic. |
+| Decision | ~150 | Full analysis vs locked config performance | Filter promotions / demotions per locked promotion bars; multiplier cell verdicts |
+
+**Hard floor: do NOT make strategic config changes before 100 trades.** Same discipline as the locked Phase 1c-Explore plan (Apr 28).
+
+### What "success" looks like for this batch
+
+- Confirm filters are doing real work (`[BTC_RSI_ADX_CROSS]` log lines should fire on entries that match the rule patterns)
+- BTC ADX 35+ LONG entries should be ZERO in the closed-trade dataset
+- BTC RSI 30-35 × BTC ADX 25-30 SHORT entries should be ZERO
+- Premium multiplier cells should fire when conditions match and apply 2.0× boost (visible in Multiplier Cell Performance table)
+- Combined Avg P&L % should be ≥ 0 (locked config is the best-evidence config we have)
+
+### What would prompt another reset
+
+ONLY:
+1. Discovery of another structural code bug (like the May 5 cross-filter dead-code bug)
+2. Unanticipated config drift (e.g., a different code path resets paper_balance unexpectedly)
+3. User-initiated reset for a strategy pivot
+
+NOT:
+- "I want to test a new filter mid-batch" → wait for checkpoint
+- "Performance is bad" → wait for checkpoint
+- "Anti-overfit lesson learned" → adjust at checkpoint, not mid-batch
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the reset moment with the EXACT locked config so future-Claude can identify the batch boundary unambiguously
+2. To list the archived files so historical comparison is possible
+3. To pre-commit the checkpoint discipline (no mid-batch changes)
+4. To document the rationale (config pollution from rapid changes, not a strategy reversal)
+
+The pre-reset 35-trade sample is preserved in `reports/` for any future cross-config analysis. It is NOT to be pooled with the new batch.

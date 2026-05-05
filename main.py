@@ -2582,18 +2582,36 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     # Expectancy in % (leverage-/invest-invariant — preferred for cross-batch comparison)
     avg_win_pct = sum(o.pnl_percentage or 0 for o in all_wins) / len(all_wins) if all_wins else 0
     avg_loss_pct = sum(o.pnl_percentage or 0 for o in all_losses) / len(all_losses) if all_losses else 0
+    avg_win_long_pct = sum(o.pnl_percentage or 0 for o in long_wins) / len(long_wins) if long_wins else 0
+    avg_win_short_pct = sum(o.pnl_percentage or 0 for o in short_wins) / len(short_wins) if short_wins else 0
+    avg_loss_long_pct = sum(o.pnl_percentage or 0 for o in long_losses) / len(long_losses) if long_losses else 0
+    avg_loss_short_pct = sum(o.pnl_percentage or 0 for o in short_losses) / len(short_losses) if short_losses else 0
     expectancy_pct = (wr * avg_win_pct) - ((1 - wr) * abs(avg_loss_pct)) if total_trades > 0 else 0
-    
+
     # Best/worst - Best win should only count winning trades (pnl > 0)
     long_wins_pnls = [o.pnl for o in longs if (o.pnl or 0) > 0]
     short_wins_pnls = [o.pnl for o in shorts if (o.pnl or 0) > 0]
     long_loss_pnls = [o.pnl for o in longs if (o.pnl or 0) <= 0]
     short_loss_pnls = [o.pnl for o in shorts if (o.pnl or 0) <= 0]
-    
+
     best_win_long = max(long_wins_pnls) if long_wins_pnls else 0
     best_win_short = max(short_wins_pnls) if short_wins_pnls else 0
     worst_loss_long = min(long_loss_pnls) if long_loss_pnls else 0
     worst_loss_short = min(short_loss_pnls) if short_loss_pnls else 0
+
+    # Best/worst as % — pick the % corresponding to the best/worst $ trade.
+    # Using the same trade's pnl_percentage (not max-of-percentages) because
+    # operator's mental model is "this best $ trade returned Y %".
+    def _pct_of(orders_pnl_list, target_pnl):
+        for o in orders_pnl_list:
+            if (o.pnl or 0) == target_pnl:
+                return o.pnl_percentage or 0
+        return 0
+
+    best_win_long_pct = _pct_of([o for o in longs if (o.pnl or 0) > 0], best_win_long) if long_wins_pnls else 0
+    best_win_short_pct = _pct_of([o for o in shorts if (o.pnl or 0) > 0], best_win_short) if short_wins_pnls else 0
+    worst_loss_long_pct = _pct_of([o for o in longs if (o.pnl or 0) <= 0], worst_loss_long) if long_loss_pnls else 0
+    worst_loss_short_pct = _pct_of([o for o in shorts if (o.pnl or 0) <= 0], worst_loss_short) if short_loss_pnls else 0
     
     # Totals
     total_pnl = sum(o.pnl or 0 for o in orders)
@@ -4774,12 +4792,22 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "avg_loss": round(avg_loss, 2),
         "avg_loss_long": round(avg_loss_long, 2),
         "avg_loss_short": round(avg_loss_short, 2),
+        "avg_win_pct": round(avg_win_pct, 2),
+        "avg_win_long_pct": round(avg_win_long_pct, 2),
+        "avg_win_short_pct": round(avg_win_short_pct, 2),
+        "avg_loss_pct": round(avg_loss_pct, 2),
+        "avg_loss_long_pct": round(avg_loss_long_pct, 2),
+        "avg_loss_short_pct": round(avg_loss_short_pct, 2),
         "expectancy": round(expectancy, 2),
         "expectancy_pct": round(expectancy_pct, 2),
         "best_win_long": round(best_win_long, 2),
         "best_win_short": round(best_win_short, 2),
         "worst_loss_long": round(worst_loss_long, 2),
         "worst_loss_short": round(worst_loss_short, 2),
+        "best_win_long_pct": round(best_win_long_pct, 2),
+        "best_win_short_pct": round(best_win_short_pct, 2),
+        "worst_loss_long_pct": round(worst_loss_long_pct, 2),
+        "worst_loss_short_pct": round(worst_loss_short_pct, 2),
         "total_pnl": round(total_pnl, 2),
         "total_pnl_percentage": round(total_pnl_percentage, 2),
         "total_pnl_notional_percentage": round(total_pnl / total_investment_notional * 100, 2) if total_investment_notional > 0 else 0,

@@ -86,6 +86,7 @@
     "btc_adx_max_short": 40,
     "btc_adx_dir_long": "rising",
     "btc_adx_dir_short": "rising",
+    "btc_trend_filter_enabled": true,
     "adx_dir_long": "rising",
     "adx_dir_short": "rising",
     "signal_lost_exit_enabled": true,

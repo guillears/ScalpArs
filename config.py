@@ -131,6 +131,7 @@ class SignalThresholds(BaseModel):
     btc_adx_max_short: float = 100  # Max BTC ADX to allow SHORTs (100 = disabled)
     btc_adx_dir_long: str = "both"  # BTC ADX direction filter for LONGs: "both", "rising", "falling"
     btc_adx_dir_short: str = "both"  # BTC ADX direction filter for SHORTs: "both", "rising", "falling"
+    btc_trend_filter_enabled: bool = False  # BTC EMA20 vs EMA50 macro trend filter (May 5). Blocks countertrend entries: EMA20 > EMA50 blocks SHORTs, EMA20 < EMA50 blocks LONGs.
     adx_dir_long: str = "both"  # Pair ADX direction filter for LONGs: "both", "rising", "falling"
     adx_dir_short: str = "both"  # Pair ADX direction filter for SHORTs: "both", "rising", "falling"
     signal_lost_exit_enabled: bool = True  # Close when EMA5/EMA8 momentum reverses while in profit

@@ -4654,9 +4654,45 @@ NOT:
 
 The pre-reset 35-trade sample is preserved in `reports/` for any future cross-config analysis. It is NOT to be pooled with the new batch.
 
-## May 5, 2026 — Regime Stability Instrumentation (BTC Flat Distance + BTC Regime Age)
+## May 5, 2026 — Regime Stability Instrumentation (REVERTED same day)
 
-### Diagnostic question this exists to answer
+### Status: shipped, then reverted on user pushback
+
+The entire regime stability instrumentation (3 new tables, runtime regime tracking, cold-start back-walk, schema additions) was shipped and then reverted within hours when the operator correctly pointed out that the diagnostic value was redundant with existing tables.
+
+### Why reverted
+
+1. **`Performance by BTC Flat Distance` was a relabel of existing data.** `FlatΔ = abs(entry_btc_ema20_slope) - flat_threshold` is just BTC EMA20 slope minus a direction-specific constant. The existing `Performance by BTC EMA20 Slope (abs)` table already shows the same data, separated by direction, with finer buckets. The "marginal regime entries lose more" question is answerable from the existing table.
+
+2. **`Performance by BTC Regime Age at Entry` was partly redundant for losers.** For REGIME_CHANGE / FL_REGIME_CHANGE exits, trade duration already tells us "how long the regime survived AFTER entry" — and existing tables (Closing Reason Summary, Hold-Time Expectancy, Entry Conditions by Close Reason) all show duration. The new "regime age at entry" mirror dimension adds information for winners only, but the bot's cooldown_after_loss + signal-alignment dynamics mean the bot rarely enters fresh regimes anyway, skewing the distribution.
+
+3. **`Regime Stability Cross-Tab` inherited the weaknesses of both inputs.** A 2D combination of FlatΔ × Age can't be more informative than its parts.
+
+### What got rolled back
+
+- `main.py`: removed 3 helper functions (`_compute_btc_flat_distance_performance`, `_compute_btc_regime_age_performance`, `_compute_regime_stability_crosstab`); removed per-trade dimension capture in Entry Conditions builders; removed payload entries; removed empty-data fallback paths
+- `services/trading_engine.py`: removed `self._btc_regime_started_at` init; removed restore from BotState; removed cold-start back-walk method (`_init_btc_regime_started_at`); removed runtime regime transition tracking in scan loop; removed `entry_btc_regime_started_at=self._btc_regime_started_at` at all 5 Order creation sites
+- `templates/index.html`: removed 3 dashboard tables; removed JS renderers; removed both text-export sites
+- `CLAUDE.md`: this entry, marking the addition as reverted
+
+### What was kept (intentionally inert)
+
+The schema additions are kept in place so a future change wouldn't need to re-migrate:
+- `BotState.current_btc_regime` (String 20, NULL)
+- `BotState.btc_regime_started_at` (DateTime, NULL)
+- `Order.entry_btc_regime_started_at` (DateTime, NULL on all rows post-revert)
+
+These columns exist in the DB but are never read or written by the running code. If a future analytical need arises, the columns are available without re-migration.
+
+### Lesson
+
+Engineering investment was disproportionate to information gain. The "marginal regime kills SHORTs" hypothesis is testable from existing data — `Performance by BTC EMA20 Slope (abs)` table already separates trade outcomes by slope magnitude, and `Closing Reason Summary` already shows duration per close reason. Adding new tables that re-bucket existing data does not produce new insight.
+
+For the next analytical iteration on regime-change losses: use existing tables. If a genuinely new dimension is needed, propose it after first verifying the question can't be answered from existing data.
+
+### Original entry (preserved below for context, NOT current behavior)
+
+#### Diagnostic question this exists to answer
 
 REGIME_CHANGE / FL_REGIME_CHANGE exits have been the largest single loss bucket across multiple batches (May 4 224-trade, May 5 pre-reset 35-trade, May 5 fresh-start 5-trade SHORT). The hypothesis is two-pronged:
 

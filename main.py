@@ -1563,9 +1563,6 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
-            "btc_flat_distance_performance": [],
-            "btc_regime_age_performance": [],
-            "regime_stability_crosstab": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
@@ -2069,165 +2066,6 @@ def _compute_ttp_ratio(o):
     return max(0.0, min(1.0, ratio))
 
 
-def _compute_btc_flat_distance_performance(orders):
-    """Performance bucketed by how far BTC slope was past the flat threshold at entry.
-    Diagnostic for "marginal regime" hypothesis: trades entered when BTC was
-    barely past flat are more flip-prone and should perform worse.
-    See CLAUDE.md May 5 entry on regime stability instrumentation.
-    """
-    cfg_th = config.trading_config.thresholds
-    flat_l = getattr(cfg_th, 'macro_trend_flat_threshold_long', cfg_th.macro_trend_flat_threshold)
-    flat_s = getattr(cfg_th, 'macro_trend_flat_threshold_short', cfg_th.macro_trend_flat_threshold)
-    buckets = [
-        ('<0.02%', -float('inf'), 0.02),
-        ('0.02-0.05%', 0.02, 0.05),
-        ('0.05-0.10%', 0.05, 0.10),
-        ('0.10-0.20%', 0.10, 0.20),
-        ('>=0.20%', 0.20, float('inf')),
-    ]
-    rows = {}
-    for o in orders:
-        if o.entry_btc_ema20_slope is None:
-            continue
-        flat_th = flat_l if (o.direction or 'LONG') == 'LONG' else flat_s
-        d = abs(o.entry_btc_ema20_slope) - flat_th
-        for label, lo, hi in buckets:
-            if lo <= d < hi:
-                rows.setdefault((label, o.direction or 'UNKNOWN'), []).append(o)
-                break
-    out = []
-    bucket_order = {b[0]: i for i, b in enumerate(buckets)}
-    for (label, direction), group in sorted(rows.items(), key=lambda kv: (bucket_order[kv[0][0]], kv[0][1])):
-        n = len(group)
-        wins = sum(1 for o in group if (o.pnl or 0) > 0)
-        np_count = sum(1 for o in group if (o.peak_pnl or 0) <= 0)
-        total = sum(o.pnl or 0 for o in group)
-        avg_pct = sum(o.pnl_percentage or 0 for o in group) / n if n > 0 else 0
-        out.append({
-            'range': label,
-            'direction': direction,
-            'count': n,
-            'win_rate': round(wins / n * 100, 1) if n > 0 else 0,
-            'total_usd': round(total, 2),
-            'avg_usd': round(total / n, 2) if n > 0 else 0,
-            'avg_pct': round(avg_pct, 4),
-            'np_count': np_count,
-            'np_pct': round(np_count / n * 100, 0) if n > 0 else 0,
-        })
-    return out
-
-
-def _compute_btc_regime_age_performance(orders):
-    """Performance bucketed by BTC regime age at entry (seconds).
-    Diagnostic for "fresh regime flips" hypothesis: trades entered just after
-    a regime flip should be more vulnerable to a re-flip than aged regimes.
-    See CLAUDE.md May 5 entry on regime stability instrumentation.
-    """
-    buckets = [
-        ('<5min', 0, 300),
-        ('5-15min', 300, 900),
-        ('15-30min', 900, 1800),
-        ('30-60min', 1800, 3600),
-        ('1-2h', 3600, 7200),
-        ('2-4h', 7200, 14400),
-        ('4h+', 14400, float('inf')),
-    ]
-    rows = {}
-    for o in orders:
-        started = getattr(o, 'entry_btc_regime_started_at', None)
-        if not o.opened_at or not started:
-            continue
-        age = (o.opened_at - started).total_seconds()
-        if age < 0:
-            continue
-        for label, lo, hi in buckets:
-            if lo <= age < hi:
-                rows.setdefault((label, o.direction or 'UNKNOWN'), []).append(o)
-                break
-    out = []
-    bucket_order = {b[0]: i for i, b in enumerate(buckets)}
-    for (label, direction), group in sorted(rows.items(), key=lambda kv: (bucket_order[kv[0][0]], kv[0][1])):
-        n = len(group)
-        wins = sum(1 for o in group if (o.pnl or 0) > 0)
-        np_count = sum(1 for o in group if (o.peak_pnl or 0) <= 0)
-        total = sum(o.pnl or 0 for o in group)
-        avg_pct = sum(o.pnl_percentage or 0 for o in group) / n if n > 0 else 0
-        out.append({
-            'range': label,
-            'direction': direction,
-            'count': n,
-            'win_rate': round(wins / n * 100, 1) if n > 0 else 0,
-            'total_usd': round(total, 2),
-            'avg_usd': round(total / n, 2) if n > 0 else 0,
-            'avg_pct': round(avg_pct, 4),
-            'np_count': np_count,
-            'np_pct': round(np_count / n * 100, 0) if n > 0 else 0,
-        })
-    return out
-
-
-def _compute_regime_stability_crosstab(orders):
-    """2D cross-tab: BTC Flat Distance × BTC Regime Age. The diagnostic answer to
-    "are regime-change losses driven by marginal regime, fresh regime, both?"
-    See CLAUDE.md May 5 entry on regime stability instrumentation.
-    """
-    cfg_th = config.trading_config.thresholds
-    flat_l = getattr(cfg_th, 'macro_trend_flat_threshold_long', cfg_th.macro_trend_flat_threshold)
-    flat_s = getattr(cfg_th, 'macro_trend_flat_threshold_short', cfg_th.macro_trend_flat_threshold)
-    flat_buckets = [
-        ('<0.02%', -float('inf'), 0.02),
-        ('0.02-0.05%', 0.02, 0.05),
-        ('0.05-0.10%', 0.05, 0.10),
-        ('>=0.10%', 0.10, float('inf')),
-    ]
-    age_buckets = [
-        ('<15min', 0, 900),
-        ('15-60min', 900, 3600),
-        ('1-4h', 3600, 14400),
-        ('4h+', 14400, float('inf')),
-    ]
-    rows = {}
-    for o in orders:
-        if o.entry_btc_ema20_slope is None:
-            continue
-        started = getattr(o, 'entry_btc_regime_started_at', None)
-        if not o.opened_at or not started:
-            continue
-        age = (o.opened_at - started).total_seconds()
-        if age < 0:
-            continue
-        flat_th = flat_l if (o.direction or 'LONG') == 'LONG' else flat_s
-        d = abs(o.entry_btc_ema20_slope) - flat_th
-        flat_label = next((lbl for lbl, lo, hi in flat_buckets if lo <= d < hi), None)
-        age_label = next((lbl for lbl, lo, hi in age_buckets if lo <= age < hi), None)
-        if flat_label is None or age_label is None:
-            continue
-        rows.setdefault((o.direction or 'UNKNOWN', flat_label, age_label), []).append(o)
-    out = []
-    flat_order = {b[0]: i for i, b in enumerate(flat_buckets)}
-    age_order = {b[0]: i for i, b in enumerate(age_buckets)}
-    for (direction, flat_label, age_label), group in sorted(
-        rows.items(), key=lambda kv: (kv[0][0], flat_order[kv[0][1]], age_order[kv[0][2]])
-    ):
-        n = len(group)
-        wins = sum(1 for o in group if (o.pnl or 0) > 0)
-        np_count = sum(1 for o in group if (o.peak_pnl or 0) <= 0)
-        total = sum(o.pnl or 0 for o in group)
-        avg_pct = sum(o.pnl_percentage or 0 for o in group) / n if n > 0 else 0
-        out.append({
-            'direction': direction,
-            'flat_distance': flat_label,
-            'regime_age': age_label,
-            'count': n,
-            'win_rate': round(wins / n * 100, 1) if n > 0 else 0,
-            'total_usd': round(total, 2),
-            'avg_pct': round(avg_pct, 4),
-            'np_count': np_count,
-            'np_pct': round(np_count / n * 100, 0) if n > 0 else 0,
-        })
-    return out
-
-
 def _vol_bin_label(ratio):
     if ratio is None:
         return None
@@ -2697,9 +2535,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
-            "btc_flat_distance_performance": [],
-            "btc_regime_age_performance": [],
-            "regime_stability_crosstab": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
@@ -3875,26 +3710,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 r = _compute_ttp_ratio(o)
                 if r is not None:
                     ttp_ratios.append(r)
-            # Regime Stability instrumentation (May 5):
-            #   FlatΔ = abs(entry_btc_ema20_slope) - flat_threshold (per direction)
-            #   RegAge = opened_at - entry_btc_regime_started_at (in seconds)
-            # See CLAUDE.md May 5 entry on regime stability instrumentation.
-            _th_cfg_rs = config.trading_config.thresholds
-            _flat_th_rs = (
-                getattr(_th_cfg_rs, 'macro_trend_flat_threshold_long', _th_cfg_rs.macro_trend_flat_threshold)
-                if direction == 'LONG'
-                else getattr(_th_cfg_rs, 'macro_trend_flat_threshold_short', _th_cfg_rs.macro_trend_flat_threshold)
-            )
-            flat_distances = [
-                abs(o.entry_btc_ema20_slope) - _flat_th_rs
-                for o in group
-                if o.entry_btc_ema20_slope is not None
-            ]
-            regime_ages_sec = [
-                (o.opened_at - o.entry_btc_regime_started_at).total_seconds()
-                for o in group
-                if o.opened_at and getattr(o, 'entry_btc_regime_started_at', None)
-            ]
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -3975,9 +3790,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "ema50_flat": ema50_flat,
                 "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
                 "avg_ttp_ratio": round(sum(ttp_ratios) / len(ttp_ratios), 2) if ttp_ratios else None,
-                # Regime Stability (May 5) — see CLAUDE.md
-                "avg_btc_flat_distance": round(sum(flat_distances) / len(flat_distances), 4) if flat_distances else None,
-                "avg_btc_regime_age_sec": round(sum(regime_ages_sec) / len(regime_ages_sec), 0) if regime_ages_sec else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
@@ -4094,23 +3906,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 r = _compute_ttp_ratio(o)
                 if r is not None:
                     ttp_ratios.append(r)
-            # Regime Stability (May 5) — same dimensions as Entry Conditions by Close Reason
-            _th_cfg_rs2 = config.trading_config.thresholds
-            _flat_th_rs2 = (
-                getattr(_th_cfg_rs2, 'macro_trend_flat_threshold_long', _th_cfg_rs2.macro_trend_flat_threshold)
-                if direction == 'LONG'
-                else getattr(_th_cfg_rs2, 'macro_trend_flat_threshold_short', _th_cfg_rs2.macro_trend_flat_threshold)
-            )
-            flat_distances = [
-                abs(o.entry_btc_ema20_slope) - _flat_th_rs2
-                for o in group
-                if o.entry_btc_ema20_slope is not None
-            ]
-            regime_ages_sec = [
-                (o.opened_at - o.entry_btc_regime_started_at).total_seconds()
-                for o in group
-                if o.opened_at and getattr(o, 'entry_btc_regime_started_at', None)
-            ]
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -4184,9 +3979,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "ema50_flat": ema50_flat,
                 "avg_funding_rate": round(sum(funding_rates) / len(funding_rates), 6) if funding_rates else None,
                 "avg_ttp_ratio": round(sum(ttp_ratios) / len(ttp_ratios), 2) if ttp_ratios else None,
-                # Regime Stability (May 5) — see CLAUDE.md
-                "avg_btc_flat_distance": round(sum(flat_distances) / len(flat_distances), 4) if flat_distances else None,
-                "avg_btc_regime_age_sec": round(sum(regime_ages_sec) / len(regime_ages_sec), 0) if regime_ages_sec else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
@@ -5070,10 +4862,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
         "entry_conditions_by_outcome": entry_conditions_by_outcome,
-        # Regime Stability Diagnostics (May 5) — see CLAUDE.md
-        "btc_flat_distance_performance": _compute_btc_flat_distance_performance(orders),
-        "btc_regime_age_performance": _compute_btc_regime_age_performance(orders),
-        "regime_stability_crosstab": _compute_regime_stability_crosstab(orders),
         "flagged_exits": flagged_exits,
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),

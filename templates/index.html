@@ -4857,7 +4857,8 @@
 
                 lines.push(hr);
                 lines.push('TRADING BOT ANALYTICS REPORT');
-                lines.push(`Generated: ${new Date().toISOString()}`);
+                const _rpt1 = new Date(Date.now() - 3 * 60 * 60 * 1000);
+                lines.push(`Generated: ${_rpt1.toISOString().replace('T',' ').substring(0,19)} UTC-3`);
                 if (regimeFilter) lines.push(`Filter: ${regimeFilter} trades only`);
                 lines.push(hr);
 
@@ -5589,7 +5590,8 @@
 
                 lines.push(hr);
                 lines.push('TRADING BOT SPLIT ANALYTICS REPORT');
-                lines.push(`Generated: ${new Date().toISOString()}`);
+                const _rpt2 = new Date(Date.now() - 3 * 60 * 60 * 1000);
+                lines.push(`Generated: ${_rpt2.toISOString().replace('T',' ').substring(0,19)} UTC-3`);
                 lines.push(hr);
 
                 lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));

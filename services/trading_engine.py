@@ -235,8 +235,95 @@ class TradingEngine:
             await self._recalculate_paper_balance(db)
             await self.save_state(db)
 
+        await self._recover_post_exit_tracking(db)
         self._initialized = True
-    
+
+    async def _recover_post_exit_tracking(self, db: AsyncSession):
+        """Re-register recently-closed orders for post-exit tracking that was interrupted by a restart.
+
+        On restart, _post_exit_tracking (in-memory) is wiped. Orders whose 45-min window
+        spans the restart never get their post_exit_peak_pnl written. This method finds
+        those orders and re-registers them for whatever time remains in their window.
+        Orders whose window has fully expired (closed_at + tracking_minutes < now) are
+        skipped — their data is permanently lost for this run.
+        """
+        tc = config.trading_config
+        if not getattr(tc, 'post_exit_tracking_enabled', False):
+            return
+        minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
+        now = datetime.utcnow()
+        cutoff = now - timedelta(minutes=minutes)
+
+        try:
+            result = await db.execute(
+                select(Order).where(
+                    Order.status == 'CLOSED',
+                    Order.post_exit_peak_pnl.is_(None),
+                    Order.closed_at >= cutoff,
+                )
+            )
+            candidates = result.scalars().all()
+        except Exception as e:
+            logger.warning(f"[POST_EXIT_RECOVER] DB query failed: {e}")
+            return
+
+        recovered = 0
+        for order in candidates:
+            if not order.close_reason or not order.closed_at:
+                continue
+            _reason_base = order.close_reason[3:] if order.close_reason.startswith("FL_") else order.close_reason
+            if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or
+                    _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or
+                    _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("STOP_LOSS") or
+                    _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or
+                    _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or
+                    _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or
+                    _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL")):
+                continue
+
+            closed_utc = order.closed_at if order.closed_at.tzinfo else order.closed_at.replace(tzinfo=None)
+            tracking_until = closed_utc + timedelta(minutes=minutes)
+
+            tracker = websocket_tracker.get_tracker(order.pair)
+            initial_price = tracker.last_price if tracker else order.exit_price
+
+            _pe_notional = order.entry_price * order.quantity if order.quantity else 1
+            _pe_fee_drag = (((order.entry_fee or 0) + _pe_notional * getattr(tc, 'taker_fee', tc.trading_fee)) / _pe_notional) * 100
+
+            self._post_exit_tracking[order.id] = {
+                "order_id": order.id,
+                "pair": order.pair,
+                "entry_price": order.entry_price,
+                "direction": order.direction,
+                "fee_drag_pct": _pe_fee_drag,
+                "exit_time": order.closed_at,
+                "tracking_until": tracking_until,
+                "post_high": initial_price or order.exit_price,
+                "post_low": initial_price or order.exit_price,
+                "peak_at": now,
+                "trough_at": now,
+                "signal_lost_at": None,
+                "pnl_at_signal_lost": None,
+                "peak_before_signal_lost": 0.0,
+                "rsi_exit_at": None,
+                "rsi_exit_pnl": None,
+                "rsi3_exit_at": None,
+                "rsi3_exit_pnl": None,
+                "rsi_history": [],
+                "signal_regained_at": None,
+                "pnl_at_signal_regained": None,
+                "running_min_pnl": None,
+                "floor_before_signal_regain": None,
+                "close_reason": order.close_reason,
+                "tick_prices": [],
+            }
+            recovered += 1
+            logger.info(f"[POST_EXIT_RECOVER] Re-registered {order.pair} order {order.id} ({order.close_reason}) — "
+                        f"tracking_until={tracking_until.strftime('%H:%M:%S')}")
+
+        if recovered:
+            logger.info(f"[POST_EXIT_RECOVER] Recovered {recovered} orders for post-exit tracking after restart")
+
     async def save_state(self, db: AsyncSession):
         """Save engine state to database"""
         result = await db.execute(select(BotState).limit(1))

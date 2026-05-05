@@ -345,6 +345,11 @@ class BotState(Base):
     current_btc_regime = Column(String(20), nullable=True)
     btc_regime_started_at = Column(DateTime, nullable=True)
 
+    # Filter block counters — persisted as JSON so the panel survives redeployments.
+    # Format: '{"BTC_TREND_FILTER|SHORT": 12, "BTC_ADX_GATE|LONG": 3, ...}'
+    # Restored into _filter_block_counts on initialize(); flushed by save_state().
+    filter_block_counts_json = Column(Text, nullable=True)
+
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)
     

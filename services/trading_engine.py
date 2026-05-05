@@ -2,6 +2,7 @@
 SCALPARS Trading Platform - Trading Engine
 """
 import asyncio
+import json
 import logging
 import time
 from datetime import datetime, timedelta
@@ -194,6 +195,17 @@ class TradingEngine:
                 )
             if state.is_running and state.started_at:
                 self.started_at = state.started_at
+            # Restore filter block counters persisted from previous session
+            _fb_json = getattr(state, 'filter_block_counts_json', None)
+            if _fb_json:
+                try:
+                    _fb_raw = json.loads(_fb_json)
+                    self._filter_block_counts = {
+                        tuple(k.split("|", 1)): v for k, v in _fb_raw.items()
+                    }
+                    logger.info(f"[FILTER_BLOCKS] Restored {len(self._filter_block_counts)} counters from DB")
+                except Exception as _e:
+                    logger.warning(f"[FILTER_BLOCKS] Failed to restore counters: {_e}")
             logger.info(
                 f"[MODE] Loaded from BotState DB: is_paper_mode={self.is_paper_mode}, "
                 f"is_running={self.is_running} — runtime mode recovered from previous session."
@@ -329,6 +341,10 @@ class TradingEngine:
         result = await db.execute(select(BotState).limit(1))
         state = result.scalar_one_or_none()
         
+        _fb_json = json.dumps({
+            f"{k[0]}|{k[1]}": v for k, v in self._filter_block_counts.items()
+        }) if self._filter_block_counts else None
+
         if state:
             state.is_running = self.is_running
             state.is_paper_mode = self.is_paper_mode
@@ -337,6 +353,7 @@ class TradingEngine:
             state.total_runtime_seconds = self.total_runtime_seconds
             state.started_at = self.started_at
             state.updated_at = datetime.utcnow()
+            state.filter_block_counts_json = _fb_json
         else:
             state = BotState(
                 is_running=self.is_running,
@@ -344,10 +361,11 @@ class TradingEngine:
                 paper_balance=self.paper_balance,
                 paper_bnb_balance_usd=self.paper_bnb_balance_usd,
                 total_runtime_seconds=self.total_runtime_seconds,
-                started_at=self.started_at
+                started_at=self.started_at,
+                filter_block_counts_json=_fb_json,
             )
             db.add(state)
-        
+
         await db.commit()
     
     async def start(self, db: AsyncSession):

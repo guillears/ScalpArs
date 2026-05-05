@@ -4021,8 +4021,18 @@ class TradingEngine:
             # Addresses the case where short-horizon (15min) BTC slope flips
             # bearish during a brief pullback within a multi-hour bullish trend
             # (and vice versa). See CLAUDE.md May 5 entry on BTC Trend Filter.
+            # === DEBUG INSTRUMENTATION (May 5) — find the LONG-not-opening bug ===
+            _btc_trend_enabled = getattr(config.trading_config.thresholds, 'btc_trend_filter_enabled', False)
+            if signal in ["LONG", "SHORT"]:
+                _gap_pct_dbg = (((btc_ema20 - btc_ema50) / btc_ema50) * 100) if (btc_ema20 and btc_ema50) else None
+                _gap_str_dbg = f"{_gap_pct_dbg:.4f}%" if _gap_pct_dbg is not None else "N/A"
+                logger.info(
+                    f"[DEBUG_TREND] {pair} {signal} {confidence}: filter_enabled={_btc_trend_enabled} "
+                    f"btc_ema20={btc_ema20} btc_ema50={btc_ema50} gap={_gap_str_dbg}"
+                )
+
             if (signal in ["LONG", "SHORT"]
-                    and getattr(config.trading_config.thresholds, 'btc_trend_filter_enabled', False)
+                    and _btc_trend_enabled
                     and btc_ema20 is not None and btc_ema50 is not None):
                 if signal == "LONG" and btc_ema20 < btc_ema50:
                     logger.info(
@@ -4038,6 +4048,8 @@ class TradingEngine:
                     )
                     self._record_filter_block("BTC_TREND_FILTER", "SHORT")
                     signal = "NO_TRADE"
+                else:
+                    logger.info(f"[BTC_TREND_FILTER_PASS] {pair} {signal}: btc_ema20={btc_ema20:.2f} btc_ema50={btc_ema50:.2f} (passed)")
 
             # BTC Slope directional check — runs independently of Macro Trend toggle.
             # For LONG: require BTC slope >= +flat_threshold_long (BTC rising meaningfully)
@@ -4122,6 +4134,8 @@ class TradingEngine:
                     signal = "NO_TRADE"
 
             await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
+            if signal in ["LONG", "SHORT"]:
+                logger.info(f"[DEBUG_AFTER_PAIRDATA] {pair} {signal} {confidence}: signal still valid after PairData write")
 
             # --- SPIKE GUARD: block entries during abnormal candles ---
             _sg = config.trading_config.thresholds
@@ -4151,6 +4165,7 @@ class TradingEngine:
                     signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
+                logger.info(f"[DEBUG_REACHED_OPEN] {pair} {signal} {confidence}: about to call open_position()")
                 logger.info(f"[SIGNAL] {pair}: {signal} with {confidence} confidence - Opening position...")
                 entry_gap = None
                 if indicators.get('ema5') and indicators.get('ema20') and indicators['price'] > 0:
@@ -4245,12 +4260,15 @@ class TradingEngine:
                 )
 
                 if order:
+                    logger.info(f"[DEBUG_OPENED] {pair} {signal} {confidence}: open_position returned order id={order.id}")
                     actions.append({
                         "pair": pair,
                         "action": f"OPENED_{signal}",
                         "confidence": confidence,
                         "price": indicators['price']
                     })
+                else:
+                    logger.warning(f"[DEBUG_OPEN_FAILED] {pair} {signal} {confidence}: open_position returned None — check upstream logs in open_position for the real reason")
 
         self._last_scan_time = time.time()
         elapsed = self._last_scan_time - now

@@ -4871,3 +4871,114 @@ Why the operator gets value from this:
 2. Magnitude: small gap (<0.05%) warns that trend is fragile and could flip
 3. Asymmetry: if BTC chart shows clear bullish trend but badge shows DOWN, something's off — diagnostic hook
 4. Stays informative even when filter is disabled (badge still shows trend state, just dimmed)
+
+## May 5, 2026 — Filter-rollback candidates locked for next-batch validation
+
+### Methodological lesson from May 4 → May 5
+
+The May 4 224-trade Entry Conditions by Outcome table showed **Winners L and Losers L had nearly identical signatures** on every per-pair entry dimension (RSI 60.4 vs 61.1, ADX 18.9 vs 19.1, Gap 0.18 vs 0.10, BTC RSI 64 vs 65.5, BTC ADX 27 vs 29, Range Position 86 vs 87, Breadth 56.8 vs 72.5). The discriminator was almost certainly on a dimension we weren't measuring — most likely macro BTC trend context.
+
+We under-weighted this signal at the time and continued tightening pair-level filters when the data was telling us pair-level dimensions weren't the discriminator. The new BTC Trend Filter (May 5) directly fills the gap.
+
+**Methodological rule (locked):** when Winners and Losers have similar signatures on the dimensions you're measuring, the discriminator is on a dimension you're NOT measuring. Don't tighten the dimensions you measure — find the missing one.
+
+### Why some recent filters might be partly redundant — and why we're NOT rolling back yet
+
+The BTC Trend Filter addresses ONE specific failure mode: countertrend entry during a multi-hour trend pullback. It does NOT cover:
+- BTC at extreme trend strength about to exhaust (climax reversal still has EMA20 > EMA50)
+- Pair RSI getting overbought late in a sustained cycle
+- Specific BTC RSI × BTC ADX cells where edge historically failed
+- Pair-level dimensions
+
+So most existing filters target different failure modes than the new filter — they're complementary, not redundant. Pre-emptive rollback would lose multi-sample evidence support and confound the BTC Trend Filter's validation.
+
+**Decision: NO rollback before the next 100-trade batch.** Validate first, decide based on data.
+
+### Locked rollback candidates with per-filter validation gates
+
+After next 100-trade batch with BTC Trend Filter active, examine each candidate. Decision criteria pre-committed below.
+
+#### Candidate 1: `btc_adx_max_long: 35` (shipped May 5)
+
+**Original rationale:** 4-sample structural finding — LONG BTC ADX 35+ pool of 34 trades at ~32% WR, direction-consistent across Apr 13, Apr 17, May 4, May 5 batches.
+
+**Hypothesis to test:** Does the loss pattern persist when EMA20 > EMA50 was always true (i.e., trend was actually up)?
+
+**Rollback gate:**
+- If at next batch, LONG entries with BTC ADX 35+ that PASSED the BTC Trend Filter (= trades that opened with BTC EMA20 > EMA50 but BTC ADX 35+) show ≥55% WR on N≥10 → the original loss pattern was driven by macro mismatch (now caught by trend filter), this filter is redundant. **Roll back to btc_adx_max_long: 40.**
+- If those trades still show ≤45% WR on N≥10 → independent failure mode (climax exhaustion), filter is doing real work. **Keep.**
+- If N<10 in this specific bucket → insufficient data, defer to 200-trade checkpoint.
+
+#### Candidate 2: `momentum_long_rsi_max: 65` (shipped May 4)
+
+**Original rationale:** 2-sample structural finding (Apr 13 + May 4) — Pair RSI 65-70 LONG combined N=72 / 26.4% WR.
+
+**Hypothesis to test:** Was the RSI 65-70 loss really driven by pair RSI level, or by the fact that pair RSI gets to 65-70 mostly during late-cycle BTC moves that subsequently reverse?
+
+**Rollback gate:**
+- If at next batch, the bucket Pair RSI 60-65 LONG (currently the highest allowed) shows ≥55% WR on N≥15 → no degradation from current cap, but no evidence the cap is needed either. Test loosening to 70 in batch after.
+- If we get any LONG trades with simulated Pair RSI 65-70 (via observation logs / what would have been blocked) and they show ≥55% WR on N≥10 → cap was over-restrictive, **roll back to momentum_long_rsi_max: 70.**
+- If those simulated entries show ≤45% WR → cap is doing work, **keep.**
+
+This is the **highest-priority rollback candidate** because:
+- 2-sample evidence (weakest among recent filter additions)
+- The "pair RSI gets high → late cycle" causal story is most likely confounded with macro
+- Test cost is low (single config change, easily reversible)
+
+#### Candidate 3: `btc_rsi_adx_filter_short: "30-35:30,35-40:20"` (S-P2 + S-B1, shipped May 5)
+
+**Original rationale:** 3-sample evidence on S-P2 (BTC RSI 30-35 × BTC ADX 25-30 SHORT, pool 14 trades / ~36% WR) plus 5-sample evidence on S-B1 (BTC RSI 35-40 × BTC ADX 15-20 SHORT, pool 7 trades / 43% WR).
+
+**Hypothesis to test:** Are these specific cells losing because of the BTC RSI × BTC ADX combination, or because BTC was in a fragile-bearish state where EMA20 < EMA50 was about to flip?
+
+**Rollback gate:**
+- If at next batch, SHORTs that PASSED the BTC Trend Filter (= EMA20 < EMA50 confirmed) but were in S-P2 or S-B1 cells show ≥55% WR on N≥7 → cell-level filter was a proxy, **roll back the rule.**
+- If those SHORTs still show ≤45% WR on N≥7 → cell-level filter is independent of trend filter, **keep.**
+
+Lower priority than #2 because:
+- S-B1 has 5-sample evidence (stronger backing)
+- More complex to roll back partially (cross-filter syntax with two rules)
+- SHORT side has less data than LONG side
+
+#### Candidate 4: `btc_rsi_adx_filter_long: "70-100:35"` (shipped May 4)
+
+**Original rationale:** May 4 224-trade evidence — 24 LONG trades at BTC RSI 70+ × BTC ADX <35 with ~22% WR.
+
+**Hypothesis to test:** Was BTC RSI 70+ LONG losing because RSI was extreme, or because BTC was at late-cycle climax (which the BTC Trend Filter also addresses)?
+
+**Rollback gate:**
+- If at next batch, LONGs with BTC RSI 70+ × BTC ADX <35 that PASSED the BTC Trend Filter show ≥55% WR on N≥10 → the cells were proxies for late-cycle, **roll back the rule.**
+- If those still show ≤45% WR → independent macro signal, **keep.**
+
+### Order of rollback preference (when validation supports any)
+
+If multiple gates trigger simultaneously at next batch, roll back in this order to minimize disruption:
+
+1. **`momentum_long_rsi_max: 65 → 70`** (single number, 2-sample evidence — weakest)
+2. **`btc_adx_max_long: 35 → 40`** (single number, 4-sample evidence)
+3. **`btc_rsi_adx_filter_long: "70-100:35" → ""`** (clear cross-filter)
+4. **`btc_rsi_adx_filter_short: "30-35:30,35-40:20" → ""`** (most complex, strongest evidence)
+
+Roll back ONE at a time, observe ~50 trades, then assess next.
+
+### Anti-overfit protections
+
+To prevent rollback from undoing good work:
+- Never roll back unless the gate's WR threshold is met on N≥10 in that specific cell
+- Never roll back more than one filter per checkpoint
+- Always document the rollback rationale in CLAUDE.md
+- If trade rate AFTER rollback is too high (>50% jump in 50 trades) AND Avg P&L worsens, IMMEDIATELY revert the rollback
+
+### Per-filter block counter instrumentation (deferred for now)
+
+Considered adding runtime counters for each block reason (`[BTC_TREND_FILTER]`, `[BTC_RSI_ADX_CROSS]`, `[BTC_ADX_GATE]`, etc.) so we can directly count overlapping blocks at the checkpoint. **Not shipped today** — log lines already exist, can be counted from logs at checkpoint time without dashboard instrumentation. Add only if log-based counting proves cumbersome.
+
+### Why this entry exists in CLAUDE.md
+
+To prevent the next checkpoint from devolving into ad-hoc filter assessment:
+1. Pre-committed gates per candidate
+2. Pre-committed order of rollback preference
+3. Anti-overfit protections to prevent reverting good work
+4. The methodological lesson (Winners≈Losers signals missing macro dimension) preserved as a future heuristic
+
+When the next 100-trade batch arrives, future-Claude (or future-User) opens this entry, applies the gates mechanically, and decides — no re-litigation.

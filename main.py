@@ -4959,6 +4959,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             orders,
             handoff_threshold_pct=_rhi_tp_min * _rhi_level,
             pullback_pct=_rhi_pullback,
+            handoff_level=_rhi_level,
         ),
     }
 
@@ -5094,19 +5095,30 @@ def _compute_multiplier_cell_performance(orders):
     }
 
 
-def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct):
+def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct, handoff_level):
     """RSI Handoff Performance — per CLAUDE.md May 5, 2026.
 
     Shows whether RSI_HANDOFF_EXIT captures more post-peak value than the
     trailing-stop counterfactual (avg_peak - pullback_trigger).
 
-    Only considers closed trades that reached the handoff zone (peak >= threshold).
+    Gate: current_tp_level >= handoff_level OR close_reason starts with
+    RSI_HANDOFF_EXIT. We use current_tp_level (only increments) as the
+    structural gate rather than peak_pnl, which can drift due to realtime-
+    callback cache lag (CLAUDE.md Apr 29 peak invariant bug).
+
     Groups into:
       - RSI_HANDOFF_EXIT: RSI 2-drop exhaustion fired
       - Backstop: trailing disabled but SL/FL/regime/signal-lost caught them
     """
-    closed = [o for o in orders if o.status == 'CLOSED' and o.peak_pnl is not None]
-    handoff_zone = [o for o in closed if (o.peak_pnl or 0) >= handoff_threshold_pct]
+    closed = [o for o in orders if o.status == 'CLOSED']
+    # A trade reached the handoff zone iff its tp_level ever crossed the
+    # configured handoff_level. RSI_HANDOFF_EXIT close reason is also definitive
+    # (handoff was active when the exit fired).
+    handoff_zone = [
+        o for o in closed
+        if (getattr(o, 'current_tp_level', 1) or 1) >= handoff_level
+        or (o.close_reason and o.close_reason.startswith('RSI_HANDOFF_EXIT'))
+    ]
 
     if not handoff_zone:
         return {"rows": [], "handoff_threshold_pct": handoff_threshold_pct, "pullback_pct": pullback_pct}
@@ -5115,7 +5127,7 @@ def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct
         if not trades:
             return None
         n = len(trades)
-        avg_peak = sum(o.peak_pnl for o in trades) / n
+        avg_peak = sum((o.peak_pnl or 0) for o in trades) / n
         avg_close = sum((o.pnl_percentage or 0) for o in trades) / n
         trailing_cf = avg_peak - pullback_pct
         delta = avg_close - trailing_cf

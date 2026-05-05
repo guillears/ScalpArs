@@ -4382,3 +4382,78 @@ To anchor:
 2. The trade-off accepted on legacy bots (backfill from "now," not from "true start").
 3. The verification path (`[BOTSTATE] Backfilled` log line + expected ~1.0x reset).
 4. The known-unfixed live-mode unrealized issue, so future-Claude doesn't think the calc is fully resolved.
+
+## May 5, 2026 — Return Multiple paper-mode fix v2: switched to reverse-derive (corrects the v1 backfill bug)
+
+### Why a v2 fix
+The v1 fix (immutable baseline persisted in BotState) had a backfill formula bug: `_backfill_initial = paper_balance + paper_bnb_balance_usd` — **forgot to include `used_margin`**. So at backfill moment for an existing bot, the persisted initial was set $200-300 LOWER than the actual current portfolio, causing Return Multiple to immediately read >1.0x by exactly the missing margin amount.
+
+User-observed example (May 5, post-v1 deploy):
+- Real portfolio = $1,094.78 USDT + $205.52 BNB + $262.54 in open orders = **$1,562.84**
+- True initial baseline (working back from realized P&L) = $1,562.84 − $63.79 = **$1,499.05** ≈ $1,500 ✓
+- v1 backfilled persisted_initial to ~$1,302 (paper_balance + BNB, missing margin)
+- Display: 1.20x (= 1562/1302), Daily Compound +27.47% — **wrong, dramatically inflated**
+
+### Correct approach (v2): reverse-derive same as live mode
+Live mode computes `initial = current - total_pnl` (line ~2628). This:
+- Doesn't need a persisted baseline (no migration column required)
+- Doesn't drift when config paper_balance is edited (config edits affect both `current` and `total_pnl` via runtime balance, but `current - total_pnl` stays pinned)
+- Is internally consistent BY CONSTRUCTION: `return_multiple = 1 + total_pnl/initial` always
+
+Paper mode now uses the same approach:
+```python
+# main.py:_compute_performance, paper branch
+_bnb_now = (trading_engine.paper_bnb_balance_usd or 0)
+current_balance = trading_engine.paper_balance + used_margin + _bnb_now
+initial_balance = current_balance - total_pnl
+```
+
+### What this means for current bot
+
+After this deploy:
+- Current portfolio: $1,562.84
+- Realized P&L: $63.79
+- Initial: $1,562.84 − $63.79 = **$1,499.05**
+- Return Multiple: 1.0426x (+4.26%) ← **honest reading**
+- Daily Compound: ~+5.7% over 0.76 days
+
+Compared to v1's bogus 1.20x / +27.47%.
+
+### What happens to the runtime_initial_total_usd column
+
+The column added in v1 is **no longer read** by the metric calculation. Kept in DB schema for two reasons:
+1. Audit trail — operators can compare the cold-start-pinned value to `current - total_pnl` to detect anomalies (deposits, withdrawals, BNB depletion drift).
+2. Future use if a "since-bot-started" reporting view is built distinct from the realized-only ratio.
+
+Cold-start init at line ~189 in services/trading_engine.py still populates it for new bots. The legacy-row backfill code at line ~169 is now redundant but harmless — left in place for forward audit-trail compatibility.
+
+### Why this is the right approach (vs. fixing v1 backfill formula)
+
+I considered just fixing the backfill formula (`+ used_margin`) and adding a one-time correction pass. Rejected for two reasons:
+
+1. **Persisted baseline is fragile.** Once stored, ANY future drift breaks it (BNB fee depletion, manual paper_balance reset, debug operations). The v1 approach essentially required perfect bookkeeping forever.
+
+2. **Live mode already has the right answer.** Reverse-derive works for live and would work for paper too. Using the same logic in both modes is simpler and removes one whole class of "config edit broke the metric" bugs.
+
+The v1 immutable-baseline approach was over-engineered for the actual problem.
+
+### Trade-offs accepted
+
+Same as live mode:
+- **Deposits/withdrawals to paper account aren't distinguished from P&L.** Paper mode doesn't have deposits, so this is a non-issue.
+- **Unrealized P&L on open positions still excluded** (per user direction May 5). Used_margin reflects investment-at-entry only.
+- **No "since-bot-started" historical baseline.** The metric is "edge over current run, given closed P&L." Operators can use the runtime_initial_total_usd column for an audit reference if needed.
+
+### Files changed (v2)
+
+- `main.py` — paper branch in `_compute_performance` (~line 2633): replaced persisted-baseline lookup with `current_balance - total_pnl`. Same change in early-return path (~line 2473): forces 1.0x when no closed orders exist.
+- `CLAUDE.md` — this entry.
+
+Not touched (intentional): `models.py`, `database.py`, `services/trading_engine.py`. The column stays in DB. Cold-start init stays. They're inert relative to the metric now.
+
+### Why this entry exists in CLAUDE.md
+
+1. To document that the v1 fix had a bug and was superseded.
+2. To anchor the v2 reverse-derive approach as the canonical paper-mode behavior.
+3. To explain why the `runtime_initial_total_usd` column still exists in DB but is no longer read.
+4. To note the symmetry with live mode's existing logic.

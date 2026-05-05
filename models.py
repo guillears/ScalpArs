@@ -313,9 +313,17 @@ class BotState(Base):
     
     # Paper trading balance
     paper_balance = Column(Float, nullable=False, default=10000.0)
-    
+
     # Paper BNB balance (USDT equivalent)
     paper_bnb_balance_usd = Column(Float, nullable=False, default=500.0)
+
+    # Immutable starting capital baseline (set ONCE at cold start, never changed
+    # by config edits). Used as the denominator for Return Multiple / Daily
+    # Compound Return so the metric stays comparable across runs even if the
+    # operator edits paper_balance or paper_bnb_initial_usd in config mid-run.
+    # In paper mode: paper_balance + paper_bnb_initial_usd at first init.
+    # See CLAUDE.md May 5 entry on Return Multiple bug fix.
+    runtime_initial_total_usd = Column(Float, nullable=True)
     
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)

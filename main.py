@@ -2469,8 +2469,21 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         )
         early_used_margin = sum(o.investment for o in early_open_result.scalars().all())
         if trading_engine.is_paper_mode:
-            early_portfolio = trading_engine.paper_balance + early_used_margin
-            early_return_multiple = round(early_portfolio / config.trading_config.paper_balance, 4) if config.trading_config.paper_balance > 0 else 0
+            # Same baseline + BNB inclusion as the main calc (CLAUDE.md May 5).
+            _early_bs = await db.execute(select(BotState).limit(1))
+            _early_bs_row = _early_bs.scalar_one_or_none()
+            _early_initial = (
+                getattr(_early_bs_row, 'runtime_initial_total_usd', None)
+                if _early_bs_row else None
+            )
+            if _early_initial is None or _early_initial <= 0:
+                _early_initial = (
+                    config.trading_config.paper_balance
+                    + config.trading_config.paper_bnb_initial_usd
+                )
+            _early_bnb = (trading_engine.paper_bnb_balance_usd or 0)
+            early_portfolio = trading_engine.paper_balance + early_used_margin + _early_bnb
+            early_return_multiple = round(early_portfolio / _early_initial, 4) if _early_initial > 0 else 0
         else:
             early_return_multiple = 1.0
         return {
@@ -2618,8 +2631,26 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     runtime_days = trading_engine.get_runtime_seconds() / 86400.0
 
     if trading_engine.is_paper_mode:
-        initial_balance = config.trading_config.paper_balance
-        current_balance = trading_engine.paper_balance + used_margin
+        # initial_balance: read immutable baseline from BotState (set at cold start,
+        # backfilled for legacy rows). Falls back to current config sum if still NULL
+        # (shouldn't happen post-backfill, but defensive).
+        # See CLAUDE.md May 5 — Return Multiple bug fix.
+        _bs_result = await db.execute(select(BotState).limit(1))
+        _bs = _bs_result.scalar_one_or_none()
+        initial_balance = (
+            getattr(_bs, 'runtime_initial_total_usd', None)
+            if _bs else None
+        )
+        if initial_balance is None or initial_balance <= 0:
+            initial_balance = (
+                config.trading_config.paper_balance
+                + config.trading_config.paper_bnb_initial_usd
+            )
+        # current_balance includes BNB so the metric is symmetric with initial_balance.
+        # Unrealized P&L on open positions is intentionally NOT included (per user
+        # decision May 5) — used_margin reflects investment-at-entry only.
+        _bnb_now = (trading_engine.paper_bnb_balance_usd or 0)
+        current_balance = trading_engine.paper_balance + used_margin + _bnb_now
     else:
         balance = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()

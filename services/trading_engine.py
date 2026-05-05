@@ -169,6 +169,19 @@ class TradingEngine:
             self.paper_balance = state.paper_balance
             self.paper_bnb_balance_usd = getattr(state, 'paper_bnb_balance_usd', None) or config.trading_config.paper_bnb_initial_usd
             self.total_runtime_seconds = state.total_runtime_seconds
+            # Backfill runtime_initial_total_usd if NULL (column added May 5).
+            # One-time backfill: set to current paper_balance + paper_bnb_balance_usd
+            # so the baseline reflects "wherever we are now" for existing runs that
+            # predate the column. New cold starts use the proper init in the else branch.
+            if getattr(state, 'runtime_initial_total_usd', None) is None:
+                _backfill_initial = (state.paper_balance or 0) + (self.paper_bnb_balance_usd or 0)
+                state.runtime_initial_total_usd = _backfill_initial
+                await db.commit()
+                logger.warning(
+                    f"[BOTSTATE] Backfilled runtime_initial_total_usd=${_backfill_initial:.2f} "
+                    f"for existing BotState row. This is a one-time migration — Return Multiple "
+                    f"will use this as the immutable baseline going forward."
+                )
             if state.is_running and state.started_at:
                 self.started_at = state.started_at
             logger.info(
@@ -186,11 +199,18 @@ class TradingEngine:
                 f"If this is unexpected (DB wipe / instance replacement / migration), "
                 f"investigate immediately — live positions may be orphaned on Binance."
             )
+            # Immutable starting capital baseline = paper_balance + paper_bnb_initial_usd
+            # Set ONCE here, never updated on config edits. See CLAUDE.md May 5 entry.
+            _initial_total = (
+                config.trading_config.paper_balance
+                + config.trading_config.paper_bnb_initial_usd
+            )
             state = BotState(
                 is_running=False,  # Never auto-start on cold boot (Apr 11 defense)
                 is_paper_mode=_default_is_paper,
                 paper_balance=config.trading_config.paper_balance,
                 paper_bnb_balance_usd=config.trading_config.paper_bnb_initial_usd,
+                runtime_initial_total_usd=_initial_total,
                 total_runtime_seconds=0
             )
             db.add(state)

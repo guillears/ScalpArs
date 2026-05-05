@@ -996,6 +996,7 @@ class TradingEngine:
         entry_atr_pct: Optional[float] = None,
         entry_ema50_slope: Optional[float] = None,
         entry_funding_rate: Optional[float] = None,
+        entry_pair_ema20_ema50_gap_pct: Optional[float] = None,
     ):
         """Persist a signal-expired entry attempt as a minimal Order row for reporting.
 
@@ -1068,6 +1069,7 @@ class TradingEngine:
                 entry_atr_pct=entry_atr_pct,
                 entry_ema50_slope=entry_ema50_slope,
                 entry_funding_rate=entry_funding_rate,
+                entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
             )
             db.add(order)
             await db.commit()
@@ -1551,6 +1553,7 @@ class TradingEngine:
         entry_atr_pct: float = None,
         entry_ema50_slope: float = None,
         entry_funding_rate: float = None,
+        entry_pair_ema20_ema50_gap_pct: float = None,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -1724,6 +1727,7 @@ class TradingEngine:
                         entry_atr_pct=entry_atr_pct,
                         entry_ema50_slope=entry_ema50_slope,
                         entry_funding_rate=entry_funding_rate,
+                        entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                     )
                     return None
                 if result:
@@ -1793,6 +1797,7 @@ class TradingEngine:
                         entry_atr_pct=entry_atr_pct,
                         entry_ema50_slope=entry_ema50_slope,
                         entry_funding_rate=entry_funding_rate,
+                        entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                     )
                     return None
                 actual_price = result['price']
@@ -1845,6 +1850,7 @@ class TradingEngine:
             entry_atr_pct=entry_atr_pct,
             entry_ema50_slope=entry_ema50_slope,
             entry_funding_rate=entry_funding_rate,
+            entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -4218,6 +4224,11 @@ class TradingEngine:
                 _ema50_prev12 = indicators.get('ema50_prev12')
                 if _ema50 is not None and _ema50_prev12 is not None and _ema50_prev12 != 0:
                     _entry_ema50_slope = round(((_ema50 - _ema50_prev12) / _ema50_prev12) * 100, 4)
+                # Pair EMA20 vs EMA50 gap (observation-only, May 5)
+                _entry_pair_ema20_ema50_gap_pct = None
+                _ema20_val = indicators.get('ema20')
+                if _ema20_val is not None and _ema50 is not None and _ema50 != 0:
+                    _entry_pair_ema20_ema50_gap_pct = round((_ema20_val - _ema50) / _ema50 * 100, 4)
                 _entry_funding_rate = None
                 try:
                     _funding = await binance_service.fetch_funding_rate(symbol)
@@ -4263,6 +4274,7 @@ class TradingEngine:
                     entry_atr_pct=_entry_atr_pct,
                     entry_ema50_slope=_entry_ema50_slope,
                     entry_funding_rate=_entry_funding_rate,
+                    entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
                 )
 
                 if order:

@@ -5274,3 +5274,66 @@ To preserve:
 - `services/trading_engine.py` — pass flag to binance_service call
 - `main.py` — ConfigUpdate Pydantic field
 - `templates/index.html` — amber toggle + load/save handlers
+
+## May 5, 2026 — Pair EMA20-EMA50 Gap at Entry (`entry_pair_ema20_ema50_gap_pct`) — observation-only
+
+### What this captures
+
+**`entry_pair_ema20_ema50_gap_pct`** = `(ema20 − ema50) / ema50 × 100` at entry.
+Positive = EMA20 above EMA50 = pair in multi-hour uptrend. Negative = EMA20 below EMA50 = pair in multi-hour downtrend. Zero-crossing is the meaningful boundary.
+
+EMA50 on 5m candles spans ~4 hours of price history. This is the **pair-level** complement to the May 5 BTC Trend Filter (`entry_btc_trend_gap_pct`, which is the BTC-level equivalent). Both measure the same "is the pair/BTC above its medium-term trend?" question at their respective instrument level.
+
+### Why added
+
+Observed that a trade (ORCA LONG, May 5) entered with BTC EMA20 > EMA50 (BTC in uptrend = BTC Trend Filter OK for LONGs) but the pair itself (ORCA) had EMA20 **below** EMA50 — ORCA was in a multi-hour downtrend at entry. This kind of within-pair countertrend entry is currently invisible to all existing filters. The hypothesis: LONGs entering with pair EMA20 < EMA50 (pair in downtrend) are structurally worse than LONGs with pair EMA20 > EMA50 (aligned with multi-hour trend).
+
+Zero new API calls — `ema20` and `ema50` (EMA50 as `ema50`, `ema50_prev12`) are already computed by `calculate_indicators()` and in scope at entry.
+
+### Bucket structure (8 buckets, 0.05% granularity around zero-crossing)
+
+| Bucket | Meaning |
+|---|---|
+| `< -0.20%` | Strongly in downtrend (EMA20 far below EMA50) |
+| `-0.20 to -0.10%` | Clear downtrend |
+| `-0.10 to -0.05%` | Mild downtrend |
+| `-0.05 to 0%` | Just below EMA50 — marginal downtrend |
+| `0 to +0.05%` | Just above EMA50 — marginal uptrend |
+| `+0.05 to +0.10%` | Mild uptrend |
+| `+0.10 to +0.20%` | Clear uptrend |
+| `> +0.20%` | Strongly in uptrend (EMA20 far above EMA50) |
+
+### Status: observation-only
+
+No filter logic. The column is captured at entry and surfaced in:
+1. **Entry Conditions by Close Reason** — `PairTrend` column (avg signed gap per exit bucket)
+2. **Entry Conditions by Outcome (Winners vs Losers)** — same column (compare winners vs losers avg signed gap)
+3. **Performance by Pair EMA20-EMA50 Gap** — standalone 8-bucket table (violet-bordered, same 12-column format as BTC EMA20 Slope table)
+4. **Both text export sites** — section `## Performance by Pair EMA20-EMA50 Gap (observation-only)`
+
+### Promotion criteria (locked — do NOT promote before 100-trade checkpoint)
+
+A bucket qualifies for filter promotion ONLY if ALL of these are true:
+- **N ≥ 15 trades per bucket** in the discriminating range
+- **WR gap between best and worst bucket ≥ 15 percentage points**
+- **Avg P&L % gap ≥ 0.15 percentage points**
+- **Direction-consistent** (LONG and SHORT both show the same zero-crossing signal, or documented theoretical reason for asymmetry)
+- **TtP ≤ 0.45 sanity check** on winning bucket (peak in first half of hold)
+
+If the zero-crossing (negative vs positive gap) doesn't discriminate with N≥15 on both sides → **dimension provides no actionable signal at current sample size, defer to 200-trade checkpoint.**
+
+### Filter form if promoted
+
+If confirmed, the natural filter is an entry requirement: `pair_ema20_ema50_gap_pct ≥ 0` for LONGs (only enter when pair is above its 4h trend) and `pair_ema20_ema50_gap_pct ≤ 0` for SHORTs (only enter when pair is below its 4h trend). Expressed as config fields `pair_ema20_ema50_gap_min_long` and `pair_ema20_ema50_gap_max_short` — both zero-threshold by default. Requires ~15-line addition to the entry filter chain in `services/trading_engine.py`.
+
+### Files changed
+
+- `models.py` — `entry_pair_ema20_ema50_gap_pct: Float, nullable=True`
+- `database.py` — auto-migrate ADD COLUMN
+- `services/trading_engine.py` — computation + capture at all entry paths + SIGNAL_EXPIRED path
+- `main.py` — aggregation in both Entry Conditions tables + standalone 8-bucket table builder
+- `templates/index.html` — ECR header PairTrend TH, ECO header BTCTrend+PairTrend TH (fixes pre-existing missing BTCTrend), both JS renderers PairTrend TD, standalone table HTML + JS renderer, both text export sites
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the observation-only status (no filter deployed yet), the locked promotion criteria (can't be lowered post-hoc when data arrives), and the filter form if promoted — so future-Claude doesn't ship a filter from this dimension without meeting the bar, and knows exactly what shape the filter would take if the data supports it.

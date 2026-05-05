@@ -116,6 +116,10 @@ class Order(Base):
     entry_atr_pct = Column(Float, nullable=True)             # ATR(14) as % of entry price; volatility regime per pair
     entry_ema50_slope = Column(Float, nullable=True)         # 5m EMA50 slope vs prev12 candles (~4h higher-TF context proxy)
     entry_funding_rate = Column(Float, nullable=True)        # Binance Futures funding rate at entry (positioning context)
+    # Pair EMA20 vs EMA50 gap at entry (% of EMA50). Positive = pair uptrend, negative = pair downtrend.
+    # Observation-only (May 5) — same methodology as Apr 28 Exploration Analytics.
+    # Captures multi-hour pair trend context (EMA50 spans ~4 hours on 5m chart).
+    entry_pair_ema20_ema50_gap_pct = Column(Float, nullable=True)
 
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)

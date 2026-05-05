@@ -764,6 +764,7 @@
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Average price range position at entry (0%=bottom, 100%=top)">RngPos</th>
                                     <th class="px-3 py-2 font-medium text-right text-blue-400" title="Avg market breadth at entry (Bull% for LONGs, Bear% for SHORTs)">Breadth</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400" title="BTC EMA20 vs EMA50 gap at entry (% of EMA50). Positive = BTC in macro uptrend. Negative = downtrend. Diagnostic for BTC Trend Filter (May 5)">BTCTrend</th>
+                                    <th class="px-3 py-2 font-medium text-right text-violet-400" title="Pair EMA20 vs EMA50 gap at entry (% of EMA50). Positive = pair in uptrend, negative = downtrend. Observation-only May 5 — multi-hour pair trend context.">PairTrend</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgP&L%</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total P&L in USD">Total$</th>
@@ -772,7 +773,7 @@
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-reason-body" class="divide-y divide-white/5">
-                                <tr><td colspan="25" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="26" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -805,6 +806,8 @@
                                     <th class="px-3 py-2 font-medium text-right text-orange-400" title="Average ADX delta (adx - adx_prev) at entry">ADXΔ</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Average price range position at entry (0%=bottom, 100%=top)">RngPos</th>
                                     <th class="px-3 py-2 font-medium text-right text-blue-400" title="Avg market breadth at entry (Bull% for LONGs, Bear% for SHORTs)">Breadth</th>
+                                    <th class="px-3 py-2 font-medium text-right text-cyan-400" title="BTC EMA20 vs EMA50 gap at entry (% of EMA50). Positive = BTC in multi-hour uptrend, negative = downtrend. May 5 BTC Trend Filter context.">BTCTrend</th>
+                                    <th class="px-3 py-2 font-medium text-right text-violet-400" title="Pair EMA20 vs EMA50 gap at entry (% of EMA50). Positive = pair in multi-hour uptrend, negative = downtrend. Observation-only May 5.">PairTrend</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgP&L%</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Total P&L in USD">Total$</th>
@@ -813,7 +816,7 @@
                                 </tr>
                             </thead>
                             <tbody id="entry-conditions-outcome-body" class="divide-y divide-white/5">
-                                <tr><td colspan="25" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="26" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1490,6 +1493,36 @@
                                 <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC EMA20 slope)</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+                <!-- Performance by Pair EMA20-EMA50 Gap (observation-only May 5, 2026) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-violet-300 mb-4">Performance by Pair EMA20-EMA50 Gap <span class="text-xs text-gray-500 font-normal">(observation-only — multi-hour pair trend context)</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">Signed gap (EMA20 − EMA50) / EMA50 × 100 at entry. Positive = pair above 4h trend (uptrend), negative = below (downtrend). 8 buckets at 0.05% granularity around zero-crossing. Promote to filter only at 100-trade checkpoint with N≥15, WR gap ≥15pp.</p>
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-violet-900/30">
+                                    <th class="px-3 py-2 font-medium">Gap Range</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Never Positive: trades that never went green (peak ≤ 0).">NP</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgDur</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pair-ema20-ema50-gap-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No data (collecting pair EMA20-EMA50 gap)</td></tr>
+                            </tbody>
+                        </table>
                 </div>
             </div>
 
@@ -4562,6 +4595,18 @@
             }
 
             lines.push(`\n${hr2}`);
+            lines.push('## Performance by Pair EMA20-EMA50 Gap (observation-only)\n');
+            lines.push(`${'Gap Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)} ${'AvgDur'.padEnd(10)}`);
+            for (const r of (perf.pair_ema20_ema50_gap_performance || [])) {
+                const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                const gapStr = r.avg_gap != null ? (r.avg_gap.toFixed(2)+'%') : '-';
+                const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)} ${npStr.padEnd(10)} ${(r.avg_duration||'-').padEnd(10)}`);
+            }
+
+            lines.push(`\n${hr2}`);
             lines.push('## Performance by BTC ADX\n');
             lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
             for (const r of (perf.btc_adx_performance || [])) {
@@ -5349,6 +5394,19 @@
                     lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)} ${npStr.padEnd(10)}`);
                 }
 
+                // --- PAIR EMA20-EMA50 GAP ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Pair EMA20-EMA50 Gap (observation-only)\n');
+                lines.push(`${'Gap Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)} ${'AvgDur'.padEnd(10)}`);
+                for (const r of (perf.pair_ema20_ema50_gap_performance || [])) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const rsiStr = r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-';
+                    const adxStr = r.avg_adx != null ? r.avg_adx.toFixed(1) : '-';
+                    const gapStr = r.avg_gap != null ? (r.avg_gap.toFixed(2)+'%') : '-';
+                    const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                    lines.push(`${(r.range||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${gapStr.padEnd(8)} ${npStr.padEnd(10)} ${(r.avg_duration||'-').padEnd(10)}`);
+                }
+
                 // --- BTC ADX ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by BTC ADX\n');
@@ -5960,6 +6018,7 @@
                                 <td class="px-3 py-2 text-right text-cyan-400">${r.avg_range_position != null ? safe(r.avg_range_position).toFixed(0) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-blue-400">${r.avg_breadth != null ? safe(r.avg_breadth).toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400'}">${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? '+' : '') + safe(r.avg_btc_trend_gap).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_pair_ema20_ema50_gap != null ? (safe(r.avg_pair_ema20_ema50_gap) >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400'}">${r.avg_pair_ema20_ema50_gap != null ? (safe(r.avg_pair_ema20_ema50_gap) >= 0 ? '+' : '') + safe(r.avg_pair_ema20_ema50_gap).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct) >= 0 ? '+' : ''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
@@ -6035,6 +6094,7 @@
                                 <td class="px-3 py-2 text-right text-cyan-400">${r.avg_range_position != null ? safe(r.avg_range_position).toFixed(0) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-blue-400">${r.avg_breadth != null ? safe(r.avg_breadth).toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400'}">${r.avg_btc_trend_gap != null ? (safe(r.avg_btc_trend_gap) >= 0 ? '+' : '') + safe(r.avg_btc_trend_gap).toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right ${r.avg_pair_ema20_ema50_gap != null ? (safe(r.avg_pair_ema20_ema50_gap) >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-400'}">${r.avg_pair_ema20_ema50_gap != null ? (safe(r.avg_pair_ema20_ema50_gap) >= 0 ? '+' : '') + safe(r.avg_pair_ema20_ema50_gap).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct) >= 0 ? '+' : ''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct) >= 0 ? '+' : ''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
@@ -6609,6 +6669,43 @@
                     }).join('');
                 } else {
                     btcSlopeBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC EMA20 slope)</td></tr>';
+                }
+
+                // Performance by Pair EMA20-EMA50 Gap (observation-only May 5, 2026)
+                const pairGapBody = document.getElementById('pair-ema20-ema50-gap-performance-body');
+                if (data.pair_ema20_ema50_gap_performance && data.pair_ema20_ema50_gap_performance.length > 0) {
+                    const confColorsPG = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    pairGapBody.innerHTML = data.pair_ema20_ema50_gap_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const rangeColor = r.range && r.range.startsWith('-') ? 'text-red-300' : r.range && r.range.startsWith('>') ? 'text-emerald-300' : r.range && r.range.startsWith('0') ? 'text-emerald-300' : 'text-violet-300';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${confColorsPG[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${rangeColor}">${r.range}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_rsi != null ? r.avg_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_adx != null ? r.avg_adx.toFixed(1) : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-xs ${(r.never_positive_pct || 0) >= 50 ? 'text-red-400' : (r.never_positive_pct || 0) >= 25 ? 'text-amber-400' : 'text-gray-400'}">${r.never_positive || 0} (${(r.never_positive_pct || 0).toFixed(0)}%)</td>
+                                <td class="px-3 py-2 text-right text-gray-400 text-xs">${r.avg_duration || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    pairGapBody.innerHTML = '<tr><td colspan="13" class="px-3 py-4 text-center text-gray-500">No data (collecting pair EMA20-EMA50 gap)</td></tr>';
                 }
 
                 // Performance by BTC ADX

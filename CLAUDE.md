@@ -5099,3 +5099,178 @@ edge analysis, Option C is the next iteration with documented justification.
   call sites at filter blocks, surfaced in `get_status()` payload
 - `templates/index.html` — UI panel, `renderFilterBlocks()` JS,
   status-payload stash for export sites, both text-export sites updated
+
+## May 5, 2026 — Alpha-subtype pre-filter (auto-blacklist Binance launchpad tier)
+
+Adds a third pre-entry pair filter alongside the existing 180-day new-listing
+filter and the manual `pair_blacklist`.  Catches Binance's launchpad /
+Innovation Zone tier proactively, before the bot ever opens a position on
+those pairs.
+
+### Trigger event
+
+May 5: bot opened LABUSDT LONG (first-ever trade on that pair), closed via
+FL_EMERGENCY_SL L1 in 21 seconds at -1.19%, never went positive.  At 20×
+leverage on $240 investment, that's -$57.24 / -23.85% on margin.  User
+reported the Binance UI showed:
+
+> "This symbol is subject to high volatility. Please do your own research
+> before trading."
+
+The 180-day new-listing filter did NOT catch LABUSDT (it slipped through
+either due to age >180d or missing onboardDate metadata).  The manual
+blacklist required reactive addition AFTER the loss.  Question: is
+Binance's high-volatility warning programmatically accessible so we can
+filter proactively?
+
+### Diagnostic findings
+
+Public endpoint `/fapi/v1/exchangeInfo` exposes per-symbol metadata.  Key
+fields differing between BTCUSDT (clean) and our 5 manually-blacklisted
+pairs (LAB, ASTER, HYPE, RAVE, DOGE):
+
+| Field | BTCUSDT | Problem pairs |
+|---|---|---|
+| `liquidationFee` | 0.0125 | 0.020 (most), 0.015 (DOGE) |
+| `triggerProtect` | 0.05 | 0.15 (most), 0.10 (DOGE) |
+| `underlyingSubType` | ["PoW"] | ["Alpha"] (LAB, RAVE), ["DeFi"] (HYPE, ASTER), ["Meme"] (DOGE) |
+
+`triggerProtect` is Binance's "safety band width" for stop orders — higher
+values mean the pair requires wider trigger zones because price moves more
+erratically.  This is essentially Binance saying "this pair is risky" via
+API.
+
+### Filter selection: why `underlyingSubType == "Alpha"` and not `triggerProtect`
+
+Coverage analysis on top-50 by 24h volume:
+
+| Filter candidate | Pairs blocked in top-50 | Verdict |
+|---|---|---|
+| `triggerProtect > 0.05` | 41/50 (82%) | Too aggressive — kills AVAX, LINK, SUI, TON, NEAR — pairs we trade legitimately |
+| `triggerProtect >= 0.15` | 33/50 (66%) | Still over-broad — blocks 9 Memes + 6 AIs + 6 DeFi + 3 Layer-1s indiscriminately |
+| **`underlyingSubType == "Alpha"`** | **6/50 (12%)** | ★ Clean — catches the actually-experimental tier without over-restricting |
+
+The Alpha subtype is Binance's launchpad / Innovation Zone classification.
+6 Alpha pairs in current top-50: LABUSDT, RAVEUSDT, BSBUSDT, UBUSDT,
+4USDT, PRLUSDT.  Both LAB and RAVE were in our manual blacklist already;
+the filter would have prevented LAB from ever entering.  BSB, UB, 4, PRL
+are unknowns — almost certainly same risk profile, now blocked
+proactively.
+
+### Three-layer defense model
+
+| Layer | What it catches | Mechanism |
+|---|---|---|
+| **1. New-Listing Filter** (180d) | Recent listings | onboardDate within last N days |
+| **2. Alpha Subtype Filter** (NEW) | Binance launchpad-tier (regardless of age) | `underlyingSubType` contains "Alpha" |
+| **3. Manual `pair_blacklist`** | Known-bad pairs not caught by 1 or 2 | Operator-curated list |
+
+Each layer catches a different failure mode.  Together they would have
+prevented LABUSDT from entering today.
+
+### What this filter does NOT catch
+
+- **HYPEUSDT, ASTERUSDT** (DeFi subtype, triggerProtect=0.15).  Stay in
+  manual blacklist for cross-sample 0% WR evidence.
+- **DOGEUSDT** (Meme subtype, triggerProtect=0.10).  Stays in manual
+  blacklist for cross-sample reasons.
+- **Future DeFi/Meme/Layer-1 pairs** that turn out to be thin/risky.
+  These will only be caught reactively after they hurt the bot, then
+  added to the manual blacklist.
+
+For better coverage in the future, an additional `triggerProtect >= 0.10
+AND volume_24h < $X` filter could be considered — would catch DOGE-tier
+without blocking established mid-caps.  Not shipped today; ship only if
+the manual blacklist proves insufficient.
+
+### Implementation
+
+- `config.py`: `alpha_subtype_filter_enabled: bool = True` (default ON)
+- `trading_config.json`: defaults to `true`
+- `services/binance_service.py::get_top_futures_pairs`: new filter runs
+  inside the function, after new-listing filter, before the top-N cut.
+  Reads `markets[symbol]['info']['underlyingSubType']` (CCXT-surfaced
+  exchangeInfo field).  Logs `[BINANCE] Alpha-subtype filter: excluded
+  N/M pairs (...)` same format as new-listing filter.  Fails open on
+  missing metadata.
+- `services/trading_engine.py`: passes new flag from config to the
+  binance_service call.
+- `main.py`: ConfigUpdate Pydantic field added.
+- `templates/index.html`: amber toggle in Pair Blacklist panel, next to
+  the New-Listing Filter day input.
+
+### Default ON rationale
+
+Three reasons the filter ships enabled by default:
+
+1. **Strong evidence base.**  Of 5 manually-blacklisted problem pairs
+   discovered through losses, 2 (LAB, RAVE) are Alpha — 40% catch rate
+   from a single signal.
+2. **Low false-positive cost.**  12% of trading universe excluded.  All
+   6 currently-Alpha pairs in top-50 are speculative launchpad tokens —
+   none are "proven mid-caps we want to trade."
+3. **Auto-protective for future listings.**  Binance frequently lists
+   new Alpha pairs.  Without this filter, each new Alpha listing is a
+   potential repeat of the LABUSDT incident.  With the filter, they're
+   blocked the moment they appear in our top-N volume cut.
+
+### Falsification / revert criteria
+
+Locked NOW for the next batch:
+
+- If, in observation logs, would-have-been-blocked Alpha pairs show
+  ≥55% WR on N≥10 (across the 6 currently-Alpha pairs in top-50) →
+  Alpha filter is over-restrictive, toggle to OFF and revisit.
+- If Alpha pairs continue showing the LABUSDT failure pattern (never-
+  positive entries hitting emergency stops) → filter validated, lock
+  as default.
+
+We can't directly observe blocked entries' performance (we don't trade
+them), so this is harder to validate than active filters.  Indirect
+signal: if user manually checks Binance for the 6 currently-Alpha pairs
+over the next batch and sees them generally trending or stable rather
+than experiencing extreme erratic moves, the filter may be too
+aggressive.  In practice this kind of validation is qualitative and
+requires operator judgment.
+
+### Pre-committed escalation path
+
+If the Alpha filter proves insufficient (HYPE/ASTER-class pairs continue
+to need manual blacklisting reactively):
+
+1. **First escalation**: add `liquidationFee >= 0.020` as a secondary
+   filter.  Coverage analysis showed LAB/ASTER/HYPE/RAVE all share
+   liquidationFee=0.020 vs BTC's 0.0125.  More aggressive than Alpha
+   alone (would block more pairs) but catches the DeFi tier.
+2. **Second escalation**: add `triggerProtect >= 0.15 AND
+   volume_24h < $200M` — a volume-conditional version of triggerProtect
+   that blocks thin high-tp pairs without killing established mid-caps.
+3. **Third escalation**: scrape Binance's announcements for "Monitoring
+   Tag" and "Innovation Zone" listings and auto-blacklist.  Heavier
+   engineering (web scraping, caching), only if 1 and 2 are insufficient.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+
+1. **The diagnostic methodology** — query exchangeInfo for problem pairs,
+   compare fields, identify the cleanest discriminator.  Repeatable for
+   future "is there a Binance API field that catches X?" questions.
+2. **The selection reasoning** — why Alpha subtype over triggerProtect,
+   with the coverage analysis numbers.  Prevents future-Claude from
+   re-debating "should we just use triggerProtect?"
+3. **The three-layer defense model** — clarifies what each filter is
+   responsible for and how they compose.  Prevents adding a fourth
+   filter that overlaps with an existing layer.
+4. **The escalation path** — if Alpha alone proves insufficient, the
+   next steps are pre-thought.  Don't re-derive from scratch.
+
+### Files changed
+
+- `config.py` — `alpha_subtype_filter_enabled: bool = True`
+- `trading_config.json` — default `true`
+- `services/binance_service.py` — filter logic in `get_top_futures_pairs`
+  (~30 lines, mirrors new-listing filter pattern)
+- `services/trading_engine.py` — pass flag to binance_service call
+- `main.py` — ConfigUpdate Pydantic field
+- `templates/index.html` — amber toggle + load/save handlers

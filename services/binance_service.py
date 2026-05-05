@@ -258,6 +258,7 @@ class BinanceService:
         self,
         limit: int = 20,
         new_listing_filter_days: int = 0,
+        alpha_subtype_filter_enabled: bool = False,
     ) -> List[Dict]:
         """Get top USDT-perpetual futures pairs by 24h volume.
 
@@ -267,6 +268,13 @@ class BinanceService:
         This filters out Binance's Seed Tag / Monitoring Tag pairs — low
         liquidity, manipulation-prone, poor fit for 5m-EMA strategy.  See
         CLAUDE.md Apr 17 analysis for the RAVEUSDT blow-up that motivated this.
+
+        When ``alpha_subtype_filter_enabled`` is True, pairs whose Binance
+        ``underlyingSubType`` contains "Alpha" are excluded.  This is Binance's
+        launchpad / Innovation Zone tier — pairs that carry the "high
+        volatility" UI warning regardless of listing age.  Catches pairs like
+        LABUSDT and RAVEUSDT proactively before they hit the bot.  See
+        CLAUDE.md May 5 entry on Alpha subtype filter.
         """
         try:
             await self._check_ban()
@@ -360,6 +368,43 @@ class BinanceService:
                     logger.info(
                         f"[BINANCE] New-listing filter ({new_listing_filter_days}d): "
                         f"excluded {len(filtered_out_names)}/{before_count} pairs "
+                        f"({_preview}{_extra})"
+                    )
+
+            # Alpha-subtype filter (May 5, 2026): drop pairs whose Binance
+            # `underlyingSubType` contains "Alpha".  This is the launchpad /
+            # Innovation Zone tier — pairs flagged with the "high volatility"
+            # UI warning, elevated triggerProtect (0.15 vs 0.05 for liquid
+            # pairs), and historically the "never-positive + emergency-SL"
+            # failure pattern.  Runs alongside the new-listing filter; together
+            # they catch different failure modes.  Fails open when subtype
+            # metadata is missing.
+            if alpha_subtype_filter_enabled:
+                markets = self.public_exchange.markets or {}
+                before_count_alpha = len(futures_pairs)
+                kept_pairs = []
+                alpha_excluded = []
+                for p in futures_pairs:
+                    market = markets.get(p['symbol'], {})
+                    info = market.get('info', {}) if isinstance(market, dict) else {}
+                    subtype = info.get('underlyingSubType')
+                    # Be defensive: subtype may be a list, a string, or None.
+                    is_alpha = False
+                    if isinstance(subtype, list):
+                        is_alpha = any(s == "Alpha" for s in subtype)
+                    elif isinstance(subtype, str):
+                        is_alpha = subtype == "Alpha"
+                    if is_alpha:
+                        alpha_excluded.append(p['pair'])
+                    else:
+                        kept_pairs.append(p)
+                futures_pairs = kept_pairs
+                if alpha_excluded:
+                    _preview = ', '.join(sorted(alpha_excluded)[:8])
+                    _extra = f" +{len(alpha_excluded) - 8} more" if len(alpha_excluded) > 8 else ""
+                    logger.info(
+                        f"[BINANCE] Alpha-subtype filter: "
+                        f"excluded {len(alpha_excluded)}/{before_count_alpha} pairs "
                         f"({_preview}{_extra})"
                     )
 

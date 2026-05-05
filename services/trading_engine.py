@@ -3653,13 +3653,16 @@ class TradingEngine:
         _scan_avg_vol_sum = 0.0
         
         # Get top pairs based on config limit.
-        # New-listing filter runs inside get_top_futures_pairs BEFORE the top-N
-        # cut, so the returned list is always "top N of eligible pairs."
+        # New-listing and Alpha-subtype filters both run inside
+        # get_top_futures_pairs BEFORE the top-N cut, so the returned list
+        # is always "top N of eligible pairs" after both pre-filters apply.
         pairs_limit = config.trading_config.trading_pairs_limit
         _new_listing_days = getattr(config.trading_config, 'new_listing_filter_days', 0)
+        _alpha_filter = getattr(config.trading_config, 'alpha_subtype_filter_enabled', True)
         top_pairs = await binance_service.get_top_futures_pairs(
             pairs_limit,
             new_listing_filter_days=_new_listing_days,
+            alpha_subtype_filter_enabled=_alpha_filter,
         )
         _blacklist_str = getattr(config.trading_config, 'pair_blacklist', '')
         _blacklist = set(p.strip() for p in _blacklist_str.split(',') if p.strip())

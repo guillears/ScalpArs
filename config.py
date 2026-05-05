@@ -288,6 +288,16 @@ class TradingConfig(BaseModel):
     # for the 5m EMA-based strategy.  Filtered BEFORE the top-N-by-volume cut,
     # so "top 50" always means "top 50 of eligible pairs."  0 = disabled.
     new_listing_filter_days: int = 0
+    # Alpha-subtype filter (May 5, 2026): skip pairs Binance flags as
+    # `underlyingSubType: ["Alpha"]` — their launchpad / Innovation Zone tier.
+    # These pairs carry Binance's "high volatility" UI warning, have elevated
+    # triggerProtect (0.15 vs 0.05 for liquid pairs), and historically show the
+    # "never-positive + emergency-SL" failure pattern (LABUSDT, RAVEUSDT in
+    # the May 5 batch).  Independent of listing age — catches launchpad pairs
+    # regardless of when they listed.  6 pairs in current top-50 are Alpha.
+    # Default ON.  Toggle off only for analysis (e.g., to test whether Alpha
+    # pairs are systematically bad or sometimes profitable).
+    alpha_subtype_filter_enabled: bool = True
 
     # Broker-side protective stops feature REMOVED Apr 17 after 4 failed
     # hotfix attempts.  Binance rejected STOP_MARKET/TAKE_PROFIT_MARKET on

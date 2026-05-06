@@ -2,6 +2,7 @@
 SCALPARS Trading Platform - Main Application
 """
 import asyncio
+import math
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -5544,6 +5545,12 @@ async def update_config(config_update: ConfigUpdate):
     for key in set(old_flat) | set(new_flat):
         old_val = old_flat.get(key)
         new_val = new_flat.get(key)
+        # Float-safe comparison: numerically equal floats (e.g. 0.00018 vs 0.018/100
+        # which differ in IEEE-754 representation but represent the same intended value)
+        # should NOT log as a change. Use math.isclose for numeric pairs.
+        if isinstance(old_val, float) and isinstance(new_val, float):
+            if math.isclose(old_val, new_val, rel_tol=1e-9, abs_tol=1e-12):
+                continue
         if old_val != new_val:
             changes.append({"field": key, "old": str(old_val), "new": str(new_val)})
 

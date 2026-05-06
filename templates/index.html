@@ -4722,7 +4722,7 @@
             }
 
             lines.push(`\n${hr2}`);
-            lines.push('## Performance by Pair EMA20-EMA50 Gap (observation-only)\n');
+            lines.push('## Performance by Pair EMA13-EMA50 Gap (observation-only)\n');
             lines.push(`${'Gap Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)} ${'AvgDur'.padEnd(10)}`);
             for (const r of (perf.pair_ema20_ema50_gap_performance || [])) {
                 const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -4734,7 +4734,7 @@
             }
 
             lines.push(`\n${hr2}`);
-            lines.push('## Performance by BTC EMA20-EMA50 Gap (observation-only)\n');
+            lines.push('## Performance by BTC EMA13-EMA50 Gap (observation-only)\n');
             lines.push(`${'Gap Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)} ${'AvgDur'.padEnd(10)}`);
             for (const r of (perf.btc_ema20_ema50_gap_performance || [])) {
                 const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -5570,7 +5570,7 @@
 
                 // --- PAIR EMA20-EMA50 GAP ---
                 lines.push(`\n${hr2}`);
-                lines.push('## Performance by Pair EMA20-EMA50 Gap (observation-only)\n');
+                lines.push('## Performance by Pair EMA13-EMA50 Gap (observation-only)\n');
                 lines.push(`${'Gap Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)} ${'AvgDur'.padEnd(10)}`);
                 for (const r of (perf.pair_ema20_ema50_gap_performance || [])) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -5583,7 +5583,7 @@
 
                 // --- BTC EMA20-EMA50 GAP ---
                 lines.push(`\n${hr2}`);
-                lines.push('## Performance by BTC EMA20-EMA50 Gap (observation-only)\n');
+                lines.push('## Performance by BTC EMA13-EMA50 Gap (observation-only)\n');
                 lines.push(`${'Gap Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)} ${'AvgDur'.padEnd(10)}`);
                 for (const r of (perf.btc_ema20_ema50_gap_performance || [])) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');

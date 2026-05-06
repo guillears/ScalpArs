@@ -3965,6 +3965,26 @@ class TradingEngine:
         _collected = []
         _breadth_flat_th = getattr(config.trading_config.thresholds, 'market_breadth_flat_threshold', 0.03)
 
+        # Phase B observability (May 6) — snapshot open positions count for the
+        # had_room flag used by get_signal's block_recorder. Approximation: the
+        # value at scan start. Doesn't account for positions opened mid-scan,
+        # but for observability of "did we generate the signal at all" this is
+        # sufficient.
+        try:
+            _scan_start_open_count_q = await db.execute(
+                select(func.count(Order.id)).where(
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+                )
+            )
+            _scan_start_open_count = _scan_start_open_count_q.scalar() or 0
+        except Exception:
+            _scan_start_open_count = 0
+        _scan_max_positions = config.trading_config.investment.max_open_positions or 5
+        _scan_had_room_snapshot = _scan_start_open_count < _scan_max_positions
+
+        def _signal_block_recorder(filter_name: str, direction: str):
+            self._record_filter_block(filter_name, direction, had_room=_scan_had_room_snapshot)
+
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
             batch_num = batch_start // OHLCV_BATCH_SIZE + 1
@@ -4019,7 +4039,8 @@ class TradingEngine:
                     ema5_prev1=indicators.get('ema5_prev1'),
                     ema8_prev1=indicators.get('ema8_prev1'),
                     ema5_prev2=indicators.get('ema5_prev2'),
-                    ema8_prev2=indicators.get('ema8_prev2')
+                    ema8_prev2=indicators.get('ema8_prev2'),
+                    block_recorder=_signal_block_recorder,
                 )
 
                 if signal in ["LONG", "SHORT"]:

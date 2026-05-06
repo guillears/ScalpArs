@@ -172,7 +172,8 @@ def get_signal(
     ema5_prev1: float = None,
     ema8_prev1: float = None,
     ema5_prev2: float = None,
-    ema8_prev2: float = None
+    ema8_prev2: float = None,
+    block_recorder=None,
 ) -> Tuple[str, Optional[str]]:
     """
     Generate trading signal based on indicators
@@ -193,6 +194,17 @@ def get_signal(
     import logging
     logger = logging.getLogger(__name__)
     
+    # Phase B observability (May 6) — records SIGNAL-time silent filter blocks
+    # so they appear in the Filter Blocks counter (was previously a black hole;
+    # only engine-chain filters were tracked). block_recorder is a callable
+    # taking (filter_name, direction). No-op if caller passed None.
+    def _record(filter_name: str, direction: str):
+        if block_recorder is not None:
+            try:
+                block_recorder(filter_name, direction)
+            except Exception:
+                pass  # Never let observability break signal generation
+
     if any(v is None for v in [ema5, ema8, ema13, ema20, rsi, adx]):
         logger.debug(f"Signal check failed - None values: ema5={ema5}, ema8={ema8}, ema13={ema13}, ema20={ema20}, rsi={rsi}, adx={adx}")
         return "NOTHING", None
@@ -301,20 +313,28 @@ def get_signal(
         if ema5 > ema8:
             if not regime_allows("LONG"):
                 logger.debug(f"[MOMENTUM] LONG skipped: regime={regime_for_long}, ema20={ema20}, ema20_prev3={ema20_prev3}")
+                _record("PAIR_REGIME", "LONG")
             elif ema20_filter_long and (price is None or price <= ema20):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 filter active, price={price}, ema20={ema20}")
+                _record("PAIR_EMA20_FILTER", "LONG")
             elif ema20_slope_long and (ema20_prev3 is None or ema20 <= ema20_prev3):
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
+                _record("PAIR_EMA20_SLOPE", "LONG")
             elif ema20_slope_min_long > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_long:
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_long}%")
+                _record("PAIR_EMA20_SLOPE_MIN", "LONG")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi < rsi_prev3:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against LONG")
+                _record("PAIR_RSI_MOMENTUM", "LONG")
             elif long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} < min {long_rsi_min}")
+                _record("PAIR_RSI_RANGE", "LONG")
             elif long_rsi_max < 100 and rsi is not None and rsi > long_rsi_max:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} > max {long_rsi_max}")
+                _record("PAIR_RSI_RANGE", "LONG")
             elif adx_max_long < 100 and adx > adx_max_long:
                 logger.debug(f"[MOMENTUM] LONG skipped: ADX {adx:.1f} > max_long {adx_max_long}")
+                _record("PAIR_ADX_MAX", "LONG")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
                 prev_gap_pct = ((ema5_prev1 - ema8_prev1) / ema8_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema8_prev1 > 0 else None
@@ -325,14 +345,18 @@ def get_signal(
                 gap_threshold_met = ema_gap_pct >= long_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing vs 1 candle ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
                 elif gap_expanding_enabled and prev2_gap_pct is not None and ema_gap_pct <= prev2_gap_pct:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing vs 2 candles ({prev2_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
+                    _record("PAIR_EMA_GAP_MAX", "LONG")
                 elif not gap_threshold_met:
-                    pass
+                    _record("PAIR_EMA_GAP_MIN", "LONG")
                 elif not _passes_rsi_adx_filter("LONG", rsi, adx, th):
                     logger.debug(f"[MOMENTUM] LONG skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")
+                    _record("PAIR_RSI_ADX_CROSS", "LONG")
                 else:
                     if adx > adx_vs_long:
                         if check_gap_and_mode("LONG", "VERY_STRONG"):
@@ -345,20 +369,28 @@ def get_signal(
         elif ema5 < ema8 and ema5 > 0:
             if not regime_allows("SHORT"):
                 logger.debug(f"[MOMENTUM] SHORT skipped: regime={regime_for_short}, ema20={ema20}, ema20_prev3={ema20_prev3}")
+                _record("PAIR_REGIME", "SHORT")
             elif ema20_filter_short and (price is None or price >= ema20):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 filter active, price={price}, ema20={ema20}")
+                _record("PAIR_EMA20_FILTER", "SHORT")
             elif ema20_slope_short and (ema20_prev3 is None or ema20 >= ema20_prev3):
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope filter active, ema20={ema20}, ema20_prev3={ema20_prev3}")
+                _record("PAIR_EMA20_SLOPE", "SHORT")
             elif ema20_slope_min_short > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_short:
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_short}%")
+                _record("PAIR_EMA20_SLOPE_MIN", "SHORT")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi > rsi_prev3:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against SHORT")
+                _record("PAIR_RSI_MOMENTUM", "SHORT")
             elif short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} > max {short_rsi_max}")
+                _record("PAIR_RSI_RANGE", "SHORT")
             elif short_rsi_min > 0 and rsi is not None and rsi < short_rsi_min:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} < min {short_rsi_min} (oversold)")
+                _record("PAIR_RSI_RANGE", "SHORT")
             elif adx_max < 100 and adx > adx_max:
                 logger.debug(f"[MOMENTUM] SHORT skipped: ADX {adx:.1f} > max {adx_max}")
+                _record("PAIR_ADX_MAX", "SHORT")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
                 prev_gap_pct = ((ema8_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema5_prev1 > 0 else None
@@ -369,14 +401,18 @@ def get_signal(
                 gap_threshold_met = ema_gap_pct >= short_gap_min
                 if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing vs 1 candle ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
                 elif gap_expanding_enabled and prev2_gap_pct is not None and ema_gap_pct <= prev2_gap_pct:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing vs 2 candles ({prev2_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                    _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
+                    _record("PAIR_EMA_GAP_MAX", "SHORT")
                 elif not gap_threshold_met:
-                    pass
+                    _record("PAIR_EMA_GAP_MIN", "SHORT")
                 elif not _passes_rsi_adx_filter("SHORT", rsi, adx, th):
                     logger.debug(f"[MOMENTUM] SHORT skipped: RSI x ADX cross-filter (RSI={rsi:.1f}, ADX={adx:.1f})")
+                    _record("PAIR_RSI_ADX_CROSS", "SHORT")
                 else:
                     if adx > th.adx_very_strong:
                         if check_gap_and_mode("SHORT", "VERY_STRONG"):

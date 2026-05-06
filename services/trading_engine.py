@@ -200,9 +200,16 @@ class TradingEngine:
             if _fb_json:
                 try:
                     _fb_raw = json.loads(_fb_json)
-                    self._filter_block_counts = {
-                        tuple(k.split("|", 1)): v for k, v in _fb_raw.items()
-                    }
+                    # Format: "filter|direction|room_state" (3 parts) or legacy "filter|direction" (2)
+                    restored = {}
+                    for k, v in _fb_raw.items():
+                        parts = k.split("|")
+                        if len(parts) == 3:
+                            restored[(parts[0], parts[1], parts[2])] = v
+                        elif len(parts) == 2:
+                            # Legacy: assume had_room=True
+                            restored[(parts[0], parts[1], "ROOM")] = v
+                    self._filter_block_counts = restored
                     logger.info(f"[FILTER_BLOCKS] Restored {len(self._filter_block_counts)} counters from DB")
                 except Exception as _e:
                     logger.warning(f"[FILTER_BLOCKS] Failed to restore counters: {_e}")
@@ -341,8 +348,11 @@ class TradingEngine:
         result = await db.execute(select(BotState).limit(1))
         state = result.scalar_one_or_none()
         
+        # Format: "filter|direction|room_state" (3 parts). Legacy 2-part keys
+        # restored on load default to room_state="ROOM" (assumes had_room=True).
         _fb_json = json.dumps({
-            f"{k[0]}|{k[1]}": v for k, v in self._filter_block_counts.items()
+            "|".join(str(p) for p in (k if len(k) == 3 else (*k, "ROOM"))): v
+            for k, v in self._filter_block_counts.items()
         }) if self._filter_block_counts else None
 
         if state:
@@ -435,7 +445,7 @@ class TradingEngine:
             "filter_block_counts": self._get_filter_block_summary()
         }
 
-    def _record_filter_block(self, filter_name: str, direction: str) -> None:
+    def _record_filter_block(self, filter_name: str, direction: str, had_room: bool = True) -> None:
         """Increment a counter for a pre-entry filter block.
 
         Called from each filter site in the scan loop right before
@@ -447,46 +457,77 @@ class TradingEngine:
                 "BTC_TREND_FILTER", "BTC_RSI_ADX_CROSS", "BTC_ADX_GATE".
             direction: "LONG" or "SHORT" (or "ANY" for filters that don't
                 differentiate).
+            had_room: True if the bot had open-position headroom at filter
+                fire time (i.e. could have actually opened a new position).
+                False if at max_open_positions (the filter block is "free"
+                — no trade was prevented).  Defaults to True for legacy
+                callers that haven't been updated.
         """
         if not filter_name:
             return
-        key = (filter_name, direction or "ANY")
+        room_state = "ROOM" if had_room else "FULL"
+        key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1
 
     def _get_filter_block_summary(self) -> Dict:
-        """Return filter block counts grouped per-filter with direction split.
+        """Return filter block counts grouped per-filter with direction + room split.
 
         Output shape (sorted by total descending):
             [
-                {"filter": "BTC_TREND_FILTER", "long": 3, "short": 12, "total": 15},
+                {"filter": "BTC_TREND_FILTER",
+                 "long": 3, "short": 12, "any": 0, "total": 15,
+                 "long_room": 1, "short_room": 8, "any_room": 0,
+                 "long_full": 2, "short_full": 4, "any_full": 0,
+                 "total_room": 9, "total_full": 6},
                 ...
             ]
-        Plus an aggregate "totals" row.  Empty list when no blocks recorded.
+        Plus aggregate "totals".  Empty list when no blocks recorded.
         """
         per_filter: Dict[str, Dict[str, int]] = {}
-        for (filter_name, direction), count in self._filter_block_counts.items():
-            row = per_filter.setdefault(filter_name, {"long": 0, "short": 0, "any": 0})
-            if direction == "LONG":
-                row["long"] += count
-            elif direction == "SHORT":
-                row["short"] += count
+        for k, count in self._filter_block_counts.items():
+            # Backward compat: old 2-tuple keys (filter, direction)
+            if len(k) == 2:
+                filter_name, direction = k
+                room_state = "ROOM"  # legacy entries assumed had_room=True
             else:
-                row["any"] += count
+                filter_name, direction, room_state = k
+            dir_key = direction.lower() if direction in ("LONG", "SHORT") else "any"
+            row = per_filter.setdefault(filter_name, {
+                "long": 0, "short": 0, "any": 0,
+                "long_room": 0, "short_room": 0, "any_room": 0,
+                "long_full": 0, "short_full": 0, "any_full": 0,
+            })
+            row[dir_key] += count
+            suffix = "_room" if room_state == "ROOM" else "_full"
+            row[dir_key + suffix] += count
 
         rows = []
         total_long = total_short = total_any = 0
+        total_room = total_full = 0
         for filter_name, splits in per_filter.items():
             t = splits["long"] + splits["short"] + splits["any"]
+            t_room = splits["long_room"] + splits["short_room"] + splits["any_room"]
+            t_full = splits["long_full"] + splits["short_full"] + splits["any_full"]
             rows.append({
                 "filter": filter_name,
                 "long": splits["long"],
                 "short": splits["short"],
                 "any": splits["any"],
                 "total": t,
+                "long_room": splits["long_room"],
+                "short_room": splits["short_room"],
+                "any_room": splits["any_room"],
+                "long_full": splits["long_full"],
+                "short_full": splits["short_full"],
+                "any_full": splits["any_full"],
+                "total_room": t_room,
+                "total_full": t_full,
             })
             total_long += splits["long"]
             total_short += splits["short"]
             total_any += splits["any"]
+            total_room += t_room
+            total_full += t_full
 
         rows.sort(key=lambda r: r["total"], reverse=True)
         return {
@@ -495,6 +536,8 @@ class TradingEngine:
             "total_short": total_short,
             "total_any": total_any,
             "total": total_long + total_short + total_any,
+            "total_room": total_room,
+            "total_full": total_full,
         }
 
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
@@ -3940,7 +3983,23 @@ class TradingEngine:
         _breadth_bull_th = getattr(config.trading_config.thresholds, 'market_breadth_bull_threshold_long', 50.0)
         _breadth_bear_th = getattr(config.trading_config.thresholds, 'market_breadth_bear_threshold_short', 65.0)
 
+        # Track had_room state for filter blocks: count open positions at scan
+        # start; increment when open_position succeeds in this loop. Filter
+        # blocks recorded with had_room=False (FULL) didn't actually prevent a
+        # trade — bot was already at max_open_positions when the block fired.
+        try:
+            _open_count_q = await db.execute(
+                select(func.count(Order.id)).where(
+                    and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+                )
+            )
+            _open_positions_in_scan = _open_count_q.scalar() or 0
+        except Exception:
+            _open_positions_in_scan = 0
+        _max_positions = config.trading_config.investment.max_open_positions or 5
+
         for _cr in _collected:
+            _had_room = _open_positions_in_scan < _max_positions
             pair = _cr['pair']
             indicators = _cr['indicators']
             signal = _cr['signal']
@@ -4016,7 +4075,7 @@ class TradingEngine:
                     else:
                         reason = f"pair={pair_regime} vs BTC={btc_regime}"
                     logger.info(f"[BTC-GATE] {pair}: {signal} blocked — {reason}")
-                    self._record_filter_block("BTC_REGIME", signal)
+                    self._record_filter_block("BTC_REGIME", signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
             # Pair ADX Direction check — runs independently of BTC global filter
@@ -4029,12 +4088,12 @@ class TradingEngine:
                     if _pair_adx_dir_cfg == 'rising' and _pair_adx <= _pair_adx_prev:
                         _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
                         logger.info(f"[PAIR_ADX_DIR] {pair}: {signal} blocked — Pair ADX {_pd_label} ({_pair_adx:.4f} vs prev {_pair_adx_prev:.4f}), requires {_pair_adx_dir_cfg}")
-                        self._record_filter_block("PAIR_ADX_DIR", signal)
+                        self._record_filter_block("PAIR_ADX_DIR", signal, had_room=_had_room)
                         signal = "NO_TRADE"
                     elif _pair_adx_dir_cfg == 'falling' and _pair_adx >= _pair_adx_prev:
                         _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
                         logger.info(f"[PAIR_ADX_DIR] {pair}: {signal} blocked — Pair ADX {_pd_label} ({_pair_adx:.4f} vs prev {_pair_adx_prev:.4f}), requires {_pair_adx_dir_cfg}")
-                        self._record_filter_block("PAIR_ADX_DIR", signal)
+                        self._record_filter_block("PAIR_ADX_DIR", signal, had_room=_had_room)
                         signal = "NO_TRADE"
 
             # BTC ADX range check — runs independently of BTC global filter.
@@ -4054,7 +4113,7 @@ class TradingEngine:
                     _gate_subtype = "BTC_ADX_GATE_LOW" if _btc_adx_too_low else "BTC_ADX_GATE_HIGH"
                     _bound_label = f"<{_btc_adx_lo}" if _btc_adx_too_low else f">{_btc_adx_hi}"
                     logger.info(f"[{_gate_subtype}] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} {_bound_label} (range [{_btc_adx_lo}-{_btc_adx_hi}])")
-                    self._record_filter_block(_gate_subtype, signal)
+                    self._record_filter_block(_gate_subtype, signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
             # BTC ADX Direction check — runs independently of BTC global filter
@@ -4080,7 +4139,7 @@ class TradingEngine:
                         f"[BTC_ADX_DIR] {pair}: {signal} blocked — BTC ADX {_dir_label} "
                         f"({btc_adx:.2f} vs prev {btc_adx_prev:.2f}), requires {_adx_dir_cfg}"
                     )
-                    self._record_filter_block("BTC_ADX_DIR", signal)
+                    self._record_filter_block("BTC_ADX_DIR", signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
             # BTC RSI x BTC ADX Cross-Filter — runs independently of BTC global filter (May 5 fix).
@@ -4125,7 +4184,7 @@ class TradingEngine:
                                         f"BTC RSI {btc_rsi:.1f} in [{_cf_rsi_min}-{_cf_rsi_max}) "
                                         f"{_cf_label}, got {btc_adx:.1f}"
                                     )
-                                    self._record_filter_block("BTC_RSI_ADX_CROSS", signal)
+                                    self._record_filter_block("BTC_RSI_ADX_CROSS", signal, had_room=_had_room)
                                     signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):
@@ -4157,14 +4216,14 @@ class TradingEngine:
                         f"[BTC_TREND_FILTER] {pair}: LONG blocked — BTC EMA20 {btc_ema20:.2f} < EMA50 {btc_ema50:.2f} "
                         f"(macro downtrend, countertrend LONG blocked)"
                     )
-                    self._record_filter_block("BTC_TREND_FILTER", "LONG")
+                    self._record_filter_block("BTC_TREND_FILTER", "LONG", had_room=_had_room)
                     signal = "NO_TRADE"
                 elif signal == "SHORT" and btc_ema20 > btc_ema50:
                     logger.info(
                         f"[BTC_TREND_FILTER] {pair}: SHORT blocked — BTC EMA20 {btc_ema20:.2f} > EMA50 {btc_ema50:.2f} "
                         f"(macro uptrend, countertrend SHORT blocked)"
                     )
-                    self._record_filter_block("BTC_TREND_FILTER", "SHORT")
+                    self._record_filter_block("BTC_TREND_FILTER", "SHORT", had_room=_had_room)
                     signal = "NO_TRADE"
                 else:
                     logger.info(f"[BTC_TREND_FILTER_PASS] {pair} {signal}: btc_ema20={btc_ema20:.2f} btc_ema50={btc_ema50:.2f} (passed)")
@@ -4180,14 +4239,14 @@ class TradingEngine:
                                        getattr(_th, 'macro_trend_flat_threshold', 0))
                     if _flat_th > 0 and btc_ema20_slope_pct < _flat_th:
                         logger.info(f"[BTC_SLOPE_GATE] {pair}: LONG blocked — BTC slope {btc_ema20_slope_pct:+.4f}% < min +{_flat_th}%")
-                        self._record_filter_block("BTC_SLOPE_GATE", "LONG")
+                        self._record_filter_block("BTC_SLOPE_GATE", "LONG", had_room=_had_room)
                         signal = "NO_TRADE"
                 else:  # SHORT
                     _flat_th = getattr(_th, 'macro_trend_flat_threshold_short',
                                        getattr(_th, 'macro_trend_flat_threshold', 0))
                     if _flat_th > 0 and btc_ema20_slope_pct > -_flat_th:
                         logger.info(f"[BTC_SLOPE_GATE] {pair}: SHORT blocked — BTC slope {btc_ema20_slope_pct:+.4f}% > max -{_flat_th}%")
-                        self._record_filter_block("BTC_SLOPE_GATE", "SHORT")
+                        self._record_filter_block("BTC_SLOPE_GATE", "SHORT", had_room=_had_room)
                         signal = "NO_TRADE"
 
             # May 2: BTC EMA20 slope MAX guard. Block over-extended BTC trends
@@ -4197,7 +4256,7 @@ class TradingEngine:
                 _btc_max = getattr(_th, f'btc_ema20_slope_max_{signal.lower()}', 0)
                 if _btc_max and _btc_max > 0 and abs(btc_ema20_slope_pct) > _btc_max:
                     logger.info(f"[BTC_SLOPE_MAX_GATE] {pair}: {signal} blocked — abs(BTC slope) {abs(btc_ema20_slope_pct):.4f}% > max {_btc_max}%")
-                    self._record_filter_block("BTC_SLOPE_MAX_GATE", signal)
+                    self._record_filter_block("BTC_SLOPE_MAX_GATE", signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
             # May 2: per-pair EMA20 slope MAX guard. Block over-extended pair trends.
@@ -4215,7 +4274,7 @@ class TradingEngine:
                         _pair_slope_abs = abs((_ema20_now - _ema20_p3) / _ema20_p3 * 100)
                         if _pair_slope_abs > _pair_max:
                             logger.info(f"[PAIR_SLOPE_MAX_GATE] {pair}: {signal} blocked — abs(pair slope) {_pair_slope_abs:.4f}% > max {_pair_max}%")
-                            self._record_filter_block("PAIR_SLOPE_MAX_GATE", signal)
+                            self._record_filter_block("PAIR_SLOPE_MAX_GATE", signal, had_room=_had_room)
                             signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:
@@ -4238,17 +4297,17 @@ class TradingEngine:
                     else:
                         reason = f"Pair Vol {_pair_volume_ratio:.2f} < {_pv_thresh} for {signal}"
                     logger.info(f"[VOL-GATE] {pair}: {signal} blocked — {reason}")
-                    self._record_filter_block("VOL_GATE", signal)
+                    self._record_filter_block("VOL_GATE", signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and _breadth_enabled:
                 if signal == "LONG" and _market_bull_pct < _breadth_bull_th:
                     logger.info(f"[BREADTH_GATE] {pair}: LONG blocked — Bull% {_market_bull_pct:.1f}% < {_breadth_bull_th}%")
-                    self._record_filter_block("BREADTH_GATE", "LONG")
+                    self._record_filter_block("BREADTH_GATE", "LONG", had_room=_had_room)
                     signal = "NO_TRADE"
                 elif signal == "SHORT" and _market_bear_pct < _breadth_bear_th:
                     logger.info(f"[BREADTH_GATE] {pair}: SHORT blocked — Bear% {_market_bear_pct:.1f}% < {_breadth_bear_th}%")
-                    self._record_filter_block("BREADTH_GATE", "SHORT")
+                    self._record_filter_block("BREADTH_GATE", "SHORT", had_room=_had_room)
                     signal = "NO_TRADE"
 
             await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
@@ -4279,7 +4338,7 @@ class TradingEngine:
 
                 if _sg_blocked:
                     logger.info(f"[SPIKE_GUARD] {pair}: {signal} blocked — {_sg_reason}")
-                    self._record_filter_block("SPIKE_GUARD", signal)
+                    self._record_filter_block("SPIKE_GUARD", signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
@@ -4394,6 +4453,9 @@ class TradingEngine:
                         "confidence": confidence,
                         "price": indicators['price']
                     })
+                    # Track newly-opened position for had_room state on subsequent
+                    # filter checks within this same scan iteration.
+                    _open_positions_in_scan += 1
                 else:
                     logger.warning(f"[DEBUG_OPEN_FAILED] {pair} {signal} {confidence}: open_position returned None — check upstream logs in open_position for the real reason")
 

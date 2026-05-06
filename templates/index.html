@@ -998,22 +998,22 @@
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
-                                <tr class="text-gray-400 text-left border-b border-white/10">
-                                    <th class="px-3 py-2 font-medium" rowspan="2">Filter</th>
-                                    <th class="px-3 py-2 font-medium text-center text-emerald-400" colspan="3">LONG</th>
-                                    <th class="px-3 py-2 font-medium text-center text-red-400" colspan="3">SHORT</th>
-                                    <th class="px-3 py-2 font-medium text-center font-bold" colspan="3">Total</th>
+                                <tr class="text-gray-400 text-left">
+                                    <th class="px-3 py-2 font-medium border-b border-white/10" rowspan="2">Filter</th>
+                                    <th class="px-3 py-2 font-bold text-center text-emerald-400 text-sm bg-emerald-900/15 border-l-2 border-emerald-500/40 border-b border-white/10" colspan="3">LONG</th>
+                                    <th class="px-3 py-2 font-bold text-center text-red-400 text-sm bg-red-900/15 border-l-2 border-red-500/40 border-b border-white/10" colspan="3">SHORT</th>
+                                    <th class="px-3 py-2 font-bold text-center text-white text-sm bg-white/5 border-l-2 border-white/30 border-b border-white/10" colspan="3">Total</th>
                                 </tr>
                                 <tr class="text-gray-500 text-[10px] border-b border-white/10">
-                                    <th class="px-2 py-1 text-center text-emerald-300">Real</th>
-                                    <th class="px-2 py-1 text-center text-amber-300">Free</th>
-                                    <th class="px-2 py-1 text-center text-gray-400">All</th>
-                                    <th class="px-2 py-1 text-center text-emerald-300">Real</th>
-                                    <th class="px-2 py-1 text-center text-amber-300">Free</th>
-                                    <th class="px-2 py-1 text-center text-gray-400">All</th>
-                                    <th class="px-2 py-1 text-center text-emerald-300">Real</th>
-                                    <th class="px-2 py-1 text-center text-amber-300">Free</th>
-                                    <th class="px-2 py-1 text-center text-gray-400">All</th>
+                                    <th class="px-2 py-1 text-center text-emerald-300 bg-emerald-900/10 border-l-2 border-emerald-500/40">Real</th>
+                                    <th class="px-2 py-1 text-center text-amber-300 bg-emerald-900/10">Free</th>
+                                    <th class="px-2 py-1 text-center text-gray-400 bg-emerald-900/10">All</th>
+                                    <th class="px-2 py-1 text-center text-emerald-300 bg-red-900/10 border-l-2 border-red-500/40">Real</th>
+                                    <th class="px-2 py-1 text-center text-amber-300 bg-red-900/10">Free</th>
+                                    <th class="px-2 py-1 text-center text-gray-400 bg-red-900/10">All</th>
+                                    <th class="px-2 py-1 text-center text-emerald-300 bg-white/5 border-l-2 border-white/30">Real</th>
+                                    <th class="px-2 py-1 text-center text-amber-300 bg-white/5">Free</th>
+                                    <th class="px-2 py-1 text-center text-gray-400 bg-white/5">All</th>
                                 </tr>
                             </thead>
                             <tbody id="filter-blocks-body" class="divide-y divide-white/5">
@@ -3799,15 +3799,15 @@
                 const tRoom = r.total_room || 0, tFull = r.total_full || 0;
                 return `<tr class="hover:bg-white/5">
                     <td class="px-3 py-2 font-mono text-xs text-gray-300">${r.filter}</td>
-                    <td class="px-2 py-2 text-center">${cell(lRoom, 'text-emerald-300')}</td>
-                    <td class="px-2 py-2 text-center">${cell(lFull, 'text-amber-300')}</td>
-                    <td class="px-2 py-2 text-center">${cell(r.long || 0, 'text-emerald-400 font-medium')}</td>
-                    <td class="px-2 py-2 text-center">${cell(sRoom, 'text-emerald-300')}</td>
-                    <td class="px-2 py-2 text-center">${cell(sFull, 'text-amber-300')}</td>
-                    <td class="px-2 py-2 text-center">${cell(r.short || 0, 'text-red-400 font-medium')}</td>
-                    <td class="px-2 py-2 text-center">${cell(tRoom, 'text-emerald-300 font-medium')}</td>
-                    <td class="px-2 py-2 text-center">${cell(tFull, 'text-amber-300 font-medium')}</td>
-                    <td class="px-2 py-2 text-center font-bold text-white">${r.total}</td>
+                    <td class="px-2 py-2 text-center bg-emerald-900/5 border-l-2 border-emerald-500/30">${cell(lRoom, 'text-emerald-300')}</td>
+                    <td class="px-2 py-2 text-center bg-emerald-900/5">${cell(lFull, 'text-amber-300')}</td>
+                    <td class="px-2 py-2 text-center bg-emerald-900/5">${cell(r.long || 0, 'text-emerald-400 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-red-900/5 border-l-2 border-red-500/30">${cell(sRoom, 'text-emerald-300')}</td>
+                    <td class="px-2 py-2 text-center bg-red-900/5">${cell(sFull, 'text-amber-300')}</td>
+                    <td class="px-2 py-2 text-center bg-red-900/5">${cell(r.short || 0, 'text-red-400 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-white/5 border-l-2 border-white/30">${cell(tRoom, 'text-emerald-300 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-white/5">${cell(tFull, 'text-amber-300 font-medium')}</td>
+                    <td class="px-2 py-2 text-center bg-white/5 font-bold text-white">${r.total}</td>
                 </tr>`;
             }).join('');
             if (foot) {
@@ -3822,17 +3822,17 @@
                     lRoomT += r.long_room || 0; lFullT += r.long_full || 0;
                     sRoomT += r.short_room || 0; sFullT += r.short_full || 0;
                 }
-                foot.innerHTML = `<tr class="bg-white/5">
-                    <td class="px-3 py-2 font-semibold text-gray-400 text-xs uppercase tracking-wide">Total</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-300">${lRoomT}</td>
-                    <td class="px-2 py-2 text-center font-bold text-amber-300">${lFullT}</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-400">${tL}</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-300">${sRoomT}</td>
-                    <td class="px-2 py-2 text-center font-bold text-amber-300">${sFullT}</td>
-                    <td class="px-2 py-2 text-center font-bold text-red-400">${tS}</td>
-                    <td class="px-2 py-2 text-center font-bold text-emerald-300">${tRoom}</td>
-                    <td class="px-2 py-2 text-center font-bold text-amber-300">${tFull}</td>
-                    <td class="px-2 py-2 text-center font-bold text-white">${tT}</td>
+                foot.innerHTML = `<tr>
+                    <td class="px-3 py-2 font-semibold text-gray-400 text-xs uppercase tracking-wide bg-white/5">Total</td>
+                    <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-emerald-900/15 border-l-2 border-emerald-500/40">${lRoomT}</td>
+                    <td class="px-2 py-2 text-center font-bold text-amber-300 bg-emerald-900/15">${lFullT}</td>
+                    <td class="px-2 py-2 text-center font-bold text-emerald-400 bg-emerald-900/15">${tL}</td>
+                    <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-red-900/15 border-l-2 border-red-500/40">${sRoomT}</td>
+                    <td class="px-2 py-2 text-center font-bold text-amber-300 bg-red-900/15">${sFullT}</td>
+                    <td class="px-2 py-2 text-center font-bold text-red-400 bg-red-900/15">${tS}</td>
+                    <td class="px-2 py-2 text-center font-bold text-emerald-300 bg-white/10 border-l-2 border-white/30">${tRoom}</td>
+                    <td class="px-2 py-2 text-center font-bold text-amber-300 bg-white/10">${tFull}</td>
+                    <td class="px-2 py-2 text-center font-bold text-white bg-white/10">${tT}</td>
                 </tr>`;
             }
         }

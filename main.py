@@ -1556,7 +1556,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -2530,6 +2530,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "pair_slope_performance": [],
             "btc_slope_performance": [],
             "pair_ema20_ema50_gap_performance": [],
+            "btc_ema20_ema50_gap_performance": [],
             "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
@@ -2766,6 +2767,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     pair_slope_performance = []
     btc_slope_performance = []
     pair_ema20_ema50_gap_performance = []
+    btc_ema20_ema50_gap_performance = []
     btc_adx_performance = []
     btc_adx_direction_performance = []
     adx_dir_crosstab = []
@@ -3231,6 +3233,47 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_duration": calc_avg_duration(dir_orders),
                 })
 
+        # Performance by BTC EMA20-EMA50 Gap at entry (May 6, observation-only)
+        # Mirrors pair version. Uses entry_btc_trend_gap_pct (BTC EMA20 vs EMA50, ~4hr context).
+        btc_ema20_ema50_gap_performance = []
+        btc_ema_gap_orders = [o for o in orders if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
+        for range_name, g_min, g_max in pair_ema_gap_ranges:
+            range_orders = [o for o in btc_ema_gap_orders if g_min <= o.entry_btc_trend_gap_pct < g_max]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                avg_rsi = round(sum(o.entry_rsi or 0 for o in dir_orders) / count, 1) if any(o.entry_rsi for o in dir_orders) else None
+                avg_adx = round(sum(o.entry_adx or 0 for o in dir_orders) / count, 1) if any(o.entry_adx for o in dir_orders) else None
+                avg_gap = round(sum(o.entry_gap or 0 for o in dir_orders) / count, 4) if any(o.entry_gap for o in dir_orders) else None
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
+                never_positive = sum(1 for o in dir_orders if (o.peak_pnl or 0) <= 0)
+                btc_ema20_ema50_gap_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown,
+                    "avg_rsi": avg_rsi,
+                    "avg_adx": avg_adx,
+                    "avg_gap": avg_gap,
+                    "never_positive": never_positive,
+                    "never_positive_pct": round(never_positive / count * 100, 1) if count else 0,
+                    "avg_duration": calc_avg_duration(dir_orders),
+                })
+
         # Performance by BTC ADX at entry
         btc_adx_ranges = [
             ("10-15", 10, 15), ("15-20", 15, 20), ("20-25", 20, 25),
@@ -3598,6 +3641,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         pair_slope_performance = []
         btc_slope_performance = []
         pair_ema20_ema50_gap_performance = []
+        btc_ema20_ema50_gap_performance = []
         btc_adx_performance = []
         btc_adx_direction_performance = []
         adx_dir_crosstab = []
@@ -4922,6 +4966,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "pair_slope_performance": pair_slope_performance,
         "btc_slope_performance": btc_slope_performance,
         "pair_ema20_ema50_gap_performance": pair_ema20_ema50_gap_performance,
+        "btc_ema20_ema50_gap_performance": btc_ema20_ema50_gap_performance,
         "btc_adx_performance": btc_adx_performance,
         "btc_adx_direction_performance": btc_adx_direction_performance,
         "adx_dir_crosstab": adx_dir_crosstab,

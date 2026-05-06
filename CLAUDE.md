@@ -5441,3 +5441,39 @@ To anchor:
 1. The reasoning that allowed a 2nd reset within 4 hours (the discipline rule has limits — "1 trade in" is structurally not the same as "50 trades in")
 2. The IRON RULE that locks discipline going forward — this is NOT a precedent for future "one more tweak" resets
 3. The pre-committed revert gates so the 100-trade checkpoint decision is mechanical, not re-litigated
+
+## May 6, 2026 — `btc_adx_min_long: 18 → 15` (USER-DIRECTED override of IRON RULE)
+
+### What happened
+User directed the change after I (Claude) pushed back twice on the proposal. Putting it on record explicitly: this is a user override of the May 5 IRON RULE ("no further config changes before 100 closed trades"). User is the final authority and made the call; my job is to ship it cleanly while documenting the disagreement so the post-mortem is honest.
+
+### My documented disagreement (preserved for analysis honesty)
+
+The 5-trade post-reset sample (Total -$115.25, 20% WR, all 5 closed via REGIME_CHANGE / FL_REGIME_CHANGE / FL_DEEP_STOP) showed:
+- **All 5 trades clustered at BTC ADX 15-20** (the LOW end of the allowed band)
+- **All 5 lost.** 20% WR, -$115 in 0.1 days
+- 84 BTC_ADX_GATE blocks (BTC ADX < 18 most of the time)
+
+The data leans against relaxing the floor — the adjacent BTC ADX 15-20 zone (already allowed) is currently a clear loser at 1-sample N=5. Lowering to 15 re-admits BTC ADX 15-18 entries (zero historical positive evidence) into a regime where the bot is already losing on weak-trend BTC entries.
+
+The structural argument the user accepted: "BTC Trend Filter (EMA20 vs EMA50) substitutes for BTC ADX magnitude floor as a chop defense." Same chain that justified May 5 PAIR_ADX_DIR=both.
+
+The diagnostic problem this doesn't address: 5/5 losses via REGIME_CHANGE / FL_REGIME_CHANGE — entry-level macro context was OK at entry (all entries passed BTC Trend Filter), but BTC flipped mid-trade. That's an intra-trade fragility issue, not an entry-filter issue. No filter relax can fix it.
+
+### Pre-committed revert criteria (locked NOW)
+
+Mandatory revert of `btc_adx_min_long` to 18 if at the next 100-trade checkpoint ANY of these is true:
+
+1. **BTC ADX 15-18 LONG bucket shows ≤30% WR on N≥10.** New zone confirmed bad.
+2. **BTC ADX 15-20 LONG bucket combined shows ≤35% WR on N≥20.** Pre-existing low-end zone confirmed bad in current regime.
+3. **REGIME_CHANGE / FL_REGIME_CHANGE close-reason rate stays > 50%** with this batch's data + future data combined. The intra-trade regime fragility I flagged is real and the relax made it worse by allowing more weak-context entries.
+4. **Combined Avg P&L % is materially worse than May 4 baseline** (-$45 LONG / -$1 SHORT on 224 trades). On N≥80, if combined Avg P&L % is < -0.20%, revert.
+
+### IRON RULE status
+
+The May 5 IRON RULE is not voided by this override — it stands as the discipline framework, and this override is documented as an exception not a pattern. Explicitly: future "one more tweak" requests still get pushed back per the IRON RULE.
+
+For honesty's sake, the count is now: **5 strategic config-related actions in <24 hours** (PAIR_ADX_DIR=both, reset, BTC ADX min 18→15). Discipline drift is now a measurable pattern. Future-Claude reviewing this at the 100-trade checkpoint should be aware that some/all of the recent changes may have been premature.
+
+### Files changed
+- `trading_config.json`: `btc_adx_min_long: 18 → 15`

@@ -166,6 +166,12 @@ class SignalThresholds(BaseModel):
     rsi_momentum_exit_enabled: bool = True  # Exit LONG on 2 consecutive RSI drops, SHORT on 2 consecutive rises
     rsi_momentum_exit_min_profit: float = 0.05  # Min P&L % (notional) to trigger RSI momentum exit
     rsi_momentum_exit_max_profit: float = 999.0  # Max P&L % to trigger RSI momentum exit (caps to losers when set to 0)
+    # EMA13 Cross Exit (May 6) — closes trade on first tick where price crosses EMA13
+    # against trade direction (LONG: price < EMA13, SHORT: price > EMA13). Fires
+    # in parallel to FL flags, RSI Handoff, trailing stop — first-to-fire wins.
+    # Reuses the realtime cross detection from the Phase 1 shadow tracker.
+    # Default OFF — flip to True to activate.
+    ema13_cross_exit_enabled: bool = False
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
     tick_momentum_exit_min_profit_flagged: float = -0.10  # Min P&L % for flagged trades (Signal Lost Flag system)

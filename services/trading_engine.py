@@ -2921,7 +2921,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -4772,6 +4772,46 @@ class TradingEngine:
                     # Price flipped back to right side before confirmation — whipsaw, reset pending
                     if order_info.get(_pending_key) is not None:
                         order_info[_pending_key] = None
+
+            # ════════════════════════════════════════════════════════════════
+            # EMA13 Cross Exit (May 6) — live exit when toggle is ON.
+            # Fires on every tick where price is on wrong side of EMA13 (LONG:
+            # price < EMA13, SHORT: price > EMA13). First-tick mode (no
+            # confirmation window). Runs in PARALLEL to FL flags, RSI Handoff,
+            # trailing stop — first-to-fire wins. No P&L filter (any state).
+            # Cascade-close behavior: when toggle activates, any open trade
+            # currently on wrong side of EMA13 closes on next tick.
+            # ════════════════════════════════════════════════════════════════
+            if getattr(config.trading_config.thresholds, 'ema13_cross_exit_enabled', False):
+                _ema13_for_exit = order_info.get('cached_ema13')
+                if _ema13_for_exit is not None and _ema13_for_exit > 0:
+                    if direction == "LONG":
+                        _ema13_cross_fire = current_price < _ema13_for_exit
+                    else:  # SHORT
+                        _ema13_cross_fire = current_price > _ema13_for_exit
+                    if _ema13_cross_fire and not order_info.get('_closing_in_progress'):
+                        _tp_lvl_for_exit = order_info.get('current_tp_level', 1) or 1
+                        _close_reason_e13 = f"EMA13_CROSS_EXIT L{_tp_lvl_for_exit}"
+                        logger.warning(
+                            f"[REALTIME_EMA13_CROSS_EXIT] {pair} {direction} L{_tp_lvl_for_exit}: "
+                            f"price={current_price:.6f} {('<' if direction == 'LONG' else '>')}"
+                            f" EMA13={_ema13_for_exit:.6f}, pnl={pnl_pct:.4f}% (peak={current_peak:.4f}%) - CLOSING NOW!"
+                        )
+                        order_info['_closing_in_progress'] = True
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    closed = await self.close_position(db, order, current_price, _close_reason_e13)
+                                    if closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_EMA13_CROSS_EXIT] Error closing {pair}: {e}")
+                        continue  # Trade is closed; skip remaining checks for this order
 
             # Track peak P&L in real-time for break-even decisions
             current_peak = max(cached_peak_pnl, pnl_pct) if pnl_pct > 0 else cached_peak_pnl

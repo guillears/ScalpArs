@@ -2503,6 +2503,19 @@
                             <p class="text-xs text-gray-500 mt-1">Close when RSI shows 2 consecutive drops (LONG) or rises (SHORT) above min profit threshold</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">EMA13 Cross Exit <span class="text-xs text-violet-400 font-normal">(May 6 — first-tick reversal exit)</span></label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-ema13-cross-exit-enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-violet-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Closes trade on first tick where price crosses EMA13 against direction (LONG: price &lt; EMA13, SHORT: price &gt; EMA13). No profit gate — fires at any P&L. Runs in parallel to FL flags / RSI Handoff / trailing — first-to-fire wins. Cascade-close: when toggled ON, any open trade currently on wrong side closes on next tick. Close reason: <code class="text-violet-300">EMA13_CROSS_EXIT L&lt;level&gt;</code>.</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Tick Momentum Exit</label>
                             <div class="flex items-center gap-4 flex-wrap">
                                 <label class="flex items-center cursor-pointer">
@@ -5032,6 +5045,7 @@
             lines.push('\nExit Settings:');
             lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
             lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
+            lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
             lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.8}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
             lines.push(`  FL1[WIDE_SL]: ${th.fl1_for_wide_sl_enabled !== undefined ? th.fl1_for_wide_sl_enabled : true}  |  Emergency Backstop: ${th.fl1_wide_sl_backstop !== undefined ? th.fl1_wide_sl_backstop : -1.2}%  ||  FL2: ${th.fl2_enabled !== undefined ? th.fl2_enabled : true}  |  Recovery: ${th.fl2_recovery_target !== undefined ? th.fl2_recovery_target : -0.4}%  |  Deep Stop: ${th.fl2_deep_stop !== undefined ? th.fl2_deep_stop : -1.0}%`);
@@ -9668,6 +9682,9 @@
                 document.getElementById('config-rsi-momentum-exit-enabled').checked = config.thresholds.rsi_momentum_exit_enabled !== undefined ? config.thresholds.rsi_momentum_exit_enabled : true;
                 document.getElementById('config-rsi-momentum-exit-min-profit').value = config.thresholds.rsi_momentum_exit_min_profit !== undefined ? config.thresholds.rsi_momentum_exit_min_profit : 0.05;
                 document.getElementById('config-rsi-momentum-exit-max-profit').value = config.thresholds.rsi_momentum_exit_max_profit !== undefined ? config.thresholds.rsi_momentum_exit_max_profit : 999;
+                // EMA13 Cross Exit (May 6) — default OFF
+                const _e13ce = document.getElementById('config-ema13-cross-exit-enabled');
+                if (_e13ce) _e13ce.checked = config.thresholds.ema13_cross_exit_enabled === true;
                 document.getElementById('config-tick-momentum-exit-enabled').checked = config.thresholds.tick_momentum_exit_enabled !== undefined ? config.thresholds.tick_momentum_exit_enabled : false;
                 document.getElementById('config-tick-momentum-exit-min-profit').value = config.thresholds.tick_momentum_exit_min_profit !== undefined ? config.thresholds.tick_momentum_exit_min_profit : 0.05;
                 document.getElementById('config-tick-momentum-exit-min-deltas').value = config.thresholds.tick_momentum_exit_min_deltas !== undefined ? config.thresholds.tick_momentum_exit_min_deltas : '';
@@ -10049,6 +10066,7 @@
                     rsi_momentum_exit_enabled: document.getElementById('config-rsi-momentum-exit-enabled').checked,
                     rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value),
                     rsi_momentum_exit_max_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-max-profit').value),
+                    ema13_cross_exit_enabled: (document.getElementById('config-ema13-cross-exit-enabled') ? document.getElementById('config-ema13-cross-exit-enabled').checked : false),
                     tick_momentum_exit_enabled: document.getElementById('config-tick-momentum-exit-enabled').checked,
                     tick_momentum_exit_min_profit: safeFloat(document.getElementById('config-tick-momentum-exit-min-profit').value),
                     tick_momentum_exit_min_deltas: document.getElementById('config-tick-momentum-exit-min-deltas').value.trim(),

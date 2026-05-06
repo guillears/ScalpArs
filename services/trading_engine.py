@@ -4048,9 +4048,13 @@ class TradingEngine:
                 else:
                     _btc_adx_lo = getattr(_th, 'btc_adx_min_short', 0)
                     _btc_adx_hi = getattr(_th, 'btc_adx_max_short', 100)
-                if (_btc_adx_lo > 0 and btc_adx < _btc_adx_lo) or (_btc_adx_hi < 100 and btc_adx > _btc_adx_hi):
-                    logger.info(f"[BTC_ADX_GATE] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} outside [{_btc_adx_lo}-{_btc_adx_hi}]")
-                    self._record_filter_block("BTC_ADX_GATE", signal)
+                _btc_adx_too_low = _btc_adx_lo > 0 and btc_adx < _btc_adx_lo
+                _btc_adx_too_high = _btc_adx_hi < 100 and btc_adx > _btc_adx_hi
+                if _btc_adx_too_low or _btc_adx_too_high:
+                    _gate_subtype = "BTC_ADX_GATE_LOW" if _btc_adx_too_low else "BTC_ADX_GATE_HIGH"
+                    _bound_label = f"<{_btc_adx_lo}" if _btc_adx_too_low else f">{_btc_adx_hi}"
+                    logger.info(f"[{_gate_subtype}] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} {_bound_label} (range [{_btc_adx_lo}-{_btc_adx_hi}])")
+                    self._record_filter_block(_gate_subtype, signal)
                     signal = "NO_TRADE"
 
             # BTC ADX Direction check — runs independently of BTC global filter

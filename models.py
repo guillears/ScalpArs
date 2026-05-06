@@ -121,6 +121,12 @@ class Order(Base):
     # Captures multi-hour pair trend context (EMA50 spans ~4 hours on 5m chart).
     entry_pair_ema20_ema50_gap_pct = Column(Float, nullable=True)
 
+    # Pair / BTC EMA20 vs EMA50 gap at EXIT (May 6). Captures multi-hour trend context
+    # at close time — diagnostic for REGIME_CHANGE / FL_REGIME_CHANGE: did BTC's actual
+    # 4h trend flip, or just the 5m regime classifier? Historical trades have NULL.
+    exit_pair_ema20_ema50_gap_pct = Column(Float, nullable=True)
+    exit_btc_trend_gap_pct = Column(Float, nullable=True)
+
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)
     exit_fee = Column(Float, nullable=True, default=0.0)

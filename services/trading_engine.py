@@ -540,6 +540,32 @@ class TradingEngine:
             "total_full": total_full,
         }
 
+    async def _get_exit_trend_gaps(self, db: AsyncSession, pair: str) -> tuple:
+        """Capture pair / BTC EMA20-EMA50 gap at close time (May 6).
+
+        Returns (exit_pair_gap_pct, exit_btc_gap_pct). Either may be None if
+        data unavailable. BTC gap pulled from the global updated each scan;
+        pair gap derived from latest pair_data row's ema20 + ema50.
+
+        Used for analytical diagnostics — captures whether the multi-hour
+        trend context flipped at exit (e.g., BTC EMA20 crossed below EMA50)
+        vs just the 5m regime classifier.
+        """
+        global _current_btc_trend_gap_pct
+        btc_gap = _current_btc_trend_gap_pct
+        pair_gap = None
+        try:
+            from sqlalchemy import select as _sel
+            res = await db.execute(
+                _sel(PairData).where(PairData.pair == pair).order_by(PairData.timestamp.desc()).limit(1)
+            )
+            pd_row = res.scalar_one_or_none()
+            if pd_row and pd_row.ema20 and pd_row.ema50 and pd_row.ema50 > 0:
+                pair_gap = round((pd_row.ema20 - pd_row.ema50) / pd_row.ema50 * 100, 4)
+        except Exception as e:
+            logger.debug(f"[EXIT_GAPS] {pair}: pair gap fetch failed: {e}")
+        return pair_gap, btc_gap
+
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
         """Recalculate paper_balance from DB as source of truth.
         
@@ -2373,6 +2399,13 @@ class TradingEngine:
                         order.closed_at = datetime.utcnow()
                         order.exit_price = actual_price
                         order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
+                        # Exit trend gaps (May 6) — pair/BTC EMA20-EMA50 gap at close time
+                        try:
+                            _exit_pair_gap, _exit_btc_gap = await self._get_exit_trend_gaps(db, order.pair)
+                            order.exit_pair_ema20_ema50_gap_pct = _exit_pair_gap
+                            order.exit_btc_trend_gap_pct = _exit_btc_gap
+                        except Exception as _e:
+                            logger.debug(f"[EXIT_GAPS] {order.pair}: capture failed: {_e}")
                         taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
                         notional_at_close = order.quantity * actual_price
                         exit_fee = notional_at_close * taker_fee
@@ -2587,6 +2620,13 @@ class TradingEngine:
                 order.close_reason = reason
                 order.exit_slippage_pct = _slippage_pct
                 order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
+                # Exit trend gaps (May 6) — pair/BTC EMA20-EMA50 gap at close time
+                try:
+                    _exit_pair_gap, _exit_btc_gap = await self._get_exit_trend_gaps(db, order.pair)
+                    order.exit_pair_ema20_ema50_gap_pct = _exit_pair_gap
+                    order.exit_btc_trend_gap_pct = _exit_btc_gap
+                except Exception as _e:
+                    logger.debug(f"[EXIT_GAPS] {order.pair}: capture failed: {_e}")
 
                 # Create and add the Transaction on EVERY attempt, right before commit.
                 # Rollback on the previous iteration removed any prior pending Transaction,

@@ -3706,6 +3706,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
             rsi2_fired = [o for o in data["trades"] if o.first_rsi2_pnl is not None]
             ema5_dists = [o.exit_price_vs_ema5_pct for o in data["trades"] if o.exit_price_vs_ema5_pct is not None]
+            # Exit-time trend gaps (May 6) — pair / BTC EMA20-EMA50 at close
+            exit_pair_trend_gaps = [getattr(o, 'exit_pair_ema20_ema50_gap_pct', None) for o in data["trades"] if getattr(o, 'exit_pair_ema20_ema50_gap_pct', None) is not None]
+            exit_btc_trend_gaps = [getattr(o, 'exit_btc_trend_gap_pct', None) for o in data["trades"] if getattr(o, 'exit_btc_trend_gap_pct', None) is not None]
 
             by_close_reason[reason] = {
                 "trades": count,
@@ -3727,6 +3730,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_rsi2_pnl": round(sum(o.first_rsi2_pnl for o in rsi2_fired) / len(rsi2_fired), 4) if rsi2_fired else None,
                 "avg_rsi2_min": round(sum(o.first_rsi2_minutes for o in rsi2_fired) / len(rsi2_fired), 1) if rsi2_fired else None,
                 "avg_exit_ema5_pct": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
+                "avg_exit_pair_trend_gap": round(sum(exit_pair_trend_gaps) / len(exit_pair_trend_gaps), 4) if exit_pair_trend_gaps else None,
+                "avg_exit_btc_trend_gap": round(sum(exit_btc_trend_gaps) / len(exit_btc_trend_gaps), 4) if exit_btc_trend_gaps else None,
             }
     except Exception as e:
         logger.error(f"[PERF] Error computing close reason stats: {e}\n{traceback.format_exc()}")
@@ -3819,6 +3824,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             btc_trend_gaps = [o.entry_btc_trend_gap_pct for o in group if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
             # Pair EMA20 vs EMA50 gap at entry (May 5, observation-only)
             pair_ema20_ema50_gaps = [getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) for o in group if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]
+            # Exit-time trend gaps (May 6) — pair / BTC EMA20-EMA50 at close
+            exit_pair_trend_gaps = [getattr(o, 'exit_pair_ema20_ema50_gap_pct', None) for o in group if getattr(o, 'exit_pair_ema20_ema50_gap_pct', None) is not None]
+            exit_btc_trend_gaps_e = [getattr(o, 'exit_btc_trend_gap_pct', None) for o in group if getattr(o, 'exit_btc_trend_gap_pct', None) is not None]
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -3903,6 +3911,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_btc_trend_gap": round(sum(btc_trend_gaps) / len(btc_trend_gaps), 4) if btc_trend_gaps else None,
                 # Pair EMA20 vs EMA50 gap at entry (May 5, observation-only)
                 "avg_pair_ema20_ema50_gap": round(sum(pair_ema20_ema50_gaps) / len(pair_ema20_ema50_gaps), 4) if pair_ema20_ema50_gaps else None,
+                # Exit-time trend gaps (May 6) — diagnostic for whether macro trend flipped at close
+                "avg_exit_pair_trend_gap": round(sum(exit_pair_trend_gaps) / len(exit_pair_trend_gaps), 4) if exit_pair_trend_gaps else None,
+                "avg_exit_btc_trend_gap": round(sum(exit_btc_trend_gaps_e) / len(exit_btc_trend_gaps_e), 4) if exit_btc_trend_gaps_e else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
@@ -4023,6 +4034,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             btc_trend_gaps = [o.entry_btc_trend_gap_pct for o in group if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
             # Pair EMA20 vs EMA50 gap at entry (May 5, observation-only)
             pair_ema20_ema50_gaps = [getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) for o in group if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]
+            # Exit-time trend gaps (May 6) — pair / BTC EMA20-EMA50 at close
+            exit_pair_trend_gaps = [getattr(o, 'exit_pair_ema20_ema50_gap_pct', None) for o in group if getattr(o, 'exit_pair_ema20_ema50_gap_pct', None) is not None]
+            exit_btc_trend_gaps_e = [getattr(o, 'exit_btc_trend_gap_pct', None) for o in group if getattr(o, 'exit_btc_trend_gap_pct', None) is not None]
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -4100,6 +4114,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_btc_trend_gap": round(sum(btc_trend_gaps) / len(btc_trend_gaps), 4) if btc_trend_gaps else None,
                 # Pair EMA20 vs EMA50 gap at entry (May 5, observation-only)
                 "avg_pair_ema20_ema50_gap": round(sum(pair_ema20_ema50_gaps) / len(pair_ema20_ema50_gaps), 4) if pair_ema20_ema50_gaps else None,
+                # Exit-time trend gaps (May 6) — diagnostic for whether macro trend flipped at close
+                "avg_exit_pair_trend_gap": round(sum(exit_pair_trend_gaps) / len(exit_pair_trend_gaps), 4) if exit_pair_trend_gaps else None,
+                "avg_exit_btc_trend_gap": round(sum(exit_btc_trend_gaps_e) / len(exit_btc_trend_gaps_e), 4) if exit_btc_trend_gaps_e else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),

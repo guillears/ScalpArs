@@ -892,12 +892,14 @@
                                     <th class="text-right px-2">Avg Close%</th>
                                     <th class="text-right px-2">Trailing CF%</th>
                                     <th class="text-right px-2" title="Avg Close% minus trailing counterfactual. Positive = RSI exit got more than trailing would have.">Δ vs Trail</th>
+                                    <th class="text-right px-2">Trail CF$</th>
+                                    <th class="text-right px-2" title="Total$ minus trailing counterfactual$. Positive = exit path made more $ than trailing would have.">Δ$ vs Trail</th>
                                     <th class="text-right px-2">Total$</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="rsi-handoff-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No handoff zone trades yet</td></tr>
+                                <tr><td colspan="11" class="py-3 text-center text-gray-500">No handoff zone trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4293,17 +4295,24 @@
             const _rhp1 = perf.rsi_handoff_performance || {};
             lines.push(`\n${hr2}`);
             lines.push(`## RSI Handoff Performance (Threshold: ${(_rhp1.handoff_threshold_pct || 0.40).toFixed(2)}% | Trailing CF = peak − ${(_rhp1.pullback_pct || 0.15).toFixed(2)}%)\n`);
-            lines.push(`${'Exit Path'.padEnd(28)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgPeak%'.padEnd(10)} ${'AvgClose%'.padEnd(11)} ${'TrailCF%'.padEnd(10)} ${'Δ vs Trail'.padEnd(12)} ${'Total$'.padEnd(10)} Verdict`);
+            lines.push(`${'Exit Path'.padEnd(28)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgPeak%'.padEnd(10)} ${'AvgClose%'.padEnd(11)} ${'TrailCF%'.padEnd(10)} ${'Δ vs Trail'.padEnd(12)} ${'TrailCF$'.padEnd(10)} ${'Δ$ vs Trail'.padEnd(12)} ${'Total$'.padEnd(10)} Verdict`);
+            const _rhpFmt = (r) => {
+                const peakStr = '+' + (r.avg_peak_pct || 0).toFixed(3) + '%';
+                const closeStr = (r.avg_close_pct >= 0 ? '+' : '') + (r.avg_close_pct || 0).toFixed(3) + '%';
+                const cfStr = (r.trailing_counterfactual_pct >= 0 ? '+' : '') + (r.trailing_counterfactual_pct || 0).toFixed(3) + '%';
+                const deltaStr = (r.delta_vs_trailing_pct >= 0 ? '+' : '') + (r.delta_vs_trailing_pct || 0).toFixed(3) + '%';
+                const cfDStr = (r.trailing_counterfactual_dollars >= 0 ? '+$' : '-$') + Math.abs(r.trailing_counterfactual_dollars || 0).toFixed(2);
+                const deltaDStr = (r.delta_vs_trailing_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_trailing_dollars || 0).toFixed(2);
+                const totalStr = '$' + (r.total_dollars || 0).toFixed(2);
+                return `${r.exit_path.padEnd(28)} ${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${peakStr.padEnd(10)} ${closeStr.padEnd(11)} ${cfStr.padEnd(10)} ${deltaStr.padEnd(12)} ${cfDStr.padEnd(10)} ${deltaDStr.padEnd(12)} ${totalStr.padEnd(10)} ${r.verdict}`;
+            };
             if (!_rhp1.rows || !_rhp1.rows.length) {
                 lines.push('  (no handoff zone trades yet)');
             } else {
-                for (const r of _rhp1.rows) {
-                    const peakStr = '+' + (r.avg_peak_pct || 0).toFixed(3) + '%';
-                    const closeStr = (r.avg_close_pct >= 0 ? '+' : '') + (r.avg_close_pct || 0).toFixed(3) + '%';
-                    const cfStr = (r.trailing_counterfactual_pct >= 0 ? '+' : '') + (r.trailing_counterfactual_pct || 0).toFixed(3) + '%';
-                    const deltaStr = (r.delta_vs_trailing_pct >= 0 ? '+' : '') + (r.delta_vs_trailing_pct || 0).toFixed(3) + '%';
-                    const totalStr = '$' + (r.total_dollars || 0).toFixed(2);
-                    lines.push(`${r.exit_path.padEnd(28)} ${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${peakStr.padEnd(10)} ${closeStr.padEnd(11)} ${cfStr.padEnd(10)} ${deltaStr.padEnd(12)} ${totalStr.padEnd(10)} ${r.verdict}`);
+                for (const r of _rhp1.rows) lines.push(_rhpFmt(r));
+                if (_rhp1.total) {
+                    lines.push('-'.repeat(140));
+                    lines.push(_rhpFmt(_rhp1.total));
                 }
             }
 
@@ -5090,17 +5099,24 @@
                 const _rhp2 = perf.rsi_handoff_performance || {};
                 lines.push(`\n${hr2}`);
                 lines.push(`## RSI Handoff Performance (Threshold: ${(_rhp2.handoff_threshold_pct || 0.40).toFixed(2)}% | Trailing CF = peak − ${(_rhp2.pullback_pct || 0.15).toFixed(2)}%)\n`);
-                lines.push(`${'Exit Path'.padEnd(28)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgPeak%'.padEnd(10)} ${'AvgClose%'.padEnd(11)} ${'TrailCF%'.padEnd(10)} ${'Δ vs Trail'.padEnd(12)} ${'Total$'.padEnd(10)} Verdict`);
+                lines.push(`${'Exit Path'.padEnd(28)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgPeak%'.padEnd(10)} ${'AvgClose%'.padEnd(11)} ${'TrailCF%'.padEnd(10)} ${'Δ vs Trail'.padEnd(12)} ${'TrailCF$'.padEnd(10)} ${'Δ$ vs Trail'.padEnd(12)} ${'Total$'.padEnd(10)} Verdict`);
+                const _rhp2Fmt = (r) => {
+                    const peakStr = '+' + (r.avg_peak_pct || 0).toFixed(3) + '%';
+                    const closeStr = (r.avg_close_pct >= 0 ? '+' : '') + (r.avg_close_pct || 0).toFixed(3) + '%';
+                    const cfStr = (r.trailing_counterfactual_pct >= 0 ? '+' : '') + (r.trailing_counterfactual_pct || 0).toFixed(3) + '%';
+                    const deltaStr = (r.delta_vs_trailing_pct >= 0 ? '+' : '') + (r.delta_vs_trailing_pct || 0).toFixed(3) + '%';
+                    const cfDStr = (r.trailing_counterfactual_dollars >= 0 ? '+$' : '-$') + Math.abs(r.trailing_counterfactual_dollars || 0).toFixed(2);
+                    const deltaDStr = (r.delta_vs_trailing_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_trailing_dollars || 0).toFixed(2);
+                    const totalStr = '$' + (r.total_dollars || 0).toFixed(2);
+                    return `${r.exit_path.padEnd(28)} ${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${peakStr.padEnd(10)} ${closeStr.padEnd(11)} ${cfStr.padEnd(10)} ${deltaStr.padEnd(12)} ${cfDStr.padEnd(10)} ${deltaDStr.padEnd(12)} ${totalStr.padEnd(10)} ${r.verdict}`;
+                };
                 if (!_rhp2.rows || !_rhp2.rows.length) {
                     lines.push('  (no handoff zone trades yet)');
                 } else {
-                    for (const r of _rhp2.rows) {
-                        const peakStr = '+' + (r.avg_peak_pct || 0).toFixed(3) + '%';
-                        const closeStr = (r.avg_close_pct >= 0 ? '+' : '') + (r.avg_close_pct || 0).toFixed(3) + '%';
-                        const cfStr = (r.trailing_counterfactual_pct >= 0 ? '+' : '') + (r.trailing_counterfactual_pct || 0).toFixed(3) + '%';
-                        const deltaStr = (r.delta_vs_trailing_pct >= 0 ? '+' : '') + (r.delta_vs_trailing_pct || 0).toFixed(3) + '%';
-                        const totalStr = '$' + (r.total_dollars || 0).toFixed(2);
-                        lines.push(`${r.exit_path.padEnd(28)} ${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${peakStr.padEnd(10)} ${closeStr.padEnd(11)} ${cfStr.padEnd(10)} ${deltaStr.padEnd(12)} ${totalStr.padEnd(10)} ${r.verdict}`);
+                    for (const r of _rhp2.rows) lines.push(_rhp2Fmt(r));
+                    if (_rhp2.total) {
+                        lines.push('-'.repeat(140));
+                        lines.push(_rhp2Fmt(_rhp2.total));
                     }
                 }
 
@@ -6241,32 +6257,40 @@
                     const rhpBody = document.getElementById('rsi-handoff-perf-body');
                     if (rhpBody) {
                         if (!rhp.rows || !rhp.rows.length) {
-                            rhpBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No handoff zone trades yet</td></tr>';
+                            rhpBody.innerHTML = '<tr><td colspan="11" class="py-3 text-center text-gray-500">No handoff zone trades yet</td></tr>';
                         } else {
-                            rhpBody.innerHTML = rhp.rows.map(r => {
-                                const isRsi = r.exit_path === 'RSI_HANDOFF_EXIT';
-                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                            const _rhpRow = (r, isTotal) => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : (r.direction === 'SHORT' ? 'text-red-400' : 'text-gray-300');
                                 const closeClass = r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const deltaClass = r.delta_vs_trailing_pct > 0.05 ? 'text-emerald-400' : (r.delta_vs_trailing_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const deltaDClass = r.delta_vs_trailing_dollars > 1 ? 'text-emerald-400' : (r.delta_vs_trailing_dollars < -1 ? 'text-red-400' : 'text-gray-400');
                                 const totalClass = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const verdictColor = (
                                     r.verdict.includes('★') ? 'text-emerald-400' :
-                                    r.verdict.includes('DRAG') ? 'text-red-400' :
-                                    r.verdict.includes('✓') ? 'text-blue-400' :
+                                    (r.verdict.includes('DRAG') || r.verdict.includes('HURT')) ? 'text-red-400' :
+                                    (r.verdict.includes('✓') || r.verdict.includes('Neutral')) ? 'text-blue-400' :
                                     r.verdict.includes('Low N') ? 'text-amber-400' :
                                     'text-gray-500');
-                                return `<tr class="hover:bg-white/5">
-                                    <td class="px-2 py-1 ${isRsi ? 'text-violet-300 font-medium' : 'text-gray-400'}">${r.exit_path}</td>
+                                const isRsi = r.exit_path === 'RSI_HANDOFF_EXIT';
+                                const rowCls = isTotal ? 'border-t-2 border-violet-500/40 bg-violet-900/10 font-semibold' : 'hover:bg-white/5';
+                                const pathCls = isTotal ? 'text-violet-200' : (isRsi ? 'text-violet-300 font-medium' : 'text-gray-400');
+                                return `<tr class="${rowCls}">
+                                    <td class="px-2 py-1 ${pathCls}">${r.exit_path}</td>
                                     <td class="px-2 py-1 ${dirColor}">${r.direction}</td>
                                     <td class="px-2 py-1 text-right">${r.n}</td>
                                     <td class="px-2 py-1 text-right text-amber-300">+${(r.avg_peak_pct || 0).toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right ${closeClass}">${(r.avg_close_pct >= 0 ? '+' : '')}${(r.avg_close_pct || 0).toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right text-gray-500">${(r.trailing_counterfactual_pct >= 0 ? '+' : '')}${(r.trailing_counterfactual_pct || 0).toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right ${deltaClass}">${(r.delta_vs_trailing_pct >= 0 ? '+' : '')}${(r.delta_vs_trailing_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right text-gray-500">${(r.trailing_counterfactual_dollars >= 0 ? '+$' : '-$')}${Math.abs(r.trailing_counterfactual_dollars || 0).toFixed(2)}</td>
+                                    <td class="px-2 py-1 text-right ${deltaDClass}">${(r.delta_vs_trailing_dollars >= 0 ? '+$' : '-$')}${Math.abs(r.delta_vs_trailing_dollars || 0).toFixed(2)}</td>
                                     <td class="px-2 py-1 text-right ${totalClass}">$${(r.total_dollars || 0).toFixed(2)}</td>
                                     <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
                                 </tr>`;
-                            }).join('');
+                            };
+                            let html = rhp.rows.map(r => _rhpRow(r, false)).join('');
+                            if (rhp.total) html += _rhpRow(rhp.total, true);
+                            rhpBody.innerHTML = html;
                         }
                     }
                 }

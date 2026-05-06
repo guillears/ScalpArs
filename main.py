@@ -1569,7 +1569,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
-            "rsi_handoff_performance": {"rows": [], "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
+            "rsi_handoff_performance": {"rows": [], "total": None, "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2543,7 +2543,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
-            "rsi_handoff_performance": {"rows": [], "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
+            "rsi_handoff_performance": {"rows": [], "total": None, "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -5125,7 +5125,7 @@ def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct
     ]
 
     if not handoff_zone:
-        return {"rows": [], "handoff_threshold_pct": handoff_threshold_pct, "pullback_pct": pullback_pct}
+        return {"rows": [], "total": None, "handoff_threshold_pct": handoff_threshold_pct, "pullback_pct": pullback_pct}
 
     def _group_stats(trades, exit_path, direction):
         if not trades:
@@ -5133,14 +5133,36 @@ def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct
         n = len(trades)
         avg_peak = sum((o.peak_pnl or 0) for o in trades) / n
         avg_close = sum((o.pnl_percentage or 0) for o in trades) / n
-        trailing_cf = avg_peak - pullback_pct
-        delta = avg_close - trailing_cf
+        trailing_cf_pct = avg_peak - pullback_pct
+        delta_pct = avg_close - trailing_cf_pct
         total_d = sum((o.pnl or 0) for o in trades)
+
+        # Per-trade $ counterfactual: notional inferred from actual pnl_pct → counterfactual_pnl = notional × cf_pct
+        # Falls back to direct pct ratio (pnl_dollars × cf_pct / actual_pct) which equals the same.
+        cf_total_d = 0.0
+        for o in trades:
+            actual_pct = o.pnl_percentage or 0
+            actual_d = o.pnl or 0
+            peak = o.peak_pnl or 0
+            cf_pct_trade = peak - pullback_pct
+            if actual_pct != 0:
+                # notional × cf_pct/100 == actual_d × cf_pct/actual_pct
+                cf_total_d += actual_d * (cf_pct_trade / actual_pct)
+            else:
+                # Trade closed at exactly 0 — fall back to quantity × entry_price
+                qty = getattr(o, 'quantity', 0) or 0
+                ep = getattr(o, 'entry_price', 0) or 0
+                lev = getattr(o, 'leverage', 1) or 1
+                notional = qty * ep
+                cf_total_d += notional * (cf_pct_trade / 100.0)
+        delta_dollars = total_d - cf_total_d
+
+        # Verdict on $ delta (matches Multiplier Cell Performance table semantics)
         if n < 5:
             verdict = '⚠ Low N'
-        elif delta > 0.05:
+        elif delta_dollars > 1:
             verdict = '★ WORKING'
-        elif delta >= -0.05:
+        elif delta_dollars >= -1:
             verdict = '✓ Marginal'
         else:
             verdict = '⚠ DRAG'
@@ -5150,8 +5172,10 @@ def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct
             'n': n,
             'avg_peak_pct': round(avg_peak, 4),
             'avg_close_pct': round(avg_close, 4),
-            'trailing_counterfactual_pct': round(trailing_cf, 4),
-            'delta_vs_trailing_pct': round(delta, 4),
+            'trailing_counterfactual_pct': round(trailing_cf_pct, 4),
+            'delta_vs_trailing_pct': round(delta_pct, 4),
+            'trailing_counterfactual_dollars': round(cf_total_d, 2),
+            'delta_vs_trailing_dollars': round(delta_dollars, 2),
             'total_dollars': round(total_d, 2),
             'verdict': verdict,
         }
@@ -5170,8 +5194,27 @@ def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct
         if s:
             rows.append(s)
 
+    # TOTAL row: did RSI Handoff feature net help or hurt vs pure trailing?
+    total_row = None
+    if handoff_zone:
+        total = _group_stats(handoff_zone, 'TOTAL', 'ALL')
+        if total:
+            # Override verdict with feature-level interpretation (vs pure trailing CF)
+            n_t = total['n']
+            d_t = total['delta_vs_trailing_dollars']
+            if n_t < 5:
+                total['verdict'] = '⚠ Low N'
+            elif d_t > 1:
+                total['verdict'] = '★ FEATURE WORKING'
+            elif d_t >= -1:
+                total['verdict'] = '✓ Neutral vs trailing'
+            else:
+                total['verdict'] = '⚠ FEATURE HURTING'
+            total_row = total
+
     return {
         'rows': rows,
+        'total': total_row,
         'handoff_threshold_pct': handoff_threshold_pct,
         'pullback_pct': pullback_pct,
     }

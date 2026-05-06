@@ -908,6 +908,47 @@
                     </div>
                 </div>
 
+                <!-- EMA Cross Counterfactual (May 6, 2026 — CLAUDE.md Phase 1 shadow tracking) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-violet-300 mb-2">🧪 EMA Cross Counterfactual (observation-only)</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        Hypothetical exit at first moment price crosses EMA13/EMA20 against trade direction.
+                        Each row's BASELINE is only trades where the cross actually fired (never-crossed trades excluded).
+                        <strong>Variants:</strong>
+                        <span class="text-gray-300">Naive</span> = first-tick cross (any moment) ·
+                        <span class="text-gray-300">Confirmed</span> = cross sustained ≥5min (filters wicks) ·
+                        <span class="text-gray-300">Profit-gated</span> = cross after peak ≥+0.30% (lock-in mode) ·
+                        <span class="text-gray-300">Loser-only</span> = cross while in red.
+                        <strong>Verdict:</strong> ★ WORKING = Δ$ &gt; +$5 AND Δ% &gt; +0.10pp (the exit improves outcomes).
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Variant</th>
+                                    <th class="text-left px-2">EMA</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2" title="Trades where this variant's exit would have fired">N affected</th>
+                                    <th class="text-right px-2" title="N affected / N total in this direction">Cov%</th>
+                                    <th class="text-right px-2">Avg Actual%</th>
+                                    <th class="text-right px-2">Avg CF%</th>
+                                    <th class="text-right px-2 text-violet-300" title="Avg counterfactual close minus avg actual close. Positive = exit improves outcomes.">Δ%</th>
+                                    <th class="text-right px-2">Actual$</th>
+                                    <th class="text-right px-2">CF$</th>
+                                    <th class="text-right px-2 text-violet-300" title="Counterfactual total$ minus actual total$. Positive = exit makes more $ than current behavior.">Δ$</th>
+                                    <th class="text-right px-2 text-emerald-300" title="On WINNERS only: Δ$ if we'd exited at cross. Negative = exit kills winners.">W Δ$ (n)</th>
+                                    <th class="text-right px-2 text-red-300" title="On LOSERS only: Δ$ if we'd exited at cross. Positive = exit saves losers.">L Δ$ (n)</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ema-cross-cf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No cross data yet (engine starts capturing on next trade)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="ema-cross-cf-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -4384,6 +4425,35 @@
                 }
             }
 
+            // EMA Cross Counterfactual (May 6, 2026 — Phase 1 shadow tracking)
+            const _ecc1 = perf.ema_cross_counterfactual || {};
+            lines.push(`\n${hr2}`);
+            lines.push('## EMA Cross Counterfactual (observation-only, baseline = trades that crossed)\n');
+            lines.push('Variants: Naive=first-tick cross | Confirmed=≥5min sustained | Profit-gated=cross after peak ≥+0.30% | Loser-only=cross while in red');
+            lines.push(`${'Variant'.padEnd(18)} ${'EMA'.padEnd(6)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'Cov%'.padEnd(7)} ${'AvgActual%'.padEnd(11)} ${'AvgCF%'.padEnd(10)} ${'Δ%'.padEnd(10)} ${'Actual$'.padEnd(11)} ${'CF$'.padEnd(11)} ${'Δ$'.padEnd(11)} ${'WΔ$ (n)'.padEnd(15)} ${'LΔ$ (n)'.padEnd(15)} Verdict`);
+            const _eccFmt = (r) => {
+                const variantLabel = {'naive':'Naive', 'confirmed':'Confirmed', 'profit_gated':'Profit-gated', 'loser_only':'Loser-only'}[r.variant] || r.variant;
+                const actStr = (r.avg_actual_close_pct >= 0 ? '+' : '') + (r.avg_actual_close_pct || 0).toFixed(3) + '%';
+                const cfStr = (r.avg_cf_close_pct >= 0 ? '+' : '') + (r.avg_cf_close_pct || 0).toFixed(3) + '%';
+                const dPctStr = (r.delta_vs_actual_pct >= 0 ? '+' : '') + (r.delta_vs_actual_pct || 0).toFixed(3) + '%';
+                const actDStr = (r.actual_total_dollars >= 0 ? '+$' : '-$') + Math.abs(r.actual_total_dollars || 0).toFixed(2);
+                const cfDStr = (r.cf_total_dollars >= 0 ? '+$' : '-$') + Math.abs(r.cf_total_dollars || 0).toFixed(2);
+                const dDolStr = (r.delta_vs_actual_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_actual_dollars || 0).toFixed(2);
+                const wTxt = r.winners_delta_dollars == null ? '—'.padEnd(13) : `${r.winners_delta_dollars >= 0 ? '+$' : '-$'}${Math.abs(r.winners_delta_dollars).toFixed(2)} (${r.winners_n})`;
+                const lTxt = r.losers_delta_dollars == null ? '—'.padEnd(13) : `${r.losers_delta_dollars >= 0 ? '+$' : '-$'}${Math.abs(r.losers_delta_dollars).toFixed(2)} (${r.losers_n})`;
+                return `${variantLabel.padEnd(18)} ${(r.ema_label || '').toUpperCase().padEnd(6)} ${r.direction.padEnd(7)} ${String(r.n_affected).padEnd(5)} ${((r.coverage_pct || 0).toFixed(1)+'%').padEnd(7)} ${actStr.padEnd(11)} ${cfStr.padEnd(10)} ${dPctStr.padEnd(10)} ${actDStr.padEnd(11)} ${cfDStr.padEnd(11)} ${dDolStr.padEnd(11)} ${wTxt.padEnd(15)} ${lTxt.padEnd(15)} ${r.verdict}`;
+            };
+            if (!_ecc1.rows || !_ecc1.rows.length) {
+                lines.push('  (no cross data yet)');
+            } else {
+                for (const r of _ecc1.rows) lines.push(_eccFmt(r));
+                if (_ecc1.summary && Object.keys(_ecc1.summary).length) {
+                    lines.push('-'.repeat(170));
+                    const sumItems = Object.entries(_ecc1.summary).map(([k, v]) => `${k}: Δ${v.delta_dollars >= 0 ? '+$' : '-$'}${Math.abs(v.delta_dollars).toFixed(2)} (n=${v.n_affected})`);
+                    lines.push('Variant net Δ$: ' + sumItems.join(' | '));
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Entry Type Performance\n');
             lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
@@ -5206,6 +5276,35 @@
                     if (_rhp2.total) {
                         lines.push('-'.repeat(140));
                         lines.push(_rhp2Fmt(_rhp2.total));
+                    }
+                }
+
+                // --- EMA CROSS COUNTERFACTUAL (May 6, 2026 — Phase 1 shadow) ---
+                const _ecc2 = perf.ema_cross_counterfactual || {};
+                lines.push(`\n${hr2}`);
+                lines.push('## EMA Cross Counterfactual (observation-only, baseline = trades that crossed)\n');
+                lines.push('Variants: Naive=first-tick cross | Confirmed=≥5min sustained | Profit-gated=cross after peak ≥+0.30% | Loser-only=cross while in red');
+                lines.push(`${'Variant'.padEnd(18)} ${'EMA'.padEnd(6)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'Cov%'.padEnd(7)} ${'AvgActual%'.padEnd(11)} ${'AvgCF%'.padEnd(10)} ${'Δ%'.padEnd(10)} ${'Actual$'.padEnd(11)} ${'CF$'.padEnd(11)} ${'Δ$'.padEnd(11)} ${'WΔ$ (n)'.padEnd(15)} ${'LΔ$ (n)'.padEnd(15)} Verdict`);
+                const _ecc2Fmt = (r) => {
+                    const variantLabel = {'naive':'Naive', 'confirmed':'Confirmed', 'profit_gated':'Profit-gated', 'loser_only':'Loser-only'}[r.variant] || r.variant;
+                    const actStr = (r.avg_actual_close_pct >= 0 ? '+' : '') + (r.avg_actual_close_pct || 0).toFixed(3) + '%';
+                    const cfStr = (r.avg_cf_close_pct >= 0 ? '+' : '') + (r.avg_cf_close_pct || 0).toFixed(3) + '%';
+                    const dPctStr = (r.delta_vs_actual_pct >= 0 ? '+' : '') + (r.delta_vs_actual_pct || 0).toFixed(3) + '%';
+                    const actDStr = (r.actual_total_dollars >= 0 ? '+$' : '-$') + Math.abs(r.actual_total_dollars || 0).toFixed(2);
+                    const cfDStr = (r.cf_total_dollars >= 0 ? '+$' : '-$') + Math.abs(r.cf_total_dollars || 0).toFixed(2);
+                    const dDolStr = (r.delta_vs_actual_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_actual_dollars || 0).toFixed(2);
+                    const wTxt = r.winners_delta_dollars == null ? '—'.padEnd(13) : `${r.winners_delta_dollars >= 0 ? '+$' : '-$'}${Math.abs(r.winners_delta_dollars).toFixed(2)} (${r.winners_n})`;
+                    const lTxt = r.losers_delta_dollars == null ? '—'.padEnd(13) : `${r.losers_delta_dollars >= 0 ? '+$' : '-$'}${Math.abs(r.losers_delta_dollars).toFixed(2)} (${r.losers_n})`;
+                    return `${variantLabel.padEnd(18)} ${(r.ema_label || '').toUpperCase().padEnd(6)} ${r.direction.padEnd(7)} ${String(r.n_affected).padEnd(5)} ${((r.coverage_pct || 0).toFixed(1)+'%').padEnd(7)} ${actStr.padEnd(11)} ${cfStr.padEnd(10)} ${dPctStr.padEnd(10)} ${actDStr.padEnd(11)} ${cfDStr.padEnd(11)} ${dDolStr.padEnd(11)} ${wTxt.padEnd(15)} ${lTxt.padEnd(15)} ${r.verdict}`;
+                };
+                if (!_ecc2.rows || !_ecc2.rows.length) {
+                    lines.push('  (no cross data yet)');
+                } else {
+                    for (const r of _ecc2.rows) lines.push(_ecc2Fmt(r));
+                    if (_ecc2.summary && Object.keys(_ecc2.summary).length) {
+                        lines.push('-'.repeat(170));
+                        const sumItems = Object.entries(_ecc2.summary).map(([k, v]) => `${k}: Δ${v.delta_dollars >= 0 ? '+$' : '-$'}${Math.abs(v.delta_dollars).toFixed(2)} (n=${v.n_affected})`);
+                        lines.push('Variant net Δ$: ' + sumItems.join(' | '));
                     }
                 }
 
@@ -6399,6 +6498,72 @@
                             if (rhp.total) html += _rhpRow(rhp.total, true);
                             rhpBody.innerHTML = html;
                         }
+                    }
+                }
+
+                // EMA Cross Counterfactual (May 6, 2026 — CLAUDE.md Phase 1 shadow tracking)
+                if (data.ema_cross_counterfactual) {
+                    const ecc = data.ema_cross_counterfactual;
+                    const eccBody = document.getElementById('ema-cross-cf-body');
+                    const eccSummary = document.getElementById('ema-cross-cf-summary');
+                    if (eccBody) {
+                        if (!ecc.rows || !ecc.rows.length) {
+                            eccBody.innerHTML = '<tr><td colspan="13" class="py-3 text-center text-gray-500">No cross data yet (engine starts capturing on next trade)</td></tr>';
+                        } else {
+                            const variantLabel = {
+                                'naive': 'Naive',
+                                'confirmed': 'Confirmed (≥5min)',
+                                'profit_gated': 'Profit-gated',
+                                'loser_only': 'Loser-only',
+                            };
+                            const variantColor = {
+                                'naive': 'text-gray-300',
+                                'confirmed': 'text-violet-300',
+                                'profit_gated': 'text-amber-300',
+                                'loser_only': 'text-rose-300',
+                            };
+                            const _eccRow = (r) => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const deltaPctClass = r.delta_vs_actual_pct > 0.05 ? 'text-emerald-400' : (r.delta_vs_actual_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const deltaDClass = r.delta_vs_actual_dollars > 5 ? 'text-emerald-400' : (r.delta_vs_actual_dollars < -5 ? 'text-red-400' : 'text-gray-400');
+                                const verdictColor = (
+                                    r.verdict.includes('★') ? 'text-emerald-400' :
+                                    r.verdict.includes('DRAG') ? 'text-red-400' :
+                                    r.verdict.includes('Marginal') ? 'text-blue-400' :
+                                    r.verdict.includes('Low N') ? 'text-amber-400' :
+                                    'text-gray-500');
+                                const wDD = r.winners_delta_dollars;
+                                const lDD = r.losers_delta_dollars;
+                                const wColor = wDD == null ? 'text-gray-600' : (wDD < -1 ? 'text-red-400' : (wDD > 1 ? 'text-emerald-400' : 'text-gray-400'));
+                                const lColor = lDD == null ? 'text-gray-600' : (lDD > 1 ? 'text-emerald-400' : (lDD < -1 ? 'text-red-400' : 'text-gray-400'));
+                                const wTxt = wDD == null ? '—' : `${wDD >= 0 ? '+$' : '-$'}${Math.abs(wDD).toFixed(2)} (${r.winners_n})`;
+                                const lTxt = lDD == null ? '—' : `${lDD >= 0 ? '+$' : '-$'}${Math.abs(lDD).toFixed(2)} (${r.losers_n})`;
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${variantColor[r.variant] || 'text-gray-300'}">${variantLabel[r.variant] || r.variant}</td>
+                                    <td class="px-2 py-1 text-gray-300">${(r.ema_label || '').toUpperCase()}</td>
+                                    <td class="px-2 py-1 ${dirColor}">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n_affected}</td>
+                                    <td class="px-2 py-1 text-right text-gray-500">${(r.coverage_pct || 0).toFixed(1)}%</td>
+                                    <td class="px-2 py-1 text-right ${(r.avg_actual_close_pct >= 0) ? 'text-emerald-400' : 'text-red-400'}">${(r.avg_actual_close_pct >= 0 ? '+' : '')}${(r.avg_actual_close_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${(r.avg_cf_close_pct >= 0) ? 'text-emerald-400' : 'text-red-400'}">${(r.avg_cf_close_pct >= 0 ? '+' : '')}${(r.avg_cf_close_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${deltaPctClass}">${(r.delta_vs_actual_pct >= 0 ? '+' : '')}${(r.delta_vs_actual_pct || 0).toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${(r.actual_total_dollars >= 0 ? '+$' : '-$')}${Math.abs(r.actual_total_dollars || 0).toFixed(2)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${(r.cf_total_dollars >= 0 ? '+$' : '-$')}${Math.abs(r.cf_total_dollars || 0).toFixed(2)}</td>
+                                    <td class="px-2 py-1 text-right ${deltaDClass}">${(r.delta_vs_actual_dollars >= 0 ? '+$' : '-$')}${Math.abs(r.delta_vs_actual_dollars || 0).toFixed(2)}</td>
+                                    <td class="px-2 py-1 text-right ${wColor}">${wTxt}</td>
+                                    <td class="px-2 py-1 text-right ${lColor}">${lTxt}</td>
+                                    <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
+                                </tr>`;
+                            };
+                            eccBody.innerHTML = ecc.rows.map(_eccRow).join('');
+                        }
+                    }
+                    if (eccSummary && ecc.summary) {
+                        const items = Object.entries(ecc.summary).map(([k, v]) => {
+                            const cls = v.delta_dollars > 5 ? 'text-emerald-400' : (v.delta_dollars < -5 ? 'text-red-400' : 'text-gray-400');
+                            return `<span class="${cls}">${k}: Δ${v.delta_dollars >= 0 ? '+$' : '-$'}${Math.abs(v.delta_dollars).toFixed(2)} (n=${v.n_affected})</span>`;
+                        });
+                        eccSummary.innerHTML = items.length ? `Variant net Δ$ (combined direction): ${items.join(' · ')}` : '';
                     }
                 }
 

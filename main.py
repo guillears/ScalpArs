@@ -1571,6 +1571,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "rsi_handoff_performance": {"rows": [], "total": None, "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
+            "ema_cross_counterfactual": {"rows": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2546,6 +2547,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "rsi_handoff_performance": {"rows": [], "total": None, "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
+            "ema_cross_counterfactual": {"rows": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -5028,6 +5030,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             pullback_pct=_rhi_pullback,
             handoff_level=_rhi_level,
         ),
+        # Phase 1 shadow tracking (May 6, 2026 — counterfactual exit on price-vs-EMA cross)
+        "ema_cross_counterfactual": _compute_ema_cross_counterfactual(orders),
     }
 
 
@@ -5281,6 +5285,178 @@ def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct
         'handoff_threshold_pct': handoff_threshold_pct,
         'pullback_pct': pullback_pct,
     }
+
+
+def _compute_ema_cross_counterfactual(orders):
+    """Phase 1 shadow tracking — counterfactual exit at price-vs-EMA cross.
+
+    Per CLAUDE.md May 6: evaluates whether closing the trade at the moment
+    price first crosses EMA13 (or EMA20) against trade direction would have
+    produced better results than the actual close. Observation only — no
+    live exit change.
+
+    Variants tracked:
+      - Naive EMA13 / Naive EMA20: first-tick cross (any moment intra-trade)
+      - Confirmed EMA13 / Confirmed EMA20: first cross sustained ≥5min
+        (filters single-candle wicks)
+      - Profit-gated naive EMA13 / EMA20: cross occurred AFTER trade peaked
+        ≥+0.30% (only fires on lock-in trades — derived at report time from
+        peak_pnl + cross-moment pnl)
+      - Loser-only naive EMA13 / EMA20: cross occurred while trade in red
+        (derived: cross_pnl < 0)
+
+    For each variant, the BASELINE is the SAME trades that hit the cross
+    (not all closed trades). Including never-crossed trades in the delta
+    would dilute the signal — the exit doesn't act on them. Per user
+    direction May 6.
+
+    Per direction × variant the table reports:
+      N affected, Coverage %, Avg Actual Close %, Avg Counterfactual Close %,
+      Δ %, Avg Actual $, Avg Counterfactual $, Δ $, on-Winners-only delta,
+      on-Losers-only delta, Verdict.
+    """
+    closed = [o for o in orders if o.status == 'CLOSED']
+    n_closed = len(closed)
+    if n_closed == 0:
+        return {"rows": [], "summary": {}}
+
+    PROFIT_GATE_PCT = 0.30  # Profit-gated variant fires only after peak ≥ +0.30%
+
+    def _per_trade_dollars_at_cf_pct(o, cf_pct):
+        """Map a counterfactual close-pct to a dollar value, using actual trade scale."""
+        actual_pct = o.pnl_percentage or 0
+        actual_d = o.pnl or 0
+        if actual_pct != 0:
+            return actual_d * (cf_pct / actual_pct)
+        qty = getattr(o, 'quantity', 0) or 0
+        ep = getattr(o, 'entry_price', 0) or 0
+        notional = qty * ep
+        return notional * (cf_pct / 100.0)
+
+    def _eligible_for(variant, ema_label, o):
+        """Return (eligible, counterfactual_pnl_pct) — eligible=False if exit doesn't fire on this trade."""
+        first_at = getattr(o, f'first_cross_{ema_label}_at', None)
+        first_pnl = getattr(o, f'first_cross_{ema_label}_pnl_pct', None)
+        conf_at = getattr(o, f'confirmed_cross_{ema_label}_at', None)
+        conf_pnl = getattr(o, f'confirmed_cross_{ema_label}_pnl_pct', None)
+        if variant == 'naive':
+            if first_at is None or first_pnl is None:
+                return False, None
+            return True, first_pnl
+        if variant == 'confirmed':
+            if conf_at is None or conf_pnl is None:
+                return False, None
+            return True, conf_pnl
+        if variant == 'profit_gated':
+            # Cross must have occurred AND trade reached profit gate. Use NAIVE cross moment.
+            if first_at is None or first_pnl is None:
+                return False, None
+            if (o.peak_pnl or 0) < PROFIT_GATE_PCT:
+                return False, None
+            return True, first_pnl
+        if variant == 'loser_only':
+            # Cross occurred AND counterfactual exit P&L is negative
+            if first_at is None or first_pnl is None:
+                return False, None
+            if first_pnl >= 0:
+                return False, None
+            return True, first_pnl
+        return False, None
+
+    rows = []
+    for variant in ('naive', 'confirmed', 'profit_gated', 'loser_only'):
+        for ema_label in ('ema13', 'ema20'):
+            for direction in ('LONG', 'SHORT'):
+                affected = []
+                for o in closed:
+                    if o.direction != direction:
+                        continue
+                    elig, cf_pct = _eligible_for(variant, ema_label, o)
+                    if elig:
+                        affected.append((o, cf_pct))
+                if not affected:
+                    continue
+                n_affected = len(affected)
+                n_dir = sum(1 for o in closed if o.direction == direction)
+                coverage_pct = (n_affected / n_dir * 100) if n_dir > 0 else 0
+
+                actual_close_sum = sum((o.pnl_percentage or 0) for o, _ in affected)
+                cf_close_sum = sum(cf_pct for _, cf_pct in affected)
+                avg_actual_close_pct = actual_close_sum / n_affected
+                avg_cf_close_pct = cf_close_sum / n_affected
+                delta_pct = avg_cf_close_pct - avg_actual_close_pct
+
+                actual_dollars_sum = sum((o.pnl or 0) for o, _ in affected)
+                cf_dollars_sum = sum(_per_trade_dollars_at_cf_pct(o, cf_pct) for o, cf_pct in affected)
+                delta_dollars = cf_dollars_sum - actual_dollars_sum
+
+                # Winner / Loser split (by ACTUAL close — would the exit have helped each subset?)
+                winners = [(o, cf) for (o, cf) in affected if (o.pnl or 0) > 0]
+                losers = [(o, cf) for (o, cf) in affected if (o.pnl or 0) <= 0]
+
+                def _subset_delta(subset):
+                    if not subset:
+                        return None, None, 0
+                    n_sub = len(subset)
+                    actual_p = sum((o.pnl_percentage or 0) for o, _ in subset) / n_sub
+                    cf_p = sum(cf for _, cf in subset) / n_sub
+                    actual_d = sum((o.pnl or 0) for o, _ in subset)
+                    cf_d = sum(_per_trade_dollars_at_cf_pct(o, cf) for o, cf in subset)
+                    return round(cf_p - actual_p, 4), round(cf_d - actual_d, 2), n_sub
+
+                w_dpct, w_ddol, w_n = _subset_delta(winners)
+                l_dpct, l_ddol, l_n = _subset_delta(losers)
+
+                # Verdict
+                if n_affected < 5:
+                    verdict = '⚠ Low N'
+                elif delta_dollars > 5 and delta_pct > 0.10:
+                    verdict = '★ WORKING'
+                elif abs(delta_dollars) <= 5:
+                    verdict = '✓ Marginal'
+                elif delta_dollars < -5:
+                    verdict = '⚠ DRAG'
+                else:
+                    verdict = '✓ Marginal'
+
+                rows.append({
+                    'variant': variant,
+                    'ema_label': ema_label,
+                    'direction': direction,
+                    'n_affected': n_affected,
+                    'n_direction_total': n_dir,
+                    'coverage_pct': round(coverage_pct, 1),
+                    'avg_actual_close_pct': round(avg_actual_close_pct, 4),
+                    'avg_cf_close_pct': round(avg_cf_close_pct, 4),
+                    'delta_vs_actual_pct': round(delta_pct, 4),
+                    'actual_total_dollars': round(actual_dollars_sum, 2),
+                    'cf_total_dollars': round(cf_dollars_sum, 2),
+                    'delta_vs_actual_dollars': round(delta_dollars, 2),
+                    'winners_n': w_n,
+                    'winners_delta_pct': w_dpct,
+                    'winners_delta_dollars': w_ddol,
+                    'losers_n': l_n,
+                    'losers_delta_pct': l_dpct,
+                    'losers_delta_dollars': l_ddol,
+                    'verdict': verdict,
+                })
+
+    # Summary: total uplift if we shipped each variant (combined direction)
+    summary_by_variant = {}
+    for variant in ('naive', 'confirmed', 'profit_gated', 'loser_only'):
+        for ema_label in ('ema13', 'ema20'):
+            key = f'{variant}_{ema_label}'
+            relevant = [r for r in rows if r['variant'] == variant and r['ema_label'] == ema_label]
+            if not relevant:
+                continue
+            total_n = sum(r['n_affected'] for r in relevant)
+            total_d = sum(r['delta_vs_actual_dollars'] for r in relevant)
+            summary_by_variant[key] = {
+                'n_affected': total_n,
+                'delta_dollars': round(total_d, 2),
+            }
+
+    return {'rows': rows, 'summary': summary_by_variant}
 
 
 # ----- Investor Portfolio -----

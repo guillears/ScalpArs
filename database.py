@@ -286,6 +286,23 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_pair_ema20_ema50_gap_pct FLOAT"))
                 if 'exit_btc_trend_gap_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_btc_trend_gap_pct FLOAT"))
+                # Phase 1 shadow tracking — counterfactual exit at price-vs-EMA cross (May 6)
+                if 'first_cross_ema13_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_cross_ema13_at DATETIME"))
+                if 'first_cross_ema13_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_cross_ema13_pnl_pct FLOAT"))
+                if 'confirmed_cross_ema13_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN confirmed_cross_ema13_at DATETIME"))
+                if 'confirmed_cross_ema13_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN confirmed_cross_ema13_pnl_pct FLOAT"))
+                if 'first_cross_ema20_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_cross_ema20_at DATETIME"))
+                if 'first_cross_ema20_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN first_cross_ema20_pnl_pct FLOAT"))
+                if 'confirmed_cross_ema20_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN confirmed_cross_ema20_at DATETIME"))
+                if 'confirmed_cross_ema20_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN confirmed_cross_ema20_pnl_pct FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

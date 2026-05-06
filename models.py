@@ -127,6 +127,23 @@ class Order(Base):
     exit_pair_ema20_ema50_gap_pct = Column(Float, nullable=True)
     exit_btc_trend_gap_pct = Column(Float, nullable=True)
 
+    # Phase 1 shadow tracking (May 6) — counterfactual exit at first price-vs-EMA cross
+    # against trade direction. Observation-only: captures the moment + counterfactual
+    # close P&L if we had exited at that point. Two confirmation modes per EMA:
+    #   Naive: first tick where price > EMA13 (SHORT) or price < EMA13 (LONG)
+    #   Confirmed: first such cross where the FOLLOWING candle's CLOSE also stays
+    #              on the wrong side (filters single-candle wicks)
+    # Counterfactual P&L is computed at the moment of cross using current price
+    # and accounts for fees (taker exit). Once recorded, never overwritten.
+    first_cross_ema13_at = Column(DateTime, nullable=True)
+    first_cross_ema13_pnl_pct = Column(Float, nullable=True)
+    confirmed_cross_ema13_at = Column(DateTime, nullable=True)
+    confirmed_cross_ema13_pnl_pct = Column(Float, nullable=True)
+    first_cross_ema20_at = Column(DateTime, nullable=True)
+    first_cross_ema20_pnl_pct = Column(Float, nullable=True)
+    confirmed_cross_ema20_at = Column(DateTime, nullable=True)
+    confirmed_cross_ema20_pnl_pct = Column(Float, nullable=True)
+
     # Fees
     entry_fee = Column(Float, nullable=False, default=0.0)
     exit_fee = Column(Float, nullable=True, default=0.0)

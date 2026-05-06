@@ -2129,14 +2129,17 @@ class TradingEngine:
         websocket_tracker.force_reset_tracking(pair, actual_price)
         await websocket_tracker.subscribe_pair(pair, actual_price)
         
-        # Fetch current EMA5 data so the WebSocket tick loop can capture
-        # peak EMA5 metrics immediately (before update_orders_cache runs).
+        # Fetch current EMA5/13/20 data so the WebSocket tick loop can capture
+        # peak EMA5 metrics + price-vs-EMA cross shadow (May 6 Phase 1) immediately
+        # before update_orders_cache runs.
         _pair_data_row = await db.execute(
-            select(PairData.ema5, PairData.ema5_prev3).where(PairData.pair == pair)
+            select(PairData.ema5, PairData.ema5_prev3, PairData.ema13, PairData.ema20).where(PairData.pair == pair)
         )
         _pair_data = _pair_data_row.first()
         _cached_ema5 = _pair_data.ema5 if _pair_data else None
         _cached_ema5_prev3 = _pair_data.ema5_prev3 if _pair_data else None
+        _cached_ema13 = _pair_data.ema13 if _pair_data else None
+        _cached_ema20 = _pair_data.ema20 if _pair_data else None
 
         # Immediately add to real-time cache so the WebSocket SL callback can
         # protect this order right away (without waiting for update_orders_cache).
@@ -2169,6 +2172,20 @@ class TradingEngine:
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'cached_ema5': _cached_ema5,
                 'cached_ema5_prev3': _cached_ema5_prev3,
+                'cached_ema13': _cached_ema13,
+                'cached_ema20': _cached_ema20,
+                # Phase 1 shadow tracking — counterfactual exit at price-vs-EMA cross.
+                # Brand-new order: no prior crosses recorded.
+                'first_cross_ema13_at': None,
+                'first_cross_ema13_pnl_pct': None,
+                'confirmed_cross_ema13_at': None,
+                'confirmed_cross_ema13_pnl_pct': None,
+                'first_cross_ema20_at': None,
+                'first_cross_ema20_pnl_pct': None,
+                'confirmed_cross_ema20_at': None,
+                'confirmed_cross_ema20_pnl_pct': None,
+                'pending_cross_ema13_started_at': None,
+                'pending_cross_ema20_started_at': None,
                 'peak_ema5_dist_pct': None,
                 'peak_ema5_slope_pct': None,
                 'peak_reached_at': None,
@@ -2763,6 +2780,19 @@ class TradingEngine:
                     order.regime_opposite_at = cached.get('regime_opposite_at')
                     order.regime_opposite_pnl = cached.get('regime_opposite_pnl')
                     order._ema5_ever_negative = cached.get('ema5_ever_negative', False)
+                    # Phase 1 shadow tracking — persist price-vs-EMA cross moments + counterfactual P&L
+                    if cached.get('first_cross_ema13_at') is not None:
+                        order.first_cross_ema13_at = cached['first_cross_ema13_at']
+                        order.first_cross_ema13_pnl_pct = cached.get('first_cross_ema13_pnl_pct')
+                    if cached.get('confirmed_cross_ema13_at') is not None:
+                        order.confirmed_cross_ema13_at = cached['confirmed_cross_ema13_at']
+                        order.confirmed_cross_ema13_pnl_pct = cached.get('confirmed_cross_ema13_pnl_pct')
+                    if cached.get('first_cross_ema20_at') is not None:
+                        order.first_cross_ema20_at = cached['first_cross_ema20_at']
+                        order.first_cross_ema20_pnl_pct = cached.get('first_cross_ema20_pnl_pct')
+                    if cached.get('confirmed_cross_ema20_at') is not None:
+                        order.confirmed_cross_ema20_at = cached['confirmed_cross_ema20_at']
+                        order.confirmed_cross_ema20_pnl_pct = cached.get('confirmed_cross_ema20_pnl_pct')
                     break
 
             pd = None
@@ -4675,7 +4705,53 @@ class TradingEngine:
                 pnl = (entry_price - current_price) * quantity - total_fees
             
             pnl_pct = (pnl / entry_notional) * 100
-            
+
+            # ════════════════════════════════════════════════════════════════
+            # Phase 1 shadow tracking (May 6) — counterfactual exit at first
+            # price-vs-EMA cross against trade direction. Observation only:
+            # records the moment + counterfactual close P&L if we had exited
+            # at that point. Both NAIVE (first-tick cross) and CONFIRMED
+            # (cross sustained ≥5min, filtering single-candle wicks) per
+            # EMA13 and EMA20. Once recorded, never overwritten.
+            # ════════════════════════════════════════════════════════════════
+            _now_for_cross = datetime.utcnow()
+            for _ema_label, _ema_val in (
+                ('ema13', order_info.get('cached_ema13')),
+                ('ema20', order_info.get('cached_ema20')),
+            ):
+                if _ema_val is None or _ema_val <= 0:
+                    continue
+                # "Wrong side" = price has reversed past the EMA against trade direction
+                if direction == "LONG":
+                    _is_wrong_side = current_price < _ema_val
+                else:  # SHORT
+                    _is_wrong_side = current_price > _ema_val
+                _first_at_key = f'first_cross_{_ema_label}_at'
+                _first_pnl_key = f'first_cross_{_ema_label}_pnl_pct'
+                _conf_at_key = f'confirmed_cross_{_ema_label}_at'
+                _conf_pnl_key = f'confirmed_cross_{_ema_label}_pnl_pct'
+                _pending_key = f'pending_cross_{_ema_label}_started_at'
+                if _is_wrong_side:
+                    # NAIVE: record first-ever cross moment
+                    if order_info.get(_first_at_key) is None:
+                        order_info[_first_at_key] = _now_for_cross
+                        order_info[_first_pnl_key] = round(pnl_pct, 4)
+                    # CONFIRMED: track sustained cross (≥5min = ~1 candle persistence)
+                    if order_info.get(_conf_at_key) is None:
+                        _pending_at = order_info.get(_pending_key)
+                        if _pending_at is None:
+                            order_info[_pending_key] = _now_for_cross
+                        else:
+                            _elapsed_sec = (_now_for_cross - _pending_at).total_seconds()
+                            if _elapsed_sec >= 300:  # 5min sustained = confirmed
+                                order_info[_conf_at_key] = _now_for_cross
+                                order_info[_conf_pnl_key] = round(pnl_pct, 4)
+                                order_info[_pending_key] = None  # clear, one-shot done
+                else:
+                    # Price flipped back to right side before confirmation — whipsaw, reset pending
+                    if order_info.get(_pending_key) is not None:
+                        order_info[_pending_key] = None
+
             # Track peak P&L in real-time for break-even decisions
             current_peak = max(cached_peak_pnl, pnl_pct) if pnl_pct > 0 else cached_peak_pnl
             if pnl_pct > cached_peak_pnl and pnl_pct > 0:
@@ -5232,13 +5308,15 @@ class TradingEngine:
         pair_ema5s: Dict[str, float] = {}
         if pair_names:
             sig_result = await db.execute(
-                select(PairData.pair, PairData.ema5, PairData.ema8, PairData.ema20, PairData.price,
+                select(PairData.pair, PairData.ema5, PairData.ema8, PairData.ema13,
+                       PairData.ema20, PairData.price,
                        PairData.rsi, PairData.rsi_prev1, PairData.rsi_prev2,
                        PairData.ema5_prev3).where(PairData.pair.in_(pair_names))
             )
             for row in sig_result:
                 pair_emas[row.pair] = {
                     'ema5': row.ema5, 'ema8': row.ema8,
+                    'ema13': row.ema13,
                     'ema20': row.ema20, 'price': row.price,
                     'rsi': row.rsi, 'rsi_prev1': row.rsi_prev1, 'rsi_prev2': row.rsi_prev2,
                     'ema5_prev3': row.ema5_prev3,
@@ -5290,6 +5368,20 @@ class TradingEngine:
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'cached_ema5': pair_ema5s.get(order.pair),
                 'cached_ema5_prev3': pair_emas.get(order.pair, {}).get('ema5_prev3'),
+                'cached_ema13': pair_emas.get(order.pair, {}).get('ema13'),
+                'cached_ema20': pair_emas.get(order.pair, {}).get('ema20'),
+                # Phase 1 shadow tracking (May 6) — counterfactual exit at price-vs-EMA cross.
+                # Restored from DB so a bot restart preserves prior cross records.
+                'first_cross_ema13_at': order.first_cross_ema13_at,
+                'first_cross_ema13_pnl_pct': order.first_cross_ema13_pnl_pct,
+                'confirmed_cross_ema13_at': order.confirmed_cross_ema13_at,
+                'confirmed_cross_ema13_pnl_pct': order.confirmed_cross_ema13_pnl_pct,
+                'first_cross_ema20_at': order.first_cross_ema20_at,
+                'first_cross_ema20_pnl_pct': order.first_cross_ema20_pnl_pct,
+                'confirmed_cross_ema20_at': order.confirmed_cross_ema20_at,
+                'confirmed_cross_ema20_pnl_pct': order.confirmed_cross_ema20_pnl_pct,
+                'pending_cross_ema13_started_at': None,
+                'pending_cross_ema20_started_at': None,
                 'peak_ema5_gap': order.peak_ema5_gap or 0.0,
                 'peak_ema5_dist_pct': order.peak_ema5_dist_pct,
                 'peak_ema5_slope_pct': order.peak_ema5_slope_pct,
@@ -5379,6 +5471,16 @@ class TradingEngine:
                                 new_info['fl2_flagged'] = True
                                 new_info['fl2_flagged_at'] = old_info.get('fl2_flagged_at')
                                 new_info['fl2_flag_pnl'] = old_info.get('fl2_flag_pnl')
+                            # Phase 1 shadow tracking — preserve cross records + pending state
+                            for _xkey in (
+                                'first_cross_ema13_at', 'first_cross_ema13_pnl_pct',
+                                'confirmed_cross_ema13_at', 'confirmed_cross_ema13_pnl_pct',
+                                'first_cross_ema20_at', 'first_cross_ema20_pnl_pct',
+                                'confirmed_cross_ema20_at', 'confirmed_cross_ema20_pnl_pct',
+                                'pending_cross_ema13_started_at', 'pending_cross_ema20_started_at',
+                            ):
+                                if old_info.get(_xkey) is not None:
+                                    new_info[_xkey] = old_info[_xkey]
                             if new_info['direction'] == 'LONG':
                                 new_info['high_price'] = max(new_info['high_price'], old_info.get('high_price', 0))
                             else:

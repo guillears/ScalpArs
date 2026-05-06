@@ -5448,6 +5448,69 @@ def _compute_ema_cross_counterfactual(orders):
                     'verdict': verdict,
                 })
 
+    # Insert TOTAL rows per (variant, ema) combining LONG + SHORT (May 6 — at user request).
+    # Weighted-average percentages by N affected; sums for dollar columns.
+    # Renderer styles direction='TOTAL' rows distinctly (bordered, bold).
+    rows_with_totals = []
+    for variant in ('naive', 'confirmed', 'profit_gated', 'loser_only'):
+        for ema_label in ('ema13', 'ema20'):
+            block = [r for r in rows if r['variant'] == variant and r['ema_label'] == ema_label]
+            if not block:
+                continue
+            # Add per-direction rows in their original order
+            rows_with_totals.extend(block)
+            # Skip TOTAL row when only one direction present (totals would just duplicate the row)
+            if len(block) < 2:
+                continue
+            # Compute combined-direction TOTAL
+            t_n = sum(r['n_affected'] for r in block)
+            t_n_dir_total = sum(r['n_direction_total'] for r in block)
+            t_actual_d = sum(r['actual_total_dollars'] for r in block)
+            t_cf_d = sum(r['cf_total_dollars'] for r in block)
+            t_delta_d = sum(r['delta_vs_actual_dollars'] for r in block)
+            # Weighted avg %s
+            t_actual_pct_w = sum(r['avg_actual_close_pct'] * r['n_affected'] for r in block) / t_n if t_n else 0
+            t_cf_pct_w = sum(r['avg_cf_close_pct'] * r['n_affected'] for r in block) / t_n if t_n else 0
+            t_delta_pct = t_cf_pct_w - t_actual_pct_w
+            # W / L deltas combined (sum dollars; weighted % avg)
+            w_dol_sum = sum((r['winners_delta_dollars'] or 0) for r in block)
+            w_n_sum = sum(r['winners_n'] for r in block)
+            l_dol_sum = sum((r['losers_delta_dollars'] or 0) for r in block)
+            l_n_sum = sum(r['losers_n'] for r in block)
+            # Verdict on combined N + Δ$
+            if t_n < 5:
+                t_verdict = '⚠ Low N'
+            elif t_delta_d > 5 and t_delta_pct > 0.10:
+                t_verdict = '★ WORKING'
+            elif abs(t_delta_d) <= 5:
+                t_verdict = '✓ Marginal'
+            elif t_delta_d < -5:
+                t_verdict = '⚠ DRAG'
+            else:
+                t_verdict = '✓ Marginal'
+            rows_with_totals.append({
+                'variant': variant,
+                'ema_label': ema_label,
+                'direction': 'TOTAL',
+                'n_affected': t_n,
+                'n_direction_total': t_n_dir_total,
+                'coverage_pct': round((t_n / t_n_dir_total * 100) if t_n_dir_total else 0, 1),
+                'avg_actual_close_pct': round(t_actual_pct_w, 4),
+                'avg_cf_close_pct': round(t_cf_pct_w, 4),
+                'delta_vs_actual_pct': round(t_delta_pct, 4),
+                'actual_total_dollars': round(t_actual_d, 2),
+                'cf_total_dollars': round(t_cf_d, 2),
+                'delta_vs_actual_dollars': round(t_delta_d, 2),
+                'winners_n': w_n_sum,
+                'winners_delta_pct': None,  # n/a on aggregate
+                'winners_delta_dollars': round(w_dol_sum, 2) if w_n_sum > 0 else None,
+                'losers_n': l_n_sum,
+                'losers_delta_pct': None,
+                'losers_delta_dollars': round(l_dol_sum, 2) if l_n_sum > 0 else None,
+                'verdict': t_verdict,
+                'is_total': True,
+            })
+
     # Summary: total uplift if we shipped each variant (combined direction)
     summary_by_variant = {}
     for variant in ('naive', 'confirmed', 'profit_gated', 'loser_only'):
@@ -5463,7 +5526,7 @@ def _compute_ema_cross_counterfactual(orders):
                 'delta_dollars': round(total_d, 2),
             }
 
-    return {'rows': rows, 'summary': summary_by_variant}
+    return {'rows': rows_with_totals, 'summary': summary_by_variant}
 
 
 # ----- Investor Portfolio -----

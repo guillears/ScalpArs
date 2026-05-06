@@ -3700,6 +3700,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             avg_drop = sum(drops) / count if count > 0 else 0
             peaks = [o.peak_pnl or 0 for o in data["trades"]]
             avg_peak = sum(peaks) / count if count > 0 else 0
+            # Trough tracking (May 6 — added at user request). trough_pnl is signed
+            # (negative for trades that went under water, 0 for trades that never went red).
+            troughs = [o.trough_pnl or 0 for o in data["trades"]]
+            avg_trough = sum(troughs) / count if count > 0 else 0
+            worst_trough = min(troughs) if troughs else 0  # Most negative = worst
             sig_active = sum(1 for o in data["trades"] if o.signal_active_at_close is True)
             sig_inactive = sum(1 for o in data["trades"] if o.signal_active_at_close is False)
             gaps = [o.entry_gap for o in data["trades"] if o.entry_gap is not None]
@@ -3722,6 +3727,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "by_direction": data["by_direction"],
                 "avg_price_drop": round(avg_drop, 4),
                 "avg_peak_pnl_pct": round(avg_peak, 4),
+                "avg_trough_pnl_pct": round(avg_trough, 4),
+                "worst_trough_pnl_pct": round(worst_trough, 4),
                 "avg_post_exit_peak_pnl": round(sum(post_exit_peaks) / len(post_exit_peaks), 4) if post_exit_peaks else None,
                 "avg_post_exit_trough_pnl": round(sum(post_exit_troughs) / len(post_exit_troughs), 4) if post_exit_troughs else None,
                 "signal_active": sig_active,

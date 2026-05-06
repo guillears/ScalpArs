@@ -716,6 +716,8 @@
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
                                         <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
                                         <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Average peak P&L % reached before exit">Avg Peak %</th>
+                                        <th class="px-3 py-2 font-medium text-right text-rose-400" title="Average trough P&L % reached during trade (lowest point — negative for trades that went underwater, 0 for trades that never went red)">Avg Trough %</th>
+                                        <th class="px-3 py-2 font-medium text-right text-rose-500" title="Worst (most negative) trough P&L % across this group — single most-underwater moment">Worst Trough %</th>
                                         <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price (comparable to pullback_trigger)">Avg Pullback %</th>
                                         <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Post-exit: avg best hypothetical P&L if trade stayed open 45min after close">Post Peak %</th>
                                         <th class="px-3 py-2 font-medium text-right text-orange-400" title="Post-exit: avg worst hypothetical P&L if trade stayed open 45min after close">Post Trough %</th>
@@ -730,7 +732,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="19" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="21" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -4314,7 +4316,7 @@
             lines.push(`\n${hr2}`);
             lines.push('## Closing Reason Summary\n');
             const crCopyTotal = Object.values(perf.by_close_reason || {}).reduce((s, r) => s + (r.trades || 0), 0);
-            lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)} ${'PairTrend(exit)'.padStart(16)} ${'BTCTrend(exit)'.padStart(15)}`);
+            lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)} ${'PairTrend(exit)'.padStart(16)} ${'BTCTrend(exit)'.padStart(15)}`);
             for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                 const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                 const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -4323,13 +4325,15 @@
                 const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
                 const postPeakStr = r.avg_post_exit_peak_pnl != null ? (r.avg_post_exit_peak_pnl.toFixed(4) + '%') : '-';
                 const postTroughStr = r.avg_post_exit_trough_pnl != null ? (r.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
+                const avgTroughStrCp = r.avg_trough_pnl_pct != null ? r.avg_trough_pnl_pct.toFixed(4) + '%' : '-';
+                const worstTroughStrCp = r.worst_trough_pnl_pct != null ? r.worst_trough_pnl_pct.toFixed(4) + '%' : '-';
                 const rsi2PctStr = r.rsi2_fire_pct != null ? r.rsi2_fire_pct.toFixed(1) + '%' : '-';
                 const rsi2PnlStr = r.avg_rsi2_pnl != null ? (r.avg_rsi2_pnl >= 0 ? '+' : '') + r.avg_rsi2_pnl.toFixed(4) + '%' : '-';
                 const rsi2MinStr = r.avg_rsi2_min != null ? r.avg_rsi2_min.toFixed(1) : '-';
                 const exitPairStr = r.avg_exit_pair_trend_gap != null ? (r.avg_exit_pair_trend_gap >= 0 ? '+' : '') + r.avg_exit_pair_trend_gap.toFixed(2) + '%' : '-';
                 const exitBtcStr = r.avg_exit_btc_trend_gap != null ? (r.avg_exit_btc_trend_gap >= 0 ? '+' : '') + r.avg_exit_btc_trend_gap.toFixed(2) + '%' : '-';
                 const crPctStr = crCopyTotal > 0 ? (r.trades / crCopyTotal * 100).toFixed(1) + '%' : '-';
-                lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${exitPairStr.padStart(16)} ${exitBtcStr.padStart(15)}`);
+                lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${avgTroughStrCp.padStart(10)} ${worstTroughStrCp.padStart(12)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${exitPairStr.padStart(16)} ${exitBtcStr.padStart(15)}`);
             }
 
             lines.push(`\n${hr2}`);
@@ -5169,7 +5173,7 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Closing Reason Summary\n');
                 const crCopyTotal = Object.values(perf.by_close_reason || {}).reduce((s, r) => s + (r.trades || 0), 0);
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)} ${'PairTrend(exit)'.padStart(16)} ${'BTCTrend(exit)'.padStart(15)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(12)} ${'Conf'.padEnd(14)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'RSI2%'.padStart(7)} ${'RSI2P&L'.padStart(9)} ${'RSI2Min'.padStart(8)} ${'PairTrend(exit)'.padStart(16)} ${'BTCTrend(exit)'.padStart(15)}`);
                 for (const [reason, r] of Object.entries(perf.by_close_reason || {})) {
                     const dirStr = `${(r.by_direction||{}).LONG||0}L/${(r.by_direction||{}).SHORT||0}S`;
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -5178,13 +5182,15 @@
                     const rsiStr = r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-';
                     const postPeakStr = r.avg_post_exit_peak_pnl != null ? (r.avg_post_exit_peak_pnl.toFixed(4) + '%') : '-';
                     const postTroughStr = r.avg_post_exit_trough_pnl != null ? (r.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
+                    const avgTroughStrSp = r.avg_trough_pnl_pct != null ? r.avg_trough_pnl_pct.toFixed(4) + '%' : '-';
+                    const worstTroughStrSp = r.worst_trough_pnl_pct != null ? r.worst_trough_pnl_pct.toFixed(4) + '%' : '-';
                     const rsi2PctStr = r.rsi2_fire_pct != null ? r.rsi2_fire_pct.toFixed(1) + '%' : '-';
                     const rsi2PnlStr = r.avg_rsi2_pnl != null ? (r.avg_rsi2_pnl >= 0 ? '+' : '') + r.avg_rsi2_pnl.toFixed(4) + '%' : '-';
                     const rsi2MinStr = r.avg_rsi2_min != null ? r.avg_rsi2_min.toFixed(1) : '-';
                     const exitPairStr = r.avg_exit_pair_trend_gap != null ? (r.avg_exit_pair_trend_gap >= 0 ? '+' : '') + r.avg_exit_pair_trend_gap.toFixed(2) + '%' : '-';
                     const exitBtcStr = r.avg_exit_btc_trend_gap != null ? (r.avg_exit_btc_trend_gap >= 0 ? '+' : '') + r.avg_exit_btc_trend_gap.toFixed(2) + '%' : '-';
                     const crPctStr = crCopyTotal > 0 ? (r.trades / crCopyTotal * 100).toFixed(1) + '%' : '-';
-                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${exitPairStr.padStart(16)} ${exitBtcStr.padStart(15)}`);
+                    lines.push(`${reason.padEnd(20)} ${String(r.trades).padEnd(5)} ${crPctStr.padEnd(7)} ${dirStr.padEnd(12)} ${confStr.padEnd(14)} ${(r.avg_pnl_pct||0).toFixed(2).padStart(8)}% ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${((r.avg_peak_pnl_pct||0).toFixed(4)+'%').padStart(9)} ${avgTroughStrSp.padStart(10)} ${worstTroughStrSp.padStart(12)} ${((r.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${rsi2PctStr.padStart(7)} ${rsi2PnlStr.padStart(9)} ${rsi2MinStr.padStart(8)} ${exitPairStr.padStart(16)} ${exitBtcStr.padStart(15)}`);
                 }
 
                 // --- ENTRY CONDITIONS BY CLOSE REASON ---
@@ -6258,6 +6264,15 @@
                         const dropVal = safe(stats.avg_price_drop);
                         const peakVal = safe(stats.avg_peak_pnl_pct);
                         const peakClass = peakVal >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        // Trough columns (May 6 — added at user request)
+                        const avgTroughVal = stats.avg_trough_pnl_pct;
+                        const worstTroughVal = stats.worst_trough_pnl_pct;
+                        const avgTroughStr = avgTroughVal != null
+                            ? `<span class="${safe(avgTroughVal) >= 0 ? 'text-gray-400' : 'text-rose-400'} font-medium">${safe(avgTroughVal) >= 0 ? '' : ''}${safe(avgTroughVal).toFixed(4)}%</span>`
+                            : '<span class="text-gray-600">-</span>';
+                        const worstTroughStr = worstTroughVal != null
+                            ? `<span class="${safe(worstTroughVal) >= 0 ? 'text-gray-400' : 'text-rose-500'} font-bold">${safe(worstTroughVal) >= 0 ? '' : ''}${safe(worstTroughVal).toFixed(4)}%</span>`
+                            : '<span class="text-gray-600">-</span>';
                         const postPeakVal = stats.avg_post_exit_peak_pnl;
                         const postTroughVal = stats.avg_post_exit_trough_pnl;
                         const postPeakStr = postPeakVal != null ? `<span class="${safe(postPeakVal) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${safe(postPeakVal) >= 0 ? '+' : ''}${safe(postPeakVal).toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
@@ -6272,6 +6287,8 @@
                                 <td class="px-3 py-2 text-right ${pnlPctClass}">${safe(stats.avg_pnl_pct) >= 0 ? '+' : ''}${safe(stats.avg_pnl_pct).toFixed(2)}%</td>
                                 <td class="px-3 py-2 text-right ${pnlUsdClass}">${formatUSD(safe(stats.avg_pnl_usd))}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${peakVal >= 0 ? '+' : ''}${peakVal.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right">${avgTroughStr}</td>
+                                <td class="px-3 py-2 text-right">${worstTroughStr}</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right">${postPeakStr}</td>
                                 <td class="px-3 py-2 text-right">${postTroughStr}</td>
@@ -6287,7 +6304,7 @@
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="21" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Entry Conditions by Close Reason

@@ -5515,3 +5515,47 @@ Same locked rules apply, but evaluated against L3-only handoff data:
 
 ### Files changed
 - `trading_config.json`: `rsi_handoff_level: 2 → 3`
+
+## May 6, 2026 (afternoon) — Major repositioning: 6 simultaneous config changes (user-directed)
+
+### What changed (6 fields, all in trading_config.json)
+
+| Field | Old | New | Rationale |
+|---|---|---|---|
+| `regime_change_exit_enabled` | true | **false** | Disable REGIME_CHANGE L1 (FL_REGIME_CHANGE keeps firing — separate code path). 23-trade data: 8 trades cut at -0.26%, PostPeak +0.37%, Final +0.07% — exit fires at bottom of recoverable swing. With BTC Trend Filter active, the 5m regime classifier flips were noise the trades survived. |
+| `tp_min` (both V_S + S_B) | 0.20 | **0.50** | Revert to May 2 design. 23-trade TRAILING_STOP L2 winners had AvgPeak +0.31%, Close +0.17%, **PostPeak +1.46%** — current TP cut tails too early. Loose trailing only arms at peak ≥ 0.50%. |
+| `pullback_trigger` (both V_S + S_B) | 0.15 | **0.20** | Revert. With TP 0.50, exits at peak − 0.20 = +0.30% minimum (vs current peak − 0.15 = +0.05% minimum). Wider band captures more of the +1.46% PostPeak runway. |
+| `rsi_handoff_level` | 3 | **2** | Revert. Under TP 0.50, L2 = peak ≥ 1.00%, L3 = peak ≥ 1.50%. With RSI handoff at L2, trades exit via RSI exhaustion when peak ≥ 1.00% — catches big winners before tail give-back. The May 2 67/156-trade analysis showed this was the structurally-correct level under TP 0.50. |
+| `btc_adx_max_long` | 35 | **40** | Re-admit BTC ADX 35-40 LONG zone. With BTC ADX direction now "both" (relaxed below), the 35-40 zone may include winners we previously cut. Pure expansion of entry surface. |
+| `btc_adx_dir_long` + `btc_adx_dir_short` | rising | **both** | Same chain as PAIR_ADX_DIR relax (May 5): with BTC Trend Filter active as macro veto, the short-context BTC ADX direction filter becomes redundant. 188 LONG blocks from BTC_ADX_DIR were observed — biggest current blocker. |
+
+### Why all 6 simultaneously (despite IRON RULE)
+
+This is a coherent **strategy repositioning**, not 6 independent tweaks. The single underlying thesis: **with BTC Trend Filter active as the macro chop veto, the bot's exit and entry filters can be loosened to catch more winners and let them run further.** Each change supports the same hypothesis:
+
+- Disable REGIME_CHANGE → don't cut on 5m noise (BTC Trend Filter handles macro)
+- TP 0.50 / PB 0.20 → don't lock small profits, ride for tails
+- RSI handoff L2 → exit big winners via RSI when they peak (was the May 2 design intent)
+- BTC ADX max 40 → don't cut high-ADX entries
+- BTC ADX dir "both" → don't cut on 15-min momentum direction (BTC Trend Filter handles trend direction)
+
+Tested independently: the May 4 224-trade batch showed TP 0.20 protected small-peak losers, but current 23-trade batch shows DIFFERENT post-peak behavior (PostPeak +1.46% vs +0.42% in May 4). Regime has shifted; what worked then doesn't apply now.
+
+### Honest acknowledgment of risk
+
+This is **6 changes on N=23** — by far the highest-magnitude repositioning of the day. Attribution is impossible if results are mixed. If the next batch tanks, we won't know which lever broke things. If it works, we won't know which lever delivered.
+
+The discipline rule has been broken so many times today that asking for restraint now feels performative. Acknowledged: this is a strategy bet on the BTC-Trend-Filter-handles-it-all hypothesis. Either the macro veto is sufficient (and everything else can be loose), or it's not (and we'll see ugly numbers fast).
+
+### Pre-committed revert criteria at next 100-trade checkpoint
+
+If at 100 closed trades:
+1. **Combined Avg P&L % < -0.20%**: full revert all 6 changes back to current values
+2. **REGIME_CHANGE-equivalent failure pattern reappears** (e.g., losers cluster at small peak followed by deep drawdown that would have been caught by regime change exit): re-enable `regime_change_exit_enabled`
+3. **Trailing exits show "Positive, No BE" bucket exploding** (peak +0.20-0.50% trades dying at -0.9% SL, similar to May 4 baseline 30 trades / -$33.91): revert TP/PB to 0.20 / 0.15
+4. **BTC ADX 35-40 LONG bucket shows ≤30% WR on N≥10**: revert `btc_adx_max_long` to 35
+5. **BTC ADX direction "falling" trades show ≤35% WR on N≥15**: revert `btc_adx_dir_*` to "rising"
+6. **RSI handoff at L2 net negative on N≥5** (TOTAL row Δ$ < -$5): re-tighten to L3 or disable
+
+### Files changed
+- `trading_config.json`: 6 fields (per table above)

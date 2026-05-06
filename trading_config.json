@@ -100,7 +100,7 @@
     "fl1_wide_sl_backstop": -1.2,
     "fl2_enabled": true,
     "fl2_recovery_target": -0.4,
-    "fl2_deep_stop": -1.0,
+    "fl2_deep_stop": -0.8,
     "ema5_slope_exit_enabled": false,
     "ema5_slope_lookback": 3,
     "ema5_slope_threshold": -0.02,

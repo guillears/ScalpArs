@@ -5477,3 +5477,41 @@ For honesty's sake, the count is now: **5 strategic config-related actions in <2
 
 ### Files changed
 - `trading_config.json`: `btc_adx_min_long: 18 → 15`
+
+## May 6, 2026 — `rsi_handoff_level: 2 → 3` (live data + corrected historical math)
+
+### Why reverted
+
+3 closed `RSI_HANDOFF_EXIT L2` trades observed:
+| # | Peak | Close | Trailing CF (peak − 0.15) | Δ vs Trail |
+|---|------|-------|---------------------------|------------|
+| 1 | +0.29% | -0.01% | +0.14% | -0.15pp worse |
+| 2 | +0.42% | +0.18% | +0.27% | -0.09pp worse |
+| 3 | +0.29% | -0.02% | +0.14% | -0.16pp worse |
+
+All 3 had peaks below 0.50% — exactly the LONG-negative zone the May 2 67/156-trade post-exit watcher flagged. RSI fired AFTER price retraced, locking in 0.10-0.15pp drag vs trailing in every case.
+
+### Math correction (Claude was wrong earlier in the session)
+
+I initially recommended against L3 by citing the May 4 224-trade test of "RSI handoff at L3+ = -$3 to -$5 net for LONG" — but I conflated tp_min=0.50 era thresholds with current tp_min=0.20 thresholds. Under current config:
+- **Today's L2** = peak ≥ 0.40% — catches the LONG-negative band (0.40-0.50%)
+- **Today's L3** = peak ≥ 0.60% — sits cleanly above the 0.50% threshold where RSI counterfactual was marginal-positive (+1bp BULLISH N=24, +32bp BEARISH N=10)
+
+User caught the error: the historical RSI-better zone was peak ≥ 0.50%, which under tp_min=0.20 maps to L3, not L2. L3 is the structurally correct setting if RSI handoff is to remain active.
+
+### What L3 buys us
+
+- Pulls handoff OUT of the documented LONG-negative zone (0.40-0.50% peak band)
+- Puts handoff INTO the marginal-positive / strong-positive zone (peak ≥ 0.60%)
+- Preserves the SHORT-side test (BEARISH counterfactual was +32bp on N=10) for when SHORT trades eventually arrive
+- Less frequent firing — handoff zone is now narrower, so the 100-trade RSI Handoff Performance TOTAL row will accumulate slower but with cleaner signal
+
+### Pre-committed revert criteria at 100-trade checkpoint
+
+Same locked rules apply, but evaluated against L3-only handoff data:
+- If RSI Handoff Performance TOTAL Δ$ vs Trail < -$5 with N≥5 → disable entirely (`rsi_handoff_active: false`)
+- If TOTAL is positive ≥ +$5 → keep at L3
+- If neutral (-$5 to +$5) → extend test 100 more trades
+
+### Files changed
+- `trading_config.json`: `rsi_handoff_level: 2 → 3`

@@ -589,7 +589,9 @@ def check_exit_conditions(
         trough_pnl = min(trough_pnl, pnl_pct)
     
     # Trailing stop (pullback from peak price) activates once peak reaches TP target or at L2+.
-    trailing_stop_active = peak_pnl >= effective_tp_target or current_tp_level >= 2
+    # 0.005pp tolerance (May 6 — bug fix): float-rounding around the tp_min threshold
+    # could leave trailing perpetually unarmed when peak is e.g. +0.4998% vs tp_min 0.50%.
+    trailing_stop_active = peak_pnl >= (effective_tp_target - 0.005) or current_tp_level >= 2
     
     # 3-Level break-even stop loss (highest level wins)
     effective_stop_loss = stop_loss
@@ -721,36 +723,34 @@ def check_exit_conditions(
             # For LONG: check if price dropped X% from highest
             price_drop_pct = ((high_price - current_price) / high_price) * 100
             if price_drop_pct >= pullback_trigger:
-                # SAFEGUARD: Never close at a loss via trailing stop
-                # If tracking failed and we'd close at loss, wait for recovery or SL
-                if pnl_pct < 0:
-                    logger.info(f"[TRAILING_STOP_BLOCKED] LONG L{current_tp_level}: Would close at loss ({pnl_pct:.4f}%), waiting for recovery or SL")
-                else:
-                    logger.info(f"[TRAILING_STOP] LONG L{current_tp_level} triggered: high={high_price}, current={current_price}, drop={price_drop_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}%")
-                    return {
-                        "should_close": True,
-                        "reason": f"TRAILING_STOP L{current_tp_level}",
-                        "peak_pnl": peak_pnl,
-                        "trough_pnl": trough_pnl,
-                        "tp_level": current_tp_level
-                    }
+                # May 6 — bug fix: removed `if pnl_pct < 0` safeguard.  The original
+                # intent was to prevent corrupted high_price tracking from forcing a
+                # bad close, but it conflated "current pnl negative" with "tracking
+                # broken" — two different things.  In fast reversals, the realtime
+                # callback can land on a tick where pnl already crossed zero even
+                # though peak was legitimately reached and trailing should fire.
+                # Hard SL / FL_EMERGENCY_SL still cover the truly-corrupted cases.
+                logger.info(f"[TRAILING_STOP] LONG L{current_tp_level} triggered: high={high_price}, current={current_price}, drop={price_drop_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}%")
+                return {
+                    "should_close": True,
+                    "reason": f"TRAILING_STOP L{current_tp_level}",
+                    "peak_pnl": peak_pnl,
+                    "trough_pnl": trough_pnl,
+                    "tp_level": current_tp_level
+                }
         elif direction == "SHORT" and low_price and low_price > 0:
             # For SHORT: check if price rose X% from lowest
             price_rise_pct = ((current_price - low_price) / low_price) * 100
             if price_rise_pct >= pullback_trigger:
-                # SAFEGUARD: Never close at a loss via trailing stop
-                # If tracking failed and we'd close at loss, wait for recovery or SL
-                if pnl_pct < 0:
-                    logger.info(f"[TRAILING_STOP_BLOCKED] SHORT L{current_tp_level}: Would close at loss ({pnl_pct:.4f}%), waiting for recovery or SL")
-                else:
-                    logger.info(f"[TRAILING_STOP] SHORT L{current_tp_level} triggered: low={low_price}, current={current_price}, rise={price_rise_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}%")
-                    return {
-                        "should_close": True,
-                        "reason": f"TRAILING_STOP L{current_tp_level}",
-                        "peak_pnl": peak_pnl,
-                        "trough_pnl": trough_pnl,
-                        "tp_level": current_tp_level
-                    }
+                # May 6 — bug fix: removed `if pnl_pct < 0` safeguard (see LONG branch comment).
+                logger.info(f"[TRAILING_STOP] SHORT L{current_tp_level} triggered: low={low_price}, current={current_price}, rise={price_rise_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}%")
+                return {
+                    "should_close": True,
+                    "reason": f"TRAILING_STOP L{current_tp_level}",
+                    "peak_pnl": peak_pnl,
+                    "trough_pnl": trough_pnl,
+                    "tp_level": current_tp_level
+                }
     
     return {"should_close": False, "reason": None, "peak_pnl": peak_pnl, "trough_pnl": trough_pnl}
 

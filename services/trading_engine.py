@@ -4795,7 +4795,7 @@ class TradingEngine:
                         logger.warning(
                             f"[REALTIME_EMA13_CROSS_EXIT] {pair} {direction} L{_tp_lvl_for_exit}: "
                             f"price={current_price:.6f} {('<' if direction == 'LONG' else '>')}"
-                            f" EMA13={_ema13_for_exit:.6f}, pnl={pnl_pct:.4f}% (peak={current_peak:.4f}%) - CLOSING NOW!"
+                            f" EMA13={_ema13_for_exit:.6f}, pnl={pnl_pct:.4f}% (peak={cached_peak_pnl:.4f}%) - CLOSING NOW!"
                         )
                         order_info['_closing_in_progress'] = True
                         try:
@@ -4868,7 +4868,11 @@ class TradingEngine:
             effective_tp_target = tp_level * tp_min if tp_level > 1 else tp_min
             
             # Trailing stop activates once peak reaches TP target or at L2+.
-            trailing_stop_would_be_active = current_peak >= effective_tp_target or tp_level >= 2
+            # 0.005pp tolerance (May 6 — bug fix): floating-point rounding can leave
+            # a peak at e.g. +0.4998% when tp_min is 0.50% — operationally identical
+            # but strict >= would never arm trailing. Tolerance is well below any
+            # configurable pullback_trigger so it doesn't affect intended behavior.
+            trailing_stop_would_be_active = current_peak >= (effective_tp_target - 0.005) or tp_level >= 2
             
             # Apply 3-level break-even logic (highest level wins)
             effective_sl = stop_loss_pct
@@ -5113,6 +5117,48 @@ class TradingEngine:
                         logger.error(f"[REALTIME_FL_SIGNAL_LOST] Error closing {pair}: {e}")
                     continue
 
+            # Real-time RSI Handoff Exit (May 6 — bug fix: was missing realtime path).
+            # Mirrors the monitor-loop RSI Handoff at line ~3424 so it can fire sub-second
+            # when the cached RSI sequence flips against direction past the handoff TP level.
+            # Without this, RSI Handoff waited up to one full monitor cycle (~5min) longer
+            # than RSI Momentum to fire — operationally inconsistent.
+            rt_handoff_active = getattr(config.trading_config.thresholds, 'rsi_handoff_active', False)
+            rt_handoff_level = getattr(config.trading_config.thresholds, 'rsi_handoff_level', 3)
+            if rt_handoff_active and order_info.get('current_tp_level', 1) >= rt_handoff_level:
+                _rt_h = order_info.get('rsi')
+                _rt_h1 = order_info.get('rsi_prev1')
+                _rt_h2 = order_info.get('rsi_prev2')
+                if _rt_h is not None and _rt_h1 is not None and _rt_h2 is not None:
+                    rt_handoff_fading = False
+                    if direction == "LONG" and _rt_h < _rt_h1 < _rt_h2:
+                        rt_handoff_fading = True
+                    elif direction == "SHORT" and _rt_h > _rt_h1 > _rt_h2:
+                        rt_handoff_fading = True
+                    if rt_handoff_fading:
+                        if order_info.get('_closing_in_progress'):
+                            continue
+                        order_info['_closing_in_progress'] = True
+                        tp_level = order_info.get('current_tp_level', 1)
+                        logger.warning(f"[REALTIME_RSI_HANDOFF_EXIT] {pair} {direction} L{tp_level}: RSI fading ({_rt_h2:.1f}->{_rt_h1:.1f}->{_rt_h:.1f}), pnl={pnl_pct:.4f}% (handoff_level={rt_handoff_level}) - CLOSING NOW!")
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    handoff_reason = f"RSI_HANDOFF_EXIT L{tp_level}"
+                                    closed = await self.close_position(db, order, current_price, handoff_reason)
+                                    if closed:
+                                        logger.info(f"[REALTIME_RSI_HANDOFF_EXIT] {pair} closed at {current_price} with pnl={pnl_pct:.4f}%")
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                                    else:
+                                        logger.warning(f"[REALTIME_RSI_HANDOFF_EXIT] {pair}: close_position returned None — will retry next cycle")
+                        except Exception as e:
+                            logger.error(f"[REALTIME_RSI_HANDOFF_EXIT] Error closing {pair}: {e}")
+                        continue
+
             # Real-time RSI Momentum Exit: two consecutive RSI drops/rises within P&L range
             rt_rsi_exit_enabled = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_enabled', False)
             rt_rsi_exit_min = getattr(config.trading_config.thresholds, 'rsi_momentum_exit_min_profit', 0.05)
@@ -5299,22 +5345,19 @@ class TradingEngine:
                 if direction == "LONG" and high_price and high_price > 0:
                     price_drop_pct = ((high_price - current_price) / high_price) * 100
                     if price_drop_pct >= pullback_trigger:
-                        # SAFEGUARD: Never close at a loss via trailing stop
-                        if pnl_pct >= 0:
-                            should_close_trailing = True
-                            logger.warning(f"[REALTIME_TRAILING] {pair} LONG L{tp_level}: high={high_price:.6f}, current={current_price:.6f}, drop={price_drop_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}% - CLOSING NOW!")
-                        else:
-                            logger.info(f"[REALTIME_TRAILING_BLOCKED] {pair} LONG L{tp_level}: Would close at loss ({pnl_pct:.4f}%), waiting for recovery or SL")
-                
+                        # May 6 — bug fix: removed `if pnl_pct >= 0` safeguard.  Was
+                        # blocking legitimate trailing closes when a fast reversal landed
+                        # the realtime tick after pnl crossed zero.  Hard SL still covers
+                        # corrupted-high_price cases.
+                        should_close_trailing = True
+                        logger.warning(f"[REALTIME_TRAILING] {pair} LONG L{tp_level}: high={high_price:.6f}, current={current_price:.6f}, drop={price_drop_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}% - CLOSING NOW!")
+
                 elif direction == "SHORT" and low_price and low_price > 0:
                     price_rise_pct = ((current_price - low_price) / low_price) * 100
                     if price_rise_pct >= pullback_trigger:
-                        # SAFEGUARD: Never close at a loss via trailing stop
-                        if pnl_pct >= 0:
-                            should_close_trailing = True
-                            logger.warning(f"[REALTIME_TRAILING] {pair} SHORT L{tp_level}: low={low_price:.6f}, current={current_price:.6f}, rise={price_rise_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}% - CLOSING NOW!")
-                        else:
-                            logger.info(f"[REALTIME_TRAILING_BLOCKED] {pair} SHORT L{tp_level}: Would close at loss ({pnl_pct:.4f}%), waiting for recovery or SL")
+                        # May 6 — bug fix: removed `if pnl_pct >= 0` safeguard.
+                        should_close_trailing = True
+                        logger.warning(f"[REALTIME_TRAILING] {pair} SHORT L{tp_level}: low={low_price:.6f}, current={current_price:.6f}, rise={price_rise_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}% - CLOSING NOW!")
                 
                 if should_close_trailing:
                     # Prevent duplicate close attempts from consecutive monitor cycles

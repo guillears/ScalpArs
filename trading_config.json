@@ -119,7 +119,7 @@
     "rsi_momentum_exit_enabled": false,
     "rsi_momentum_exit_min_profit": -0.80,
     "rsi_momentum_exit_max_profit": -0.45,
-    "ema13_cross_exit_enabled": false,
+    "ema13_cross_exit_enabled": true,
     "tick_momentum_exit_enabled": false,
     "tick_momentum_exit_min_profit": 0.03,
     "tick_momentum_exit_min_profit_flagged": -0.25,

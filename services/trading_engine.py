@@ -66,8 +66,9 @@ _btc_ema20_slope_pct: float = 0.0
 # BTC Trend Filter state (May 5) — EMA20 vs EMA50 medium-term trend.
 # Updated in BTC scan loop. Surfaced in /api/engine/state for header badge.
 _current_btc_ema20: Optional[float] = None
+_current_btc_ema13: Optional[float] = None  # May 6 — BTC Trend Filter switched to EMA13/EMA50
 _current_btc_ema50: Optional[float] = None
-_current_btc_trend_gap_pct: Optional[float] = None
+_current_btc_trend_gap_pct: Optional[float] = None  # As of May 6: (EMA13 - EMA50) / EMA50; was EMA20-based before
 # Module-level BTC indicators for regime classification at exit time
 _current_btc_adx: float = None
 _current_btc_rsi: float = None
@@ -433,6 +434,7 @@ class TradingEngine:
             # BTC Trend Filter state (May 5) — EMA20 vs EMA50 medium-term trend.
             # Header badge uses these to show macro trend + filter state.
             "btc_ema20": round(_current_btc_ema20, 2) if _current_btc_ema20 else None,
+            "btc_ema13": round(_current_btc_ema13, 2) if _current_btc_ema13 else None,
             "btc_ema50": round(_current_btc_ema50, 2) if _current_btc_ema50 else None,
             "btc_trend_gap_pct": round(_current_btc_trend_gap_pct, 4) if _current_btc_trend_gap_pct is not None else None,
             "btc_trend_filter_enabled": bool(getattr(config.trading_config.thresholds, 'btc_trend_filter_enabled', False)),
@@ -541,15 +543,19 @@ class TradingEngine:
         }
 
     async def _get_exit_trend_gaps(self, db: AsyncSession, pair: str) -> tuple:
-        """Capture pair / BTC EMA20-EMA50 gap at close time (May 6).
+        """Capture pair / BTC EMA13-EMA50 gap at close time (May 6).
 
         Returns (exit_pair_gap_pct, exit_btc_gap_pct). Either may be None if
         data unavailable. BTC gap pulled from the global updated each scan;
-        pair gap derived from latest pair_data row's ema20 + ema50.
+        pair gap derived from latest pair_data row's ema13 + ema50.
 
         Used for analytical diagnostics — captures whether the multi-hour
-        trend context flipped at exit (e.g., BTC EMA20 crossed below EMA50)
+        trend context flipped at exit (e.g., BTC EMA13 crossed below EMA50)
         vs just the 5m regime classifier.
+
+        Note (May 6): switched from EMA20 to EMA13 for both pair and BTC.
+        Field names kept for storage compat; semantic shift documented
+        in CLAUDE.md.
         """
         global _current_btc_trend_gap_pct
         btc_gap = _current_btc_trend_gap_pct
@@ -560,8 +566,8 @@ class TradingEngine:
                 _sel(PairData).where(PairData.pair == pair).order_by(PairData.timestamp.desc()).limit(1)
             )
             pd_row = res.scalar_one_or_none()
-            if pd_row and pd_row.ema20 and pd_row.ema50 and pd_row.ema50 > 0:
-                pair_gap = round((pd_row.ema20 - pd_row.ema50) / pd_row.ema50 * 100, 4)
+            if pd_row and pd_row.ema13 and pd_row.ema50 and pd_row.ema50 > 0:
+                pair_gap = round((pd_row.ema13 - pd_row.ema50) / pd_row.ema50 * 100, 4)
         except Exception as e:
             logger.debug(f"[EXIT_GAPS] {pair}: pair gap fetch failed: {e}")
         return pair_gap, btc_gap
@@ -3890,6 +3896,7 @@ class TradingEngine:
             btc_indicators = calculate_indicators(btc_ohlcv)
             if btc_indicators:
                 btc_ema20 = btc_indicators.get('ema20')
+                btc_ema13 = btc_indicators.get('ema13')  # May 6 — used for BTC Trend Filter (EMA13/EMA50)
                 btc_ema20_prev3 = btc_indicators.get('ema20_prev3')
                 btc_ema50 = btc_indicators.get('ema50')
                 btc_adx = btc_indicators.get('adx')
@@ -3907,18 +3914,19 @@ class TradingEngine:
                 if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
                     btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
         global _current_btc_regime, _btc_ema20_slope_pct, _current_btc_adx, _current_btc_rsi
-        global _current_btc_ema20, _current_btc_ema50, _current_btc_trend_gap_pct
+        global _current_btc_ema20, _current_btc_ema13, _current_btc_ema50, _current_btc_trend_gap_pct
         _current_btc_regime = btc_regime
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
         _current_btc_adx = btc_adx
         _current_btc_rsi = btc_rsi
-        # BTC Trend Filter state (May 5)
+        # BTC Trend Filter state (May 5; switched from EMA20→EMA13 on May 6 for faster reversal detection)
         _current_btc_ema20 = btc_ema20
+        _current_btc_ema13 = btc_ema13
         _current_btc_ema50 = btc_ema50
-        if btc_ema20 is not None and btc_ema50 is not None and btc_ema50 != 0:
-            # Use BTC's last close (≈btc_ema20 for normalization purposes; close is a fine
-            # denominator since EMAs track price closely on 5m). Compute gap as % of EMA50.
-            _current_btc_trend_gap_pct = round(((btc_ema20 - btc_ema50) / btc_ema50) * 100, 4)
+        if btc_ema13 is not None and btc_ema50 is not None and btc_ema50 != 0:
+            # Trend gap = (EMA13 - EMA50) / EMA50 × 100. EMA13 spans ~65 min on 5m chart;
+            # EMA50 spans ~250 min (~4 hours). Gap > 0 = BTC in 4hr uptrend, gap < 0 = downtrend.
+            _current_btc_trend_gap_pct = round(((btc_ema13 - btc_ema50) / btc_ema50) * 100, 4)
         else:
             _current_btc_trend_gap_pct = None
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
@@ -4231,36 +4239,37 @@ class TradingEngine:
                             continue
 
             # BTC Trend Filter — runs independently of Macro Trend toggle (May 5).
-            # Compares BTC EMA20 vs BTC EMA50 on the 5m chart (~4 hours of context).
+            # Compares BTC EMA13 vs BTC EMA50 on the 5m chart (May 6 — switched from
+            # EMA20 to EMA13 for faster reversal detection; EMA13 spans ~65 min vs EMA20's
+            # 100 min, EMA50 spans ~250 min ~4 hours).
             # Blocks countertrend entries:
-            #   EMA20 > EMA50 → BTC in medium-term uptrend → block SHORTs
-            #   EMA20 < EMA50 → BTC in medium-term downtrend → block LONGs
+            #   EMA13 > EMA50 → BTC in medium-term uptrend → block SHORTs
+            #   EMA13 < EMA50 → BTC in medium-term downtrend → block LONGs
             # Addresses the case where short-horizon (15min) BTC slope flips
             # bearish during a brief pullback within a multi-hour bullish trend
             # (and vice versa). See CLAUDE.md May 5 entry on BTC Trend Filter.
-            # === DEBUG INSTRUMENTATION (May 5) — find the LONG-not-opening bug ===
             _btc_trend_enabled = getattr(config.trading_config.thresholds, 'btc_trend_filter_enabled', False)
             if signal in ["LONG", "SHORT"]:
-                _gap_pct_dbg = (((btc_ema20 - btc_ema50) / btc_ema50) * 100) if (btc_ema20 and btc_ema50) else None
+                _gap_pct_dbg = (((btc_ema13 - btc_ema50) / btc_ema50) * 100) if (btc_ema13 and btc_ema50) else None
                 _gap_str_dbg = f"{_gap_pct_dbg:.4f}%" if _gap_pct_dbg is not None else "N/A"
                 logger.info(
                     f"[DEBUG_TREND] {pair} {signal} {confidence}: filter_enabled={_btc_trend_enabled} "
-                    f"btc_ema20={btc_ema20} btc_ema50={btc_ema50} gap={_gap_str_dbg}"
+                    f"btc_ema13={btc_ema13} btc_ema50={btc_ema50} gap={_gap_str_dbg}"
                 )
 
             if (signal in ["LONG", "SHORT"]
                     and _btc_trend_enabled
-                    and btc_ema20 is not None and btc_ema50 is not None):
-                if signal == "LONG" and btc_ema20 < btc_ema50:
+                    and btc_ema13 is not None and btc_ema50 is not None):
+                if signal == "LONG" and btc_ema13 < btc_ema50:
                     logger.info(
-                        f"[BTC_TREND_FILTER] {pair}: LONG blocked — BTC EMA20 {btc_ema20:.2f} < EMA50 {btc_ema50:.2f} "
+                        f"[BTC_TREND_FILTER] {pair}: LONG blocked — BTC EMA13 {btc_ema13:.2f} < EMA50 {btc_ema50:.2f} "
                         f"(macro downtrend, countertrend LONG blocked)"
                     )
                     self._record_filter_block("BTC_TREND_FILTER", "LONG", had_room=_had_room)
                     signal = "NO_TRADE"
-                elif signal == "SHORT" and btc_ema20 > btc_ema50:
+                elif signal == "SHORT" and btc_ema13 > btc_ema50:
                     logger.info(
-                        f"[BTC_TREND_FILTER] {pair}: SHORT blocked — BTC EMA20 {btc_ema20:.2f} > EMA50 {btc_ema50:.2f} "
+                        f"[BTC_TREND_FILTER] {pair}: SHORT blocked — BTC EMA13 {btc_ema13:.2f} > EMA50 {btc_ema50:.2f} "
                         f"(macro uptrend, countertrend SHORT blocked)"
                     )
                     self._record_filter_block("BTC_TREND_FILTER", "SHORT", had_room=_had_room)
@@ -4432,11 +4441,13 @@ class TradingEngine:
                 _ema50_prev12 = indicators.get('ema50_prev12')
                 if _ema50 is not None and _ema50_prev12 is not None and _ema50_prev12 != 0:
                     _entry_ema50_slope = round(((_ema50 - _ema50_prev12) / _ema50_prev12) * 100, 4)
-                # Pair EMA20 vs EMA50 gap (observation-only, May 5)
+                # Pair EMA13 vs EMA50 gap (observation-only; May 6 — switched from EMA20→EMA13
+                # for consistency with BTC Trend Filter switch). Field name kept for storage compat;
+                # values stored before May 6 deploy use EMA20/EMA50, after use EMA13/EMA50.
                 _entry_pair_ema20_ema50_gap_pct = None
-                _ema20_val = indicators.get('ema20')
-                if _ema20_val is not None and _ema50 is not None and _ema50 != 0:
-                    _entry_pair_ema20_ema50_gap_pct = round((_ema20_val - _ema50) / _ema50 * 100, 4)
+                _ema13_val = indicators.get('ema13')
+                if _ema13_val is not None and _ema50 is not None and _ema50 != 0:
+                    _entry_pair_ema20_ema50_gap_pct = round((_ema13_val - _ema50) / _ema50 * 100, 4)
                 _entry_funding_rate = None
                 try:
                     _funding = await binance_service.fetch_funding_rate(symbol)

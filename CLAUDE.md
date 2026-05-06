@@ -5559,3 +5559,103 @@ If at 100 closed trades:
 
 ### Files changed
 - `trading_config.json`: 6 fields (per table above)
+
+## May 6, 2026 (evening) — BTC Trend Filter + Pair Trend Gap switched EMA20 → EMA13
+
+### What changed
+
+The BTC Trend Filter (and the parallel pair-level observation gap) now compare
+the fast EMA against EMA50 using **EMA13** instead of **EMA20**.
+
+| Metric | Before (May 5) | After (May 6 evening) |
+|---|---|---|
+| BTC Trend Filter source | (BTC EMA20 − BTC EMA50) / EMA50 | (BTC EMA13 − BTC EMA50) / EMA50 |
+| Pair gap field source | (Pair EMA20 − Pair EMA50) / EMA50 | (Pair EMA13 − Pair EMA50) / EMA50 |
+| Fast-EMA timeframe | ~100 min smoothed | ~65 min smoothed |
+| Slow-EMA timeframe | ~250 min (~4 hours) | unchanged |
+
+### Why EMA13 over EMA20
+
+User-driven decision after analysis on a chart where BEARISH regime classification
+visibly lagged a recovering price action. Argument:
+
+1. **Trade horizon match**: average trade duration ~30 min. EMA13 (~65 min) is
+   2× trade duration — natural "macro context" timeframe. EMA20 (~100 min) is
+   3× trade duration — slower than needed.
+2. **Reversal speed**: EMA13 detects genuine BTC trend changes ~30-40 min sooner
+   than EMA20.
+3. **Whipsaw concern is mitigated by downstream filter stack**: even if EMA13/EMA50
+   flickers near zero, signals must still pass 15+ other gates (Market Breadth,
+   RSI Momentum, EMA Gap Expanding, BTC ADX, etc.) — many of which fail naturally
+   in chop. Net effect of false positives at this layer is small.
+
+EMA8 was considered and rejected — too close to trade timeframe (~40 min ≈ 1.3×
+trade), and EMA8 is already used in entry-signal logic (EMA5/EMA8 cross).
+
+### Mixed-provenance caveat (IMPORTANT for analysis)
+
+Two fields stored on Order rows are affected:
+- `entry_pair_ema20_ema50_gap_pct` — name kept for storage compat; values stored
+  AFTER May 6 evening deploy use **Pair EMA13 vs EMA50**, BEFORE use Pair EMA20.
+- `entry_btc_trend_gap_pct` and `exit_btc_trend_gap_pct` — same: post-deploy = EMA13,
+  pre-deploy = EMA20.
+- `exit_pair_ema20_ema50_gap_pct` — same.
+
+**For cross-deploy bucket analysis**, gap values mix EMA20-based and EMA13-based
+data. EMA13 produces typically larger gap magnitudes (more reactive). Don't
+draw conclusions on gap-bucket performance until ~50-100 fresh trades accumulate
+under the new source.
+
+### Attribution risk acknowledged
+
+This is the **7th strategic change in <24h** following:
+- May 5 evening: PAIR_ADX_DIR rising → both
+- May 6 morning: BTC ADX min 18 → 15 (user override of IRON RULE)
+- May 6 morning: MUSDT blacklist
+- May 6 afternoon: 6-change major repositioning (regime change OFF, TP/PB to
+  0.50/0.20, RSI handoff L2, BTC ADX max 40 LONG, BTC ADX dir both)
+- May 6 evening: this EMA13 switch
+
+At the next 100-trade checkpoint, attribution between these layers will be
+genuinely difficult. We accept this as a documented trade-off; if results are
+materially better or worse, we won't know which lever moved the needle.
+
+### Pre-committed revert criteria at next 100-trade checkpoint
+
+Mandatory revert (BTC + Pair both back to EMA20) if ANY:
+
+1. **BTC_TREND_FILTER block rate ≥ 1.5× the pre-May-6 baseline** while at least one
+   open position was being held (whipsaw concern materialized — filter is
+   blocking too aggressively in chop).
+2. **REGIME_SHIFT trades not improved** vs May 4 baseline (was the intent of
+   making the filter more responsive — to catch macro flips earlier at entry,
+   reducing intra-trade regime-shift losses).
+3. **Combined Avg P&L % < May 6 deploy baseline** on N≥80 trades.
+
+If the change shows neutral-to-positive impact: keep at EMA13.
+
+### Files changed (May 6 evening)
+
+- `services/trading_engine.py`:
+  - Added `_current_btc_ema13` global
+  - BTC scan loop: capture `btc_ema13` and use in `_current_btc_trend_gap_pct` formula
+  - BTC Trend Filter check: compare `btc_ema13 < btc_ema50` (LONG block) and `>` (SHORT block)
+  - Updated `[BTC_TREND_FILTER]` and `[DEBUG_TREND]` log messages to mention EMA13
+  - `_get_exit_trend_gaps`: pair side now uses `pair_data.ema13`
+  - Pair entry capture (`_entry_pair_ema20_ema50_gap_pct`): now sourced from `indicators['ema13']`
+  - API status payload: added `btc_ema13` alongside existing `btc_ema20`
+- `templates/index.html`:
+  - 4 column tooltips updated (BTCTrend, BTCTrend(exit), PairTrend, PairTrend(exit) in 3 tables)
+  - "Performance by Pair EMA20-EMA50 Gap" → "Performance by Pair EMA13-EMA50 Gap"
+  - "Performance by BTC EMA20-EMA50 Gap" → "Performance by BTC EMA13-EMA50 Gap"
+  - BTC Trend Filter UI label: "(EMA20 vs EMA50)" → "(EMA13 vs EMA50)"
+  - BTC Trend badge JS comment + tooltip context updated
+  - Empty-state messages updated to reference EMA13
+- `CLAUDE.md`: this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the EMA20 → EMA13 switch with explicit revert criteria, document the
+mixed-provenance caveat (so future analysis knows old gap values are EMA20-based),
+and acknowledge the attribution risk from stacking another change on top of the
+6-change repositioning shipped earlier today.

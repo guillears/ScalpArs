@@ -8757,24 +8757,27 @@
                     //
                     // Display L{tp_level} matches bot internal terminology.  Color tiers:
                     //   L1: emerald (first arming)
-                    //   L2: cyan
-                    //   L3+: purple with ·RSI suffix (RSI handoff zone per rsi_handoff_level=3)
+                    //   Below handoff_level: cyan
+                    //   At/above handoff_level (active): purple with ·RSI suffix
+                    //   handoff_level read from config dynamically — was hardcoded to 3, fixed May 6.
                     let tpTierBadge = '';
                     const _tpPeak = (typeof o.peak_pnl === 'number') ? o.peak_pnl : 0;
                     const _tpLvl = o.tp_level || 1;
                     const _tpTargetRaw = (typeof o.tp_target === 'number' && o.tp_target > 0) ? o.tp_target : (_tpLvl * 0.20);
                     const _baseTpMin = _tpLvl > 0 ? (_tpTargetRaw / _tpLvl) : 0.20;
                     const _armed = _tpPeak >= _baseTpMin && _tpPeak > 0;
+                    const _handoffActive = window._cachedConfig?.thresholds?.rsi_handoff_active === true;
+                    const _handoffLvl = window._cachedConfig?.thresholds?.rsi_handoff_level || 3;
                     if (_armed) {
                         let bgClass, textClass, label, title;
-                        if (_tpLvl >= 3) {
+                        if (_handoffActive && _tpLvl >= _handoffLvl) {
                             bgClass = 'bg-purple-500/25'; textClass = 'text-purple-300';
                             label = `🛡 L${_tpLvl}·RSI`;
-                            title = `L${_tpLvl} — RSI handoff zone (trailing replaced by 2-drop RSI exit). Peak ${_tpPeak.toFixed(2)}% crossed L${_tpLvl - 1} threshold (${((_tpLvl - 1) * _baseTpMin).toFixed(2)}%). Protected from full SL.`;
-                        } else if (_tpLvl === 2) {
+                            title = `L${_tpLvl} — RSI handoff zone (trailing replaced by 2-drop RSI exit, threshold L≥${_handoffLvl}). Peak ${_tpPeak.toFixed(2)}%. Protected from full SL.`;
+                        } else if (_tpLvl >= 2) {
                             bgClass = 'bg-cyan-500/25'; textClass = 'text-cyan-300';
-                            label = `🛡 L2`;
-                            title = `L2 — trailing armed at second tier. Peak ${_tpPeak.toFixed(2)}% crossed L1 threshold (${_baseTpMin.toFixed(2)}%). Worst case: peak − pullback. Protected from full SL.`;
+                            label = `🛡 L${_tpLvl}`;
+                            title = `L${_tpLvl} — trailing armed. Peak ${_tpPeak.toFixed(2)}%. Worst case: peak − pullback. Protected from full SL.`;
                         } else {
                             bgClass = 'bg-emerald-500/25'; textClass = 'text-emerald-300';
                             label = `🛡 L1`;

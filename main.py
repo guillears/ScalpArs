@@ -450,6 +450,9 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         trading_engine._bnb_burn_rate = 0.0
         trading_engine._last_bnb_check = None
 
+        # Reset Filter Block counters (in-memory + persisted)
+        trading_engine._filter_block_counts = {}
+
         set_ban_until(0)
         await trading_engine.save_state(db)
 
@@ -457,6 +460,7 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         state_row = result_state.scalar_one_or_none()
         if state_row:
             state_row.ban_until = 0
+            state_row.filter_block_counts_json = None
 
         await db.commit()
 

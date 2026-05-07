@@ -2614,6 +2614,40 @@ class TradingEngine:
                 order.exit_order_type = exit_order_type
                 order.pnl = pnl_data['pnl']
                 order.pnl_percentage = pnl_data['pnl_percentage']
+
+                # ─────────────────────────────────────────────────────────────
+                # May 7 — Sync realtime cache → DB BEFORE invariant guard.
+                # Without this, realtime-triggered closes (trailing, EMA13/Stack
+                # cross, RSI Handoff, etc.) persist STALE peak/low values from
+                # the last monitor-loop write, even when the cache has fresher
+                # values that the realtime trigger itself just used.
+                # The invariant guard below would only enforce peak >= close,
+                # but the actual intra-trade peak (per cache) could be higher.
+                # Pull from cache here so DB matches realtime cache state.
+                # ─────────────────────────────────────────────────────────────
+                try:
+                    for _cached in _open_orders_cache.get(order_pair, []):
+                        if _cached['id'] == order_id:
+                            _cache_low = _cached.get('low_price')
+                            _cache_high = _cached.get('high_price')
+                            _cache_peak = _cached.get('peak_pnl')
+                            _cache_trough = _cached.get('trough_pnl')
+                            if _cache_low is not None and _cache_low > 0:
+                                if order.low_price_since_entry is None or _cache_low < order.low_price_since_entry:
+                                    order.low_price_since_entry = _cache_low
+                            if _cache_high is not None and _cache_high > 0:
+                                if order.high_price_since_entry is None or _cache_high > order.high_price_since_entry:
+                                    order.high_price_since_entry = _cache_high
+                            if _cache_peak is not None:
+                                if order.peak_pnl is None or _cache_peak > order.peak_pnl:
+                                    order.peak_pnl = _cache_peak
+                            if _cache_trough is not None:
+                                if order.trough_pnl is None or _cache_trough < order.trough_pnl:
+                                    order.trough_pnl = _cache_trough
+                            break
+                except Exception as _sync_e:
+                    logger.debug(f"[CACHE_SYNC_PRE_CLOSE] {order_pair}: cache sync skipped: {_sync_e}")
+
                 # Enforce invariant: peak P&L must be ≥ close P&L, trough P&L must be ≤ close P&L.
                 # The realtime callback can miss intra-tick spikes (WS tick stream isn't continuous),
                 # so the cached peak/trough can lag. The actual exit price is always a real point

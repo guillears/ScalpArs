@@ -5659,3 +5659,132 @@ To anchor the EMA20 → EMA13 switch with explicit revert criteria, document the
 mixed-provenance caveat (so future analysis knows old gap values are EMA20-based),
 and acknowledge the attribution risk from stacking another change on top of the
 6-change repositioning shipped earlier today.
+
+## May 7, 2026 — Realtime-close cache→DB sync bug (peak/low undercount on realtime-fired exits)
+
+### What happened
+
+Closed paper trade FARTCOINUSDT SHORT showed inconsistent values between
+realtime callback log (used for trigger decision) and DB-persisted values
+(used for analytics):
+
+| Field | Source | Value |
+|---|---|---|
+| Trigger low (used by trailing pullback) | Realtime cache `order_info['low_price']` | **0.2426** |
+| Persisted low (DB analytics) | `order.low_price_since_entry` | 0.2433 |
+| Persisted peak | `order.peak_pnl` | +0.28% |
+| Implied peak from cache low | (entry 0.2442 − 0.2426) / 0.2442 − fees | **~+0.59%** |
+
+Realtime trailing fired correctly (rise=0.33% from cache low 0.2426 ≥
+0.20% pullback trigger; close at +0.24% net). But DB analytics showed
+peak +0.28% as if the trade never went deeper than 0.2433. Display
+suggested trailing fired at peak < tp_min, which is mathematically
+impossible given the trigger conditions.
+
+### Root cause
+
+Two-tracker architecture:
+
+| Tracker | Updated by | Cadence | Stored in |
+|---|---|---|---|
+| **A — Realtime cache** | Realtime callback on every WS tick | sub-second | `_open_orders_cache[pair]` (in-memory dict) |
+| **B — DB column** | Monitor loop `scan_and_trade` | ~1-2s per cycle | `Order` row |
+
+When the realtime callback fires a close (trailing, EMA13 Cross, EMA Stack
+Cross, RSI Handoff in realtime, RSI Momentum in realtime, BE realtime,
+FL_EMERGENCY_SL realtime), the close path persists from the DB Order
+object, NOT from cache. If the deepest tick happened in the gap between
+two monitor-loop cycles, the DB never recorded it before the close fired.
+
+Result: DB `low_price_since_entry`, `high_price_since_entry`, `peak_pnl`,
+`trough_pnl` end up being whatever the LAST monitor-loop write was —
+potentially significantly less extreme than what the realtime callback
+actually saw.
+
+The April 29 invariant guard (`if order.peak_pnl < close_pct: peak_pnl =
+close_pct`) only enforces peak ≥ close, not peak ≥ true intra-trade max.
+So the displayed peak appears as `max(stale_DB, close)` which can be far
+below the actual peak that armed trailing.
+
+### Fix shipped (services/trading_engine.py:2616+ in `_close_position_locked`)
+
+Added a cache→DB sync block immediately BEFORE the invariant guard, in
+Phase 1 of the close path:
+
+```python
+for _cached in _open_orders_cache.get(order_pair, []):
+    if _cached['id'] == order_id:
+        _cache_low = _cached.get('low_price')
+        _cache_high = _cached.get('high_price')
+        _cache_peak = _cached.get('peak_pnl')
+        _cache_trough = _cached.get('trough_pnl')
+        if _cache_low is not None and _cache_low > 0:
+            if order.low_price_since_entry is None or _cache_low < order.low_price_since_entry:
+                order.low_price_since_entry = _cache_low
+        if _cache_high is not None and _cache_high > 0:
+            if order.high_price_since_entry is None or _cache_high > order.high_price_since_entry:
+                order.high_price_since_entry = _cache_high
+        if _cache_peak is not None:
+            if order.peak_pnl is None or _cache_peak > order.peak_pnl:
+                order.peak_pnl = _cache_peak
+        if _cache_trough is not None:
+            if order.trough_pnl is None or _cache_trough < order.trough_pnl:
+                order.trough_pnl = _cache_trough
+        break
+```
+
+Single insertion site covers ALL close paths (realtime + monitor) because
+they all funnel through `_close_position_locked`. Each field uses
+extreme-comparison (`max` for high/peak, `min` for low/trough) so no
+worse-than-existing values are ever written.
+
+The April 29 invariant guard remains as a final safety net (in case cache
+ALSO missed the actual peak — e.g., genuinely skipped tick) — it now
+runs against fresh cache values.
+
+### Why this wasn't caught earlier
+
+Until the recent batch of EMA13 Cross Exit + EMA Stack Cross Exit + RSI
+Handoff realtime additions, the realtime callback fired closes less
+often:
+- Trailing in realtime was the main path
+- Most closes went through monitor loop (which has direct DB access)
+
+With the new fast exits firing on realtime, more closes happen between
+monitor cycles, exposing the cache-DB gap more frequently. The bug existed
+before but was effectively masked by the close-path mix.
+
+### Impact assessment
+
+- **Trade execution**: ZERO impact. Trigger logic uses fresh cache, fires
+  correctly.
+- **Analytics**: peak/low/trough columns can show stale values for trades
+  that closed via realtime path. Affects: peak P&L table, drawdown
+  analysis, post-exit regret comparisons, and any analytics that reads
+  `peak_pnl` / `low_price_since_entry`.
+- **Counterfactual tables**: less affected because they use moment-of-trade
+  fields stored at the cross detection time.
+
+### What to expect after fix
+
+- `peak_pnl` and `trough_pnl` columns will reflect actual intra-trade
+  extremes, not stale snapshots
+- `low_price_since_entry` and `high_price_since_entry` columns will match
+  realtime trigger inputs
+- `[PEAK_INVARIANT_FIX]` log line frequency should drop substantially —
+  the invariant guard becomes the rare last-resort fallback rather than
+  the main correction mechanism
+- No change to trigger behavior or close prices
+
+### Diagnostic to verify the fix works
+
+After deploy, monitor `[PEAK_INVARIANT_FIX]` and `[TROUGH_INVARIANT_FIX]`
+log frequencies. They should drop materially. If they stay frequent, it
+means cache itself is missing ticks (a separate upstream issue worth
+investigating).
+
+### Files changed
+
+- `services/trading_engine.py` — added cache sync block in
+  `_close_position_locked` Phase 1 (line ~2616+, immediately before the
+  invariant guard).

@@ -298,9 +298,15 @@ class TradingEngine:
             if not order.close_reason or not order.closed_at:
                 continue
             _reason_base = order.close_reason[3:] if order.close_reason.startswith("FL_") else order.close_reason
+            # May 7: added EMA13_CROSS_EXIT and EMA_STACK_CROSS_EXIT to recovery
+            # whitelist. Without them, EMA13/EMA_STACK trades that spanned a
+            # bot restart never got post_exit_peak_pnl written → silently
+            # missing from Post-Exit Regret Deep Dive table. Live registration
+            # whitelist (line ~2994) already had these; recovery had drifted.
             if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or
                     _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or
-                    _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("STOP_LOSS") or
+                    _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or
+                    _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or
                     _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or
                     _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or
                     _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or

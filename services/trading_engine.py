@@ -562,35 +562,15 @@ class TradingEngine:
             "total_full": total_full,
         }
 
-    async def _get_exit_trend_gaps(self, db: AsyncSession, pair: str) -> tuple:
-        """Capture pair / BTC EMA13-EMA50 gap at close time (May 6).
+    async def _get_exit_btc_trend_gap(self) -> float:
+        """Capture BTC EMA13-EMA50 gap at close time (May 6).
 
-        Returns (exit_pair_gap_pct, exit_btc_gap_pct). Either may be None if
-        data unavailable. BTC gap pulled from the global updated each scan;
-        pair gap derived from latest pair_data row's ema13 + ema50.
-
-        Used for analytical diagnostics — captures whether the multi-hour
-        trend context flipped at exit (e.g., BTC EMA13 crossed below EMA50)
-        vs just the 5m regime classifier.
-
-        Note (May 6): switched from EMA20 to EMA13 for both pair and BTC.
-        Field names kept for storage compat; semantic shift documented
-        in CLAUDE.md.
+        Returns the BTC gap pulled from the global updated each scan.
+        May 7: pair-side removed — observation-only column dropped per
+        CLAUDE.md cleanup (BTCTrend(exit) is the analog that matters).
         """
         global _current_btc_trend_gap_pct
-        btc_gap = _current_btc_trend_gap_pct
-        pair_gap = None
-        try:
-            from sqlalchemy import select as _sel
-            res = await db.execute(
-                _sel(PairData).where(PairData.pair == pair).order_by(PairData.timestamp.desc()).limit(1)
-            )
-            pd_row = res.scalar_one_or_none()
-            if pd_row and pd_row.ema13 and pd_row.ema50 and pd_row.ema50 > 0:
-                pair_gap = round((pd_row.ema13 - pd_row.ema50) / pd_row.ema50 * 100, 4)
-        except Exception as e:
-            logger.debug(f"[EXIT_GAPS] {pair}: pair gap fetch failed: {e}")
-        return pair_gap, btc_gap
+        return _current_btc_trend_gap_pct
 
     async def _recalculate_paper_balance(self, db: AsyncSession) -> float:
         """Recalculate paper_balance from DB as source of truth.
@@ -2444,11 +2424,9 @@ class TradingEngine:
                         order.closed_at = datetime.utcnow()
                         order.exit_price = actual_price
                         order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
-                        # Exit trend gaps (May 6) — pair/BTC EMA20-EMA50 gap at close time
+                        # Exit BTC trend gap at close (May 6, simplified May 7)
                         try:
-                            _exit_pair_gap, _exit_btc_gap = await self._get_exit_trend_gaps(db, order.pair)
-                            order.exit_pair_ema20_ema50_gap_pct = _exit_pair_gap
-                            order.exit_btc_trend_gap_pct = _exit_btc_gap
+                            order.exit_btc_trend_gap_pct = await self._get_exit_btc_trend_gap()
                         except Exception as _e:
                             logger.debug(f"[EXIT_GAPS] {order.pair}: capture failed: {_e}")
                         taker_fee = getattr(config.trading_config, 'taker_fee', config.trading_config.trading_fee)
@@ -2699,11 +2677,9 @@ class TradingEngine:
                 order.close_reason = reason
                 order.exit_slippage_pct = _slippage_pct
                 order.exit_btc_regime = classify_btc_regime(_current_btc_adx, _current_btc_rsi, _btc_ema20_slope_pct)
-                # Exit trend gaps (May 6) — pair/BTC EMA20-EMA50 gap at close time
+                # Exit BTC trend gap at close (May 6, simplified May 7)
                 try:
-                    _exit_pair_gap, _exit_btc_gap = await self._get_exit_trend_gaps(db, order.pair)
-                    order.exit_pair_ema20_ema50_gap_pct = _exit_pair_gap
-                    order.exit_btc_trend_gap_pct = _exit_btc_gap
+                    order.exit_btc_trend_gap_pct = await self._get_exit_btc_trend_gap()
                 except Exception as _e:
                     logger.debug(f"[EXIT_GAPS] {order.pair}: capture failed: {_e}")
 
@@ -4698,7 +4674,6 @@ class TradingEngine:
             pair_data.ema13 = indicators.get('ema13')
             pair_data.ema20 = indicators.get('ema20')
             pair_data.ema20_prev3 = indicators.get('ema20_prev3')
-            pair_data.ema50 = indicators.get('ema50')
             pair_data.rsi = indicators.get('rsi')
             pair_data.rsi_prev1 = indicators.get('rsi_prev1')
             pair_data.rsi_prev2 = indicators.get('rsi_prev2')
@@ -4720,7 +4695,6 @@ class TradingEngine:
                 ema13=indicators.get('ema13'),
                 ema20=indicators.get('ema20'),
                 ema20_prev3=indicators.get('ema20_prev3'),
-                ema50=indicators.get('ema50'),
                 rsi=indicators.get('rsi'),
                 rsi_prev1=indicators.get('rsi_prev1'),
                 rsi_prev2=indicators.get('rsi_prev2'),

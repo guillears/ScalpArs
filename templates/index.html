@@ -161,9 +161,12 @@
                 <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC Trend:</span>
-                <span id="btc-trend-badge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-400">--</span>
-                <span id="btc-trend-gap" class="text-xs font-mono text-gray-400">--</span>
-                <span id="btc-trend-filter-tag" class="hidden px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-blue-500/20 text-blue-400">Filter ON</span>
+                <span class="text-[10px] text-gray-500 font-medium">E13</span>
+                <span id="btc-trend-badge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-400" title="EMA13 vs EMA50 — active filter (May 6+)">--</span>
+                <span id="btc-trend-gap" class="text-xs font-mono text-gray-400" title="EMA13/EMA50 gap %">--</span>
+                <span class="text-[10px] text-gray-500 font-medium ml-2">E20</span>
+                <span id="btc-trend-badge-e20" class="px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-400" title="EMA20 vs EMA50 — historical reference (pre-May 6 baseline). Disagreement with E13 = trend shift in progress.">--</span>
+                <span id="btc-trend-gap-e20" class="text-xs font-mono text-gray-400" title="EMA20/EMA50 gap %">--</span>
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC ADX:</span>
                 <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
@@ -2516,6 +2519,23 @@
                             <p class="text-xs text-gray-500 mt-1">Closes trade on first tick where price crosses EMA13 against direction (LONG: price &lt; EMA13, SHORT: price &gt; EMA13). No profit gate — fires at any P&L. Runs in parallel to FL flags / RSI Handoff / trailing — first-to-fire wins. Cascade-close: when toggled ON, any open trade currently on wrong side closes on next tick. Close reason: <code class="text-violet-300">EMA13_CROSS_EXIT L&lt;level&gt;</code>.</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">EMA Stack Cross Exit <span class="text-xs text-violet-400 font-normal">(May 6 — EMA5/EMA8 inversion at handoff level)</span></label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-ema-stack-cross-exit-enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-violet-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Handoff at L≥
+                                    <input type="number" min="1" max="10" id="config-ema-stack-cross-exit-level" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2">
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Closes trade when EMA5 crosses EMA8 against direction (LONG: ema5 &lt; ema8, SHORT: ema5 &gt; ema8) past the handoff level. <strong>Suppresses trailing past level</strong> — becomes the exclusive natural exit there (Option A architecture, like RSI Handoff). Faster than RSI 2-drop (~5min vs ~15min). Close reason: <code class="text-violet-300">EMA_STACK_CROSS_EXIT L&lt;level&gt;</code>.</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Tick Momentum Exit</label>
                             <div class="flex items-center gap-4 flex-wrap">
                                 <label class="flex items-center cursor-pointer">
@@ -3951,19 +3971,26 @@
                                         'text-yellow-400 text-xs font-mono';
                 }
 
-                // BTC Trend badge (May 5; switched to EMA13/EMA50 on May 6) —
-                // medium-term trend. Shows UP / DOWN / FLAT based on the gap.
-                // Filter tag shown when btc_trend_filter_enabled is true,
-                // badge dimmed when false.
-                const trendBadge = document.getElementById('btc-trend-badge');
-                const trendGapEl = document.getElementById('btc-trend-gap');
-                const trendFilterTag = document.getElementById('btc-trend-filter-tag');
-                const gap = data.btc_trend_gap_pct;
+                // BTC Trend badges (May 5; switched active to EMA13/EMA50 on May 6).
+                // Two readings shown side-by-side for diagnostic clarity:
+                //   E13 = active filter (EMA13/EMA50 gap) — what the bot uses
+                //   E20 = historical reference (EMA20/EMA50 gap) — pre-May 6 baseline
+                // Disagreement between E13 and E20 = trend shift in progress (E13 leads).
                 const filterOn = !!data.btc_trend_filter_enabled;
-                if (trendBadge && gap != null) {
-                    // Threshold for FLAT classification (badge label only, not filter logic).
-                    // Filter itself is binary: > 0 blocks SHORTs, < 0 blocks LONGs.
-                    const flatThreshold = 0.05; // % — purely cosmetic
+                const flatThreshold = 0.05; // % — cosmetic FLAT classification
+                const renderTrendBadge = (badgeId, gapId, gap, dim) => {
+                    const badge = document.getElementById(badgeId);
+                    const gapEl = document.getElementById(gapId);
+                    if (!badge) return;
+                    if (gap == null) {
+                        badge.textContent = 'OFF';
+                        badge.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-500';
+                        if (gapEl) {
+                            gapEl.textContent = '--';
+                            gapEl.className = 'text-xs font-mono text-gray-500';
+                        }
+                        return;
+                    }
                     let label, badgeCls;
                     if (Math.abs(gap) < flatThreshold) {
                         label = '≈ FLAT';
@@ -3975,32 +4002,26 @@
                         label = '↓ DOWN';
                         badgeCls = 'px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/20 text-red-400';
                     }
-                    if (!filterOn) {
-                        // Dim if filter is disabled — informational only
-                        badgeCls = badgeCls.replace('/20', '/10').replace('-400', '-500');
-                    }
-                    trendBadge.textContent = label;
-                    trendBadge.className = badgeCls;
-                    if (trendGapEl) {
+                    if (dim) badgeCls = badgeCls.replace('/20', '/10').replace('-400', '-500');
+                    badge.textContent = label;
+                    badge.className = badgeCls;
+                    if (gapEl) {
                         const sign = gap >= 0 ? '+' : '';
-                        trendGapEl.textContent = `${sign}${gap.toFixed(2)}%`;
-                        const gapColor = filterOn
-                            ? (gap > 0 ? 'text-emerald-400' : gap < 0 ? 'text-red-400' : 'text-yellow-400')
-                            : 'text-gray-500';
-                        trendGapEl.className = `text-xs font-mono ${gapColor}`;
+                        gapEl.textContent = `${sign}${gap.toFixed(2)}%`;
+                        const gapColor = dim
+                            ? 'text-gray-500'
+                            : (gap > 0 ? 'text-emerald-400' : gap < 0 ? 'text-red-400' : 'text-yellow-400');
+                        gapEl.className = `text-xs font-mono ${gapColor}`;
                     }
-                    if (trendFilterTag) {
-                        trendFilterTag.classList.toggle('hidden', !filterOn);
-                    }
-                } else if (trendBadge) {
-                    trendBadge.textContent = 'OFF';
-                    trendBadge.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-500';
-                    if (trendGapEl) {
-                        trendGapEl.textContent = '--';
-                        trendGapEl.className = 'text-xs font-mono text-gray-500';
-                    }
-                    if (trendFilterTag) trendFilterTag.classList.add('hidden');
+                };
+                // E13 (active filter) — dimmed when filter is OFF
+                renderTrendBadge('btc-trend-badge', 'btc-trend-gap', data.btc_trend_gap_pct, !filterOn);
+                // E20 (reference) — always dimmed since not the active filter
+                let gapE20 = null;
+                if (data.btc_ema20 != null && data.btc_ema50 != null && data.btc_ema50 !== 0) {
+                    gapE20 = ((data.btc_ema20 - data.btc_ema50) / data.btc_ema50) * 100;
                 }
+                renderTrendBadge('btc-trend-badge-e20', 'btc-trend-gap-e20', gapE20, true);
 
                 // Filter Blocks panel (May 5) — pre-entry filter rejection counters
                 renderFilterBlocks(data.filter_block_counts);
@@ -5049,6 +5070,7 @@
             lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
             lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing)`);
+            lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
             lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.8}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
             lines.push(`  FL1[WIDE_SL]: ${th.fl1_for_wide_sl_enabled !== undefined ? th.fl1_for_wide_sl_enabled : true}  |  Emergency Backstop: ${th.fl1_wide_sl_backstop !== undefined ? th.fl1_wide_sl_backstop : -1.2}%  ||  FL2: ${th.fl2_enabled !== undefined ? th.fl2_enabled : true}  |  Recovery: ${th.fl2_recovery_target !== undefined ? th.fl2_recovery_target : -0.4}%  |  Deep Stop: ${th.fl2_deep_stop !== undefined ? th.fl2_deep_stop : -1.0}%`);
@@ -9696,6 +9718,11 @@
                 // EMA13 Cross Exit (May 6) — default OFF
                 const _e13ce = document.getElementById('config-ema13-cross-exit-enabled');
                 if (_e13ce) _e13ce.checked = config.thresholds.ema13_cross_exit_enabled === true;
+                // EMA Stack Cross Exit (May 6) — default OFF, level default 2
+                const _esce = document.getElementById('config-ema-stack-cross-exit-enabled');
+                if (_esce) _esce.checked = config.thresholds.ema_stack_cross_exit_enabled === true;
+                const _escl = document.getElementById('config-ema-stack-cross-exit-level');
+                if (_escl) _escl.value = config.thresholds.ema_stack_cross_exit_level !== undefined ? config.thresholds.ema_stack_cross_exit_level : 2;
                 document.getElementById('config-tick-momentum-exit-enabled').checked = config.thresholds.tick_momentum_exit_enabled !== undefined ? config.thresholds.tick_momentum_exit_enabled : false;
                 document.getElementById('config-tick-momentum-exit-min-profit').value = config.thresholds.tick_momentum_exit_min_profit !== undefined ? config.thresholds.tick_momentum_exit_min_profit : 0.05;
                 document.getElementById('config-tick-momentum-exit-min-deltas').value = config.thresholds.tick_momentum_exit_min_deltas !== undefined ? config.thresholds.tick_momentum_exit_min_deltas : '';
@@ -10078,6 +10105,8 @@
                     rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value),
                     rsi_momentum_exit_max_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-max-profit').value),
                     ema13_cross_exit_enabled: (document.getElementById('config-ema13-cross-exit-enabled') ? document.getElementById('config-ema13-cross-exit-enabled').checked : false),
+                    ema_stack_cross_exit_enabled: (document.getElementById('config-ema-stack-cross-exit-enabled') ? document.getElementById('config-ema-stack-cross-exit-enabled').checked : false),
+                    ema_stack_cross_exit_level: parseInt(document.getElementById('config-ema-stack-cross-exit-level') ? document.getElementById('config-ema-stack-cross-exit-level').value : 2) || 2,
                     tick_momentum_exit_enabled: document.getElementById('config-tick-momentum-exit-enabled').checked,
                     tick_momentum_exit_min_profit: safeFloat(document.getElementById('config-tick-momentum-exit-min-profit').value),
                     tick_momentum_exit_min_deltas: document.getElementById('config-tick-momentum-exit-min-deltas').value.trim(),

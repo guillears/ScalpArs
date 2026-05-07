@@ -172,6 +172,14 @@ class SignalThresholds(BaseModel):
     # Reuses the realtime cross detection from the Phase 1 shadow tracker.
     # Default OFF — flip to True to activate.
     ema13_cross_exit_enabled: bool = False
+    # EMA Stack Cross Exit (May 6) — closes trade when EMA5 crosses EMA8 against
+    # trade direction (LONG: ema5 < ema8, SHORT: ema5 > ema8) past the configured
+    # TP level.  Mirrors RSI Handoff architecture: at current_tp_level >= level,
+    # SUPPRESSES trailing pullback and becomes the exclusive natural exit until
+    # the EMA stack inverts.  Faster than RSI 2-drop (~5min lag vs ~15min).
+    # Default OFF; level default 2 (peak >= tp_min*2 to activate).
+    ema_stack_cross_exit_enabled: bool = False
+    ema_stack_cross_exit_level: int = 2
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
     tick_momentum_exit_min_profit_flagged: float = -0.10  # Min P&L % for flagged trades (Signal Lost Flag system)

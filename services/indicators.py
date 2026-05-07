@@ -706,19 +706,25 @@ def check_exit_conditions(
     # `rsi_handoff_level`. The actual RSI 2-drop exit fires in the live monitor
     # loop where pair_data is available; this block just suppresses the trailing
     # check so it doesn't pre-empt the handoff. Default OFF — feature inert.
-    _rsi_handoff_active = False
+    # May 6: same suppression for EMA Stack Cross Exit when active past its level.
+    _handoff_suppress_trailing = False
     try:
         from config import trading_config as _tc
         if getattr(_tc.thresholds, 'rsi_handoff_active', False):
             _handoff_level = getattr(_tc.thresholds, 'rsi_handoff_level', 3)
             if (current_tp_level or 1) >= _handoff_level:
-                _rsi_handoff_active = True
+                _handoff_suppress_trailing = True
                 logger.info(f"[RSI_HANDOFF] {direction} L{current_tp_level}: trailing suppressed (handoff_level={_handoff_level}, RSI exit will handle)")
+        if not _handoff_suppress_trailing and getattr(_tc.thresholds, 'ema_stack_cross_exit_enabled', False):
+            _es_level = getattr(_tc.thresholds, 'ema_stack_cross_exit_level', 2)
+            if (current_tp_level or 1) >= _es_level:
+                _handoff_suppress_trailing = True
+                logger.info(f"[EMA_STACK_HANDOFF] {direction} L{current_tp_level}: trailing suppressed (level={_es_level}, EMA Stack Cross will handle)")
     except Exception:
         # Fail safe: if config read fails, behave as before (handoff inactive)
         pass
 
-    if trailing_stop_active and not _rsi_handoff_active:
+    if trailing_stop_active and not _handoff_suppress_trailing:
         if direction == "LONG" and high_price and high_price > 0:
             # For LONG: check if price dropped X% from highest
             price_drop_pct = ((high_price - current_price) / high_price) * 100

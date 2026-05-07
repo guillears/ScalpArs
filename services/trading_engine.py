@@ -2133,11 +2133,12 @@ class TradingEngine:
         # peak EMA5 metrics + price-vs-EMA cross shadow (May 6 Phase 1) immediately
         # before update_orders_cache runs.
         _pair_data_row = await db.execute(
-            select(PairData.ema5, PairData.ema5_prev3, PairData.ema13, PairData.ema20).where(PairData.pair == pair)
+            select(PairData.ema5, PairData.ema5_prev3, PairData.ema8, PairData.ema13, PairData.ema20).where(PairData.pair == pair)
         )
         _pair_data = _pair_data_row.first()
         _cached_ema5 = _pair_data.ema5 if _pair_data else None
         _cached_ema5_prev3 = _pair_data.ema5_prev3 if _pair_data else None
+        _cached_ema8 = _pair_data.ema8 if _pair_data else None
         _cached_ema13 = _pair_data.ema13 if _pair_data else None
         _cached_ema20 = _pair_data.ema20 if _pair_data else None
 
@@ -2172,6 +2173,7 @@ class TradingEngine:
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'cached_ema5': _cached_ema5,
                 'cached_ema5_prev3': _cached_ema5_prev3,
+                'cached_ema8': _cached_ema8,
                 'cached_ema13': _cached_ema13,
                 'cached_ema20': _cached_ema20,
                 # Phase 1 shadow tracking — counterfactual exit at price-vs-EMA cross.
@@ -2921,7 +2923,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -3450,6 +3452,36 @@ class TradingEngine:
                                 "pair": closed_order.pair,
                                 "action": "CLOSED",
                                 "reason": f"RSI_HANDOFF_EXIT L{tp_level}",
+                                "pnl": closed_order.pnl,
+                                "tp_level": tp_level
+                            })
+                        continue
+
+            # EMA Stack Cross Exit (May 6) — closes when EMA5 crosses EMA8 against
+            # trade direction past `ema_stack_cross_exit_level`. Mirrors RSI Handoff
+            # but uses the entry-signal-inverted condition. Faster than RSI 2-drop
+            # (~5min vs ~15min). Suppresses trailing past level (Option A).
+            es_active = getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_enabled', False)
+            es_level = getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_level', 2)
+            if es_active and (order.current_tp_level or 1) >= es_level and pair_data:
+                _es5 = pair_data.ema5
+                _es8 = pair_data.ema8
+                if _es5 is not None and _es8 is not None and _es5 > 0 and _es8 > 0:
+                    es_inverted = False
+                    if order.direction == "LONG" and _es5 < _es8:
+                        es_inverted = True
+                    elif order.direction == "SHORT" and _es5 > _es8:
+                        es_inverted = True
+                    if es_inverted:
+                        tp_level = order.current_tp_level or 1
+                        logger.info(f"[EMA_STACK_CROSS_EXIT] {order.pair} {order.direction} L{tp_level}: stack inverted (ema5={_es5:.6f} {'<' if order.direction == 'LONG' else '>'} ema8={_es8:.6f}), pnl={pnl_pct:.4f}% (level={es_level})")
+                        closed_order = await self.close_position(db, order, current_price, f"EMA_STACK_CROSS_EXIT L{tp_level}")
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id,
+                                "pair": closed_order.pair,
+                                "action": "CLOSED",
+                                "reason": f"EMA_STACK_CROSS_EXIT L{tp_level}",
                                 "pnl": closed_order.pnl,
                                 "tp_level": tp_level
                             })
@@ -4813,6 +4845,51 @@ class TradingEngine:
                             logger.error(f"[REALTIME_EMA13_CROSS_EXIT] Error closing {pair}: {e}")
                         continue  # Trade is closed; skip remaining checks for this order
 
+            # ════════════════════════════════════════════════════════════════
+            # EMA Stack Cross Exit (May 6) — closes trade when EMA5 crosses EMA8
+            # against trade direction past `ema_stack_cross_exit_level`.
+            # LONG: ema5 < ema8 (bearish stack forming, entry signal inverted)
+            # SHORT: ema5 > ema8 (bullish stack forming, entry signal inverted)
+            # ARCHITECTURE: mirrors RSI Handoff (Option A — suppression active).
+            # When current_tp_level >= level, this exit is the exclusive natural
+            # exit and trailing pullback is suppressed (separate guard below in
+            # the trailing block).  Cascade-close on activation: any open trade
+            # currently with inverted EMA stack closes on next tick.
+            # ════════════════════════════════════════════════════════════════
+            _ema_stack_enabled = getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_enabled', False)
+            _ema_stack_level = getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_level', 2)
+            if _ema_stack_enabled and order_info.get('current_tp_level', 1) >= _ema_stack_level:
+                _es_ema5 = order_info.get('cached_ema5')
+                _es_ema8 = order_info.get('cached_ema8')
+                if _es_ema5 is not None and _es_ema8 is not None and _es_ema5 > 0 and _es_ema8 > 0:
+                    if direction == "LONG":
+                        _stack_inverted = _es_ema5 < _es_ema8
+                    else:  # SHORT
+                        _stack_inverted = _es_ema5 > _es_ema8
+                    if _stack_inverted and not order_info.get('_closing_in_progress'):
+                        _tp_lvl_es = order_info.get('current_tp_level', 1) or 1
+                        _close_reason_es = f"EMA_STACK_CROSS_EXIT L{_tp_lvl_es}"
+                        logger.warning(
+                            f"[REALTIME_EMA_STACK_CROSS_EXIT] {pair} {direction} L{_tp_lvl_es}: "
+                            f"ema5={_es_ema5:.6f} {('<' if direction == 'LONG' else '>')} ema8={_es_ema8:.6f}, "
+                            f"pnl={pnl_pct:.4f}% (peak={cached_peak_pnl:.4f}%) - CLOSING NOW!"
+                        )
+                        order_info['_closing_in_progress'] = True
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    closed = await self.close_position(db, order, current_price, _close_reason_es)
+                                    if closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_EMA_STACK_CROSS_EXIT] Error closing {pair}: {e}")
+                        continue  # Trade is closed; skip remaining checks for this order
+
             # Track peak P&L in real-time for break-even decisions
             current_peak = max(cached_peak_pnl, pnl_pct) if pnl_pct > 0 else cached_peak_pnl
             if pnl_pct > cached_peak_pnl and pnl_pct > 0:
@@ -5326,14 +5403,18 @@ class TradingEngine:
                         continue
             
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled).
-            # Phase 1d-ExitTest (May 2): also suppress when RSI handoff is active for this trade
-            # (current_tp_level >= rsi_handoff_level). The realtime RSI exit fires through the
-            # monitor-loop handler — this guard just prevents trailing from racing it.
+            # Phase 1d-ExitTest (May 2): suppress trailing when RSI Handoff is active and trade is past level.
+            # May 6: also suppress when EMA Stack Cross Exit is active and trade is past level.
+            # The respective handoff exit fires through its own handler — this guard prevents trailing from racing it.
             _handoff_suppress = False
             try:
                 if getattr(config.trading_config.thresholds, 'rsi_handoff_active', False):
                     _hl = getattr(config.trading_config.thresholds, 'rsi_handoff_level', 3)
                     if order_info.get('current_tp_level', 1) >= _hl:
+                        _handoff_suppress = True
+                if not _handoff_suppress and getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_enabled', False):
+                    _esl = getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_level', 2)
+                    if order_info.get('current_tp_level', 1) >= _esl:
                         _handoff_suppress = True
             except Exception:
                 pass
@@ -5472,6 +5553,7 @@ class TradingEngine:
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
                 'cached_ema5': pair_ema5s.get(order.pair),
                 'cached_ema5_prev3': pair_emas.get(order.pair, {}).get('ema5_prev3'),
+                'cached_ema8': pair_emas.get(order.pair, {}).get('ema8'),
                 'cached_ema13': pair_emas.get(order.pair, {}).get('ema13'),
                 'cached_ema20': pair_emas.get(order.pair, {}).get('ema20'),
                 # Phase 1 shadow tracking (May 6) — counterfactual exit at price-vs-EMA cross.

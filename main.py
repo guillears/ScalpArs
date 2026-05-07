@@ -1164,6 +1164,13 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
 
     await trading_engine.initialize(db)
 
+    # May 7: invalidate any session-cached state so we read the latest committed
+    # rows from disk. Without this, the export was occasionally missing trades
+    # closed in the brief window between trading_engine.initialize() and this
+    # query — the session's transaction snapshot pre-dated those commits.
+    await db.commit()
+    db.expunge_all()
+
     result = await db.execute(
         select(Order)
         .where(and_(
@@ -1202,7 +1209,14 @@ async def export_orders_csv(db: AsyncSession = Depends(get_db)):
     return StreamingResponse(
         iter([buffer.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # May 7: prevent browser/proxy from serving cached CSV when
+            # operator clicks Export multiple times in a session.
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
 

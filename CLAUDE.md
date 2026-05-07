@@ -5951,3 +5951,62 @@ Adds another defensive entry filter to today's stack (RSI Momentum re-enabled, B
 | Exit | Looser tail (widening, no stack-cross suppression) |
 
 If next batch shows compounded effect is positive → both directions of change validated. If negative → the entry-loosening (ADX caps, RSI 65/50) is the prime suspect for rollback per the May 5 rollback-order preference.
+
+## May 7, 2026 (evening) — Reset #3 of week, locked config snapshot
+
+User-directed reset after a day of 10 commits + 8 deploys. This is the third reset of the week (May 5 morning, May 6 evening, May 7 evening). My recommendation was to keep the bot running with annotated caveats; user chose to reset for clean baseline.
+
+### Pre-reset session summary
+
+- Runtime: 0.2 days, 11 closed trades (2 LONG / 9 SHORT)
+- Net P&L: +$74 (-$79 LONG, +$153 SHORT) — profitable session
+- 2 LONGs (PLAYUSDT, ICPUSDT) = exact pattern Pair Trend Filter now blocks
+- All TRAILING_STOP L2/L3 closes used L1 threshold (widening was dead code until [125dacc](https://github.com/guillears/ScalpArs/commit/125dacc))
+
+### Reset rationale (user)
+
+- Trailing widening was dead code today → all TRAILING_STOP exit prices biased
+- Pair Trend Filter newly shipped → next batch is first batch under new filter
+- Multiple ADX/RSI loosening changes throughout the day → config pollution
+
+### Locked config at reset (delta from CLAUDE.md May 5 reset entry)
+
+| Field | Value | Source |
+|---|---|---|
+| `pullback_widening_per_level` | 0.10 | May 7 morning, **fixed in realtime path May 7 17:30** |
+| `pair_trend_filter_enabled` | **true** | NEW today, default ON |
+| `momentum_short_rsi_max` | 50 | May 7 (was 40) |
+| `momentum_adx_max_long` | 30 | May 7 evening (was 25) |
+| `momentum_adx_max` (short) | 40 | May 7 evening (was 33) |
+| `rsi_momentum_filter_enabled` | true | May 7 morning (re-enabled) |
+| `ema_stack_cross_exit_enabled` | false | May 7 morning (disabled) |
+| Other filters | unchanged | per May 5 reset entry |
+
+### IRON RULE re-affirmed (third invocation)
+
+**No more strategic config changes before 100 closed trades.** Period. Allowed mid-batch:
+- Bug fixes (data integrity, race conditions, infrastructure)
+- Operational pair blacklist additions for emergent reasons
+- UI/reporting clarity changes (no behavior impact)
+
+NOT allowed:
+- "One more filter tweak"
+- "Just adjusting threshold X"
+- New filters
+- New multipliers
+- Any change that would alter which trades open or how they exit
+
+If a strategic idea emerges, it goes to a watchlist comment in CLAUDE.md, NOT into the bot.
+
+### What to expect at next checkpoint
+
+Three core things being validated for the first time on a single config:
+1. **Pair Trend Filter** — does blocking countertrend pair entries materially help WR / Avg P&L?
+2. **Tier-aware trailing widening (now actually working in realtime)** — do L2/L3 winners capture more tail?
+3. **ADX/RSI loosenings** — does the broader entry surface produce more good trades, or just more bad ones?
+
+Three independent variables on one batch = attribution will be imperfect. If results are mixed at 100 trades, the locked May 5 rollback order applies (Pair RSI cap → ADX caps → BTC ADX → cross-filters). The Pair Trend Filter would be reverted only if it's the proximate cause of poor results (e.g., trade rate cut >50% with no edge improvement).
+
+### Pooling rule
+
+Pre-reset trades (today's 11) and post-reset trades stay separate. Don't pool raw data. Compare via Avg P&L %. Pre-reset is the "old config polluted batch" reference; post-reset is the validation sample.

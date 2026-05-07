@@ -5496,23 +5496,35 @@ class TradingEngine:
             if trailing_stop_would_be_active and order_info.get('tp_trailing_enabled', False) and not _handoff_suppress:
                 should_close_trailing = False
                 tp_level = order_info.get('current_tp_level', 1)
-                
+
+                # May 7 — bug fix: apply tier-aware pullback widening here too.
+                # Without this, the realtime callback uses base pullback_trigger
+                # (e.g. 0.20%) regardless of TP level, while the monitor-loop
+                # path (indicators.py) widens correctly. Realtime fires first,
+                # so it wins on every L2+ close → widening was effectively dead
+                # for trailing exits. See CLAUDE.md May 7 entry.
+                try:
+                    _widening = float(getattr(config.trading_config.thresholds, 'pullback_widening_per_level', 0.0) or 0.0)
+                except Exception:
+                    _widening = 0.0
+                _effective_pullback = pullback_trigger + _widening * max(0, tp_level - 1)
+
                 if direction == "LONG" and high_price and high_price > 0:
                     price_drop_pct = ((high_price - current_price) / high_price) * 100
-                    if price_drop_pct >= pullback_trigger:
+                    if price_drop_pct >= _effective_pullback:
                         # May 6 — bug fix: removed `if pnl_pct >= 0` safeguard.  Was
                         # blocking legitimate trailing closes when a fast reversal landed
                         # the realtime tick after pnl crossed zero.  Hard SL still covers
                         # corrupted-high_price cases.
                         should_close_trailing = True
-                        logger.warning(f"[REALTIME_TRAILING] {pair} LONG L{tp_level}: high={high_price:.6f}, current={current_price:.6f}, drop={price_drop_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}% - CLOSING NOW!")
+                        logger.warning(f"[REALTIME_TRAILING] {pair} LONG L{tp_level}: high={high_price:.6f}, current={current_price:.6f}, drop={price_drop_pct:.4f}% >= {_effective_pullback}% (base={pullback_trigger} +widen{_widening}×{tp_level-1}), pnl={pnl_pct:.4f}% - CLOSING NOW!")
 
                 elif direction == "SHORT" and low_price and low_price > 0:
                     price_rise_pct = ((current_price - low_price) / low_price) * 100
-                    if price_rise_pct >= pullback_trigger:
+                    if price_rise_pct >= _effective_pullback:
                         # May 6 — bug fix: removed `if pnl_pct >= 0` safeguard.
                         should_close_trailing = True
-                        logger.warning(f"[REALTIME_TRAILING] {pair} SHORT L{tp_level}: low={low_price:.6f}, current={current_price:.6f}, rise={price_rise_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}% - CLOSING NOW!")
+                        logger.warning(f"[REALTIME_TRAILING] {pair} SHORT L{tp_level}: low={low_price:.6f}, current={current_price:.6f}, rise={price_rise_pct:.4f}% >= {_effective_pullback}% (base={pullback_trigger} +widen{_widening}×{tp_level-1}), pnl={pnl_pct:.4f}% - CLOSING NOW!")
                 
                 if should_close_trailing:
                     # Prevent duplicate close attempts from consecutive monitor cycles

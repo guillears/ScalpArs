@@ -214,6 +214,12 @@ class TradingEngine:
                     logger.info(f"[FILTER_BLOCKS] Restored {len(self._filter_block_counts)} counters from DB")
                 except Exception as _e:
                     logger.warning(f"[FILTER_BLOCKS] Failed to restore counters: {_e}")
+            # Restore last BNB check timestamp so the interval is respected
+            # across restarts (May 7 fix).
+            _last_bnb_check_db = getattr(state, 'last_bnb_check_at', None)
+            if _last_bnb_check_db:
+                self._last_bnb_check = _last_bnb_check_db
+                logger.info(f"[BNB_CHECK] Restored last_bnb_check from DB: {_last_bnb_check_db.isoformat()}")
             logger.info(
                 f"[MODE] Loaded from BotState DB: is_paper_mode={self.is_paper_mode}, "
                 f"is_running={self.is_running} — runtime mode recovered from previous session."
@@ -365,6 +371,7 @@ class TradingEngine:
             state.started_at = self.started_at
             state.updated_at = datetime.utcnow()
             state.filter_block_counts_json = _fb_json
+            state.last_bnb_check_at = self._last_bnb_check
         else:
             state = BotState(
                 is_running=self.is_running,
@@ -374,6 +381,7 @@ class TradingEngine:
                 total_runtime_seconds=self.total_runtime_seconds,
                 started_at=self.started_at,
                 filter_block_counts_json=_fb_json,
+                last_bnb_check_at=self._last_bnb_check,
             )
             db.add(state)
 
@@ -707,6 +715,12 @@ class TradingEngine:
             if shortfall <= 0:
                 logger.warning(f"[BNB_SWAP] Cannot swap: insufficient USDT (available={available_usdt:.2f})")
                 return
+            # May 7: mirror live mode's $5 min-shortfall guard. Avoids tiny
+            # rebalance swaps (e.g., $3.94) on rapid redeploys when BNB is
+            # already close to target.
+            if shortfall <= 5:
+                logger.info(f"[BNB_SWAP] Skipped: shortfall ${shortfall:.2f} below $5 min threshold")
+                return
             
             bnb_price = await binance_service.get_bnb_price()
             if bnb_price <= 0:
@@ -778,13 +792,37 @@ class TradingEngine:
                 f"for ${result['cost_usdt']:.2f} @ ${result['price']:.2f}"
             )
 
-    async def bnb_scheduled_check(self, db: AsyncSession):
-        """Scheduled BNB balance check: compute burn rate, project needs, swap if necessary."""
+    async def bnb_scheduled_check(self, db: AsyncSession, force: bool = False):
+        """Scheduled BNB balance check: compute burn rate, project needs, swap if necessary.
+
+        May 7: respects bnb_check_interval_hours across restarts. Without this
+        gate, every redeploy triggered a fresh check ~60s after startup, causing
+        repeated tiny rebalance swaps when the operator deployed multiple times
+        in a short window. Pass force=True to override (e.g., manual UI trigger).
+        """
         tc = config.trading_config
         if not tc.bnb_swap_enabled:
             return
-        
+
+        # Interval gate (skip if last check was within bnb_check_interval_hours)
+        if not force and self._last_bnb_check is not None:
+            interval_hours = max(1, int(tc.bnb_check_interval_hours or 6))
+            elapsed = (datetime.utcnow() - self._last_bnb_check).total_seconds()
+            if elapsed < interval_hours * 3600:
+                logger.info(
+                    f"[BNB_CHECK] Skipped: last check {elapsed/3600:.2f}h ago "
+                    f"(interval={interval_hours}h). Next check in "
+                    f"{(interval_hours * 3600 - elapsed)/3600:.2f}h."
+                )
+                return
+
         self._last_bnb_check = datetime.utcnow()
+        # Persist last-check timestamp immediately so restarts within the
+        # interval window correctly skip until the interval elapses.
+        try:
+            await self.save_state(db)
+        except Exception as _e:
+            logger.debug(f"[BNB_CHECK] Failed to persist last_bnb_check: {_e}")
         
         now = datetime.utcnow()
         cutoff_24h = now - timedelta(hours=24)

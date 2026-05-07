@@ -373,6 +373,13 @@ class BotState(Base):
     # Restored into _filter_block_counts on initialize(); flushed by save_state().
     filter_block_counts_json = Column(Text, nullable=True)
 
+    # Last BNB scheduled-check timestamp — persisted across restarts so the
+    # check interval is respected across redeployments. Without this, every
+    # restart triggered a fresh check ~60s after startup, causing repeated
+    # tiny rebalance swaps when the operator deployed multiple times in a
+    # short window. See CLAUDE.md May 7 entry on BNB swap-on-deploy fix.
+    last_bnb_check_at = Column(DateTime, nullable=True)
+
     # Binance IP ban expiry (epoch seconds) -- persisted so it survives restarts
     ban_until = Column(Float, nullable=True, default=0.0)
     

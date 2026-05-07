@@ -186,6 +186,15 @@ class SignalThresholds(BaseModel):
     # add +0.10% room per TP level (L1=0.20, L2=0.30, L3=0.40 with base 0.20).
     # Rationale: bigger winners get more room to ride; small winners stay tight.
     pullback_widening_per_level: float = 0.0
+    # May 7: Pair Trend Filter (pair-level analog of BTC Trend Filter).
+    # Compares pair EMA13 vs EMA50 (5m candles, ~65min vs ~250min). Blocks
+    # countertrend entries:
+    #   pair_ema13 < pair_ema50 → pair in 4hr downtrend → block LONGs
+    #   pair_ema13 > pair_ema50 → pair in 4hr uptrend → block SHORTs
+    # Defensive ship — same primitive operating one level down from BTC,
+    # 6-trade cross-sample evidence (May 5 SHORTs against pair uptrends +
+    # May 7 LONGs against pair downtrends, all 6 lost). Default ON.
+    pair_trend_filter_enabled: bool = True
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
     tick_momentum_exit_min_profit_flagged: float = -0.10  # Min P&L % for flagged trades (Signal Lost Flag system)

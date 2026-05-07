@@ -5899,3 +5899,55 @@ The combined entry surface is materially wider than May 4 baseline. If the next 
 - Multiple cells show ⚠ DRAG / ✗ HARMFUL verdicts
 
 Run a single rollback per checkpoint per the locked May 5 rollback-order preference (RSI 65 cap → ADX 25/33 caps → BTC ADX caps → cross-filters).
+
+## May 7, 2026 — Pair Trend Filter shipped (pair-level analog of BTC Trend Filter)
+
+Compares pair EMA13 vs EMA50 (5m candles, ~65min vs ~250min). Blocks countertrend pair entries:
+- LONG with `pair_ema13 < pair_ema50` → pair in 4hr downtrend, block
+- SHORT with `pair_ema13 > pair_ema50` → pair in 4hr uptrend, block
+
+### Evidence base (cross-sample, defensive ship)
+
+6-trade combined evidence — below the strict 15-bar promotion criteria but structurally analogous to the BTC Trend Filter that already ships:
+
+| Sample | Trades | Pair gap at entry | Outcome |
+|---|---|---|---|
+| May 5 SHORTs vs pair uptrend | 4 | Positive (pair EMA13 > EMA50) | All lost |
+| May 7 LONGs vs pair downtrend | 2 | Negative (pair EMA13 < EMA50) | Both lost (PLAYUSDT 400ms, ICPUSDT 32s) |
+| **Combined** | **6** | Countertrend | **0/6 winners** |
+
+### Mechanism — why countertrend pair entries die fast
+
+For a 5m LONG signal to fire, EMA5 must cross above EMA8. When the pair is in a 4hr downtrend (EMA13 < EMA50), the EMA5/EMA8 cross is typically a counter-trend bounce off oversold conditions. Price hovers near EMA13 from below, and a single bearish tick crosses back below EMA13 → `EMA13_CROSS_EXIT L1` fires immediately. Result: peak P&L = exactly 0%, exit at the entry-fee drag plus a small price move. Same mechanism inverted for SHORTs against uptrend.
+
+### Implementation
+
+Filter check sits in `services/trading_engine.py` right after PAIR_SLOPE_MAX_GATE in the per-pair scan loop. Same pattern as BTC Trend Filter:
+- `pair_trend_filter_enabled: bool = True` (default ON)
+- `[PAIR_TREND_FILTER] {pair}: LONG/SHORT blocked — pair EMA13 X.XXXXXX < EMA50 Y.YYYYYY (gap Z.ZZZZ% — pair in 4hr downtrend/uptrend)` log
+- Filter block counter `PAIR_TREND_FILTER` (new entry in counters table)
+- UI toggle directly under BTC Trend Filter checkbox
+
+### Default ON rationale
+
+Same logic as BTC Trend Filter shipped May 5. Two reasons:
+1. Mechanism is structurally obvious — the EMA13_CROSS_EXIT close-reason data shows these countertrend entries die in seconds with peak P&L = 0%. Not a fishing-for-correlation filter.
+2. Same primitive operating one level down from BTC. If it's correct at the BTC level (current default ON), it's correct at the pair level.
+
+### Pre-committed revert criteria at next checkpoint
+
+Locked NOW:
+- If `[PAIR_TREND_FILTER]` block count cuts trade rate >50% AND combined Avg P&L improves <+0.05pp → too aggressive, revert to OFF
+- If 30+ trades pass the filter and per-direction Avg P&L improves ≥+0.05pp → keep ON, lock as default
+- If filter activates but trades passing it still show countertrend behavior (peak P&L = 0%, instant EMA13 cross exit) → filter isn't catching the right thing, redesign with hysteresis or buffer
+
+### Compounding watchlist update
+
+Adds another defensive entry filter to today's stack (RSI Momentum re-enabled, BTC Trend Filter active). Combined entry surface is now narrower than the May 4 baseline at the entry side, but exit-side has loosened (TP=0.50, PB=0.20, widening 0.10/level, EMA Stack Cross OFF). Net direction of the day's changes:
+
+| Layer | Net direction |
+|---|---|
+| Entry filters | Broader by ADX caps + Pair RSI 65/50; **tightened** by Pair Trend Filter shipped today |
+| Exit | Looser tail (widening, no stack-cross suppression) |
+
+If next batch shows compounded effect is positive → both directions of change validated. If negative → the entry-loosening (ADX caps, RSI 65/50) is the prime suspect for rollback per the May 5 rollback-order preference.

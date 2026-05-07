@@ -4483,6 +4483,34 @@ class TradingEngine:
                             self._record_filter_block("PAIR_SLOPE_MAX_GATE", signal, had_room=_had_room)
                             signal = "NO_TRADE"
 
+            # May 7: Pair Trend Filter (pair-level analog of BTC Trend Filter).
+            # Compares pair EMA13 vs EMA50 to block countertrend entries:
+            #   LONG with pair_ema13 < pair_ema50 → pair in 4hr downtrend
+            #   SHORT with pair_ema13 > pair_ema50 → pair in 4hr uptrend
+            # 6-trade cross-sample evidence: May 5 SHORTs vs uptrend (4 lost) +
+            # May 7 LONGs vs downtrend (2 lost) = 0/6. Defensive ship default ON.
+            if signal in ["LONG", "SHORT"]:
+                _pair_trend_enabled = getattr(config.trading_config.thresholds, 'pair_trend_filter_enabled', True)
+                if _pair_trend_enabled:
+                    _pair_ema13 = indicators.get('ema13')
+                    _pair_ema50 = indicators.get('ema50')
+                    if _pair_ema13 is not None and _pair_ema50 is not None and _pair_ema50 != 0:
+                        _pair_gap_pct = (_pair_ema13 - _pair_ema50) / _pair_ema50 * 100
+                        if signal == "LONG" and _pair_ema13 < _pair_ema50:
+                            logger.info(
+                                f"[PAIR_TREND_FILTER] {pair}: LONG blocked — pair EMA13 {_pair_ema13:.6f} < EMA50 {_pair_ema50:.6f} "
+                                f"(gap {_pair_gap_pct:.4f}% — pair in 4hr downtrend, countertrend LONG blocked)"
+                            )
+                            self._record_filter_block("PAIR_TREND_FILTER", "LONG", had_room=_had_room)
+                            signal = "NO_TRADE"
+                        elif signal == "SHORT" and _pair_ema13 > _pair_ema50:
+                            logger.info(
+                                f"[PAIR_TREND_FILTER] {pair}: SHORT blocked — pair EMA13 {_pair_ema13:.6f} > EMA50 {_pair_ema50:.6f} "
+                                f"(gap {_pair_gap_pct:.4f}% — pair in 4hr uptrend, countertrend SHORT blocked)"
+                            )
+                            self._record_filter_block("PAIR_TREND_FILTER", "SHORT", had_room=_had_room)
+                            signal = "NO_TRADE"
+
             if signal in ["LONG", "SHORT"]:
                 _th = config.trading_config.thresholds
                 global_vol_blocks = False

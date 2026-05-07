@@ -2966,6 +2966,18 @@
                             </label>
                             <span class="text-xs text-gray-500">Blocks countertrend entries: macro uptrend → no SHORTs, macro downtrend → no LONGs (~4h context)</span>
                         </div>
+                        <!-- Pair Trend Filter (May 7) — pair-level analog of BTC Trend Filter.
+                             Compares pair EMA13 vs EMA50. Blocks countertrend entries:
+                             pair EMA13 > EMA50 blocks SHORTs (pair in 4hr uptrend),
+                             pair EMA13 < EMA50 blocks LONGs (pair in 4hr downtrend). -->
+                        <div class="flex items-center gap-3 mt-3">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-pair-trend-filter-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">Pair Trend Filter (EMA13 vs EMA50)</span>
+                            </label>
+                            <span class="text-xs text-gray-500">Pair-level analog of BTC Trend Filter — blocks countertrend pair entries (pair uptrend → no SHORTs, downtrend → no LONGs)</span>
+                        </div>
                     </div>
                     <div class="mb-2 px-4">
                         <span class="text-sm text-gray-300">Macro Trend Regime (EMA20)</span>
@@ -9645,6 +9657,7 @@
                 document.getElementById('config-btc-adx-max-short').value = config.thresholds.btc_adx_max_short !== undefined ? config.thresholds.btc_adx_max_short : 100;
                 document.getElementById('config-btc-adx-dir-long').value = config.thresholds.btc_adx_dir_long || 'both';
                 document.getElementById('config-btc-trend-filter-enabled').checked = !!config.thresholds.btc_trend_filter_enabled;
+                document.getElementById('config-pair-trend-filter-enabled').checked = config.thresholds.pair_trend_filter_enabled !== undefined ? !!config.thresholds.pair_trend_filter_enabled : true;
                 document.getElementById('config-btc-adx-dir-short').value = config.thresholds.btc_adx_dir_short || 'both';
                 document.getElementById('config-adx-dir-long').value = config.thresholds.adx_dir_long || 'both';
                 document.getElementById('config-adx-dir-short').value = config.thresholds.adx_dir_short || 'both';
@@ -10053,6 +10066,7 @@
                     btc_adx_max_short: safeFloat(document.getElementById('config-btc-adx-max-short').value),
                     btc_adx_dir_long: document.getElementById('config-btc-adx-dir-long').value,
                     btc_trend_filter_enabled: document.getElementById('config-btc-trend-filter-enabled').checked,
+                    pair_trend_filter_enabled: document.getElementById('config-pair-trend-filter-enabled').checked,
                     btc_adx_dir_short: document.getElementById('config-btc-adx-dir-short').value,
                     adx_dir_long: document.getElementById('config-adx-dir-long').value,
                     adx_dir_short: document.getElementById('config-adx-dir-short').value,

@@ -5853,3 +5853,49 @@ If whipsaw pattern emerges (peak P&L < 0.10% before close), the filter was prote
 Strictly speaking, the IRON RULE was about not making strategic config changes mid-batch. User has explicitly overridden multiple times during active development. This change is documented as a hypothesis test with locked revert criteria, similar to other recent overrides (BTC ADX min 18→15, EMA13 Cross Exit activation, EMA Stack Cross Exit activation).
 
 The discipline holds via the explicit revert criteria above — if the data disagrees, the change reverts mechanically.
+
+## May 7, 2026 — Loosened ADX max caps (LONG 25→30, SHORT 33→40)
+
+User-directed config alignment to UI-displayed values. Updated:
+
+- `momentum_adx_max_long`: 25 → **30** (UI shows L > 22, ≤ 30 for VERY_STRONG)
+- `momentum_adx_max` (short): 33 → **40** (UI shows S > 30, ≤ 40 for VERY_STRONG)
+
+### What this re-admits
+
+| Re-admitted zone | Prior data flag |
+|---|---|
+| LONG entries with pair ADX 25-30 | Apr 13 117-trade data: ADX 22-25 was best LONG bucket; 25+ underperformed |
+| SHORT entries with pair ADX 33-40 | Phase 1c amendments oscillated this cap 33 → 28 → 33; 28+ has been a 2-sample loser pattern (CLAUDE.md May 4 evening, falsified Amendment #3 revert) |
+
+### Strategic context
+
+This is a loosening of two filters that historical data has previously flagged as weak. User-directed change — UI was set to wider values; saved JSON did not match. Documented here for revert-criteria tracking at next checkpoint.
+
+### Pre-committed revert criteria
+
+At next ≥30-trade checkpoint:
+- If **LONG ADX 25-30** bucket shows ≤35% WR on N≥10 → revert `momentum_adx_max_long` to 25
+- If **SHORT ADX 33-40** bucket shows ≤40% WR on N≥10 → revert `momentum_adx_max` to 33
+- If trade rate spikes >50% AND combined Avg P&L worsens ≥0.10pp → revert both
+
+### Why this isn't a violation of IRON RULE
+
+This is not a fresh strategic decision — it's reconciling stored config with UI values that were already configured. The strategic implication (loosening) is real, but the locked revert criteria above ensure mechanical correction if data disagrees. Same discipline as the May 7 RSI Momentum Filter re-enable.
+
+### Compounding watchlist
+
+Today the bot has had multiple loosening directives stack on top of each other:
+- Pair RSI 65 (LONG) / 50 (SHORT) max — broader entry range
+- Pair ADX max 30 / 40 — broader entry range (this entry)
+- BTC ADX min 15 (LONG) / 18 (SHORT) — broader macro entry
+- BTC ADX max 35 (LONG) / 40 (SHORT) — broader macro
+- RSI Momentum Filter ON — partial offset
+- Trailing pullback widening 0.10/level — exit-side compensation
+
+The combined entry surface is materially wider than May 4 baseline. If the next batch shows any of:
+- Combined Avg P&L % < -0.10%
+- WR drops >10pp
+- Multiple cells show ⚠ DRAG / ✗ HARMFUL verdicts
+
+Run a single rollback per checkpoint per the locked May 5 rollback-order preference (RSI 65 cap → ADX 25/33 caps → BTC ADX caps → cross-filters).

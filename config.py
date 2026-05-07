@@ -180,6 +180,12 @@ class SignalThresholds(BaseModel):
     # Default OFF; level default 2 (peak >= tp_min*2 to activate).
     ema_stack_cross_exit_enabled: bool = False
     ema_stack_cross_exit_level: int = 2
+    # May 7: Tier-aware trailing pullback widening. Effective pullback at
+    # current_tp_level N = pullback_trigger + pullback_widening_per_level * (N - 1).
+    # Default 0.0 = flat trailing (current behavior, no change). Set to 0.10 to
+    # add +0.10% room per TP level (L1=0.20, L2=0.30, L3=0.40 with base 0.20).
+    # Rationale: bigger winners get more room to ride; small winners stay tight.
+    pullback_widening_per_level: float = 0.0
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
     tick_momentum_exit_min_profit_flagged: float = -0.10  # Min P&L % for flagged trades (Signal Lost Flag system)

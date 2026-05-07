@@ -2388,6 +2388,17 @@
                             <p class="text-xs text-gray-500 mt-1">When ON, disables trailing-stop pullback past the configured TP level and uses 2-drop RSI exit instead. Tests "RSI is the better winner-exit signal once trade has proven itself." With <code>tp_min=0.25%</code>, L3 ≈ today's L2 promotion (peak ≥ 0.50% with trend).</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Trailing Pullback Widening per TP Level <span class="text-xs text-violet-400">(May 7)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Widening %
+                                    <input type="number" step="0.01" min="0" max="0.50" id="config-pullback-widening" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
+                                </label>
+                                <span id="config-pullback-widening-preview" class="text-xs text-gray-500"></span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Widens the trailing pullback by this much per TP level. Effective pullback at L<sub>N</sub> = base pullback + widening × (N − 1). 0 = flat trailing (current). Bigger winners get more room; small winners stay tight.</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Signal Lost Exit</label>
                             <div class="flex items-center gap-4">
                                 <label class="flex items-center cursor-pointer">
@@ -9688,6 +9699,21 @@
                 document.getElementById('config-regime-change-exit-enabled').checked = config.thresholds.regime_change_exit_enabled !== undefined ? config.thresholds.regime_change_exit_enabled : true;
                 document.getElementById('config-rsi-handoff-active').checked = config.thresholds.rsi_handoff_active !== undefined ? config.thresholds.rsi_handoff_active : false;
                 document.getElementById('config-rsi-handoff-level').value = config.thresholds.rsi_handoff_level !== undefined ? config.thresholds.rsi_handoff_level : 3;
+                // May 7: pullback widening per TP level
+                const _widenInput = document.getElementById('config-pullback-widening');
+                _widenInput.value = config.thresholds.pullback_widening_per_level !== undefined ? config.thresholds.pullback_widening_per_level : 0.0;
+                const _updateWidenPreview = () => {
+                    const widen = parseFloat(_widenInput.value) || 0;
+                    const basePb = parseFloat(document.getElementById('config-very-strong-pb')?.value || config.confidence_levels?.VERY_STRONG?.pullback_trigger || 0.20);
+                    const preview = document.getElementById('config-pullback-widening-preview');
+                    if (preview) {
+                        const l1 = basePb.toFixed(2), l2 = (basePb + widen).toFixed(2), l3 = (basePb + 2*widen).toFixed(2), l4 = (basePb + 3*widen).toFixed(2);
+                        preview.textContent = `Preview (base=${basePb.toFixed(2)}): L1=${l1}% | L2=${l2}% | L3=${l3}% | L4=${l4}%`;
+                    }
+                };
+                _widenInput.removeEventListener('input', _updateWidenPreview);
+                _widenInput.addEventListener('input', _updateWidenPreview);
+                _updateWidenPreview();
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
@@ -10071,6 +10097,7 @@
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,
                     rsi_handoff_active: document.getElementById('config-rsi-handoff-active').checked,
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,
+                    pullback_widening_per_level: safeFloat(document.getElementById('config-pullback-widening').value),
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     signal_lost_max_profit: safeFloat(document.getElementById('config-signal-lost-max-profit').value),

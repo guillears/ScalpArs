@@ -122,6 +122,7 @@
     "ema13_cross_exit_enabled": true,
     "ema_stack_cross_exit_enabled": false,
     "ema_stack_cross_exit_level": 2,
+    "pullback_widening_per_level": 0.10,
     "tick_momentum_exit_enabled": false,
     "tick_momentum_exit_min_profit": 0.03,
     "tick_momentum_exit_min_profit_flagged": -0.25,

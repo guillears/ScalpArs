@@ -572,6 +572,15 @@ def check_exit_conditions(
     stop_loss = conf_config.stop_loss
     tp_min = conf_config.tp_min
     pullback_trigger = conf_config.pullback_trigger
+    # May 7: tier-aware widening — effective pullback grows with TP level so
+    # bigger winners get more room. Reads from global thresholds; default 0.0
+    # = current flat behavior. Effective = base + widening × (level - 1).
+    try:
+        _widening_per_level = float(getattr(config_module.trading_config.thresholds, 'pullback_widening_per_level', 0.0) or 0.0)
+    except Exception:
+        _widening_per_level = 0.0
+    _level_minus_one = max(0, (current_tp_level or 1) - 1)
+    pullback_trigger = pullback_trigger + _widening_per_level * _level_minus_one
     be_l1_trigger = conf_config.be_level1_trigger
     be_l1_offset = conf_config.be_level1_offset
     be_l2_trigger = conf_config.be_level2_trigger

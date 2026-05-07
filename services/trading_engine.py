@@ -464,9 +464,27 @@ class TradingEngine:
                 False if at max_open_positions (the filter block is "free"
                 — no trade was prevented).  Defaults to True for legacy
                 callers that haven't been updated.
+
+        May 7 — Regime-aligned gating: skip recording when the trade
+        direction is countertrend to the current BTC regime. In a clear
+        BEARISH regime, LONG signals are structurally not the desired
+        trade — counting their pair-level filter rejections (RSI range,
+        EMA20 filter, ADX max, etc.) just adds noise that masks the
+        actionable filter pressure on the regime-aligned direction.
+        Same logic for SHORT in BULLISH. NEUTRAL regime records both
+        (no clear directional preference).
         """
         if not filter_name:
             return
+        # Regime-aligned gating: skip countertrend blocks during clear regimes
+        try:
+            _regime = _current_btc_regime
+            if _regime == "BEARISH" and direction == "LONG":
+                return
+            if _regime == "BULLISH" and direction == "SHORT":
+                return
+        except NameError:
+            pass  # Regime global not yet set (cold start) — fail open, record both
         room_state = "ROOM" if had_room else "FULL"
         key = (filter_name, direction or "ANY", room_state)
         self._filter_block_counts[key] = self._filter_block_counts.get(key, 0) + 1

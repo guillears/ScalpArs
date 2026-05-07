@@ -3196,16 +3196,20 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 })
 
         # Performance by Pair EMA20-EMA50 Gap at entry (May 5, observation-only)
-        # 0.05% granularity in the critical zero-crossing zone.
+        # May 7: switched to fat-tailed buckets — granularity at extremes (where
+        # crypto gaps actually live in trending regimes), collapsed near-zero
+        # zone (rarely populated in current data) into ±0.10% bands.
         pair_ema_gap_ranges = [
-            ("< -0.20%", -999, -0.20),
+            ("< -1.00%", -999, -1.00),
+            ("-1.00 to -0.50%", -1.00, -0.50),
+            ("-0.50 to -0.20%", -0.50, -0.20),
             ("-0.20 to -0.10%", -0.20, -0.10),
-            ("-0.10 to -0.05%", -0.10, -0.05),
-            ("-0.05 to 0%", -0.05, 0.0),
-            ("0 to +0.05%", 0.0, 0.05),
-            ("+0.05 to +0.10%", 0.05, 0.10),
+            ("-0.10 to 0%", -0.10, 0.0),
+            ("0 to +0.10%", 0.0, 0.10),
             ("+0.10 to +0.20%", 0.10, 0.20),
-            ("> +0.20%", 0.20, 999),
+            ("+0.20 to +0.50%", 0.20, 0.50),
+            ("+0.50 to +1.00%", 0.50, 1.00),
+            ("> +1.00%", 1.00, 999),
         ]
         pair_ema20_ema50_gap_performance = []
         pair_ema_gap_orders = [o for o in orders if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]

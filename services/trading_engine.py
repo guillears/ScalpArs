@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -426,7 +426,9 @@ class TradingEngine:
             "paper_bnb_balance_usd": round(self.paper_bnb_balance_usd, 2),
             "bnb_burn_rate": round(self._bnb_burn_rate, 2),
             "bnb_emergency_threshold": round(self._bnb_emergency_threshold, 2),
-            "bnb_last_check": self._last_bnb_check.isoformat() if self._last_bnb_check else None,
+            # May 7 — emit TZ-aware ISO so JS unambiguously interprets as UTC
+            "bnb_last_check": (self._last_bnb_check.replace(tzinfo=timezone.utc).isoformat()
+                               if self._last_bnb_check else None),
             "runtime_seconds": runtime,
             "runtime_formatted": f"{hours:02d}:{minutes:02d}:{seconds:02d}",
             "global_volume_ratio": round(_global_volume_ratio, 4),

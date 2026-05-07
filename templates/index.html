@@ -8991,7 +8991,7 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(t.price)}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(t.investment)}</td>
                             <td class="px-4 py-3 text-right">${t.leverage}x</td>
-                            <td class="px-4 py-3 text-right">${formatUSD(t.notional_value)}</td>
+                            <td class="px-4 py-3 text-right ${(t.cell_multiplier && t.cell_multiplier > 1.0) ? 'text-violet-400 font-semibold' : ''}">${formatUSD(t.notional_value)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(t.fee)}</td>
                         </tr>
                     `;
@@ -9108,7 +9108,7 @@
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
-                            <td class="px-4 py-3 text-right">${formatUSD(o.notional_value)}</td>
+                            <td class="px-4 py-3 text-right ${(o.cell_multiplier && o.cell_multiplier > 1.0) ? 'text-violet-400 font-semibold' : ''}">${formatUSD(o.notional_value)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
@@ -9194,7 +9194,7 @@
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-center">${exotBadge}</td>
-                            <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
+                            <td class="px-4 py-3 text-right ${(o.cell_multiplier && o.cell_multiplier > 1.0) ? 'text-violet-400 font-semibold' : ''}">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.exit_price)}</td>

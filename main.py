@@ -6,7 +6,7 @@ import math
 import time
 import traceback
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks, Form
@@ -588,7 +588,11 @@ async def get_bnb_swaps(db: AsyncSession = Depends(get_db)):
             "burn_rate_per_hour": round(trading_engine._bnb_burn_rate, 2),
             "projected_need": round(trading_engine._bnb_projected_need, 2),
             "emergency_threshold": round(trading_engine._bnb_emergency_threshold, 2),
-            "last_check": trading_engine._last_bnb_check.isoformat() if trading_engine._last_bnb_check else None,
+            # May 7 — emit timezone-aware ISO so JS interprets as UTC unambiguously
+            # (datetime.utcnow() produces naive datetime; without TZ info, JS Date()
+            # parsing varies by browser and the displayed time can be off by hours).
+            "last_check": (trading_engine._last_bnb_check.replace(tzinfo=timezone.utc).isoformat()
+                           if trading_engine._last_bnb_check else None),
             "check_interval_hours": config.trading_config.bnb_check_interval_hours,
             "runway_hours": config.trading_config.bnb_runway_hours,
         }
@@ -1049,6 +1053,8 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "investment": round(o.investment, 2),
             "leverage": o.leverage,
             "notional_value": round(o.notional_value, 2),
+            "cell_multiplier": getattr(o, 'cell_multiplier', None),
+            "cell_multiplier_source": getattr(o, 'cell_multiplier_source', None),
             "quantity": o.quantity,
             "entry_price": o.entry_price,
             "current_price": current_price,
@@ -1113,6 +1119,8 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "investment": round(o.investment, 2),
             "leverage": o.leverage,
             "notional_value": round(o.notional_value, 2),
+            "cell_multiplier": getattr(o, 'cell_multiplier', None),
+            "cell_multiplier_source": getattr(o, 'cell_multiplier_source', None),
             "quantity": o.quantity,
             "entry_price": o.entry_price,
             "exit_price": o.exit_price,
@@ -1203,16 +1211,16 @@ async def get_transactions(db: AsyncSession = Depends(get_db)):
     """Get all transactions"""
     await trading_engine.initialize(db)
     
-    # Join with Order to get confidence
+    # Join with Order to get confidence + cell_multiplier (for UI coloring)
     result = await db.execute(
-        select(Transaction, Order.confidence)
+        select(Transaction, Order.confidence, Order.cell_multiplier, Order.cell_multiplier_source)
         .outerjoin(Order, Transaction.order_id == Order.id)
         .where(Transaction.is_paper == trading_engine.is_paper_mode)
         .order_by(desc(Transaction.timestamp))
         .limit(200)
     )
     rows = result.all()
-    
+
     return [{
         "id": t.id,
         "order_id": t.order_id,
@@ -1224,11 +1232,13 @@ async def get_transactions(db: AsyncSession = Depends(get_db)):
         "investment": round(t.investment, 2),
         "leverage": t.leverage,
         "notional_value": round(t.notional_value, 2),
+        "cell_multiplier": cell_multiplier,
+        "cell_multiplier_source": cell_multiplier_source,
         "fee": round(t.fee, 4),
         "order_type": getattr(t, 'order_type', None) or "TAKER",
         "timestamp": t.timestamp.isoformat(),
         "confidence": confidence
-    } for t, confidence in rows]
+    } for t, confidence, cell_multiplier, cell_multiplier_source in rows]
 
 
 @app.post("/api/orders/close")

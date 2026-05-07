@@ -162,11 +162,11 @@
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC Trend:</span>
                 <span class="text-[10px] text-gray-500 font-medium">E13</span>
-                <span id="btc-trend-badge" class="px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-400" title="EMA13 vs EMA50 — active filter (May 6+)">--</span>
                 <span id="btc-trend-gap" class="text-xs font-mono text-gray-400" title="EMA13/EMA50 gap %">--</span>
+                <span id="btc-trend-badge" class="px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 leading-tight" title="EMA13 vs EMA50 — active filter (May 6+)">--</span>
                 <span class="text-[10px] text-gray-500 font-medium ml-2">E20</span>
-                <span id="btc-trend-badge-e20" class="px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-400" title="EMA20 vs EMA50 — historical reference (pre-May 6 baseline). Disagreement with E13 = trend shift in progress.">--</span>
                 <span id="btc-trend-gap-e20" class="text-xs font-mono text-gray-400" title="EMA20/EMA50 gap %">--</span>
+                <span id="btc-trend-badge-e20" class="px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 leading-tight" title="EMA20 vs EMA50 — historical reference (pre-May 6 baseline). Disagreement with E13 = trend shift in progress.">--</span>
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC ADX:</span>
                 <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
@@ -3984,7 +3984,7 @@
                     if (!badge) return;
                     if (gap == null) {
                         badge.textContent = 'OFF';
-                        badge.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-gray-500/20 text-gray-500';
+                        badge.className = 'px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-500 leading-tight';
                         if (gapEl) {
                             gapEl.textContent = '--';
                             gapEl.className = 'text-xs font-mono text-gray-500';
@@ -3993,14 +3993,14 @@
                     }
                     let label, badgeCls;
                     if (Math.abs(gap) < flatThreshold) {
-                        label = '≈ FLAT';
-                        badgeCls = 'px-2 py-0.5 rounded text-[11px] font-bold bg-yellow-500/20 text-yellow-400';
+                        label = '≈';
+                        badgeCls = 'px-1.5 py-0 rounded text-[9px] font-bold bg-yellow-500/20 text-yellow-400 leading-tight';
                     } else if (gap > 0) {
-                        label = '↑ UP';
-                        badgeCls = 'px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-400';
+                        label = '↑';
+                        badgeCls = 'px-1.5 py-0 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 leading-tight';
                     } else {
-                        label = '↓ DOWN';
-                        badgeCls = 'px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/20 text-red-400';
+                        label = '↓';
+                        badgeCls = 'px-1.5 py-0 rounded text-[9px] font-bold bg-red-500/20 text-red-400 leading-tight';
                     }
                     if (dim) badgeCls = badgeCls.replace('/20', '/10').replace('-400', '-500');
                     badge.textContent = label;

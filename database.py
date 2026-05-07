@@ -323,6 +323,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN macro_regime VARCHAR(10)"))
                 if 'volume_ratio' not in pd_columns:
                     connection.execute(text("ALTER TABLE pair_data ADD COLUMN volume_ratio FLOAT"))
+                if 'ema50' not in pd_columns:
+                    connection.execute(text("ALTER TABLE pair_data ADD COLUMN ema50 FLOAT"))
 
             if 'bot_state' in inspector.get_table_names():
                 bs_columns = [c['name'] for c in inspector.get_columns('bot_state')]

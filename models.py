@@ -428,6 +428,7 @@ class PairData(Base):
     ema13 = Column(Float, nullable=True)
     ema20 = Column(Float, nullable=True)
     ema20_prev3 = Column(Float, nullable=True)
+    ema50 = Column(Float, nullable=True)  # May 7: persisted for exit_pair_ema20_ema50_gap_pct capture in _get_exit_trend_gaps
     
     # Indicators
     rsi = Column(Float, nullable=True)

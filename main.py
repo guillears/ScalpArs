@@ -664,13 +664,31 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/pairs")
 async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
-    """Get top pairs with indicators"""
+    """Get top pairs with indicators.
+
+    May 8 fix: filter by `updated_at` recency. PairData rows accumulate over
+    time — pairs that were once in the top-50 but have since dropped out
+    keep their stale volume_24h value forever (the bot's update path only
+    touches pairs currently in the scan list, never deletes old rows).
+    Without this filter the dashboard's "Top Pairs by Volume" table was
+    showing historical pumps (e.g., HIGHUSDT at $1.35B from a past
+    launchpad spike, when current real volume was $38M). The actual
+    trading list is unaffected — `scan_and_trade` always pulls fresh data
+    from CCXT — but the UI display was misleading.
+    """
     # Validate limit
     limit = min(max(limit, 5), 100)
-    
-    # Get pairs from cache
+
+    # Only show pairs updated in the last 10 minutes — covers normal scan
+    # cadence (~60s per cycle) with comfortable margin for slow scans.
+    _stale_cutoff = datetime.utcnow() - timedelta(minutes=10)
+
+    # Get pairs from cache, filtered to recently-scanned only.
     result = await db.execute(
-        select(PairData).order_by(desc(PairData.volume_24h)).limit(limit)
+        select(PairData)
+        .where(PairData.updated_at >= _stale_cutoff)
+        .order_by(desc(PairData.volume_24h))
+        .limit(limit)
     )
     pairs = result.scalars().all()
     

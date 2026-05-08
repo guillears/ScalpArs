@@ -4091,7 +4091,120 @@ class TradingEngine:
         _scan_max_positions = config.trading_config.investment.max_open_positions or 5
         _scan_had_room_snapshot = _scan_start_open_count < _scan_max_positions
 
+        # ── BTC macro veto pre-compute (May 8) ───────────────────────────────
+        # Pair-level filter block counts were inflated because the chain runs
+        # pair filters (in get_signal) BEFORE the BTC-level filters in this
+        # function. So pair-level counters recorded blocks for signals that
+        # would have been killed downstream by BTC anyway, making the Filter
+        # Blocks table misleading ("the dominant blocker" was an artifact of
+        # ordering, not reality).
+        #
+        # Fix: compute, scan-wide, which directions BTC-level filters would
+        # veto using pair-agnostic BTC indicators (btc_ema13/50, btc_adx,
+        # btc_adx_prev, btc_rsi, btc_ema20_slope_pct + thresholds). Then
+        # suppress pair-level block recording for vetoed directions. Result:
+        #   - Pair-level counters only count blocks where BTC was OK (= the
+        #     pair-level filter was the decisive last gate).
+        #   - BTC-level counters (recorded later in the loop, post-get_signal)
+        #     continue to count blocks on signals that actually got generated.
+        #   - Total block count drops, but each block reflects a real veto.
+        _th_pre = config.trading_config.thresholds
+        _btc_macro_blocks_long: Optional[str] = None
+        _btc_macro_blocks_short: Optional[str] = None
+
+        # 1) BTC Trend Filter (EMA13 vs EMA50)
+        _btc_trend_enabled_pre = getattr(_th_pre, 'btc_trend_filter_enabled', False)
+        if _btc_trend_enabled_pre and btc_ema13 is not None and btc_ema50 is not None:
+            if btc_ema13 < btc_ema50:
+                _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_TREND_FILTER"
+            elif btc_ema13 > btc_ema50:
+                _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_TREND_FILTER"
+
+        # 2) BTC ADX range
+        if btc_adx is not None:
+            _l_lo = getattr(_th_pre, 'btc_adx_min_long', 0)
+            _l_hi = getattr(_th_pre, 'btc_adx_max_long', 100)
+            if (_l_lo > 0 and btc_adx < _l_lo) or (_l_hi < 100 and btc_adx > _l_hi):
+                _btc_macro_blocks_long = _btc_macro_blocks_long or (
+                    "BTC_ADX_GATE_LOW" if (_l_lo > 0 and btc_adx < _l_lo) else "BTC_ADX_GATE_HIGH"
+                )
+            _s_lo = getattr(_th_pre, 'btc_adx_min_short', 0)
+            _s_hi = getattr(_th_pre, 'btc_adx_max_short', 100)
+            if (_s_lo > 0 and btc_adx < _s_lo) or (_s_hi < 100 and btc_adx > _s_hi):
+                _btc_macro_blocks_short = _btc_macro_blocks_short or (
+                    "BTC_ADX_GATE_LOW" if (_s_lo > 0 and btc_adx < _s_lo) else "BTC_ADX_GATE_HIGH"
+                )
+
+        # 3) BTC ADX Direction
+        if btc_adx is not None and btc_adx_prev is not None:
+            _l_dir = getattr(_th_pre, 'btc_adx_dir_long', 'both')
+            if (_l_dir == 'rising' and btc_adx <= btc_adx_prev) or (_l_dir == 'falling' and btc_adx >= btc_adx_prev):
+                _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_ADX_DIR"
+            _s_dir = getattr(_th_pre, 'btc_adx_dir_short', 'both')
+            if (_s_dir == 'rising' and btc_adx <= btc_adx_prev) or (_s_dir == 'falling' and btc_adx >= btc_adx_prev):
+                _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_ADX_DIR"
+
+        # 4) BTC RSI x BTC ADX cross-filter
+        if btc_rsi is not None and btc_adx is not None:
+            for _dir_name, _slot_setter in (("LONG", "long"), ("SHORT", "short")):
+                _cf_str = getattr(_th_pre, f'btc_rsi_adx_filter_{_slot_setter}', '') or ''
+                if not _cf_str.strip():
+                    continue
+                for _cf_rule in _cf_str.split(','):
+                    _cf_rule = _cf_rule.strip()
+                    if not _cf_rule or ':' not in _cf_rule:
+                        continue
+                    try:
+                        _r_part, _a_part = _cf_rule.split(':')
+                        _r_lo, _r_hi = map(float, _r_part.split('-'))
+                        _ab = _a_part.split('-')
+                        if len(_ab) == 1:
+                            _a_lo, _a_hi = float(_ab[0]), float('inf')
+                        elif len(_ab) == 2:
+                            _a_lo, _a_hi = float(_ab[0]), float(_ab[1])
+                        else:
+                            continue
+                        if _r_lo <= btc_rsi < _r_hi and (btc_adx < _a_lo or btc_adx > _a_hi):
+                            if _dir_name == "LONG":
+                                _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_RSI_ADX_CROSS"
+                            else:
+                                _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_RSI_ADX_CROSS"
+                            break
+                    except (ValueError, TypeError):
+                        continue
+
+        # 5) BTC slope directional gate + slope max guard
+        if btc_ema20_slope_pct is not None:
+            _l_flat = getattr(_th_pre, 'macro_trend_flat_threshold_long',
+                              getattr(_th_pre, 'macro_trend_flat_threshold', 0))
+            if _l_flat > 0 and btc_ema20_slope_pct < _l_flat:
+                _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_SLOPE_GATE"
+            _s_flat = getattr(_th_pre, 'macro_trend_flat_threshold_short',
+                              getattr(_th_pre, 'macro_trend_flat_threshold', 0))
+            if _s_flat > 0 and btc_ema20_slope_pct > -_s_flat:
+                _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_SLOPE_GATE"
+            _l_smax = getattr(_th_pre, 'btc_ema20_slope_max_long', 0)
+            if _l_smax and _l_smax > 0 and abs(btc_ema20_slope_pct) > _l_smax:
+                _btc_macro_blocks_long = _btc_macro_blocks_long or "BTC_SLOPE_MAX_GATE"
+            _s_smax = getattr(_th_pre, 'btc_ema20_slope_max_short', 0)
+            if _s_smax and _s_smax > 0 and abs(btc_ema20_slope_pct) > _s_smax:
+                _btc_macro_blocks_short = _btc_macro_blocks_short or "BTC_SLOPE_MAX_GATE"
+
+        if _btc_macro_blocks_long or _btc_macro_blocks_short:
+            logger.info(
+                f"[FILTER_BLOCK_ATTRIB] BTC macro veto active this scan — "
+                f"LONG={_btc_macro_blocks_long or 'OK'} SHORT={_btc_macro_blocks_short or 'OK'}; "
+                f"pair-level blocks for vetoed directions will be suppressed from counters"
+            )
+
         def _signal_block_recorder(filter_name: str, direction: str):
+            # Suppress pair-level block recording for directions that BTC-level
+            # filters would have vetoed anyway. This makes Filter Blocks counts
+            # reflect the *decisive* last gate, not artifacts of evaluation order.
+            if direction == "LONG" and _btc_macro_blocks_long is not None:
+                return
+            if direction == "SHORT" and _btc_macro_blocks_short is not None:
+                return
             self._record_filter_block(filter_name, direction, had_room=_scan_had_room_snapshot)
 
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):

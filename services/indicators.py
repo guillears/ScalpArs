@@ -65,6 +65,8 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'ema8_prev1': float(ema8.iloc[-2]) if len(ema8) >= 2 and not pd.isna(ema8.iloc[-2]) else None,
         'ema8_prev2': float(ema8.iloc[-3]) if len(ema8) >= 3 and not pd.isna(ema8.iloc[-3]) else None,
         'ema13': float(ema13.iloc[-1]) if not pd.isna(ema13.iloc[-1]) else None,
+        'ema13_prev1': float(ema13.iloc[-2]) if len(ema13) >= 2 and not pd.isna(ema13.iloc[-2]) else None,
+        'ema13_prev2': float(ema13.iloc[-3]) if len(ema13) >= 3 and not pd.isna(ema13.iloc[-3]) else None,
         'ema20': float(ema20.iloc[-1]) if not pd.isna(ema20.iloc[-1]) else None,
         'ema20_prev3': float(ema20.iloc[-4]) if len(ema20) >= 4 and not pd.isna(ema20.iloc[-4]) else None,
         'ema50': float(ema50.iloc[-1]) if not pd.isna(ema50.iloc[-1]) else None,
@@ -174,6 +176,8 @@ def get_signal(
     ema8_prev1: float = None,
     ema5_prev2: float = None,
     ema8_prev2: float = None,
+    ema13_prev1: float = None,
+    ema13_prev2: float = None,
     block_recorder=None,
 ) -> Tuple[str, Optional[str]]:
     """
@@ -338,17 +342,25 @@ def get_signal(
                 _record("PAIR_ADX_MAX", "LONG")
             else:
                 ema_gap_pct = ((ema5 - ema8) / ema8) * 100
-                prev_gap_pct = ((ema5_prev1 - ema8_prev1) / ema8_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema8_prev1 > 0 else None
-                prev2_gap_pct = ((ema5_prev2 - ema8_prev2) / ema8_prev2) * 100 if ema5_prev2 and ema8_prev2 and ema8_prev2 > 0 else None
+                # May 8: gap-expanding check switched from EMA5-EMA8 to EMA5-EMA13
+                # for less restrictiveness in trending markets. EMA8 lags EMA5 by
+                # only 3 periods, so the 5-8 gap micro-oscillates on every minor
+                # pullback even within a healthy trend, blocking legitimate
+                # trend-continuation entries. EMA13 lags by 8 periods — gap stays
+                # monotonically expanding for the full duration of a sustained
+                # trend, only compressing when momentum genuinely fades.
+                exp_gap_pct = ((ema5 - ema13) / ema13) * 100 if ema5 and ema13 and ema13 > 0 else None
+                exp_prev_gap_pct = ((ema5_prev1 - ema13_prev1) / ema13_prev1) * 100 if ema5_prev1 and ema13_prev1 and ema13_prev1 > 0 else None
+                exp_prev2_gap_pct = ((ema5_prev2 - ema13_prev2) / ema13_prev2) * 100 if ema5_prev2 and ema13_prev2 and ema13_prev2 > 0 else None
                 # May 2: per-direction EMA5-EMA8 max with auto-fallback to legacy single field.
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max_long', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= long_gap_min
-                if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
-                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing vs 1 candle ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                if gap_expanding_enabled and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
+                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap compressing vs 1 candle ({exp_prev_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
-                elif gap_expanding_enabled and prev2_gap_pct is not None and ema_gap_pct <= prev2_gap_pct:
-                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap compressing vs 2 candles ({prev2_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                elif gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct:
+                    logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap compressing vs 2 candles ({exp_prev2_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")
@@ -394,17 +406,20 @@ def get_signal(
                 _record("PAIR_ADX_MAX", "SHORT")
             else:
                 ema_gap_pct = ((ema8 - ema5) / ema5) * 100
-                prev_gap_pct = ((ema8_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema8_prev1 and ema5_prev1 > 0 else None
-                prev2_gap_pct = ((ema8_prev2 - ema5_prev2) / ema5_prev2) * 100 if ema5_prev2 and ema8_prev2 and ema5_prev2 > 0 else None
+                # May 8: gap-expanding check switched from EMA5-EMA8 to EMA5-EMA13
+                # for less restrictiveness in trending markets (see LONG comment).
+                exp_gap_pct = ((ema13 - ema5) / ema5) * 100 if ema5 and ema13 and ema5 > 0 else None
+                exp_prev_gap_pct = ((ema13_prev1 - ema5_prev1) / ema5_prev1) * 100 if ema5_prev1 and ema13_prev1 and ema5_prev1 > 0 else None
+                exp_prev2_gap_pct = ((ema13_prev2 - ema5_prev2) / ema5_prev2) * 100 if ema5_prev2 and ema13_prev2 and ema5_prev2 > 0 else None
                 # May 2: per-direction EMA5-EMA8 max with auto-fallback to legacy single field.
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max_short', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= short_gap_min
-                if gap_expanding_enabled and prev_gap_pct is not None and ema_gap_pct <= prev_gap_pct:
-                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing vs 1 candle ({prev_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                if gap_expanding_enabled and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
+                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-13 gap compressing vs 1 candle ({exp_prev_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
-                elif gap_expanding_enabled and prev2_gap_pct is not None and ema_gap_pct <= prev2_gap_pct:
-                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap compressing vs 2 candles ({prev2_gap_pct:.4f}% -> {ema_gap_pct:.4f}%)")
+                elif gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct:
+                    logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-13 gap compressing vs 2 candles ({exp_prev2_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
                 elif ema_gap_max > 0 and ema_gap_pct > ema_gap_max:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-8 gap {ema_gap_pct:.4f}% > max {ema_gap_max}")

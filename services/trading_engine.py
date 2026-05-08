@@ -1107,7 +1107,9 @@ class TradingEngine:
                 ema5_prev1=indicators.get('ema5_prev1'),
                 ema8_prev1=indicators.get('ema8_prev1'),
                 ema5_prev2=indicators.get('ema5_prev2'),
-                ema8_prev2=indicators.get('ema8_prev2')
+                ema8_prev2=indicators.get('ema8_prev2'),
+                ema13_prev1=indicators.get('ema13_prev1'),
+                ema13_prev2=indicators.get('ema13_prev2'),
             )
 
             if new_signal != original_direction:
@@ -4263,6 +4265,8 @@ class TradingEngine:
                     ema8_prev1=indicators.get('ema8_prev1'),
                     ema5_prev2=indicators.get('ema5_prev2'),
                     ema8_prev2=indicators.get('ema8_prev2'),
+                    ema13_prev1=indicators.get('ema13_prev1'),
+                    ema13_prev2=indicators.get('ema13_prev2'),
                     block_recorder=_signal_block_recorder,
                 )
 

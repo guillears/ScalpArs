@@ -882,6 +882,31 @@
                     <div id="mult-cell-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- EMA13 Strict-Mode Performance (May 8, 2026 — tracks ema13_cross_requires_stack_flip toggle) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">🛡️ EMA13 Strict-Mode Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3">For trades where strict mode held at least one EMA13 cross exit (price wicked through EMA13 but EMA5/EMA8 stack didn't flip). Compares P&L at first hold vs final close. ★ HELPING = strict prevented false-negative exits; ⚠ HURTING = strict held losers longer. Captures only post-toggle-on trades.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Direction</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="Avg P&L% at the first moment strict mode held the EMA13 cross">Avg Held%</th>
+                                    <th class="text-right px-2" title="Avg P&L% at actual close">Avg Close%</th>
+                                    <th class="text-right px-2" title="Avg Close% − Avg Held%. Positive = strict mode helped (price recovered).">Δ pct</th>
+                                    <th class="text-right px-2" title="Total $ delta = sum across trades of (close $ − would-have-been-EMA13-exit $)">Total $ Δ</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ema13-strict-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="py-3 text-center text-gray-500">No strict-mode held trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="ema13-strict-perf-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+
                 <!-- RSI Handoff Performance (May 5, 2026 — CLAUDE.md) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-violet-300 mb-2">📊 RSI Handoff Performance</h3>
@@ -2551,8 +2576,15 @@
                                     </div>
                                     <span class="ml-2 text-sm text-gray-300">Enabled</span>
                                 </label>
+                                <label class="flex items-center cursor-pointer ml-4">
+                                    <input type="checkbox" id="config-ema13-cross-requires-stack-flip" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-amber-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Strict (require EMA5/EMA8 stack flip)</span>
+                                </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Closes trade on first tick where price crosses EMA13 against direction (LONG: price &lt; EMA13, SHORT: price &gt; EMA13). No profit gate — fires at any P&L. Runs in parallel to FL flags / RSI Handoff / trailing — first-to-fire wins. Cascade-close: when toggled ON, any open trade currently on wrong side closes on next tick. Close reason: <code class="text-violet-300">EMA13_CROSS_EXIT L&lt;level&gt;</code>.</p>
+                            <p class="text-xs text-gray-500 mt-1">Closes trade on first tick where price crosses EMA13 against direction (LONG: price &lt; EMA13, SHORT: price &gt; EMA13). No profit gate — fires at any P&L. Runs in parallel to FL flags / RSI Handoff / trailing — first-to-fire wins. Cascade-close: when toggled ON, any open trade currently on wrong side closes on next tick. Close reason: <code class="text-violet-300">EMA13_CROSS_EXIT L&lt;level&gt;</code>. <span class="text-amber-400">Strict mode (May 8): also require EMA5/EMA8 stack flip — filters single-candle wicks. Adds 1-3 candles latency.</span></p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">EMA Stack Cross Exit <span class="text-xs text-violet-400 font-normal">(May 6 — EMA5/EMA8 inversion at handoff level)</span></label>
@@ -4509,6 +4541,27 @@
             _renderMultExport(_mcp1.longs, 'LONGs', (_mcp1.summary || {}).longs);
             _renderMultExport(_mcp1.shorts, 'SHORTs', (_mcp1.summary || {}).shorts);
 
+            // EMA13 Strict-Mode Performance (May 8, 2026)
+            const _esp1 = perf.ema13_strict_performance || {};
+            if (_esp1.rows && _esp1.rows.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## EMA13 Strict-Mode Performance (delta P&L vs hypothetical EMA13-only exit at first wick)\n`);
+                lines.push('Direction        N    AvgHeld%   AvgClose%   ΔPct      Total$Δ    Verdict');
+                lines.push('-'.repeat(70));
+                _esp1.rows.forEach(r => {
+                    const held = (r.avg_held_pct >= 0 ? '+' : '') + r.avg_held_pct.toFixed(3) + '%';
+                    const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
+                    const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
+                    const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
+                    lines.push(`${r.direction.padEnd(15)} ${String(r.n).padStart(4)} ${held.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                });
+                if (_esp1.summary && _esp1.summary.n > 0) {
+                    const tot = (_esp1.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_esp1.summary.total_dollar_delta).toFixed(2);
+                    const avg = (_esp1.summary.avg_delta_pct >= 0 ? '+' : '') + _esp1.summary.avg_delta_pct.toFixed(3) + 'pp';
+                    lines.push(`\nTotal: ${_esp1.summary.n} trades held · Avg Δ ${avg} · ${tot} $ delta vs EMA13-only`);
+                }
+            }
+
             // RSI Handoff Performance (May 5, 2026 — CLAUDE.md)
             const _rhp1 = perf.rsi_handoff_performance || {};
             lines.push(`\n${hr2}`);
@@ -5114,7 +5167,7 @@
             lines.push('\nExit Settings:');
             lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
             lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
-            lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing)`);
+            lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
             lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.8}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
@@ -5369,6 +5422,27 @@
                 const _mcp2 = perf.multiplier_cell_performance || {};
                 _renderMultExport2(_mcp2.longs, 'LONGs', (_mcp2.summary || {}).longs);
                 _renderMultExport2(_mcp2.shorts, 'SHORTs', (_mcp2.summary || {}).shorts);
+
+                // EMA13 Strict-Mode Performance (May 8, 2026)
+                const _esp2 = perf.ema13_strict_performance || {};
+                if (_esp2.rows && _esp2.rows.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## EMA13 Strict-Mode Performance (delta P&L vs hypothetical EMA13-only exit at first wick)\n`);
+                    lines.push('Direction        N    AvgHeld%   AvgClose%   ΔPct      Total$Δ    Verdict');
+                    lines.push('-'.repeat(70));
+                    _esp2.rows.forEach(r => {
+                        const held = (r.avg_held_pct >= 0 ? '+' : '') + r.avg_held_pct.toFixed(3) + '%';
+                        const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
+                        const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
+                        const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
+                        lines.push(`${r.direction.padEnd(15)} ${String(r.n).padStart(4)} ${held.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                    });
+                    if (_esp2.summary && _esp2.summary.n > 0) {
+                        const tot = (_esp2.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_esp2.summary.total_dollar_delta).toFixed(2);
+                        const avg = (_esp2.summary.avg_delta_pct >= 0 ? '+' : '') + _esp2.summary.avg_delta_pct.toFixed(3) + 'pp';
+                        lines.push(`\nTotal: ${_esp2.summary.n} trades held · Avg Δ ${avg} · ${tot} $ delta vs EMA13-only`);
+                    }
+                }
 
                 // RSI Handoff Performance (May 5, 2026 — CLAUDE.md)
                 const _rhp2 = perf.rsi_handoff_performance || {};
@@ -6580,6 +6654,46 @@
                         const upS = ss.uplift_dollars;
                         const fmt = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
                         sumEl.innerHTML = `LONG: ${sl.multiplied_trades_n || 0} multiplied trades, actual ${fmt(sl.actual_total_dollars)}, simulated baseline ${fmt(sl.simulated_baseline_dollars)}, uplift <span class="font-semibold ${upL >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upL)}</span> &nbsp; | &nbsp; SHORT: ${ss.multiplied_trades_n || 0} multiplied trades, uplift <span class="font-semibold ${upS >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upS)}</span>`;
+                    }
+                }
+
+                // EMA13 Strict-Mode Performance (May 8, 2026)
+                if (data.ema13_strict_performance) {
+                    const _esp = data.ema13_strict_performance;
+                    const _espBody = document.getElementById('ema13-strict-perf-body');
+                    const _espSummary = document.getElementById('ema13-strict-perf-summary');
+                    if (_espBody) {
+                        if (!_esp.rows || !_esp.rows.length) {
+                            _espBody.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No strict-mode held trades yet</td></tr>';
+                            if (_espSummary) _espSummary.textContent = '';
+                        } else {
+                            _espBody.innerHTML = _esp.rows.map(r => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const heldClass = r.avg_held_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const closeClass = r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const deltaClass = r.avg_delta_pct > 0.05 ? 'text-emerald-400' : (r.avg_delta_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const dollarClass = r.total_dollar_delta > 1 ? 'text-emerald-400' : (r.total_dollar_delta < -1 ? 'text-red-400' : 'text-gray-400');
+                                const verdictColor = r.verdict.includes('★') ? 'text-emerald-400' :
+                                    r.verdict.includes('HURT') ? 'text-red-400' :
+                                    r.verdict.includes('Marginal') ? 'text-blue-400' :
+                                    'text-amber-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${heldClass}">${r.avg_held_pct >= 0 ? '+' : ''}${r.avg_held_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${closeClass}">${r.avg_close_pct >= 0 ? '+' : ''}${r.avg_close_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${deltaClass}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
+                                    <td class="px-2 py-1 text-right ${dollarClass}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                            if (_espSummary && _esp.summary && _esp.summary.n > 0) {
+                                const totDClass = _esp.summary.total_dollar_delta > 1 ? 'text-emerald-400' : (_esp.summary.total_dollar_delta < -1 ? 'text-red-400' : 'text-gray-400');
+                                _espSummary.innerHTML = `Total: <strong>${_esp.summary.n}</strong> trades held by strict mode · Avg Δ <strong>${_esp.summary.avg_delta_pct >= 0 ? '+' : ''}${_esp.summary.avg_delta_pct.toFixed(3)}pp</strong> · <span class="${totDClass}">${_esp.summary.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(_esp.summary.total_dollar_delta).toFixed(2)}</span> total $ delta vs hypothetical EMA13-only exits`;
+                            } else if (_espSummary) {
+                                _espSummary.textContent = '';
+                            }
+                        }
                     }
                 }
 
@@ -9823,6 +9937,9 @@
                 // EMA13 Cross Exit (May 6) — default OFF
                 const _e13ce = document.getElementById('config-ema13-cross-exit-enabled');
                 if (_e13ce) _e13ce.checked = config.thresholds.ema13_cross_exit_enabled === true;
+                // May 8: strict mode — require EMA5/EMA8 stack flip too
+                const _e13rsf = document.getElementById('config-ema13-cross-requires-stack-flip');
+                if (_e13rsf) _e13rsf.checked = config.thresholds.ema13_cross_requires_stack_flip === true;
                 // EMA Stack Cross Exit (May 6) — default OFF, level default 2
                 const _esce = document.getElementById('config-ema-stack-cross-exit-enabled');
                 if (_esce) _esce.checked = config.thresholds.ema_stack_cross_exit_enabled === true;
@@ -10215,6 +10332,7 @@
                     rsi_momentum_exit_min_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-min-profit').value),
                     rsi_momentum_exit_max_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-max-profit').value),
                     ema13_cross_exit_enabled: (document.getElementById('config-ema13-cross-exit-enabled') ? document.getElementById('config-ema13-cross-exit-enabled').checked : false),
+                    ema13_cross_requires_stack_flip: (document.getElementById('config-ema13-cross-requires-stack-flip') ? document.getElementById('config-ema13-cross-requires-stack-flip').checked : false),
                     ema_stack_cross_exit_enabled: (document.getElementById('config-ema-stack-cross-exit-enabled') ? document.getElementById('config-ema-stack-cross-exit-enabled').checked : false),
                     ema_stack_cross_exit_level: parseInt(document.getElementById('config-ema-stack-cross-exit-level') ? document.getElementById('config-ema-stack-cross-exit-level').value : 2) || 2,
                     tick_momentum_exit_enabled: document.getElementById('config-tick-momentum-exit-enabled').checked,

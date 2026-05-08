@@ -209,6 +209,13 @@ class Order(Base):
     cell_multiplier_source = Column(String(40), nullable=True)
     cell_multiplier_capped = Column(Boolean, nullable=False, default=False)
 
+    # May 8: tracks EMA13 cross strict-mode (ema13_cross_requires_stack_flip).
+    # Captures pnl_pct at the FIRST moment strict mode held an EMA13 cross
+    # exit (price wick filtered because EMA5/EMA8 stack hadn't flipped).
+    # NULL = strict mode never held this trade. Used by EMA13 Strict-Mode
+    # Performance report to compute counterfactual delta vs final close.
+    ema13_strict_held_pnl_pct = Column(Float, nullable=True)
+
     # Exit quality: Price vs EMA5 at exit
     exit_price_vs_ema5_pct = Column(Float, nullable=True)
     exit_ema5_slope_pct = Column(Float, nullable=True)

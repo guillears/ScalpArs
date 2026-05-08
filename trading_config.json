@@ -120,6 +120,7 @@
     "rsi_momentum_exit_min_profit": -0.80,
     "rsi_momentum_exit_max_profit": -0.45,
     "ema13_cross_exit_enabled": true,
+    "ema13_cross_requires_stack_flip": true,
     "ema_stack_cross_exit_enabled": false,
     "ema_stack_cross_exit_level": 2,
     "pullback_widening_per_level": 0.15,

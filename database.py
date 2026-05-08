@@ -262,6 +262,9 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier_source VARCHAR(40)"))
                 if 'cell_multiplier_capped' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier_capped BOOLEAN NOT NULL DEFAULT 0"))
+                # EMA13 strict-mode tracking (May 8): pnl% at first hold
+                if 'ema13_strict_held_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN ema13_strict_held_pnl_pct FLOAT"))
                 # Regime stability instrumentation (May 5)
                 if 'entry_btc_regime_started_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_regime_started_at DATETIME"))

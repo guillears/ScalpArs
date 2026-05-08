@@ -172,6 +172,12 @@ class SignalThresholds(BaseModel):
     # Reuses the realtime cross detection from the Phase 1 shadow tracker.
     # Default OFF — flip to True to activate.
     ema13_cross_exit_enabled: bool = False
+    # May 8: optional strict mode — when True, EMA13 cross only fires the
+    # exit if EMA5/EMA8 stack has ALSO flipped against trade direction.
+    # Filters single-candle wicks below EMA13 from triggering (real
+    # reversals also flip the stack). Adds 1-3 candles of latency vs
+    # EMA13-only. Fail-closed on missing EMA5/EMA8 data.
+    ema13_cross_requires_stack_flip: bool = False
     # EMA Stack Cross Exit (May 6) — closes trade when EMA5 crosses EMA8 against
     # trade direction (LONG: ema5 < ema8, SHORT: ema5 > ema8) past the configured
     # TP level.  Mirrors RSI Handoff architecture: at current_tp_level >= level,

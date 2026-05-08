@@ -5045,28 +5045,72 @@ class TradingEngine:
                     else:  # SHORT
                         _ema13_cross_fire = current_price > _ema13_for_exit
                     if _ema13_cross_fire and not order_info.get('_closing_in_progress'):
-                        _tp_lvl_for_exit = order_info.get('current_tp_level', 1) or 1
-                        _close_reason_e13 = f"EMA13_CROSS_EXIT L{_tp_lvl_for_exit}"
-                        logger.warning(
-                            f"[REALTIME_EMA13_CROSS_EXIT] {pair} {direction} L{_tp_lvl_for_exit}: "
-                            f"price={current_price:.6f} {('<' if direction == 'LONG' else '>')}"
-                            f" EMA13={_ema13_for_exit:.6f}, pnl={pnl_pct:.4f}% (peak={cached_peak_pnl:.4f}%) - CLOSING NOW!"
-                        )
-                        order_info['_closing_in_progress'] = True
-                        try:
-                            async with AsyncSessionLocal() as db:
-                                result = await db.execute(
-                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                        # May 8: optional AND-gate with EMA5/EMA8 stack flip.
+                        # When ema13_cross_requires_stack_flip is True, EMA13 cross
+                        # alone is not enough — also require the EMA5/EMA8 stack to
+                        # have flipped against trade direction. Filters single-candle
+                        # price wicks from firing the exit. Fail-closed on missing data.
+                        _e13_strict = getattr(config.trading_config.thresholds, 'ema13_cross_requires_stack_flip', False)
+                        _e13_stack_confirms = True  # default: not required
+                        if _e13_strict:
+                            _e13_es5 = order_info.get('cached_ema5')
+                            _e13_es8 = order_info.get('cached_ema8')
+                            if _e13_es5 is None or _e13_es8 is None or _e13_es5 <= 0 or _e13_es8 <= 0:
+                                _e13_stack_confirms = False  # fail-closed
+                            elif direction == "LONG":
+                                _e13_stack_confirms = _e13_es5 < _e13_es8
+                            else:
+                                _e13_stack_confirms = _e13_es5 > _e13_es8
+                            if not _e13_stack_confirms:
+                                logger.info(
+                                    f"[EMA13_CROSS_EXIT_HOLD] {pair} {direction}: price crossed EMA13 "
+                                    f"({current_price:.6f} vs {_ema13_for_exit:.6f}) but stack intact "
+                                    f"(ema5={_e13_es5}, ema8={_e13_es8}) — strict mode, holding"
                                 )
-                                order = result.scalar_one_or_none()
-                                if order:
-                                    closed = await self.close_position(db, order, current_price, _close_reason_e13)
-                                    if closed:
-                                        async with _cache_lock:
-                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
-                        except Exception as e:
-                            logger.error(f"[REALTIME_EMA13_CROSS_EXIT] Error closing {pair}: {e}")
-                        continue  # Trade is closed; skip remaining checks for this order
+                                # Capture pnl_pct at FIRST hold for tracking. Subsequent holds
+                                # don't overwrite — we want the would-have-been-EMA13-exit P&L
+                                # to compare against the eventual close.
+                                if not order_info.get('_ema13_strict_held_recorded'):
+                                    order_info['_ema13_strict_held_recorded'] = True
+                                    try:
+                                        async with AsyncSessionLocal() as _hdb:
+                                            _h_result = await _hdb.execute(
+                                                select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                            )
+                                            _h_order = _h_result.scalar_one_or_none()
+                                            if _h_order is not None and _h_order.ema13_strict_held_pnl_pct is None:
+                                                _h_order.ema13_strict_held_pnl_pct = float(pnl_pct)
+                                                await _hdb.commit()
+                                                logger.info(
+                                                    f"[EMA13_STRICT_FIRST_HOLD] {pair} order_id={order_id}: "
+                                                    f"recorded held_pnl_pct={pnl_pct:.4f}%"
+                                                )
+                                    except Exception as _hexc:
+                                        logger.warning(f"[EMA13_STRICT_FIRST_HOLD] Failed to persist for {pair}: {_hexc}")
+                        if _e13_stack_confirms:
+                            _tp_lvl_for_exit = order_info.get('current_tp_level', 1) or 1
+                            _close_reason_e13 = f"EMA13_CROSS_EXIT L{_tp_lvl_for_exit}"
+                            logger.warning(
+                                f"[REALTIME_EMA13_CROSS_EXIT] {pair} {direction} L{_tp_lvl_for_exit}: "
+                                f"price={current_price:.6f} {('<' if direction == 'LONG' else '>')}"
+                                f" EMA13={_ema13_for_exit:.6f}, pnl={pnl_pct:.4f}% (peak={cached_peak_pnl:.4f}%) - CLOSING NOW!"
+                            )
+                            order_info['_closing_in_progress'] = True
+                            try:
+                                async with AsyncSessionLocal() as db:
+                                    result = await db.execute(
+                                        select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                    )
+                                    order = result.scalar_one_or_none()
+                                    if order:
+                                        closed = await self.close_position(db, order, current_price, _close_reason_e13)
+                                        if closed:
+                                            async with _cache_lock:
+                                                _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                            except Exception as e:
+                                logger.error(f"[REALTIME_EMA13_CROSS_EXIT] Error closing {pair}: {e}")
+                            continue  # Trade is closed; skip remaining checks for this order
+                        # else: stack didn't confirm — fall through to other exit checks below
 
             # ════════════════════════════════════════════════════════════════
             # EMA Stack Cross Exit (May 6) — closes trade when EMA5 crosses EMA8

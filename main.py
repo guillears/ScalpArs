@@ -5085,7 +5085,95 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         ),
         # Phase 1 shadow tracking (May 6, 2026 — counterfactual exit on price-vs-EMA cross)
         "ema_cross_counterfactual": _compute_ema_cross_counterfactual(orders),
+        # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
+        "ema13_strict_performance": _compute_ema13_strict_performance(orders),
     }
+
+
+def _compute_ema13_strict_performance(orders):
+    """EMA13 strict-mode counterfactual tracking (May 8, 2026).
+
+    For trades where strict mode held at least one EMA13 cross exit
+    (`ema13_strict_held_pnl_pct IS NOT NULL`), compares the P&L at the
+    first hold point vs the actual close P&L. Positive delta = strict
+    mode helped (price recovered after the wick); negative delta = strict
+    mode hurt (price kept declining).
+
+    Returns rows per direction + a TOTAL row with verdict.
+    """
+    by_dir = {"LONG": [], "SHORT": []}
+    for o in orders:
+        if getattr(o, 'status', None) != "CLOSED":
+            continue
+        held = getattr(o, 'ema13_strict_held_pnl_pct', None)
+        if held is None:
+            continue
+        d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
+        if d not in by_dir:
+            continue
+        close_pct = o.pnl_percentage if o.pnl_percentage is not None else 0.0
+        delta_pct = close_pct - held
+        # $ delta: ratio close $ / close % × delta %, falls back to 0 when close% is 0
+        if close_pct and abs(close_pct) > 1e-9 and o.pnl is not None:
+            dollar_delta = o.pnl * (delta_pct / close_pct)
+        else:
+            # Fallback: approximate via investment * leverage
+            inv = o.investment or 0.0
+            lev = o.leverage or 1
+            dollar_delta = (delta_pct / 100.0) * inv * lev
+        by_dir[d].append({
+            'held_pct': held,
+            'close_pct': close_pct,
+            'delta_pct': delta_pct,
+            'dollar_delta': dollar_delta,
+            'pnl': o.pnl or 0.0,
+        })
+
+    def _verdict(rows):
+        if not rows:
+            return "⚠ Low N"
+        n = len(rows)
+        avg_delta = sum(r['delta_pct'] for r in rows) / n
+        total_dollar = sum(r['dollar_delta'] for r in rows)
+        if n < 5:
+            return "⚠ Low N"
+        if avg_delta >= 0.05 and total_dollar > 0:
+            return "★ HELPING"
+        if avg_delta <= -0.05 or total_dollar < 0:
+            return "⚠ HURTING"
+        return "✓ Marginal"
+
+    rows_out = []
+    total_delta_pct = 0.0
+    total_dollar = 0.0
+    total_n = 0
+    for d in ("LONG", "SHORT"):
+        rs = by_dir[d]
+        n = len(rs)
+        if n == 0:
+            continue
+        avg_held = sum(r['held_pct'] for r in rs) / n
+        avg_close = sum(r['close_pct'] for r in rs) / n
+        avg_delta = sum(r['delta_pct'] for r in rs) / n
+        sum_dollar = sum(r['dollar_delta'] for r in rs)
+        rows_out.append({
+            'direction': d,
+            'n': n,
+            'avg_held_pct': round(avg_held, 4),
+            'avg_close_pct': round(avg_close, 4),
+            'avg_delta_pct': round(avg_delta, 4),
+            'total_dollar_delta': round(sum_dollar, 2),
+            'verdict': _verdict(rs),
+        })
+        total_delta_pct += avg_delta * n
+        total_dollar += sum_dollar
+        total_n += n
+    summary = {
+        'n': total_n,
+        'avg_delta_pct': round(total_delta_pct / total_n, 4) if total_n > 0 else 0.0,
+        'total_dollar_delta': round(total_dollar, 2),
+    }
+    return {'rows': rows_out, 'summary': summary}
 
 
 def _compute_multiplier_cell_performance(orders):

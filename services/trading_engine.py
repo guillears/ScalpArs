@@ -2215,6 +2215,8 @@ class TradingEngine:
                 'low_price': actual_price,
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
+                'entry_atr_pct': entry_atr_pct,  # May 7 Phase 1: ATR-normalized trailing in realtime path
+                'tp_min': conf_config.tp_min,    # May 7 Phase 2: needed for early-arm zone check
                 'cached_ema5': _cached_ema5,
                 'cached_ema5_prev3': _cached_ema5_prev3,
                 'cached_ema8': _cached_ema8,
@@ -3791,7 +3793,8 @@ class TradingEngine:
                 current_tp_level=order.current_tp_level or 1,
                 dynamic_tp_target=order.dynamic_tp_target,
                 signal_active=is_signal_active,
-                tp_trailing_enabled=exit_conf_config.tp_trailing_enabled if exit_conf_config else True
+                tp_trailing_enabled=exit_conf_config.tp_trailing_enabled if exit_conf_config else True,
+                entry_atr_pct=getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing
             )
             
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
@@ -5051,7 +5054,24 @@ class TradingEngine:
             # a peak at e.g. +0.4998% when tp_min is 0.50% — operationally identical
             # but strict >= would never arm trailing. Tolerance is well below any
             # configurable pullback_trigger so it doesn't affect intended behavior.
-            trailing_stop_would_be_active = current_peak >= (effective_tp_target - 0.005) or tp_level >= 2
+            # May 7 Phase 2: ALSO activate in the early-arm zone (peak between
+            # trailing_early_arm_threshold and tp_min) to lock in moderate-momentum
+            # gains that would otherwise reverse before reaching L1.
+            try:
+                _early_arm_thr_rt = float(getattr(config.trading_config.thresholds, 'trailing_early_arm_threshold', 0.0) or 0.0)
+            except Exception:
+                _early_arm_thr_rt = 0.0
+            _in_early_arm_rt = (
+                _early_arm_thr_rt > 0
+                and current_peak >= _early_arm_thr_rt
+                and current_peak < (tp_min - 0.005)
+                and tp_level <= 1
+            )
+            trailing_stop_would_be_active = (
+                current_peak >= (effective_tp_target - 0.005)
+                or tp_level >= 2
+                or _in_early_arm_rt
+            )
             
             # Apply 3-level break-even logic (highest level wins)
             effective_sl = stop_loss_pct
@@ -5525,17 +5545,41 @@ class TradingEngine:
                 should_close_trailing = False
                 tp_level = order_info.get('current_tp_level', 1)
 
-                # May 7 — bug fix: apply tier-aware pullback widening here too.
-                # Without this, the realtime callback uses base pullback_trigger
-                # (e.g. 0.20%) regardless of TP level, while the monitor-loop
-                # path (indicators.py) widens correctly. Realtime fires first,
-                # so it wins on every L2+ close → widening was effectively dead
-                # for trailing exits. See CLAUDE.md May 7 entry.
+                # May 7 — apply BOTH widening (realtime mirror) AND ATR floor + early-arm.
+                _th = config.trading_config.thresholds
                 try:
-                    _widening = float(getattr(config.trading_config.thresholds, 'pullback_widening_per_level', 0.0) or 0.0)
+                    _widening = float(getattr(_th, 'pullback_widening_per_level', 0.0) or 0.0)
                 except Exception:
                     _widening = 0.0
-                _effective_pullback = pullback_trigger + _widening * max(0, tp_level - 1)
+                # May 7 Phase 2: detect early-arm zone using cached tp_min and current peak.
+                _entry_atr = order_info.get('entry_atr_pct')
+                _tp_min = order_info.get('tp_min', 0.50)
+                _cur_peak = order_info.get('peak_pnl', 0.0) or 0.0
+                try:
+                    _early_arm_thr = float(getattr(_th, 'trailing_early_arm_threshold', 0.0) or 0.0)
+                    _early_arm_pb = float(getattr(_th, 'trailing_early_arm_pullback', 0.10) or 0.10)
+                except Exception:
+                    _early_arm_thr = 0.0
+                    _early_arm_pb = 0.10
+                _in_early_arm = (
+                    _early_arm_thr > 0
+                    and _cur_peak >= _early_arm_thr
+                    and _cur_peak < (_tp_min - 0.005)
+                    and tp_level <= 1
+                )
+                if _in_early_arm:
+                    _effective_pullback = _early_arm_pb
+                else:
+                    _effective_pullback = pullback_trigger + _widening * max(0, tp_level - 1)
+                # May 7 Phase 1: ATR floor
+                try:
+                    _atr_mult = float(getattr(_th, 'trailing_atr_multiplier', 0.0) or 0.0)
+                except Exception:
+                    _atr_mult = 0.0
+                if _atr_mult > 0 and _entry_atr is not None and _entry_atr > 0:
+                    _atr_floor = _entry_atr * _atr_mult
+                    if _atr_floor > _effective_pullback:
+                        _effective_pullback = _atr_floor
 
                 if direction == "LONG" and high_price and high_price > 0:
                     price_drop_pct = ((high_price - current_price) / high_price) * 100
@@ -5665,6 +5709,8 @@ class TradingEngine:
                 'low_price': order.low_price_since_entry or order.entry_price,
                 'pullback_trigger': conf_config.pullback_trigger,
                 'tp_trailing_enabled': conf_config.tp_trailing_enabled,
+                'entry_atr_pct': getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing
+                'tp_min': conf_config.tp_min,                            # May 7 Phase 2: early-arm zone check
                 'cached_ema5': pair_ema5s.get(order.pair),
                 'cached_ema5_prev3': pair_emas.get(order.pair, {}).get('ema5_prev3'),
                 'cached_ema8': pair_emas.get(order.pair, {}).get('ema8'),

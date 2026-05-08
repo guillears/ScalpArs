@@ -186,6 +186,21 @@ class SignalThresholds(BaseModel):
     # add +0.10% room per TP level (L1=0.20, L2=0.30, L3=0.40 with base 0.20).
     # Rationale: bigger winners get more room to ride; small winners stay tight.
     pullback_widening_per_level: float = 0.0
+    # May 7 (Phase 1): ATR-normalized trailing pullback floor.
+    # effective_pullback = max(fixed_pullback, entry_atr_pct × trailing_atr_multiplier).
+    # Default 0.50 = "give the trade half a normal candle of noise". Volatile
+    # pairs (high ATR) get wider pullback; calm pairs use the fixed pullback.
+    # Set to 0.0 to disable ATR floor entirely.
+    trailing_atr_multiplier: float = 0.50
+    # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
+    # pullback when peak is between this threshold and tp_min (the regular L1
+    # arming point). Locks in profit on moderate-momentum trades that peak in
+    # the +0.30% to +0.50% range and reverse before reaching L1. Default 0.30
+    # arms at peak ≥ +0.30%; set to 0.0 to disable.
+    trailing_early_arm_threshold: float = 0.30
+    # Pullback used in the early-arm zone (peak between early_arm_threshold
+    # and tp_min). Tight by design — only fires on real reversals, not noise.
+    trailing_early_arm_pullback: float = 0.10
     # May 7: Pair Trend Filter (pair-level analog of BTC Trend Filter).
     # Compares pair EMA13 vs EMA50 (5m candles, ~65min vs ~250min). Blocks
     # countertrend entries:

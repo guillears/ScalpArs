@@ -509,7 +509,8 @@ def check_exit_conditions(
     current_tp_level: int = 1,
     dynamic_tp_target: float = None,
     signal_active: bool = False,
-    tp_trailing_enabled: bool = True
+    tp_trailing_enabled: bool = True,
+    entry_atr_pct: float = None,  # May 7 Phase 1: ATR-normalized trailing
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -579,8 +580,43 @@ def check_exit_conditions(
         _widening_per_level = float(getattr(config_module.trading_config.thresholds, 'pullback_widening_per_level', 0.0) or 0.0)
     except Exception:
         _widening_per_level = 0.0
-    _level_minus_one = max(0, (current_tp_level or 1) - 1)
-    pullback_trigger = pullback_trigger + _widening_per_level * _level_minus_one
+
+    # May 7 Phase 2: early-arm zone. When peak is between trailing_early_arm_threshold
+    # and tp_min, use the (typically tighter) early_arm_pullback instead of the regular
+    # base pullback + widening. Default arms at peak ≥ +0.30% with 0.10% pullback —
+    # locks in moderate-momentum profits that would otherwise reverse to losses.
+    try:
+        _early_arm_threshold = float(getattr(config_module.trading_config.thresholds, 'trailing_early_arm_threshold', 0.0) or 0.0)
+        _early_arm_pullback = float(getattr(config_module.trading_config.thresholds, 'trailing_early_arm_pullback', 0.10) or 0.10)
+    except Exception:
+        _early_arm_threshold = 0.0
+        _early_arm_pullback = 0.10
+    _in_early_arm = (
+        _early_arm_threshold > 0
+        and peak_pnl >= _early_arm_threshold
+        and peak_pnl < (tp_min - 0.005)
+        and (current_tp_level or 1) <= 1
+    )
+    if _in_early_arm:
+        # Override: use tight early-arm pullback regardless of widening
+        pullback_trigger = _early_arm_pullback
+    else:
+        # Standard tier-aware widening
+        _level_minus_one = max(0, (current_tp_level or 1) - 1)
+        pullback_trigger = pullback_trigger + _widening_per_level * _level_minus_one
+
+    # May 7 Phase 1: ATR-normalized pullback floor. Volatile pairs need wider
+    # pullback to avoid triggering on normal candle noise. Floor = entry_atr_pct
+    # × trailing_atr_multiplier. Default 0.50 = "half a candle of noise". Set
+    # multiplier to 0.0 to disable ATR floor entirely.
+    try:
+        _atr_multiplier = float(getattr(config_module.trading_config.thresholds, 'trailing_atr_multiplier', 0.0) or 0.0)
+    except Exception:
+        _atr_multiplier = 0.0
+    if _atr_multiplier > 0 and entry_atr_pct is not None and entry_atr_pct > 0:
+        _atr_floor = entry_atr_pct * _atr_multiplier
+        if _atr_floor > pullback_trigger:
+            pullback_trigger = _atr_floor
     be_l1_trigger = conf_config.be_level1_trigger
     be_l1_offset = conf_config.be_level1_offset
     be_l2_trigger = conf_config.be_level2_trigger
@@ -600,7 +636,13 @@ def check_exit_conditions(
     # Trailing stop (pullback from peak price) activates once peak reaches TP target or at L2+.
     # 0.005pp tolerance (May 6 — bug fix): float-rounding around the tp_min threshold
     # could leave trailing perpetually unarmed when peak is e.g. +0.4998% vs tp_min 0.50%.
-    trailing_stop_active = peak_pnl >= (effective_tp_target - 0.005) or current_tp_level >= 2
+    # May 7 Phase 2: ALSO activates in the early-arm zone (peak between early_arm_threshold
+    # and tp_min) with tight pullback — locks in moderate-momentum gains.
+    trailing_stop_active = (
+        peak_pnl >= (effective_tp_target - 0.005)
+        or current_tp_level >= 2
+        or _in_early_arm
+    )
     
     # 3-Level break-even stop loss (highest level wins)
     effective_stop_loss = stop_loss

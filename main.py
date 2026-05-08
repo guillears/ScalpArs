@@ -4190,6 +4190,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "NO_EXPANSION",       # Trade timed out without profit expansion
             "REGIME_CHANGE",      # BTC regime flipped against the trade
             "MAX_HOLD_TIME",      # Hit max duration (losing side only via pnl<=0 filter)
+            # May 8: added EMA13_CROSS_EXIT and EMA_STACK_CROSS_EXIT — these became
+            # the dominant losing-exit mechanism but were missing from this whitelist,
+            # leaving Stop Loss Deep Dive structurally blank when most losers cut via
+            # EMA13 cross before hitting -0.9% SL.
+            "EMA13_CROSS_EXIT",
+            "EMA_STACK_CROSS_EXIT",
         ]
         _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") for p in _sl_reason_prefixes)
         sl_orders = [o for o in orders if o.close_reason and (o.pnl or 0) <= 0 and _cr_match(o.close_reason)]

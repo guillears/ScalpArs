@@ -322,6 +322,15 @@ class TradingEngine:
             _pe_notional = order.entry_price * order.quantity if order.quantity else 1
             _pe_fee_drag = (((order.entry_fee or 0) + _pe_notional * getattr(tc, 'taker_fee', tc.trading_fee)) / _pe_notional) * 100
 
+            # May 8: resume tracking from saved running state (survives restart).
+            # If running state exists, use it; else fall back to current price + now.
+            _resumed = (order.post_exit_running_high is not None or
+                        order.post_exit_running_low is not None)
+            _post_high = order.post_exit_running_high if order.post_exit_running_high is not None else (initial_price or order.exit_price)
+            _post_low = order.post_exit_running_low if order.post_exit_running_low is not None else (initial_price or order.exit_price)
+            _peak_at = order.post_exit_running_peak_at if order.post_exit_running_peak_at is not None else now
+            _trough_at = order.post_exit_running_trough_at if order.post_exit_running_trough_at is not None else now
+
             self._post_exit_tracking[order.id] = {
                 "order_id": order.id,
                 "pair": order.pair,
@@ -330,10 +339,10 @@ class TradingEngine:
                 "fee_drag_pct": _pe_fee_drag,
                 "exit_time": order.closed_at,
                 "tracking_until": tracking_until,
-                "post_high": initial_price or order.exit_price,
-                "post_low": initial_price or order.exit_price,
-                "peak_at": now,
-                "trough_at": now,
+                "post_high": _post_high,
+                "post_low": _post_low,
+                "peak_at": _peak_at,
+                "trough_at": _trough_at,
                 "signal_lost_at": None,
                 "pnl_at_signal_lost": None,
                 "peak_before_signal_lost": 0.0,
@@ -350,7 +359,8 @@ class TradingEngine:
                 "tick_prices": [],
             }
             recovered += 1
-            logger.info(f"[POST_EXIT_RECOVER] Re-registered {order.pair} order {order.id} ({order.close_reason}) — "
+            _resumed_tag = " (resumed running state)" if _resumed else " (fresh)"
+            logger.info(f"[POST_EXIT_RECOVER] Re-registered {order.pair} order {order.id} ({order.close_reason}){_resumed_tag} — "
                         f"tracking_until={tracking_until.strftime('%H:%M:%S')}")
 
         if recovered:
@@ -3075,12 +3085,35 @@ class TradingEngine:
             entry = info["entry_price"]
             direction = info["direction"]
 
-            if price > info["post_high"]:
+            _new_high = price > info["post_high"]
+            _new_low = price < info["post_low"]
+            if _new_high:
                 info["post_high"] = price
                 info["peak_at"] = now
-            if price < info["post_low"]:
+            if _new_low:
                 info["post_low"] = price
                 info["trough_at"] = now
+
+            # May 8: persist running state to DB whenever a new extreme is observed.
+            # Survives bot restart — _recover_post_exit_tracking reads these to
+            # resume tracking instead of resetting peak/trough to current price.
+            # Throttled to actual new highs/lows; no per-tick writes.
+            if _new_high or _new_low:
+                try:
+                    async with AsyncSessionLocal() as _pe_state_db:
+                        await _pe_state_db.execute(
+                            update(Order)
+                            .where(Order.id == order_id)
+                            .values(
+                                post_exit_running_high=info["post_high"],
+                                post_exit_running_low=info["post_low"],
+                                post_exit_running_peak_at=info["peak_at"],
+                                post_exit_running_trough_at=info["trough_at"],
+                            )
+                        )
+                        await _pe_state_db.commit()
+                except Exception as _pe_state_exc:
+                    logger.debug(f"[POST_EXIT_RUNNING] Failed to persist running state for {info['pair']}: {_pe_state_exc}")
 
             # Current P&L for tracking calculations (net of fees, consistent with pnl_percentage)
             if direction == "LONG":

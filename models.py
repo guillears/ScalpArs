@@ -222,6 +222,14 @@ class Order(Base):
     exit_ema5_crossed = Column(Boolean, nullable=True)
 
     # Post-exit regret tracking: hypothetical P&L if the trade had stayed open for N minutes after close
+    # May 8: running state persisted continuously during tracking so a bot restart
+    # mid-window doesn't reset the peak/trough captured so far. Recovery reads
+    # these and resumes tracking from saved state instead of starting from current
+    # price + now timestamps.
+    post_exit_running_high = Column(Float, nullable=True)
+    post_exit_running_low = Column(Float, nullable=True)
+    post_exit_running_peak_at = Column(DateTime, nullable=True)
+    post_exit_running_trough_at = Column(DateTime, nullable=True)
     post_exit_peak_pnl = Column(Float, nullable=True)
     post_exit_trough_pnl = Column(Float, nullable=True)
     post_exit_peak_minutes = Column(Float, nullable=True)

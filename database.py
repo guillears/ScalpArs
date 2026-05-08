@@ -265,6 +265,16 @@ async def init_db():
                 # EMA13 strict-mode tracking (May 8): pnl% at first hold
                 if 'ema13_strict_held_pnl_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN ema13_strict_held_pnl_pct FLOAT"))
+                # Post-exit tracking running state (May 8): persisted continuously
+                # so a bot restart mid-window doesn't reset captured peak/trough.
+                if 'post_exit_running_high' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_running_high FLOAT"))
+                if 'post_exit_running_low' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_running_low FLOAT"))
+                if 'post_exit_running_peak_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_running_peak_at DATETIME"))
+                if 'post_exit_running_trough_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_running_trough_at DATETIME"))
                 # Regime stability instrumentation (May 5)
                 if 'entry_btc_regime_started_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_regime_started_at DATETIME"))

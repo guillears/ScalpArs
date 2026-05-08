@@ -115,7 +115,7 @@
     "ema_gap_5_20_min_short": 0.05,
     "ema_gap_5_20_max_long": 0.8,
     "ema_gap_5_20_max_short": 0.8,
-    "rsi_momentum_filter_enabled": true,
+    "rsi_momentum_filter_enabled": false,
     "rsi_momentum_exit_enabled": false,
     "rsi_momentum_exit_min_profit": -0.80,
     "rsi_momentum_exit_max_profit": -0.45,

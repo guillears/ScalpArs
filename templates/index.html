@@ -2399,6 +2399,34 @@
                             <p class="text-xs text-gray-500 mt-1">Widens the trailing pullback by this much per TP level. Effective pullback at L<sub>N</sub> = base pullback + widening × (N − 1). 0 = flat trailing (current). Bigger winners get more room; small winners stay tight.</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Trailing ATR Multiplier (Phase 1) <span class="text-xs text-violet-400">(May 8)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    ATR ×
+                                    <input type="number" step="0.05" min="0" max="2.0" id="config-trailing-atr-multiplier" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.50">
+                                </label>
+                                <span id="config-trailing-atr-preview" class="text-xs text-gray-500"></span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">ATR-normalized pullback floor: <code>effective_pullback = max(fixed_pullback, entry_atr_pct × multiplier)</code>. Volatile pairs (high ATR) get wider pullback proportional to their normal candle noise. 0.50 = "half a candle of noise". Set to 0 to disable.</p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Early-Arm Trailing (Phase 2) <span class="text-xs text-violet-400">(May 8)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Arm @ peak ≥
+                                    <input type="number" step="0.01" min="0" max="1.0" id="config-trailing-early-arm-threshold" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.30">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Pullback
+                                    <input type="number" step="0.01" min="0" max="0.50" id="config-trailing-early-arm-pullback" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <span id="config-early-arm-preview" class="text-xs text-gray-500"></span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Trailing arms when peak is between this threshold and tp_min (the regular L1 arming point), with a tighter pullback. Locks in moderate-momentum profits before reaching L1. Threshold 0 = disabled. Loser protections unchanged — never-positive trades still cut by EMA13/FL/SL.</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Signal Lost Exit</label>
                             <div class="flex items-center gap-4">
                                 <label class="flex items-center cursor-pointer">
@@ -9727,6 +9755,56 @@
                 _widenInput.removeEventListener('input', _updateWidenPreview);
                 _widenInput.addEventListener('input', _updateWidenPreview);
                 _updateWidenPreview();
+
+                // May 8 Phase 1: ATR-normalized trailing pullback floor
+                const _atrMultInput = document.getElementById('config-trailing-atr-multiplier');
+                if (_atrMultInput) {
+                    _atrMultInput.value = config.thresholds.trailing_atr_multiplier !== undefined ? config.thresholds.trailing_atr_multiplier : 0.50;
+                    const _updateAtrPreview = () => {
+                        const mult = parseFloat(_atrMultInput.value) || 0;
+                        const preview = document.getElementById('config-trailing-atr-preview');
+                        if (preview) {
+                            if (mult <= 0) {
+                                preview.textContent = 'Disabled — uses fixed pullback only';
+                            } else {
+                                const ex_low = (0.30 * mult).toFixed(2);
+                                const ex_mid = (0.60 * mult).toFixed(2);
+                                const ex_high = (1.20 * mult).toFixed(2);
+                                preview.textContent = `Floor: ATR 0.30%→${ex_low}% | ATR 0.60%→${ex_mid}% | ATR 1.20%→${ex_high}%`;
+                            }
+                        }
+                    };
+                    _atrMultInput.removeEventListener('input', _updateAtrPreview);
+                    _atrMultInput.addEventListener('input', _updateAtrPreview);
+                    _updateAtrPreview();
+                }
+
+                // May 8 Phase 2: Early-arm trailing zone
+                const _earlyArmThrInput = document.getElementById('config-trailing-early-arm-threshold');
+                const _earlyArmPbInput = document.getElementById('config-trailing-early-arm-pullback');
+                if (_earlyArmThrInput && _earlyArmPbInput) {
+                    _earlyArmThrInput.value = config.thresholds.trailing_early_arm_threshold !== undefined ? config.thresholds.trailing_early_arm_threshold : 0.30;
+                    _earlyArmPbInput.value = config.thresholds.trailing_early_arm_pullback !== undefined ? config.thresholds.trailing_early_arm_pullback : 0.10;
+                    const _updateEarlyArmPreview = () => {
+                        const thr = parseFloat(_earlyArmThrInput.value) || 0;
+                        const pb = parseFloat(_earlyArmPbInput.value) || 0.10;
+                        const preview = document.getElementById('config-early-arm-preview');
+                        if (preview) {
+                            if (thr <= 0) {
+                                preview.textContent = 'Disabled — trailing arms only at tp_min';
+                            } else {
+                                const minExit = (thr - pb).toFixed(2);
+                                preview.textContent = `Active: peak ≥${thr.toFixed(2)}% → exit floor ${minExit}% on ${pb.toFixed(2)}% retrace`;
+                            }
+                        }
+                    };
+                    _earlyArmThrInput.removeEventListener('input', _updateEarlyArmPreview);
+                    _earlyArmThrInput.addEventListener('input', _updateEarlyArmPreview);
+                    _earlyArmPbInput.removeEventListener('input', _updateEarlyArmPreview);
+                    _earlyArmPbInput.addEventListener('input', _updateEarlyArmPreview);
+                    _updateEarlyArmPreview();
+                }
+
                 document.getElementById('config-signal-lost-enabled').checked = config.thresholds.signal_lost_exit_enabled !== undefined ? config.thresholds.signal_lost_exit_enabled : true;
                 document.getElementById('config-signal-lost-min-profit').value = config.thresholds.signal_lost_min_profit !== undefined ? config.thresholds.signal_lost_min_profit : 0.05;
                 document.getElementById('config-signal-lost-max-profit').value = config.thresholds.signal_lost_max_profit !== undefined ? config.thresholds.signal_lost_max_profit : 999;
@@ -10112,6 +10190,9 @@
                     rsi_handoff_active: document.getElementById('config-rsi-handoff-active').checked,
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,
                     pullback_widening_per_level: safeFloat(document.getElementById('config-pullback-widening').value),
+                    trailing_atr_multiplier: safeFloat(document.getElementById('config-trailing-atr-multiplier')?.value || 0.50),
+                    trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
+                    trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,
                     signal_lost_min_profit: safeFloat(document.getElementById('config-signal-lost-min-profit').value),
                     signal_lost_max_profit: safeFloat(document.getElementById('config-signal-lost-max-profit').value),

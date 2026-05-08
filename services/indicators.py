@@ -169,6 +169,7 @@ def get_signal(
     ema50: float = None,
     ema50_prev12: float = None,
     rsi_prev3: float = None,
+    rsi_prev2: float = None,
     ema5_prev1: float = None,
     ema8_prev1: float = None,
     ema5_prev2: float = None,
@@ -323,8 +324,8 @@ def get_signal(
             elif ema20_slope_min_long > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_long:
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_long}%")
                 _record("PAIR_EMA20_SLOPE_MIN", "LONG")
-            elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi < rsi_prev3:
-                logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against LONG")
+            elif rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi < rsi_prev2:
+                logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev2:.1f} -> {rsi:.1f}), momentum against LONG (2 candles)")
                 _record("PAIR_RSI_MOMENTUM", "LONG")
             elif long_rsi_min > 0 and rsi is not None and rsi < long_rsi_min:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI {rsi:.1f} < min {long_rsi_min}")
@@ -379,8 +380,8 @@ def get_signal(
             elif ema20_slope_min_short > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_short:
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_short}%")
                 _record("PAIR_EMA20_SLOPE_MIN", "SHORT")
-            elif rsi_momentum_enabled and rsi is not None and rsi_prev3 is not None and rsi > rsi_prev3:
-                logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev3:.1f} -> {rsi:.1f}), momentum against SHORT")
+            elif rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi > rsi_prev2:
+                logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev2:.1f} -> {rsi:.1f}), momentum against SHORT (2 candles)")
                 _record("PAIR_RSI_MOMENTUM", "SHORT")
             elif short_rsi_max < 100 and rsi is not None and rsi > short_rsi_max:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI {rsi:.1f} > max {short_rsi_max}")

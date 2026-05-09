@@ -6423,3 +6423,77 @@ The May 4 224-trade entry attributed loss reduction to multiple stacked filters.
 ### Files changed
 - `trading_config.json`: `btc_adx_max_long: 40 → 35`
 - `CLAUDE.md`: this entry
+
+## May 9, 2026 — SHORT-only BTC Trend Filter (watchlist for next ≥30-SHORT batch)
+
+### Context
+
+After the May 4 LONG-side optimizations, post-May-4 SHORT data is small but consistently negative:
+- May 5 pre-reset: 4 SHORTs, 50% WR, **-$22.23/trade expectancy** (AvgWin $10 vs AvgLoss $54 — broken R:R)
+- May 9 stretch_finding (41L+8S): 8 SHORTs, 37.5% WR, **-$5.13/trade expectancy**
+- May 9 current 18L batch: 0 SHORTs
+
+Pooled post-May-4: 12 SHORTs, ~42% WR, ~-$11/trade. Below the anti-overfit N threshold for any conclusion, but every sub-batch is directionally negative. SHORT side has not been validated profitable since at least Apr 13 (when it was breakeven, not profitable).
+
+### Asymmetric filter case
+
+The BTC Trend Filter (EMA13 vs EMA50, ~4-hour macro context, currently disabled per May 8 changelog) is a candidate for **direction-asymmetric activation: SHORT-only**. Reasons:
+
+1. LONG side has been profitable in current BULLISH regime without the macro veto (current 18L batch confirms)
+2. SHORT side has historically suffered in BULLISH regime via REGIME_CHANGE / FL_REGIME_CHANGE exits — countertrend entries during BTC pullbacks that revert
+3. A SHORT-only macro veto (block SHORTs when BTC EMA13 > EMA50) addresses the asymmetric failure mode without removing LONG winners during pullback entries
+4. Mirrors the existing asymmetric pattern: `btc_adx_max_long: 35` vs `btc_adx_max_short: 40` — direction-specific because evidence is asymmetric
+
+### Why deferred (not shipped now)
+
+- Current SHORT N (12 post-May-4) is below the anti-overfit threshold for promoting any new filter
+- Filter being currently OFF on both sides is actually useful: it lets us COLLECT observation data on what happens at various gap values for SHORTs. If it had stayed ON, the gap > 0 SHORT bucket would always be empty and we couldn't validate the asymmetric case.
+- Code refactor required (~15 lines): split `btc_trend_filter_enabled` into `btc_trend_filter_long_enabled` + `btc_trend_filter_short_enabled` + UI toggle split + check in `services/trading_engine.py`. Trivial work but premature without N.
+
+### The diagnostic — `Performance by BTC EMA13-EMA50 Gap` (already shipped, observation-only)
+
+This is the right table. Bucket structure already in place:
+- `< -0.20%` to `-0.05%` → BTC clearly/strongly downtrend
+- `-0.05 to 0%` and `0 to +0.05%` → near zero crossing (the key boundary)
+- `+0.05%` to `> +0.20%` → BTC clearly/strongly uptrend
+
+### Locked promotion criteria for SHORT-only activation (apply at next ≥30-SHORT checkpoint)
+
+| BTC Gap bucket | SHORT alignment | Promotion gate |
+|---|---|---|
+| < -0.10% | Aligned (BTC downtrend, SHORT with trend) | If WR ≥ 55% on N ≥ 10 → keep allowed |
+| -0.10 to 0% | Mild aligned / flat | Watchlist |
+| 0 to +0.10% | Mild countertrend | If WR ≤ 35% on N ≥ 10 → block via SHORT-only filter |
+| > +0.10% | Strong countertrend | If WR ≤ 30% on N ≥ 10 → definitely block |
+
+Clean breakpoint test: whether `gap < 0` vs `gap > 0` SHORT bucket differential is ≥ 15 pp WR with N ≥ 15 each side. Same promotion bar as locked Phase 1c-Explore plan.
+
+### Decision matrix at the checkpoint
+
+- **Clear discrimination (gap > 0 SHORTs ≤ 35% WR vs gap < 0 SHORTs ≥ 55% WR, both N ≥ 10)** → ship the code refactor (split toggle), enable SHORT-only, leave LONG-only OFF
+- **Modest discrimination (gap > 0 SHORTs in 35-50% WR range)** → keep observation-only one more batch
+- **No discrimination** (gap < 0 SHORTs also losing) → 4-hour macro context isn't the SHORT loss source. Filter stays OFF on both sides, look elsewhere (entry-level filter quality, exit-side leakage, multiplier cell decay)
+- **Bucket distribution too narrow** (e.g. 25+ of 30 SHORTs concentrated at gap > +0.10% because that's where SHORTs slip through other filters in bullish regime) → can't validate the gap < 0 half of the test. Defer until cross-regime sample.
+
+### Asymmetric vs symmetric — explicit rule
+
+- If LONG-side data at next checkpoint also shows clean discrimination (gap < 0 LONG bucket losing on N ≥ 10), ship symmetric (both directions enabled)
+- If only SHORT side discriminates, ship SHORT-only — do NOT enable LONG side prophylactically. The May 6 reasoning that disabled this filter for LONG was based on real LONG data; don't undo without LONG-side evidence
+
+### Files that would change if/when promoted
+
+- `config.py`: split `btc_trend_filter_enabled` field into two
+- `trading_config.json`: same split + default values
+- `services/trading_engine.py`: split the check in BTC scan block
+- `templates/index.html`: split UI toggle into LONG / SHORT (mirror the existing `btc_adx_dir_long/short` UI pattern)
+- Existing `Performance by BTC EMA13-EMA50 Gap` table needs no change — already direction-aware
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The asymmetric promotion rule (SHORT-only is acceptable; LONG-only requires its own evidence)
+2. The locked promotion gate (≥15pp WR differential on N ≥ 10 each side)
+3. The diagnostic table to use (`Performance by BTC EMA13-EMA50 Gap`)
+4. The reasoning for keeping the filter currently OFF — observation data collection IS the value right now
+
+When SHORT N reaches ~30 in a single batch, this entry is the locked test. No re-litigation.

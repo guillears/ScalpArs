@@ -178,6 +178,12 @@ class SignalThresholds(BaseModel):
     # When stretch + RSI×ADX both match same trade, HIGHER multiplier wins (capped at hard_cap).
     ema5_stretch_multiplier_long: str = ""
     ema5_stretch_multiplier_short: str = ""
+    # Trailing pullback confirmation (May 9): require N seconds of sustained
+    # pullback before trailing exit fires. Catches single-tick noise wicks
+    # (e.g. SAHARAUSDT 1-second wick on high-ATR pair). 0 = disabled (fire
+    # immediately like before). Default 15s — short enough to add minimal
+    # delay on real reversals (~0.05pp), long enough to filter <15s noise.
+    trailing_pullback_confirmation_seconds: int = 15
     rsi_momentum_filter_enabled: bool = True  # Block LONG if RSI falling, block SHORT if RSI rising (vs 3 candles ago)
     rsi_momentum_exit_enabled: bool = True  # Exit LONG on 2 consecutive RSI drops, SHORT on 2 consecutive rises
     rsi_momentum_exit_min_profit: float = 0.05  # Min P&L % (notional) to trigger RSI momentum exit

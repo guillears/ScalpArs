@@ -5146,7 +5146,96 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "ema_cross_counterfactual": _compute_ema_cross_counterfactual(orders),
         # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
         "ema13_strict_performance": _compute_ema13_strict_performance(orders),
+        # Trailing pullback confirmation performance (May 9, 2026)
+        "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
     }
+
+
+def _compute_trailing_confirmation_performance(orders):
+    """Trailing pullback confirmation tracking (May 9, 2026).
+
+    For trades where the trailing confirmation timer captured the
+    counterfactual (`trailing_first_pullback_pnl_pct IS NOT NULL`),
+    compares would-have-been-immediate-fire P&L vs the actual close.
+    Positive delta = confirmation helped (price recovered after wick,
+    trade ran further). Negative delta = confirmation hurt (waited and
+    price kept dropping).
+    """
+    by_dir = {"LONG": [], "SHORT": []}
+    for o in orders:
+        if getattr(o, 'status', None) != "CLOSED":
+            continue
+        first_pullback = getattr(o, 'trailing_first_pullback_pnl_pct', None)
+        if first_pullback is None:
+            continue
+        d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
+        if d not in by_dir:
+            continue
+        close_pct = o.pnl_percentage if o.pnl_percentage is not None else 0.0
+        delta_pct = close_pct - first_pullback
+        if close_pct and abs(close_pct) > 1e-9 and o.pnl is not None:
+            dollar_delta = o.pnl * (delta_pct / close_pct)
+        else:
+            inv = o.investment or 0.0
+            lev = o.leverage or 1
+            dollar_delta = (delta_pct / 100.0) * inv * lev
+        by_dir[d].append({
+            'first_pullback_pct': first_pullback,
+            'close_pct': close_pct,
+            'delta_pct': delta_pct,
+            'dollar_delta': dollar_delta,
+            'pnl': o.pnl or 0.0,
+            'resets': getattr(o, 'trailing_pullback_resets', 0) or 0,
+        })
+
+    def _verdict(rows):
+        if not rows or len(rows) < 5:
+            return "⚠ Low N"
+        n = len(rows)
+        avg_delta = sum(r['delta_pct'] for r in rows) / n
+        total_dollar = sum(r['dollar_delta'] for r in rows)
+        if avg_delta >= 0.05 and total_dollar > 0:
+            return "★ HELPING"
+        if avg_delta <= -0.05 or total_dollar < 0:
+            return "⚠ HURTING"
+        return "✓ Marginal"
+
+    rows_out = []
+    total_n = 0
+    total_resets = 0
+    sum_delta_pct_weighted = 0.0
+    sum_dollar = 0.0
+    for d in ("LONG", "SHORT"):
+        rs = by_dir[d]
+        n = len(rs)
+        if n == 0:
+            continue
+        n_with_resets = sum(1 for r in rs if r['resets'] > 0)
+        avg_first_pullback = sum(r['first_pullback_pct'] for r in rs) / n
+        avg_close = sum(r['close_pct'] for r in rs) / n
+        avg_delta = sum(r['delta_pct'] for r in rs) / n
+        sum_dollar_dir = sum(r['dollar_delta'] for r in rs)
+        rows_out.append({
+            'direction': d,
+            'n': n,
+            'n_with_resets': n_with_resets,
+            'avg_first_pullback_pct': round(avg_first_pullback, 4),
+            'avg_close_pct': round(avg_close, 4),
+            'avg_delta_pct': round(avg_delta, 4),
+            'total_dollar_delta': round(sum_dollar_dir, 2),
+            'verdict': _verdict(rs),
+        })
+        total_n += n
+        total_resets += n_with_resets
+        sum_delta_pct_weighted += avg_delta * n
+        sum_dollar += sum_dollar_dir
+    summary = {
+        'n': total_n,
+        'n_with_resets': total_resets,
+        'avg_delta_pct': round(sum_delta_pct_weighted / total_n, 4) if total_n > 0 else 0.0,
+        'total_dollar_delta': round(sum_dollar, 2),
+    }
+    return {'rows': rows_out, 'summary': summary}
 
 
 def _compute_ema13_strict_performance(orders):

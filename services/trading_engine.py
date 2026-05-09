@@ -5819,22 +5819,82 @@ class TradingEngine:
                     if _atr_floor > _effective_pullback:
                         _effective_pullback = _atr_floor
 
+                # Determine if pullback threshold is currently crossed
+                _pullback_threshold_crossed = False
                 if direction == "LONG" and high_price and high_price > 0:
                     price_drop_pct = ((high_price - current_price) / high_price) * 100
-                    if price_drop_pct >= _effective_pullback:
-                        # May 6 — bug fix: removed `if pnl_pct >= 0` safeguard.  Was
-                        # blocking legitimate trailing closes when a fast reversal landed
-                        # the realtime tick after pnl crossed zero.  Hard SL still covers
-                        # corrupted-high_price cases.
-                        should_close_trailing = True
-                        logger.warning(f"[REALTIME_TRAILING] {pair} LONG L{tp_level}: high={high_price:.6f}, current={current_price:.6f}, drop={price_drop_pct:.4f}% >= {_effective_pullback}% (base={pullback_trigger} +widen{_widening}×{tp_level-1}), pnl={pnl_pct:.4f}% - CLOSING NOW!")
-
+                    _pullback_threshold_crossed = price_drop_pct >= _effective_pullback
                 elif direction == "SHORT" and low_price and low_price > 0:
                     price_rise_pct = ((current_price - low_price) / low_price) * 100
-                    if price_rise_pct >= _effective_pullback:
-                        # May 6 — bug fix: removed `if pnl_pct >= 0` safeguard.
-                        should_close_trailing = True
-                        logger.warning(f"[REALTIME_TRAILING] {pair} SHORT L{tp_level}: low={low_price:.6f}, current={current_price:.6f}, rise={price_rise_pct:.4f}% >= {_effective_pullback}% (base={pullback_trigger} +widen{_widening}×{tp_level-1}), pnl={pnl_pct:.4f}% - CLOSING NOW!")
+                    _pullback_threshold_crossed = price_rise_pct >= _effective_pullback
+
+                # May 9: Confirmation timer. Catch single-tick noise wicks (e.g.
+                # SAHARAUSDT 1.34s wick on 1.87% ATR pair) by requiring sustained
+                # pullback for N seconds. 0 = disabled (pre-May-9 immediate fire).
+                try:
+                    _confirm_secs = int(getattr(_th, 'trailing_pullback_confirmation_seconds', 15) or 0)
+                except (ValueError, TypeError):
+                    _confirm_secs = 15
+                _now = datetime.utcnow()
+
+                if _pullback_threshold_crossed:
+                    if order_info.get('_trailing_pullback_first_at') is None:
+                        # First moment threshold crossed — start timer, record counterfactual P&L
+                        order_info['_trailing_pullback_first_at'] = _now
+                        order_info['_trailing_pullback_first_pnl_pct'] = float(pnl_pct)
+                        # Persist counterfactual to DB (one-time record per trade)
+                        try:
+                            async with AsyncSessionLocal() as _tp_db:
+                                await _tp_db.execute(
+                                    update(Order).where(Order.id == order_id).values(
+                                        trailing_first_pullback_pnl_pct=float(pnl_pct)
+                                    )
+                                )
+                                await _tp_db.commit()
+                        except Exception:
+                            pass
+                        if _confirm_secs > 0:
+                            logger.info(f"[TRAILING_CONFIRM] {pair} {direction} L{tp_level}: pullback threshold crossed at pnl={pnl_pct:.4f}% — confirmation timer started ({_confirm_secs}s)")
+                            should_close_trailing = False
+                        else:
+                            should_close_trailing = True
+                            logger.warning(f"[REALTIME_TRAILING] {pair} {direction} L{tp_level}: confirmation disabled — CLOSING NOW! pnl={pnl_pct:.4f}%")
+                    else:
+                        # Timer already running, check elapsed
+                        _elapsed = (_now - order_info['_trailing_pullback_first_at']).total_seconds()
+                        if _elapsed >= _confirm_secs:
+                            should_close_trailing = True
+                            logger.warning(f"[REALTIME_TRAILING] {pair} {direction} L{tp_level}: pullback CONFIRMED after {_elapsed:.1f}s — CLOSING NOW! pnl={pnl_pct:.4f}% (vs first_pullback={order_info.get('_trailing_pullback_first_pnl_pct'):.4f}%)")
+                            # Persist confirmed_at
+                            try:
+                                async with AsyncSessionLocal() as _tp_db2:
+                                    await _tp_db2.execute(
+                                        update(Order).where(Order.id == order_id).values(
+                                            trailing_confirmed_at=_now
+                                        )
+                                    )
+                                    await _tp_db2.commit()
+                            except Exception:
+                                pass
+                        # else: still waiting for confirmation, no close
+                else:
+                    # Pullback condition NOT met — if timer was running, reset it
+                    if order_info.get('_trailing_pullback_first_at') is not None:
+                        _resets = order_info.get('_trailing_pullback_resets', 0) + 1
+                        order_info['_trailing_pullback_resets'] = _resets
+                        order_info['_trailing_pullback_first_at'] = None
+                        logger.info(f"[TRAILING_CONFIRM] {pair} {direction} L{tp_level}: price recovered — timer reset (#{_resets} for this trade)")
+                        # Persist reset count
+                        try:
+                            async with AsyncSessionLocal() as _tp_db3:
+                                await _tp_db3.execute(
+                                    update(Order).where(Order.id == order_id).values(
+                                        trailing_pullback_resets=_resets
+                                    )
+                                )
+                                await _tp_db3.commit()
+                        except Exception:
+                            pass
                 
                 if should_close_trailing:
                     # Prevent duplicate close attempts from consecutive monitor cycles

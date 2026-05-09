@@ -275,6 +275,13 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_running_peak_at DATETIME"))
                 if 'post_exit_running_trough_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_running_trough_at DATETIME"))
+                # Trailing pullback confirmation tracking (May 9)
+                if 'trailing_first_pullback_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN trailing_first_pullback_pnl_pct FLOAT"))
+                if 'trailing_pullback_resets' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN trailing_pullback_resets INTEGER DEFAULT 0"))
+                if 'trailing_confirmed_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN trailing_confirmed_at DATETIME"))
                 # Regime stability instrumentation (May 5)
                 if 'entry_btc_regime_started_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_regime_started_at DATETIME"))

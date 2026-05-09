@@ -6201,3 +6201,84 @@ UI inputs and filter code already support per-direction min/max. Just a config c
 ### Methodology lesson (formalized)
 
 When shipping a per-direction filter based on cross-sample evidence, **verify BOTH directions independently before shipping either**. The threshold may differ. Disabling the unchecked direction (set to 0) is acceptable but should be explicit and noted as a watchlist, not assumed equivalent to the validated direction.
+
+## May 9, 2026 (evening) — Trailing pullback confirmation timer (15s default)
+
+### What ships
+
+`trailing_pullback_confirmation_seconds: 15` — new top-level config field.
+
+When the trailing pullback condition first becomes true (price retraces past
+threshold from peak), instead of firing the close immediately, the bot starts
+a timer. If price RECOVERS above the threshold, timer resets. If pullback is
+sustained for the configured seconds, THEN trailing closes the trade.
+
+Set to 0 to disable (immediate fire = pre-May-9 behavior).
+
+### Motivation
+
+SAHARAUSDT trade on May 9: 1.34-second wick on a 1.87% ATR pair fired the
+trailing exit at +0.91%. Price then ran to +9.21% over the next 39 minutes
+(post-exit). The wick was sub-second noise on a high-volatility pair, not
+a real reversal. Captured 10% of what was actually a 9% move.
+
+A confirmation timer protects against single-tick wicks without changing
+behavior for normal slow trailing (where the retrace is sustained for many
+minutes anyway).
+
+### Tracking — new dashboard table "Trailing Confirmation Performance"
+
+Per direction:
+- N total trades exited via trailing (post-deploy)
+- N where confirmation reset at least once (price recovered then re-dropped)
+- Avg Δ% = `pnl_percentage − trailing_first_pullback_pnl_pct`
+- Total $ Δ vs hypothetical "fire immediately"
+- Verdict: ★ HELPING / ✓ Marginal / ⚠ HURTING / ⚠ Low N
+
+3 new Order columns persist the data:
+- `trailing_first_pullback_pnl_pct` — P&L at first moment threshold crossed
+- `trailing_pullback_resets` — count of timer resets per trade
+- `trailing_confirmed_at` — timestamp when confirmation period elapsed
+
+### Pre-committed validation gates (locked NOW for next checkpoint)
+
+After ≥30 LONG trades exit via trailing post-deploy:
+
+| Outcome | Verdict |
+|---|---|
+| Avg Δ ≥ +0.05pp AND Total $ positive AND N ≥ 5 | ★ KEEP at 15s |
+| Δ flat (±0.05pp) | ✓ Marginal — tune to 10s or 20s based on which side dominates |
+| Avg Δ ≤ -0.05pp OR Total $ negative | ✗ REVERT (set confirmation_seconds = 0) |
+
+Special-case observation to look for:
+- "Trades with resets ≥ 1": were the saves real wins, or did they end up
+  closing at lower P&L after the recovery? If avg Δ$ on the reset subset
+  is negative — the timer is delaying real reversals (cost), not catching
+  noise wicks (benefit). Tighten timer or revert.
+- "Trades with no resets": expect mild negative Δ (normal trades exit ~15s
+  later than they would have). If this subset's Δ ≤ -0.10pp, the timer is
+  too long; tune down.
+
+### Possible tuning at next report
+
+- 10s — more responsive, catches single-tick + ~10s wicks; less delay on real reversals
+- 15s (default) — balanced
+- 20s — more protection, more delay
+- 0 — revert to immediate fire
+
+UI input lets operator change without redeploy.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the validation gates BEFORE the data arrives. At next report
+checkpoint, the new "Trailing Confirmation Performance" table makes the
+verdict mechanical (one of the 4 outcomes above) — no re-litigation, no
+post-hoc parameter tweaking. The cost of being wrong is bounded (~0.05pp
+late exit per trade) and trivially reversible (set to 0).
+
+### Companion infrastructure changes shipped
+
+This commit also touches the dashboard's trailing exit path with the
+post-exit running state preservation work from earlier May (2026-05-08).
+The two interact: timer state is persisted to DB on every reset, so a
+mid-trade restart doesn't lose the confirmation progress.

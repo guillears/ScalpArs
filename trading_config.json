@@ -152,6 +152,7 @@
     "btc_rsi_adx_multiplier_short": "25-30:20-25:2.0",
     "ema5_stretch_multiplier_long": "0.16-0.20:2.0,0.20-0.25:2.0,0.25-0.30:2.0",
     "ema5_stretch_multiplier_short": "0.25-0.30:2.0",
+    "trailing_pullback_confirmation_seconds": 15,
     "rsi_adx_multiplier_target": "investment",
     "rsi_adx_multiplier_hard_cap": 2.0,
     "global_volume_filter_enabled": false,

@@ -216,6 +216,15 @@ class Order(Base):
     # Performance report to compute counterfactual delta vs final close.
     ema13_strict_held_pnl_pct = Column(Float, nullable=True)
 
+    # May 9: Trailing pullback confirmation tracking. Captures the
+    # would-have-fired-immediately P&L at the first moment the trailing
+    # threshold was crossed. After confirmation period elapses, exit fires
+    # and we can compare actual close vs counterfactual to see if the
+    # confirmation timer helped (positive Δ = save) or hurt (negative Δ).
+    trailing_first_pullback_pnl_pct = Column(Float, nullable=True)
+    trailing_pullback_resets = Column(Integer, nullable=True, default=0)
+    trailing_confirmed_at = Column(DateTime, nullable=True)
+
     # Exit quality: Price vs EMA5 at exit
     exit_price_vs_ema5_pct = Column(Float, nullable=True)
     exit_ema5_slope_pct = Column(Float, nullable=True)

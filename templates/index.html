@@ -909,6 +909,32 @@
                     <div id="ema13-strict-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- Trailing Confirmation Performance (May 9, 2026) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">⏱️ Trailing Confirmation Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3">For trades where the trailing confirmation timer activated (recorded the would-have-been-immediate-fire P&L). Compares first pullback P&L vs actual close. ★ HELPING = confirmation saved real winners from noise wicks; ⚠ HURTING = confirmation delayed real reversals. "Saved by reset" counts trades where price recovered above threshold at least once before confirmation finally fired.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Direction</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="Trades where the timer reset at least once (price recovered above threshold then re-dropped)">Saved by reset</th>
+                                    <th class="text-right px-2" title="Avg P&L% at the first moment pullback threshold was crossed (would-have-fired-immediately counterfactual)">Avg 1st PB%</th>
+                                    <th class="text-right px-2" title="Avg P&L% at actual close">Avg Close%</th>
+                                    <th class="text-right px-2" title="Avg Close% − Avg 1st Pullback%. Positive = confirmation helped">Δ pct</th>
+                                    <th class="text-right px-2" title="Total $ delta vs hypothetical immediate-fire exits">Total $ Δ</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trailing-confirm-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="trailing-confirm-perf-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+
                 <!-- RSI Handoff Performance (May 5, 2026 — CLAUDE.md) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-violet-300 mb-2">📊 RSI Handoff Performance</h3>
@@ -2452,6 +2478,17 @@
                                 <span id="config-pullback-widening-preview" class="text-xs text-gray-500"></span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Widens the trailing pullback by this much per TP level. Effective pullback at L<sub>N</sub> = base pullback + widening × (N − 1). 0 = flat trailing (current). Bigger winners get more room; small winners stay tight.</p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Trailing Pullback Confirmation <span class="text-xs text-cyan-400">(May 9)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Wait
+                                    <input type="number" step="1" min="0" max="120" id="config-trailing-pullback-confirmation-seconds" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="15">
+                                    <span class="ml-1">seconds</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Require sustained pullback for N seconds before firing trailing exit (catches single-tick noise wicks on high-volatility pairs). 0 = disabled (immediate fire = pre-May-9 behavior). Default 15s. Tracked in Trailing Confirmation Performance dashboard table.</p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Trailing ATR Multiplier (Phase 1) <span class="text-xs text-violet-400">(May 8)</span></label>
@@ -4630,6 +4667,27 @@
                 }
             }
 
+            // Trailing Confirmation Performance (May 9, 2026)
+            const _tcp1 = perf.trailing_confirmation_performance || {};
+            if (_tcp1.rows && _tcp1.rows.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
+                lines.push('Direction        N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
+                lines.push('-'.repeat(82));
+                _tcp1.rows.forEach(r => {
+                    const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
+                    const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
+                    const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
+                    const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
+                    lines.push(`${r.direction.padEnd(15)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                });
+                if (_tcp1.summary && _tcp1.summary.n > 0) {
+                    const tot = (_tcp1.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp1.summary.total_dollar_delta).toFixed(2);
+                    const avg = (_tcp1.summary.avg_delta_pct >= 0 ? '+' : '') + _tcp1.summary.avg_delta_pct.toFixed(3) + 'pp';
+                    lines.push(`\nTotal: ${_tcp1.summary.n} trades · ${_tcp1.summary.n_with_resets} saved by reset · Avg Δ ${avg} · ${tot} $ delta vs immediate-fire`);
+                }
+            }
+
             // RSI Handoff Performance (May 5, 2026 — CLAUDE.md)
             const _rhp1 = perf.rsi_handoff_performance || {};
             lines.push(`\n${hr2}`);
@@ -5523,6 +5581,27 @@
                         const tot = (_esp2.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_esp2.summary.total_dollar_delta).toFixed(2);
                         const avg = (_esp2.summary.avg_delta_pct >= 0 ? '+' : '') + _esp2.summary.avg_delta_pct.toFixed(3) + 'pp';
                         lines.push(`\nTotal: ${_esp2.summary.n} trades held · Avg Δ ${avg} · ${tot} $ delta vs EMA13-only`);
+                    }
+                }
+
+                // Trailing Confirmation Performance (May 9, 2026)
+                const _tcp2 = perf.trailing_confirmation_performance || {};
+                if (_tcp2.rows && _tcp2.rows.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
+                    lines.push('Direction        N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
+                    lines.push('-'.repeat(82));
+                    _tcp2.rows.forEach(r => {
+                        const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
+                        const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
+                        const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
+                        const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
+                        lines.push(`${r.direction.padEnd(15)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                    });
+                    if (_tcp2.summary && _tcp2.summary.n > 0) {
+                        const tot = (_tcp2.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp2.summary.total_dollar_delta).toFixed(2);
+                        const avg = (_tcp2.summary.avg_delta_pct >= 0 ? '+' : '') + _tcp2.summary.avg_delta_pct.toFixed(3) + 'pp';
+                        lines.push(`\nTotal: ${_tcp2.summary.n} trades · ${_tcp2.summary.n_with_resets} saved by reset · Avg Δ ${avg} · ${tot} $ delta vs immediate-fire`);
                     }
                 }
 
@@ -6788,6 +6867,47 @@
                                 _espSummary.innerHTML = `Total: <strong>${_esp.summary.n}</strong> trades held by strict mode · Avg Δ <strong>${_esp.summary.avg_delta_pct >= 0 ? '+' : ''}${_esp.summary.avg_delta_pct.toFixed(3)}pp</strong> · <span class="${totDClass}">${_esp.summary.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(_esp.summary.total_dollar_delta).toFixed(2)}</span> total $ delta vs hypothetical EMA13-only exits`;
                             } else if (_espSummary) {
                                 _espSummary.textContent = '';
+                            }
+                        }
+                    }
+                }
+
+                // Trailing Confirmation Performance (May 9, 2026)
+                if (data.trailing_confirmation_performance) {
+                    const _tcp = data.trailing_confirmation_performance;
+                    const _tcpBody = document.getElementById('trailing-confirm-perf-body');
+                    const _tcpSummary = document.getElementById('trailing-confirm-perf-summary');
+                    if (_tcpBody) {
+                        if (!_tcp.rows || !_tcp.rows.length) {
+                            _tcpBody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>';
+                            if (_tcpSummary) _tcpSummary.textContent = '';
+                        } else {
+                            _tcpBody.innerHTML = _tcp.rows.map(r => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const fpClass = r.avg_first_pullback_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const closeClass = r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const deltaClass = r.avg_delta_pct > 0.05 ? 'text-emerald-400' : (r.avg_delta_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const dollarClass = r.total_dollar_delta > 1 ? 'text-emerald-400' : (r.total_dollar_delta < -1 ? 'text-red-400' : 'text-gray-400');
+                                const verdictColor = r.verdict.includes('★') ? 'text-emerald-400' :
+                                    r.verdict.includes('HURT') ? 'text-red-400' :
+                                    r.verdict.includes('Marginal') ? 'text-blue-400' :
+                                    'text-amber-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right text-amber-300">${r.n_with_resets}</td>
+                                    <td class="px-2 py-1 text-right ${fpClass}">${r.avg_first_pullback_pct >= 0 ? '+' : ''}${r.avg_first_pullback_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${closeClass}">${r.avg_close_pct >= 0 ? '+' : ''}${r.avg_close_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${deltaClass}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
+                                    <td class="px-2 py-1 text-right ${dollarClass}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                            if (_tcpSummary && _tcp.summary && _tcp.summary.n > 0) {
+                                const totDClass = _tcp.summary.total_dollar_delta > 1 ? 'text-emerald-400' : (_tcp.summary.total_dollar_delta < -1 ? 'text-red-400' : 'text-gray-400');
+                                _tcpSummary.innerHTML = `Total: <strong>${_tcp.summary.n}</strong> trades · <strong>${_tcp.summary.n_with_resets}</strong> saved by reset · Avg Δ <strong>${_tcp.summary.avg_delta_pct >= 0 ? '+' : ''}${_tcp.summary.avg_delta_pct.toFixed(3)}pp</strong> · <span class="${totDClass}">${_tcp.summary.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(_tcp.summary.total_dollar_delta).toFixed(2)}</span> total $ delta vs hypothetical immediate-fire exits`;
+                            } else if (_tcpSummary) {
+                                _tcpSummary.textContent = '';
                             }
                         }
                     }
@@ -10007,6 +10127,9 @@
                 _updateWidenPreview();
 
                 // May 8 Phase 1: ATR-normalized trailing pullback floor
+                // Trailing Pullback Confirmation (May 9)
+                const _tpcInput = document.getElementById('config-trailing-pullback-confirmation-seconds');
+                if (_tpcInput) _tpcInput.value = config.thresholds.trailing_pullback_confirmation_seconds !== undefined ? config.thresholds.trailing_pullback_confirmation_seconds : 15;
                 const _atrMultInput = document.getElementById('config-trailing-atr-multiplier');
                 if (_atrMultInput) {
                     _atrMultInput.value = config.thresholds.trailing_atr_multiplier !== undefined ? config.thresholds.trailing_atr_multiplier : 0.50;
@@ -10493,6 +10616,7 @@
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,
                     pullback_widening_per_level: safeFloat(document.getElementById('config-pullback-widening').value),
                     trailing_atr_multiplier: safeFloat(document.getElementById('config-trailing-atr-multiplier')?.value || 0.50),
+                    trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),
                     signal_lost_exit_enabled: document.getElementById('config-signal-lost-enabled').checked,

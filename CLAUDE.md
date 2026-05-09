@@ -6010,3 +6010,41 @@ Three independent variables on one batch = attribution will be imperfect. If res
 ### Pooling rule
 
 Pre-reset trades (today's 11) and post-reset trades stay separate. Don't pool raw data. Compare via Avg P&L %. Pre-reset is the "old config polluted batch" reference; post-reset is the validation sample.
+
+## May 9, 2026 — BTC RSI × BTC ADX cross-filter additions + SHORT watchlist
+
+### Shipped (May 4 224-trade vs May 9 24-trade cross-sample analysis)
+
+Added 2 rules to BTC RSI × BTC ADX cross-filter based on cross-sample evidence:
+
+**LONG: `65-70:30`** (require BTC ADX ≥30 when BTC RSI in 65-70)
+- May 4 (224tr): BTC RSI 65-70 LONG = 35 trades, ~38% WR aggregate
+- May 9 (24tr): BTC RSI 65-70 LONG = 11 trades, **0% WR**, contributed -$340 of the -$275 batch (entire loss + more)
+- Combined: 46 trades, ~30% WR cross-sample
+- Sub-cell evidence on 65-70 × 30-35: May 4 had 4/50%/+0.09% (positive direction, small N) — supports allowing high-ADX 65-70 entries
+- Effective: blocks 65-70 with ADX <30 (which are losers); keeps 65-70 with ADX ≥30 (which is positive small-N)
+
+**SHORT: `45-50:25`** (require BTC ADX ≥25 when BTC RSI in 45-50)
+- May 4 (224tr): 45-50 × 15-20 = 1 trade, 0% WR, -0.40%
+- May 9 (current): 45-50 × 15-20 = 1 trade, 0% WR, -0.60%
+- Combined: 2 trades, 0% WR, both losing
+- Marginal N=2 but 100% direction-consistent across 2 independent samples
+- Cell exactly matches the only SHORT loss in current batch
+
+### Watchlist (NOT shipped — needs more SHORT trades)
+
+**SHORT: tighten `35-40:20 → 35-40:25`** — would block 35-40 × 20-25 zone
+- May 4 evidence: 35-40 × 20-25 = 1 trade, 0% WR, -0.36%
+- N=1 — direction-consistent with already-blocked 35-40 × 15-20 (May 4: 2 trades, 0%, -0.48%) but insufficient sample
+- Re-evaluate when next batch produces ≥3 SHORT trades in the 35-40 × 20-25 cell
+- Promotion gate: combined ≥4 trades with WR ≤30% across both samples → tighten to 25
+- If next SHORTs in this cell win at ≥50% WR → drop the watchlist item
+
+### Filter rule format reminder
+
+Stored as `btc_rsi_adx_filter_long` / `btc_rsi_adx_filter_short` strings:
+```
+"30-35:30,35-40:20,45-50:25"  → 3 rules separated by comma
+each rule: "RSI_LO-RSI_HI:MIN_ADX" or "RSI_LO-RSI_HI:MIN_ADX-MAX_ADX"
+```
+First-match-wins per rule. Engine code at `services/trading_engine.py::4365` (LONG) and `4376` (SHORT).

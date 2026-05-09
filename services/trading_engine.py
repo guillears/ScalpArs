@@ -1069,6 +1069,47 @@ class TradingEngine:
                 continue
         return 1.0, None
 
+    def _lookup_stretch_multiplier(
+        self, stretch_val: Optional[float], rule_string: str,
+    ) -> Tuple[float, Optional[str]]:
+        """
+        Stretch-based Multiplier (May 9) — parse 1D stretch rule string and
+        return (multiplier, source_label) if any rule matches the trade's
+        EMA5 stretch.
+
+        Rule string format: "<STRETCH_min>-<STRETCH_max>:<multiplier>,..."
+        Example: "0.16-0.20:1.5,0.20-0.25:1.5,0.25-0.30:2.0"
+        Range is half-open [min, max).
+        Returns (1.0, None) if no rule matches or input is missing.
+        Source label: e.g. "STRETCH_0.25-0.30".
+
+        Cross-sample basis (Mar 30 + Apr 6 + Apr 12 + Apr 13 + May 4 +
+        May 5 + May 9 = 7 reports): LONG stretch 0.25-0.30 = 49 trades
+        65% WR; SHORT stretch 0.25-0.30 = 44 trades 68% WR. Strongest
+        single-dimension cross-sample signal in the dataset.
+        """
+        if stretch_val is None or not rule_string:
+            return 1.0, None
+        for rule in rule_string.split(','):
+            rule = rule.strip()
+            if not rule:
+                continue
+            try:
+                parts = rule.split(':')
+                if len(parts) != 2:
+                    logger.warning(f"[CELL_MULT_STRETCH] Malformed rule '{rule}' (expected 2 parts), skipping")
+                    continue
+                stretch_part, mult_part = parts
+                s_min, s_max = map(float, stretch_part.split('-'))
+                mult = float(mult_part)
+                if s_min <= stretch_val < s_max:
+                    label = f"STRETCH_{stretch_part}"
+                    return mult, label
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[CELL_MULT_STRETCH] Failed to parse rule '{rule}': {e}, skipping")
+                continue
+        return 1.0, None
+
     async def _revalidate_entry_signal(
         self, symbol: str, pair: str, original_direction: str, original_confidence: str
     ) -> Tuple[bool, str]:
@@ -1870,12 +1911,14 @@ class TradingEngine:
         _hard_cap = getattr(_th, 'rsi_adx_multiplier_hard_cap', 2.0)
         _pair_rules = getattr(_th, f'rsi_adx_multiplier_{direction.lower()}', '')
         _btc_rules = getattr(_th, f'btc_rsi_adx_multiplier_{direction.lower()}', '')
+        _stretch_rules = getattr(_th, f'ema5_stretch_multiplier_{direction.lower()}', '')
         _pair_mult, _pair_src = self._lookup_rsi_adx_multiplier(entry_rsi, entry_adx, _pair_rules, 'PAIR')
         _btc_mult, _btc_src = self._lookup_rsi_adx_multiplier(entry_btc_rsi, entry_btc_adx, _btc_rules, 'BTC')
-        if _pair_mult >= _btc_mult:
-            cell_mult, cell_src = _pair_mult, _pair_src
-        else:
-            cell_mult, cell_src = _btc_mult, _btc_src
+        _stretch_mult, _stretch_src = self._lookup_stretch_multiplier(entry_ema5_stretch, _stretch_rules)
+        # HIGHER multiplier wins — when multiple rules match, use the strongest.
+        # Hard cap (~2.0x) prevents stacking past the safety guard.
+        _candidates = [(_pair_mult, _pair_src), (_btc_mult, _btc_src), (_stretch_mult, _stretch_src)]
+        cell_mult, cell_src = max(_candidates, key=lambda c: c[0])
         # Hard cap clamp — non-negotiable safety guard
         if cell_mult > _hard_cap:
             logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested {cell_mult}x, hard-capped to {_hard_cap}x")

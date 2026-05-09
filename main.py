@@ -2202,6 +2202,54 @@ def _funding_rate_bucket(o):
     return '>+0.05%'
 
 
+def _compute_atr_bucket_performance(orders):
+    """Performance by Pair ATR(14)% (entry volatility) — May 9.
+
+    Tests the hypothesis that high-volatility pairs systematically lose money.
+    Buckets trades by entry_atr_pct and reports per-bucket WR / Avg P&L%.
+    Replaces the manual blacklist approach if a clean breakpoint emerges.
+    """
+    closed = [o for o in orders if o.status == "CLOSED" and o.entry_atr_pct is not None and o.pnl is not None]
+    if not closed:
+        return []
+    buckets = [
+        ("<0.25%", 0.0, 0.25),
+        ("0.25-0.40%", 0.25, 0.40),
+        ("0.40-0.60%", 0.40, 0.60),
+        ("0.60-0.90%", 0.60, 0.90),
+        ("0.90-1.30%", 0.90, 1.30),
+        ("≥1.30%", 1.30, 999),
+    ]
+    rows = []
+    for label, lo, hi in buckets:
+        bucket = [o for o in closed if lo <= o.entry_atr_pct < hi]
+        if not bucket:
+            continue
+        n = len(bucket)
+        longs = sum(1 for o in bucket if o.direction == "LONG")
+        shorts = n - longs
+        wins = sum(1 for o in bucket if o.pnl > 0)
+        total_pnl = sum(o.pnl for o in bucket)
+        avg_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket) / n
+        avg_atr = sum(o.entry_atr_pct for o in bucket) / n
+        avg_rsi = sum(o.entry_rsi or 0 for o in bucket) / n
+        avg_adx = sum(o.entry_adx or 0 for o in bucket) / n
+        rows.append({
+            "range": label,
+            "trades": n,
+            "longs": longs,
+            "shorts": shorts,
+            "win_rate": round(wins / n * 100, 1),
+            "avg_pnl": round(total_pnl / n, 2),
+            "avg_pnl_pct": round(avg_pnl_pct, 4),
+            "total_pnl": round(total_pnl, 2),
+            "avg_atr_pct": round(avg_atr, 3),
+            "avg_rsi": round(avg_rsi, 1),
+            "avg_adx": round(avg_adx, 1),
+        })
+    return rows
+
+
 def _compute_pair_performance(orders):
     """Per-pair performance: one row per pair with L/S breakdown"""
     closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
@@ -2225,6 +2273,9 @@ def _compute_pair_performance(orders):
         pnl_pct_sum = sum(o.pnl_percentage or 0 for o in trades)
         slippage_trades = [o for o in trades if o.exit_slippage_pct is not None]
         avg_slippage = round(sum(o.exit_slippage_pct for o in slippage_trades) / len(slippage_trades), 4) if slippage_trades else None
+        # May 9: AvgATR% per pair — testing hypothesis "high volatility pairs drive losses"
+        atr_trades = [o.entry_atr_pct for o in trades if o.entry_atr_pct is not None]
+        avg_atr = round(sum(atr_trades) / len(atr_trades), 3) if atr_trades else None
         rows.append({
             "pair": pair,
             "longs": longs,
@@ -2236,6 +2287,7 @@ def _compute_pair_performance(orders):
             "total_pnl": round(total_pnl, 2),
             "avg_hold_hours": avg_hold,
             "avg_slippage_pct": avg_slippage,
+            "avg_atr_pct": avg_atr,
         })
     rows.sort(key=lambda r: r["total_pnl"], reverse=True)
     return rows
@@ -5074,6 +5126,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "volume_crosstab": _compute_volume_crosstab(orders),
         "breadth_crosstab": _compute_breadth_crosstab(orders),
         "pair_performance": _compute_pair_performance(orders),
+        # May 9: ATR bucket performance — tests "high volatility = loss driver" hypothesis
+        "atr_bucket_performance": _compute_atr_bucket_performance(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
         # RSI Handoff Performance (May 5, 2026 — tracks whether RSI exit beats trailing counterfactual)

@@ -5152,16 +5152,21 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
 
 def _compute_trailing_confirmation_performance(orders):
-    """Trailing pullback confirmation tracking (May 9, 2026).
+    """Trailing pullback confirmation tracking (May 9, 2026 — TP-level breakdown added).
 
     For trades where the trailing confirmation timer captured the
     counterfactual (`trailing_first_pullback_pnl_pct IS NOT NULL`),
     compares would-have-been-immediate-fire P&L vs the actual close.
     Positive delta = confirmation helped (price recovered after wick,
-    trade ran further). Negative delta = confirmation hurt (waited and
-    price kept dropping).
+    trade ran further). Negative delta = confirmation hurt.
+
+    Breakdown: rows for (direction × TP level) with totals per direction.
+    L3+ pools L3, L4, L5 since each is rare. This lets us see if
+    confirmation helps L1 (smaller winners, tighter trailing — sensitive
+    to wicks) but hurts L3+ (bigger winners — may want to lock profits).
     """
-    by_dir = {"LONG": [], "SHORT": []}
+    # Bucket trades by direction × tp_level
+    by_dir_level = {}  # (direction, tp_label) -> list of records
     for o in orders:
         if getattr(o, 'status', None) != "CLOSED":
             continue
@@ -5169,8 +5174,15 @@ def _compute_trailing_confirmation_performance(orders):
         if first_pullback is None:
             continue
         d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
-        if d not in by_dir:
+        if d not in ("LONG", "SHORT"):
             continue
+        tp = getattr(o, 'current_tp_level', 1) or 1
+        if tp <= 1:
+            tp_label = "L1"
+        elif tp == 2:
+            tp_label = "L2"
+        else:
+            tp_label = "L3+"
         close_pct = o.pnl_percentage if o.pnl_percentage is not None else 0.0
         delta_pct = close_pct - first_pullback
         if close_pct and abs(close_pct) > 1e-9 and o.pnl is not None:
@@ -5179,14 +5191,15 @@ def _compute_trailing_confirmation_performance(orders):
             inv = o.investment or 0.0
             lev = o.leverage or 1
             dollar_delta = (delta_pct / 100.0) * inv * lev
-        by_dir[d].append({
+        rec = {
             'first_pullback_pct': first_pullback,
             'close_pct': close_pct,
             'delta_pct': delta_pct,
             'dollar_delta': dollar_delta,
             'pnl': o.pnl or 0.0,
             'resets': getattr(o, 'trailing_pullback_resets', 0) or 0,
-        })
+        }
+        by_dir_level.setdefault((d, tp_label), []).append(rec)
 
     def _verdict(rows):
         if not rows or len(rows) < 5:
@@ -5200,40 +5213,52 @@ def _compute_trailing_confirmation_performance(orders):
             return "⚠ HURTING"
         return "✓ Marginal"
 
-    rows_out = []
-    total_n = 0
-    total_resets = 0
-    sum_delta_pct_weighted = 0.0
-    sum_dollar = 0.0
-    for d in ("LONG", "SHORT"):
-        rs = by_dir[d]
+    def _row_from(rs, label_suffix=""):
+        if not rs:
+            return None
         n = len(rs)
-        if n == 0:
-            continue
         n_with_resets = sum(1 for r in rs if r['resets'] > 0)
-        avg_first_pullback = sum(r['first_pullback_pct'] for r in rs) / n
-        avg_close = sum(r['close_pct'] for r in rs) / n
-        avg_delta = sum(r['delta_pct'] for r in rs) / n
-        sum_dollar_dir = sum(r['dollar_delta'] for r in rs)
-        rows_out.append({
-            'direction': d,
+        return {
             'n': n,
             'n_with_resets': n_with_resets,
-            'avg_first_pullback_pct': round(avg_first_pullback, 4),
-            'avg_close_pct': round(avg_close, 4),
-            'avg_delta_pct': round(avg_delta, 4),
-            'total_dollar_delta': round(sum_dollar_dir, 2),
+            'avg_first_pullback_pct': round(sum(r['first_pullback_pct'] for r in rs) / n, 4),
+            'avg_close_pct': round(sum(r['close_pct'] for r in rs) / n, 4),
+            'avg_delta_pct': round(sum(r['delta_pct'] for r in rs) / n, 4),
+            'total_dollar_delta': round(sum(r['dollar_delta'] for r in rs), 2),
             'verdict': _verdict(rs),
-        })
-        total_n += n
-        total_resets += n_with_resets
-        sum_delta_pct_weighted += avg_delta * n
-        sum_dollar += sum_dollar_dir
+        }
+
+    # Build ordered output: per direction emit rows for L1, L2, L3+, then TOTAL
+    rows_out = []
+    grand_total_n = 0
+    grand_total_resets = 0
+    grand_sum_dollar = 0.0
+    grand_sum_delta_weighted = 0.0
+    for d in ("LONG", "SHORT"):
+        all_dir = []
+        for tp_label in ("L1", "L2", "L3+"):
+            rs = by_dir_level.get((d, tp_label), [])
+            if rs:
+                row = _row_from(rs)
+                row['direction'] = d
+                row['tp_level'] = tp_label
+                rows_out.append(row)
+                all_dir.extend(rs)
+        if all_dir:
+            tot = _row_from(all_dir)
+            tot['direction'] = d
+            tot['tp_level'] = "TOTAL"
+            rows_out.append(tot)
+            grand_total_n += tot['n']
+            grand_total_resets += tot['n_with_resets']
+            grand_sum_dollar += tot['total_dollar_delta']
+            grand_sum_delta_weighted += tot['avg_delta_pct'] * tot['n']
+
     summary = {
-        'n': total_n,
-        'n_with_resets': total_resets,
-        'avg_delta_pct': round(sum_delta_pct_weighted / total_n, 4) if total_n > 0 else 0.0,
-        'total_dollar_delta': round(sum_dollar, 2),
+        'n': grand_total_n,
+        'n_with_resets': grand_total_resets,
+        'avg_delta_pct': round(grand_sum_delta_weighted / grand_total_n, 4) if grand_total_n > 0 else 0.0,
+        'total_dollar_delta': round(grand_sum_dollar, 2),
     }
     return {'rows': rows_out, 'summary': summary}
 

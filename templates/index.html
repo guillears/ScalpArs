@@ -918,6 +918,7 @@
                             <thead class="text-gray-400 uppercase">
                                 <tr>
                                     <th class="text-left py-1 px-2">Direction</th>
+                                    <th class="text-left px-2" title="TP level at close. L1=trailing armed (peak ≥ tp_min); L2=widened tier; L3+=highest tier; TOTAL=all">TP Level</th>
                                     <th class="text-right px-2">N</th>
                                     <th class="text-right px-2" title="Trades where the timer reset at least once (price recovered above threshold then re-dropped)">Saved by reset</th>
                                     <th class="text-right px-2" title="Avg P&L% at the first moment pullback threshold was crossed (would-have-fired-immediately counterfactual)">Avg 1st PB%</th>
@@ -928,7 +929,7 @@
                                 </tr>
                             </thead>
                             <tbody id="trailing-confirm-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
+                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4672,14 +4673,14 @@
             if (_tcp1.rows && _tcp1.rows.length) {
                 lines.push(`\n${hr2}`);
                 lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
-                lines.push('Direction        N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
-                lines.push('-'.repeat(82));
+                lines.push('Direction   TP     N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
+                lines.push('-'.repeat(92));
                 _tcp1.rows.forEach(r => {
                     const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
                     const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
                     const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
                     const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
-                    lines.push(`${r.direction.padEnd(15)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                    lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
                 });
                 if (_tcp1.summary && _tcp1.summary.n > 0) {
                     const tot = (_tcp1.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp1.summary.total_dollar_delta).toFixed(2);
@@ -5589,14 +5590,14 @@
                 if (_tcp2.rows && _tcp2.rows.length) {
                     lines.push(`\n${hr2}`);
                     lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
-                    lines.push('Direction        N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
-                    lines.push('-'.repeat(82));
+                    lines.push('Direction   TP     N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
+                    lines.push('-'.repeat(92));
                     _tcp2.rows.forEach(r => {
                         const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
                         const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
                         const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
                         const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
-                        lines.push(`${r.direction.padEnd(15)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                        lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
                     });
                     if (_tcp2.summary && _tcp2.summary.n > 0) {
                         const tot = (_tcp2.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp2.summary.total_dollar_delta).toFixed(2);
@@ -6879,10 +6880,11 @@
                     const _tcpSummary = document.getElementById('trailing-confirm-perf-summary');
                     if (_tcpBody) {
                         if (!_tcp.rows || !_tcp.rows.length) {
-                            _tcpBody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>';
+                            _tcpBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>';
                             if (_tcpSummary) _tcpSummary.textContent = '';
                         } else {
                             _tcpBody.innerHTML = _tcp.rows.map(r => {
+                                const isTotal = r.tp_level === 'TOTAL';
                                 const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                                 const fpClass = r.avg_first_pullback_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const closeClass = r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -6892,8 +6894,12 @@
                                     r.verdict.includes('HURT') ? 'text-red-400' :
                                     r.verdict.includes('Marginal') ? 'text-blue-400' :
                                     'text-amber-400';
-                                return `<tr class="hover:bg-white/5">
+                                const rowCls = isTotal ? 'bg-white/5 font-semibold border-t border-white/10' : 'hover:bg-white/5';
+                                const tpCls = isTotal ? 'text-gray-200' : 'text-gray-400';
+                                const tpLabel = r.tp_level || '';
+                                return `<tr class="${rowCls}">
                                     <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 ${tpCls}">${tpLabel}</td>
                                     <td class="px-2 py-1 text-right">${r.n}</td>
                                     <td class="px-2 py-1 text-right text-amber-300">${r.n_with_resets}</td>
                                     <td class="px-2 py-1 text-right ${fpClass}">${r.avg_first_pullback_pct >= 0 ? '+' : ''}${r.avg_first_pullback_pct.toFixed(3)}%</td>

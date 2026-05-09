@@ -6282,3 +6282,73 @@ This commit also touches the dashboard's trailing exit path with the
 post-exit running state preservation work from earlier May (2026-05-08).
 The two interact: timer state is persisted to DB on every reset, so a
 mid-trade restart doesn't lose the confirmation progress.
+
+## May 9, 2026 (late evening) — Watchlist items + Trailing Confirmation TP-level breakdown
+
+### Watchlist 1: STRETCH_0.20-0.25 multiplier — softer cell, monitor closely
+
+The stretch-based multipliers shipped May 9 evening (`ema5_stretch_multiplier_long: "0.16-0.20:2.0,0.20-0.25:2.0,0.25-0.30:2.0"`) are NOT all equally validated cross-sample.
+
+7-sample cross-sample WR by stretch bucket:
+
+| Bucket | Combined N | Combined WR | Recent samples direction |
+|---|---|---|---|
+| 0.16-0.20 | 54 | 61% | mostly positive |
+| **0.20-0.25** | **70** | **57%** | **May 4/May 5/May 9 morning all NEGATIVE $** |
+| 0.25-0.30 | 49 | 65% | strongest, 6 of 7 samples positive |
+
+**0.20-0.25 is the weakest of the three** — only marginally above breakeven cross-sample, and the 3 most recent samples were all losing in $ direction.
+
+May 9 evening's ZEREBROUSDT trade (-$116, STOP_LOSS_WIDE) hit this cell at 2.0× multiplier — doubling what would have been a -$58 loss into a -$116 loss. N=1, not enough to revert, but a directional warning.
+
+**Locked revert criteria for 0.20-0.25 cell at next checkpoint:**
+- ✗ HARMFUL: 0.20-0.25 cell shows WR ≤40% on N≥5 OR Total $ negative on N≥5 → drop to 1.0× (effectively disable for this bucket)
+- ✓ KEEP: WR ≥60% on N≥5 → confirms the cell deserves 2.0×
+- ⚠ Marginal (40-60% WR or N<5): hold for next batch
+
+**Locked revert criteria for 0.16-0.20 cell at next checkpoint:**
+- Similar gates. This cell has stronger cross-sample (61% WR) so slightly higher tolerance.
+
+**0.25-0.30 cell** is the structurally validated one (65% WR cross-sample) — apply standard verdict logic, expect ★ WORKING.
+
+### Watchlist 2: Pair EMA20-EMA50 gap max as candidate filter
+
+ZEREBROUSDT had Pair EMA20-EMA50 gap of **+1.04%** at entry — pair was parabolically extended (4-hour trend ran ~1% above 4-hour MA). Trade reversed within 38 seconds and hit SL.
+
+This dimension is captured today as `entry_pair_ema20_ema50_gap_pct` (Apr 28 Exploration Analytics) and observed in the "Performance by Pair EMA13-EMA50 Gap" UI table (we switched EMA20 → EMA13 May 6 but the principle is the same).
+
+**Hypothesis:** entries with gap > 1.0% are buying the top of a parabolic move; reversal probability is high.
+
+**Cross-sample analysis to run at next checkpoint:**
+1. From all archived reports, count LONG entries by `pair_ema20_ema50_gap` (or `_ema13_ema50_gap` post-May-6) bucket:
+   - <0.50% (normal entry zone)
+   - 0.50-1.00% (moderate extension)
+   - >1.00% (parabolic territory)
+2. WR and Avg P&L % by bucket per sample
+3. Look for the cross-sample loser zone
+
+**Promotion criteria:**
+- If >1.00% bucket shows ≤40% WR across ≥3 samples with combined N≥10 → ship `pair_ema_gap_max_long` filter at 1.0%
+- Also test 0.80% and 1.20% thresholds in counterfactual
+
+**Filter design** (when ready):
+- New config field: `pair_ema_gap_max_long: 1.0` (and `_short` mirror)
+- Apply in `services/trading_engine.py` filter chain after pair direction checks
+- Block entry when `abs(entry_pair_ema20_ema50_gap_pct) > max`
+- UI input + text export
+
+**Decision deferred to next checkpoint** — need cross-sample evidence before shipping. ZEREBROUSDT alone is N=1.
+
+### Trailing Confirmation Performance table — TP-level breakdown (shipping now)
+
+The table currently aggregates per-direction. The May 9 evening discussion raised: **does confirmation behave differently at L1 vs L3+?** L1 trades have tighter trailing (more sensitive to wicks) so confirmation may help. L3+ trades may want to lock profits faster.
+
+We don't know without the data. Adding TP-level breakdown.
+
+**New table structure:** rows for `(direction × tp_level)` plus a per-direction TOTAL row.
+
+Buckets: L1, L2, L3+ (L3 onwards pooled since rare).
+
+If L1 shows ★ HELPING and L3+ shows ⚠ HURTING → could ship per-level confirmation (different `trailing_pullback_confirmation_seconds` per level). Code lift modest.
+
+For now: just ship the breakdown so the data shows up, and we decide based on it at next checkpoint.

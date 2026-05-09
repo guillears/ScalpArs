@@ -6352,3 +6352,74 @@ Buckets: L1, L2, L3+ (L3 onwards pooled since rare).
 If L1 shows ★ HELPING and L3+ shows ⚠ HURTING → could ship per-level confirmation (different `trailing_pullback_confirmation_seconds` per level). Code lift modest.
 
 For now: just ship the breakdown so the data shows up, and we decide based on it at next checkpoint.
+
+## May 9, 2026 — `btc_adx_max_long: 40 → 35` (revert; LONG-only; honest cross-sample framing)
+
+### What changed
+`btc_adx_max_long: 40 → 35` in `trading_config.json`. SHORT cap stays at 40 (different evidence picture — see below).
+
+### Pooled LONG evidence at BTC ADX 35+ (5 samples)
+
+| Sample | N | WR | Avg P&L % | Notes |
+|---|---|---|---|---|
+| Apr 13 117tr | 8 (1+7) | ~50% | ~-0.15% | 40+ subset basically flat (-$1.25) |
+| Apr 17 81tr | 5 | 40% | n/a | tiny N |
+| May 4 224tr | **19** | **37%** | **-0.23%** | the only sample with real N |
+| May 5 31tr | 2 | 0% | -0.74% | 20× lev, single observation |
+| May 9 18L (current) | 8 | 38% | -0.26% | this batch — -$205 total |
+| **Pooled** | **42** | **~37%** | **~-0.30%** | direction-consistent |
+
+### Honest framing (correction to CLAUDE.md May 5 entry)
+
+The May 5 entry called this "4-sample structural HARD BLOCK." That was overstated. The accurate description:
+
+- **Direction-consistent across 5 samples** (every sample shows BTC ADX 35+ LONG losing).
+- **Strict promotion bar (N≥10 per sample, 2-sample structural with ≥10 each) is met by only 2 samples**: May 4 (N=19) and current (N=8 — borderline).
+- The other 3 samples (Apr 13, Apr 17, May 5) all have N<10 in this bucket. They are confirmatory but don't carry the load.
+
+So the more honest framing: "**2-sample structural (May 4 + May 9 current) with 3 additional samples directionally consistent at small N.**" Strong enough to act on but not iron-clad. We're choosing speed-of-iteration over the strict 3-sample N≥10 rule.
+
+### Why this batch tipped the decision
+
+In the May 9 18-trade analysis, three different "loser bucket" findings (Pair Slope ≥0.18%, Gap 5-20 ≥0.60%, Gap 5-8 0.12-0.14%) all turned out to be ~80% the same trades — the BTC ADX 35+ population. Trade-by-trade CSV check:
+
+| Loser | BTC ADX | Gap 5-20 | Outcome |
+|---|---|---|---|
+| ZEREBROUSDT | **38.2** | 0.78% | -$116 |
+| ONDOUSDT | **39.2** | 0.61% | -$51 |
+| ORCAUSDT | **37.0** | 0.66% | -$50 |
+| DOGSUSDT (#11) | **35.3** | 0.63% | -$38 |
+| ACEUSDT | **37.1** | 0.28% | -$25 |
+
+5 of the 7 LONG losses in this batch are BTC ADX 35+ entries. Restoring the cap removes the bulk of the loser cluster without adding any pair-level filters.
+
+### SHORT side — explicitly unchanged
+
+`btc_adx_max_short: 40` stays. Reasons (per CLAUDE.md May 5 entry):
+- This batch has 0 SHORT trades. No new SHORT data.
+- Historical SHORT pool at BTC ADX 35+: 24 trades, ~58% WR, mixed (Apr 13 100% WR, Apr 17 37.5%, May 4 100% WR).
+- SHORT side does NOT show the consistent loser pattern that LONG does. Asymmetric treatment is correct.
+
+### Pre-committed revert criteria for THIS revert at next 100-trade checkpoint
+
+If at next batch:
+1. **BTC ADX 33-34 LONG bucket shows ≤30% WR on N≥10** → cap may need to drop further (33 or 30)
+2. **LONG entry rate drops > 35% with no Avg P&L improvement** → cap is over-restrictive, revert to 40
+3. **Pair-level loser buckets (Gap 5-20 ≥0.60%, Gap 5-8 0.12-0.14%) STILL show ≤30% WR on N≥10** AFTER the BTC cap is back → those are independent signals, not proxies — ship a Gap max separately
+4. **Directional patterns at BTC ADX 35-40 LONG flip to ≥55% WR on N≥8 in observation logs (signals that would have been blocked)** → cap is wrong in current regime, revert
+
+If kept-buckets (BTC ADX 25-35 LONG) perform at ≥+0.10% Avg on N≥30 → cap validated, lock as default.
+
+### What this revert does NOT do
+
+- Does NOT add Pair EMA20 Slope max, Gap 5-20 max, or Gap 5-8 max. Those are all 1-sample-confounded findings shown to be proxies for the BTC ADX 35+ population in this batch's CSV trade-by-trade check. If the residual loser pattern persists after BTC cap is restored, revisit those at next checkpoint.
+- Does NOT touch SHORT side.
+- Does NOT change any other filter, exit, or multiplier setting.
+
+### Methodological note
+
+The May 4 224-trade entry attributed loss reduction to multiple stacked filters. The May 9 trade-by-trade check (single-batch but clean) shows that several of those pair-level "loser bucket" findings are likely proxies for the same upstream BTC ADX 35+ condition. This is a useful pattern to remember: **before shipping a pair-level filter, cross-reference the loser trades against the BTC-level macro condition. If most of them share an upstream macro flag, fix the macro filter first and reassess pair-level evidence in the next batch.**
+
+### Files changed
+- `trading_config.json`: `btc_adx_max_long: 40 → 35`
+- `CLAUDE.md`: this entry

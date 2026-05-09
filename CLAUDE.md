@@ -6142,3 +6142,62 @@ If both filters get shipped eventually, expect overlap: stretch≥0.16 already c
 The Apr 14 "Filter design principle" section's rules apply unchanged: cross-sample validation required, raw-dimension preference, etc. The stretch finding fits cleanly under those rules.
 
 New rule formalized: **when a single-batch sweep finds a "best fit" threshold, validate against the prior batch BEFORE shipping. The optimal threshold often shifts across regimes — pick the cross-sample-stable threshold even if it sacrifices single-batch P&L.**
+
+## May 9, 2026 (afternoon) — SHORT-side EMA5 Stretch watchlist
+
+### Methodological miss caught by user
+
+When the May 9 stretch finding was shipped, only LONG side was cross-sample validated. SHORT side was set to disabled (`ema5_stretch_min_short: 0.0`) without checking the 224-trade report for SHORT stretch patterns. User caught this.
+
+### May 4 SHORT stretch data (61 trades)
+
+| Stretch | N | WR | Avg P&L% |
+|---|---|---|---|
+| 0.12-0.16% | 9 | 44.4% | -0.18% |
+| 0.16-0.20% | 12 | 41.7% | -0.26% |
+| 0.20-0.25% | 20 | 60% | +0.05% |
+| 0.25-0.30% | 20 | 75% | +0.16% |
+
+**SHORT pattern**: low stretch = bad, high stretch = good — same DIRECTION as LONG, but the loser/winner boundary is at ~0.20%, not 0.16%.
+
+Combined May 4 SHORT:
+- <0.20%: 21 trades, ~43% WR, both buckets losing
+- ≥0.20%: 40 trades, ~68% WR, both buckets winning
+
+(Note: May 4 SHORT data only starts at 0.12% — no buckets below 0.12% available. Can't directly compare to LONG's 0.16% threshold.)
+
+### May 9 SHORT (insufficient N)
+
+8 SHORT trades total. Too small to confirm.
+
+### Watchlist (NOT shipped — needs 2nd sample with ≥20 SHORTs)
+
+**Candidate: `ema5_stretch_min_short: 0.20`**
+
+Promotion gate at next batch:
+- ≥20 SHORT trades collected, AND
+- <0.20% stretch bucket shows ≤45% WR on N≥6, AND
+- ≥0.20% stretch bucket shows ≥60% WR on N≥10
+
+If all three met → ship `ema5_stretch_min_short: 0.20` (note: 0.20, NOT 0.16 like LONG — SHORT has a different boundary).
+
+Drop watchlist if:
+- New SHORT sample shows <0.20% bucket at ≥55% WR on N≥10 (May 4 pattern broke)
+
+### Why the threshold differs by direction
+
+Hypothesis: stretch represents "decisive momentum past EMA5." For LONG, decisive upward momentum needs price to be ~0.16% above EMA5. For SHORT, decisive downward momentum needs price ~0.20% below EMA5. The asymmetry could reflect:
+1. Bearish moves typically larger / more violent than bullish (need higher threshold to filter out the bounces vs real reversals)
+2. SHORT entries in our config require already-aligned EMA stack with stronger momentum filters → trades that pass already have some stretch baseline, so a slightly higher floor cuts the marginal noise
+
+Don't read too much into the asymmetry yet — single-sample observation. May 9 sample was too thin to test.
+
+### Infrastructure status
+
+UI inputs and filter code already support per-direction min/max. Just a config change when ready to ship:
+- `trading_config.json`: `ema5_stretch_min_short: 0.0` → `0.20`
+- No code change needed
+
+### Methodology lesson (formalized)
+
+When shipping a per-direction filter based on cross-sample evidence, **verify BOTH directions independently before shipping either**. The threshold may differ. Disabling the unchecked direction (set to 0) is acceptable but should be explicit and noted as a watchlist, not assumed equivalent to the validated direction.

@@ -162,6 +162,15 @@ class SignalThresholds(BaseModel):
     ema_gap_5_20_min_short: float = 0.15  # Min EMA5-EMA20 gap % for SHORT entries
     ema_gap_5_20_max_long: float = 0.8  # Max EMA5-EMA20 gap % for LONG entries (overextended filter)
     ema_gap_5_20_max_short: float = 0.8  # Max EMA5-EMA20 gap % for SHORT entries (overextended filter)
+    # EMA5 Stretch Filter (May 9 — moved from per-confidence-level to top-level per-direction min/max).
+    # Tests: |price - ema5| / price * 100. Replaces per-confidence-level max_ema5_stretch.
+    # Set min > 0 to require minimum stretch (decisive momentum). 0 = disabled. Cross-sample
+    # confirmed (May 4 + May 9) that LONG stretch <0.16% is a structural loser zone.
+    ema5_stretch_filter_enabled: bool = True
+    ema5_stretch_min_long: float = 0.16  # Min EMA5 stretch % for LONG entries (0 = disabled)
+    ema5_stretch_max_long: float = 0.0   # Max EMA5 stretch % for LONG entries (0 = disabled)
+    ema5_stretch_min_short: float = 0.0  # Min EMA5 stretch % for SHORT entries (0 = disabled)
+    ema5_stretch_max_short: float = 0.0  # Max EMA5 stretch % for SHORT entries (0 = disabled)
     rsi_momentum_filter_enabled: bool = True  # Block LONG if RSI falling, block SHORT if RSI rising (vs 3 candles ago)
     rsi_momentum_exit_enabled: bool = True  # Exit LONG on 2 consecutive RSI drops, SHORT on 2 consecutive rises
     rsi_momentum_exit_min_profit: float = 0.05  # Min P&L % (notional) to trigger RSI momentum exit

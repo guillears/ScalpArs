@@ -3307,6 +3307,30 @@
                         </div>
                     </div>
                     <p class="text-xs text-gray-500">Momentum signals are evaluated BEFORE EMA-stack signals. LONG: EMA5 &gt; EMA8, gap = ((EMA5-EMA8)/EMA8)*100. SHORT: EMA5 &lt; EMA8, gap = ((EMA8-EMA5)/EMA5)*100.</p>
+                    <div class="mt-3 mb-2 px-4 border-t border-cyan-900/40 pt-3">
+                        <span class="text-sm text-cyan-300 font-medium">EMA5 Stretch Filter <span class="text-xs text-gray-500 font-normal">(May 9 — moved from per-confidence to top-level per-direction)</span></span>
+                        <p class="text-xs text-gray-500 mb-1">Gate entries by minimum/maximum |price − EMA5| / price × 100 (signal decisiveness — small stretch = touch-only, large stretch = decisive momentum)</p>
+                        <div class="flex items-center gap-6 mt-1 flex-wrap">
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-ema5-stretch-filter-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <div class="flex items-center gap-4 mt-2 flex-wrap">
+                            <span class="text-xs text-emerald-400 font-medium">LONG:</span>
+                            <span class="text-xs text-gray-500">Min</span>
+                            <input type="number" step="0.01" id="config-ema5-stretch-min-long" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.16">
+                            <span class="text-xs text-gray-500">Max</span>
+                            <input type="number" step="0.01" id="config-ema5-stretch-max-long" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0">
+                            <span class="text-xs text-red-400 font-medium ml-4">SHORT:</span>
+                            <span class="text-xs text-gray-500">Min</span>
+                            <input type="number" step="0.01" id="config-ema5-stretch-min-short" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0">
+                            <span class="text-xs text-gray-500">Max</span>
+                            <input type="number" step="0.01" id="config-ema5-stretch-max-short" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0">
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Set 0 to disable Min or Max. Cross-sample confirmed: LONG stretch &lt;0.16% is a structural loser zone.</p>
+                    </div>
                 </div>
 
                 <!-- Confidence Levels -->
@@ -3329,7 +3353,6 @@
                                     <th class="px-3 py-3 font-medium text-center text-violet-400" title="Wider stop loss used when entry signal is still active (pre-breakeven)">Sig SL</th>
                                     <th class="px-3 py-3 font-medium text-center">TP Min</th>
                                     <th class="px-3 py-3 font-medium text-center">Pullback</th>
-                                    <th class="px-3 py-3 font-medium text-center text-cyan-400" title="Max EMA5 Stretch %: max distance from EMA5 allowed for entry">Stretch</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="Enable/disable break-even levels">BE?</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="BE Level 1: micro-protection trigger">L1 Trig</th>
                                     <th class="px-3 py-3 font-medium text-center text-amber-400" title="BE Level 1: SL offset once L1 active">L1 Off</th>
@@ -3672,9 +3695,6 @@
                                         <input type="number" step="0.01" id="config-very_strong-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.05">
                                     </td>
                                     <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-very_strong-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-very_strong-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
                                     </td>
                                     <td class="px-3 py-3 text-center">
@@ -3743,9 +3763,6 @@
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="number" step="0.01" id="config-strong_buy-pb" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.05">
-                                    </td>
-                                    <td class="px-3 py-3 text-center">
-                                        <input type="number" step="0.01" id="config-strong_buy-stretch" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="0.14">
                                     </td>
                                     <td class="px-3 py-3 text-center">
                                         <input type="checkbox" id="config-strong_buy-be-enabled" class="w-4 h-4 rounded bg-white/10 border-white/20 text-emerald-500 focus:ring-emerald-500" checked>
@@ -9924,6 +9941,12 @@
                 document.getElementById('config-ema-gap-5-20-min-short').value = config.thresholds.ema_gap_5_20_min_short !== undefined ? config.thresholds.ema_gap_5_20_min_short : 0.15;
                 document.getElementById('config-ema-gap-5-20-max-long').value = config.thresholds.ema_gap_5_20_max_long !== undefined ? config.thresholds.ema_gap_5_20_max_long : 0.8;
                 document.getElementById('config-ema-gap-5-20-max-short').value = config.thresholds.ema_gap_5_20_max_short !== undefined ? config.thresholds.ema_gap_5_20_max_short : 0.8;
+                // EMA5 Stretch Filter (May 9 — moved from per-confidence-level)
+                document.getElementById('config-ema5-stretch-filter-enabled').checked = config.thresholds.ema5_stretch_filter_enabled !== undefined ? config.thresholds.ema5_stretch_filter_enabled : true;
+                document.getElementById('config-ema5-stretch-min-long').value = config.thresholds.ema5_stretch_min_long !== undefined ? config.thresholds.ema5_stretch_min_long : 0.16;
+                document.getElementById('config-ema5-stretch-max-long').value = config.thresholds.ema5_stretch_max_long !== undefined ? config.thresholds.ema5_stretch_max_long : 0;
+                document.getElementById('config-ema5-stretch-min-short').value = config.thresholds.ema5_stretch_min_short !== undefined ? config.thresholds.ema5_stretch_min_short : 0;
+                document.getElementById('config-ema5-stretch-max-short').value = config.thresholds.ema5_stretch_max_short !== undefined ? config.thresholds.ema5_stretch_max_short : 0;
                 // Sync mirror elements for STRONG_BUY row
                 document.getElementById('config-adx-max-mirror').textContent = document.getElementById('config-adx-very-strong').value;
                 document.getElementById('config-adx-max-mirror-long').textContent = document.getElementById('config-adx-very-strong-long').value;
@@ -10052,7 +10075,10 @@
                         document.getElementById(`config-${level}-signal-sl`).value = cfg.signal_active_sl !== undefined ? cfg.signal_active_sl : -0.40;
                         document.getElementById(`config-${level}-tp`).value = cfg.tp_min;
                         document.getElementById(`config-${level}-pb`).value = cfg.pullback_trigger;
-                        document.getElementById(`config-${level}-stretch`).value = cfg.max_ema5_stretch !== undefined ? cfg.max_ema5_stretch : 0.12;
+                        // May 9: Stretch moved out of confidence levels. The legacy LOW/MEDIUM/HIGH/EXTREME rows still
+                        // have the input (kept for back-compat); V_STRONG and STRONG_BUY rows had the input removed.
+                        const _stretchEl = document.getElementById(`config-${level}-stretch`);
+                        if (_stretchEl) _stretchEl.value = cfg.max_ema5_stretch !== undefined ? cfg.max_ema5_stretch : 0.12;
                         document.getElementById(`config-${level}-be-enabled`).checked = cfg.be_levels_enabled !== undefined ? cfg.be_levels_enabled : true;
                         document.getElementById(`config-${level}-be-l1-trigger`).value = cfg.be_level1_trigger !== undefined ? cfg.be_level1_trigger : 0.08;
                         document.getElementById(`config-${level}-be-l1-offset`).value = cfg.be_level1_offset !== undefined ? cfg.be_level1_offset : -0.15;
@@ -10383,6 +10409,11 @@
                     ema_gap_5_20_min_short: safeFloat(document.getElementById('config-ema-gap-5-20-min-short').value),
                     ema_gap_5_20_max_long: safeFloat(document.getElementById('config-ema-gap-5-20-max-long').value),
                     ema_gap_5_20_max_short: safeFloat(document.getElementById('config-ema-gap-5-20-max-short').value),
+                    ema5_stretch_filter_enabled: document.getElementById('config-ema5-stretch-filter-enabled').checked,
+                    ema5_stretch_min_long: safeFloat(document.getElementById('config-ema5-stretch-min-long').value),
+                    ema5_stretch_max_long: safeFloat(document.getElementById('config-ema5-stretch-max-long').value),
+                    ema5_stretch_min_short: safeFloat(document.getElementById('config-ema5-stretch-min-short').value),
+                    ema5_stretch_max_short: safeFloat(document.getElementById('config-ema5-stretch-max-short').value),
                     rsi_adx_filter_long: collectRsiAdxFilter('long'),
                     rsi_adx_filter_short: collectRsiAdxFilter('short'),
                     btc_rsi_adx_filter_long: collectBtcRsiAdxFilter('long'),
@@ -10445,7 +10476,7 @@
                     signal_active_sl: safeFloat(document.getElementById(`config-${level}-signal-sl`).value),
                     tp_min: safeFloat(document.getElementById(`config-${level}-tp`).value),
                     pullback_trigger: safeFloat(document.getElementById(`config-${level}-pb`).value),
-                    max_ema5_stretch: safeFloat(document.getElementById(`config-${level}-stretch`).value),
+                    max_ema5_stretch: (function(){ const _e = document.getElementById(`config-${level}-stretch`); return _e ? safeFloat(_e.value) : 0; })(),
                     be_levels_enabled: document.getElementById(`config-${level}-be-enabled`).checked,
                     be_level1_trigger: safeFloat(document.getElementById(`config-${level}-be-l1-trigger`).value),
                     be_level1_offset: safeFloat(document.getElementById(`config-${level}-be-l1-offset`).value),

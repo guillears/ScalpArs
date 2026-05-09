@@ -6048,3 +6048,97 @@ Stored as `btc_rsi_adx_filter_long` / `btc_rsi_adx_filter_short` strings:
 each rule: "RSI_LO-RSI_HI:MIN_ADX" or "RSI_LO-RSI_HI:MIN_ADX-MAX_ADX"
 ```
 First-match-wins per rule. Engine code at `services/trading_engine.py::4365` (LONG) and `4376` (SHORT).
+
+## May 9, 2026 — EMA5 Stretch < 0.16% LONG = strongest cross-sample loser zone (filter shipped)
+
+### The discovery
+
+Analyzing the May 9 41-trade LONG batch (-$442 net), the **Entry Conditions by Outcome** table showed a near-identical Winners/Losers profile on every previously-tracked variable EXCEPT three: AvgGap, Stretch, and ATR. Per-CSV bucket sweep across all candidates produced this ranking by KeptTot$:
+
+| Filter | Cut | Kept | WR | Total $ |
+|---|---|---|---|---|
+| **Stretch ≥ 0.18** | 27 | 14 | 78.6% | **+$191** ★ best single-variable |
+| Gap5-8 ≥ 0.10 | 30 | 11 | 81.8% | +$150 |
+| Gap5-8 ≥ 0.08 | 27 | 14 | 71.4% | +$135 |
+| ATR ≥ 0.50 | 27 | 14 | 71.4% | +$102 |
+| ATR ≥ 0.40 | 26 | 15 | 66.7% | -$4 |
+
+ATR was NOT the strongest discriminator despite being intuitively appealing. EMA5 Stretch was.
+
+### Cross-sample validation against 224-trade report (May 4)
+
+| Stretch bucket | May 4 (224tr) | May 9 (41tr) | Verdict |
+|---|---|---|---|
+| 0.04-0.08% | 44 / 34% / -0.11% | 5 / 20% / -0.14% | ★ both LOSING |
+| 0.08-0.12% | 37 / 43% / -0.07% | 14 / 14% / -0.32% | ★ both LOSING |
+| 0.12-0.16% | 30 / 37% / -0.20% | 5 / 0% / -0.42% | ★ both LOSING |
+| 0.16-0.20% | 15 / 53% / +0.05% | 6 / 67% / +0.06% | both POSITIVE (small) |
+| 0.20-0.25% | 22 / 36% / -0.22% | 5 / 40% / -0.16% | DIVERGE — May 4 loser, May 9 mixed |
+| 0.25-0.30% | 12 / 33% / -0.36% | 5 / 100% / +0.44% | DIVERGE — May 4 loser, May 9 big winner |
+
+**The block of <0.16% is consistent. The kept zone above 0.16% is regime-dependent.**
+
+Combined cross-sample for stretch <0.16%:
+- 139 trades, ~38% WR, both samples losing in every sub-bucket
+- This is the **strongest cross-sample LONG entry filter signal in the entire dataset** by N count
+
+Combined cross-sample for stretch ≥0.16%:
+- May 4: 49 trades, 41% WR, -$17 (essentially breakeven)
+- May 9: 16 trades, 69% WR, +$54
+- The kept zone is at minimum breakeven cross-sample, winning in current regime
+
+### Filter shipped
+
+**`ema5_stretch_min_long: 0.16`** (NOT 0.18)
+
+The 0.16 vs 0.18 choice was deliberate. May 9 single-sample best fit was 0.18 (+$191 vs +$54 at 0.16). But 0.18 is only May-9-validated; 0.16 is cross-sample validated. Per CLAUDE.md anti-overfit rule: **cross-sample confirmed > single-sample optimal**. Trade-off: $137 of current-batch optimization sacrificed to ship a filter that holds across regimes.
+
+If the 0.16-0.18 zone continues to lose in next batch, raise threshold to 0.18 then. Anti-overfit discipline.
+
+### Architecture change (May 9)
+
+The previous `max_ema5_stretch` field lived per-confidence-level (V_STRONG had 0.30, STRONG_BUY had 0.30, lower tiers had 0.14). It was a MAX-only filter applied at entry time.
+
+Refactored to top-level per-direction min/max in thresholds:
+- `ema5_stretch_filter_enabled: bool = True`
+- `ema5_stretch_min_long: 0.16` (active)
+- `ema5_stretch_max_long: 0.0` (disabled — no upper cap currently)
+- `ema5_stretch_min_short: 0.0` (disabled — pending SHORT data)
+- `ema5_stretch_max_short: 0.0` (disabled)
+
+Filter applied in `services/indicators.py::_passes_confidence_filter` — reads from `th.ema5_stretch_*` per direction. UI section "EMA5 Stretch Filter" in the momentum-filters block, above Confidence Levels.
+
+The legacy per-confidence-level `max_ema5_stretch` field stays in `trading_config.json` and `config.py` for back-compat but is no longer read by the filter (the indicator code reads only the new top-level fields). Lower-tier rows (LOW/MEDIUM/HIGH/EXTREME) in the UI confidence levels table still have the input present but it's ignored at runtime — kept to avoid breaking those rows. V_STRONG and STRONG_BUY rows had the input physically removed since those are the active tiers.
+
+### Saved artifacts
+
+- `reports/report_2026-05-09_stretch_finding_41L_8S.txt` — full dashboard text export
+- `reports/orders_2026-05-09_stretch_finding_41L_8S.csv` — per-trade CSV (126 columns including entry_ema5_stretch)
+
+### Pre-committed validation criteria for next batch
+
+Filter qualifies as ★ structural at next checkpoint if:
+1. Combined LONG WR ≥ 60% on N≥20 (filter actually catches winners post-block)
+2. <$50 of CUT WINNERS appear in next batch (filter doesn't kill legitimate trades)
+3. Stretch <0.16% bucket continues at ≤45% WR in next batch (block remains valid)
+
+Revert criteria (drop or relax filter) if:
+1. Stretch <0.16% bucket shows ≥55% WR on N≥10 in next batch (regime shift, filter no longer applies)
+2. Net LONG P&L worsens vs pre-shipping batch despite the filter (the filter is cutting winners we don't see in current bucket data)
+
+### Pair ATR as related observation (NOT promoted to filter)
+
+The ATR(14)% pattern (high-ATR pairs win, low-ATR pairs lose) is real but NOT cross-sample-validated as a filter:
+- May 9: ATR <0.40% = 26 trades, 19% WR, -$437
+- ATR ≥0.40% = 15 trades, 60% WR, +$45
+- May 4: not bucketed for ATR in same form; pre-Apr-30 the Exploration Analytics had ATR table but was removed for noise
+
+The ATR signal CORRELATES with stretch (volatile pairs naturally produce more stretch). Stretch is the cleaner gate. ATR could be added as a secondary filter (`momentum_atr_min_long: 0.40`) but **not until cross-sample validated** — held on watchlist for next 2-3 batches.
+
+If both filters get shipped eventually, expect overlap: stretch≥0.16 already cuts most low-ATR trades because low-ATR pairs rarely produce stretch>0.16. Only material independent contribution would be cutting high-ATR + low-stretch trades (which currently pass stretch filter but might still lose).
+
+### What this changed in CLAUDE.md filter design rules
+
+The Apr 14 "Filter design principle" section's rules apply unchanged: cross-sample validation required, raw-dimension preference, etc. The stretch finding fits cleanly under those rules.
+
+New rule formalized: **when a single-batch sweep finds a "best fit" threshold, validate against the prior batch BEFORE shipping. The optimal threshold often shifts across regimes — pick the cross-sample-stable threshold even if it sacrifices single-batch P&L.**

@@ -263,16 +263,25 @@ def get_signal(
                     logger.debug(f"SHORT {confidence} rejected: |gap5-20| {abs_gap:.4f}% > max {gap_max}% (overextended)")
                     return False
         
-        # EMA5 Stretch filter: reject if price too far from EMA5 (abs for defensive edge-case coverage)
-        max_stretch = getattr(conf, 'max_ema5_stretch', 0.14)
-        if price and price > 0 and max_stretch > 0:
+        # EMA5 Stretch filter (May 9: moved from per-confidence-level to top-level per-direction
+        # min/max in thresholds). Tests |price - ema5| / price * 100.
+        # Cross-sample confirmed (May 4 + May 9): LONG stretch <0.16% is a structural loser zone.
+        stretch_enabled = getattr(th, 'ema5_stretch_filter_enabled', True)
+        if stretch_enabled and price and price > 0:
             stretch_pct = abs(price - ema5) / price * 100
-            allowed = stretch_pct <= max_stretch
-            if not allowed:
-                logger.debug(f"{direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% > max {max_stretch}% | price={price}, ema5={ema5}")
+            if direction == "LONG":
+                stretch_min = getattr(th, 'ema5_stretch_min_long', 0)
+                stretch_max = getattr(th, 'ema5_stretch_max_long', 0)
+            else:
+                stretch_min = getattr(th, 'ema5_stretch_min_short', 0)
+                stretch_max = getattr(th, 'ema5_stretch_max_short', 0)
+            if stretch_min and stretch_min > 0 and stretch_pct < stretch_min:
+                logger.debug(f"{direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% < min {stretch_min}%")
                 return False
-            logger.debug(f"{direction} {confidence} stretch OK: {stretch_pct:.4f}% <= {max_stretch}% | price={price}, ema5={ema5}")
-        
+            if stretch_max and stretch_max > 0 and stretch_pct > stretch_max:
+                logger.debug(f"{direction} {confidence} rejected: EMA5 stretch {stretch_pct:.4f}% > max {stretch_max}%")
+                return False
+
         return True
     
     # --- Macro trend regime (EMA20 slope) ---

@@ -2212,13 +2212,18 @@ def _compute_atr_bucket_performance(orders):
     closed = [o for o in orders if o.status == "CLOSED" and o.entry_atr_pct is not None and o.pnl is not None]
     if not closed:
         return []
+    # May 9: finer 0.10% buckets in the discriminating zone (0.25-0.85), with
+    # wider 0.85-1.00 and ≥1.00 catchalls since data is thin at high ATR.
     buckets = [
         ("<0.25%", 0.0, 0.25),
-        ("0.25-0.40%", 0.25, 0.40),
-        ("0.40-0.60%", 0.40, 0.60),
-        ("0.60-0.90%", 0.60, 0.90),
-        ("0.90-1.30%", 0.90, 1.30),
-        ("≥1.30%", 1.30, 999),
+        ("0.25-0.35%", 0.25, 0.35),
+        ("0.35-0.45%", 0.35, 0.45),
+        ("0.45-0.55%", 0.45, 0.55),
+        ("0.55-0.65%", 0.55, 0.65),
+        ("0.65-0.75%", 0.65, 0.75),
+        ("0.75-0.85%", 0.75, 0.85),
+        ("0.85-1.00%", 0.85, 1.00),
+        ("≥1.00%", 1.00, 999),
     ]
     rows = []
     for label, lo, hi in buckets:

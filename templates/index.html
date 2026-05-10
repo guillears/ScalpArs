@@ -3027,9 +3027,11 @@
                         <p class="text-xs text-cyan-400 mt-3" title="Intersection rescue clause (May 10 evening). When Global Vol Filter would block, override and ALLOW the trade if pair's absolute 24h USD volume is at or above this threshold. Large-cap pairs can sustain their own momentum even in quiet global markets. 0 = disabled.">📊 Rescue from Global Vol block if Pair Vol ≥</p>
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
                             <span class="text-xs text-gray-500">L: $</span>
-                            <input type="number" id="config-pair-vol-usd-rescue-long" step="1000000" min="0" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-32" value="0" title="LONG-side rescue threshold in USD (e.g. 100000000 for $100M)">
+                            <input type="number" id="config-pair-vol-usd-rescue-long" step="10" min="0" max="100000" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-20" value="0" title="LONG-side rescue threshold in millions USD (e.g. 100 = $100M)">
+                            <span class="text-xs text-gray-400">M</span>
                             <span class="text-xs text-gray-500 ml-4">S: $</span>
-                            <input type="number" id="config-pair-vol-usd-rescue-short" step="1000000" min="0" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-32" value="0" title="SHORT-side rescue threshold in USD (0 = disabled)">
+                            <input type="number" id="config-pair-vol-usd-rescue-short" step="10" min="0" max="100000" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-20" value="0" title="SHORT-side rescue threshold in millions USD (0 = disabled)">
+                            <span class="text-xs text-gray-400">M</span>
                             <span class="text-xs text-gray-500 ml-1">(0 = disabled)</span>
                         </div>
                     </div>
@@ -10277,11 +10279,13 @@
                 document.getElementById('config-pair-vol-threshold-short').value = config.thresholds.pair_volume_threshold_short !== undefined ? config.thresholds.pair_volume_threshold_short : 1.10;
                 document.getElementById('config-global-vol-lookback').value = config.thresholds.global_volume_lookback_bars !== undefined ? config.thresholds.global_volume_lookback_bars : 48;
                 document.getElementById('config-pair-vol-lookback').value = config.thresholds.pair_volume_lookback_bars !== undefined ? config.thresholds.pair_volume_lookback_bars : 20;
-                // May 10 evening: pair volume USD rescue thresholds
+                // May 10 evening: pair volume USD rescue thresholds — UI in MILLIONS, stored as USD
                 const _rescueLongEl = document.getElementById('config-pair-vol-usd-rescue-long');
                 const _rescueShortEl = document.getElementById('config-pair-vol-usd-rescue-short');
-                if (_rescueLongEl) _rescueLongEl.value = config.thresholds.pair_volume_usd_rescue_long !== undefined ? config.thresholds.pair_volume_usd_rescue_long : 0;
-                if (_rescueShortEl) _rescueShortEl.value = config.thresholds.pair_volume_usd_rescue_short !== undefined ? config.thresholds.pair_volume_usd_rescue_short : 0;
+                const _rescueLongVal = config.thresholds.pair_volume_usd_rescue_long !== undefined ? config.thresholds.pair_volume_usd_rescue_long : 0;
+                const _rescueShortVal = config.thresholds.pair_volume_usd_rescue_short !== undefined ? config.thresholds.pair_volume_usd_rescue_short : 0;
+                if (_rescueLongEl) _rescueLongEl.value = Math.round(_rescueLongVal / 1e6);
+                if (_rescueShortEl) _rescueShortEl.value = Math.round(_rescueShortVal / 1e6);
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-long-rsi-max').value = config.thresholds.momentum_long_rsi_max !== undefined ? config.thresholds.momentum_long_rsi_max : 100;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
@@ -10800,9 +10804,9 @@
                     pair_volume_threshold_short: safeFloat(document.getElementById('config-pair-vol-threshold-short').value),
                     global_volume_lookback_bars: parseInt(document.getElementById('config-global-vol-lookback').value) || 48,
                     pair_volume_lookback_bars: parseInt(document.getElementById('config-pair-vol-lookback').value) || 20,
-                    // May 10 evening: pair volume USD rescue thresholds
-                    pair_volume_usd_rescue_long: safeFloat((document.getElementById('config-pair-vol-usd-rescue-long') || {}).value || 0),
-                    pair_volume_usd_rescue_short: safeFloat((document.getElementById('config-pair-vol-usd-rescue-short') || {}).value || 0),
+                    // May 10 evening: pair volume USD rescue thresholds — UI in MILLIONS, stored as USD
+                    pair_volume_usd_rescue_long: safeFloat((document.getElementById('config-pair-vol-usd-rescue-long') || {}).value || 0) * 1e6,
+                    pair_volume_usd_rescue_short: safeFloat((document.getElementById('config-pair-vol-usd-rescue-short') || {}).value || 0) * 1e6,
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_long_rsi_max: safeFloat(document.getElementById('config-momentum-long-rsi-max').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),

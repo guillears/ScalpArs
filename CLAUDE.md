@@ -6567,3 +6567,86 @@ To anchor:
 3. The locked revert gates so next-batch validation runs mechanically
 4. The 0.05-0.10 "0% WR in both samples" diagnostic — if at any future point this sub-bucket starts winning, the filter premise is invalidated and we revisit
 
+
+## May 10, 2026 — Global Volume Filter shipped LONG-only at 0.95 (3-sample cross-sample validated)
+
+### What changed
+Three config values in `trading_config.json`:
+- `global_volume_filter_enabled: false → true`
+- `global_volume_threshold_long: 1.05 → 0.95`
+- `global_volume_threshold_short: 1.05 → 0.0`
+
+The asymmetric trick: setting SHORT threshold to 0.0 makes the filter effectively LONG-only without code refactor. Filter logic `if ratio < threshold: block` — since volume ratio is always ≥ 0, SHORT entries never block.
+
+### Cross-sample evidence (3-sample structural)
+
+Pool of LONGs with Global Volume Ratio <0.95 across all available samples:
+
+| Sample | N (G<0.95) | WR | Avg P&L % | Verdict |
+|---|---|---|---|---|
+| May 4 224tr (1× lev) | **114** | **35%** | -$28 (1×) → ~-$672 equiv at 20× | structural loser |
+| May 10 34tr (20× lev) | 26 | 50% | -0.50% | loser, smaller margin |
+| May 10 19tr (current) | 13 | 31% | -0.42% | strong loser |
+| **POOLED** | **153** | **37%** | net negative every sample | **3-sample structural** |
+
+Vs kept-pool (Global Vol ≥0.95):
+
+| Sample | N (G≥0.95) | Kept WR | Discriminator gap |
+|---|---|---|---|
+| May 4 224tr | 51 | 47% | +12pp |
+| May 10 34tr | 8 | 75% | +25pp |
+| May 10 19tr | 4 | 75% | +44pp |
+| **POOLED** | **63** | **52%** | **+15pp (meets CLAUDE.md May 3 promotion bar exactly)** |
+
+### Why this filter, not the alternatives
+
+Three filter candidates were analyzed in depth:
+
+**A. Global<0.95 (shipped):** pooled +15pp discriminator gap, meets ≥15pp bar. Single dimension, clean mechanism (market regime), cross-sample stable.
+
+**B. Crosstab Low-Low (Global<0.95 AND Pair<0.95):** pooled +13pp gap. **Missed the bar by 2pp.** Kept more trades (122 vs 63 pooled — better trade volume retention) but worse discriminator. Watchlist.
+
+**C. $100M absolute Volume Min:** Killed MORE winners by $ ($118 today vs $99 for B) without proportional gain. Cannot test cross-sample (May 4 batch has NULL `entry_pair_volume_24h_usd` — pre-deploy). Watchlist for next 2-3 batches once Vol_24h data accumulates.
+
+The Filter B and Filter C analyses are preserved in this session's discussion for future re-evaluation.
+
+### Asymmetric — SHORT side intentionally NOT filtered
+
+Cross-sample SHORT data shows OPPOSITE pattern:
+- May 4 SHORT low-low cell (G<0.95 AND P<0.95): N=13, **77% WR**, +$6.58 (1×) → ~+$158 at 20×
+- Today SHORT low-low cell: N=3, **100% WR**, +$92
+
+SHORT side in quiet-volume regimes is profitable (likely thin-liquidity hunt mechanics in bearish moves). Applying any volume filter to SHORTs would cut profitable trades.
+
+This matches the pattern of all CLAUDE.md asymmetric filters (ADX delta, BTC ADX cap, BTC trend filter): independent per direction, threshold differs based on actual evidence, never symmetric for symmetry's sake.
+
+### Counterfactual impact on shipped batches
+
+Today's 19L batch: -$475 LONG → projected ~+$43 with filter (cuts 13 of 17 LONGs that were ADX-delta-filter survivors, removes -$516 of losses, keeps +$43 of winners).
+
+May 4 batch: -$45 (1×) → projected ~-$7 (1×) on filter-survivor subset, but at projected 20× sizing this would translate to roughly +$200-300 net positive vs the actual May 4 result.
+
+These are projections; the real test is the next batch under the shipped filter.
+
+### Pre-committed revert criteria for next 100-trade batch
+
+If at next batch:
+1. **`VOL_GATE` log lines fire for LONG**: filter is doing its job (expected behavior)
+2. **Kept-pool LONG WR drops to ≤47% on N≥30** in next batch → loosen threshold to 0.90 (less aggressive)
+3. **Trade rate drops >75%** vs prior batch with no Avg P&L improvement → loosen to 0.90 or revert
+4. **Cut-pool LONGs would have won at ≥55% WR on N≥15** (visible via observation logs / what would have been blocked) → threshold too aggressive, loosen
+5. **SHORTs blocked despite threshold=0** → bug, revert
+
+### Files changed
+
+- `trading_config.json`: 3 field changes
+- `CLAUDE.md`: this entry
+- `reports/orders_2026-05-10_pre_global_vol_filter_19L_10S.csv`: archived raw data of the batch that triggered this change
+- `reports/report_2026-05-10_pre_global_vol_filter_19L_10S.txt`: archived report
+
+### Watchlist for next checkpoint review
+
+- **Filter B (Crosstab Low-Low)**: at +13pp pooled discriminator, 2pp shy of bar. If next batch shifts pooled to ≥15pp, consider adding as secondary filter (more conservative cut).
+- **Filter C ($100M Volume Min)**: requires post-deploy data accumulation. Re-evaluate at 200-trade checkpoint with 2 batches of populated `entry_pair_volume_24h_usd`.
+- **Pair Volume Filter (existing infra)**: also exists as toggle, threshold 1.10. No cross-sample evidence supporting it; observe only.
+

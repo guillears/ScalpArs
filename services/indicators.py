@@ -178,6 +178,7 @@ def get_signal(
     ema8_prev2: float = None,
     ema13_prev1: float = None,
     ema13_prev2: float = None,
+    adx_prev1: float = None,
     block_recorder=None,
 ) -> Tuple[str, Optional[str]]:
     """
@@ -316,7 +317,6 @@ def get_signal(
     # Independent per direction; 0 = disabled.
     min_adx_delta_long = getattr(th, 'min_adx_delta_long', 0.0)
     min_adx_delta_short = getattr(th, 'min_adx_delta_short', 0.0)
-    adx_prev1 = indicators.get('adx_prev1')
     adx_delta = (adx - adx_prev1) if (adx is not None and adx_prev1 is not None) else None
     long_rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
     long_rsi_max = getattr(th, 'momentum_long_rsi_max', 100)

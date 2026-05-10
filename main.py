@@ -942,7 +942,8 @@ async def refresh_pairs(db: AsyncSession = Depends(get_db)):
                     adx=indicators.get('adx'),
                     volume=indicators.get('volume'),
                     avg_volume=indicators.get('avg_volume'),
-                    price=indicators.get('close')
+                    price=indicators.get('close'),
+                    adx_prev1=indicators.get('adx_prev1'),
                 )
 
                 await trading_engine.update_pair_data(db, pair, indicators, signal, confidence, volume_24h)

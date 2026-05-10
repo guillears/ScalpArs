@@ -2015,6 +2015,33 @@
                     </div>
                 </div>
 
+                <!-- Performance by Pair 24h Volume (May 10, 2026) — find structural threshold -->
+                <div class="mt-6 pt-6 border-t border-cyan-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-1">📊 Performance by Pair 24h Volume (USD at entry)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Bucket trades by absolute pair 24h USD volume at entry. Hypothesis: pairs &lt;$X 24h volume systematically underperform. Find the structural threshold instead of blacklisting individual pairs. Pre-deploy trades have NULL volume and are excluded.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Volume Bucket</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">L/S</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">AvgVol</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L %</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                    <th class="px-2 py-1 text-right">AvgRSI</th>
+                                    <th class="px-2 py-1 text-right">AvgADX</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pair-volume-bucket-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No volume bucket data yet (pre-May-10 trades have NULL volume — only post-deploy entries appear)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Never Positive Deep Dive -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Never Positive Deep Dive</h3>
@@ -5177,6 +5204,23 @@
                 }
             }
 
+            // Pair 24h Volume Bucket Performance (May 10 — find structural threshold)
+            if (perf.pair_volume_bucket_performance && perf.pair_volume_bucket_performance.length > 0) {
+                const _fmtVolUSDtxt = (v) => {
+                    if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+                    if (v >= 1e6) return '$' + (v / 1e6).toFixed(0) + 'M';
+                    if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K';
+                    return '$' + v.toFixed(0);
+                };
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by Pair 24h Volume (USD at entry — May 10)\n');
+                lines.push(`${'Bucket'.padEnd(13)} ${'#'.padEnd(4)} ${'L/S'.padEnd(8)} ${'Win%'.padEnd(7)} ${'AvgVol'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)}`);
+                for (const r of perf.pair_volume_bucket_performance) {
+                    const dir = `${r.n_long}L/${r.n_short}S`;
+                    lines.push(`${r.bucket.padEnd(13)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${_fmtVolUSDtxt(r.avg_volume_usd).padStart(10)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${(r.avg_rsi !== null ? r.avg_rsi.toFixed(1) : '-').padStart(7)} ${(r.avg_adx !== null ? r.avg_adx.toFixed(2) : '-').padStart(7)}`);
+                }
+            }
+
             // ATR(14)% Bucket Performance (May 9 — hypothesis test)
             if (perf.atr_bucket_performance && perf.atr_bucket_performance.length > 0) {
                 lines.push(`\n${hr2}`);
@@ -6121,6 +6165,23 @@
                         const slipStr = r.avg_slippage_pct != null ? (r.avg_slippage_pct >= 0 ? '+' : '') + r.avg_slippage_pct.toFixed(3) + '%' : '-';
                         const atrStr = r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(2) + '%' : '-';
                         lines.push(`${(r.pair||'').padEnd(16)} ${dir.padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${atrStr.padStart(8)} ${dur.padStart(8)} ${slipStr.padStart(8)}`);
+                    }
+                }
+
+                // --- Pair 24h Volume Bucket Performance (May 10) ---
+                if (perf.pair_volume_bucket_performance && perf.pair_volume_bucket_performance.length > 0) {
+                    const _fmtVolUSD2 = (v) => {
+                        if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+                        if (v >= 1e6) return '$' + (v / 1e6).toFixed(0) + 'M';
+                        if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K';
+                        return '$' + v.toFixed(0);
+                    };
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Pair 24h Volume (USD at entry — May 10)\n');
+                    lines.push(`${'Bucket'.padEnd(13)} ${'#'.padEnd(4)} ${'L/S'.padEnd(8)} ${'Win%'.padEnd(7)} ${'AvgVol'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)}`);
+                    for (const r of perf.pair_volume_bucket_performance) {
+                        const dir = `${r.n_long}L/${r.n_short}S`;
+                        lines.push(`${r.bucket.padEnd(13)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${_fmtVolUSD2(r.avg_volume_usd).padStart(10)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${(r.avg_rsi !== null ? r.avg_rsi.toFixed(1) : '-').padStart(7)} ${(r.avg_adx !== null ? r.avg_adx.toFixed(2) : '-').padStart(7)}`);
                     }
                 }
 
@@ -8998,6 +9059,39 @@
                     }).join('');
                 } else {
                     pairPerfBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No pair data yet</td></tr>';
+                }
+
+                // Pair 24h Volume Bucket Performance (May 10)
+                const pvBody = document.getElementById('pair-volume-bucket-body');
+                if (pvBody) {
+                    if (data.pair_volume_bucket_performance && data.pair_volume_bucket_performance.length > 0) {
+                        const _fmtVolUSD = (v) => {
+                            if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B';
+                            if (v >= 1e6) return '$' + (v / 1e6).toFixed(0) + 'M';
+                            if (v >= 1e3) return '$' + (v / 1e3).toFixed(0) + 'K';
+                            return '$' + v.toFixed(0);
+                        };
+                        pvBody.innerHTML = data.pair_volume_bucket_performance.map(r => {
+                            const wrCls = r.win_rate >= 55 ? 'text-emerald-400' : (r.win_rate < 45 ? 'text-red-400' : 'text-gray-300');
+                            const pctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const totCls = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const avgCls = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-cyan-300 font-medium">${r.bucket}</td>
+                                <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right"><span class="text-emerald-400">${r.n_long}L</span>/<span class="text-red-400">${r.n_short}S</span></td>
+                                <td class="px-2 py-1.5 text-right ${wrCls}">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_fmtVolUSD(r.avg_volume_usd)}</td>
+                                <td class="px-2 py-1.5 text-right ${avgCls}">$${r.avg_pnl.toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right ${pctCls}">${r.avg_pct >= 0 ? '+' : ''}${r.avg_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1.5 text-right ${totCls} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_rsi !== null ? r.avg_rsi.toFixed(1) : '-'}</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_adx !== null ? r.avg_adx.toFixed(2) : '-'}</td>
+                            </tr>`;
+                        }).join('');
+                    } else {
+                        pvBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No volume bucket data yet (post-May-10 entries only — older trades have NULL volume)</td></tr>';
+                    }
                 }
 
                 // ATR(14)% Bucket Performance (May 9)

@@ -302,6 +302,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_funding_rate FLOAT"))
                 if 'entry_pair_ema20_ema50_gap_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_ema20_ema50_gap_pct FLOAT"))
+                if 'entry_pair_volume_24h_usd' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_volume_24h_usd FLOAT"))
                 if 'exit_pair_ema20_ema50_gap_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_pair_ema20_ema50_gap_pct FLOAT"))
                 if 'exit_btc_trend_gap_pct' not in columns:

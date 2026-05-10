@@ -121,6 +121,11 @@ class Order(Base):
     # Captures multi-hour pair trend context (EMA50 spans ~4 hours on 5m chart).
     entry_pair_ema20_ema50_gap_pct = Column(Float, nullable=True)
 
+    # May 10: absolute pair 24h volume in USD at entry time. For size-bucket
+    # analysis — find structural threshold below which pairs underperform,
+    # rather than blacklisting one-by-one. NULL on pre-deploy trades.
+    entry_pair_volume_24h_usd = Column(Float, nullable=True)
+
     # Pair / BTC EMA20 vs EMA50 gap at EXIT (May 6). Captures multi-hour trend context
     # at close time — diagnostic for REGIME_CHANGE / FL_REGIME_CHANGE: did BTC's actual
     # 4h trend flip, or just the 5m regime classifier? Historical trades have NULL.

@@ -1833,6 +1833,8 @@ class TradingEngine:
         entry_ema50_slope: float = None,
         entry_funding_rate: float = None,
         entry_pair_ema20_ema50_gap_pct: float = None,
+        # May 10: capture absolute pair 24h USD volume at entry for size-bucket analysis
+        entry_pair_volume_24h_usd: float = None,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -2132,6 +2134,8 @@ class TradingEngine:
             entry_ema50_slope=entry_ema50_slope,
             entry_funding_rate=entry_funding_rate,
             entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
+            # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
+            entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,
@@ -4878,6 +4882,8 @@ class TradingEngine:
                     entry_ema50_slope=_entry_ema50_slope,
                     entry_funding_rate=_entry_funding_rate,
                     entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
+                    # May 10: absolute pair 24h USD volume — sourced from binance scan
+                    entry_pair_volume_24h_usd=volume_24h,
                 )
 
                 if order:

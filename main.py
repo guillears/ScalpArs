@@ -2256,6 +2256,68 @@ def _compute_atr_bucket_performance(orders):
     return rows
 
 
+def _compute_pair_volume_bucket_performance(orders):
+    """May 10: Bucket trades by absolute pair 24h USD volume at entry.
+
+    Goal: find the structural threshold below which pairs systematically
+    underperform — instead of blacklisting pairs one-by-one. Once 2-sample
+    evidence shows a clean breakpoint, can promote to a min_pair_volume
+    filter.
+
+    Buckets (in USD): <30M, 30-50M, 50-80M, 80-100M, 100-150M, 150-250M,
+    250-500M, 500M-1B, >1B. Granular at low end (kill-zone hypothesis),
+    wider at high end (liquid mid-large caps).
+
+    Pre-deploy trades have NULL entry_pair_volume_24h_usd and are excluded.
+    """
+    M = 1_000_000.0
+    B = 1_000_000_000.0
+    buckets = [
+        ("<$30M",      0,        30 * M),
+        ("$30-50M",    30 * M,   50 * M),
+        ("$50-80M",    50 * M,   80 * M),
+        ("$80-100M",   80 * M,   100 * M),
+        ("$100-150M",  100 * M,  150 * M),
+        ("$150-250M",  150 * M,  250 * M),
+        ("$250-500M",  250 * M,  500 * M),
+        ("$500M-1B",   500 * M,  1 * B),
+        (">$1B",       1 * B,    1e15),
+    ]
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
+    rows = []
+    for name, lo, hi in buckets:
+        b = [o for o in closed
+             if getattr(o, 'entry_pair_volume_24h_usd', None) is not None
+             and lo <= o.entry_pair_volume_24h_usd < hi]
+        if not b:
+            continue
+        n = len(b)
+        wins = sum(1 for o in b if o.pnl > 0)
+        total_pnl = sum(o.pnl for o in b)
+        avg_pct = sum(o.pnl_percentage or 0 for o in b) / n
+        avg_vol_usd = sum(o.entry_pair_volume_24h_usd for o in b) / n
+        # direction split
+        n_long = sum(1 for o in b if (o.direction.value if hasattr(o.direction, 'value') else o.direction) == "LONG")
+        n_short = n - n_long
+        # average RSI/ADX for context
+        rsis = [o.entry_rsi for o in b if o.entry_rsi is not None]
+        adxs = [o.entry_adx for o in b if o.entry_adx is not None]
+        rows.append({
+            "bucket": name,
+            "n": n,
+            "n_long": n_long,
+            "n_short": n_short,
+            "win_rate": round(100 * wins / n, 1),
+            "total_pnl": round(total_pnl, 2),
+            "avg_pnl": round(total_pnl / n, 2),
+            "avg_pct": round(avg_pct, 3),
+            "avg_volume_usd": round(avg_vol_usd, 0),
+            "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
+            "avg_adx": round(sum(adxs) / len(adxs), 2) if adxs else None,
+        })
+    return rows
+
+
 def _compute_pair_performance(orders):
     """Per-pair performance: one row per pair with L/S breakdown"""
     closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
@@ -5132,6 +5194,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "volume_crosstab": _compute_volume_crosstab(orders),
         "breadth_crosstab": _compute_breadth_crosstab(orders),
         "pair_performance": _compute_pair_performance(orders),
+        # May 10: pair 24h USD volume bucket performance — find structural size threshold
+        "pair_volume_bucket_performance": _compute_pair_volume_bucket_performance(orders),
         # May 9: ATR bucket performance — tests "high volatility = loss driver" hypothesis
         "atr_bucket_performance": _compute_atr_bucket_performance(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)

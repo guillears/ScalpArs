@@ -91,6 +91,14 @@ class SignalThresholds(BaseModel):
     momentum_ema20_slope_filter_short: bool = True
     momentum_ema20_slope_min_long: float = 0.0
     momentum_ema20_slope_min_short: float = 0.0
+    # May 10: minimum ADX delta (current ADX − ADX 1 candle ago).
+    # Cross-sample validated 2-sample finding (May 4 224tr survivors + May 10 34tr):
+    # ADXΔ <0.10 = ~17% WR / -0.42% Avg; ADXΔ ≥0.10 = ~62% WR / +0.03% Avg.
+    # Independent per direction. SHORT side is essentially a no-op at 0.10
+    # (only 1-2 trades affected per batch) — kept symmetric for simplicity.
+    # 0 = disabled.
+    min_adx_delta_long: float = 0.0
+    min_adx_delta_short: float = 0.0
     # May 2: per-pair EMA20 slope MAX filter (new). Block entry when
     # abs(pair_ema20_slope) > max — guards against over-extended pair trends.
     # 0 = disabled.

@@ -312,6 +312,12 @@ def get_signal(
     ema20_slope_short = getattr(th, 'momentum_ema20_slope_filter_short', True)
     ema20_slope_min_long = getattr(th, 'momentum_ema20_slope_min_long', 0.0)
     ema20_slope_min_short = getattr(th, 'momentum_ema20_slope_min_short', 0.0)
+    # May 10: ADX delta minimum filter (current ADX − ADX 1 candle ago).
+    # Independent per direction; 0 = disabled.
+    min_adx_delta_long = getattr(th, 'min_adx_delta_long', 0.0)
+    min_adx_delta_short = getattr(th, 'min_adx_delta_short', 0.0)
+    adx_prev1 = indicators.get('adx_prev1')
+    adx_delta = (adx - adx_prev1) if (adx is not None and adx_prev1 is not None) else None
     long_rsi_min = getattr(th, 'momentum_long_rsi_min', 0)
     long_rsi_max = getattr(th, 'momentum_long_rsi_max', 100)
     short_rsi_max = getattr(th, 'momentum_short_rsi_max', 100)
@@ -337,6 +343,9 @@ def get_signal(
             elif ema20_slope_min_long > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_long:
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_long}%")
                 _record("PAIR_EMA20_SLOPE_MIN", "LONG")
+            elif min_adx_delta_long > 0 and adx_delta is not None and adx_delta < min_adx_delta_long:
+                logger.debug(f"[MOMENTUM] LONG skipped: ADX delta {adx_delta:.4f} < min {min_adx_delta_long}")
+                _record("PAIR_ADX_DELTA_MIN", "LONG")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi < rsi_prev2:
                 logger.debug(f"[MOMENTUM] LONG skipped: RSI falling ({rsi_prev2:.1f} -> {rsi:.1f}), momentum against LONG (2 candles)")
                 _record("PAIR_RSI_MOMENTUM", "LONG")
@@ -401,6 +410,9 @@ def get_signal(
             elif ema20_slope_min_short > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_short:
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_short}%")
                 _record("PAIR_EMA20_SLOPE_MIN", "SHORT")
+            elif min_adx_delta_short > 0 and adx_delta is not None and adx_delta < min_adx_delta_short:
+                logger.debug(f"[MOMENTUM] SHORT skipped: ADX delta {adx_delta:.4f} < min {min_adx_delta_short}")
+                _record("PAIR_ADX_DELTA_MIN", "SHORT")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi > rsi_prev2:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev2:.1f} -> {rsi:.1f}), momentum against SHORT (2 candles)")
                 _record("PAIR_RSI_MOMENTUM", "SHORT")

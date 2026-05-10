@@ -3027,6 +3027,17 @@
                                 <span class="text-xs text-gray-500">%</span>
                             </div>
                         </div>
+                        <p class="text-xs text-gray-500 mt-3 mb-1">Minimum ADX delta (current ADX − 1 candle ago). Cross-sample validated May 10: ADXΔ &lt;0.10 = ~17% WR vs ≥0.10 = ~62% WR. 0 = disabled.</p>
+                        <div class="flex items-center gap-4 mt-1 flex-wrap">
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">LONG min ADXΔ:</span>
+                                <input type="number" id="config-min-adx-delta-long" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.10">
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">SHORT min ADXΔ:</span>
+                                <input type="number" id="config-min-adx-delta-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.10">
+                            </div>
+                        </div>
                     </div>
                     <div class="mb-3 px-4">
                         <span class="text-sm text-gray-300">BTC Independent Filters</span>
@@ -5273,6 +5284,7 @@
             lines.push(`  Market Breadth Filter: ${th.market_breadth_filter_enabled}  |  Bull% ≥ ${th.market_breadth_bull_threshold_long||50}% (LONGs)  |  Bear% ≥ ${th.market_breadth_bear_threshold_short||65}% (SHORTs)  |  Flat Th: ${th.market_breadth_flat_threshold||0.03}%`);
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
+            lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA13 gap compressing vs prev 1 or 2 candles)`);
 
@@ -10033,6 +10045,11 @@
                 document.getElementById('config-momentum-ema20-slope-filter-short').checked = config.thresholds.momentum_ema20_slope_filter_short !== undefined ? config.thresholds.momentum_ema20_slope_filter_short : true;
                 document.getElementById('config-ema20-slope-min-long').value = config.thresholds.momentum_ema20_slope_min_long !== undefined ? config.thresholds.momentum_ema20_slope_min_long : 0;
                 document.getElementById('config-ema20-slope-min-short').value = config.thresholds.momentum_ema20_slope_min_short !== undefined ? config.thresholds.momentum_ema20_slope_min_short : 0;
+                // May 10: ADX delta min filter (cross-sample validated, +$447 swing on May 10 batch)
+                const _adxDeltaLong = document.getElementById('config-min-adx-delta-long');
+                const _adxDeltaShort = document.getElementById('config-min-adx-delta-short');
+                if (_adxDeltaLong) _adxDeltaLong.value = config.thresholds.min_adx_delta_long !== undefined ? config.thresholds.min_adx_delta_long : 0;
+                if (_adxDeltaShort) _adxDeltaShort.value = config.thresholds.min_adx_delta_short !== undefined ? config.thresholds.min_adx_delta_short : 0;
                 document.getElementById('config-macro-trend-filter-enabled').checked = config.thresholds.macro_trend_filter_enabled !== undefined ? config.thresholds.macro_trend_filter_enabled : true;
                 document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
@@ -10548,6 +10565,8 @@
                     momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked,
                     momentum_ema20_slope_min_long: safeFloat(document.getElementById('config-ema20-slope-min-long').value),
                     momentum_ema20_slope_min_short: safeFloat(document.getElementById('config-ema20-slope-min-short').value),
+                    min_adx_delta_long: safeFloat((document.getElementById('config-min-adx-delta-long') || {}).value || 0),
+                    min_adx_delta_short: safeFloat((document.getElementById('config-min-adx-delta-short') || {}).value || 0),
                     macro_trend_filter_enabled: document.getElementById('config-macro-trend-filter-enabled').checked,
                     btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,

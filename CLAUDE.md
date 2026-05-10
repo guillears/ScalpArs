@@ -6497,3 +6497,73 @@ To anchor:
 4. The reasoning for keeping the filter currently OFF — observation data collection IS the value right now
 
 When SHORT N reaches ~30 in a single batch, this entry is the locked test. No re-litigation.
+
+## May 10, 2026 — `min_adx_delta_long/short: 0.10` filter shipped (cross-sample validated)
+
+### What changed
+Added per-direction ADX delta minimum filter. New config fields:
+- `min_adx_delta_long: 0.10` (default 0 = disabled)
+- `min_adx_delta_short: 0.10` (default 0 = disabled)
+
+ADX delta = current ADX − ADX 1 candle ago. Block entry when delta < threshold (i.e., when momentum isn't accelerating fast enough).
+
+Independent per direction so future tuning can split — for example raising SHORT threshold to 0.50 if data supports it later.
+
+### Cross-sample evidence
+
+**Critical methodological note:** the May 4 224-trade ADX Delta table I initially read was contaminated with 116 trades current filters would never have allowed (predominantly stretch <0.16 LONGs, ~70% of the LONG sample). On the **filter-survivor subset** (apples-to-apples), the pattern replicates cleanly across both samples:
+
+| Sample | ADXΔ <0.10 | ADXΔ ≥0.10 | WR gap |
+|---|---|---|---|
+| **May 4 LONG survivors** | 4t / **25%** WR / -0.33% | 27t / **59%** WR / -0.01% | 34pp |
+| **May 10 LONG (34tr)** | 8t / **12.5%** WR / -0.55% | 26t / **65%** WR / +0.07% | 52pp |
+| **Combined** | **12t / ~17% WR / -0.42%** | **53t / ~62% WR / +0.03%** | **~45pp** |
+
+CLAUDE.md April 14 reference (Apr 13 117tr): "ADXΔ 0.1-0.3 = 81% WR" further supports.
+
+The 0.05-0.10 sub-bucket is **0% WR in both samples** — perfect direction-consistent disaster zone.
+
+### SHORT side — minimal impact, kept symmetric
+
+May 4 SHORT data (61 trades): only 1 trade had ADXΔ <0.10. SHORT signals naturally cluster at high momentum (60% had ADXΔ ≥1.00). The filter at 0.10 is essentially a no-op for SHORTs (cuts 0-1 trades per batch). Per-direction implementation lets future SHORT-specific tightening (e.g., to 0.50 if data supports) without touching LONG.
+
+### Counterfactual impact (today's 34-trade batch)
+
+| Scenario | N | WR | Avg %/tr | Total $ | vs Current |
+|---|---|---|---|---|---|
+| Current (no ADX delta filter) | 34 | 55.9% | -0.005% | -$130 | — |
+| **ADXΔ ≥ 0.10 only** | 26 | 69.2% | +0.164% | **+$318** | **+$447 swing** |
+| Block low-low volume only | 18 | 77.8% | +0.138% | +$163 | +$292 swing |
+| BOTH filters (ADX + low-low vol block) | 16 | **87.5%** | **+0.249%** | +$355 | +$485 swing |
+
+ADX filter alone captures 94% of the dual-filter benefit. Vol filter adds only +$37 marginal on top of ADX (75% of vol-blocks are also ADX-blocks).
+
+### Methodology lessons documented during this analysis
+
+1. **Filter-contamination check before cross-sample comparison.** When comparing a historical batch against current performance, FIRST apply current filter set to the historical sample. Otherwise distribution differences in pre-filtered signals dominate the comparison and hide real cross-sample patterns. This was the methodological hole that nearly killed this finding (initial impression was "May 4 contradicts the pattern" → after filter contamination removal: "May 4 confirms the pattern on like-for-like data").
+2. **The 0.05-0.10 sub-bucket as a structural diagnostic.** Both samples show 0% WR in this exact narrow band. When two unrelated samples agree on a precise sub-bucket boundary, that's higher-evidence than just "cross-sample directional."
+
+### Pre-committed revert criteria at next 100-trade checkpoint
+
+If at next batch:
+1. **LONGs with ADXΔ 0.10-0.30 show ≤45% WR on N≥10** → bucket pattern decayed, consider raising threshold to 0.30 (where "sweet spot" lives per CLAUDE.md April 14)
+2. **Trade volume drops >30% with no Avg P&L improvement** → filter is over-restrictive in current regime, drop to 0.05
+3. **SHORT side now generates volume in <0.10 zone with ≥55% WR on N≥10** → SHORT pattern differs from LONG, drop SHORT threshold or set to 0
+4. **No `[PAIR_ADX_DELTA_MIN]` log lines fire across 100+ trades** → check capture path; either filter is doing nothing or `adx_prev1` is missing for some signal evaluations
+
+### Files changed
+
+- `config.py` — `min_adx_delta_long/short: float = 0.0` (defaults; trading_config.json overrides to 0.10)
+- `trading_config.json` — defaults `0.10` both directions
+- `services/indicators.py` — `adx_delta = adx - adx_prev1` computed once at top of `get_signal`; LONG and SHORT checks added at the same level as `momentum_ema20_slope_min_*` (between EMA20 slope min and RSI momentum filter); logs `[PAIR_ADX_DELTA_MIN]` block reason for filter blocks tracking
+- `templates/index.html` — UI inputs in EMA20 Slope filter section (LONG min ADXΔ + SHORT min ADXΔ); load + save handlers; text-export config dump line
+- `main.py` — no change (`thresholds: Dict` already accepts arbitrary keys)
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The cross-sample evidence with the methodological correction (filter-contamination matters)
+2. The direction-asymmetric design choice (independent per direction even though SHORT impact is currently zero)
+3. The locked revert gates so next-batch validation runs mechanically
+4. The 0.05-0.10 "0% WR in both samples" diagnostic — if at any future point this sub-bucket starts winning, the filter premise is invalidated and we revisit
+

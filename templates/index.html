@@ -3024,6 +3024,14 @@
                             <input type="number" id="config-pair-vol-lookback" step="1" min="5" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-16" value="20">
                             <span class="text-xs text-gray-500 ml-1">bars</span>
                         </div>
+                        <p class="text-xs text-cyan-400 mt-3" title="Intersection rescue clause (May 10 evening). When Global Vol Filter would block, override and ALLOW the trade if pair's absolute 24h USD volume is at or above this threshold. Large-cap pairs can sustain their own momentum even in quiet global markets. 0 = disabled.">📊 Rescue from Global Vol block if Pair Vol ≥</p>
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+                            <span class="text-xs text-gray-500">L: $</span>
+                            <input type="number" id="config-pair-vol-usd-rescue-long" step="1000000" min="0" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-32" value="0" title="LONG-side rescue threshold in USD (e.g. 100000000 for $100M)">
+                            <span class="text-xs text-gray-500 ml-4">S: $</span>
+                            <input type="number" id="config-pair-vol-usd-rescue-short" step="1000000" min="0" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-32" value="0" title="SHORT-side rescue threshold in USD (0 = disabled)">
+                            <span class="text-xs text-gray-500 ml-1">(0 = disabled)</span>
+                        </div>
                     </div>
                     <div class="mt-3 mb-1 px-4">
                         <span class="text-sm text-gray-300">Price vs EMA20 filter</span>
@@ -5367,6 +5375,9 @@
             lines.push(`  Pair ADX Dir L: ${th.adx_dir_long||'both'}  |  Pair ADX Dir S: ${th.adx_dir_short||'both'}`);
             lines.push(`  Global Vol Filter: ${th.global_volume_filter_enabled}  |  Thresh L: ${th.global_volume_threshold_long||1.05}  |  Thresh S: ${th.global_volume_threshold_short||1.05}  |  Lookback: ${th.global_volume_lookback_bars||48} bars`);
             lines.push(`  Pair Vol Filter: ${th.pair_volume_filter_enabled}  |  Thresh L: ${th.pair_volume_threshold_long||1.10}  |  Thresh S: ${th.pair_volume_threshold_short||1.10}  |  Lookback: ${th.pair_volume_lookback_bars||20} bars`);
+            const _rL = th.pair_volume_usd_rescue_long || 0;
+            const _rS = th.pair_volume_usd_rescue_short || 0;
+            lines.push(`  Rescue from Global Vol block if Pair Vol ≥ L: $${_rL > 0 ? (_rL/1e6).toFixed(0)+'M' : 'disabled'}  |  S: $${_rS > 0 ? (_rS/1e6).toFixed(0)+'M' : 'disabled'}  (May 10: intersection rescue clause)`);
             lines.push(`  Market Breadth Filter: ${th.market_breadth_filter_enabled}  |  Bull% ≥ ${th.market_breadth_bull_threshold_long||50}% (LONGs)  |  Bear% ≥ ${th.market_breadth_bear_threshold_short||65}% (SHORTs)  |  Flat Th: ${th.market_breadth_flat_threshold||0.03}%`);
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
@@ -10266,6 +10277,11 @@
                 document.getElementById('config-pair-vol-threshold-short').value = config.thresholds.pair_volume_threshold_short !== undefined ? config.thresholds.pair_volume_threshold_short : 1.10;
                 document.getElementById('config-global-vol-lookback').value = config.thresholds.global_volume_lookback_bars !== undefined ? config.thresholds.global_volume_lookback_bars : 48;
                 document.getElementById('config-pair-vol-lookback').value = config.thresholds.pair_volume_lookback_bars !== undefined ? config.thresholds.pair_volume_lookback_bars : 20;
+                // May 10 evening: pair volume USD rescue thresholds
+                const _rescueLongEl = document.getElementById('config-pair-vol-usd-rescue-long');
+                const _rescueShortEl = document.getElementById('config-pair-vol-usd-rescue-short');
+                if (_rescueLongEl) _rescueLongEl.value = config.thresholds.pair_volume_usd_rescue_long !== undefined ? config.thresholds.pair_volume_usd_rescue_long : 0;
+                if (_rescueShortEl) _rescueShortEl.value = config.thresholds.pair_volume_usd_rescue_short !== undefined ? config.thresholds.pair_volume_usd_rescue_short : 0;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-long-rsi-max').value = config.thresholds.momentum_long_rsi_max !== undefined ? config.thresholds.momentum_long_rsi_max : 100;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
@@ -10784,6 +10800,9 @@
                     pair_volume_threshold_short: safeFloat(document.getElementById('config-pair-vol-threshold-short').value),
                     global_volume_lookback_bars: parseInt(document.getElementById('config-global-vol-lookback').value) || 48,
                     pair_volume_lookback_bars: parseInt(document.getElementById('config-pair-vol-lookback').value) || 20,
+                    // May 10 evening: pair volume USD rescue thresholds
+                    pair_volume_usd_rescue_long: safeFloat((document.getElementById('config-pair-vol-usd-rescue-long') || {}).value || 0),
+                    pair_volume_usd_rescue_short: safeFloat((document.getElementById('config-pair-vol-usd-rescue-short') || {}).value || 0),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_long_rsi_max: safeFloat(document.getElementById('config-momentum-long-rsi-max').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),

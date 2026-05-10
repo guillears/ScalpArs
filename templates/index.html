@@ -1936,6 +1936,31 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Volume Intersection Cross-Tab (May 10 evening) -->
+                <div class="mt-6 border-t border-cyan-900/40 pt-4">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-1">📊 Volume Intersection Cross-Tab (Global Vol Ratio × Pair Vol USD)</h3>
+                    <p class="text-xs text-gray-500 mb-3">2D matrix for the LONG-side intersection rescue clause. Rows = Global Vol Ratio (matches Volume Cross-Tab buckets). Cols = Pair Vol USD at entry (matches Performance by Pair 24h Volume buckets). Each cell: N / WR / Avg%. Empty cells dropped. The Global &lt;0.95 row × Pair ≥$100M cols is the "rescue zone" (allowed under intersection, would be cut under Filter A alone).</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Dir</th>
+                                    <th class="px-2 py-1 text-left">GlobalVol</th>
+                                    <th class="px-2 py-1 text-left">Pair Vol $</th>
+                                    <th class="px-2 py-1 text-right">N</th>
+                                    <th class="px-2 py-1 text-right">WR</th>
+                                    <th class="px-2 py-1 text-right">Avg %</th>
+                                    <th class="px-2 py-1 text-right">Total $</th>
+                                </tr>
+                            </thead>
+                            <tbody id="volume-intersection-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet (requires entry_pair_volume_24h_usd; pre-May-10 trades excluded)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Market Breadth Cross-Tab -->
                 <div class="mt-6 border-t border-white/5 pt-4">
                     <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Market Breadth at Entry</h3>
@@ -5180,6 +5205,23 @@
                 }
             }
 
+            // Volume Intersection Cross-Tab (May 10 evening — Global Vol Ratio × Pair Vol USD)
+            if (perf.volume_intersection_crosstab) {
+                const _vic = perf.volume_intersection_crosstab;
+                const _viAll = [];
+                if (_vic.long) for (const c of _vic.long) _viAll.push({direction: 'LONG', ...c});
+                if (_vic.short) for (const c of _vic.short) _viAll.push({direction: 'SHORT', ...c});
+                if (_viAll.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Volume Intersection Cross-Tab (Global Vol Ratio × Pair Vol USD — May 10)\n');
+                    lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'Pair Vol $'.padEnd(13)} ${'#'.padEnd(4)} ${'WR%'.padEnd(6)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)}`);
+                    for (const r of _viAll) {
+                        const d = r.direction === 'LONG' ? 'L' : 'S';
+                        lines.push(`${d.padEnd(6)} ${r.global_bucket.padEnd(12)} ${r.pair_bucket.padEnd(13)} ${String(r.n).padEnd(4)} ${(r.win_rate.toFixed(1)+'%').padEnd(6)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    }
+                }
+            }
+
             if (perf.breadth_crosstab && perf.breadth_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Market Breadth at Entry\n');
@@ -6139,6 +6181,23 @@
                         const d = r.direction === 'LONG' ? 'L' : 'S';
                         const dur = fmtDur(r.avg_hold_hours);
                         lines.push(`${d.padEnd(6)} ${(r.global_vol||'').padEnd(12)} ${(r.pair_vol||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${dur.padStart(8)}`);
+                    }
+                }
+
+                // --- VOLUME INTERSECTION CROSS-TAB (May 10 evening) ---
+                if (perf.volume_intersection_crosstab) {
+                    const _vic2 = perf.volume_intersection_crosstab;
+                    const _viAll2 = [];
+                    if (_vic2.long) for (const c of _vic2.long) _viAll2.push({direction: 'LONG', ...c});
+                    if (_vic2.short) for (const c of _vic2.short) _viAll2.push({direction: 'SHORT', ...c});
+                    if (_viAll2.length > 0) {
+                        lines.push(`\n${hr2}`);
+                        lines.push('## Volume Intersection Cross-Tab (Global Vol Ratio × Pair Vol USD — May 10)\n');
+                        lines.push(`${'Dir'.padEnd(6)} ${'GlobalVol'.padEnd(12)} ${'Pair Vol $'.padEnd(13)} ${'#'.padEnd(4)} ${'WR%'.padEnd(6)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)}`);
+                        for (const r of _viAll2) {
+                            const d = r.direction === 'LONG' ? 'L' : 'S';
+                            lines.push(`${d.padEnd(6)} ${r.global_bucket.padEnd(12)} ${r.pair_bucket.padEnd(13)} ${String(r.n).padEnd(4)} ${(r.win_rate.toFixed(1)+'%').padEnd(6)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                        }
                     }
                 }
 
@@ -8997,6 +9056,38 @@
                     }).join('');
                 } else {
                     vcBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No volume data yet</td></tr>';
+                }
+
+                // Volume Intersection Cross-Tab (May 10 evening)
+                const viBody = document.getElementById('volume-intersection-body');
+                if (viBody) {
+                    const vic = data.volume_intersection_crosstab;
+                    const allCells = [];
+                    if (vic && vic.long) {
+                        for (const c of vic.long) allCells.push({direction: 'LONG', ...c});
+                    }
+                    if (vic && vic.short) {
+                        for (const c of vic.short) allCells.push({direction: 'SHORT', ...c});
+                    }
+                    if (allCells.length > 0) {
+                        viBody.innerHTML = allCells.map(r => {
+                            const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                            const wrCls = r.win_rate >= 55 ? 'text-emerald-400' : (r.win_rate < 40 ? 'text-red-400' : 'text-gray-300');
+                            const avgCls = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const totCls = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-2 py-1 text-cyan-300">${r.global_bucket}</td>
+                                <td class="px-2 py-1 text-cyan-300">${r.pair_bucket}</td>
+                                <td class="px-2 py-1 text-right">${r.n}</td>
+                                <td class="px-2 py-1 text-right ${wrCls}">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-2 py-1 text-right ${avgCls}">${r.avg_pct >= 0 ? '+' : ''}${r.avg_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1 text-right ${totCls} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                            </tr>`;
+                        }).join('');
+                    } else {
+                        viBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet (requires entry_pair_volume_24h_usd; pre-May-10 trades excluded)</td></tr>';
+                    }
                 }
 
                 // Market Breadth Cross-Tab

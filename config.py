@@ -284,6 +284,13 @@ class SignalThresholds(BaseModel):
     pair_volume_filter_enabled: bool = False  # Gate trades when per-pair volume is below its own average
     pair_volume_threshold_long: float = 1.10  # Min pair volume ratio to allow LONGs
     pair_volume_threshold_short: float = 1.10  # Min pair volume ratio to allow SHORTs
+    # May 10 evening: intersection-style rescue clause for global volume filter.
+    # When global vol filter would block, the pair is rescued from blocking if
+    # its absolute 24h USD volume is ≥ this threshold. 0 = disabled.
+    # Independent per direction. Effective mechanism: filter A (Global<0.95)
+    # AND (Pair Vol $ < rescue_threshold) — large-cap pairs in quiet markets pass.
+    pair_volume_usd_rescue_long: float = 0.0
+    pair_volume_usd_rescue_short: float = 0.0
     global_volume_lookback_bars: int = 48  # Rolling window for global volume average (5m bars)
     pair_volume_lookback_bars: int = 20  # Rolling window for per-pair volume average (5m bars)
     market_breadth_filter_enabled: bool = True  # Gate entries based on % of pairs in Bull/Bear regime

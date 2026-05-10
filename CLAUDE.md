@@ -6650,3 +6650,103 @@ If at next batch:
 - **Filter C ($100M Volume Min)**: requires post-deploy data accumulation. Re-evaluate at 200-trade checkpoint with 2 batches of populated `entry_pair_volume_24h_usd`.
 - **Pair Volume Filter (existing infra)**: also exists as toggle, threshold 1.10. No cross-sample evidence supporting it; observe only.
 
+
+## May 10, 2026 (evening) — Volume Filter Intersection Rescue Clause
+
+### What changed
+
+Modified LONG-side global volume filter to add an intersection-style rescue: large-cap pairs (24h Volume ≥ $100M USD) are now ALLOWED through even when Global Vol Ratio < 0.95.
+
+Three config values:
+- `pair_volume_usd_rescue_long: 100_000_000` (was 0 / disabled)
+- `pair_volume_usd_rescue_short: 0.0` (intentionally disabled)
+- Existing `global_volume_filter_enabled: true` + `global_volume_threshold_long: 0.95` unchanged
+
+### Mechanism — "rescue clause" not full AND-refactor
+
+Implementation in `services/trading_engine.py` modifies the existing global vol filter check:
+
+```python
+if global_volume_filter_enabled:
+    if _global_volume_ratio < _gv_thresh:
+        # NEW: rescue large-cap pairs
+        if pair_volume_usd_rescue > 0 and volume_24h >= pair_volume_usd_rescue:
+            # PASS — pair has enough self-liquidity to sustain momentum
+            log "[VOL_GATE_RESCUE]"
+        else:
+            global_vol_blocks = True
+```
+
+This is mathematically equivalent to "block only when Global<0.95 AND Pair Vol $<$100M" — the intersection — but implemented as additive logic without refactoring the existing OR-based Pair Volume Filter (which remains independent and currently disabled).
+
+### Evidence and analytical basis
+
+**Today's 19-LONG batch (single-sample):**
+
+| Cell | N | WR | Total $ |
+|---|---|---|---|
+| Both filters cut (Global<0.95 AND Pair<$100M) | 11 | **9.1%** | **-$574** ★ disaster zone |
+| Only Global cut (rescue zone: Global<0.95 AND Pair≥$100M) | 4 | **75%** | +$29 ★ winners that would be cut under Filter A alone |
+| Only Pair cut (Global≥0.95 AND Pair<$100M) | 4 | 75% | +$42 |
+| Pass both | 0 | — | — |
+
+**Statistical independence check (today's batch):**
+- P(Global<0.95) = 78.9%, P(Pair<$100M) = 78.9%
+- P(both, observed) = 57.9% vs P(both, if independent) = 62.3%
+- Independence ratio = 0.93x → filters are approximately INDEPENDENT
+- Pearson correlation (raw GlobalVol vs Pair$): r = -0.458 (moderate)
+
+**Interpretation:** the two signals are independent — they cut different trade populations. The overlap is roughly random. But within their intersection (both cut), the trades are 91% losers — the structural disaster zone. The trades each filter UNIQUELY cuts are 75% winners — these are over-cuts that the intersection correctly admits.
+
+### Cross-sample status
+
+**1-sample evidence only.** Pre-deploy CSVs have NULL `entry_pair_volume_24h_usd` so intersection cannot be backtested on May 4 or earlier batches.
+
+The 3-sample evidence supporting standalone Filter A (Global<0.95) remains valid. The rescue clause is layered ON TOP and is exploratory.
+
+### 2D Volume Intersection Cross-Tab table (new analytics)
+
+Added to `main.py::_compute_volume_intersection_crosstab` and surfaced in dashboard + text exports:
+
+**Bucket boundaries (match existing 1D tables for cross-reference):**
+- Global Vol Ratio rows (5): `<0.95`, `0.95-1.05`, `1.05-1.10`, `1.10-1.25`, `>1.25` — matches Volume Cross-Tab Global axis
+- Pair Vol USD cols (9): `<$30M`, `$30-50M`, `$50-80M`, `$80-100M`, `$100-150M`, `$150-250M`, `$250-500M`, `$500M-1B`, `>$1B` — matches Performance by Pair 24h Volume
+
+Up to 5×9=45 cells per direction. Empty cells dropped. Cells show N / WR / Avg% / Total$.
+
+**This table is the decision-maker at next checkpoint** — surfaces patterns that would suggest different rescue thresholds (e.g., $50M vs $100M vs $250M) without needing to ship code changes to test alternatives.
+
+### Pre-committed revert criteria for next 100-trade checkpoint
+
+| Outcome | Action |
+|---|---|
+| **Rescue zone** (Global<0.95 × Pair≥$100M) WR ≤40% on N≥10 | **DISABLE rescue** (set `pair_volume_usd_rescue_long: 0`) — revert to Filter A alone |
+| **Rescue activations** <10% of Global Vol blocks | Rescue isn't doing material work; consider removing for simplicity |
+| `[VOL_GATE_RESCUE]` log lines don't appear after config set | Bug — investigate the rescue clause |
+| **SHORT-side rescue zone** shows ≥65% WR on N≥10 | Enable SHORT rescue too (asymmetric → symmetric) |
+| **Cross-tab shows different optimal threshold** (e.g., $250M cells consistently outperform $100M cells) | Adjust `pair_volume_usd_rescue_long` to new threshold |
+
+### Effective LONG filter behavior after ship
+
+| Global Vol | Pair Vol $ | Pre-ship (Filter A alone) | Post-ship (Intersection) |
+|---|---|---|---|
+| <0.95 | <$100M | BLOCK | BLOCK |
+| <0.95 | ≥$100M | BLOCK | **PASS (rescued)** ← change |
+| ≥0.95 | <$100M | pass | pass |
+| ≥0.95 | ≥$100M | pass | pass |
+
+SHORT side: unchanged (rescue=0 means existing Filter A is also disabled via threshold=0, so SHORT is fully unfiltered as before).
+
+### Files changed
+
+- `config.py` — 2 new fields (`pair_volume_usd_rescue_long/short`)
+- `trading_config.json` — set rescue values
+- `services/trading_engine.py` — rescue clause in global vol filter check (~6 lines + 1 log)
+- `main.py` — `_compute_volume_intersection_crosstab` function (~120 lines) + payload entry
+- `templates/index.html` — UI table + JS renderer + 2 text-export sites (~80 lines)
+- This CLAUDE.md entry
+
+### Why this entry exists
+
+To preserve the analytical basis for the rescue clause and prevent the rescue threshold from being adjusted/removed without consulting the 2D cross-tab data at next checkpoint. The 1-sample evidence is exploratory; the cross-tab table is how we get cross-sample evidence over the next 100+ trades.
+

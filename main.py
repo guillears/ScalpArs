@@ -2256,6 +2256,102 @@ def _compute_atr_bucket_performance(orders):
     return rows
 
 
+def _compute_volume_intersection_crosstab(orders):
+    """May 10 evening: 2D cross-tab of Global Vol Ratio (rows) × Pair Vol USD (cols).
+
+    Validates the intersection-style rescue clause (Global<0.95 AND Pair Vol $
+    <$100M → block; otherwise allow). Per-direction so future asymmetric tuning
+    can be data-driven.
+
+    Bucket boundaries match existing 1D tables for cross-reference consistency:
+    - Global Vol Ratio rows: matches existing Volume Cross-Tab (Global x Pair) Global axis
+    - Pair Vol USD cols: matches Performance by Pair 24h Volume table
+
+    Empty cells (N=0) are dropped from output to keep the table readable.
+
+    Pre-deploy trades have NULL entry_pair_volume_24h_usd and are excluded.
+    """
+    M = 1_000_000.0
+    B = 1_000_000_000.0
+
+    # Bucket boundaries — match existing individual tables
+    global_buckets = [
+        ("<0.95", -1.0, 0.95),
+        ("0.95-1.05", 0.95, 1.05),
+        ("1.05-1.10", 1.05, 1.10),
+        ("1.10-1.25", 1.10, 1.25),
+        (">1.25", 1.25, 1e6),
+    ]
+    pair_buckets = [
+        ("<$30M", 0, 30 * M),
+        ("$30-50M", 30 * M, 50 * M),
+        ("$50-80M", 50 * M, 80 * M),
+        ("$80-100M", 80 * M, 100 * M),
+        ("$100-150M", 100 * M, 150 * M),
+        ("$150-250M", 150 * M, 250 * M),
+        ("$250-500M", 250 * M, 500 * M),
+        ("$500M-1B", 500 * M, 1 * B),
+        (">$1B", 1 * B, 1e15),
+    ]
+
+    def _bucket(value, buckets):
+        for name, lo, hi in buckets:
+            if lo <= value < hi:
+                return name
+        return None
+
+    def _direction_rows(direction):
+        rows = []
+        for r in orders:
+            if r.status != "CLOSED" or r.pnl is None:
+                continue
+            d = (r.direction.value if hasattr(r.direction, 'value') else r.direction) or ""
+            if d != direction:
+                continue
+            gv = r.entry_global_volume_ratio
+            pvu = getattr(r, 'entry_pair_volume_24h_usd', None)
+            if gv is None or pvu is None:
+                continue
+            gb = _bucket(gv, global_buckets)
+            pb = _bucket(pvu, pair_buckets)
+            if gb is None or pb is None:
+                continue
+            rows.append({'gb': gb, 'pb': pb, 'pnl': r.pnl, 'pnl_pct': r.pnl_percentage or 0.0})
+
+        from collections import defaultdict
+        cells = defaultdict(list)
+        for rec in rows:
+            cells[(rec['gb'], rec['pb'])].append(rec)
+
+        out = []
+        for gname, _, _ in global_buckets:
+            for pname, _, _ in pair_buckets:
+                key = (gname, pname)
+                cell = cells.get(key, [])
+                if not cell:
+                    continue
+                n = len(cell)
+                wins = sum(1 for c in cell if c['pnl'] > 0)
+                total_pnl = sum(c['pnl'] for c in cell)
+                avg_pct = sum(c['pnl_pct'] for c in cell) / n
+                out.append({
+                    'global_bucket': gname,
+                    'pair_bucket': pname,
+                    'n': n,
+                    'win_rate': round(100 * wins / n, 1),
+                    'avg_pct': round(avg_pct, 3),
+                    'total_pnl': round(total_pnl, 2),
+                })
+        return out
+
+    return {
+        'long': _direction_rows('LONG'),
+        'short': _direction_rows('SHORT'),
+        'global_buckets': [b[0] for b in global_buckets],
+        'pair_buckets': [b[0] for b in pair_buckets],
+    }
+
+
 def _compute_pair_volume_bucket_performance(orders):
     """May 10: Bucket trades by absolute pair 24h USD volume at entry.
 
@@ -5192,6 +5288,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),
         "volume_crosstab": _compute_volume_crosstab(orders),
+        # May 10 evening: 2D Global Vol Ratio × Pair Vol USD cross-tab. Buckets
+        # match existing Volume Cross-Tab (Global axis) and Performance by Pair
+        # 24h Volume (Pair axis) tables for cross-reference consistency.
+        "volume_intersection_crosstab": _compute_volume_intersection_crosstab(orders),
         "breadth_crosstab": _compute_breadth_crosstab(orders),
         "pair_performance": _compute_pair_performance(orders),
         # May 10: pair 24h USD volume bucket performance — find structural size threshold

@@ -160,6 +160,8 @@
     "global_volume_filter_enabled": true,
     "global_volume_threshold_long": 0.95,
     "global_volume_threshold_short": 0.0,
+    "pair_volume_usd_rescue_long": 100000000,
+    "pair_volume_usd_rescue_short": 0.0,
     "pair_volume_filter_enabled": false,
     "pair_volume_threshold_long": 1.10,
     "pair_volume_threshold_short": 1.10,

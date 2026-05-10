@@ -4720,7 +4720,15 @@ class TradingEngine:
                 if getattr(_th, 'global_volume_filter_enabled', False):
                     _gv_thresh = getattr(_th, f'global_volume_threshold_{signal.lower()}', 1.05)
                     if _global_volume_ratio < _gv_thresh:
-                        global_vol_blocks = True
+                        # May 10 evening: intersection-style rescue. If pair's
+                        # absolute 24h USD volume is ≥ rescue threshold, the pair
+                        # is large enough to sustain its own momentum even in a
+                        # quiet global market — let it through. 0 = no rescue.
+                        _pair_vol_rescue = getattr(_th, f'pair_volume_usd_rescue_{signal.lower()}', 0.0)
+                        if _pair_vol_rescue > 0 and volume_24h >= _pair_vol_rescue:
+                            logger.info(f"[VOL_GATE_RESCUE] {pair}: {signal} GlobalVol {_global_volume_ratio:.2f}<{_gv_thresh} BUT PairVol ${volume_24h/1e6:.0f}M ≥ ${_pair_vol_rescue/1e6:.0f}M — rescued")
+                        else:
+                            global_vol_blocks = True
 
                 pair_vol_blocks = False
                 if getattr(_th, 'pair_volume_filter_enabled', False):

@@ -7673,3 +7673,59 @@ At next 100-trade LONG checkpoint:
 
 ### Files changed
 - `trading_config.json` — single field change
+
+## May 11, 2026 UTC-3 — Block LONG BTC RSI 60-65 × BTC ADX 25-30
+
+### Change
+- `btc_rsi_adx_filter_long`: `"70-100:35,65-70:30"` → **`"70-100:35,65-70:30,60-65:0-25"`**
+
+The new rule `60-65:0-25` requires BTC ADX in [0, 25] for BTC RSI 60-65. Blocks RSI 60-65 entries when BTC ADX > 25.
+
+### Evidence
+
+Cross-batch pool (May 4 → 19:16 UTC-3, 167 LONG trades):
+
+| BTC RSI 60-65 × BTC ADX | N | WR | Avg % | Total $ | Status |
+|---|---|---|---|---|---|
+| <18 | 10 | 40% | -0.28% | -$291 | already blocked by `btc_adx_min_long: 18` |
+| 18-20 | 17 | 53% | +0.01% | -$42 | survives — flat |
+| 20-25 | 17 | 47% | -0.02% | -$114 | survives — mild losing |
+| **25-30** | **13** | **62%** | **-0.07%** | **-$194** | ★ NEW BLOCKED — primary target |
+| 30-35 | 2 | 50% | -0.06% | -$7 | NEW BLOCKED (collateral, marginal cost) |
+| ≥35 | 2 | 50% | -0.30% | -$100 | already blocked by `btc_adx_max_long: 35` |
+
+The cell looks superficially fine on WR (62% — looks like a winner) but the **loss magnitude per losing trade dramatically exceeds winners**. This is the classic "losers > winners by 2x ratio" pattern — same as today's afternoon batch which had 5 trades in this cell at 20% WR / -$199 (60% of today's total batch losses came from this single cell).
+
+### Methodological context
+
+The cell had a deceptive cross-batch history:
+- 15:03 UTC-3 snapshot: 9 trades / 78% WR / -$37 → looked like a winner
+- 16:50 UTC-3 snapshot: 13 trades / 62% WR / -$194 → reality emerges as more trades close
+
+The 4 trades that closed between those snapshots: 1 winner, 3 losers, net -$157. The cell's actual character is **WR ~60% with asymmetric magnitude** — a trap that hides behind a respectable WR.
+
+This is what the CLAUDE.md May 11 methodological lesson predicted: 2D cells can look like winners on WR but lose in $ terms when losers are bigger than winners. The right metric for cell-level decisions is **Total $** AND **Avg P&L %**, not WR alone.
+
+### Volume impact (pool-level estimate)
+
+17 trades in the newly-blocked zone (25-30 + 30-35 + ≥35 within RSI 60-65):
+- 25-30: -$194 (cut, save)
+- 30-35: -$7 (cut, marginal cost)
+- ≥35: already blocked elsewhere
+- Net pool save: ~$200 on 15 trades cut (excluding ≥35 which was already blocked)
+- Cost: 1 winner in 30-35 cell at +$35 — net save ~$165
+
+Direction-consistent with the broader Watch 1 candidate (BTC ADX 25-30 LONG zone = -$551 cross-batch). This filter narrows the broad rule to the specific RSI band where the loss concentrates.
+
+### What's NOT blocked (deliberately)
+
+- **LONG BTC RSI 55-60 × BTC ADX 25-30** — 13 trades / 31% WR / **-$392** (biggest single LONG loss cell). Same pattern but in adjacent RSI band. User chose to only block 60-65 first. **Locked watchlist candidate** for next-batch decision: if 55-60 × 25-30 LONG fires more losers, ship analogous rule `55-60:0-25`.
+
+### Pre-committed revert criteria
+
+At next 100-trade LONG checkpoint:
+- If the newly-blocked zone (60-65 × ADX 25-30 in observation logs) shows ≥55% WR on N≥10 in fresh data → revert (remove `60-65:0-25`)
+- If RSI 60-65 × ADX 18-25 (the kept zone) shows ≤45% WR on N≥10 → extend filter further (e.g., `60-65:0-22`)
+
+### Files changed
+- `trading_config.json` — single field append

@@ -808,42 +808,21 @@ class TradingEngine:
                 f"for ${result['cost_usdt']:.2f} @ ${result['price']:.2f}"
             )
 
-    async def bnb_scheduled_check(self, db: AsyncSession, force: bool = False):
-        """Scheduled BNB balance check: compute burn rate, project needs, swap if necessary.
+    async def _recompute_bnb_burn_rate(self, db: AsyncSession) -> float:
+        """Recompute self._bnb_burn_rate, _bnb_projected_need, _bnb_emergency_threshold
+        from CLOSED orders in DB. Returns fees_24h.
 
-        May 7: respects bnb_check_interval_hours across restarts. Without this
-        gate, every redeploy triggered a fresh check ~60s after startup, causing
-        repeated tiny rebalance swaps when the operator deployed multiple times
-        in a short window. Pass force=True to override (e.g., manual UI trigger).
+        May 11: extracted from bnb_scheduled_check so the burn-rate metric can be
+        refreshed every scan cycle WITHOUT firing the gated swap action. Cheap
+        (a few SQL aggregates); the runway display in the UI depends on this
+        being current. Previously the metric stayed at 0 for up to 6h after a
+        bot restart because the swap-gate also blocked the recompute.
         """
         tc = config.trading_config
-        if not tc.bnb_swap_enabled:
-            return
-
-        # Interval gate (skip if last check was within bnb_check_interval_hours)
-        if not force and self._last_bnb_check is not None:
-            interval_hours = max(1, int(tc.bnb_check_interval_hours or 6))
-            elapsed = (datetime.utcnow() - self._last_bnb_check).total_seconds()
-            if elapsed < interval_hours * 3600:
-                logger.info(
-                    f"[BNB_CHECK] Skipped: last check {elapsed/3600:.2f}h ago "
-                    f"(interval={interval_hours}h). Next check in "
-                    f"{(interval_hours * 3600 - elapsed)/3600:.2f}h."
-                )
-                return
-
-        self._last_bnb_check = datetime.utcnow()
-        # Persist last-check timestamp immediately so restarts within the
-        # interval window correctly skip until the interval elapses.
-        try:
-            await self.save_state(db)
-        except Exception as _e:
-            logger.debug(f"[BNB_CHECK] Failed to persist last_bnb_check: {_e}")
-        
         now = datetime.utcnow()
         cutoff_24h = now - timedelta(hours=24)
         cutoff_12h = now - timedelta(hours=12)
-        
+
         result_24h = await db.execute(
             select(
                 func.coalesce(func.sum(Order.total_fee), 0),
@@ -855,7 +834,7 @@ class TradingEngine:
         row_24h = result_24h.one()
         fees_24h = float(row_24h[0] or 0)
         count_24h = int(row_24h[1] or 0)
-        
+
         result_12h = await db.execute(
             select(
                 func.coalesce(func.sum(Order.total_fee), 0),
@@ -872,12 +851,8 @@ class TradingEngine:
 
         # Oldest closed trade inside the 24h window — used to measure the TRUE
         # time span of the fee data, not bot runtime. The DB persists across
-        # bot restarts, so dividing fees_24h by runtime (as the previous version
-        # did) grossly overestimates burn rate immediately after a restart.
-        # Example: DB has 21 trades / $51 fees over the past day, bot restarted
-        # 5 min ago → old code computed $51 / 1h = $51/hr (24x inflated), which
-        # triggered a ~$1,200 scheduled BNB buy. Using data span gives $51/24h
-        # = $2.13/hr, the actual value.
+        # bot restarts, so dividing fees_24h by runtime grossly overestimates
+        # burn rate immediately after a restart.
         result_oldest_24h = await db.execute(
             select(func.min(Order.closed_at)).where(
                 and_(Order.status == "CLOSED", Order.closed_at >= cutoff_24h)
@@ -892,13 +867,57 @@ class TradingEngine:
         self._bnb_burn_rate = fees_24h / span_24h_hours if span_24h_hours > 0 else 0
         self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
 
-        # Same logic for 12h emergency threshold: measure actual data span.
+        # 12h emergency threshold
         if count_12h > 0 and oldest_12h:
             span_12h_hours = max(1.0, min(12.0, (now - oldest_12h).total_seconds() / 3600.0))
             burn_rate_12h = fees_12h / span_12h_hours
         else:
             burn_rate_12h = 0
         self._bnb_emergency_threshold = burn_rate_12h * 12.0
+
+        return fees_24h
+
+    async def bnb_scheduled_check(self, db: AsyncSession, force: bool = False):
+        """Scheduled BNB balance check: compute burn rate, project needs, swap if necessary.
+
+        May 7: respects bnb_check_interval_hours across restarts. Without this
+        gate, every redeploy triggered a fresh check ~60s after startup, causing
+        repeated tiny rebalance swaps when the operator deployed multiple times
+        in a short window. Pass force=True to override (e.g., manual UI trigger).
+
+        May 11: burn-rate recompute is now decoupled from the swap-gate. The
+        metric is refreshed every call (cheap SQL aggregates), but the swap
+        action remains gated. Previously the runway display stayed empty for
+        up to 6h after a bot restart because the gate blocked the recompute.
+        """
+        tc = config.trading_config
+        if not tc.bnb_swap_enabled:
+            return
+
+        # Always recompute the burn-rate metric (cheap, drives UI runway display).
+        # Only the swap action is gated below.
+        fees_24h = await self._recompute_bnb_burn_rate(db)
+
+        # Interval gate (skip swap ACTION if last check was within bnb_check_interval_hours).
+        if not force and self._last_bnb_check is not None:
+            interval_hours = max(1, int(tc.bnb_check_interval_hours or 6))
+            elapsed = (datetime.utcnow() - self._last_bnb_check).total_seconds()
+            if elapsed < interval_hours * 3600:
+                logger.info(
+                    f"[BNB_CHECK] Swap action skipped: last check {elapsed/3600:.2f}h ago "
+                    f"(interval={interval_hours}h). Next swap eligible in "
+                    f"{(interval_hours * 3600 - elapsed)/3600:.2f}h. "
+                    f"Burn rate refreshed: ${self._bnb_burn_rate:.2f}/hr."
+                )
+                return
+
+        self._last_bnb_check = datetime.utcnow()
+        # Persist last-check timestamp immediately so restarts within the
+        # interval window correctly skip until the interval elapses.
+        try:
+            await self.save_state(db)
+        except Exception as _e:
+            logger.debug(f"[BNB_CHECK] Failed to persist last_bnb_check: {_e}")
 
         # Safety rail: burn_rate (in $/hr) can never exceed total fees when the
         # window is >= 1h. If this ever trips, the span calculation is broken
@@ -907,7 +926,7 @@ class TradingEngine:
             logger.error(
                 f"[BNB_CHECK] Burn rate sanity check failed: "
                 f"${self._bnb_burn_rate:.2f}/hr > ${fees_24h:.2f} total 24h fees. "
-                f"Refusing to swap. span_24h_hours={span_24h_hours}"
+                f"Refusing to swap."
             )
             return
         

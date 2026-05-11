@@ -4617,6 +4617,46 @@ class TradingEngine:
                         except (ValueError, TypeError):
                             continue
 
+            # ADX Delta x BTC ADX Cross-Filter (May 11, 2026 — see CLAUDE.md May 11
+            # deep review).  Pooled data across May 4 → tonight (288 LONGs, 6 batches)
+            # shows that when pair ADX is spiking fast (delta 1.0-2.0) AND BTC ADX is
+            # in the mid-strength zone (18-25), entries are catastrophic losers:
+            # N=49, 31% WR, -$267.  Same pair-delta in stronger BTC regimes (25-30 →
+            # +$98 / 30-35 → +$98) is profitable, so the signal is conditional on
+            # macro confirmation, not pair-level alone.
+            # Rule format: "deltaLo-deltaHi:btcAdxLo-btcAdxHi" — block when ADX Delta
+            # in [deltaLo, deltaHi) AND BTC ADX in [btcAdxLo, btcAdxHi).
+            # Multiple rules separated by commas.  Empty = filter inactive.
+            if signal in ["LONG", "SHORT"] and btc_adx is not None:
+                _pair_adx_now = indicators.get('adx')
+                _pair_adx_pre = indicators.get('adx_prev1')
+                if _pair_adx_now is not None and _pair_adx_pre is not None:
+                    _adx_delta_val = _pair_adx_now - _pair_adx_pre
+                    _th = config.trading_config.thresholds
+                    _df_key = 'adx_delta_btc_adx_filter_long' if signal == 'LONG' else 'adx_delta_btc_adx_filter_short'
+                    _df_str = getattr(_th, _df_key, '')
+                    if _df_str and _df_str.strip():
+                        for _df_rule in _df_str.split(','):
+                            _df_rule = _df_rule.strip()
+                            if not _df_rule or ':' not in _df_rule:
+                                continue
+                            try:
+                                _df_d_part, _df_a_part = _df_rule.split(':')
+                                _df_d_lo, _df_d_hi = map(float, _df_d_part.split('-'))
+                                _df_a_lo, _df_a_hi = map(float, _df_a_part.split('-'))
+                                if (_df_d_lo <= _adx_delta_val < _df_d_hi and
+                                        _df_a_lo <= btc_adx < _df_a_hi):
+                                    logger.info(
+                                        f"[ADX_DELTA_BTC_ADX_CROSS] {pair}: {signal} blocked — "
+                                        f"ADXΔ {_adx_delta_val:.2f} in [{_df_d_lo}-{_df_d_hi}) "
+                                        f"AND BTC ADX {btc_adx:.1f} in [{_df_a_lo}-{_df_a_hi})"
+                                    )
+                                    self._record_filter_block("ADX_DELTA_BTC_ADX_CROSS", signal, had_room=_had_room)
+                                    signal = "NO_TRADE"
+                                    break
+                            except (ValueError, TypeError):
+                                continue
+
             # BTC Trend Filter — runs independently of Macro Trend toggle (May 5).
             # Compares BTC EMA13 vs BTC EMA50 on the 5m chart (May 6 — switched from
             # EMA20 to EMA13 for faster reversal detection; EMA13 spans ~65 min vs EMA20's

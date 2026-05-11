@@ -1862,7 +1862,34 @@
                     </table>
                 </div>
             </div>
-            
+
+                <!-- ADX Delta x BTC ADX Cross-Tab (May 11) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">ADX Delta × BTC ADX Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Pair-level ADX acceleration × BTC trend strength — surface regime-conditional patterns (e.g., fast-spike entries lose in mid-strength BTC but win in strong BTC)</p>
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Dir</th>
+                                    <th class="px-3 py-2 font-medium" title="Pair ADX change vs prior candle (current_ADX − prev_ADX)">ADX Δ</th>
+                                    <th class="px-3 py-2 font-medium">BTC ADX</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Never Positive: trades that never went green (peak ≤ 0)">NP</th>
+                                    <th class="px-3 py-2 font-medium text-center">Conf</th>
+                            </tr>
+                        </thead>
+                            <tbody id="adx-delta-btc-adx-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
                 <!-- RSI x ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by RSI x ADX</h3>
@@ -3241,6 +3268,28 @@
                                     <tbody id="btc-rsi-adx-filter-short-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addBtcRsiAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
+                        <span class="text-sm text-gray-300">ADX Delta × BTC ADX Cross-Filter <span class="text-amber-400 text-xs">(May 11)</span></span>
+                        <p class="text-xs text-gray-500 mb-2">Block entry when pair ADX is accelerating fast (ΔADX in range) AND BTC ADX is in a specific magnitude range. Catches "late entry with weak macro" pattern. Empty = allow all.</p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">ΔADX Min</th><th class="text-left px-1">ΔADX Max</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="adx-delta-btc-adx-filter-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addAdxDeltaBtcAdxRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">ΔADX Min</th><th class="text-left px-1">ΔADX Max</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="adx-delta-btc-adx-filter-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addAdxDeltaBtcAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
                             </div>
                         </div>
                     </div>
@@ -5341,6 +5390,17 @@
                 }
             }
 
+            if (perf.adx_delta_btc_adx_crosstab && perf.adx_delta_btc_adx_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## ADX Delta x BTC ADX Cross-Tab\n');
+                lines.push(`${'Dir'.padEnd(7)} ${'ADX Δ'.padEnd(10)} ${'BTC ADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'NP'.padEnd(10)} ${'Conf'}`);
+                for (const r of perf.adx_delta_btc_adx_crosstab) {
+                    const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                    lines.push(`${(r.direction||'').padEnd(7)} ${(r.delta_range||'').padEnd(10)} ${(r.btc_adx_range||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
+                }
+            }
+
             if (perf.rsi_adx_crosstab && perf.rsi_adx_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by RSI x ADX\n');
@@ -6331,6 +6391,18 @@
                         const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
                         lines.push(`${(r.direction||'').padEnd(7)} ${(r.slope_range||'').padEnd(12)} ${(r.adx_range||'').padEnd(8)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
+                    }
+                }
+
+                // --- ADX Delta x BTC ADX CROSS-TAB (May 11) ---
+                if (perf.adx_delta_btc_adx_crosstab && perf.adx_delta_btc_adx_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## ADX Delta x BTC ADX Cross-Tab\n');
+                    lines.push(`${'Dir'.padEnd(7)} ${'ADX Δ'.padEnd(10)} ${'BTC ADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'NP'.padEnd(10)} ${'Conf'}`);
+                    for (const r of perf.adx_delta_btc_adx_crosstab) {
+                        const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                        lines.push(`${(r.direction||'').padEnd(7)} ${(r.delta_range||'').padEnd(10)} ${(r.btc_adx_range||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
                     }
                 }
 
@@ -7975,6 +8047,40 @@
                         .map(r => _renderSlopeAdxRow(r, 'text-cyan-400')).join('');
                 } else {
                     btcSlopeAdxBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                }
+
+                // ADX Delta x BTC ADX Cross-Tab (May 11)
+                const adxDeltaBtcAdxBody = document.getElementById('adx-delta-btc-adx-crosstab-body');
+                if (data.adx_delta_btc_adx_crosstab && data.adx_delta_btc_adx_crosstab.length > 0) {
+                    adxDeltaBtcAdxBody.innerHTML = data.adx_delta_btc_adx_crosstab.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 60 ? 'text-emerald-400' : r.win_rate >= 45 ? 'text-yellow-400' : 'text-red-400';
+                        const avgClass = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPct = r.avg_pnl_pct || 0;
+                        const avgPctStr = `${avgPct >= 0 ? '+' : ''}${avgPct.toFixed(3)}%`;
+                        const avgPctClass = avgPct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const confEntries = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1]);
+                        const confBadges = confEntries.map(([c, n]) => `<span class="text-xs px-1 mx-0.5 rounded ${c === 'VERY_STRONG' ? 'bg-purple-700/40' : 'bg-blue-700/40'}">${c[0]}:${n}</span>`).join('');
+                        const npCount = r.never_positive || 0;
+                        const npPct = r.never_positive_pct || 0;
+                        const npClass = npPct >= 50 ? 'text-red-400' : npPct >= 25 ? 'text-amber-400' : 'text-gray-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 font-medium text-orange-400">${r.delta_range}</td>
+                                <td class="px-3 py-2 font-medium text-purple-400">${r.btc_adx_range}</td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${avgClass} font-medium">${formatUSD(r.avg_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right ${avgPctClass} font-medium">${avgPctStr}</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right text-xs ${npClass}">${npCount} (${npPct.toFixed(0)}%)</td>
+                                <td class="px-3 py-2 text-center">${confBadges}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    adxDeltaBtcAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
 
                 // RSI x ADX Cross-Tab
@@ -10348,6 +10454,8 @@
                 loadRsiAdxFilter('short', config.thresholds.rsi_adx_filter_short || '');
                 loadBtcRsiAdxFilter('long', config.thresholds.btc_rsi_adx_filter_long || '');
                 loadBtcRsiAdxFilter('short', config.thresholds.btc_rsi_adx_filter_short || '');
+                loadAdxDeltaBtcAdxFilter('long', config.thresholds.adx_delta_btc_adx_filter_long || '');
+                loadAdxDeltaBtcAdxFilter('short', config.thresholds.adx_delta_btc_adx_filter_short || '');
                 // Premium Multipliers (May 4, 2026)
                 loadMultRules('long', 'pair', config.thresholds.rsi_adx_multiplier_long || '');
                 loadMultRules('short', 'pair', config.thresholds.rsi_adx_multiplier_short || '');
@@ -10578,6 +10686,47 @@
                 const adxMax = adxMaxEl ? adxMaxEl.value.trim() : '';
                 if (rMin && rMax && adx) {
                     rules.push(adxMax ? `${rMin}-${rMax}:${adx}-${adxMax}` : `${rMin}-${rMax}:${adx}`);
+                }
+            });
+            return rules.join(',');
+        }
+
+        // ADX Delta × BTC ADX Cross-Filter helpers (May 11, 2026)
+        // Rule format: "<deltaLo>-<deltaHi>:<btcAdxLo>-<btcAdxHi>"
+        function addAdxDeltaBtcAdxRow(direction, dLo='', dHi='', aLo='', aHi='') {
+            const tbody = document.getElementById(`adx-delta-btc-adx-filter-${direction}-body`);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="number" step="0.1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs adb-d-lo" value="${dLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs adb-d-hi" value="${dHi}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs adb-a-lo" value="${aLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs adb-a-hi" value="${aHi}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadAdxDeltaBtcAdxFilter(direction, filterStr) {
+            const tbody = document.getElementById(`adx-delta-btc-adx-filter-${direction}-body`);
+            tbody.innerHTML = '';
+            if (!filterStr || !filterStr.trim()) return;
+            for (const rule of filterStr.split(',')) {
+                const r = rule.trim();
+                if (!r || !r.includes(':')) continue;
+                const [dPart, aPart] = r.split(':');
+                const [dLo, dHi] = dPart.split('-');
+                const [aLo, aHi] = aPart.split('-');
+                addAdxDeltaBtcAdxRow(direction, dLo || '', dHi || '', aLo || '', aHi || '');
+            }
+        }
+        function collectAdxDeltaBtcAdxFilter(direction) {
+            const rows = document.querySelectorAll(`#adx-delta-btc-adx-filter-${direction}-body tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const dLo = row.querySelector('.adb-d-lo').value.trim();
+                const dHi = row.querySelector('.adb-d-hi').value.trim();
+                const aLo = row.querySelector('.adb-a-lo').value.trim();
+                const aHi = row.querySelector('.adb-a-hi').value.trim();
+                if (dLo !== '' && dHi !== '' && aLo !== '' && aHi !== '') {
+                    rules.push(`${dLo}-${dHi}:${aLo}-${aHi}`);
                 }
             });
             return rules.join(',');
@@ -10858,6 +11007,8 @@
                     rsi_adx_filter_short: collectRsiAdxFilter('short'),
                     btc_rsi_adx_filter_long: collectBtcRsiAdxFilter('long'),
                     btc_rsi_adx_filter_short: collectBtcRsiAdxFilter('short'),
+                    adx_delta_btc_adx_filter_long: collectAdxDeltaBtcAdxFilter('long'),
+                    adx_delta_btc_adx_filter_short: collectAdxDeltaBtcAdxFilter('short'),
                     // Premium Multipliers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
                     rsi_adx_multiplier_long: collectMultRules('long', 'pair'),
                     rsi_adx_multiplier_short: collectMultRules('short', 'pair'),

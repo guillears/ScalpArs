@@ -1600,7 +1600,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -2791,7 +2791,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "btc_slope_performance": [],
             "pair_ema20_ema50_gap_performance": [],
             "btc_ema20_ema50_gap_performance": [],
-            "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [],
+            "btc_adx_performance": [], "btc_adx_direction_performance": [], "adx_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -3720,6 +3720,66 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         btc_slope_adx_crosstab = _build_slope_adx_crosstab(
             orders, 'entry_btc_ema20_slope', 'entry_btc_adx', ct_adx_ranges_bt
         )
+
+        # ADX Delta × BTC ADX Cross-Tab (May 11 — pooled-data finding, see CLAUDE.md
+        # May 11 deep review).  Tracks the regime-conditional ADX Delta pattern:
+        # pair-level ADX spike (delta 1.0-2.0) is catastrophic when BTC ADX is in the
+        # mid-strength 18-25 zone, but profitable when BTC ADX is 25-35.  Same dimension,
+        # opposite outcomes by macro context.  Cell breakdown enables data-driven
+        # 2D filter rules (block specific delta×BTC-ADX combos).
+        adx_delta_ranges = [
+            ("<0", -999, 0),
+            ("0.0-0.1", 0, 0.1),
+            ("0.1-0.3", 0.1, 0.3),
+            ("0.3-0.5", 0.3, 0.5),
+            ("0.5-1.0", 0.5, 1.0),
+            ("1.0-2.0", 1.0, 2.0),
+            (">2.0", 2.0, 999),
+        ]
+        btc_adx_ranges_for_delta = [
+            ("<18", 0, 18),
+            ("18-25", 18, 25),
+            ("25-30", 25, 30),
+            ("30-35", 30, 35),
+            ("≥35", 35, 999),
+        ]
+        adx_delta_btc_adx_crosstab = []
+        _adx_delta_pool = [o for o in orders
+                           if getattr(o, 'entry_adx_delta', None) is not None
+                           and getattr(o, 'entry_btc_adx', None) is not None]
+        for direction in ["LONG", "SHORT"]:
+            for dr_name, dr_min, dr_max in adx_delta_ranges:
+                for ar_name, ar_min, ar_max in btc_adx_ranges_for_delta:
+                    bucket = [
+                        o for o in _adx_delta_pool
+                        if (o.direction or "LONG") == direction
+                        and dr_min <= o.entry_adx_delta < dr_max
+                        and ar_min <= o.entry_btc_adx < ar_max
+                    ]
+                    if not bucket:
+                        continue
+                    b_count = len(bucket)
+                    b_wins = len([o for o in bucket if (o.pnl or 0) > 0])
+                    b_pnl = sum(o.pnl or 0 for o in bucket)
+                    b_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket)
+                    b_never_positive = sum(1 for o in bucket if (o.peak_pnl or 0) <= 0)
+                    b_conf = {}
+                    for o in bucket:
+                        c = o.confidence or "UNKNOWN"
+                        b_conf[c] = b_conf.get(c, 0) + 1
+                    adx_delta_btc_adx_crosstab.append({
+                        "direction": direction,
+                        "delta_range": dr_name,
+                        "btc_adx_range": ar_name,
+                        "trades": b_count,
+                        "win_rate": round(b_wins / b_count * 100, 1),
+                        "avg_pnl": round(b_pnl / b_count, 2),
+                        "avg_pnl_pct": round(b_pnl_pct / b_count, 4),
+                        "total_pnl": round(b_pnl, 2),
+                        "never_positive": b_never_positive,
+                        "never_positive_pct": round(b_never_positive / b_count * 100, 1) if b_count else 0,
+                        "by_confidence": b_conf,
+                    })
 
         # Performance by BTC Entry RSI
         btc_rsi_ranges = [
@@ -5273,6 +5333,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "adx_dir_crosstab": adx_dir_crosstab,
         "pair_slope_adx_crosstab": pair_slope_adx_crosstab,
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
+        "adx_delta_btc_adx_crosstab": adx_delta_btc_adx_crosstab,
         "btc_rsi_performance": btc_rsi_performance,
         "btc_rsi_adx_crosstab": btc_rsi_adx_crosstab,
         "quality_score_performance": quality_score_performance,

@@ -264,6 +264,12 @@ class SignalThresholds(BaseModel):
     rsi_adx_filter_short: str = ""  # RSI x ADX cross-filter for SHORTs, e.g. "30-35:25,35-50:30" (empty = allow all)
     btc_rsi_adx_filter_long: str = ""  # BTC RSI x ADX cross-filter for LONGs (empty = allow all)
     btc_rsi_adx_filter_short: str = ""  # BTC RSI x ADX cross-filter for SHORTs (empty = allow all)
+    # ADX Delta x BTC ADX cross-filter (May 11, 2026 — pooled-data finding, see CLAUDE.md).
+    # Format per rule: "<deltaLo>-<deltaHi>:<btcAdxLo>-<btcAdxHi>" (block when both ranges match).
+    # Example: "1.0-2.0:18-25" blocks LONG entries when pair ADX delta in [1.0,2.0) AND BTC ADX in [18,25).
+    # Multi-batch evidence: catastrophic loser zone (N=49 pooled, 31% WR, -$267).
+    adx_delta_btc_adx_filter_long: str = ""
+    adx_delta_btc_adx_filter_short: str = ""
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

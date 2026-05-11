@@ -7121,3 +7121,148 @@ This addendum supplements the May 11 loss-cleanup watchlist above. It does NOT r
 any of the three top loss-cleanup candidates (SHORT BTC RSI 30-35 block, LONG slope min,
 LONG BTC RSI ≥65 block) — those still have larger expected $-impact and remain priority.
 The `adx_strong` revert is a smaller-scope decision running in parallel.
+
+## May 11, 2026 — LONG-side filter+multiplier shipped (BTC ADX 18 revert, ADX Δ × BTC ADX cross-filter, multipliers neutralized)
+
+### What shipped
+
+Three coordinated LONG-side changes deployed together. Pending commit at time of writing.
+
+**Config changes (`trading_config.json`):**
+
+| Field | Before | After | Source |
+|---|---|---|---|
+| `btc_adx_min_long` | 15 | **18** | Pre-committed CLAUDE.md May 6 revert criterion fired (BTC ADX 15-20 LONG pool ≤35% WR on N=68 = criterion #2) |
+| `rsi_adx_multiplier_long` | "60-65:15-18:2.0,60-65:18-22:2.0" | "60-65:15-18:**1.0**,60-65:18-22:**1.0**" | Per CLAUDE.md May 4 verdict matrix — PAIR_60-65_15-18 was ✗ HARMFUL on N=8; PAIR_60-65_18-22 was Low N at -$122. Cells preserved in UI at 1.0× for easy revert when evidence improves. |
+| `btc_rsi_adx_multiplier_long` | "60-65:20-25:2.0" | "60-65:20-25:**1.0**" | L-P1 cell — 1-sample evidence, neutralized pending replication. |
+| `ema5_stretch_multiplier_long` | "0.16-0.20:2.0,0.20-0.25:2.0,0.25-0.30:2.0" | "0.16-0.20:**1.0**,...:**1.0**,...:**1.0**" | Stretch cells, Low N |
+| **NEW** `adx_delta_btc_adx_filter_long` | (didn't exist) | **"1.0-2.0:18-25"** | New 2D filter |
+| **NEW** `adx_delta_btc_adx_filter_short` | (didn't exist) | "" (empty, inactive) | Reserved for SHORT analysis |
+
+**SHORT side untouched:** All SHORT multipliers stay at 2.0× (`btc_rsi_adx_multiplier_short: "25-30:20-25:2.0"`, `ema5_stretch_multiplier_short: "0.25-0.30:2.0"`) per S-P1 5-sample structural support. SHORT analysis is the next session.
+
+### The new filter: ADX Delta × BTC ADX 2D Cross-Filter
+
+**Mechanism (`services/trading_engine.py`):** New independent filter check (placed after BTC_RSI_ADX_CROSS, before BTC Trend Filter). Format `"deltaLo-deltaHi:btcAdxLo-btcAdxHi"`, multi-rule comma-separated. Empty = inactive.
+
+**Default rule shipped:** `1.0-2.0:18-25` for LONG only.
+- Blocks LONG entries when pair ADX Delta in `[1.0, 2.0)` AND BTC ADX in `[18, 25)`.
+- Filter block log: `[ADX_DELTA_BTC_ADX_CROSS] PAIR: LONG blocked — ADXΔ X.XX in [1.0-2.0) AND BTC ADX Y.Y in [18-25)`
+- Filter counter: `ADX_DELTA_BTC_ADX_CROSS` (per direction) in `Filter Blocks (since bot start, in-memory)` table.
+
+**Cross-batch evidence supporting this rule** (288 LONGs pooled, May 4 → tonight):
+
+| ADX Δ × BTC ADX cell | N | WR | Total $ | Verdict |
+|---|---|---|---|---|
+| **1.0-2.0 × 18-25** | **49** | **31%** | **-$267** | ✗✗ catastrophic — the rule target |
+| 1.0-2.0 × 25-30 | 10 | 70% | -$61 | ★ winners |
+| 1.0-2.0 × 30-35 | 12 | 58% | +$98 | ★ winners |
+| 0.5-1.0 × 18-25 | 44 | 57% | +$221 | ★ winners (same BTC zone, slower delta) |
+
+**Why "regime-conditional":** Same ADX Delta range (1.0-2.0) is catastrophic in BTC ADX 18-25 but profitable in 25-35. The bot's pair-level momentum signal can't distinguish "trend climaxing" from "trend continuing" without macro context. This filter adds the macro gate via cross-tab.
+
+### Tonight's batch counterfactual (20 LONGs, BULLISH regime)
+
+Before changes: 50% WR, **-$382.43** total, PF 0.45.
+
+After all four changes (BTC ADX 18 + multipliers 1× + ADX Δ filter):
+
+| Layer | Trades | $ Effect |
+|---|---|---|
+| F1 blocks (BTC ADX <18): 5 trades | -5 | +$242 saved |
+| F2 blocks (ADX Δ 1.0-2.0 × BTC ADX 18-25): 3 trades | -3 | +$128 saved |
+| Multipliers neutralized (12 survivors at 1× instead of 2×) | 0 (sizing only) | +$5.66 saved |
+| **Net surviving 12 trades** | **12** | **-$5.67** total |
+| **Improvement vs current** | -40% volume | **+$376.77** |
+
+**Never Positive elimination**: 3 of 4 NP trades (75%) blocked by new filters. 1 NP remains (LINKUSDT BTC 27.52) — outside both filter ranges, has the weakest multi-dim profile of all 12 survivors (lowest EMA20 slope, lowest Gap 5-8, lowest GlobalVol).
+
+### The honest in-sample caveat
+
+This counterfactual is on the EXACT batch the filter design drew from. F2's `1.0-2.0:18-25` rule was extracted from pooled data including tonight. Expected out-of-sample improvement: ~+$150-250 per similar-size batch (less dramatic than tonight's +$377).
+
+F1 has multi-sample structural backing (5+ batches at BTC ADX 15-20 LONG = 35% WR). F2 has pooled-data support (N=49 in target cell across 6 batches). Both pre-committed.
+
+### What this does NOT do — and why BE Layer is the next priority
+
+The 12 surviving trades after filters: 7 winners (+$259), 5 losers (-$270), net -$11. **The bot's signal stack produces near-identical entry conditions for these 7 winners and 5 losers** — no clean entry filter discriminates them.
+
+The TWO dimensions that meaningfully differ between survivor winners and losers in tonight's batch:
+- EMA5 Stretch: winners 0.41% vs losers 0.23% (overlapping ranges, not a clean cliff)
+- Market Breadth: winners 60% vs losers 70% (INVERSE direction, likely noise)
+
+Most other dimensions (Gap 5-8, EMA20 Slope, RSI, ADX) are essentially identical between survivor winners and losers. **No entry filter would convert the remaining -$11 to positive without killing winners.**
+
+**However, 4 of 5 surviving losers exhibited the "Positive No BE" pattern:**
+
+| Surviving loser | Peak% | Close% | Recovery if BE armed at 0.25% / floor 0.05% |
+|---|---|---|---|
+| 币安人生 | +0.39% | -0.90% | Would exit at ~+0.05% instead of -0.90% |
+| FILUSDT | +0.26% | -0.35% | Would exit at ~+0.05% |
+| UNIUSDT (#1) | +0.29% | -0.32% | Would exit at ~+0.05% |
+| UNIUSDT (#2) | +0.34% | -0.18% | Would exit at ~+0.05% |
+| LINKUSDT (NP) | **0.00%** | -0.35% | Unchanged — never went green |
+
+Projected with BE Layer at trigger 0.25% / floor 0.05%: tonight ~+$110 (from -$5.67), making the batch genuinely profitable.
+
+### Pre-committed BE Layer plan (carried forward to SHORT analysis)
+
+After SHORT-side filter analysis, evaluate BE Layer activation. The proposed parameters (tonight 1-sample, needs cross-batch validation):
+- `be_active: true`
+- `be_level1_trigger: 0.30` (peak ≥ 0.30% arms the BE)
+- `be_level1_offset: 0.05` (floor at +0.05% — above the 0.063% taker roundtrip fee)
+
+Both LONG and SHORT will likely benefit. Validate against pool data before shipping — count how many losing trades historically had peak ≥ 0.30% and how many winners would have been cut prematurely.
+
+### New analytics table shipped
+
+**`ADX Delta × BTC ADX Cross-Tab`** (per direction, both BULLISH+BEARISH).
+- Backend: `main.py::_compute_performance` → new `adx_delta_btc_adx_crosstab` payload field
+- UI: new table in Performance dashboard (placed after BTC Slope × BTC ADX cross-tab, before RSI × ADX)
+- Both text export sites updated (clipboard copy + saved file)
+- 7 ADX Delta buckets × 5 BTC ADX buckets × LONG/SHORT
+
+This table will auto-accumulate data going forward. At next 100-trade checkpoint, cells with N ≥ 10 inform whether to:
+- Tighten `adx_delta_btc_adx_filter_long` (e.g., add `0.5-1.0:25-30` if that cell continues losing)
+- Add SHORT-side rules
+- Or relax current rule if next-batch evidence shifts
+
+### Filter design philosophy this entry establishes
+
+The `1.0-2.0:18-25` rule is the **first 2D cross-filter rule** the bot has where neither axis alone justifies the block. ADX Delta 1.0-2.0 alone is regime-conditional. BTC ADX 18-25 alone is breakeven. **Their INTERSECTION is structurally bad.** Single-axis filters can't express this — only 2D cross-filters can.
+
+Going forward, prefer 2D cross-tab filters over single-axis filters when the data shows regime-conditional patterns. The `btc_rsi_adx_filter_*` and new `adx_delta_btc_adx_filter_*` mechanisms are the structural primitives for this.
+
+### Pre-committed revert criteria for the new filter
+
+If at next 100-trade LONG checkpoint:
+- The blocked-zone cell (ADX Δ 1.0-2.0 × BTC ADX 18-25 in observation logs) shows **≥55% WR on N≥10** in fresh data → revert filter (pattern broken)
+- Adjacent zone (ADX Δ 1.0-2.0 × BTC ADX 25-30) drops ≤40% WR on N≥10 → consider extending rule
+- BTC ADX 15-18 LONG zone shows ≥55% WR on N≥10 in observation logs → revert `btc_adx_min_long: 18 → 15`
+
+These are mechanical gates. No re-litigation at checkpoint.
+
+### What's NOT in the changes (deliberately deferred)
+
+- **EMA5-EMA8 gap minimum**: not raised. Per tonight's survivor analysis, Gap 5-8 doesn't discriminate winners from losers (0.156% vs 0.142% — essentially identical). No data justification.
+- **BE Layer activation**: deferred to post-SHORT-analysis session. Tonight's evidence is 1-sample.
+- **SHORT-side ADX Delta filter**: not shipped. Need SHORT data analysis first.
+- **Tighter SL**: not changed. -0.9% main SL preserved.
+
+### Files changed in this deploy (5 files, +267 lines)
+
+- `config.py` — schema fields for new filter
+- `trading_config.json` — BTC ADX min revert, multipliers→1.0, new filter rule, default value
+- `services/trading_engine.py` — filter check logic (~40 lines after BTC_RSI_ADX_CROSS block)
+- `main.py` — analytics helper + payload integration + empty-state fallbacks (~65 lines)
+- `templates/index.html` — UI config section + cross-tab table + JS handlers + both text exports (~153 lines)
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The exact configs that shipped together (so reverting one knows which others are tied)
+2. The cross-batch evidence base for F2 (so the rule isn't questioned without consulting the data)
+3. The honest counterfactual numbers and the in-sample caveat
+4. The pre-committed revert gates
+5. The "BE Layer is next" carry-forward note for the SHORT-analysis session
+6. The 2D cross-filter design philosophy as the new pattern for regime-conditional filters

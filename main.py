@@ -4096,6 +4096,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             pair_ema20_ema50_gaps = [getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) for o in group if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]
             # Exit-time BTC trend gap (May 6, pair-side dropped May 7)
             exit_btc_trend_gaps_e = [getattr(o, 'exit_btc_trend_gap_pct', None) for o in group if getattr(o, 'exit_btc_trend_gap_pct', None) is not None]
+            # Volume context (May 10 evening) — Global Vol Ratio + Pair 24h $ Volume at entry
+            global_vol_ratios = [o.entry_global_volume_ratio for o in group if getattr(o, 'entry_global_volume_ratio', None) is not None]
+            pair_vol_usds = [getattr(o, 'entry_pair_volume_24h_usd', None) for o in group if getattr(o, 'entry_pair_volume_24h_usd', None) is not None]
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -4182,6 +4185,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_pair_ema20_ema50_gap": round(sum(pair_ema20_ema50_gaps) / len(pair_ema20_ema50_gaps), 4) if pair_ema20_ema50_gaps else None,
                 # Exit-time BTC trend gap (May 6, pair-side dropped May 7)
                 "avg_exit_btc_trend_gap": round(sum(exit_btc_trend_gaps_e) / len(exit_btc_trend_gaps_e), 4) if exit_btc_trend_gaps_e else None,
+                # Volume context (May 10 evening)
+                "avg_global_vol_ratio": round(sum(global_vol_ratios) / len(global_vol_ratios), 3) if global_vol_ratios else None,
+                "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
@@ -4304,6 +4310,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             pair_ema20_ema50_gaps = [getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) for o in group if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]
             # Exit-time BTC trend gap (May 6, pair-side dropped May 7)
             exit_btc_trend_gaps_e = [getattr(o, 'exit_btc_trend_gap_pct', None) for o in group if getattr(o, 'exit_btc_trend_gap_pct', None) is not None]
+            # Volume context (May 10 evening)
+            global_vol_ratios = [o.entry_global_volume_ratio for o in group if getattr(o, 'entry_global_volume_ratio', None) is not None]
+            pair_vol_usds = [getattr(o, 'entry_pair_volume_24h_usd', None) for o in group if getattr(o, 'entry_pair_volume_24h_usd', None) is not None]
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -4383,6 +4392,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_pair_ema20_ema50_gap": round(sum(pair_ema20_ema50_gaps) / len(pair_ema20_ema50_gaps), 4) if pair_ema20_ema50_gaps else None,
                 # Exit-time BTC trend gap (May 6, pair-side dropped May 7)
                 "avg_exit_btc_trend_gap": round(sum(exit_btc_trend_gaps_e) / len(exit_btc_trend_gaps_e), 4) if exit_btc_trend_gaps_e else None,
+                # Volume context (May 10 evening)
+                "avg_global_vol_ratio": round(sum(global_vol_ratios) / len(global_vol_ratios), 3) if global_vol_ratios else None,
+                "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),

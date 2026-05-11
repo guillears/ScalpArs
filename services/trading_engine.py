@@ -4795,13 +4795,50 @@ class TradingEngine:
                     if _pair_volume_ratio < _pv_thresh:
                         pair_vol_blocks = True
 
-                if global_vol_blocks or pair_vol_blocks:
-                    if global_vol_blocks:
-                        reason = f"Global Vol {_global_volume_ratio:.2f} < {_gv_thresh} for {signal}"
+                # SHORT-only MAX-side GlobalVol cap with BTC CAPITULATION OVERRIDE
+                # (May 11, 2026 — multi-axis filter per CLAUDE.md SHORT capitulation finding).
+                # Block SHORTs at high GlobalVol UNLESS BTC is in capitulation state
+                # (deep oversold + falling = selling climax = SHORT-friendly cascade).
+                # Pool evidence: 47 SHORTs at GlobalVol >1.05 across 5 batches split as:
+                #   - Capitulation (BTC RSI <30 AND slope <0): N=19, 63% WR, +$157 ★ (preserve)
+                #   - Non-capitulation: N=28, 29% WR, -$243 ✗ (block)
+                # Runs independently of global_volume_filter_enabled toggle (additive).
+                global_vol_max_blocks = False
+                _gv_max_thresh = None
+                _capitulation_override = False
+                if signal == "SHORT":
+                    _gv_max_thresh = getattr(_th, 'global_volume_max_short', 0.0)
+                    if _gv_max_thresh > 0 and _global_volume_ratio > _gv_max_thresh:
+                        # Check capitulation override: BTC RSI < threshold AND BTC slope < threshold
+                        _cap_rsi_thresh = getattr(_th, 'global_volume_max_short_capitulation_rsi', 30.0)
+                        _cap_slope_thresh = getattr(_th, 'global_volume_max_short_capitulation_slope', 0.0)
+                        if (btc_rsi is not None and btc_ema20_slope_pct is not None
+                                and btc_rsi < _cap_rsi_thresh and btc_ema20_slope_pct < _cap_slope_thresh):
+                            _capitulation_override = True
+                            logger.info(
+                                f"[VOL_GATE_MAX_OVERRIDE] {pair}: SHORT allowed despite "
+                                f"GlobalVol {_global_volume_ratio:.2f} > {_gv_max_thresh} — "
+                                f"BTC capitulation (RSI {btc_rsi:.1f} < {_cap_rsi_thresh}, "
+                                f"slope {btc_ema20_slope_pct:+.3f} < {_cap_slope_thresh})"
+                            )
+                        else:
+                            global_vol_max_blocks = True
+
+                if global_vol_blocks or pair_vol_blocks or global_vol_max_blocks:
+                    if global_vol_max_blocks:
+                        reason = (
+                            f"GlobalVol {_global_volume_ratio:.2f} > {_gv_max_thresh} (SHORT max cap) "
+                            f"and NOT in BTC capitulation"
+                        )
+                        logger.info(f"[VOL_GATE_MAX_SHORT] {pair}: SHORT blocked — {reason}")
+                        self._record_filter_block("VOL_GATE_MAX_SHORT", signal, had_room=_had_room)
                     else:
-                        reason = f"Pair Vol {_pair_volume_ratio:.2f} < {_pv_thresh} for {signal}"
-                    logger.info(f"[VOL-GATE] {pair}: {signal} blocked — {reason}")
-                    self._record_filter_block("VOL_GATE", signal, had_room=_had_room)
+                        if global_vol_blocks:
+                            reason = f"Global Vol {_global_volume_ratio:.2f} < {_gv_thresh} for {signal}"
+                        else:
+                            reason = f"Pair Vol {_pair_volume_ratio:.2f} < {_pv_thresh} for {signal}"
+                        logger.info(f"[VOL-GATE] {pair}: {signal} blocked — {reason}")
+                        self._record_filter_block("VOL_GATE", signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and _breadth_enabled:

@@ -285,8 +285,20 @@ class SignalThresholds(BaseModel):
     rsi_adx_multiplier_target: str = "investment"  # "investment" (multiply position size $) or "leverage"
     rsi_adx_multiplier_hard_cap: float = 2.0  # UI-configurable safety cap; engine clamps any cell to this
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
-    global_volume_threshold_long: float = 1.05  # Min global volume ratio to allow LONGs
-    global_volume_threshold_short: float = 1.05  # Min global volume ratio to allow SHORTs
+    global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
+    global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)
+    # SHORT-only MAX-side cap with BTC CAPITULATION OVERRIDE (May 11, 2026 — multi-axis filter).
+    # Block SHORTs when GlobalVol > max UNLESS BTC is in capitulation state.
+    # Multi-batch evidence (47 SHORTs at GlobalVol >1.05, 5 batches):
+    #   - Capitulation cell (BTC RSI < 30 AND BTC slope < 0): N=19, 63% WR, +$157 ★ (preserve — ride cascade)
+    #   - Non-capitulation cell: N=28, 29% WR, -$243 ✗ (block — whip/squeeze risk)
+    # The high-vol SHORT loser pattern is conditional on BTC NOT being in capitulation.
+    # When BTC is dumping (RSI low + slope falling), high vol = selling climax = SHORT-friendly.
+    # When BTC is bouncing/chopping, high vol = two-sided fight = squeeze risk for SHORTs.
+    # See CLAUDE.md May 11 SHORT capitulation finding for full analysis.
+    global_volume_max_short: float = 0.0  # MAX GlobalVol cap for SHORTs (0 = disabled)
+    global_volume_max_short_capitulation_rsi: float = 30.0  # Override threshold: skip block if BTC RSI < this (signals deep oversold)
+    global_volume_max_short_capitulation_slope: float = 0.0  # Override threshold: skip block if BTC slope < this (signals falling; negative = down)
     pair_volume_filter_enabled: bool = False  # Gate trades when per-pair volume is below its own average
     pair_volume_threshold_long: float = 1.10  # Min pair volume ratio to allow LONGs
     pair_volume_threshold_short: float = 1.10  # Min pair volume ratio to allow SHORTs

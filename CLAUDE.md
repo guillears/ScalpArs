@@ -7266,3 +7266,122 @@ To preserve:
 4. The pre-committed revert gates
 5. The "BE Layer is next" carry-forward note for the SHORT-analysis session
 6. The 2D cross-filter design philosophy as the new pattern for regime-conditional filters
+
+## May 11, 2026 — SHORT Multi-Axis GlobalVol Filter with BTC Capitulation Override
+
+### Why a multi-axis filter (and the "simple max" trap)
+
+Initial investigation found that SHORTs at GlobalVol > 1.05 lost money in the cross-batch pool (47 trades, 40% WR, -$213). The naive read: "high vol bad for SHORTs, ship max=1.10."
+
+**The user pushed back** — pointing out that the pool's 1.30-1.50 bucket had been a winner (10 trades, 90% WR, +$225). A simple `max=1.10` would kill that zone.
+
+Deeper investigation found the pattern wasn't bimodal on volume at all — it was a regime confound:
+
+| Volume bucket | Capitulation (BTC RSI<30 AND slope<0) | Non-capitulation |
+|---|---|---|
+| 1.10-1.30 | N=9, 44% WR, **-$5.87** (flat) | **N=16, 25% WR, -$238.26** ✗✗ |
+| 1.30+ | **N=10, 80% WR, +$163.12** ★ | N=12, 33% WR, -$4.92 (flat) |
+| **Combined >1.10** | **N=19, 63% WR, +$157** | **N=28, 29% WR, -$243** |
+
+**The real signal isn't volume — it's BTC capitulation state.** At high volume:
+- BTC in capitulation (deep oversold + falling) = selling climax = SHORT-friendly cascade
+- BTC NOT in capitulation = two-sided volume = squeeze risk
+
+The "high vol bad" pattern was the *non-capitulation* trades dominating the bucket. The volume bucket served as an indirect proxy.
+
+### Filter design
+
+Block SHORT when `GlobalVol > 1.10` **UNLESS** `BTC RSI < 30 AND BTC slope < 0`.
+
+**Config fields:**
+
+| Field | Default | Meaning |
+|---|---|---|
+| `global_volume_max_short` | `1.10` | MAX GlobalVol cap (0 = disabled) |
+| `global_volume_max_short_capitulation_rsi` | `30.0` | Skip block if BTC RSI < this |
+| `global_volume_max_short_capitulation_slope` | `0.0` | Skip block if BTC slope < this (negative = falling) |
+
+**Both override conditions must match** to allow the trade. If either BTC RSI is None or BTC slope is None, the override fails (defaults to block — fail-safe).
+
+### Where the filter runs
+
+`services/trading_engine.py`, in the volume-filter block (around line 4798). Runs after the existing `global_volume_filter_enabled` MIN-side check and additive to it. Both filters can co-exist:
+- LONG `min=0.95` filter is unchanged
+- SHORT `min=0` (effectively disabled)
+- SHORT `max=1.10` with capitulation override is the new layer
+
+### Observability
+
+| Log tag | When | Use |
+|---|---|---|
+| `[VOL_GATE_MAX_SHORT]` | SHORT blocked by max filter (capitulation override failed) | Counter incremented |
+| `[VOL_GATE_MAX_OVERRIDE]` | SHORT allowed via capitulation override | Verifies override is firing when it should |
+| `VOL_GATE_MAX_SHORT` counter | Filter Blocks table (in dashboard + reports) | Tracks block count per direction |
+
+Two-layer visibility lets us validate:
+- High override count = capitulation regime is active, filter is preserving wins
+- High block count = filter is doing its job blocking non-capitulation high-vol SHORTs
+- Both at 0 = either GlobalVol stays low or filter disabled
+
+### Why this is the right abstraction
+
+The simple `max=1.10` filter was the WRONG model:
+- Pool effect: +$138 (saved $138 of losses, but killed $225 of capitulation wins)
+- Mistakes the proxy (volume) for the cause (BTC capitulation)
+
+The multi-axis filter is the RIGHT model:
+- Pool effect: +$243 (saved $243 of non-capitulation losses, preserved $157 of capitulation wins)
+- Cleaner per-trade impact: $8.68/trade blocked vs $2.92/trade for the simple max
+- Doesn't kill historically winning regime
+
+### Pre-committed revert criteria (locked May 11)
+
+At next 100-trade SHORT checkpoint:
+
+| Outcome | Threshold | Action |
+|---|---|---|
+| **Override never fires** | `[VOL_GATE_MAX_OVERRIDE]` count = 0 across batch | Capitulation regime didn't happen — inconclusive, defer to 200-trade |
+| **Blocked trades would have won** | Filtered-out SHORTs (in observation logs, if visible) show ≥55% WR on N≥10 | Revert: `global_volume_max_short: 0` (disable) |
+| **Override-allowed trades lose** | SHORTs that fired despite capitulation override show ≤45% WR on N≥5 | Tighten override: raise RSI threshold (e.g., 30→25) or slope threshold (e.g., 0→-0.05) |
+| **Filter performs as designed** | Block trades ≤40% WR (matching the -$243 non-cap pool) AND override trades ≥60% WR (matching the +$157 cap pool) | Lock as default |
+
+### Honest in-sample caveats
+
+1. **Capitulation override evidence is N=19 across 5 batches.** Most of the $ comes from May 10b (3 trades at GV=1.43 / +$204 from BTC RSI 29 + slope -0.09). Out-of-sample replication required.
+
+2. **Tonight's GV=2.05 trade** (BTC RSI/slope unknown until verified) would test the override at the extreme high end. If it's a capitulation trade (which the +$48.81 win suggests), the override correctly preserves it.
+
+3. **Defining "capitulation" via BTC RSI < 30 AND slope < 0** is the simplest threshold combo. The cross-batch data supports it, but the boundary is arbitrary — a 2D cliff finder would need ≥40-trade samples to refine.
+
+### Files changed
+
+- `config.py` — 3 new fields with comments tying to evidence
+- `trading_config.json` — 3 new defaults (1.10, 30.0, 0.0)
+- `services/trading_engine.py` — multi-axis filter with override logic (~43 lines)
+- `templates/index.html` — UI inputs renamed for MIN/MAX clarity + override row + load/save/export wires
+
+### What this filter does NOT cover
+
+- **LONG GlobalVol filter unchanged.** Validation confirmed the LONG `min=0.95` filter is structurally correct with no regime confound. Pattern is uniform across BTC states. Threshold could potentially be tightened to 1.05 (small +$298 gain on N=24 in 0.95-1.05 leak zone) — deferred to next-batch checkpoint, not worth mid-session change.
+- **No BE Layer change.** The Positive-No-BE pattern affecting both LONG and SHORT still needs cross-batch counterfactual before activation. Carried forward.
+- **No multiplier changes.** SHORT STRETCH_0.25-0.30 still at 2.0× (★ WORKING per latest report). LONG multipliers at 1.0× from earlier deploy.
+
+### Methodological lesson preserved
+
+**Cross-tab anomalies frequently have hidden confounds.** When a volume bucket "shouldn't" be winning but is, look for a third variable that clusters in that bucket. In this case the third variable was BTC capitulation state, which happens to correlate with high volume because capitulation events ARE high-volume events.
+
+This pattern will recur. The cross-tab analytics tables (BTC RSI × BTC ADX, ADX Δ × BTC ADX, etc.) are the right design language to surface multi-axis patterns instead of forcing single-axis filters onto multi-axis data.
+
+Future filters that emerge from cross-tab analysis should default to multi-axis when the pattern is regime-conditional. Examples of likely future multi-axis filters:
+- "ADX Δ high blocks UNLESS BTC ADX confirms strong trend" (already shipped May 11 for LONGs)
+- "Pair RSI extreme blocks UNLESS BTC trend agrees with the move"
+- "Pair stretch high blocks UNLESS recent volume confirms breakout"
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The methodological lesson (proxy variable trap on cross-tab buckets)
+2. The cross-batch capitulation finding (so future-Claude doesn't re-discover it)
+3. The override mechanism design (multi-axis with UNLESS clause)
+4. The pre-committed revert gates
+5. The audit trail of why max=1.10 was rejected before settling on the multi-axis design

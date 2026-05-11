@@ -7582,3 +7582,60 @@ Note: this uses range-form for the `0.0-2.0:25-30` rule. Per CLAUDE.md May 5 syn
 3. To document the BTC ADX 25-30 LONG loss zone discovery so it doesn't get forgotten
 4. To codify the filter-overlap-methodology / fresh-batch-validation pattern as the standard analytical primitive
 5. To anchor the broad-rule construction if Watch 1 fires (so future-Claude knows the exact filter syntax to ship)
+
+## May 11, 2026 UTC-3 — Phantom Regime Change Exit shadow tracking (observation-only counterfactual)
+
+### Problem this addresses
+
+REGIME_SHIFT trades (BTC macro regime flips during the hold) are consistently the largest unsolved loss bucket. Last 15-LONG partial batch: 4 trades / 0% WR / -$173 (-0.60% Avg) vs SAME_REGIME 11 / 82% / +$96. Same pattern in prior batches. Current config has `regime_change_exit_enabled: false` (since May 6 PM repositioning), so the bot rides regime flips through to SL.
+
+Cannot cleanly evaluate "enable regime exit" without either A/B test (impossible in production) or counterfactual data (this entry).
+
+### What was added
+
+**Schema:** `Order.phantom_regime_change_exit_pnl: Float, nullable` + `phantom_regime_change_exit_triggered_at: DateTime, nullable`. Auto-migrate adds columns to existing DBs.
+
+**Capture mechanism (`services/trading_engine.py` monitor loop):** On each cycle for every open trade, if BTC macro regime is opposite to trade direction AND phantom not yet triggered → lock current P&L % to `phantom_regime_change_exit_pnl` and timestamp. Captures the FIRST opposite-regime cycle. Trade is NOT closed (since `regime_change_exit_enabled: false`). SAME_REGIME trades stay NULL on this column.
+
+**Report table (`main.py::_compute_regime_change_counterfactual`):** New "Phantom Regime Change Exit Counterfactual" section in dashboard + both text exports. Per direction:
+- N: trades where phantom triggered (= trades where regime flipped during hold)
+- AvgActualClose% vs AvgPhantomCF%: what actually happened vs what regime exit would have captured
+- Δ%, Δ$: improvement per trade if regime exit had been enabled
+- Verdict gates:
+  - ★ WORKING: Δ$ > +$50 AND Δ% > +0.20pp on N≥5
+  - ✓ Marginal: Δ$ in [$0, $50]
+  - ⚠ HURTING: Δ$ < 0 (regime exit would have cut trades that subsequently recovered)
+  - ⚠ Low N: N < 5
+
+### Pre-committed decision gate at next ~30-trade checkpoint (locked NOW)
+
+After ~30 trades have closed under the new shadow tracking, examine the counterfactual table:
+
+| Outcome on TOTAL row | Action |
+|---|---|
+| ★ WORKING (Δ$ > +$50, Δ% > +0.20pp, N≥10) | Enable `regime_change_exit_enabled: true` |
+| ✓ Marginal (Δ$ $0-$50) | Defer — collect more data, decide at next 30-trade interval |
+| ⚠ HURTING (Δ$ < 0) | Keep DISABLED. The exit would have killed winners; the bleeding from REGIME_SHIFT is structural and needs a different solution |
+| ⚠ Low N (N<5 regime-flip trades in window) | Sample too thin; collect another 30 trades |
+
+The N≥10 bar for activation is stricter than the verdict's N≥5 to add a safety margin (we're committing to a real exit, not just observing).
+
+### What this does NOT tell us
+
+- **False-positive rate during chop**: phantom triggers on the FIRST flip moment. If regime then reverts within minutes, the phantom would still show a "capture" — but in reality the bot might have closed at a flip that wasn't real. We don't measure this directly. Sanity check at first 5 phantom trades: cross-reference with BTC chart, verify the flip was "real" (sustained 15+ min) vs "noise".
+- **Better/worse than other regime-aware exits**: this is binary "exit when opposite regime fires." A more nuanced version could require sustained opposite regime, or use BTC EMA13-EMA50 gap instead of regime label. Phase 2 work.
+
+### Files changed
+
+- `models.py` — 2 new columns
+- `database.py` — auto-migrate `ADD COLUMN`
+- `services/trading_engine.py` — capture block in monitor loop (~12 lines), cache init (3 fields), persist-on-close (2 lines)
+- `main.py` — `_compute_regime_change_counterfactual()` helper (~80 lines), payload integration, both empty-data fallback paths
+- `templates/index.html` — UI table block + JS renderer + both text export sites
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the analytical approach (counterfactual-before-enabling) for future exit experiments — this is the cleanest test pattern when A/B isn't possible
+2. To anchor the locked decision gates so the ~30-trade checkpoint is mechanical
+3. To preserve the "false-positive in chop" caveat — important for interpreting any positive verdict
+4. To enable proper instrumentation before flipping `regime_change_exit_enabled: true` (which would commit us to real exits without knowing impact)

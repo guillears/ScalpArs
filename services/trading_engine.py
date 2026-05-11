@@ -2330,6 +2330,9 @@ class TradingEngine:
                 'phantom_be_l2_triggered': False,
                 'phantom_be_l2_triggered_at': None,
                 'phantom_be_l2_would_exit_pnl': None,
+                'phantom_regime_change_triggered': False,
+                'phantom_regime_change_exit_triggered_at': None,
+                'phantom_regime_change_exit_pnl': None,
                 'phantom_tick_a_triggered': False,
                 'phantom_tick_a_triggered_at': None,
                 'phantom_tick_a_pnl': None,
@@ -2918,6 +2921,8 @@ class TradingEngine:
                     order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
                     order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
                     order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
+                    order.phantom_regime_change_exit_triggered_at = cached.get('phantom_regime_change_exit_triggered_at')
+                    order.phantom_regime_change_exit_pnl = cached.get('phantom_regime_change_exit_pnl')
                     for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
                         setattr(order, f'phantom_tick_{_lbl}_triggered_at', cached.get(f'phantom_tick_{_lbl}_triggered_at'))
                         setattr(order, f'phantom_tick_{_lbl}_pnl', cached.get(f'phantom_tick_{_lbl}_pnl'))
@@ -3579,6 +3584,21 @@ class TradingEngine:
                         cached['regime_opposite_at'] = datetime.utcnow()
                         cached['regime_opposite_pnl'] = round(pnl_pct, 4)
                         logger.info(f"[REGIME_OPPOSITE] {order.pair} {order.direction}: regime went {_opposite_regime} (pnl={pnl_pct:.4f}%)")
+
+            # Phantom Regime Change Exit shadow tracking (added May 11 UTC-3):
+            # Capture the FIRST cycle where BTC regime flips opposite to trade direction,
+            # regardless of whether the real exit is enabled. Enables counterfactual
+            # evaluation of regime_change_exit_enabled before flipping it on.
+            if _current_btc_regime != "NEUTRAL" and not cached.get('phantom_regime_change_triggered'):
+                _phantom_regime_conflict = (
+                    (order.direction == "LONG" and _current_btc_regime == "BEARISH") or
+                    (order.direction == "SHORT" and _current_btc_regime == "BULLISH")
+                )
+                if _phantom_regime_conflict:
+                    cached['phantom_regime_change_triggered'] = True
+                    cached['phantom_regime_change_exit_triggered_at'] = datetime.utcnow()
+                    cached['phantom_regime_change_exit_pnl'] = round(pnl_pct, 4)
+                    logger.info(f"[PHANTOM_REGIME_CHANGE] {order.pair} {order.direction}: regime flipped to {_current_btc_regime}, captured pnl={pnl_pct:.4f}% for counterfactual")
 
             # REGIME_CHANGE: close when BTC macro regime flips against trade direction
             regime_exit_enabled = getattr(config.trading_config.thresholds, 'regime_change_exit_enabled', True)

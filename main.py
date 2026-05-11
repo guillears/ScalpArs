@@ -1614,6 +1614,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "rsi_handoff_performance": {"rows": [], "total": None, "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
+            "regime_change_counterfactual": {"rows": [], "total": None},
             "ema_cross_counterfactual": {"rows": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
@@ -2805,6 +2806,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "rsi_handoff_performance": {"rows": [], "total": None, "handoff_threshold_pct": 0.40, "pullback_pct": 0.15},
+            "regime_change_counterfactual": {"rows": [], "total": None},
             "ema_cross_counterfactual": {"rows": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
@@ -5380,6 +5382,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             pullback_pct=_rhi_pullback,
             handoff_level=_rhi_level,
         ),
+        # Phantom Regime Change Exit Counterfactual (May 11 UTC-3 — observation-only shadow of regime_change_exit_enabled)
+        "regime_change_counterfactual": _compute_regime_change_counterfactual(orders),
         # Phase 1 shadow tracking (May 6, 2026 — counterfactual exit on price-vs-EMA cross)
         "ema_cross_counterfactual": _compute_ema_cross_counterfactual(orders),
         # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
@@ -5837,6 +5841,113 @@ def _compute_rsi_handoff_performance(orders, handoff_threshold_pct, pullback_pct
         'handoff_threshold_pct': handoff_threshold_pct,
         'pullback_pct': pullback_pct,
     }
+
+
+def _compute_regime_change_counterfactual(orders):
+    """Phantom Regime Change Exit Counterfactual (added May 11 UTC-3).
+
+    For each CLOSED trade where BTC macro regime flipped to the opposite of trade
+    direction during the hold, compare:
+      - Actual close P&L %  (what actually happened with current exits)
+      - Phantom regime-exit P&L % (what regime_change_exit would have captured at the first flip)
+
+    SAME_REGIME trades (no flip during hold) have NULL phantom_regime_change_exit_pnl
+    and are excluded from this table.
+
+    Verdict thresholds:
+      ★ WORKING: Δ$ > $50 AND Δ% > +0.20pp on N >= 5
+      ✓ Marginal: Δ$ in [$0, $50]
+      ⚠ HURTING: Δ$ < 0 (regime exit would have closed trades that subsequently recovered)
+      ⚠ Low N: N < 5
+    """
+    rows = []
+    summary = {'LONG': {'n': 0, 'actual_pct_sum': 0.0, 'phantom_pct_sum': 0.0, 'actual_d_sum': 0.0, 'phantom_d_sum': 0.0},
+               'SHORT': {'n': 0, 'actual_pct_sum': 0.0, 'phantom_pct_sum': 0.0, 'actual_d_sum': 0.0, 'phantom_d_sum': 0.0}}
+
+    for o in orders:
+        phantom_pct = getattr(o, 'phantom_regime_change_exit_pnl', None)
+        if phantom_pct is None:
+            continue
+        actual_pct = o.pnl_percentage
+        if actual_pct is None:
+            continue
+        direction = o.direction
+        if direction not in summary:
+            continue
+        # Investment is what got allocated. P&L $ = pct * investment * leverage / 100 (already in o.pnl)
+        actual_d = o.pnl or 0.0
+        # Phantom $ = phantom_pct/100 × notional. notional = investment × leverage
+        investment = o.investment or 0.0
+        leverage = o.leverage or 1
+        notional = investment * leverage
+        phantom_d = (phantom_pct / 100.0) * notional
+
+        summary[direction]['n'] += 1
+        summary[direction]['actual_pct_sum'] += actual_pct
+        summary[direction]['phantom_pct_sum'] += phantom_pct
+        summary[direction]['actual_d_sum'] += actual_d
+        summary[direction]['phantom_d_sum'] += phantom_d
+
+    def _verdict(n, delta_d, delta_pct):
+        if n < 5:
+            return '⚠ Low N'
+        if delta_d < 0:
+            return '⚠ HURTING'
+        if delta_d > 50 and delta_pct > 0.20:
+            return '★ WORKING'
+        return '✓ Marginal'
+
+    total_n = 0
+    total_actual_pct = 0.0
+    total_phantom_pct = 0.0
+    total_actual_d = 0.0
+    total_phantom_d = 0.0
+
+    for direction in ['LONG', 'SHORT']:
+        s = summary[direction]
+        n = s['n']
+        if n == 0:
+            continue
+        avg_actual = s['actual_pct_sum'] / n
+        avg_phantom = s['phantom_pct_sum'] / n
+        delta_pct = avg_phantom - avg_actual
+        delta_d = s['phantom_d_sum'] - s['actual_d_sum']
+        rows.append({
+            'direction': direction,
+            'n': n,
+            'avg_actual_pct': avg_actual,
+            'avg_phantom_pct': avg_phantom,
+            'delta_pct': delta_pct,
+            'total_actual_d': s['actual_d_sum'],
+            'total_phantom_d': s['phantom_d_sum'],
+            'delta_d': delta_d,
+            'verdict': _verdict(n, delta_d, delta_pct),
+        })
+        total_n += n
+        total_actual_pct += s['actual_pct_sum']
+        total_phantom_pct += s['phantom_pct_sum']
+        total_actual_d += s['actual_d_sum']
+        total_phantom_d += s['phantom_d_sum']
+
+    total_row = None
+    if total_n > 0:
+        avg_actual = total_actual_pct / total_n
+        avg_phantom = total_phantom_pct / total_n
+        delta_pct = avg_phantom - avg_actual
+        delta_d = total_phantom_d - total_actual_d
+        total_row = {
+            'direction': 'TOTAL',
+            'n': total_n,
+            'avg_actual_pct': avg_actual,
+            'avg_phantom_pct': avg_phantom,
+            'delta_pct': delta_pct,
+            'total_actual_d': total_actual_d,
+            'total_phantom_d': total_phantom_d,
+            'delta_d': delta_d,
+            'verdict': _verdict(total_n, delta_d, delta_pct),
+        }
+
+    return {'rows': rows, 'total': total_row}
 
 
 def _compute_ema_cross_counterfactual(orders):

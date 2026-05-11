@@ -266,6 +266,13 @@ class Order(Base):
     phantom_be_l2_triggered_at = Column(DateTime, nullable=True)
     phantom_be_l2_would_exit_pnl = Column(Float, nullable=True)
 
+    # Phantom Regime Change Exit shadow tracking (added May 11 UTC-3):
+    # Locked at the FIRST monitor cycle where BTC regime flipped to opposite of trade direction
+    # during the hold. NULL = regime never flipped (SAME_REGIME trade).
+    # Allows counterfactual evaluation of regime_change_exit_enabled before flipping it on.
+    phantom_regime_change_exit_triggered_at = Column(DateTime, nullable=True)
+    phantom_regime_change_exit_pnl = Column(Float, nullable=True)
+
     # Phantom Tick Momentum shadow tracking: alternative exit configs
     # A = same windows (15,30,45), higher delta (0.15%)
     # B = wider windows (30,45,60), same delta (0.12%)

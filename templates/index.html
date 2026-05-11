@@ -968,6 +968,38 @@
                     </div>
                 </div>
 
+                <!-- Phantom Regime Change Exit Counterfactual (May 11 UTC-3 — CLAUDE.md) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-violet-300 mb-2">🌀 Phantom Regime Change Exit Counterfactual (observation-only)</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        For each closed trade where BTC macro regime flipped opposite to trade direction during the hold,
+                        compares <strong>actual close P&amp;L</strong> vs <strong>phantom regime-exit P&amp;L</strong>
+                        (locked at first opposite-regime flip). SAME_REGIME trades excluded.
+                        <strong>Verdict:</strong> ★ WORKING = Δ$ &gt; +$50 AND Δ% &gt; +0.20pp on N≥5.
+                        ⚠ HURTING = Δ$ &lt; 0 (would have cut trades that subsequently recovered).
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Dir</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">AvgActualClose%</th>
+                                    <th class="text-right px-2">AvgPhantomCF%</th>
+                                    <th class="text-right px-2" title="AvgPhantomCF% − AvgActualClose%. Positive = regime exit captured more.">Δ%</th>
+                                    <th class="text-right px-2">Total$Actual</th>
+                                    <th class="text-right px-2">Total$Phantom</th>
+                                    <th class="text-right px-2" title="Total$Phantom − Total$Actual. Positive = regime exit would have made more $.">Δ$</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="regime-change-counterfactual-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No regime-flip trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- EMA Cross Counterfactual (May 6, 2026 — CLAUDE.md Phase 1 shadow tracking) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-violet-300 mb-2">🧪 EMA Cross Counterfactual (observation-only)</h3>
@@ -4859,6 +4891,30 @@
                 }
             }
 
+            // Phantom Regime Change Exit Counterfactual (May 11 UTC-3 — CLAUDE.md)
+            const _rcc1 = perf.regime_change_counterfactual || {};
+            lines.push(`\n${hr2}`);
+            lines.push(`## Phantom Regime Change Exit Counterfactual (observation-only)\n`);
+            lines.push(`${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgActualClose%'.padEnd(17)} ${'AvgPhantomCF%'.padEnd(15)} ${'Δ%'.padEnd(9)} ${'Total$Actual'.padEnd(13)} ${'Total$Phantom'.padEnd(14)} ${'Δ$'.padEnd(10)} Verdict`);
+            const _rccFmt = (r) => {
+                const actStr = (r.avg_actual_pct >= 0 ? '+' : '') + r.avg_actual_pct.toFixed(3) + '%';
+                const phStr = (r.avg_phantom_pct >= 0 ? '+' : '') + r.avg_phantom_pct.toFixed(3) + '%';
+                const dPctStr = (r.delta_pct >= 0 ? '+' : '') + r.delta_pct.toFixed(3) + 'pp';
+                const totAStr = (r.total_actual_d >= 0 ? '+$' : '-$') + Math.abs(r.total_actual_d).toFixed(2);
+                const totPStr = (r.total_phantom_d >= 0 ? '+$' : '-$') + Math.abs(r.total_phantom_d).toFixed(2);
+                const dDStr = (r.delta_d >= 0 ? '+$' : '-$') + Math.abs(r.delta_d).toFixed(2);
+                return `${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${actStr.padEnd(17)} ${phStr.padEnd(15)} ${dPctStr.padEnd(9)} ${totAStr.padEnd(13)} ${totPStr.padEnd(14)} ${dDStr.padEnd(10)} ${r.verdict}`;
+            };
+            if (!_rcc1.rows || !_rcc1.rows.length) {
+                lines.push('  (no regime-flip trades yet)');
+            } else {
+                for (const r of _rcc1.rows) lines.push(_rccFmt(r));
+                if (_rcc1.total) {
+                    lines.push('-'.repeat(110));
+                    lines.push(_rccFmt(_rcc1.total));
+                }
+            }
+
             // EMA Cross Counterfactual (May 6, 2026 — Phase 1 shadow tracking)
             const _ecc1 = perf.ema_cross_counterfactual || {};
             lines.push(`\n${hr2}`);
@@ -5827,6 +5883,30 @@
                     if (_rhp2.total) {
                         lines.push('-'.repeat(140));
                         lines.push(_rhp2Fmt(_rhp2.total));
+                    }
+                }
+
+                // Phantom Regime Change Exit Counterfactual (May 11 UTC-3 — CLAUDE.md)
+                const _rcc2 = perf.regime_change_counterfactual || {};
+                lines.push(`\n${hr2}`);
+                lines.push(`## Phantom Regime Change Exit Counterfactual (observation-only)\n`);
+                lines.push(`${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'AvgActualClose%'.padEnd(17)} ${'AvgPhantomCF%'.padEnd(15)} ${'Δ%'.padEnd(9)} ${'Total$Actual'.padEnd(13)} ${'Total$Phantom'.padEnd(14)} ${'Δ$'.padEnd(10)} Verdict`);
+                const _rcc2Fmt = (r) => {
+                    const actStr = (r.avg_actual_pct >= 0 ? '+' : '') + r.avg_actual_pct.toFixed(3) + '%';
+                    const phStr = (r.avg_phantom_pct >= 0 ? '+' : '') + r.avg_phantom_pct.toFixed(3) + '%';
+                    const dPctStr = (r.delta_pct >= 0 ? '+' : '') + r.delta_pct.toFixed(3) + 'pp';
+                    const totAStr = (r.total_actual_d >= 0 ? '+$' : '-$') + Math.abs(r.total_actual_d).toFixed(2);
+                    const totPStr = (r.total_phantom_d >= 0 ? '+$' : '-$') + Math.abs(r.total_phantom_d).toFixed(2);
+                    const dDStr = (r.delta_d >= 0 ? '+$' : '-$') + Math.abs(r.delta_d).toFixed(2);
+                    return `${r.direction.padEnd(7)} ${String(r.n).padEnd(5)} ${actStr.padEnd(17)} ${phStr.padEnd(15)} ${dPctStr.padEnd(9)} ${totAStr.padEnd(13)} ${totPStr.padEnd(14)} ${dDStr.padEnd(10)} ${r.verdict}`;
+                };
+                if (!_rcc2.rows || !_rcc2.rows.length) {
+                    lines.push('  (no regime-flip trades yet)');
+                } else {
+                    for (const r of _rcc2.rows) lines.push(_rcc2Fmt(r));
+                    if (_rcc2.total) {
+                        lines.push('-'.repeat(110));
+                        lines.push(_rcc2Fmt(_rcc2.total));
                     }
                 }
 
@@ -7212,6 +7292,46 @@
                             let html = rhp.rows.map(r => _rhpRow(r, false)).join('');
                             if (rhp.total) html += _rhpRow(rhp.total, true);
                             rhpBody.innerHTML = html;
+                        }
+                    }
+                }
+
+                // Phantom Regime Change Exit Counterfactual (May 11 UTC-3 — CLAUDE.md)
+                if (data.regime_change_counterfactual) {
+                    const rcc = data.regime_change_counterfactual;
+                    const rccBody = document.getElementById('regime-change-counterfactual-body');
+                    if (rccBody) {
+                        if (!rcc.rows || !rcc.rows.length) {
+                            rccBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No regime-flip trades yet</td></tr>';
+                        } else {
+                            const _rccRow = (r, isTotal) => {
+                                const dirColor = isTotal ? 'text-violet-300 font-bold' : (r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400');
+                                const actualClass = r.avg_actual_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const phantomClass = r.avg_phantom_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const deltaPctClass = r.delta_pct > 0.05 ? 'text-emerald-400' : (r.delta_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const totActClass = r.total_actual_d >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const totPhClass = r.total_phantom_d >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const deltaDClass = r.delta_d > 1 ? 'text-emerald-400' : (r.delta_d < -1 ? 'text-red-400' : 'text-gray-400');
+                                const verdictColor = r.verdict.includes('★') ? 'text-emerald-400' :
+                                    r.verdict.includes('HURT') ? 'text-red-400' :
+                                    r.verdict.includes('Marginal') ? 'text-blue-400' :
+                                    'text-amber-400';
+                                const rowCls = isTotal ? 'bg-white/5 font-semibold border-t border-white/10' : 'hover:bg-white/5';
+                                return `<tr class="${rowCls}">
+                                    <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${actualClass}">${r.avg_actual_pct >= 0 ? '+' : ''}${r.avg_actual_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${phantomClass}">${r.avg_phantom_pct >= 0 ? '+' : ''}${r.avg_phantom_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${deltaPctClass}">${r.delta_pct >= 0 ? '+' : ''}${r.delta_pct.toFixed(3)}pp</td>
+                                    <td class="px-2 py-1 text-right ${totActClass}">${r.total_actual_d >= 0 ? '+$' : '-$'}${Math.abs(r.total_actual_d).toFixed(2)}</td>
+                                    <td class="px-2 py-1 text-right ${totPhClass}">${r.total_phantom_d >= 0 ? '+$' : '-$'}${Math.abs(r.total_phantom_d).toFixed(2)}</td>
+                                    <td class="px-2 py-1 text-right ${deltaDClass}">${r.delta_d >= 0 ? '+$' : '-$'}${Math.abs(r.delta_d).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
+                                </tr>`;
+                            };
+                            let html = rcc.rows.map(r => _rccRow(r, false)).join('');
+                            if (rcc.total) html += _rccRow(rcc.total, true);
+                            rccBody.innerHTML = html;
                         }
                     }
                 }

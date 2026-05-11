@@ -142,6 +142,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_be_l2_triggered_at DATETIME"))
                 if 'phantom_be_l2_would_exit_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_be_l2_would_exit_pnl FLOAT"))
+                if 'phantom_regime_change_exit_triggered_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_regime_change_exit_triggered_at DATETIME"))
+                if 'phantom_regime_change_exit_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_regime_change_exit_pnl FLOAT"))
                 if 'phantom_tick_a_triggered_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_tick_a_triggered_at DATETIME"))
                 if 'phantom_tick_a_pnl' not in columns:

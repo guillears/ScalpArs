@@ -7385,3 +7385,101 @@ To preserve:
 3. The override mechanism design (multi-axis with UNLESS clause)
 4. The pre-committed revert gates
 5. The audit trail of why max=1.10 was rejected before settling on the multi-axis design
+
+## May 11, 2026 — PAIR_60-65 LONG multipliers RE-ACTIVATED at 2.0× (filter-overlap evidence)
+
+Same-day reversal of this morning's neutralization. The reactivation is **scoped** — only the two `rsi_adx_multiplier_long` cells (`60-65:15-18` and `60-65:18-22`), NOT the `btc_rsi_adx_multiplier_long` or `ema5_stretch_multiplier_long` cells (those stay at 1.0× pending their own overlap analysis).
+
+### Config change
+- `rsi_adx_multiplier_long`: `"60-65:15-18:1.0,60-65:18-22:1.0"` → **`"60-65:15-18:2.0,60-65:18-22:2.0"`**
+
+### Why we reversed within hours
+
+This morning's neutralization (May 11 LONG-side entry above) was based on the May 11 pre-deploy batch showing the cells losing at 2.0× (-$471 multiplier drag across 18 trades). At the time we didn't do the **filter-overlap analysis** — i.e., what fraction of those cell losses came from trades the NEW filters (`btc_adx_min_long: 18` + `adx_delta_btc_adx_filter_long: "1.0-2.0:18-25"`) now block.
+
+User pushed back asking exactly that question. The overlap analysis showed:
+
+### Filter overlap on PAIR_60-65_15-18 (9 trades from May 11 pre-deploy batch, all Pair ADX in [15, 18))
+
+| Trade | $ P&L | Pair ADX | BTC ADX | ADX Δ | Cut by new filters? |
+|---|---|---|---|---|---|
+| SUIUSDT | -$100.57 | 15.34 | 18.78 | 1.12 | ✓ ADX Δ filter |
+| TAOUSDT | -$104.85 | 16.73 | 17.55 | 0.35 | ✓ BTC ADX min |
+| SAHARAUSDT | -$117.35 | 16.50 | 16.63 | 1.85 | ✓ BTC ADX min |
+| 6 others | -$1.75 net | 15.23-17.01 | 22.01-27.52 | various | survive |
+
+- **3 of 9 trades cut by new filters, accounting for -$322.77 of -$324.52 historical losses (99%).**
+- Survivors: 6 trades / -$1.75 / WR 4/6 = 67%.
+
+### Filter overlap on PAIR_60-65_18-22 (3 trades, all Pair ADX in [18, 22))
+
+| Trade | $ P&L | Pair ADX | BTC ADX | ADX Δ | Cut? |
+|---|---|---|---|---|---|
+| BUSDT | -$109.27 | 20.30 | 18.84 | 1.71 | ✓ ADX Δ filter |
+| TAOUSDT | +$13.82 | 18.62 | 25.49 | 0.59 | survives |
+| UNIUSDT | -$26.08 | 20.79 | 29.09 | 0.43 | survives |
+
+- **1 of 3 trades cut, accounting for -$109.27 of -$121.53 historical losses (90%).**
+- Survivors: 2 trades / -$12.26.
+
+### Combined survivors (pre-deploy historicals + this evening's 4-trade partial post-deploy batch)
+
+| Cell | Surv (yest.) | Surv (tonight) | Total | $ at 1.0× | $ at 2.0× | WR |
+|---|---|---|---|---|---|---|
+| PAIR_60-65_15-18 | 6 / -$1.75 | 2 / +$56.84 | 8 | +$55.09 | +$110.18 | 6/8 = 75% |
+| PAIR_60-65_18-22 | 2 / -$12.26 | 2 / +$73.26 | 4 | +$61.00 | +$122.00 | 3/4 = 75% |
+| **TOTAL** | **8** | **4** | **12** | **+$116.09** | **+$232.18** | **9/12 = 75%** |
+
+### Honest evidence-strength caveat
+
+The "75% WR / +$116 at 1.0×" headline is partly carried by tonight's 4-trade winning streak (N=4 = small-sample). Splitting:
+- **Historical survivors only (counterfactual: what if filters had been active)**: N=8, 5W/3L (62.5%), **-$14 net**. Near-breakeven, not winning.
+- **Tonight's 4-trade real-world post-deploy slice**: N=4, 4W/0L (100%), +$130.
+
+The historical sub-pool being near-breakeven (rather than losing) is the actually-robust signal. Tonight's 4 trades are confirmation, not standalone evidence. User accepted this trade-off knowingly when choosing 2.0× over the 1.5× compromise I suggested.
+
+### Why scoped to ONLY the rsi_adx_multiplier_long cells
+
+The overlap analysis was performed specifically on the two pair-level RSI×ADX cells. The other neutralized LONG multipliers were NOT validated by this analysis and stay at 1.0×:
+- `btc_rsi_adx_multiplier_long: "60-65:20-25:1.0"` (L-P1 cell — 1-sample evidence originally, not analyzed today)
+- `ema5_stretch_multiplier_long: "0.16-0.20:1.0,0.20-0.25:1.0,0.25-0.30:1.0"` (stretch cells — Low N, not analyzed today)
+
+If user wants these reactivated later, they need their own filter-overlap analysis (do the same Pair/BTC ADX × ADX Δ breakdown against the new filters).
+
+### Pre-committed revert criteria (locked May 11 evening)
+
+At the next 100-trade LONG checkpoint, examine **only the two reactivated cells**:
+
+| Cell | Verdict criterion | Action |
+|---|---|---|
+| PAIR_60-65_15-18 @ 2.0× | N≥10 with WR ≥70% AND Total $ positive | Keep at 2.0× |
+| | N≥10 with WR 50-70% | Drop to 1.5× |
+| | N≥10 with WR ≤40% OR Total $ negative | Revert to 1.0× |
+| | N<10 | Extend test 100 more trades |
+| PAIR_60-65_18-22 @ 2.0× | Same gates | Same actions |
+
+Additional gates if either cell harms:
+- If the cell harms specifically because **filtered-cell-of-the-filter is NOT firing as expected** (i.e., bot is admitting trades that should be in the 1.0-2.0×18-25 block zone) → investigate filter, don't blame multiplier
+- If `Δ$ vs BL` column in Multiplier Cell Performance table is more negative than -$30 → revert immediately to 1.0× regardless of WR
+
+### Methodological lesson (going forward)
+
+**Before neutralizing or activating any multiplier cell, perform the filter-overlap analysis.** Specifically:
+
+1. Pull the historical losses from the cell across recent batches
+2. For each loss, check if the trade would have been blocked by currently-active filters
+3. Compute "cell P&L under current filter regime" = total losses minus losses-cut-by-filters
+4. Make the multiplier decision on the FILTERED-REGIME cell performance, not the raw cell performance
+
+This is a non-trivial methodological add — multiplier decisions can flip based on which filters are active. Today's reactivation is the first time we've done this analysis cleanly.
+
+### The risk we're taking
+
+If tonight's 4 wins were sample noise and the cells decay to ~50% WR at 2.0× under the new filter regime, we lose roughly $50-100 per future ~30-trade batch on these cells specifically. Mitigation: locked revert gates fire mechanically at next 100-trade checkpoint.
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the same-day reversal honestly (we shipped at 1.0× this morning, ship at 2.0× this evening — that's the kind of churn the IRON RULE was meant to prevent, and the user explicitly accepted the tradeoff)
+2. To preserve the filter-overlap analysis methodology so future neutralization/reactivation decisions use it
+3. To anchor the scoped reactivation (only `rsi_adx_multiplier_long`, NOT the other two LONG cells) so future-Claude doesn't reactivate the others without doing their own overlap analysis
+4. To lock the revert gates so the next checkpoint decision is mechanical

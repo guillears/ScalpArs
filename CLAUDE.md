@@ -6875,3 +6875,176 @@ To preserve:
 3. The locked validation gates (so promotion criteria don't get lowered post-hoc)
 4. The 1.30-1.50 anomaly flag (so it doesn't get forgotten before the filter ships)
 5. The mechanism explanation (so the filter rests on documented crypto-futures microstructure, not just a statistical fit)
+
+## May 11, 2026 — Loss-Cleanup Filter Watchlist (full cross-batch landscape)
+
+Continuation of the May 11 SHORT GlobalVol deep review. After the user pivoted from cell-level
+(BTC RSI 30-35 × BTC ADX 30-35) to broader "what filter clears the most losses across the
+whole pool," the following candidates emerged from a comprehensive scan of every cross-tab and
+1D dimension across all 5+ batches (May 4 → tonight, 254 LONGs + 91 SHORTs).
+
+**This entry is the consolidated watchlist for the next 100-200 trade checkpoint.** No action
+tonight. All candidates require multi-sample replication AND the locked validation gates below
+before promotion.
+
+### TOP LOSS-CLEANUP CANDIDATES (ranked by absolute $ cleaned in cut zone)
+
+| Rank | Dir | Filter | Trades cut | $ cleaned | Cut-zone WR | Evidence |
+|---|---|---|---|---|---|---|
+| 1 | SHORT | **BTC RSI 30-35 (1D, any ADX)** | 29 | **-$372** | 34% | 5-batch confirmed; worst SHORT BTC RSI band |
+| 2 | LONG | **Pair Slope <0.10% (any ADX)** | 183 | **-$349** | 41% | 5-batch confirmed; cuts 72% of LONG volume |
+| 3 | LONG | **BTC RSI ≥65 (1D, any ADX)** | 85 | **-$342** | 35% | 5-batch confirmed; 65-70 = -$343, ≥70 = +$1 (mixed but mostly bad) |
+| 4 | LONG | BTC Slope 0.04-0.06% × BTC ADX 20-25 | 34 | -$264 | 32% | precise cell, 5-batch confirmed |
+| 5 | SHORT | **BTC RSI 30-35 × BTC ADX 25-35** (precise cell) | 17 | -$377 | 24% | refinement of #1 |
+| 6 | SHORT | GlobalVol >1.10 | 46 | -$215 | 39% | 5-batch confirmed; in earlier May 11 entry |
+| 7 | LONG | BTC RSI 55-60 × BTC ADX 25-30 | 13 | -$194 | 38% | mid-N cell |
+| 8 | SHORT | Pair Slope <0.25% | 76 | -$176 | 53% | high volume cut |
+| 9 | LONG | BTC Slope 0.02-0.04% × BTC ADX 25-30 | 21 | -$177 | 38% | precise cell |
+| 10 | SHORT | Pair ATR <0.35% | 66 | -$148 | 47% | confounded with pair size (large-caps dominate cut zone) |
+
+### SHORT-side details (clean signals)
+
+**1D SHORT BTC RSI (the strongest single SHORT loss signal):**
+
+| Bucket | N | WR | Total $ | Verdict |
+|---|---|---|---|---|
+| <25 | 17 | 65% | -$41 | mixed |
+| 25-30 (S-P1) | 21 | 76% | +$207 | ★★★ premium |
+| **30-35** | **29** | **34%** | **-$372** | **✗✗ death zone** |
+| 35-40 | 17 | 59% | +$200 | ✓ winner |
+| 40-45 | 5 | 100% | +$72 | small N premium |
+| 45-50 | 2 | 0% | -$69 | tiny N |
+
+**1D SHORT BTC Slope:**
+
+| Bucket | N | WR | Total $ |
+|---|---|---|---|
+| 0.02-0.04% | 17 | 41% | -$43 |
+| 0.04-0.06% | 9 | 44% | -$53 |
+| **0.06-0.10%** | **28** | **79%** | **+$375** ★★★ premium |
+| 0.10-0.16% | 32 | 53% | -$211 |
+| 0.16-0.25% | 4 | 50% | -$69 |
+
+**1D SHORT BTC ADX:**
+
+| Bucket | N | WR | Total $ |
+|---|---|---|---|
+| 15-20 | 8 | 25% | -$33 |
+| 20-25 | 30 | 67% | +$290 ★★★ |
+| 25-30 | 24 | 50% | -$94 |
+| 30-35 | 22 | 50% | -$227 |
+| 35-40 | 7 | 100% | +$62 ✓ |
+
+### LONG-side details (chronic loss across all buckets)
+
+Every 1D BTC bucket loses money. Every 1D Pair Slope bucket loses money.
+There is no clean LONG macro premium zone in this regime.
+
+**1D LONG Pair Slope (the strongest single LONG loss signal):**
+
+| Bucket | N | WR | Total $ |
+|---|---|---|---|
+| **<0.10%** | **183** | **41%** | **-$349** ✗✗ (72% of all LONGs!) |
+| 0.10-0.16% | 36 | 47% | -$28 |
+| 0.16-0.25% | 22 | 50% | -$54 |
+| 0.25-0.40% | 7 | 43% | -$208 |
+| ≥0.40% | 6 | 50% | -$57 |
+
+The LONG <0.10% slope bucket is the single largest pattern in the entire pooled dataset.
+**Anomaly cell to investigate:** 0.10-0.16% × <18 ADX = N=13, 69% WR, +$169 — the lone
+LONG winning cell. Before raising `momentum_ema20_slope_min_long`, confirm this isn't a
+pair-specific or batch-specific concentration.
+
+**1D LONG BTC RSI:**
+
+| Bucket | N | WR | Total $ |
+|---|---|---|---|
+| 50-55 | 9 | 33% | +$2 |
+| 55-60 | 64 | 45% | -$393 |
+| 60-65 | 96 | 47% | -$143 (cleanest with embedded L-P1 winner cell) |
+| **65-70** | **57** | **39%** | **-$343** ✗ |
+| **≥70** | **28** | **29%** | **+$1** ✗ (mostly losing, near-zero net) |
+
+### Convergence cell (the bottom-of-all-cross-tabs SHORT trap)
+
+**SHORT + BTC RSI 30-35 + BTC ADX 25-35 + GlobalVol >1.10**
+
+Every cross-tab points to this same zone. Tonight's 4 SHORT losers (BNB, BCH, AAVE, TRUMP)
+all sit here. Each individual axis is a candidate filter; the convergence rule is the
+strongest signal but cuts the smallest sample (N≈10-15 across pool).
+
+### Validation gates locked NOW (for next 100-200 trade checkpoint)
+
+A filter promotes from watchlist → ship if AT NEXT CHECKPOINT:
+
+1. **Sample replication**: ≥15 NEW trades in the would-be-blocked zone since this entry was
+   written, with the same direction (loser) as the historical pool.
+2. **WR in block zone ≤ 45%** on the new N≥15 sample.
+3. **Avg P&L % in block zone ≤ -0.15%** on the new sample.
+4. **Direction-consistent across the new batch and prior pool** (not just numerically — the
+   trades that would have been blocked should look qualitatively similar to the historical
+   losers).
+5. **Pair-level confound check**: for any filter cutting >40 trades, verify that ≥60% of the
+   cut zone losses do NOT concentrate in 2-3 specific pairs. If they do, switch to a pair
+   blacklist instead (smaller scope, same effect).
+
+### Specific candidate analyses to run at checkpoint
+
+**Top 3 to evaluate first (highest expected $-cleanup per trade cut):**
+
+1. **SHORT — Block BTC RSI 30-35 (1D)**
+   - Expected impact (this batch as proxy): cut 29 trades, save $372
+   - Likely implementation: extend `btc_rsi_adx_filter_short` to block all BTC RSI 30-35 ADX
+     cells (e.g., `"30-35:99"` — require impossibly high ADX, effectively block whole band)
+   - OR set `btc_rsi_min_short: 35` (if BTC RSI filter is moved to independent section)
+   - Caveats: cuts 32% of SHORT volume. Need to confirm no sub-cell within 30-35 is a winner
+     before whole-band block (the 30-35 × 30-35 cell historically had N=4 75% WR in May 4 —
+     decayed to 30% pooled now)
+
+2. **LONG — Raise momentum_ema20_slope_min_long: 0% → 0.10%**
+   - Expected impact: cut 183 trades, save $349
+   - **REQUIRED before shipping**: investigate the 0.10-0.16% × <18 ADX anomaly cell
+     (N=13, 69% WR, +$169) — which pairs, which batch, why it broke the pattern
+   - If the anomaly is pair-specific (e.g., concentrated in 2-3 large-cap pairs that grind
+     up slowly), keep the filter but add those pairs to an allowlist
+   - If the anomaly is one-batch (e.g., all from May 9 stretch batch), the filter is clean
+
+3. **LONG — Block BTC RSI ≥65 (1D)**
+   - Expected impact: cut 85 trades, save $343
+   - Currently `btc_rsi_max_long: 65` is set but gated behind `btc_global_filter_enabled=false`
+     (per CLAUDE.md Apr 30 unfixed Option B refactor). Need to ungate it OR add to cross-filter
+   - Caveat: 65-70 is the loser zone; ≥70 is near-zero net. A tighter cap (e.g., 65) gets all
+     the benefit; a 70 cap leaves the worst zone (65-70) in.
+
+### Anti-overfit protections
+
+1. **Do NOT chain ship all three at once.** Each filter alone is a clean test. Shipping
+   multiple simultaneously confounds attribution.
+2. **Top candidate first at next checkpoint.** Whichever has the strongest replication evidence
+   at checkpoint time gets shipped; others stay on watchlist.
+3. **Do NOT re-litigate the cell-level vs broader-filter question at action time.** The
+   methodological lesson from earlier May 11 stands: broader filters with multi-axis confounds
+   are usually proxies for a real underlying dimension. Test the dimension directly, not the
+   cell.
+
+### Cross-references to existing CLAUDE.md entries
+
+- **GlobalVol >1.10 SHORT cliff** (May 11 entry, ~line 6753): independent watchlist candidate,
+  44pp WR cliff, evidence stronger than #10 ATR
+- **S-P2 cell decay** (Apr 17 audit, May 4 demotion, May 5 block via cross-filter):
+  the cell-level work that prompted the broader scan
+- **Pair Slope × Pair ADX cross-tab findings** (mentioned earlier May 11): SHORT slope ≥0.25
+  premium cell at 73% WR / N=15 / +$173 is a multiplier candidate, not a loss-cleanup filter
+
+### Why this entry exists in CLAUDE.md
+
+To preserve the comprehensive cross-batch loss-attribution landscape so that:
+
+1. The next checkpoint analysis has a pre-built target list (no re-running the 91-trade pool)
+2. Filter promotion decisions reference this entry's locked criteria (no goalpost moving)
+3. The "what changed from May 4 to recent batches" diagnostic question has clear answer:
+   the loss zones are stable and identifiable; the broader pool agrees with tonight's
+   8-trade-tonight signal in 3 of the 5 SHORT cells we examined
+
+When the next batch lands (target ~100 closed trades), the analyst opens this entry, applies
+the gates mechanically, and ships the top-replicated candidate. No re-analysis required.

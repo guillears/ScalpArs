@@ -7483,3 +7483,102 @@ If tonight's 4 wins were sample noise and the cells decay to ~50% WR at 2.0× un
 2. To preserve the filter-overlap analysis methodology so future neutralization/reactivation decisions use it
 3. To anchor the scoped reactivation (only `rsi_adx_multiplier_long`, NOT the other two LONG cells) so future-Claude doesn't reactivate the others without doing their own overlap analysis
 4. To lock the revert gates so the next checkpoint decision is mechanical
+
+## May 11, 2026 — ADX Δ × BTC ADX Cross-Tab — cross-batch pool findings (May 4 → tonight) + watchlist
+
+Built the cross-tab from 6 archived batch snapshots + tonight's partial, deduped by `(opened_at, pair, direction)`. **Pool: 210 closed trades (151 LONG / 59 SHORT).** Methodologically valid per Core Principle: Avg P&L % used for cross-config comparison; raw $ used only within-cell for magnitude context.
+
+### Current filter validation
+
+- **`adx_delta_btc_adx_filter_long: "1.0-2.0:18-25"`** (shipped this morning): pool target cell shows **N=23, 39% WR, -$358 / -0.24% Avg** — strongest single negative cell in the entire LONG pool. Rule correctly justified.
+- Adjacent winner zones correctly preserved:
+  - LONG 0.5-1.0 × 18-25: N=15, 73% WR, +$225 / +0.26%
+  - LONG 1.0-2.0 × 30-35: N=8, 75% WR, +$102 / +0.30%
+
+### Biggest unfiltered loss zone (LONG): BTC ADX 25-30
+
+Aggregated across all ADX Δ sub-cells:
+
+| Sub-cell (ADX Δ × BTC ADX 25-30) | N | WR | Avg P&L % | Total $ |
+|---|---|---|---|---|
+| <0.1 | 4 | 50% | -0.27% | -$110 |
+| 0.1-0.3 | 8 | 50% | -0.09% | -$111 |
+| 0.3-0.5 | 3 | 33% | -0.31% | -$33 |
+| 0.5-1.0 | 10 | 50% | -0.12% | -$235 |
+| 1.0-2.0 | 2 | 50% | -0.24% | -$63 |
+| 2.0-3.0 | 1 | 100% | +0.42% | +$1 |
+| **Zone total** | **28** | **48%** | **-0.13%** | **-$551** |
+
+**Every ADX Δ sub-cell in BTC ADX 25-30 is negative.** WR 33-50% across the band. The losses look like "losers > winners" magnitude rather than entry-quality — possible exit/SL issue rather than pure entry filter target. Not acting now; locked watch for next batch.
+
+### Pre-committed watchlist for next 100-trade LONG checkpoint
+
+All gates locked NOW. Mechanical decisions, no re-litigation.
+
+**Watch 1 — LONG BTC ADX 25-30 zone (broad)**
+- Hypothesis: BTC ADX 25-30 LONG is structurally bad (28 / 48% / -$551 cross-batch).
+- Gate: aggregate fresh-batch LONG performance in BTC ADX 25-30 across all ADX Δ sub-cells.
+  - **N≥15 with WR ≤45% AND Avg P&L % ≤-0.10%** → ship cross-filter blocking the zone (Option B).
+  - **N≥15 with WR ≥55%** → drop from watchlist (regime-conditional, not structural).
+  - **N<15** → keep watching, no action.
+
+**Watch 2 — LONG 0.5-1.0 × 25-30 cell (specific)**
+- Pool: N=10, 50% WR, -$235. Biggest single-cell loss in BTC ADX 25-30, not yet filtered.
+- Gate:
+  - **N≥8 in fresh batch with WR ≤45%** → extend rule to `adx_delta_btc_adx_filter_long: "1.0-2.0:18-25,0.5-1.0:25-30"`.
+  - **N≥8 with WR ≥55%** → drop from watchlist.
+  - **N<8** → continue watching.
+
+**Watch 3 — LONG 0.1-0.3 × 25-30 cell**
+- Pool: N=8, 50% WR, -$111 (same BTC zone, slower ADX Δ).
+- Gate (only acts if Watch 2 also confirms):
+  - If BOTH 0.5-1.0 × 25-30 AND 0.1-0.3 × 25-30 confirm losing on N≥8 each → consider broader rule `"0.1-1.0:25-30"`.
+  - Standalone: requires N≥10 with WR ≤40% to justify a separate rule.
+
+**Watch 4 — LONG ≥35 BTC ADX (sanity check on existing cap)**
+- Pool: 9 / 22% / -$227. Already capped by `btc_adx_max_long: 35`.
+- Gate: if any trades appear in BTC ADX ≥35 LONG in next batch → bug, investigate. Otherwise no action (cap working).
+
+**Watch 5 — SHORT cross-tab (observe only, do NOT act)**
+- N=59 too thin for structural conclusions. No SHORT cross-tab filter justified yet.
+- Continue accumulating. At ~150-200 SHORT trade pool, revisit.
+- Specific cells to track if they accumulate (no action at current N):
+  - 0.5-1.0 × 25-30: 4 / 25% / -$54 — needs N≥10
+  - 0.5-1.0 × 30-35: 3 / 33% / -$80 — needs N≥10
+  - 1.0-2.0 × 25-30: 11 / 55% / -$39 — needs N≥15 to act (already meaningful N)
+
+### Filter overlap methodology — second instance of the new analytical primitive
+
+This watchlist follows the same filter-overlap methodology codified earlier today (May 11 PM multiplier reactivation entry):
+- Cross-batch pool gives the structural signal
+- BUT: cells that appear "losing" may be confounded by other filters that weren't active in those batches
+- Action decision should be made on FRESH-BATCH fresh-filter-regime evidence, not raw cross-batch totals
+- The cross-batch pool is the HYPOTHESIS GENERATOR; fresh-batch is the TEST
+
+This is why Watches 1-3 require N≥8-15 fresh-batch evidence even though their cross-batch evidence is already large. We're testing whether the loss pattern survives under the NEW filter regime (`btc_adx_min_long: 18`, `adx_delta_btc_adx_filter_long: "1.0-2.0:18-25"`, both multiplier reactivations) — not just confirming a historical pattern.
+
+### Anti-overfit constraints (locked)
+
+- Action requires gate threshold met exactly — no rounding up to act on N=7 when gate says N≥8.
+- Each watch is independent. If only Watch 1 fires, ship only that change. Don't bundle.
+- After any ship, the NEXT batch becomes the test of the just-shipped rule. Don't pile changes.
+- If multiple watches fire simultaneously: ship the broadest one first (Watch 1 if it fires takes precedence over Watch 2/3).
+- SHORT side has no actionable rules until N reaches ~150-200 SHORT trade pool. No exceptions.
+
+### What action looks like concretely (if Watch 1 fires)
+
+Rather than multiple comma-separated rules, the broadest fix is to express "block all ADX Δ in BTC ADX 25-30 LONG except where data clearly winners (e.g., 2.0-3.0 sub-cell at +$1 / N=1, low-N exception)":
+
+```
+adx_delta_btc_adx_filter_long: "1.0-2.0:18-25,0.0-2.0:25-30"
+```
+
+Note: this uses range-form for the `0.0-2.0:25-30` rule. Per CLAUDE.md May 5 syntax extension, the parser supports range-form for ADX Δ as well. The 2.0-3.0 × 25-30 sub-cell (N=1, +$1) is left out of the block as a low-N exception — if a fresh trade lands there and continues to win, we'll have data; if it loses we add it.
+
+### Why this entry exists in CLAUDE.md
+
+1. To preserve the cross-batch pool findings as the baseline for next-checkpoint decisions
+2. To lock the watchlist + gates BEFORE seeing fresh data (prevents post-hoc bar-lowering)
+3. To document the BTC ADX 25-30 LONG loss zone discovery so it doesn't get forgotten
+4. To codify the filter-overlap-methodology / fresh-batch-validation pattern as the standard analytical primitive
+5. To anchor the broad-rule construction if Watch 1 fires (so future-Claude knows the exact filter syntax to ship)

@@ -4501,10 +4501,15 @@
                     const runwayEl = document.getElementById('bnb-runway');
                     if (data.bnb_balance_is_usd) {
                         document.getElementById('bnb-balance').textContent = formatUSD(data.bnb_balance);
+                        const burnEl = document.getElementById('bnb-burn-rate');
                         if (_bnbBurnRate > 0) {
                             const hrs = Math.round(data.bnb_balance / _bnbBurnRate);
                             runwayEl.textContent = `Runway: ${hrs}h`;
-                        } else { runwayEl.textContent = ''; }
+                            burnEl.textContent = `$${_bnbBurnRate.toFixed(2)}/hr`;
+                        } else {
+                            runwayEl.textContent = '';
+                            burnEl.textContent = '';
+                        }
                     } else {
                         const bnbVal = parseFloat(data.bnb_balance || 0);
                         const bnbUsd = data.bnb_balance_usd || 0;

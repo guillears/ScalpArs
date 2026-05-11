@@ -6750,3 +6750,128 @@ SHORT side: unchanged (rescue=0 means existing Filter A is also disabled via thr
 
 To preserve the analytical basis for the rescue clause and prevent the rescue threshold from being adjusted/removed without consulting the 2D cross-tab data at next checkpoint. The 1-sample evidence is exploratory; the cross-tab table is how we get cross-sample evidence over the next 100+ trades.
 
+
+## May 11, 2026 — Deep review: SHORT GlobalVol cliff at 1.10 + methodological correction on BTC RSI 30-35 × BTC ADX 30-35
+
+### Context — the analytical chain that produced this entry
+
+Tonight's 8-SHORT mini-batch (BEARISH, -$85.24, 50% WR, PF 0.56) showed 4 losers clustered in the BTC RSI 30-35 × BTC ADX 30-35 cell at 0% WR / -$193.57. Initial read (mine): "this looks like the S-P2 decay continuing into the adjacent ADX-30-35 sub-cell — consider tightening `btc_rsi_adx_filter_short` from `30-35:30` to `30-35:35`."
+
+**User pushed back: "search for the pattern in all previous reports."** Cross-batch pull on this exact cell produced a different story.
+
+### Methodological correction — the cell I almost tightened was a WINNER in the largest sample
+
+BTC RSI 30-35 × BTC ADX 30-35 SHORT performance across all 5 available batches:
+
+| Batch | N | WR | Avg P&L % | Total $ |
+|---|---|---|---|---|
+| **May 4 (224tr)** | 4 | **75%** | **+0.12%** | **+$0.99** |
+| May 5 pre-reset | 0 | — | — | — |
+| May 9 stretch | 0 | — | — | — |
+| May 10 pre-globalvol | 2 | 0% | -0.60% | -$71.36 |
+| Tonight (8S) | 4 | 0% | -0.75% | -$193.57 |
+| **POOLED** | **10** | **30%** | mixed | -$263.94 |
+
+The cell was the **winning sub-cell of the BTC RSI 30-35 band** in the May 4 baseline (75% on N=4 — only positive sub-cell in that row). It only flipped to 0% WR in the last two batches (N=2 + N=4 = 6 recent losers).
+
+**Lesson:** when a recent N=4 loser cluster appears, the right first question is "what was this cell in the largest historical sample?" — not "should we block it?" Going from "watchlist" straight to "ship a block" on 1-sample recent evidence violates the CLAUDE.md anti-overfit core principle. The S-P2 demotion (Apr 17 audit → May 4 confirm → May 5 block) was multi-sample direction-consistent; this adjacent cell is single-sample recent-decay only. Different evidence weight, different action.
+
+### The actual discriminator inside the 10-trade cell
+
+Comparing 3 May-4 winners vs 7 recent losers on every dimension captured:
+
+| Dimension | Winners avg | Losers avg | Pattern |
+|---|---|---|---|
+| **GlobalVol** | **0.78** | **1.70** | ★★★ Clean cliff — every winner ≤0.97, every loser ≥1.20 |
+| Stretch | 0.226 | 0.350 | ★ Losers more stretched |
+| Gap5-20 | 0.31% | 0.50% | ★ Losers wider gaps |
+| PairVol$M | (no data May4) | $1086M | column didn't exist May 4 — can't compare |
+
+**100% separation on GlobalVol across N=10.** Every winner had GlobalVol ≤0.97; every loser had GlobalVol ≥1.20. This is the textbook signature of a **macro confound** — the cell wasn't bad; the regime conditions under which the bot entered that cell shifted.
+
+### Cross-batch validation — broader SHORT performance by GlobalVol
+
+Pulled all 91 SHORT trades across 5+ batches (May 4 + May 5 + May 9 + May 10 × 2 + tonight). Bucketed by GlobalVol:
+
+| Bucket | N | WR | Avg P&L % | Total $ |
+|---|---|---|---|---|
+| 0.50-0.70 | 13 | 69% | +0.12% | +$40.50 |
+| 0.70-0.85 | 16 | 69% | +0.12% | +$95.21 |
+| **0.85-0.95** | **10** | **90%** | **+0.32%** | **+$73.91** |
+| 0.95-1.00 | 4 | 75% | +0.08% | +$0.67 |
+| 1.00-1.05 | 1 | 100% | +0.31% | +$0.62 |
+| **1.05-1.10** | **1** | **100%** | **+0.74%** | **+$1.48** ← noise-level N |
+| **1.10-1.15** | **8** | **38%** | **-0.23%** | **-$53.88** ← losers start here |
+| **1.15-1.20** | **6** | **17%** | **-0.59%** | **-$73.96** |
+| 1.20-1.30 | 11 | 27% | -0.41% | -$196.51 |
+| **1.30-1.50** | **10** | **90%** | **+0.37%** | **+$225.24** ← anomaly |
+| 1.50-2.00 | 9 | 22% | -0.27% | -$44.50 |
+| ≥2.00 | 2 | 0% | -0.60% | -$71.36 |
+
+### Cutoff comparison (cliff test)
+
+| Cutoff | KEEP (≤X) | BLOCK (>X) | ΔWR | ΔAvg% |
+|---|---|---|---|---|
+| 1.05 | N=44 WR=75% +$211 | N=47 WR=40% -$213 | 35pp | +0.36pp |
+| **1.10** | **N=45 WR=76% +$212** | **N=46 WR=39% -$215** | **36pp** | **+0.39pp** ★ |
+| 1.15 | N=53 WR=70% +$159 | N=38 WR=39% -$161 | 30pp | +0.33pp |
+| 1.20 | N=59 WR=64% +$85 | N=32 WR=44% -$87 | 21pp | +0.19pp |
+
+**1.10 is the cleaner cut** — biggest ΔWR (36pp) and ΔAvg (+0.39pp), preserves the 1.05-1.10 trade we have no evidence to block. The loser concentration actually begins at 1.10, not 1.05.
+
+### Mechanism — why this is real, not statistical
+
+Crypto futures market structure provides a plausible explanation for the asymmetry (LONGs want HIGH vol, SHORTs want LOW vol):
+
+1. **High vol = climax / reversal, not continuation.** Big-volume candles on the way down are usually capitulation (last shorts piling in, stops getting hit). Next 30 minutes = mean reversion. Low-volume drift down = no one paying attention, no late shorts, no reversal fuel → continued bleed = ideal SHORT environment.
+2. **Entry timing.** The bot's 5m SHORT signal (RSI low + EMAs crossed + gap expanding + ADX rising) needs *prior* movement to fire. In high-vol environments, all those confirmations land *as the impulse exhausts* → enter at the bottom tick of the move, eat the bounce. In low-vol environments, the same indicators fire *early* in a slow grind → room to run.
+3. **Squeeze ammunition scales with volume.** Squeezes need active buyers. High GlobalVol = many participants ready to step in. Low GlobalVol = thin tape, no one to ignite a cascade.
+4. **Event clustering.** GlobalVol spikes correlate with macro events (Fed, CPI, ETF flows, liquidations) → two-sided whips, not clean trends → bot's 10-30min directional persistence assumption breaks.
+5. **Asymmetry vs LONGs.** Bull moves need volume to sustain (current LONG filter blocks <0.95); bear moves can grind on apathy. Documented feature of perpetual futures microstructure.
+
+### Pre-committed watchlist entry (lock NOW for next checkpoint)
+
+**Candidate filter: SHORT-side Global Vol MAX at 1.10.**
+
+This is a **new filter direction** — current `global_volume_threshold_short` is a MIN-style block (block if vol < threshold). The cross-batch evidence calls for a MAX-style block for SHORTs (block if vol > threshold). Two implementation options at promotion time:
+
+**Option A (simpler — current code, repurpose existing field with inversion logic):**
+Reuse `global_volume_threshold_short` semantically as "block above this" instead of "block below this." Requires ~5 LOC change in `services/trading_engine.py:4722` to invert the SHORT comparison only.
+
+**Option B (cleaner — additive new field):**
+Add `global_volume_max_short` (and parallel `global_volume_max_long` for symmetry/future use). Block when ratio > max. Keep existing MIN behavior. ~10-15 LOC + config schema + UI.
+
+Option B is the right shape long-term (handles potential future MAX-LONG filter too) but Option A ships faster if the cross-batch pattern needs a fast deploy.
+
+### Validation gates at next 100-trade checkpoint (locked)
+
+Before promoting from watchlist → ship:
+
+1. **N ≥ 15 new SHORT trades** at GlobalVol > 1.10 in the next batch (observation logs — won't trade them once filter ships, so this is a "last collection before lockdown" measurement)
+2. **WR in the >1.10 zone ≤ 45% on N≥15** OR **Avg P&L % ≤ -0.15% on N≥15**
+3. **The 1.30-1.50 anomaly** (10 trades, 90% WR, +$225 across pool) — must investigate:
+   - If it's concentrated in 1 batch (May 10 pre-globalvol's 3-trade outlier) → batch-specific noise, blanket block at 1.10 is fine
+   - If it spans multiple batches at high WR → cap structure needs refinement (e.g., block 1.10-1.30 only, allow ≥1.30)
+   - **Action:** at next checkpoint, decompose the 1.30-1.50 bucket by batch BEFORE shipping the filter
+
+### Anti-overfit protections
+
+- **Do NOT ship this filter on tonight's 8-trade mini-batch alone.** The cross-batch pool (91 SHORTs across 5+ batches) is what makes the case, not tonight. If the cross-batch pattern hadn't replicated, the action would be no action.
+- **Do NOT tighten BTC RSI 30-35 × BTC ADX 30-35 to require ADX ≥ 35.** That was the wrong cell-level read. The macro confound (GlobalVol) explains the recent losers; the cell itself is regime-dependent, not structurally bad.
+- **If the GlobalVol pattern stops replicating at next batch** (e.g., losers no longer cluster >1.10), the filter idea is retired. Watchlist status = "candidate," not "queued for ship."
+
+### Methodological lessons (preserved for future analysis discipline)
+
+1. **N=4 losers + recent batches ≠ structural decay.** Always pull the largest historical sample first. If the cell was a winner there, the question shifts from "block it" to "what changed."
+2. **When Winners ≈ Losers on dimensions you measure, look for an unmeasured discriminator.** This is the May 4 lesson reapplied. Here: GlobalVol wasn't in the bot's filter stack (for SHORTs) and wasn't in the cell-level analysis I started with — but it's captured per-trade, so a manual cross-tab surfaced it.
+3. **The right action against a cell-level anomaly is rarely a cell-level block.** If the cell behaves differently in different regimes, the regime variable is the filter, not the cell.
+4. **Don't ship multi-sample filters from single-batch evidence, but don't ignore single-batch evidence that points to a multi-sample test.** Tonight's 4 losers didn't justify shipping anything, but they justified the cross-batch scan that uncovered the real pattern.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The cross-batch evidence base for the SHORT GlobalVol MAX filter (so the next checkpoint isn't re-litigating data)
+2. The methodological correction on BTC RSI 30-35 × BTC ADX 30-35 (so future-Claude doesn't repeat my mistake of jumping to "block this cell" from N=4)
+3. The locked validation gates (so promotion criteria don't get lowered post-hoc)
+4. The 1.30-1.50 anomaly flag (so it doesn't get forgotten before the filter ships)
+5. The mechanism explanation (so the filter rests on documented crypto-futures microstructure, not just a statistical fit)

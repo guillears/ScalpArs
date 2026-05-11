@@ -7048,3 +7048,76 @@ To preserve the comprehensive cross-batch loss-attribution landscape so that:
 
 When the next batch lands (target ~100 closed trades), the analyst opens this entry, applies
 the gates mechanically, and ships the top-replicated candidate. No re-analysis required.
+
+## May 11, 2026 — Addendum to Loss-Cleanup Watchlist: SHORT `adx_strong` revert candidate
+
+Quick add-on to the loss-cleanup watchlist above. The May 8 change to `adx_strong` is
+worth tracking as its own revert candidate at next checkpoint — separate from the broader
+filter candidates because it's a simple one-field revert, not a new filter.
+
+### What changed and when
+
+| Date | Field | Old | New | Effect |
+|---|---|---|---|---|
+| **May 8, 13:24** | `adx_strong` (SHORT) | 22 | **20** | Lowered STRONG_BUY SHORT tier minimum ADX from 22 to 20 |
+
+The change admitted SHORTs with pair ADX 20-22 that were previously blocked.
+
+### Tonight's evidence (1-sample, suggestive only)
+
+The 11-trade SHORT batch tonight had 1 trade in the 18-22 ADX bucket:
+- BCHUSDT at ADX 20.27, closed -$39.98, 0% WR
+- This trade would have been blocked under the pre-May-8 threshold
+
+That's it for fresh evidence. 1 trade is anti-overfit-violating. But the directional signal
+matches the broader pool below.
+
+### Cross-batch SHORT ADX evidence (pooled May 4 → tonight, N=91)
+
+| Bucket | N | WR | Total $ | Direction |
+|---|---|---|---|---|
+| 18-22 | 1 | 0% | -$39.98 | loser |
+| 22-25 | 20 | 55% | -$36.19 | mixed-negative |
+| 25-28 | 29 | 55% | -$124.30 | losing |
+| 28-30 | 20 | 50% | +$101.45 | breakeven-positive |
+| **30-33** | **18** | **72%** | **+$105.81** | ★ winner |
+| 35-40 | 7 | 100% | +$61.77 | ★ small-N winner |
+
+The trend across the table: WR and $ both rise with ADX. The 22-25 zone (now admitted by
+the May 8 change) is mixed-negative. The pre-May-8 threshold of 22 was approximately the
+boundary where SHORT performance starts to break even.
+
+### Pre-committed revert criterion (locked NOW)
+
+At next 100-200 trade checkpoint, evaluate the 18-22 ADX SHORT bucket specifically (the
+zone the May 8 change admitted):
+
+| Sample at checkpoint | Decision |
+|---|---|
+| **N ≥ 8** in 18-22 zone AND WR ≤ 35% AND Avg P&L % ≤ -0.20% | **REVERT** `adx_strong` from 20 → 22 |
+| N ≥ 8 in 18-22 zone AND WR ≥ 55% | Keep at 20; the loosening was justified |
+| N ≥ 8 in 18-22 zone AND WR 35-55% (mixed) | Extend test to next batch, no decision |
+| N < 8 in 18-22 zone | Insufficient data, defer to 200-trade checkpoint |
+
+Additionally, watch the **22-25 bucket** (which existed pre-May-8 and continues now):
+- If 22-25 WR drops materially in next batch (e.g., ≤45% on N≥15), that's a separate
+  signal that the SHORT STRONG_BUY tier needs tightening further — possibly to ADX≥25.
+
+### Why this addendum exists in CLAUDE.md
+
+The loss-cleanup watchlist above is for net-new filter ideas (BTC RSI 30-35 block,
+GlobalVol cliff, slope minimums). This is different — it's a **revert** of an already-shipped
+change. Different decision class:
+- Revert candidates have lower bar (we're undoing something, not adding something)
+- They're a smaller code change (one field flip)
+- They benefit from being tracked separately because the pre-change baseline is known
+
+At the next checkpoint, this revert criterion is mechanical: count the 18-22 SHORT trades,
+check WR, apply the rule. No re-analysis needed.
+
+### Cross-reference
+
+This addendum supplements the May 11 loss-cleanup watchlist above. It does NOT replace
+any of the three top loss-cleanup candidates (SHORT BTC RSI 30-35 block, LONG slope min,
+LONG BTC RSI ≥65 block) — those still have larger expected $-impact and remain priority.
+The `adx_strong` revert is a smaller-scope decision running in parallel.

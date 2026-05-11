@@ -1922,6 +1922,33 @@
                 </div>
             </div>
 
+                <!-- BTC EMA13-EMA50 Gap × BTC ADX Cross-Tab (May 11 UTC-3) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">BTC EMA13-EMA50 Gap × BTC ADX Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">BTC over-extension (EMA13 vs EMA50) × BTC trend strength — tests whether the &quot;BTC gap &gt; +0.10% LONG = bad&quot; pattern is uniform across BTC ADX magnitudes, or conditional on a specific BTC ADX zone. Critical for distinguishing late-cycle entries from healthy-trend entries.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Dir</th>
+                                    <th class="px-3 py-2 font-medium" title="(BTC EMA13 − BTC EMA50) / BTC EMA50 × 100. Positive = BTC above 4h trend.">BTC Gap</th>
+                                    <th class="px-3 py-2 font-medium">BTC ADX</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Never Positive: trades that never went green (peak ≤ 0)">NP</th>
+                                    <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                </tr>
+                            </thead>
+                            <tbody id="btc-gap-btc-adx-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- RSI x ADX Cross-Tab -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by RSI x ADX</h3>
@@ -5466,6 +5493,17 @@
                 }
             }
 
+            if (perf.btc_gap_btc_adx_crosstab && perf.btc_gap_btc_adx_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## BTC EMA13-EMA50 Gap x BTC ADX Cross-Tab\n');
+                lines.push(`${'Dir'.padEnd(7)} ${'BTC Gap'.padEnd(18)} ${'BTC ADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'NP'.padEnd(10)} ${'Conf'}`);
+                for (const r of perf.btc_gap_btc_adx_crosstab) {
+                    const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                    lines.push(`${(r.direction||'').padEnd(7)} ${(r.gap_range||'').padEnd(18)} ${(r.btc_adx_range||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
+                }
+            }
+
             if (perf.rsi_adx_crosstab && perf.rsi_adx_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by RSI x ADX\n');
@@ -6492,6 +6530,18 @@
                         const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
                         lines.push(`${(r.direction||'').padEnd(7)} ${(r.delta_range||'').padEnd(10)} ${(r.btc_adx_range||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
+                    }
+                }
+
+                // --- BTC EMA13-EMA50 Gap x BTC ADX CROSS-TAB (May 11 UTC-3) ---
+                if (perf.btc_gap_btc_adx_crosstab && perf.btc_gap_btc_adx_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## BTC EMA13-EMA50 Gap x BTC ADX Cross-Tab\n');
+                    lines.push(`${'Dir'.padEnd(7)} ${'BTC Gap'.padEnd(18)} ${'BTC ADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'NP'.padEnd(10)} ${'Conf'}`);
+                    for (const r of perf.btc_gap_btc_adx_crosstab) {
+                        const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                        lines.push(`${(r.direction||'').padEnd(7)} ${(r.gap_range||'').padEnd(18)} ${(r.btc_adx_range||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
                     }
                 }
 
@@ -8210,6 +8260,44 @@
                     }).join('');
                 } else {
                     adxDeltaBtcAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                }
+
+                // BTC EMA13-EMA50 Gap × BTC ADX Cross-Tab (May 11 UTC-3)
+                const btcGapBtcAdxBody = document.getElementById('btc-gap-btc-adx-crosstab-body');
+                if (data.btc_gap_btc_adx_crosstab && data.btc_gap_btc_adx_crosstab.length > 0) {
+                    btcGapBtcAdxBody.innerHTML = data.btc_gap_btc_adx_crosstab.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 60 ? 'text-emerald-400' : r.win_rate >= 45 ? 'text-yellow-400' : 'text-red-400';
+                        const avgClass = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPct = r.avg_pnl_pct || 0;
+                        const avgPctStr = `${avgPct >= 0 ? '+' : ''}${avgPct.toFixed(3)}%`;
+                        const avgPctClass = avgPct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const confEntries = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1]);
+                        const confBadges = confEntries.map(([c, n]) => `<span class="text-xs px-1 mx-0.5 rounded ${c === 'VERY_STRONG' ? 'bg-purple-700/40' : 'bg-blue-700/40'}">${c[0]}:${n}</span>`).join('');
+                        const npCount = r.never_positive || 0;
+                        const npPct = r.never_positive_pct || 0;
+                        const npClass = npPct >= 50 ? 'text-red-400' : npPct >= 25 ? 'text-amber-400' : 'text-gray-400';
+                        // Color the gap range by sign: negative = green (pair below EMA50 — bounce zone), positive small = neutral, positive large = red (over-extended)
+                        const gapColor = r.gap_range.startsWith('< ') || r.gap_range.startsWith('-') ? 'text-emerald-400' :
+                                         r.gap_range.includes('to +0.10') || r.gap_range.includes('to +0.20') ? 'text-yellow-400' :
+                                         r.gap_range.includes('+0.50') || r.gap_range.includes('+1.00') || r.gap_range.startsWith('> +') ? 'text-red-400' : 'text-cyan-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 font-medium ${gapColor}">${r.gap_range}</td>
+                                <td class="px-3 py-2 font-medium text-purple-400">${r.btc_adx_range}</td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${avgClass} font-medium">${formatUSD(r.avg_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right ${avgPctClass} font-medium">${avgPctStr}</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right text-xs ${npClass}">${npCount} (${npPct.toFixed(0)}%)</td>
+                                <td class="px-3 py-2 text-center">${confBadges}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcGapBtcAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
 
                 // RSI x ADX Cross-Tab

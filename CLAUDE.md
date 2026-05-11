@@ -7729,3 +7729,68 @@ At next 100-trade LONG checkpoint:
 
 ### Files changed
 - `trading_config.json` — single field append
+
+## May 11, 2026 UTC-3 — Block LONG BTC RSI 55-60 × BTC ADX 25-30 (locked watchlist gate fired)
+
+### Change
+- `btc_rsi_adx_filter_long`: `"70-100:35,65-70:30,60-65:0-25"` → **`"70-100:35,65-70:30,60-65:0-25,55-60:0-25"`**
+
+New rule: for BTC RSI 55-60, require BTC ADX in [0, 25]. Blocks RSI 55-60 entries when BTC ADX > 25.
+
+### What triggered this
+
+Post-reset, the **first trade after the bot resumed** (TAOUSDT LONG, 17:16 UTC-3) fell exactly in the 55-60 × 25-30 zone:
+- Pair RSI 63.4, Pair ADX 21.7, BTC RSI 57.7, BTC ADX 28.0
+- Entry passed all current filters (no 55-60 BTC RSI rule was active)
+- `PAIR_60-65_18-22` multiplier fired at 2.0× → investment $600 instead of $300
+- Hit STOP_LOSS_WIDE at -0.89%, loss **-$107.10** (vs -$53.55 simulated 1.0× baseline)
+
+The 55-60 × 25-30 cell was on the **locked watchlist** in the May 11 60-65 block entry:
+> "BTC RSI 55-60 × BTC ADX 25-30 — 13 trades / 31% WR / -$392 — biggest unfiltered LONG loss zone. **If fires more losers → ship analogous rule `55-60:0-25`.**"
+
+The gate fired immediately. Combined evidence is now **N=14 / 29% WR / -$499** (13 historical + 1 fresh).
+
+### Evidence (167-trade cross-batch pool + this fresh trade)
+
+| BTC RSI 55-60 × BTC ADX | N | WR | Avg % | Total $ |
+|---|---|---|---|---|
+| <18 | 6 | 67% | +0.07% | -$38 | already blocked by `btc_adx_min_long: 18` |
+| 18-20 | 1 | 0% | -0.89% | -$101 | small N, blocked anyway after this change |
+| 20-25 | 24 | 71% | +0.01% | +$85 | survives — flat winner zone ★ |
+| **25-30** | **14** (post-fresh) | **29%** | **-0.28%** | **-$499** | ★ NEW BLOCKED — primary target |
+| **30-35** | **16** | **63%** | **+0.18%** | **+$158** | NEW BLOCKED (collateral — significant winner zone) |
+
+### Honest collateral cost
+
+The same syntax limit applies (can only express "allow this range," not "block this range"). Result:
+
+- ★ NEW SAVE: 25-30 zone -$499 cut
+- ⚠ COLLATERAL: 30-35 winner zone +$158 cut (N=16, 63% WR — a real winner zone, not marginal)
+- Net pool save: **~$341**
+
+This collateral is **larger than the 60-65 case** ($35 lost there vs $158 here). The user accepted this trade-off knowingly. If the 30-35 sub-zone proves over-cut, the next iteration is the exclusion-form syntax extension (`!25-30`).
+
+### Active LONG filter chain after this ship
+
+```
+btc_adx_min_long: 18          (block BTC ADX <18)
+btc_adx_max_long: 35          (block BTC ADX >35)
+btc_rsi_adx_filter_long:
+  "70-100:35"  → RSI 70+: require ADX ≥35
+  "65-70:30"   → RSI 65-70: require ADX ≥30
+  "60-65:0-25" → RSI 60-65: require ADX ≤25 (block 25-35)
+  "55-60:0-25" → RSI 55-60: require ADX ≤25 (block 25-35) ★ NEW
+adx_delta_btc_adx_filter_long:
+  "1.0-2.0:18-30" → block ADX Δ 1.0-2.0 × BTC ADX 18-30
+```
+
+The defended LONG entry surface for BTC RSI 55-65 is now: **BTC ADX [18, 25] only**. Outside that, blocked.
+
+### Pre-committed revert criteria
+
+At next 100-trade LONG checkpoint:
+- If 55-60 × ADX 25-30 in observation logs shows ≥55% WR on N≥10 in fresh data → revert (remove `55-60:0-25`)
+- If 55-60 × ADX 30-35 collateral zone in observation logs shows ≥65% WR on N≥10 → consider syntax extension to support exclusion form
+
+### Files changed
+- `trading_config.json` — single field append

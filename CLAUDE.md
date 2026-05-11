@@ -7639,3 +7639,37 @@ The N≥10 bar for activation is stricter than the verdict's N≥5 to add a safe
 2. To anchor the locked decision gates so the ~30-trade checkpoint is mechanical
 3. To preserve the "false-positive in chop" caveat — important for interpreting any positive verdict
 4. To enable proper instrumentation before flipping `regime_change_exit_enabled: true` (which would commit us to real exits without knowing impact)
+
+## May 11, 2026 UTC-3 — ADX Δ × BTC ADX filter extended: 18-25 → 18-30
+
+### Change
+- `adx_delta_btc_adx_filter_long`: `"1.0-2.0:18-25"` → **`"1.0-2.0:18-30"`**
+
+### Evidence
+
+CSV drill-down of the 16-trade afternoon batch (May 11 UTC-3, paper $1500 → $223):
+4 trades in BTC RSI 60-65 × BTC ADX 25-30 cell — 3 lost, 1 won, net -$180.
+One of the losers (SUIUSDT, -$89) had **ADX Δ 1.10 × BTC ADX 25.58**, just outside the existing filter zone (25-30 sub-cell). Watch 1 extension is now firing on the first observed trade in the 25-30 sub-cell.
+
+Cross-batch pool (May 4 → tonight, 151 LONGs):
+
+| ADX Δ × BTC ADX 25-30 (LONG) | N | WR | Total $ |
+|---|---|---|---|
+| Now-blocked: 1.0-2.0 × 18-25 | 23 | 39% | -$358 |
+| **Newly-blocked: 1.0-2.0 × 25-30** | **2** | **50%** | **-$63** |
+| Combined blocked zone | 25 | 40% | -$421 |
+
+The N=2 in 1.0-2.0 × 25-30 is thin BUT (a) direction-consistent with the broader 25-30 BTC ADX problem zone, (b) today's CSV showed SUI #18 exactly in this cell losing -$89 — the gate is firing on real losing data, not hypothetical.
+
+### Methodological lesson captured
+
+Today's 4-trade cell drill-down revealed the dominant confound: **all 4 trades had BTC EMA13-EMA50 gap = +0.37%** (over-extended BTC zone). The "BTC RSI 60-65 × BTC ADX 25-30 = 78% WR" finding from cross-batch was true ONLY when BTC was NOT over-extended. Single 2D cells can mask BTC macro regime confounds.
+
+### Pre-committed revert criteria
+
+At next 100-trade LONG checkpoint:
+- If 1.0-2.0 × 25-30 LONG cell shows ≥55% WR on N≥10 in fresh data → revert to "1.0-2.0:18-25"
+- If <10 trades in the new sub-zone fire → extend test, no decision
+
+### Files changed
+- `trading_config.json` — single field change

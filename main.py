@@ -5027,6 +5027,74 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
+            # Pair EMA13-EMA50 Gap (signed — negative for SHORT context, positive for LONG context)
+            np_pgap_ranges = [
+                ("< -1.00%", -999, -1.00), ("-1.00 to -0.50%", -1.00, -0.50),
+                ("-0.50 to -0.20%", -0.50, -0.20), ("-0.20 to -0.10%", -0.20, -0.10),
+                ("-0.10 to 0%", -0.10, 0.00), ("0 to +0.10%", 0.00, 0.10),
+                ("+0.10 to +0.20%", 0.10, 0.20), ("+0.20 to +0.50%", 0.20, 0.50),
+                ("+0.50 to +1.00%", 0.50, 1.00), ("> +1.00%", 1.00, 999),
+            ]
+            np_pgap_trades = [o for o in np_trades if o.entry_pair_ema20_ema50_gap_pct is not None]
+            all_pgap_trades = [o for o in orders if o.entry_pair_ema20_ema50_gap_pct is not None]
+            for rng, lo, hi in np_pgap_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_pgap_trades if lo <= o.entry_pair_ema20_ema50_gap_pct < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_pgap_trades if lo <= o.entry_pair_ema20_ema50_gap_pct < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "Pair EMA13-EMA50 Gap", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # BTC EMA13-EMA50 Gap (signed)
+            np_btcgap_ranges = [
+                ("< -0.20%", -999, -0.20), ("-0.20 to -0.10%", -0.20, -0.10),
+                ("-0.10 to -0.05%", -0.10, -0.05), ("-0.05 to 0%", -0.05, 0.00),
+                ("0 to +0.05%", 0.00, 0.05), ("+0.05 to +0.10%", 0.05, 0.10),
+                ("+0.10 to +0.20%", 0.10, 0.20), ("> +0.20%", 0.20, 999),
+            ]
+            np_btcgap_trades = [o for o in np_trades if o.entry_btc_trend_gap_pct is not None]
+            all_btcgap_trades = [o for o in orders if o.entry_btc_trend_gap_pct is not None]
+            for rng, lo, hi in np_btcgap_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_btcgap_trades if lo <= o.entry_btc_trend_gap_pct < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_btcgap_trades if lo <= o.entry_btc_trend_gap_pct < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "BTC EMA13-EMA50 Gap", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # ATR(14) % — pair volatility regime at entry
+            np_atr_ranges = [
+                ("<0.20%", 0.00, 0.20), ("0.20-0.25%", 0.20, 0.25), ("0.25-0.30%", 0.25, 0.30),
+                ("0.30-0.40%", 0.30, 0.40), ("0.40-0.50%", 0.40, 0.50), ("0.50-0.65%", 0.50, 0.65),
+                ("0.65-0.85%", 0.65, 0.85), ("0.85-1.00%", 0.85, 1.00), ("≥1.00%", 1.00, 999),
+            ]
+            np_atr_trades = [o for o in np_trades if o.entry_atr_pct is not None]
+            all_atr_trades = [o for o in orders if o.entry_atr_pct is not None]
+            for rng, lo, hi in np_atr_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_atr_trades if lo <= o.entry_atr_pct < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_atr_trades if lo <= o.entry_atr_pct < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "ATR%", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # Pair 24h Volume USD — liquidity tier at entry
+            np_pvol_ranges = [
+                ("<$50M", 0, 50_000_000), ("$50-80M", 50_000_000, 80_000_000),
+                ("$80-100M", 80_000_000, 100_000_000), ("$100-150M", 100_000_000, 150_000_000),
+                ("$150-250M", 150_000_000, 250_000_000), ("$250-500M", 250_000_000, 500_000_000),
+                ("$500M-1B", 500_000_000, 1_000_000_000), (">$1B", 1_000_000_000, 9.9e18),
+            ]
+            np_pvol_trades = [o for o in np_trades if o.entry_pair_volume_24h_usd is not None]
+            all_pvol_trades = [o for o in orders if o.entry_pair_volume_24h_usd is not None]
+            for rng, lo, hi in np_pvol_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_pvol_trades if lo <= o.entry_pair_volume_24h_usd < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_pvol_trades if lo <= o.entry_pair_volume_24h_usd < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "Pair 24h Volume", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
             # Range Position at Entry — same fine buckets as Performance by Range Position
             np_rp_ranges = [
                 ("0-2%", 0, 2), ("2-5%", 2, 5), ("5-10%", 5, 10),

@@ -1,5 +1,97 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM) — Watchlist: BCHUSDT + TRUMPUSDT + BTC slope signed-bucket finding
+
+### Trigger
+Cross-batch SHORT analysis (138 deduped trades, April 28 → May 12) on BTC EMA20
+signed slope revealed a clean breakpoint pattern AND per-pair concentration:
+
+| Slope (signed) | N | WR | Total $ | Pattern |
+|---|---|---|---|---|
+| ≤ -0.20% | 3 | 0% | -$72 | thin N |
+| -0.20 to -0.14% | 8 | 88% | -$38 | mixed/winners |
+| **-0.14 to -0.12%** | **7** | **57%** | **-$154** | borderline |
+| **-0.12 to -0.10%** | **24** | **38%** | **-$195** | **KILLER ZONE** |
+| **-0.10 to -0.08%** | **19** | **79%** | **+$465** | **SWEET SPOT** |
+| -0.08 to -0.06% | 17 | 76% | +$93 | sweet spot |
+
+**41pp WR jump at exactly -0.10%.** The breakpoint is clean.
+
+### Why this isn't shipping as a dimensional filter
+
+Per-pair concentration check on -0.14 to -0.10% loser zone (N=31, -$350):
+- TRUMPUSDT: 2 trades, 0% WR, -$141 (40% of loss)
+- BCHUSDT: 3 trades, 0% WR, -$115 (33% of loss)
+- AAVEUSDT: 3 trades, 33% WR, -$58 (17% of loss)
+
+**Top 2 active pairs (TRUMP + BCH) drive 73% of the loss.** Per locked
+methodology: per-pair concentration → blacklist, not dimensional filter.
+
+### Watchlist entries
+
+**BCHUSDT — close to blacklist gate, locked promotion criteria:**
+
+```
+Full cross-batch: 6 SHORTs, 33% WR, -$110
+  At slope < -0.10%: 4 trades, 0% WR, -$159 ← striking
+  At slope -0.10 to -0.06%: 2 trades, 100% WR, +$49
+```
+
+Strict gate (≥6 trades + WR ≤25%) — currently 33% WR, just 8pp above bar.
+
+Pre-committed promotion criteria:
+- If 1 more SHORT loss → N=7, WR drops to ~28.6% → clears gate, ship blacklist immediately
+- If next SHORT is a winner → N=7, WR rises to ~43%, drop from watchlist (was BTC-slope-zone artifact)
+- If BCH doesn't trade next batch → status quo
+
+**TRUMPUSDT — direction-specific failure pattern:**
+
+```
+Full cross-batch: 15 trades, 33% WR, -$111
+  LONG: 11 trades, 27% WR, -$78
+  SHORT: 4 trades, 50% WR, -$33
+    SHORTs at slope < -0.10%: 2 trades, 0% WR, -$141
+    SHORTs at slope > -0.10%: 2 trades, 100% WR, +$108 (incl. May 12 +$94)
+```
+
+Pre-committed promotion criteria:
+- If 1 more TRUMP LONG loss → LONG N=12 at ~25% WR → clears LONG-specific gate, ship full blacklist
+- If 1 more TRUMP SHORT loss at slope < -0.10% → SHORT slope-conditional pattern locked
+  (mechanism doesn't exist yet — would need code work for "blacklist X SHORT only when slope < Y")
+- If TRUMP fires and wins on either side → drop from watchlist
+
+### The BTC signed slope finding — documented but not actioned
+
+The slope < -0.10% pattern is real and consistent across batches, but per-pair
+concentrated. Documented for future reference:
+
+**Pattern signature for future filter design** (if mechanism ever justifies it):
+- SHORTs at BTC signed slope < -0.10% AND specific high-concentration pairs (BCH, TRUMP,
+  AAVE) consistently fail
+- Structural argument: these pairs don't follow BTC down hard enough — they decouple
+  in deep bear, so SHORT bets assuming BTC-correlated decline don't pay
+- The right mechanism is **pair-conditional**, not dimensional: "block BCH/TRUMP SHORTs
+  when BTC slope < -0.10%"
+- Pair-conditional filter doesn't currently exist in bot architecture
+- Until that exists, per-pair blacklist (when gate clears) is the only mechanism
+
+### Methodology notes that survive
+
+1. **Use SIGNED slope for direction-specific analysis.** The dashboard's current
+   absolute-value bucketing collapses positive and negative slopes into one bucket,
+   which works for "trend strength intuition" but loses directional discrimination.
+   For SHORT analysis: signed bucketing is the right framing.
+   *(Dashboard update to add signed bucketing was deferred — user can request later.)*
+
+2. **Fine-bucket within the cluster.** The original "< -0.10%" bucket (lumping all
+   deep negatives) hid the real structure. The actual cluster is -0.12 to -0.10%
+   (24 trades, 38% WR), with deeper buckets having thin N. Always sub-bucket within
+   apparent loser zones.
+
+3. **Per-pair check BEFORE accepting a dimensional pattern.** The "< -0.10% slope
+   loses $460" pattern was 78% concentrated in 2 pairs (BCH, TRUMP). Per-pair check
+   is the mandatory gate before any dimensional-filter ship decision.
+
 ## May 12, 2026 UTC-3 (LATE PM) — STRATEGIC IDEA: Decouple WR from $/trade via lower TP + multiplier compensation
 
 ### Status: NOT shipped — documented for future analysis batch

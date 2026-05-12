@@ -7794,3 +7794,80 @@ At next 100-trade LONG checkpoint:
 
 ### Files changed
 - `trading_config.json` — single field append
+
+## May 11, 2026 UTC-3 — Cross-batch CSV dedup methodology (locked)
+
+### The problem this entry exists to prevent
+
+When pooling closed trades across multiple report snapshots for cross-batch analysis (e.g., to build a 200-trade pool from 7 archived files plus the latest live CSV), naive deduplication produces silent data loss. This entry documents the correct approach so future analyses don't re-discover the same bug.
+
+### The bug I made earlier today
+
+First cross-batch pool attempt used `order.id` as the dedup key:
+```python
+seen = set()
+for path in csv_files:
+    for row in csv.DictReader(open(path)):
+        if row['id'] in seen: continue   # WRONG
+        seen.add(row['id'])
+        ...
+```
+
+Result: returned 72 trades when the true pool was 226. **70% of the trades were silently dropped.**
+
+### Why ID dedup is broken
+
+The `id` column is a database autoincrement that **resets to 1 on every paper-balance reset**. So Trade #20 from the May 4 batch and Trade #20 from the May 11 batch have the same `id` but are DIFFERENT trades. Dedup-by-ID merges them and drops one.
+
+This is invisible at first glance because each file looks internally consistent — you only notice when you compare aggregate counts against per-file row counts and see the missing ~70%.
+
+### The correct dedup key
+
+```python
+key = (row['opened_at'], row['pair'], row['direction'])
+```
+
+**Why this works:**
+- `opened_at` is microsecond-precision UTC timestamp set at trade open
+- A single trade has a unique `(timestamp, pair, direction)` tuple — the bot opens trades sequentially in the monitor loop
+- The tuple is **stable across paper-balance resets** (resets don't change historical `opened_at` values)
+- Microsecond collision on the same pair+direction is effectively impossible
+
+### Locked methodology
+
+For ANY cross-batch analysis going forward:
+
+1. **Dedup key MUST be `(opened_at, pair, direction)`** — never use `id`
+2. **Filter `status == 'CLOSED'`** — open trades have no exit metrics yet
+3. **Filter `opened_at >= start_date`** — skip pre-pool trades (e.g., pre-May-4 era)
+4. **For cross-batch $ comparison**: use **Avg P&L %** only (leverage-invariant per Core Operating Principles). Raw $ values mix different leverages/configs and are NOT directly comparable.
+5. **Cell-level decisions** require BOTH Total $ AND Avg P&L % within a same-config sub-pool, NOT across the full cross-batch pool.
+
+### The script
+
+`scripts/build_unified_pool.py` implements this methodology. Usage:
+
+```bash
+python3 scripts/build_unified_pool.py                              # default: May 4 onwards
+python3 scripts/build_unified_pool.py --from-date 2026-05-09       # custom start
+python3 scripts/build_unified_pool.py --output /tmp/pool.csv       # custom output
+python3 scripts/build_unified_pool.py --quiet                      # no stdout
+```
+
+Inputs (auto-discovered):
+- All `reports/orders_*.csv` (archived snapshots)
+- Most recent `~/Downloads/scalpars_orders_paper_*.csv` (live CSV)
+
+Output: `reports/dedupe_pool.csv` (chronologically sorted, deduped, status=CLOSED only).
+
+Prints summary: per-file new trades added, per-date breakdown, total N per direction.
+
+### Why this is in CLAUDE.md
+
+Three reasons:
+
+1. **The bug is silent** — future-Claude (or anyone running quick cross-batch analysis) will hit it eventually if not warned. Saving the lesson prevents 30+ minutes of debugging "why does my pool count look wrong?"
+
+2. **The fix is non-obvious** — `(opened_at, pair, direction)` isn't an intuitive dedup key. Without this entry, future-Claude might invent some other broken scheme (e.g., dedup by pair+entry_price, which has its own collision risks).
+
+3. **The methodology compounds across analyses** — every cross-tab, every multi-batch finding, every counterfactual analysis we do depends on a clean deduped pool. Get the pool wrong, everything downstream is wrong.

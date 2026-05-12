@@ -5567,6 +5567,7 @@ def _compute_trailing_confirmation_performance(orders):
         rec = {
             'first_pullback_pct': first_pullback,
             'close_pct': close_pct,
+            'peak_pct': o.peak_pnl if o.peak_pnl is not None else None,  # May 12: peak during trade
             'delta_pct': delta_pct,
             'dollar_delta': dollar_delta,
             'pnl': o.pnl or 0.0,
@@ -5612,11 +5613,18 @@ def _compute_trailing_confirmation_performance(orders):
         avg_5m, n_5m = _avg_skip_none(rs, 'pnl_at_5min')
         avg_15m, n_15m = _avg_skip_none(rs, 'pnl_at_15min')
         avg_30m, n_30m = _avg_skip_none(rs, 'pnl_at_30min')
+        # May 12 LATE PM: avg peak during trade (reference for pullback decisions)
+        avg_peak_pct, _ = _avg_skip_none(rs, 'peak_pct')
+        avg_close_pct = round(sum(r['close_pct'] for r in rs) / n, 4)
+        # Pullback used = peak - close (positive number = how much retraced before exit)
+        avg_pullback_used = round(avg_peak_pct - avg_close_pct, 4) if avg_peak_pct is not None else None
         return {
             'n': n,
             'n_with_resets': n_with_resets,
+            'avg_peak_pct': avg_peak_pct,
             'avg_first_pullback_pct': round(sum(r['first_pullback_pct'] for r in rs) / n, 4),
-            'avg_close_pct': round(sum(r['close_pct'] for r in rs) / n, 4),
+            'avg_close_pct': avg_close_pct,
+            'avg_pullback_used': avg_pullback_used,
             'avg_delta_pct': round(sum(r['delta_pct'] for r in rs) / n, 4),
             'total_dollar_delta': round(sum(r['dollar_delta'] for r in rs), 2),
             'avg_pnl_at_1min': avg_1m, 'n_at_1min': n_1m,
@@ -5699,6 +5707,7 @@ def _compute_post_exit_snapshots_by_reason(orders):
             continue
         rec = {
             'close_pct': o.pnl_percentage if o.pnl_percentage is not None else 0.0,
+            'peak_pct': o.peak_pnl if o.peak_pnl is not None else None,  # May 12: peak during trade
             'pnl_at_1min': getattr(o, 'post_exit_pnl_at_1min', None),
             'pnl_at_2min': getattr(o, 'post_exit_pnl_at_2min', None),
             'pnl_at_5min': getattr(o, 'post_exit_pnl_at_5min', None),
@@ -5742,6 +5751,8 @@ def _compute_post_exit_snapshots_by_reason(orders):
                 continue
             n = len(rs)
             avg_close = round(sum(r['close_pct'] for r in rs) / n, 4)
+            # May 12 LATE PM: peak during trade (reference for context)
+            avg_peak, _ = _avg_skip_none(rs, 'peak_pct')
             avg_1m, n_1m = _avg_skip_none(rs, 'pnl_at_1min')
             avg_2m, n_2m = _avg_skip_none(rs, 'pnl_at_2min')
             avg_5m, n_5m = _avg_skip_none(rs, 'pnl_at_5min')
@@ -5752,6 +5763,7 @@ def _compute_post_exit_snapshots_by_reason(orders):
                 'close_reason': reason_base,
                 'direction': d,
                 'n': n,
+                'avg_peak_pct': avg_peak,
                 'avg_close_pct': avg_close,
                 'avg_pnl_at_1min': avg_1m, 'n_at_1min': n_1m,
                 'avg_pnl_at_2min': avg_2m, 'n_at_2min': n_2m,

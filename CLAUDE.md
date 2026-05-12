@@ -7871,3 +7871,84 @@ Three reasons:
 2. **The fix is non-obvious** — `(opened_at, pair, direction)` isn't an intuitive dedup key. Without this entry, future-Claude might invent some other broken scheme (e.g., dedup by pair+entry_price, which has its own collision risks).
 
 3. **The methodology compounds across analyses** — every cross-tab, every multi-batch finding, every counterfactual analysis we do depends on a clean deduped pool. Get the pool wrong, everything downstream is wrong.
+
+## May 11, 2026 UTC-3 — Block SHORT BTC RSI <30 × BTC ADX > 30 (cross-batch loss zone)
+
+### Change
+- `btc_rsi_adx_filter_short`: `"30-35:30,35-40:20,45-50:25"` → **`"30-35:30,35-40:20,45-50:25,0-30:0-30"`**
+
+New rule: for BTC RSI in [0, 30), require BTC ADX in [0, 30]. Blocks SHORTs when BTC RSI <30 AND BTC ADX > 30.
+
+### Evidence
+
+**Cross-batch pool + tonight's fresh trades:**
+
+| Cell: BTC RSI <30 × BTC ADX 30-35 SHORT | N | WR | Total $ |
+|---|---|---|---|
+| Cross-batch (May 4 → 19:16 UTC-3) | 5 | 20% | -$49.06 |
+| Tonight's fresh additions (TAOUSDT + BTCUSDT) | 2 | 0% | -$74.26 |
+| **Combined** | **7** | **14%** | **-$123.32** |
+
+7 trades across 5 different batches: 1 win (PENGUUSDT +$0.74 on May 4 — flicker), 6 losses. WR 14% / -$123.32 cumulative.
+
+### Methodology: the conditional pattern
+
+BTC RSI <30 SHORT is the **strongest SHORT premium zone in the dataset** — but it's conditional on BTC ADX magnitude:
+
+| BTC RSI <30 × BTC ADX | N | WR | Total $ | Verdict |
+|---|---|---|---|---|
+| 20-25 | 7 | 80% | +$297 | ★ S-P1 PREMIUM (kept, multiplier active) |
+| 25-30 | 7 | 60% | +$54 | flat-winning (kept) |
+| **30-35** | **7** | **14%** | **-$123** | ⚠ structural loser (NOW BLOCKED) |
+
+The pattern: shorts work when BTC is oversold (<30 RSI) **with developing trend (ADX 20-30)**. Same RSI in **mature trend (ADX 30+)** means the bearish move has already played out → no continuation room → losses.
+
+### Gate threshold note
+
+Pre-committed gate was N≥8 / WR ≤35%. Shipped at **N=7 / WR 14%**:
+- Direction-consistent across 5 batches
+- Tonight's 2 fresh trades both confirmed the pattern
+- Avg loss magnitude is large (-$17.6/trade) — the cell has high signal even at lower N
+- User-authorized override of the strict N=8 threshold
+
+### What this rule blocks
+
+| Trade scenario | Old behavior | New behavior |
+|---|---|---|
+| BTC RSI 26.9, BTC ADX 33.2 (BTCUSDT-style) | ✅ allowed | ⛔ **blocked** |
+| BTC RSI 23, BTC ADX 31 (BCHUSDT-style) | ✅ allowed | ⛔ **blocked** |
+| BTC RSI 27, BTC ADX 25 | ✅ allowed | ✅ allowed (S-P1-adjacent) |
+| BTC RSI 32, BTC ADX 28 | ⛔ blocked by `30-35:30` | ⛔ blocked (unchanged) |
+
+### Current-batch impact
+
+Of tonight's 8 SHORTs, this rule would have blocked:
+- TAOUSDT (-$46.15): blocked → save $46
+- BTCUSDT (-$28.11): blocked → save $28
+
+**Saved: $74.26** in this batch with NO winners cut. Batch P&L would have been +$257 instead of +$183.
+
+What it does NOT save: CRVUSDT (-$110, biggest single loss) — different cell (BTC ADX 19.7 in 18-20 bucket). Separate filter candidate (small-cap + deep-negative pair gap + high GlobalVol).
+
+### Pre-committed revert criteria
+
+At next 100-trade SHORT checkpoint:
+- If BTC RSI <30 × BTC ADX 30-35 SHORT (in observation logs) shows ≥45% WR on N≥8 → revert (remove `0-30:0-30`)
+- If observed BTC RSI <30 × BTC ADX 25-30 (kept zone) starts losing (≤40% WR on N≥10) → tighten further to `0-30:0-25` (also block 25-30 SHORT)
+
+### Active SHORT filter chain after this ship
+
+```
+btc_adx_min_short: 18         (block BTC ADX <18)
+btc_adx_max_short: 40         (block BTC ADX >40)
+btc_rsi_adx_filter_short:
+  "30-35:30"   → RSI 30-35: require ADX ≥30
+  "35-40:20"   → RSI 35-40: require ADX ≥20
+  "45-50:25"   → RSI 45-50: require ADX ≥25
+  "0-30:0-30"  → RSI <30: require ADX ≤30 (blocks ADX > 30) ★ NEW
+adx_delta_btc_adx_filter_short: ""  (inactive)
+global_volume_max_short: 1.10 (with BTC capitulation override: RSI<30 AND slope<0)
+```
+
+### Files changed
+- `trading_config.json` — single field append

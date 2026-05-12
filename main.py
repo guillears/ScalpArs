@@ -4220,6 +4220,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 breadths = [o.entry_bear_pct for o in group if o.entry_bear_pct is not None]
 
             peaks = [o.peak_pnl or 0 for o in group]
+            troughs = [o.trough_pnl for o in group if o.trough_pnl is not None]
             pnls = [o.pnl_percentage or 0 for o in group]
             total_pnl_usd = sum(o.pnl or 0 for o in group)
 
@@ -4303,6 +4304,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_global_vol_ratio": round(sum(global_vol_ratios) / len(global_vol_ratios), 3) if global_vol_ratios else None,
                 "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
+                "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
+                "worst_trough_pct": round(min(troughs), 4) if troughs else None,
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
                 "avg_duration": avg_dur_str,
@@ -4433,6 +4436,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 breadths = [o.entry_bear_pct for o in group if o.entry_bear_pct is not None]
 
             peaks = [o.peak_pnl or 0 for o in group]
+            troughs = [o.trough_pnl for o in group if o.trough_pnl is not None]
             pnls = [o.pnl_percentage or 0 for o in group]
             total_pnl_usd = sum(o.pnl or 0 for o in group)
 
@@ -4510,6 +4514,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_global_vol_ratio": round(sum(global_vol_ratios) / len(global_vol_ratios), 3) if global_vol_ratios else None,
                 "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
+                "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
+                "worst_trough_pct": round(min(troughs), 4) if troughs else None,
                 "avg_pnl_pct": round(sum(pnls) / count, 4),
                 "total_pnl_usd": round(total_pnl_usd, 2),
                 "avg_duration": avg_dur_str,

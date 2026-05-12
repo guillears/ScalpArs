@@ -1,5 +1,126 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM) — Watchlist: SL Wide tightening -0.90% → -0.85%
+
+### Status: NOT shipped — watchlist for next batch validation
+
+Counterfactual cross-batch analysis (152 LONG + 81 SHORT deduped pool) shows
+**both directions can safely tighten SL from -0.90% to -0.85% with zero winners
+killed and meaningful loser savings.**
+
+### Methodology
+
+For each candidate new SL level, evaluated against the deduped cross-batch pool:
+
+1. **Hard kill check (winners)**: count trades with `pnl > 0` whose
+   `trough_pnl ≤ candidate_sl`. These would be cut by the tighter stop before
+   recovering to a profit. Constraint: must be **zero** for a "safe" verdict.
+2. **Loser savings**: for each trade with `pnl_percentage ≤ candidate_sl`, the
+   tighter stop saves `(candidate_sl − pnl_percentage) × notional / 100`
+   in $. Sum across the pool.
+3. **Net Δ$**: winner damage (negative, from cutting their profits + adding
+   to their capped loss) plus loser savings (positive).
+
+### Cross-batch evidence at proposed -0.85% level
+
+| Side | N (winners) | Winners killed | Loser savings | Net Δ$ |
+|---|---|---|---|---|
+| LONG | 75 | **0** | +$88 | **+$88** |
+| SHORT | 44 | **0** | +$47 | **+$47** |
+| **Combined** | 119 | **0** | **+$135** | **+$135** |
+
+Deepest winner troughs (the constraint on tightening):
+- LONG: TONUSDT WorstTrough=-0.806% (Close=+0.316%) — minimum LONG safe SL is -0.81%
+- SHORT: LTCUSDT WorstTrough=-0.832% (Close=+0.433%) — minimum SHORT safe SL is -0.83%
+
+**-0.85% gives ~5pp margin to LONG, ~2pp margin to SHORT.**
+
+### Asymmetric pattern past -0.85% (5th instance of LONG/SHORT divergence)
+
+| Candidate SL | LONG Net Δ$ | SHORT Net Δ$ |
+|---|---|---|
+| -0.85% | +$88 ★ | +$47 ★ |
+| -0.80% | +$135 ⚠ (kills 1 LONG winner) | **-$143 ✗** (kills 2 SHORT winners) |
+| -0.75% | +$86 ⚠ | -$106 ✗ |
+
+LONG side absorbs winner kills better — small-magnitude winners get cut but
+losers save more. SHORT side has concentrated big winners (LTC +$94, TAO +$94)
+with deep troughs; killing them destroys edge while the smaller loser pool
+can't compensate.
+
+This is the 5th asymmetric finding documented in CLAUDE.md (consistent with
+slope min, RP filter, RSI cross-filter, EMA gap max patterns). LONG and
+SHORT continue to behave differently in this strategy class on this timeframe.
+
+### Pre-committed validation criteria (LOCKED before any ship)
+
+Before shipping `signal_sl_pct: -0.90 → -0.85` (or per-confidence sl_pct):
+
+1. **Slippage check**: examine `exit_slippage_pct` distribution on TAKER exits
+   in the cross-batch pool. If avg TAKER slippage is materially negative
+   (e.g., > 0.05% adverse), the real-world fill at SL=-0.85% may actually
+   land at -0.90% or worse. This eats the entire safety margin.
+   Decision: if p95 |slippage| < 0.03%, safe to ship. If p95 > 0.05%, hold.
+2. **N≥80 winners per direction** in the pool. Current state: LONG=75
+   (just short), SHORT=44 (well short). **Pool needs more SHORT winners
+   before shipping a SHORT-side change.** LONG-only ship may be defensible
+   at current N.
+3. **Direction-specific consideration**: shipping symmetric -0.85% for both
+   is the locked recommendation. Asymmetric (LONG -0.80% / SHORT -0.85%)
+   would extract more LONG savings but compounds shipping complexity and
+   adds attribution noise. Locked: ship symmetric or not at all.
+4. **No simultaneous filter change in same batch**. SL tightening must
+   ship alone — Phase 1 validation needs clean attribution.
+
+### Expected impact on next-batch trades
+
+With -0.85% SL:
+- Trades whose actual close hits exactly -0.90% (full SL today) will
+  instead close at -0.85% — saves ~0.05% × notional per such trade
+- No change to trades that exited via trailing/EMA13/other mechanisms
+  before reaching the SL
+- TONUSDT-style trades (LONG, peaked low, recovered to small positive)
+  may now be cut before recovery — **first SL-tightening loss-of-edge
+  case to watch**
+
+### Decision pre-commit at the next-batch checkpoint
+
+If next ≥40-trade pool's winners' WorstTrough p95 stays comfortably above
+-0.85%, ship as default. If a new winner is observed at WorstTrough
+≤-0.82% AND recovered to positive close → revert to -0.90% and
+investigate that pair / setup.
+
+### What this does NOT include yet
+
+- Direction-asymmetric SL (LONG -0.80% / SHORT -0.85%) — held as a Phase 2
+  consideration. Requires per-confidence-level config and shipping two
+  changes simultaneously, which violates the no-compound-ship rule.
+- Per-confidence-level SL (VERY_STRONG vs STRONG_BUY) — also held.
+- Per-pair SL based on ATR% — separate analysis. SL at -0.85% × ATR-low
+  pair vs ATR-high pair has different "real" risk profiles. Not modeled
+  in this analysis.
+
+### Files that would need changing (when shipped)
+
+- `trading_config.json`: `confidence_levels.{VERY_STRONG,STRONG_BUY}.sl_pct`
+  from -0.90 to -0.85, AND `confidence_levels.*.signal_sl_pct` if used
+- Possibly `thresholds.signal_sl_pct` (top-level fallback)
+- No code change needed — values are already config-driven
+
+### Why this entry exists in CLAUDE.md
+
+Locks the methodology, the pre-committed gates (slippage check, N requirement,
+symmetric-only rule, no-compound-ship rule), and the asymmetric pattern
+recognition. When the next batch arrives:
+
+1. Re-run the analysis on fresh pool
+2. Apply gates mechanically
+3. Ship -0.85% if all 4 gates pass — no re-litigation
+
+The "safe sweet spot at -0.85%" finding is robust on this pool, but the
+slippage check and N≥80 SHORT requirement are real prerequisites. Don't
+skip them when the temptation to ship arrives.
+
 ## May 12, 2026 UTC-3 (LATE PM) — SHORT Range Position min filter shipped (RP<2% block)
 
 ### Trigger

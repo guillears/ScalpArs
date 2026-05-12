@@ -3195,6 +3195,19 @@
                                 <input type="number" id="config-min-adx-delta-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.10">
                             </div>
                         </div>
+                        <p class="text-xs text-gray-500 mt-3 mb-1">Range Position filter (price position in 20-candle high-low range, 0%=bottom, 100%=top). May 12: SHORT @ RP &lt;2% = cross-batch pile-on (N=22, 32% WR, -$452). LONG max 100 = disabled (90-95% hole on watchlist). 0/100 = disabled.</p>
+                        <div class="flex items-center gap-4 mt-1 flex-wrap">
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">SHORT min RP:</span>
+                                <input type="number" id="config-range-position-min-short" step="0.1" min="0" max="50" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="2.0">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">LONG max RP:</span>
+                                <input type="number" id="config-range-position-max-long" step="0.1" min="50" max="100" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="100.0">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="mb-3 px-4">
                         <span class="text-sm text-gray-300">BTC Independent Filters</span>
@@ -10600,6 +10613,11 @@
                 document.getElementById('config-momentum-ema20-slope-filter-short').checked = config.thresholds.momentum_ema20_slope_filter_short !== undefined ? config.thresholds.momentum_ema20_slope_filter_short : true;
                 document.getElementById('config-ema20-slope-min-long').value = config.thresholds.momentum_ema20_slope_min_long !== undefined ? config.thresholds.momentum_ema20_slope_min_long : 0;
                 document.getElementById('config-ema20-slope-min-short').value = config.thresholds.momentum_ema20_slope_min_short !== undefined ? config.thresholds.momentum_ema20_slope_min_short : 0;
+                // May 12: Range Position filter (SHORT min, LONG max)
+                const _rpMinShort = document.getElementById('config-range-position-min-short');
+                if (_rpMinShort) _rpMinShort.value = config.thresholds.range_position_min_short !== undefined ? config.thresholds.range_position_min_short : 0;
+                const _rpMaxLong = document.getElementById('config-range-position-max-long');
+                if (_rpMaxLong) _rpMaxLong.value = config.thresholds.range_position_max_long !== undefined ? config.thresholds.range_position_max_long : 100;
                 // May 10: ADX delta min filter (cross-sample validated, +$447 swing on May 10 batch)
                 const _adxDeltaLong = document.getElementById('config-min-adx-delta-long');
                 const _adxDeltaShort = document.getElementById('config-min-adx-delta-short');
@@ -11302,6 +11320,8 @@
                     momentum_ema20_slope_filter_short: document.getElementById('config-momentum-ema20-slope-filter-short').checked,
                     momentum_ema20_slope_min_long: safeFloat(document.getElementById('config-ema20-slope-min-long').value),
                     momentum_ema20_slope_min_short: safeFloat(document.getElementById('config-ema20-slope-min-short').value),
+                    range_position_min_short: safeFloat((document.getElementById('config-range-position-min-short')||{}).value || 0),
+                    range_position_max_long: safeFloat((document.getElementById('config-range-position-max-long')||{}).value || 100),
                     min_adx_delta_long: safeFloat((document.getElementById('config-min-adx-delta-long') || {}).value || 0),
                     min_adx_delta_short: safeFloat((document.getElementById('config-min-adx-delta-short') || {}).value || 0),
                     macro_trend_filter_enabled: document.getElementById('config-macro-trend-filter-enabled').checked,

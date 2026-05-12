@@ -8078,7 +8078,7 @@ At next 100-trade SHORT checkpoint:
 
 1. **PAIR_25-50_30-33 multiplier verdict** — currently at 2.0× with N=1 and -$96 first trade. Locked revert criterion: WR ≤40% on N≥5 → revert to 1.0×. The 2.0× setting is unproven and just took -$96 on first attempt.
 
-2. **Pair EMA13-EMA50 Gap < -0.50% SHORT** — tonight's 4 trades in this zone: 1W (TONUSDT) / 3L (CRV, TAO, SUI). 25% WR / -$232. Could be candidate for future `pair_ema_gap_max_short` filter if pattern persists.
+2. ~~**Pair EMA13-EMA50 Gap < -0.50% SHORT**~~ — **CORRECTION (May 12, 2026 UTC-3 post-batch review):** Tonight's 4-trade snapshot (25% WR / -$232) was REGIME-SPECIFIC, not structural. Cross-batch May 7+ pool (when this field was populated) shows the cell is flat: **17 SHORTs / 71% WR / +$7 / +0.04% Avg P&L %**. Sub-bucket detail: `< -1.00%` = 5 / 80% / +$68 ★ winner zone; `-1.00 to -0.50%` = 12 / 67% / -$62 borderline. The 4 recent losses (CRV/TAO/SUI/TON earlier) are all in May 11 07:40 → May 12 02:35 window with shared BTC over-extension profile (BTC ADX ≥28, negative BTC slope). The true driver is **BTC-level over-extension**, NOT pair gap — and that failure mode is already captured by `0-30:0-30` SHORT rule + SUIUSDT-style watch. **Drop this from active watchlist** to prevent shipping a filter on a 4-trade coincidence.
 
 3. **STRETCH_0.25-0.30 multiplier** — tonight at 2.0×: 1W (LDO) / 1L (CRV). N=2 too thin, but CRVUSDT loss was doubled by this multiplier (-$110 vs -$55 base).
 
@@ -8089,3 +8089,11 @@ At next 100-trade SHORT checkpoint:
 To anchor the SUIUSDT-style pattern as a locked watchlist item before the bot reset destroys the per-trade context. At the next 100-trade SHORT checkpoint, future-Claude pulls fresh data and checks the BTC RSI 35-40 × BTC ADX 30+ cell against the locked gate. If it confirms losing, the candidate filter shapes (above) are pre-thought. If it doesn't, drop the watchlist item cleanly.
 
 Also documents the verification that the May 11 evening filter ships (`min_short: 20`, `0-30:0-30`) would have saved +$180 in this same batch — locking the methodological evidence that supports those ships.
+
+### Methodological lesson re-validated tonight
+
+The pair gap < -0.50% SHORT watchlist item I initially wrote was based on a 4-trade snapshot from tonight's batch (3/4 losers / -$232). Cross-batch validation showed the cell is actually flat (17 / 71% WR / +$7 across May 7-12). The 4-trade pattern was REGIME-SPECIFIC.
+
+**Locked rule (re-emphasized):** ALWAYS validate single-batch findings against the cross-batch deduped pool BEFORE locking them as watchlist items. The CLAUDE.md May 11 dedup methodology entry exists specifically to make this fast — `scripts/build_unified_pool.py` produces the validated pool in <1s. Any "strongest finding of the night" claim needs this cross-batch check before going into CLAUDE.md as a locked watch.
+
+Concretely: had I run the cross-batch query before writing the original watchlist entry, I would have seen the 17-trade pool was flat and skipped the watchlist item entirely. The 30 seconds of cross-batch validation prevents days of false-positive filter shipping. **This rule applies to ALL future single-batch pattern claims, not just pair gap.**

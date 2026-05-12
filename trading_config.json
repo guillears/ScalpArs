@@ -62,6 +62,8 @@
     "momentum_ema20_slope_filter_short": true,
     "momentum_ema20_slope_min_long": 0.0,
     "momentum_ema20_slope_min_short": 0.06,
+    "range_position_min_short": 2.0,
+    "range_position_max_long": 100.0,
     "min_adx_delta_long": 0.10,
     "min_adx_delta_short": 0.10,
     "momentum_ema20_slope_max_long": 0.40,

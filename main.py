@@ -3283,9 +3283,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
         # Performance by Entry Range Position (price position in 20-candle high-low range)
         range_pos_ranges = [
-            ("0-5%", 0, 5), ("5-10%", 5, 10), ("10-25%", 10, 25),
+            ("0-2%", 0, 2), ("2-5%", 2, 5), ("5-10%", 5, 10),
+            ("10-15%", 10, 15), ("15-25%", 15, 25),
             ("25-50%", 25, 50), ("50-75%", 50, 75),
-            ("75-90%", 75, 90), ("90-95%", 90, 95), ("95-100%", 95, 100.1),
+            ("75-85%", 75, 85), ("85-90%", 85, 90),
+            ("90-95%", 90, 95), ("95-98%", 95, 98), ("98-100%", 98, 100.1),
         ]
         range_pos_orders = [o for o in orders if o.entry_range_position is not None]
         for range_name, rp_min, rp_max in range_pos_ranges:
@@ -5022,6 +5024,24 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                         bucket = [o for o in dir_np if o.entry_bear_pct is not None and b_lo <= o.entry_bear_pct < b_hi]
                         all_in = len([o for o in dir_all if o.entry_bear_pct is not None and b_lo <= o.entry_bear_pct < b_hi])
                     row = _np_bucket_stats(bucket, "Breadth", b_label, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # Range Position at Entry — same fine buckets as Performance by Range Position
+            np_rp_ranges = [
+                ("0-2%", 0, 2), ("2-5%", 2, 5), ("5-10%", 5, 10),
+                ("10-15%", 10, 15), ("15-25%", 15, 25),
+                ("25-50%", 25, 50), ("50-75%", 50, 75),
+                ("75-85%", 75, 85), ("85-90%", 85, 90),
+                ("90-95%", 90, 95), ("95-98%", 95, 98), ("98-100%", 98, 100.1),
+            ]
+            np_rp_trades = [o for o in np_trades if o.entry_range_position is not None]
+            all_rp_trades = [o for o in orders if o.entry_range_position is not None]
+            for rng, lo, hi in np_rp_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_rp_trades if lo <= o.entry_range_position < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_rp_trades if lo <= o.entry_range_position < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "Range Position", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 

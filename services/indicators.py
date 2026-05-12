@@ -179,6 +179,8 @@ def get_signal(
     ema13_prev1: float = None,
     ema13_prev2: float = None,
     adx_prev1: float = None,
+    high_20: float = None,
+    low_20: float = None,
     block_recorder=None,
 ) -> Tuple[str, Optional[str]]:
     """
@@ -313,6 +315,12 @@ def get_signal(
     ema20_slope_short = getattr(th, 'momentum_ema20_slope_filter_short', True)
     ema20_slope_min_long = getattr(th, 'momentum_ema20_slope_min_long', 0.0)
     ema20_slope_min_short = getattr(th, 'momentum_ema20_slope_min_short', 0.0)
+    # May 12: Range Position filter — price position in 20-candle high-low range
+    rp_min_short = getattr(th, 'range_position_min_short', 0.0)
+    rp_max_long = getattr(th, 'range_position_max_long', 100.0)
+    range_position = None
+    if price is not None and high_20 is not None and low_20 is not None and high_20 != low_20:
+        range_position = (price - low_20) / (high_20 - low_20) * 100
     # May 10: ADX delta minimum filter (current ADX − ADX 1 candle ago).
     # Independent per direction; 0 = disabled.
     min_adx_delta_long = getattr(th, 'min_adx_delta_long', 0.0)
@@ -343,6 +351,9 @@ def get_signal(
             elif ema20_slope_min_long > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_long:
                 logger.debug(f"[MOMENTUM] LONG skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_long}%")
                 _record("PAIR_EMA20_SLOPE_MIN", "LONG")
+            elif rp_max_long < 100.0 and range_position is not None and range_position > rp_max_long:
+                logger.debug(f"[MOMENTUM] LONG skipped: Range Position {range_position:.2f}% > max {rp_max_long}% (chasing top of range)")
+                _record("PAIR_RANGE_POSITION_MAX", "LONG")
             elif min_adx_delta_long > 0 and adx_delta is not None and adx_delta < min_adx_delta_long:
                 logger.debug(f"[MOMENTUM] LONG skipped: ADX delta {adx_delta:.4f} < min {min_adx_delta_long}")
                 _record("PAIR_ADX_DELTA_MIN", "LONG")
@@ -410,6 +421,9 @@ def get_signal(
             elif ema20_slope_min_short > 0 and ema20_prev3 and ema20_prev3 != 0 and abs((ema20 - ema20_prev3) / ema20_prev3 * 100) < ema20_slope_min_short:
                 logger.debug(f"[MOMENTUM] SHORT skipped: EMA20 slope {abs((ema20 - ema20_prev3) / ema20_prev3 * 100):.4f}% < min {ema20_slope_min_short}%")
                 _record("PAIR_EMA20_SLOPE_MIN", "SHORT")
+            elif rp_min_short > 0 and range_position is not None and range_position < rp_min_short:
+                logger.debug(f"[MOMENTUM] SHORT skipped: Range Position {range_position:.2f}% < min {rp_min_short}% (pile-on at bottom of range)")
+                _record("PAIR_RANGE_POSITION_MIN", "SHORT")
             elif min_adx_delta_short > 0 and adx_delta is not None and adx_delta < min_adx_delta_short:
                 logger.debug(f"[MOMENTUM] SHORT skipped: ADX delta {adx_delta:.4f} < min {min_adx_delta_short}")
                 _record("PAIR_ADX_DELTA_MIN", "SHORT")

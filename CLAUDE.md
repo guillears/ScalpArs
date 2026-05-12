@@ -1,5 +1,112 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM) — SHORT Range Position min filter shipped (RP<2% block)
+
+### Trigger
+After per-pair blacklist scan, RP-fine-bucket analysis on dedup pool revealed
+**RP 0-2% is the single worst SHORT bucket in the entire dataset.**
+
+### Cross-batch evidence (deduped SHORT pool, April 28 → May 12, N=81)
+
+| RP bucket | N | WR | NP rate | Avg P&L % | Total $ |
+|---|---|---|---|---|---|
+| **0-2%** | **22** | **32%** | **23%** | **-0.42%** | **-$452.44** ← worst single bucket in pool |
+| 2-5% | 14 | 64% | 14% | +0.025% | +$76 |
+| 5-10% | 22 | 59% | 9% | +0.154% | +$265 |
+| 10-15% | 9 | 67% | 11% | +0.004% | +$184 |
+| 15-25% | 11 | 73% | 9% | +0.189% | +$126 |
+
+Clean monotonic breakpoint at RP 2%. Below = catastrophic pile-on (price at
+absolute bottom of recent range, no further to fall, mean-reverts). Above =
+fine across the board.
+
+The RP 0-2% pattern is **standalone bad across RSI and ADX sub-cells** — not
+combo-dependent. Confirmed via RP<5% × RSI cross-tab and RP<5% × ADX cross-tab
+(both show losing across nearly all sub-buckets, only RP<5% × ATR ≥0.50% shows
+positive at 80% WR but N=5 only).
+
+### Implementation
+
+**New code:** `services/indicators.py::get_signal` accepts `high_20`/`low_20`
+parameters and computes `range_position = (price − low_20) / (high_20 −
+low_20) × 100` inline. Mirrors the existing slope_min filter pattern. Gates
+the SHORT path with `_record("PAIR_RANGE_POSITION_MIN", "SHORT")` before
+the ADX_DELTA_MIN check.
+
+**Config**: new fields `range_position_min_short` (default 0.0 = disabled) and
+`range_position_max_long` (default 100.0 = disabled). Set in trading_config.json:
+- `range_position_min_short: 2.0` (active)
+- `range_position_max_long: 100.0` (LONG side inert, structure-only for future
+  activation if the 90-95% hole persists per watchlist below)
+
+**Filter Blocks counter**: new tags `PAIR_RANGE_POSITION_MIN` and
+`PAIR_RANGE_POSITION_MAX` automatically populate via existing
+`_record_filter_block()` infrastructure.
+
+### Expected impact
+
+Going forward, **~22 SHORT trades per ~80-trade batch will be blocked** (the
+historical rate of trades landing in RP 0-2%). Projected P&L improvement:
+~+$452 / 80 SHORTs = ~+$5.65 per total SHORT, or **+0.10pp on Avg P&L %** at
+the batch level. Preserves the entire RP 2%+ universe where the bot has real
+edge.
+
+### Pre-committed revert criteria
+
+If at next ≥30-trade SHORT batch the **immediately-adjacent zone (RP 2-5%)**
+shows ≤55% WR on N≥10 → the breakpoint may be drifting upward; investigate
+raising min to 5%.
+
+If RP 2-5% maintains ≥55% WR on N≥10 → cap at 2.0% confirmed, lock as default.
+
+Doesn't generate auto-revert data for the cut zone (RP <2% blocked) — that's
+intentional; the case to re-admit RP<2% trades would require a major regime
+shift.
+
+### LONG RP 90-95% — watchlist (NOT shipped)
+
+Same fine-bucket cross-batch on LONG side revealed a **non-monotonic hole at
+RP 90-95%**:
+
+| LONG RP bucket | N | WR | Avg % | Total $ |
+|---|---|---|---|---|
+| 85-90% | 32 | 53% | -0.17% | -$495 |
+| **90-95%** | **25** | **32%** | **-0.24%** | **-$594** ← hole |
+| 95-98% | 8 | 50% | -0.07% | +$46 |
+| 98-101% | 9 | 56% | -0.05% | +$17 |
+
+The hole is real but the structural argument is weaker than the SHORT case:
+- Pattern is **non-monotonic** (RP 85-90 weak, 90-95 BAD, 95-100 recovers).
+  Likely interpretation: 90-95% = price stalled just below recent high (fails to
+  break out), 95-100% = actual breakout (continues). Bot's signal can't
+  distinguish at entry — but the structural rationale is fuzzier than SHORT
+  pile-on at the absolute bottom.
+- Winners avg RP 82.2 vs Losers avg RP 83.4 — **RP is NOT a strong LONG
+  discriminator overall**, only in the specific 90-95 hole.
+- Could be regime-specific artifact rather than permanent edge.
+
+**Pre-committed promotion criterion (LONG RP 90-95% block)**: at next ≥30-trade
+LONG batch, if the 90-95% bucket shows ≤40% WR on N≥10 fresh trades → ship
+surgical block (set `range_position_max_long: 90.0` AND add code to handle the
+non-monotonic case by only blocking 90-95 range, NOT 95+; mechanism TBD). If
+the bucket shows ≥50% WR → drop from watchlist (regime artifact).
+
+Current `range_position_max_long: 100.0` is structurally in place but inert.
+Won't fire until cross-batch validation completes.
+
+### Asymmetric pattern (LONG vs SHORT)
+
+| Side | RP signal quality | Pattern | Action today |
+|---|---|---|---|
+| SHORT | Clean monotonic step at RP 2% | Pile-on (bottom of range) → mean reversion | ✅ Shipped |
+| LONG | Non-monotonic hole at RP 90-95% | Stalled-near-high → failed breakout | ⏸ Watchlist |
+
+This continues the pattern documented in CLAUDE.md May 12 AM (re: SHORT slope
+asymmetry): SHORTs reward / fail on extension-magnitude signals, LONGs are
+messier with conditional / non-monotonic patterns. Useful heuristic going
+forward: when evaluating a new filter dimension, expect the SHORT side to show
+cleaner signal first.
+
 ## May 12, 2026 UTC-3 (PM) — Pair-level multiplier cell removed + LINK/ICP/BNB blacklist + Range Position table refactor
 
 ### Trigger

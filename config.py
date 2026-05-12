@@ -91,6 +91,11 @@ class SignalThresholds(BaseModel):
     momentum_ema20_slope_filter_short: bool = True
     momentum_ema20_slope_min_long: float = 0.0
     momentum_ema20_slope_min_short: float = 0.0
+    # May 12: Range Position min filter (price position in 20-candle high-low range).
+    # SHORT @ RP <2% = catastrophic pile-on zone (cross-batch: N=22, 32% WR, -$452).
+    # 0 = disabled. Independent per direction.
+    range_position_min_short: float = 0.0
+    range_position_max_long: float = 100.0
     # May 10: minimum ADX delta (current ADX − ADX 1 candle ago).
     # Cross-sample validated 2-sample finding (May 4 224tr survivors + May 10 34tr):
     # ADXΔ <0.10 = ~17% WR / -0.42% Avg; ADXΔ ≥0.10 = ~62% WR / +0.03% Avg.

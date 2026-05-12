@@ -1181,6 +1181,8 @@ class TradingEngine:
                 ema13_prev1=indicators.get('ema13_prev1'),
                 ema13_prev2=indicators.get('ema13_prev2'),
                 adx_prev1=indicators.get('adx_prev1'),
+                high_20=indicators.get('high_20'),
+                low_20=indicators.get('low_20'),
             )
 
             if new_signal != original_direction:
@@ -4388,6 +4390,8 @@ class TradingEngine:
                     ema13_prev1=indicators.get('ema13_prev1'),
                     ema13_prev2=indicators.get('ema13_prev2'),
                     adx_prev1=indicators.get('adx_prev1'),
+                    high_20=indicators.get('high_20'),
+                    low_20=indicators.get('low_20'),
                     block_recorder=_signal_block_recorder,
                 )
 

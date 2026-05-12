@@ -1,5 +1,64 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM, last commit) — SKYAIUSDT blacklisted (override of strict gate)
+
+### Trigger
+After 2 SHORTs in tonight's batches (orders #8 and #12) both hit STOP_LOSS_WIDE
+back-to-back, the SKYAIUSDT pool reached 5 trades / 20% WR / -$161 cumulative
+across multi-direction (3L + 2S) with 4 of 5 being full SL hits.
+
+### Cross-batch evidence
+
+```
+SKYAIUSDT history (5 trades, deduped):
+  May 08  LONG   ATR=0.62%  pnl=+$51.72  TRAILING_STOP L3   ← only winner
+  May 10  LONG   ATR=0.94%  pnl=-$87.68  STOP_LOSS_WIDE L1
+  May 10  LONG   ATR=1.40%  pnl=-$16.25  MANUAL
+  May 12  SHORT  ATR=0.99%  pnl=-$53.45  STOP_LOSS_WIDE L1
+  May 12  SHORT  ATR=1.72%  pnl=-$55.48  STOP_LOSS_WIDE L1
+```
+
+### Override of locked CLAUDE.md May 3 gate
+
+Strictly the gate requires:
+- **≥6 trades + WR ≤25%** OR **≥4 trades + WR=0%**
+
+SKYAIUSDT at N=5 / 20% WR is **just below the trade-count bar AND just above
+the WR=0% bar**. Override justified because:
+
+1. **Multi-directional failure** (3L + 2S, both directions losing) — the
+   pattern is pair-structural, not direction-specific
+2. **4 of 5 trades were full SL hits** at -0.89% to -0.91% — bot has been
+   consistently unable to manage this pair
+3. **Most recent 4 trades are all losers** — last winner was May 8;
+   pair has degraded consistently since
+4. **High-ATR profile** (avg 1.13%, range 0.62-1.72%) places it in the
+   structurally-bad ATR zone for both directions per the May 12 ATR analysis
+
+### Override discipline note
+
+This is the 2nd discretionary blacklist override on May 12 (first was the
+HYPE/ASTER reasoning earlier). To prevent override pattern from eroding the
+discipline:
+
+- N=5 with WR=20% and multi-direction is the ceiling for discretionary override.
+  Future borderline pairs at N=5 with WR>20% should wait for N=6.
+- The bar exists for a reason — at N=5, one outlier trade can dominate. We're
+  accepting that risk because the failure pattern is consistent (4 of last 4
+  losers, both directions).
+
+### Pre-committed validation
+
+If SKYAIUSDT signals fire in observation logs (would-have-been-trades) over
+the next ≥30 trade batch and show >50% WR → reconsider the blacklist. Until
+then, blacklist holds.
+
+### What was NOT shipped alongside (per user direction)
+
+`atr_min_short: 0.30` — methodology + gates already met (see CLAUDE.md May 12
+ATR section), but user chose to hold for further evaluation. The ATR analysis
+remains in CLAUDE.md as locked next-batch decision.
+
 ## May 12, 2026 UTC-3 (LATE PM) — ATR-based filter analysis (BOTH sides, watchlist for future batch)
 
 ### Status: NOT shipped — locked methodology + evidence for next-batch decision

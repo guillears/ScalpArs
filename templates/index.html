@@ -949,6 +949,39 @@
                     <div id="trailing-confirm-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- Post-Exit Snapshots: EMA13_CROSS_EXIT + STOP_LOSS_WIDE (May 12 LATE PM) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">⏱️ Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        For each exit type, shows avg P&L% at 1/2/5/15/30 min AFTER the trade closed (each cell shows <em>avg(N)</em>).
+                        Answers different questions per close reason:<br/>
+                        <strong>EMA13_CROSS_EXIT</strong>: did we exit too early on a wick that recovered? ★ EXIT TOO EARLY = +5min% ≥ close + 0.20pp.<br/>
+                        <strong>STOP_LOSS_WIDE</strong>: did SL fire correctly? ⚠ SL ON NOISE = +5min% > -0.50% (recovered substantially); ★ SL CORRECT = +5min% ≤ -0.70%.<br/>
+                        NULL/dash = signal lost or tracking ended before that threshold (counterfactual invalid).
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Close Reason</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">Avg Close%</th>
+                                    <th class="text-right px-2 text-amber-300">+1min%</th>
+                                    <th class="text-right px-2 text-amber-300">+2min%</th>
+                                    <th class="text-right px-2 text-amber-300">+5min%</th>
+                                    <th class="text-right px-2 text-amber-300">+15min%</th>
+                                    <th class="text-right px-2 text-amber-300">+30min%</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="post-exit-snap-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="py-3 text-center text-gray-500">No snapshot data yet (engine starts capturing on next trade)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -4839,6 +4872,27 @@
                 }
             }
 
+            // Post-Exit Snapshots: EMA13_CROSS_EXIT + STOP_LOSS_WIDE (May 12 LATE PM)
+            const _pes1 = perf.post_exit_snapshots_by_reason || {};
+            if (_pes1.rows && _pes1.rows.length) {
+                const _snapStr3 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
+                lines.push(`\n${hr2}`);
+                lines.push('## Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss (May 12 LATE PM)\n');
+                lines.push('For each exit type: avg P&L% at 1/2/5/15/30 min AFTER trade closed (avg(N) per cell).');
+                lines.push('EMA13: ★ EXIT TOO EARLY = +5min ≥ close + 0.20pp · STOP_LOSS: ⚠ SL ON NOISE = +5min > -0.50% · ★ SL CORRECT = +5min ≤ -0.70%.\n');
+                lines.push(`${'Close Reason'.padEnd(22)} ${'Dir'.padEnd(6)} ${'N'.padStart(4)} ${'AvgClose%'.padStart(11)} ${'+1min%'.padStart(12)} ${'+2min%'.padStart(12)} ${'+5min%'.padStart(12)} ${'+15min%'.padStart(12)} ${'+30min%'.padStart(12)}   Verdict`);
+                lines.push('-'.repeat(140));
+                _pes1.rows.forEach(r => {
+                    const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
+                    const s1 = _snapStr3(r.avg_pnl_at_1min, r.n_at_1min);
+                    const s2 = _snapStr3(r.avg_pnl_at_2min, r.n_at_2min);
+                    const s5 = _snapStr3(r.avg_pnl_at_5min, r.n_at_5min);
+                    const s15 = _snapStr3(r.avg_pnl_at_15min, r.n_at_15min);
+                    const s30 = _snapStr3(r.avg_pnl_at_30min, r.n_at_30min);
+                    lines.push(`${r.close_reason.padEnd(22)} ${r.direction.padEnd(6)} ${String(r.n).padStart(4)} ${cls.padStart(11)} ${s1} ${s2} ${s5} ${s15} ${s30}   ${r.verdict}`);
+                });
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Entry Type Performance\n');
             lines.push(`${'Type'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'WR'.padEnd(7)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(10)} ${'Total$'.padEnd(12)} ${'AvgEntryFee'.padEnd(12)} ${'TotalFees'.padEnd(12)} ${'Savings'.padEnd(10)} ${'Conf'}`);
@@ -5772,6 +5826,27 @@
                         const avg = (_tcp2.summary.avg_delta_pct >= 0 ? '+' : '') + _tcp2.summary.avg_delta_pct.toFixed(3) + 'pp';
                         lines.push(`\nTotal: ${_tcp2.summary.n} trades · ${_tcp2.summary.n_with_resets} saved by reset · Avg Δ ${avg} · ${tot} $ delta vs immediate-fire`);
                     }
+                }
+
+                // Post-Exit Snapshots: EMA13_CROSS_EXIT + STOP_LOSS_WIDE (May 12 LATE PM)
+                const _pes2 = perf.post_exit_snapshots_by_reason || {};
+                if (_pes2.rows && _pes2.rows.length) {
+                    const _snapStr4 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss (May 12 LATE PM)\n');
+                    lines.push('For each exit type: avg P&L% at 1/2/5/15/30 min AFTER trade closed (avg(N) per cell).');
+                    lines.push('EMA13: ★ EXIT TOO EARLY = +5min ≥ close + 0.20pp · STOP_LOSS: ⚠ SL ON NOISE = +5min > -0.50% · ★ SL CORRECT = +5min ≤ -0.70%.\n');
+                    lines.push(`${'Close Reason'.padEnd(22)} ${'Dir'.padEnd(6)} ${'N'.padStart(4)} ${'AvgClose%'.padStart(11)} ${'+1min%'.padStart(12)} ${'+2min%'.padStart(12)} ${'+5min%'.padStart(12)} ${'+15min%'.padStart(12)} ${'+30min%'.padStart(12)}   Verdict`);
+                    lines.push('-'.repeat(140));
+                    _pes2.rows.forEach(r => {
+                        const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
+                        const s1 = _snapStr4(r.avg_pnl_at_1min, r.n_at_1min);
+                        const s2 = _snapStr4(r.avg_pnl_at_2min, r.n_at_2min);
+                        const s5 = _snapStr4(r.avg_pnl_at_5min, r.n_at_5min);
+                        const s15 = _snapStr4(r.avg_pnl_at_15min, r.n_at_15min);
+                        const s30 = _snapStr4(r.avg_pnl_at_30min, r.n_at_30min);
+                        lines.push(`${r.close_reason.padEnd(22)} ${r.direction.padEnd(6)} ${String(r.n).padStart(4)} ${cls.padStart(11)} ${s1} ${s2} ${s5} ${s15} ${s30}   ${r.verdict}`);
+                    });
                 }
 
                 // --- ENTRY TYPE PERFORMANCE ---
@@ -7102,6 +7177,44 @@
                             } else if (_tcpSummary) {
                                 _tcpSummary.textContent = '';
                             }
+                        }
+                    }
+                }
+
+                // Post-Exit Snapshots: EMA13_CROSS_EXIT + STOP_LOSS_WIDE (May 12 LATE PM)
+                if (data.post_exit_snapshots_by_reason) {
+                    const _pes = data.post_exit_snapshots_by_reason;
+                    const _pesBody = document.getElementById('post-exit-snap-body');
+                    if (_pesBody) {
+                        if (!_pes.rows || !_pes.rows.length) {
+                            _pesBody.innerHTML = '<tr><td colspan="10" class="py-3 text-center text-gray-500">No snapshot data yet (engine starts capturing on next trade)</td></tr>';
+                        } else {
+                            const _fmtSnap2 = (v, n) => {
+                                if (v == null || n === 0) return '<span class="text-gray-600">-</span>';
+                                const cls = v >= 0 ? 'text-emerald-300' : 'text-red-300';
+                                return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(3)}%</span><span class="text-gray-600 text-[10px] ml-0.5">(${n})</span>`;
+                            };
+                            _pesBody.innerHTML = _pes.rows.map(r => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const closeClass = r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const verdictColor = r.verdict.includes('★') ? 'text-emerald-400' :
+                                    r.verdict.includes('SL ON NOISE') || r.verdict.includes('TOO EARLY') ? 'text-red-400' :
+                                    r.verdict.includes('CORRECT') ? 'text-emerald-400' :
+                                    r.verdict.includes('Low N') ? 'text-amber-400' :
+                                    'text-blue-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 font-medium">${r.close_reason}</td>
+                                    <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${closeClass}">${r.avg_close_pct >= 0 ? '+' : ''}${r.avg_close_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_1min, r.n_at_1min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_2min, r.n_at_2min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_5min, r.n_at_5min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_15min, r.n_at_15min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_30min, r.n_at_30min)}</td>
+                                    <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
                         }
                     }
                 }

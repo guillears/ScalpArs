@@ -5519,6 +5519,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "ema13_strict_performance": _compute_ema13_strict_performance(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
         "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
+        # Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE (May 12 LATE PM)
+        "post_exit_snapshots_by_reason": _compute_post_exit_snapshots_by_reason(orders),
     }
 
 
@@ -5658,6 +5660,108 @@ def _compute_trailing_confirmation_performance(orders):
         'total_dollar_delta': round(grand_sum_dollar, 2),
     }
     return {'rows': rows_out, 'summary': summary}
+
+
+def _compute_post_exit_snapshots_by_reason(orders):
+    """Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE.
+
+    Mirror of Trailing Confirmation's time-bucket columns, but for two
+    different exit mechanisms answering different questions:
+
+    EMA13_CROSS_EXIT — "did we exit too early on a wick that recovered?"
+      ★ EARLY EXIT  = avg_pnl_at_5min ≥ avg_close + 0.20pp (trade kept going)
+      ✓ CORRECT     = avg_pnl_at_5min ≤ avg_close (no recovery)
+      ⚠ AMBIGUOUS   = anything in between
+
+    STOP_LOSS_WIDE — "did SL fire correctly or on a wick that recovered?"
+      ⚠ SL ON NOISE = avg_pnl_at_5min > -0.50% (substantial recovery — SL
+                       fired on a wick that recovered; suggests widen SL)
+      ★ SL CORRECT  = avg_pnl_at_5min ≤ -0.70% (price kept dropping)
+      ✓ AMBIGUOUS   = anything in between
+
+    Rows: (direction × close_reason). One row per direction per reason if
+    data exists. Snapshot cells show "avg(N)" — N is non-null trades that
+    actually reached that time threshold.
+    """
+    by_dir_reason = {}  # (direction, reason_base) -> list of records
+    REASONS_OF_INTEREST = {'EMA13_CROSS_EXIT', 'STOP_LOSS_WIDE'}
+
+    for o in orders:
+        if getattr(o, 'status', None) != 'CLOSED':
+            continue
+        cr = o.close_reason or ''
+        # Strip " L1" / " L2" suffix
+        reason_base = cr.rsplit(' L', 1)[0] if ' L' in cr else cr
+        if reason_base not in REASONS_OF_INTEREST:
+            continue
+        d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or 'LONG'
+        if d not in ('LONG', 'SHORT'):
+            continue
+        rec = {
+            'close_pct': o.pnl_percentage if o.pnl_percentage is not None else 0.0,
+            'pnl_at_1min': getattr(o, 'post_exit_pnl_at_1min', None),
+            'pnl_at_2min': getattr(o, 'post_exit_pnl_at_2min', None),
+            'pnl_at_5min': getattr(o, 'post_exit_pnl_at_5min', None),
+            'pnl_at_15min': getattr(o, 'post_exit_pnl_at_15min', None),
+            'pnl_at_30min': getattr(o, 'post_exit_pnl_at_30min', None),
+        }
+        by_dir_reason.setdefault((d, reason_base), []).append(rec)
+
+    def _avg_skip_none(rs, key):
+        vals = [r[key] for r in rs if r.get(key) is not None]
+        if not vals:
+            return None, 0
+        return round(sum(vals) / len(vals), 4), len(vals)
+
+    def _verdict_ema13(rs, avg_close):
+        avg_5m, n_5m = _avg_skip_none(rs, 'pnl_at_5min')
+        if n_5m < 5:
+            return '⚠ Low N'
+        delta_5m = avg_5m - avg_close
+        if delta_5m >= 0.20:
+            return '★ EXIT TOO EARLY'
+        if delta_5m <= 0:
+            return '✓ EXIT CORRECT'
+        return '⚠ AMBIGUOUS'
+
+    def _verdict_sl(rs):
+        avg_5m, n_5m = _avg_skip_none(rs, 'pnl_at_5min')
+        if n_5m < 5:
+            return '⚠ Low N'
+        if avg_5m > -0.50:
+            return '⚠ SL ON NOISE'  # recovered substantially → SL fired on wick
+        if avg_5m <= -0.70:
+            return '★ SL CORRECT'  # kept dropping → SL saved us
+        return '✓ AMBIGUOUS'
+
+    rows_out = []
+    for reason_base in ('EMA13_CROSS_EXIT', 'STOP_LOSS_WIDE'):
+        for d in ('LONG', 'SHORT'):
+            rs = by_dir_reason.get((d, reason_base), [])
+            if not rs:
+                continue
+            n = len(rs)
+            avg_close = round(sum(r['close_pct'] for r in rs) / n, 4)
+            avg_1m, n_1m = _avg_skip_none(rs, 'pnl_at_1min')
+            avg_2m, n_2m = _avg_skip_none(rs, 'pnl_at_2min')
+            avg_5m, n_5m = _avg_skip_none(rs, 'pnl_at_5min')
+            avg_15m, n_15m = _avg_skip_none(rs, 'pnl_at_15min')
+            avg_30m, n_30m = _avg_skip_none(rs, 'pnl_at_30min')
+            verdict = _verdict_ema13(rs, avg_close) if reason_base == 'EMA13_CROSS_EXIT' else _verdict_sl(rs)
+            rows_out.append({
+                'close_reason': reason_base,
+                'direction': d,
+                'n': n,
+                'avg_close_pct': avg_close,
+                'avg_pnl_at_1min': avg_1m, 'n_at_1min': n_1m,
+                'avg_pnl_at_2min': avg_2m, 'n_at_2min': n_2m,
+                'avg_pnl_at_5min': avg_5m, 'n_at_5min': n_5m,
+                'avg_pnl_at_15min': avg_15m, 'n_at_15min': n_15m,
+                'avg_pnl_at_30min': avg_30m, 'n_at_30min': n_30m,
+                'verdict': verdict,
+            })
+
+    return {'rows': rows_out}
 
 
 def _compute_ema13_strict_performance(orders):

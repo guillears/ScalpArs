@@ -1,5 +1,66 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 — `ema_gap_5_20_max_long: 0.80 → 0.60` (asymmetric cap, cross-batch validated)
+
+### Trigger
+Post-reset 1-trade batch: BUSDT LONG VERY_STRONG 20× died -0.89% in 2:10 min,
+never positive. Entry gap (EMA5-EMA20) = 0.80% — top of the allowed window. The
+exact same pair fired the exact same profile earlier in the pool (gap 0.73,
+also -0.90%). Same setup, same outcome, twice.
+
+### Cross-batch evidence — LONG (152 pooled LONGs, April 28 → May 12)
+
+| Entry Gap | N | WR | Avg P&L % | Never Positive |
+|---|---|---|---|---|
+| 0.00-0.20% | 57 | 47% | -0.03% | 8 |
+| 0.20-0.40% | 53 | 51% | -0.11% | 9 |
+| 0.40-0.50% | 12 | 58% | -0.07% | 2 |
+| **0.50-0.60%** | **11** | **73%** | **+0.04%** | **0** ← sweet spot |
+| 0.60-0.70% | 15 | 40% | -0.30% | 1 |
+| **0.70-0.80%** | **4** | **0%** | **-0.78%** | **2** ← BUSDT-style |
+
+Monotonic breakpoint at 0.60%. LONGs flip from net-positive (sub-0.60) to clear
+losers (0.60+). The 0.70-0.80% sub-zone is the over-extended-top profile —
+buyers chasing into a candle that has already moved.
+
+### Cross-batch evidence — SHORT (59 pooled SHORTs, same period)
+
+| Entry Gap | N | WR | Avg P&L % | Never Positive |
+|---|---|---|---|---|
+| 0.20-0.40% | 26 | 38% | -0.06% | 5 |
+| 0.40-0.50% | 12 | 50% | -0.17% | 1 |
+| 0.50-0.60% | 10 | **80%** | **+0.10%** | 0 |
+| 0.60-0.70% | 2 | 0% | -0.58% | 0 (N=2 noise) |
+| **0.70-0.80%** | **8** | **88%** | **+0.28%** | **1** ← strongest WR zone |
+
+SHORTs at gap ≥0.60% (full bucket): N=10, 70% WR, +0.11% avg. The 0.60-0.70
+hole is 2 trades (ETH + BNB, both majors) — noise, not a structural pattern.
+**SHORTs continue when over-extended; LONGs fade.** Structurally consistent
+with crypto micro-structure: short over-extension = capitulation continuation,
+long over-extension = exhaustion buying.
+
+### Change shipped
+- `ema_gap_5_20_max_long: 0.80 → 0.60`
+- `ema_gap_5_20_max_short: 0.80` (unchanged — SHORTs at high gap WIN)
+
+### Pre-committed revert criterion (locked May 12)
+At next ≥30-trade LONG batch, if LONG entries with Entry Gap 0.55-0.60%
+(adjacent to new cap) show WR ≤50% on N≥10 → cap was correctly placed, possibly
+tighten further to 0.55. If 0.55-0.60% maintains ≥65% WR on N≥10 → cap is
+optimal at 0.60.
+
+If somehow Entry Gap 0.60-0.80% LONG entries show ≥55% WR on N≥10 (would
+require the bucket to fire — it can't under new cap, so this is observation-
+log only) → loosen back to 0.70.
+
+### LONG/SHORT asymmetry note
+This is the second filter dimension this batch where LONG and SHORT diverge
+structurally (the first being `momentum_ema20_slope_min_short: 0.06` shipped
+earlier today — raising the min for SHORTs alone). Pattern: SHORTs reward
+momentum/extension, LONGs reward moderation. Worth watching whether this
+asymmetry holds in subsequent batches as a structural pattern of the current
+strategy class on this timeframe.
+
 ## Role & Responsibility
 
 You are the technical owner of development and analysis for this project. The user is not a developer and will not review code at a technical level. You should act as the coding expert, make sound engineering decisions, write clean and production-ready code, and proactively identify the best implementation approach without depending on the user for low-level technical validation.

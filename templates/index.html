@@ -1002,16 +1002,12 @@
 
                 <!-- EMA Cross Counterfactual (May 6, 2026 — CLAUDE.md Phase 1 shadow tracking) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
-                    <h3 class="text-sm font-semibold text-violet-300 mb-2">🧪 EMA Cross Counterfactual (observation-only)</h3>
+                    <h3 class="text-sm font-semibold text-violet-300 mb-2">🧪 EMA Cross Loss-Cutting Counterfactual (observation-only)</h3>
                     <p class="text-xs text-gray-500 mb-3">
-                        Hypothetical exit at first moment price crosses EMA13/EMA20 against trade direction.
-                        Each row's BASELINE is only trades where the cross actually fired (never-crossed trades excluded).
-                        <strong>Variants:</strong>
-                        <span class="text-gray-300">Naive</span> = first-tick cross (any moment) ·
-                        <span class="text-gray-300">Confirmed</span> = cross sustained ≥5min (filters wicks) ·
-                        <span class="text-gray-300">Profit-gated</span> = cross after peak ≥+0.30% (lock-in mode) ·
-                        <span class="text-gray-300">Loser-only</span> = cross while in red.
-                        <strong>Verdict:</strong> ★ WORKING = Δ$ &gt; +$5 AND Δ% &gt; +0.10pp (the exit improves outcomes).
+                        Tests whether exiting at the first moment price crosses EMA13/EMA20 against trade direction <strong>while the trade is in red</strong>
+                        would have cut losses faster than the actual exit. Only losing trades that had this cross during their hold are included.
+                        <strong>Cov%</strong> = % of LOSERS this cross would have caught (e.g. 100% = catches all losers in this direction).
+                        <strong>Verdict:</strong> ★ WORKING = Δ$ &gt; +$5 AND Δ% &gt; +0.10pp (the exit cuts losses earlier than what actually happened).
                     </p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
@@ -4961,7 +4957,7 @@
             const _ecc1 = perf.ema_cross_counterfactual || {};
             lines.push(`\n${hr2}`);
             lines.push('## EMA Cross Counterfactual (observation-only, baseline = trades that crossed)\n');
-            lines.push('Variants: Naive=first-tick cross | Confirmed=≥5min sustained | Profit-gated=cross after peak ≥+0.30% | Loser-only=cross while in red');
+            lines.push('Loser-only variant: hypothetical exit at first EMA13/EMA20 cross while trade is in red. Cov% = % of losers in this direction this cross would have caught.');
             lines.push(`${'Variant'.padEnd(18)} ${'EMA'.padEnd(6)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'Cov%'.padEnd(7)} ${'AvgActual%'.padEnd(11)} ${'AvgCF%'.padEnd(10)} ${'Δ%'.padEnd(10)} ${'Actual$'.padEnd(11)} ${'CF$'.padEnd(11)} ${'Δ$'.padEnd(11)} ${'WΔ$ (n)'.padEnd(15)} ${'LΔ$ (n)'.padEnd(15)} Verdict`);
             const _eccFmt = (r) => {
                 const variantLabel = {'naive':'Naive', 'confirmed':'Confirmed', 'profit_gated':'Profit-gated', 'loser_only':'Loser-only'}[r.variant] || r.variant;
@@ -5966,8 +5962,8 @@
                 // --- EMA CROSS COUNTERFACTUAL (May 6, 2026 — Phase 1 shadow) ---
                 const _ecc2 = perf.ema_cross_counterfactual || {};
                 lines.push(`\n${hr2}`);
-                lines.push('## EMA Cross Counterfactual (observation-only, baseline = trades that crossed)\n');
-                lines.push('Variants: Naive=first-tick cross | Confirmed=≥5min sustained | Profit-gated=cross after peak ≥+0.30% | Loser-only=cross while in red');
+                lines.push('## EMA Cross Loss-Cutting Counterfactual (observation-only — Loser-only variant)\n');
+                lines.push('Loser-only variant: hypothetical exit at first EMA13/EMA20 cross while trade is in red. Cov% = % of losers in this direction this cross would have caught.');
                 lines.push(`${'Variant'.padEnd(18)} ${'EMA'.padEnd(6)} ${'Dir'.padEnd(7)} ${'N'.padEnd(5)} ${'Cov%'.padEnd(7)} ${'AvgActual%'.padEnd(11)} ${'AvgCF%'.padEnd(10)} ${'Δ%'.padEnd(10)} ${'Actual$'.padEnd(11)} ${'CF$'.padEnd(11)} ${'Δ$'.padEnd(11)} ${'WΔ$ (n)'.padEnd(15)} ${'LΔ$ (n)'.padEnd(15)} Verdict`);
                 const _ecc2Fmt = (r) => {
                     const variantLabel = {'naive':'Naive', 'confirmed':'Confirmed', 'profit_gated':'Profit-gated', 'loser_only':'Loser-only'}[r.variant] || r.variant;

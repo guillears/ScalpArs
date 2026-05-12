@@ -6082,7 +6082,14 @@ def _compute_ema_cross_counterfactual(orders):
         return False, None
 
     rows = []
-    for variant in ('naive', 'confirmed', 'profit_gated', 'loser_only'):
+    # May 12 UTC-3: simplified to Loser-only variant only.
+    # Other variants (Naive, Confirmed, Profit-gated) tested hypothetical exits on
+    # ALL trades including winners — not actionable since the bot uses EMA13 cross
+    # as a LOSS-CUTTING mechanism via the existing EMA13_CROSS_EXIT feature.
+    # Loser-only is the right counterfactual question:
+    # "Of my LOSING trades, how many would EMA13 cross have caught earlier, and
+    # how much would I have saved?"
+    for variant in ('loser_only',):
         for ema_label in ('ema13', 'ema20'):
             for direction in ('LONG', 'SHORT'):
                 affected = []
@@ -6096,7 +6103,15 @@ def _compute_ema_cross_counterfactual(orders):
                     continue
                 n_affected = len(affected)
                 n_dir = sum(1 for o in closed if o.direction == direction)
-                coverage_pct = (n_affected / n_dir * 100) if n_dir > 0 else 0
+                # For loser_only variant, coverage is relative to losers (the addressable
+                # population), not all direction trades — answers "% of my losers this catches".
+                if variant == 'loser_only':
+                    n_losers_dir = sum(1 for o in closed if o.direction == direction and (o.pnl or 0) <= 0)
+                    coverage_pct = (n_affected / n_losers_dir * 100) if n_losers_dir > 0 else 0
+                    coverage_label = f"{n_affected}/{n_losers_dir} losers"
+                else:
+                    coverage_pct = (n_affected / n_dir * 100) if n_dir > 0 else 0
+                    coverage_label = f"{n_affected}/{n_dir} all"
 
                 actual_close_sum = sum((o.pnl_percentage or 0) for o, _ in affected)
                 cf_close_sum = sum(cf_pct for _, cf_pct in affected)

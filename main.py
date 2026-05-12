@@ -3283,7 +3283,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
 
         # Performance by Entry Range Position (price position in 20-candle high-low range)
         range_pos_ranges = [
-            ("0-25%", 0, 25), ("25-50%", 25, 50), ("50-75%", 50, 75), ("75-100%", 75, 100.1),
+            ("0-5%", 0, 5), ("5-10%", 5, 10), ("10-25%", 10, 25),
+            ("25-50%", 25, 50), ("50-75%", 50, 75),
+            ("75-90%", 75, 90), ("90-95%", 90, 95), ("95-100%", 95, 100.1),
         ]
         range_pos_orders = [o for o in orders if o.entry_range_position is not None]
         for range_name, rp_min, rp_max in range_pos_ranges:

@@ -1,5 +1,160 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (PM) — Pair-level multiplier cell removed + LINK/ICP/BNB blacklist + Range Position table refactor
+
+### Trigger
+23-trade batch (1L -$109 / 22S -$88 = -$197 net). TONUSDT LONG VERY_STRONG
+hit full -0.89% SL at 20× while doubled by the **PAIR_60-65_15-18** multiplier
+cell ($613 invested). Same profile as BUSDT yesterday (RP 89%, stretch 0.63%,
+BTC RSI/ADX falling).
+
+### Change 1 — Pair-level multiplier cell removed
+
+**`rsi_adx_multiplier_long`**: `"60-65:15-18:2.0,60-65:18-22:2.0"` → `"60-65:18-22:2.0"`
+
+Removes the **Pair RSI 60-65 × Pair ADX 15-18** LONG cell (no longer 2.0×;
+falls through to default 1.0×). Kept the adjacent **Pair RSI 60-65 × Pair
+ADX 18-22** cell.
+
+**Cross-batch evidence for the REMOVED cell (Pair RSI 60-65 × Pair ADX 15-18 LONG):**
+
+| N | WR | Avg P&L % | Full -0.89% SLs |
+|---|---|---|---|
+| **35** | **57%** | **-0.086%** | **7 of 35** (WLD, ORCA, DOGS, MITO, SAHARA, SUI, TAO, TON, 币安人生) |
+
+**Honest assessment — gate verdict is ambiguous:**
+
+Per CLAUDE.md May 4 locked multiplier verdict gates:
+- ★ WORKING: WR ≥70% AND Total$ positive
+- ✓ Marginal: 50-70% WR
+- ✗ HARMFUL: WR ≤40% OR Total$ negative
+
+This cell is at 57% WR (Marginal zone) but Total$ negative (HARMFUL trigger).
+The gates disagree. The kept adjacent cell (Pair 60-65 × 18-22) is even
+weaker: N=34, 44% WR, -0.096% — closer to the HARMFUL line on both axes.
+
+**Decision (per user direction, option C): keep current config state**
+(removed 15-18, kept 18-22). This is conservative — the more harmful of the
+two by Total$ stays in play, but the cell that fired on TONUSDT today
+(15-18) is now defanged. Acknowledged that a stricter reading of the
+locked gates would remove both. Decision recorded here for transparency.
+
+### Analytical error documented for future-Claude
+
+The earlier draft of this CLAUDE.md entry framed this change as "L-P1
+revert" with cross-batch evidence pointing at BTC RSI 60-65 × BTC ADX 15-18
+(N=10, 40% WR). **That was wrong** on two counts:
+
+1. **L-P1 per CLAUDE.md = BTC-level cell** in `btc_rsi_adx_multiplier_long`,
+   at zone 20-25 (not 15-18). Currently inert at 1.0× — never had a 2.0×
+   multiplier here.
+2. **The cell that actually fired on TONUSDT** is pair-level
+   (`rsi_adx_multiplier_long`), zone 15-18. Different config field
+   entirely. The N=10 evidence I cited applied to the wrong cell.
+
+Lesson: when reporting from the Multiplier Cell Performance table, **always
+check the prefix** (PAIR_ vs BTC_) before mapping to CLAUDE.md cell labels.
+The pair-level and BTC-level cells share the same RSI/ADX bucket boundaries
+but are distinct config fields. Future cross-batch validation must specify
+which dimension axis (pair-level RSI × pair-level ADX, or BTC RSI × BTC ADX)
+the evidence applies to.
+
+### Change 2 — LINKUSDT, ICPUSDT, BNBUSDT blacklisted
+
+**`pair_blacklist`**: appends `,LINKUSDT,ICPUSDT,BNBUSDT`
+
+**Cross-batch evidence (all closed trades pool, deduped):**
+
+| Pair | N | Dir | WR | Avg % | Total$ |
+|---|---|---|---|---|---|
+| **LINKUSDT** | 7 | 4L/3S | **14%** | -0.43% | -$115 |
+| **ICPUSDT** | 6 | 4L/2S | **17%** | -0.42% | -$168 |
+| **BNBUSDT** | 7 | 3L/4S | **14%** | -0.33% | -$83 |
+
+All three pass the CLAUDE.md May 3 locked gate: *"Pair shows ≥6 trades total
+across 2+ reports AND WR ≤25% → Blacklist."* Multi-directional toxicity
+(both LONG and SHORT lose) suggests the failure is structural to the pair
+(slow major-cap, doesn't run on 5m timeframe), not a directional setup
+issue.
+
+Combined: 20 trades, -$366 cumulative on these three pairs. Removing them
+from the universe should improve overall expectancy without sacrificing
+edge (the bot was already failing to generate edge here).
+
+### What was NOT shipped despite being flagged
+
+**币安人生USDT** (Chinese-character meme pair) — appeared in 2 batches
+(May 11 LONG -0.89%, May 12 SHORT -0.89%), both full SLs, multi-directional
+0% WR. **N=2 fails the locked blacklist bar** (≥4 with WR=0% OR ≥6 with
+WR≤25%). On watchlist; 2 more trades will decide.
+
+**DOGSUSDT** (N=4, 25% WR, all LONG, -$106) — close to bar but N below 6
+threshold. Watchlist.
+
+**ADAUSDT** (N=7, 29% WR, -$58) — above the 25% WR bar by 4pp. Doesn't
+qualify. Watchlist for next batch.
+
+### Methodology lock — per-batch blacklist scan as routine
+
+User correctly flagged that per-pair recurring-loser scans should be
+**routine on every batch**, not improvised when an obvious loss draws
+attention. The scan is <2 seconds via `scripts/build_unified_pool.py` plus
+a per-pair WR query. Going forward, on every batch report:
+
+1. Refresh dedup pool via `python3 scripts/build_unified_pool.py`
+2. Run the per-pair recurring-loser scan (≥3 trades, WR ≤33%, avg% negative)
+3. Apply locked gates from CLAUDE.md May 3:
+   - ≥6 trades + WR ≤25% across 2+ reports → blacklist
+   - ≥4 trades + WR 0% any sample → blacklist
+   - ≥4 trades + WR 30-50% → hold for next batch
+   - Fresh wins on N≥3 in new data → drop from candidate list
+4. Document candidates AND borderline pairs in batch analysis
+5. Ship blacklist additions before any other ship decisions
+
+This scan now sits ahead of dimension-level filter analysis in batch
+workflow priority order — pair quality issues confound dimension-level
+inference.
+
+### Change 3 — Range Position table refactor (8 buckets)
+
+`main.py` Performance by Entry Range Position table changed from 4 coarse
+buckets (0-25 / 25-50 / 50-75 / 75-100) to 8 finer buckets:
+
+```
+0-5% | 5-10% | 10-25% | 25-50% | 50-75% | 75-90% | 90-95% | 95-100%
+```
+
+**Rationale:** the coarse 4-bucket version hid the SHORT pile-on pattern
+(RSI<30 + RP<10%, N=37, 41% WR, 8 NPs) because all bottom-of-range trades
+collapsed into a single 0-25% row. Edges (0-10% for SHORT pile-on, 90-100%
+for LONG chasing) are where the discriminators live. Mid-range stays
+coarse (25-50%, 50-75%) since nothing actionable surfaces there.
+
+This is part of the methodology lock: make patterns visible by default
+rather than requiring ad-hoc scripts to discover them per batch.
+
+### Pre-committed revert criteria
+
+**Pair-level multiplier removal (`rsi_adx_multiplier_long`)**:
+- If at next ≥30-trade LONG batch, the **removed** cell (Pair RSI 60-65 ×
+  Pair ADX 15-18) hypothetically shows ≥65% WR on N≥5 from observation
+  logs (would-have-multiplied trades) → re-activate at 1.5× for one more
+  batch.
+- If hypothetical N<5 in next batch OR WR remains ≤55% → keep at 1.0×
+  permanently.
+- For the **kept** cell (Pair RSI 60-65 × Pair ADX 18-22): if next batch
+  shows WR ≤50% on N≥5 with negative Total$, remove this cell too
+  (`rsi_adx_multiplier_long: ""`) per locked HARMFUL gate.
+
+**Blacklist additions (LINK/ICP/BNB)**:
+- Hard to validate since trades won't occur. Indirect check: if these
+  pairs continue to appear in `[BINANCE]` top-50 cuts but never in trades,
+  blacklist is working as designed.
+- Only reconsidered if a structural BTC market shift suggests major-cap
+  pairs become tradeable on 5m again (e.g., sustained low-vol regime
+  where major-cap mean reversion edges emerge). No mechanical trigger
+  at next batch — operator-judgment level reversal only.
+
 ## May 12, 2026 UTC-3 — `ema_gap_5_20_max_long: 0.80 → 0.60` (asymmetric cap, cross-batch validated)
 
 ### Trigger

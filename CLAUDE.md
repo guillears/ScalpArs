@@ -7952,3 +7952,74 @@ global_volume_max_short: 1.10 (with BTC capitulation override: RSI<30 AND slope<
 
 ### Files changed
 - `trading_config.json` — single field append
+
+## May 11, 2026 UTC-3 — `btc_adx_min_short: 18 → 20` (user-directed override of locked gate)
+
+### Change
+- `btc_adx_min_short`: **18 → 20**
+
+Re-applies the May 4 setting that was undone on May 6 PM (bundled with the major repositioning).
+
+### Honest framing: this is an override of the discipline gate
+
+The pre-committed revert criterion from May 4 was: "if BTC ADX 18-20 SHORT cell shows ≥50% WR on N≥10 → revert to 18" (which would justify keeping it at 18 if WR>50%, or raising if not).
+
+**Current evidence:** BTC ADX 18-20 SHORT cross-batch pool = **3 trades / 33% WR / -$140**:
+
+| Date | Pair | $ P&L | BTC ADX | Close |
+|---|---|---|---|---|
+| 05-08 | ADAUSDT | -$68.14 | 19.97 | EMA13_CROSS_EXIT, never positive |
+| 05-09 | UNIUSDT | +$38.10 | 19.50 | TRAILING_STOP L2 |
+| **05-11 (tonight)** | **CRVUSDT** | **-$110.02** | **19.7** | **STOP_LOSS_WIDE, never positive** |
+
+N=3 is well below the N≥10 threshold. Strictly speaking, the locked gate would say "wait for more data." But:
+- Direction is consistent: 2 of 3 lost big, 1 won small
+- Cumulative loss: -$140 vs +$38 winners → net -$102
+- Tonight's CRVUSDT (-$110) was the biggest loss of the batch
+- User-directed override after seeing this pattern
+
+### Discipline acknowledged
+
+This is the **second N<gate-threshold ship today** (the other being `0-30:0-30` at N=7 vs gate N≥8). The discipline rules are getting bent. CLAUDE.md log entry notes this as a precedent setter — future-Claude should be aware that the user is OK with shipping at N=3-7 when direction is consistent and recent losses confirm the pattern.
+
+If both these N<gate ships prove premature (i.e., next batch shows fresh data ≥50% WR in either blocked zone), they should mechanically revert per the locked criteria below.
+
+### What this blocks going forward
+
+All SHORTs with BTC ADX < 20. The 18-20 sub-zone is removed entirely from the SHORT entry surface.
+
+### Combined effect with `0-30:0-30` rule (shipped earlier tonight)
+
+For BTC RSI <30 SHORTs, the defended entry surface is now:
+- `btc_adx_min_short: 20` → require BTC ADX ≥ 20
+- `0-30:0-30` → require BTC ADX ≤ 30 for BTC RSI <30
+- **Combined: BTC RSI <30 SHORT entry surface is BTC ADX [20, 30]**
+
+That's precisely the S-P1 PREMIUM core (20-25) + the flat zone (25-30). Tight surface for the strongest SHORT signal.
+
+For BTC RSI 30+ SHORTs, the new ADX min 20 affects:
+- BTC RSI 30-35: was blocked below ADX 30 (existing rule); now also blocked below 20 (no change, 20 < 30)
+- BTC RSI 35-40: was blocked below ADX 20 (existing rule); now also blocked below 20 (no change)
+- BTC RSI 40-45: previously open all the way down to 18; now blocked below 20
+- BTC RSI 45-50: was blocked below ADX 25 (existing rule); 20 is more lenient (no effect)
+
+Net new blocking: BTC RSI 40-45 × BTC ADX 18-20 zone (rare).
+
+### In-batch save / cost
+
+If this rule had been active tonight: CRVUSDT (-$110) blocked → save $110. **Total batch save with both rules (0-30:0-30 + min 20): TAOUSDT $46 + BTCUSDT $28 + CRVUSDT $110 = $184**. Batch P&L would have been +$367 instead of +$183.
+
+Total cross-batch effect (May 4 → tonight): save -$140 (3 trades cut), lose +$38 (1 winner cut). Net +$102.
+
+### Pre-committed revert criteria
+
+At next 100-trade SHORT checkpoint:
+- If BTC ADX 18-20 SHORT (in observation logs / would-have-been-blocked) shows **≥55% WR on N≥10** in fresh data → revert to `btc_adx_min_short: 18`
+- If BTC ADX 18-20 SHORT shows ≤30% WR on N≥10 → confirmed structural, lock at 20
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the override of the locked N≥10 gate (precedent for future discussions about discipline-vs-action)
+2. To preserve the May 4 reasoning that originally set min=20 (it was the right call, the May 6 unbundling reverted it without standalone justification)
+3. To anchor the combined effect with `0-30:0-30` — the SHORT entry surface for BTC RSI <30 is now tightly bound to BTC ADX [20, 30]
+4. To lock the revert gate so the decision is mechanical at next checkpoint

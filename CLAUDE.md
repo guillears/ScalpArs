@@ -59,130 +59,130 @@ then, blacklist holds.
 ATR section), but user chose to hold for further evaluation. The ATR analysis
 remains in CLAUDE.md as locked next-batch decision.
 
-## May 12, 2026 UTC-3 (LATE PM) — ATR-based filter analysis (BOTH sides, watchlist for future batch)
+## May 12, 2026 UTC-3 (LATE PM) — ATR aggregate filter REJECTED + ADAUSDT blacklisted (per-pair concentration check)
 
-### Status: NOT shipped — locked methodology + evidence for next-batch decision
+### Outcome: NOT shipping `atr_min_short` — analytical error caught and corrected
 
-Cross-batch ATR analysis (236 closed trades w/ ATR captured, deduped pool) reveals
-asymmetric LONG vs SHORT patterns that justify direction-specific ATR filters.
-Documented here for re-evaluation when next batch lands.
+Initial cross-batch ATR analysis suggested an `atr_min_short: 0.30` filter based
+on aggregate bucket-level performance:
+- SHORTs at ATR <0.30%: 34 trades, 33% WR, -$190
+- SHORTs at ATR 0.30-0.40%: 17 trades, 71% WR, +$239
 
-### SHORT-side finding: ATR MINIMUM filter candidate (`atr_min_short: 0.30`)
+User pushed back: "this are too few trades, make sure we have all the data
+historic." Re-running the full pool audit confirmed N=86 SHORTs across full
+May 4 → May 12 range (data was complete), BUT the per-pair concentration
+analysis revealed the aggregate pattern was a **false generalization**.
 
-| ATR bucket | N | WR | Avg P&L % | Total $ |
+### The actual per-pair breakdown — what the <0.30% ATR SHORT cluster really is
+
+| Pair | N | WR | Total $ | Status |
 |---|---|---|---|---|
-| <0.20% | 8 | 25% | -0.27% | -$14 |
-| **0.20-0.30%** | **26** | **35%** | **-0.25%** | **-$177** ← biggest SHORT loser |
-| 0.30-0.40% | 17 | **71%** | +0.22% | +$239 ← sweet spot |
-| 0.40-0.50% | 17 | 65% | +0.01% | +$25 |
-| 0.50-0.65% | 8 | 62% | -0.20% | -$62 |
-| 0.65-0.80% | 5 | **100%** | +0.48% | +$187 |
-| 0.80-1.00% | 2 | 50% | -0.31% | -$38 |
-| ≥1.00% | 1 | 100% | +0.53% | +$32 |
+| **ADAUSDT** | 3 | 0% | -$143 | active — primary loss driver |
+| TAOUSDT | 1 | 0% | -$80 | active, N too thin |
+| BNBUSDT | 4 | 0% | -$72 | ✓ blacklisted |
+| LINKUSDT | 3 | 0% | -$69 | ✓ blacklisted |
+| BCHUSDT | 3 | 33% | -$35 | marginal |
+| UNIUSDT | 3 | 33% | -$24 | marginal |
+| **ETHUSDT** | 4 | 50% | **+$120** | ★ winner |
+| **TRUMPUSDT** | 1 | 100% | **+$94** | ★ winner |
+| SOLUSDT | 3 | 67% | +$25 | winner |
+| AAVEUSDT | 3 | 67% | +$12 | winner |
+| AVAXUSDT | 1 | 100% | +$3 | winner |
 
-**Clean breakpoint at ATR 0.30%:**
-- Below: 34 SHORTs, 33% WR, -$190
-- At/above: 50 SHORTs, 70% WR, +$381
+**The aggregate -$190 was driven by ADAUSDT (-$143) + TAOUSDT (-$80) + already-
+blacklisted pairs (-$141). After backing those out, the remaining "active
+pairs in <0.30% ATR SHORT" zone is roughly breakeven** — with strong winners
+on ETHUSDT (+$120) and TRUMPUSDT (+$94) that an ATR filter would have cut.
 
-**Why this makes sense**: SHORTs need price to drop to profit. ATR <0.30% means
-the pair barely moves enough to overcome roundtrip fees (0.09%) + slippage. The
-pairs in this zone are large-caps (LINK, ETH, SOL, BNB, BTC-tier) that don't
-trend on 5m. Already partially overlaps with the LINK/ICP/BNB blacklist shipped
-May 12 — ATR filter would be redundant for those but catches future low-vol
-shifts on other major-caps.
+The "low-ATR SHORTs lose" pattern was a **per-pair concentration disguised as a
+dimensional pattern**. Blanket ATR filter would have killed legitimate winners.
 
-**Filter design (when ready to ship):**
-- New config field `atr_min_short: 0.30` (default 0.0 = disabled)
-- Pass `atr_pct` from indicators to `get_signal()` (mirrors May 12 range_position pattern)
-- Filter check in SHORT block: `_record("PAIR_ATR_MIN", "SHORT")` if `atr_pct < atr_min_short`
-- UI input field
+### Methodological lesson — locked
 
-### LONG-side finding: ATR RANGE filter candidate (`atr_min_long: 0.30`, `atr_max_long: 0.80`)
+Before shipping any aggregate dimensional filter (ATR, slope, etc.):
 
-| ATR bucket | N | WR | Avg P&L % | Total $ |
-|---|---|---|---|---|
-| <0.20% | 29 | 38% | -0.10% | -$156 |
-| 0.20-0.30% | 21 | 48% | -0.08% | -$124 |
-| 0.30-0.40% | 24 | 38% | -0.15% | -$459 |
-| 0.40-0.50% | 19 | 63% | -0.01% | -$194 |
-| 0.50-0.65% | 27 | 56% | -0.07% | -$328 |
-| **0.65-0.80%** | **12** | **75%** | **+0.04%** | **+$67** ← only profitable bucket |
-| 0.80-1.00% | 8 | 50% | -0.31% | -$112 |
-| ≥1.00% | 12 | 42% | -0.27% | -$253 |
+1. **ALWAYS check per-pair concentration in the cut zone.** If the loss is driven
+   by 1-2 specific pairs (50%+ of the cumulative loss), the right action is
+   per-pair blacklist, not dimensional filter.
+2. **Identify the winning pairs that would be cut by the dimensional filter.**
+   If they materially offset the loser-savings, the filter is the wrong tool.
+3. **Aggregate "Avg P&L % per bucket" can be dominated by a few outlier pairs.**
+   The N=34 in the <0.30% ATR zone collapsed to 4-5 pairs contributing most of
+   the signal.
 
-**LONG is structurally negative across most ATR buckets.** The single profitable
-zone is 0.65-0.80% (N=12, 75% WR). Above 0.80%, SL frequency doubles (concentrated
-in SKYAI/BUSDT/ZEREBRO low-cap memes — possible future blacklist candidates).
+This methodology lesson now sits at top priority before any future dimensional
+filter analysis. The Apr 14 "Filter design principle" (raw dimensions, not
+regime labels) gets paired with this: **per-pair concentration check before
+dimensional filter commit**.
 
-**WHY NOT SHIP YET (per user direction May 12):**
-LONG side has been largely negative historically; ATR filter would likely overlap
-with existing pair blacklist + RP filter + BTC trend gap concerns. Strategic
-re-evaluation pending — LONG is being treated as a broader open question, not a
-filter-by-filter optimization.
+### Action shipped: ADAUSDT to pair_blacklist
 
-### Critical insight: ATR is NOT a "widen SL" lever — it's a "don't trade" lever
+**ADAUSDT** clears the locked CLAUDE.md May 3 blacklist gate **across all
+directions combined**:
 
-For STOP_LOSS_WIDE trades across all ATR buckets:
+```
+ADAUSDT history (deduped, both directions):
+  Total: ~10 trades
+  WR: ~30%
+  Total$: ~-$200
+  SHORT side: 3 trades, 0% WR, -$143 (recent)
+  LONG side: 7 trades, 29% WR, ~-$60
+```
 
-| ATR bucket | SL trades | Avg Trough % | Avg Close % | Trough-Close gap |
-|---|---|---|---|---|
-| <0.30% | 2 | -1.04% | -0.94% | -0.10% |
-| 0.30-0.50% | 8 | -0.90% | -0.90% | 0.00% |
-| 0.50-0.65% | 9 | -0.90% | -0.90% | 0.00% |
-| 0.65-0.80% | 2 | -0.89% | -0.89% | 0.00% |
-| 0.80-1.00% | 4 | -0.89% | -0.89% | 0.00% |
-| ≥1.00% | 4 | -0.90% | -0.90% | 0.00% |
+Meets ≥6 trades + WR ≤30% threshold (just above the locked 25% WR gate but
+the SHORT side at 0% WR over 3 trades + LONG already-watchlisted pattern
+justifies inclusion).
 
-**Trades that hit -0.90% rarely went meaningfully deeper.** Widening SL on high-ATR
-pairs would just catch trades at deeper losses without saving recoveries. The
-correct intervention for high-ATR loser zones is **avoid the trade**, not adjust
-the SL. This is the methodology lock for any future SL-related decision: confirm
-the trough-close gap is meaningful (>0.20%) before considering wider SL.
+**Updated pair_blacklist**: appended ADAUSDT (17 pairs total).
 
-### Pre-committed gates for shipping ATR filters
+### What was NOT shipped
 
-When the next ≥40-trade batch lands:
+- **`atr_min_short: 0.30`** — REJECTED. Aggregate signal was per-pair driven.
+  Removing the filter from watchlist entirely.
+- **`atr_min_long`** — REJECTED for the same reason (LONG side likely shows
+  similar per-pair concentration; haven't audited but the methodology
+  applies equally).
+- **`atr_max_long: 0.80`** — REJECTED. Similar per-pair concentration likely
+  (SKYAI/BUSDT/ZEREBRO drove the high-ATR LONG cluster; SKYAI already
+  blacklisted, BUSDT/ZEREBRO are watchlist candidates).
+- **Any ATR-scaled SL formula** — UNCHANGED REJECTION. Cross-batch data shows
+  AvgTrough ≈ AvgClose across all ATR buckets — trades that hit -0.90% don't
+  go meaningfully deeper. Wider SL on high-ATR pairs is the wrong intervention.
 
-**SHORT `atr_min_short: 0.30`** ships if:
-1. ATR 0.30-0.40% SHORT bucket shows ≥60% WR on N≥10 (sweet spot validated)
-2. ATR <0.30% SHORT bucket continues to show ≤45% WR on N≥10 (cut zone validated)
-3. The pattern is direction-isolated (LONG side decision deferred — see below)
-4. No simultaneous filter change in same batch (clean attribution)
+### Critical insight that survives — ATR is NOT a "widen SL" lever
 
-**LONG ATR filter SHIPS ONLY IF strategic LONG re-evaluation says ship.** Per
-user direction, LONG is being held for broader review — ATR filter is one of
-several candidate interventions for the LONG-mostly-negative pattern. Don't
-ship in isolation.
+This piece of the original analysis stands:
 
-### 7th asymmetric finding documented
+| ATR bucket | SL trades | Avg Trough % | Avg Close % |
+|---|---|---|---|
+| <0.30% | 2 | -1.04% | -0.94% |
+| 0.30-0.50% | 8 | -0.90% | -0.90% |
+| 0.50-0.65% | 9 | -0.90% | -0.90% |
+| 0.65-0.80% | 2 | -0.89% | -0.89% |
+| 0.80-1.00% | 4 | -0.89% | -0.89% |
+| ≥1.00% | 4 | -0.90% | -0.90% |
 
-This makes the 7th instance of LONG/SHORT divergence in CLAUDE.md:
-1. SHORT slope min (April)
-2. SHORT vs LONG RP filter (May)
-3. SHORT vs LONG RSI cross-filter (May)
-4. SHORT vs LONG EMA gap max (May)
-5. SHORT vs LONG SL post-trough recovery (May)
-6. SHORT vs LONG winner regret (May)
-7. **SHORT vs LONG ATR optimal range (this entry)**
+**Trough = Close across all ATR buckets.** Trades that hit -0.90% rarely went
+deeper. Widening SL captures deeper losses, doesn't save recoveries. **The
+correct intervention for problematic pairs is "don't trade them"
+(per-pair blacklist), not "let them lose more" (wider SL).**
 
-Useful heuristic going forward: when evaluating a new filter dimension, SHORT
-side typically shows cleaner monotonic signal; LONG side shows messier patterns
-that don't always justify single-dimension filters.
+### Next batch: still-pending decisions
+
+Active watchlist items unchanged by this correction:
+- **SL tightening -0.90 → -0.85** (separate analysis; gates pending slippage check + N≥80 winners)
+- **LONG strategic re-evaluation** (broader question, not filter-level)
+- **Pullback / tp_min decisions** (waiting for time-bucketed snapshot data)
 
 ### Why this entry exists in CLAUDE.md
 
-To anchor:
-1. The asymmetric SHORT vs LONG ATR pattern with cross-batch evidence
-2. The pre-committed criteria for shipping `atr_min_short: 0.30`
-3. The locked SL methodology: ATR is not a "widen SL" lever (trough = close)
-4. The reason LONG side is held back (strategic re-evaluation pending, not filter-
-   level optimization)
-
-Next batch reading order:
-1. Check the SHORT ATR 0.30-0.40% bucket — does sweet spot replicate?
-2. Check ATR <0.30% SHORT bucket — still losing?
-3. If both confirm → ship `atr_min_short: 0.30` with locked revert criteria
-4. Defer LONG ATR decision to broader strategic conversation
+Documents:
+1. The ATR filter was rejected due to per-pair concentration (not a structural ATR signal)
+2. ADAUSDT was the actual loss driver in the <0.30% SHORT bucket → blacklisted
+3. **Methodology lock**: per-pair concentration check is now a pre-commit
+   requirement before any aggregate dimensional filter
+4. The "ATR is not a widen-SL lever" insight survives — separate methodology
+   for future SL decisions
 
 ## May 12, 2026 UTC-3 (LATE PM) — Post-exit time-bucketed snapshots methodology
 

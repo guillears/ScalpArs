@@ -8023,3 +8023,69 @@ At next 100-trade SHORT checkpoint:
 2. To preserve the May 4 reasoning that originally set min=20 (it was the right call, the May 6 unbundling reverted it without standalone justification)
 3. To anchor the combined effect with `0-30:0-30` — the SHORT entry surface for BTC RSI <30 is now tightly bound to BTC ADX [20, 30]
 4. To lock the revert gate so the decision is mechanical at next checkpoint
+
+## May 11/12, 2026 UTC-3 — End-of-night SHORT batch review + SUIUSDT-style watchlist
+
+### Pre-reset state
+
+10 SHORTs collected in tonight's batch (May 11 22:24 → May 12 02:35 UTC-3) after the multiple config ships earlier in the evening. Total: 6W / 4L / +$107.
+
+**With the new filters applied (counterfactual on this same batch):**
+- 3 trades blocked (CRVUSDT -$110, TAOUSDT -$46, BTCUSDT -$28) → saves $184
+- 7 trades pass: 6W + SUIUSDT (-$96 loss, unblocked)
+- Filtered result: +$287 (vs actual +$107) — improvement +$180
+
+**The filters we shipped tonight are correct.** Both `btc_adx_min_short: 18 → 20` and `0-30:0-30` would have caught the 3 worst losses without touching any winners.
+
+### The unfiltered failure mode: SUIUSDT-style
+
+SUIUSDT (-$96, Never Positive, VERY_STRONG SHORT) passed all active filters but lost the maximum:
+
+| Dimension | Value | Caught by |
+|---|---|---|
+| BTC RSI | 36.7 (in 35-40) | Not in `0-30:0-30` range |
+| BTC ADX | 33.3 (in 30-35) | Inside `btc_adx_min_short: 20` and `max: 40` range |
+| BTC ADX Direction | rising | Allowed |
+| Existing rule `35-40:20` | requires ADX ≥20 | Passes (ADX 33.3) |
+| Pair RSI | 35.5 | In SHORT range |
+| Pair ADX | 30.8 | Triggered `PAIR_25-50_30-33` 2.0× multiplier |
+| Pair EMA13-EMA50 Gap | -0.86% (deep negative) | Not currently filtered |
+| Pair Vol | $849M | Large-cap |
+| ATR% | 0.63% | Higher volatility |
+
+The multiplier doubled the loss: -$48 base → -$96 actual.
+
+### Locked watchlist (BTC RSI 35-40 × BTC ADX 30+ SHORT pattern)
+
+This is a **new candidate failure mode** that none of the active filters catch. Cross-batch tally:
+
+- May 4 → May 11 cross-batch: 2 trades in BTC RSI 35-40 × BTC ADX 30-35 SHORT, both wins (+$82)
+- Tonight (May 11): SUIUSDT -$96 (Never Positive, VERY_STRONG)
+- **Combined: 3 trades / 67% WR / -$14 net**
+
+Direction-consistent loss flicker but N=3 way too thin to act.
+
+### Pre-committed gate
+
+At next 100-trade SHORT checkpoint:
+- If BTC RSI 35-40 × BTC ADX 30+ SHORT shows **N≥8 with WR ≤40%** → ship rule. Possible expressions:
+  - `35-40:0-30` (require BTC ADX ≤30 for RSI 35-40 — but this would over-block since current rule `35-40:20` only requires ADX ≥20, and the data shows wins at 30-35 too)
+  - Better: 3D filter combining BTC RSI 35-40 × BTC ADX 30+ × pair gap < -0.50% (the SUIUSDT signature)
+- If the pattern flips back to winning (≥65% WR on N≥8) → drop from watchlist
+- If N stays <5 → continue observing
+
+### Specific feature flags to watch in fresh data
+
+1. **PAIR_25-50_30-33 multiplier verdict** — currently at 2.0× with N=1 and -$96 first trade. Locked revert criterion: WR ≤40% on N≥5 → revert to 1.0×. The 2.0× setting is unproven and just took -$96 on first attempt.
+
+2. **Pair EMA13-EMA50 Gap < -0.50% SHORT** — tonight's 4 trades in this zone: 1W (TONUSDT) / 3L (CRV, TAO, SUI). 25% WR / -$232. Could be candidate for future `pair_ema_gap_max_short` filter if pattern persists.
+
+3. **STRETCH_0.25-0.30 multiplier** — tonight at 2.0×: 1W (LDO) / 1L (CRV). N=2 too thin, but CRVUSDT loss was doubled by this multiplier (-$110 vs -$55 base).
+
+4. **S-P1 PREMIUM multiplier (BTC_25-30_20-25)** — tonight at 2.0×: 2W (UNI, PEPE) / +$222 / +$111 uplift. ★ Continues delivering, validates the gate logic.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the SUIUSDT-style pattern as a locked watchlist item before the bot reset destroys the per-trade context. At the next 100-trade SHORT checkpoint, future-Claude pulls fresh data and checks the BTC RSI 35-40 × BTC ADX 30+ cell against the locked gate. If it confirms losing, the candidate filter shapes (above) are pre-thought. If it doesn't, drop the watchlist item cleanly.
+
+Also documents the verification that the May 11 evening filter ships (`min_short: 20`, `0-30:0-30`) would have saved +$180 in this same batch — locking the methodological evidence that supports those ships.

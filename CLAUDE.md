@@ -1,5 +1,107 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM) — STRATEGIC IDEA: Decouple WR from $/trade via lower TP + multiplier compensation
+
+### Status: NOT shipped — documented for future analysis batch
+
+User-proposed strategic thesis worth evaluating: **the current strategy optimizes
+TP (tp_min, pullback) as a single parameter affecting all trades equally. The
+multiplier system already exists as a separate mechanism (2× position on
+high-conviction cells). If we DECOUPLE these:**
+
+1. **Lower TP min and/or pullback** to capture more small wins (raises WR
+   structurally — more trades that currently exit at SL or signal_lost would
+   instead exit as small winners)
+2. **Compensate small per-trade $ with multipliers** on high-conviction setups
+   (the PAIR_25-50_30-33 and BTC_25-30_20-25 SHORT cells already exist; same
+   approach for new high-conviction LONG cells)
+
+The thesis: **win rate and dollar-per-trade are independent levers**. We can
+optimize each separately rather than via one TP parameter.
+
+### The math behind the thesis
+
+Current state (cross-batch rough averages):
+- TP min: 0.20%, pullback: 0.15%
+- WR: 51% (all trades)
+- Avg winner: ~+0.30-0.40%
+- Avg loser: ~-0.60%
+
+If tp_min lowered to 0.10%:
+- More trades reach the trailing-arm threshold
+- WR rises (e.g., 51% → ~65%?)
+- Avg winner shrinks (~+0.30% → ~+0.15%?)
+- Avg loser unchanged (~-0.60%)
+
+Expectancy = WR × Win − (1−WR) × Loss
+- Current: 0.51 × 0.30 − 0.49 × 0.60 = 0.153 − 0.294 = **-0.141 (negative)**
+- New: 0.65 × 0.15 − 0.35 × 0.60 = 0.0975 − 0.21 = **-0.113 (better but still negative)**
+
+So lower TP alone is marginal improvement. **The kicker is the multiplier**:
+- High-conviction trades (PAIR/BTC multiplier cells) get 2× position size
+- Those trades' winners become 0.30% × 2 = $-equivalent of 0.60% wins
+- WR jump compounds with multiplier $ leverage on the high-conviction subset
+
+### Three decision levers to consider (in next analysis batch)
+
+| Lever | Mechanism | Effect on WR | Effect on Avg $ |
+|---|---|---|---|
+| `tp_min`: 0.20 → 0.15 or 0.10 | Trailing arms on smaller peaks | ↑ | ↓ per-trade |
+| `pullback_trigger`: 0.15 → 0.10 | Exits at tighter retracement | Marginal ↑ | ↑ (catches highs earlier) |
+| Add new multiplier cells | 2× position on high-conviction setups | No effect | ↑ on multiplied cells |
+
+### Critical questions for next analysis
+
+Before shipping any change:
+
+1. **Where do current losers actually peak before reversing?**
+   - From the Trade Outcome Distribution + Entry Conditions by Outcome tables:
+     do losers cluster at peak <0.20% (i.e., they DID get small recoveries
+     that would be captured by lower TP)?
+   - If many losers peaked +0.10-0.20% then went to SL, lower tp_min CAPTURES them
+   - If most losers peaked <0.10% (never went green), tp_min change is irrelevant
+2. **What's the expectancy curve as tp_min varies?**
+   - Counterfactual on cross-batch pool: for each candidate tp_min ∈ {0.10, 0.12,
+     0.15, 0.18, 0.20}, recompute WR and Avg $ assuming trailing armed at that
+     threshold (with current pullback). Find the curve's optimum.
+3. **Which cells justify multipliers under lower TP?**
+   - Currently PAIR_60-65_18-22, PAIR_25-50_30-33, STRETCH_0.25-0.30, BTC_25-30_20-25
+     are active multipliers
+   - Under lower TP, the relative value of high-conviction setups INCREASES
+     (because the baseline avg trade got smaller). More cells may justify 2×.
+4. **Risk: lowering TP increases BE-zone exposure**
+   - Trades peaking at 0.10-0.15% under lower TP could exit at ~0.00% (BE)
+   - The "Positive No BE" SL bucket might grow if these trades fail to capture
+     even their small peak
+
+### The honest analytical framework
+
+This isn't a single-parameter optimization. It's a TWO-DIMENSIONAL space:
+**(tp_min, multiplier coverage)**. The user's thesis is that the existing
+single-parameter optimization may be on the wrong axis.
+
+The right next-batch analysis:
+1. Counterfactual `tp_min ∈ {0.10, 0.12, 0.15}` on cross-batch pool
+2. For each candidate, recompute WR / Avg $ / Total $
+3. Project the multiplier-cell uplift under the new TP (current multiplier
+   cells × scaled per-trade $)
+4. Identify the (tp_min, multiplier coverage) combo with best expectancy
+5. Ship only after counterfactual shows ≥+0.10pp Avg P&L improvement
+
+### Why this entry exists in CLAUDE.md
+
+- Documents the decoupling thesis (WR ↔ Avg$ as independent levers)
+- Locks the analytical framework for the next batch
+- Prevents premature TP tweaking without the counterfactual + multiplier
+  co-analysis (which is the whole point of the user's idea)
+- Adds the BE-zone exposure risk as a known concern
+
+When the next batch lands and we have enough trades for counterfactual:
+1. Compute current TP exit distribution (peak% buckets for losers)
+2. Test tp_min candidates
+3. Evaluate multiplier cell coverage under each
+4. Ship the highest-expectancy combo if it clears +0.10pp gate
+
 ## May 12, 2026 UTC-3 (LATE PM) — Watchlist: BUSDT + TAOUSDT (held below blacklist gate)
 
 Per-pair concentration audit of high-ATR LONG loser buckets surfaced two pairs

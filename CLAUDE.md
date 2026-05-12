@@ -1,5 +1,120 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM) — Post-exit time-bucketed snapshots methodology
+
+### What was added (infrastructure)
+
+5 new nullable columns on `Order`: `post_exit_pnl_at_{1,2,5,15,30}min`.
+The monitor-loop post-exit tracker captures the current P&L% at exactly
+60/120/300/900/1800 seconds past `closed_at`. NULL = tracking ended (signal
+lost / window expired) before the snapshot threshold → counterfactual invalid.
+
+Two report tables consume these snapshots:
+
+1. **Trailing Confirmation Performance** — extended with 5 snapshot columns
+   plus `Avg Peak%` (during trade) and `Pullback Used` (= Peak − Close)
+2. **Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss** — new table with
+   5 snapshot columns plus `Avg Peak%`
+
+### Decision framework for next-batch reading
+
+#### Trailing Confirmation table — 4 patterns
+
+```
+            +1min%   +2min%   +5min%   +15min%   +30min%   Interpretation
+Pattern A:  +0.45    +0.43    +0.40     +0.30      +0.15    Monotonic decay → trailing was correct
+Pattern B:  +0.50    +0.65    +0.85     +0.70      +0.50    Peaks at +5 min → WIDEN PULLBACK
+Pattern C:  +0.55    +0.85    +1.20     +1.50      +1.20    Peaks at +15-30 min → RAISE tp_min + WIDEN PULLBACK
+Pattern D:  +0.60    +0.55    +0.40     +0.20      +0.10    Minor uptick then decay → DON'T CHANGE
+```
+
+Where the peak +Nmin% sits tells you which lever to pull:
+- Highest at +1-2 min → no change
+- Highest at +5 min → pullback widening only
+- Highest at +15-30 min → both tp_min and pullback
+- Pullback Used column = actual retrace distance that exited each trade. Compare
+  to +5min Δ: if (pnl_at_5min − close) ≥ PullbackUsed, widening pullback would
+  have captured more.
+
+#### EMA13_CROSS_EXIT table verdict labels
+
+Verdicts are **delta-based** (post-exit P&L vs close, not absolute level).
+This means they work correctly for both positive AND negative closes:
+
+| Verdict | Trigger | Interpretation (positive close) | Interpretation (negative close) |
+|---|---|---|---|
+| **★ EXIT TOO EARLY** | +5min ≥ close + 0.20pp | Cut a winner prematurely | Cut a loser before it recovered (wick exit) |
+| **✓ EXIT CORRECT** | +5min ≤ close | Captured the top before fade | Saved a deeper loss |
+| **⚠ AMBIGUOUS** | between | Mixed signal | Mixed signal |
+| **⚠ Low N** | N < 5 | Insufficient data | Insufficient data |
+
+For an EMA13 row showing avg close = -0.45% with +5min = -0.20% (★ EXIT TOO EARLY):
+the cross fired on a wick within a still-recoverable downside. Saved $$ if we had
+held an extra 5 min. Action candidate: tighten cross detection (strict mode is
+already on — verify ema13_cross_requires_stack_flip stays true), OR add a min-loss
+gate so EMA13 doesn't fire when P&L is already < some threshold.
+
+For an EMA13 row showing avg close = +0.10% with +5min = +0.40% (★ EXIT TOO EARLY):
+cross fired prematurely on a winner. Action candidate: same — strict mode + min-profit
+gate.
+
+#### STOP_LOSS_WIDE table verdict labels
+
+Verdicts are **absolute** because close% is always ~-0.90% (the SL):
+
+| Verdict | Trigger | Interpretation |
+|---|---|---|
+| **⚠ SL ON NOISE** | +5min > -0.50% | SL fired on wick that recovered substantially → suggests **widen SL** OR **add BE layer** to capture peak before SL hit |
+| **★ SL CORRECT** | +5min ≤ -0.70% | Price kept dropping → SL did its job correctly |
+| **✓ AMBIGUOUS** | between | Price stagnated near SL — directionally inconclusive |
+
+If many SL trades show ⚠ SL ON NOISE in a batch:
+- Look at AvgPeak%. If avg peak was > 0 → BE layer at peak_be_trigger would have
+  saved most of these (different from SL widening, more surgical).
+- If avg peak < 0 (Never Positive trades) → SL widening is the only mechanism.
+
+### Pre-committed gates for any exit-mechanism change
+
+Before shipping any of: `pullback_trigger`, `tp_min`, `signal_sl_pct`,
+`ema13_cross_requires_stack_flip`:
+
+1. **N ≥ 10 per row** for the relevant table (e.g. 10 LONG L2 trades with
+   non-NULL +5min and +15min snapshots).
+2. **Direction-specific analysis** — separate LONG and SHORT. CLAUDE.md has
+   documented 6+ asymmetric patterns; expect this to be 7th.
+3. **Multi-batch confirmation** — single-batch finding goes to watchlist. Two
+   batches with consistent pattern direction → ship.
+4. **No compound ships** — pullback change AND tp_min change ship in separate
+   batches for clean attribution.
+5. **Counterfactual sanity** — if change is shipped, the NEXT batch's snapshots
+   should show the pattern flattening (less Pattern B/C signal) → confirms the
+   change captured what it was supposed to.
+
+### What this analysis does NOT tell us
+
+1. **The capture window is bounded** — typical post-exit tracking ends at signal
+   lost / regained (~20-25min) OR at the configured tracking_minutes. Trades that
+   ran 60+ min wouldn't have +30min snapshots. NULL handling is explicit; don't
+   over-weight rows with low N at the longer thresholds.
+2. **20× leverage amplifies % swings** — interpret +0.20% pullback widening as
+   meaningful per-trade $ but don't compound it with leverage assumptions when
+   estimating batch totals.
+3. **Snapshots are forward-only** — historical trades show NULL until new ones
+   land. Don't compare snapshot data across batches until both have it captured.
+
+### Why this entry exists in CLAUDE.md
+
+When the first 10+ trades land with non-NULL snapshots in the new tables, the
+operator (and future-Claude) should:
+1. Read this section before interpreting
+2. Apply the locked gates (N≥10, direction-specific, multi-batch)
+3. Identify which Pattern (A/B/C/D) dominates → choose the right lever
+4. Don't pull multiple levers in the same batch
+
+The verdict labels look slightly counterintuitive on negative-close EMA13 rows
+(★ EXIT TOO EARLY on a loser sounds wrong) — section above clarifies they're
+delta-based and the math is right.
+
 ## May 12, 2026 UTC-3 (LATE PM) — Watchlist: SL Wide tightening -0.90% → -0.85%
 
 ### Status: NOT shipped — watchlist for next batch validation

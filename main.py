@@ -3346,31 +3346,50 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "by_confidence": conf_breakdown
                 })
 
-        # Performance by Pair EMA20 Slope (absolute value, 0.01% buckets at the low
-        # end where activity concentrates, then widening). Split-out May 2 to surface
-        # detail in the formerly-collapsed 0.00-0.04% range.
+        # Performance by Pair EMA20 Slope — SIGNED buckets (May 12).
+        # Previously absolute-value bucketing collapsed downtrend and uptrend slopes
+        # into the same row. Splitting by sign exposes direction-specific patterns
+        # (e.g., a deep negative pair slope behaves differently for LONG vs SHORT
+        # entries than a deep positive slope of the same magnitude).
         slope_ranges = [
-            ("< 0.01%", 0.00, 0.01),
-            ("0.01 - 0.02%", 0.01, 0.02),
-            ("0.02 - 0.03%", 0.02, 0.03),
-            ("0.03 - 0.04%", 0.03, 0.04),
-            ("0.04 - 0.06%", 0.04, 0.06),
-            ("0.06 - 0.08%", 0.06, 0.08),
-            ("0.08 - 0.10%", 0.08, 0.10),
-            ("0.10 - 0.12%", 0.10, 0.12),
-            ("0.12 - 0.14%", 0.12, 0.14),
-            ("0.14 - 0.16%", 0.14, 0.16),
-            ("0.16 - 0.18%", 0.16, 0.18),
-            ("0.18 - 0.20%", 0.18, 0.20),
-            ("0.20 - 0.25%", 0.20, 0.25),
-            ("0.25 - 0.30%", 0.25, 0.30),
-            ("0.30 - 0.40%", 0.30, 0.40),
-            ("0.40 - 0.60%", 0.40, 0.60),
-            ("> 0.60%", 0.60, 999),
+            ("< -0.60%", -999, -0.60),
+            ("-0.60 to -0.40%", -0.60, -0.40),
+            ("-0.40 to -0.30%", -0.40, -0.30),
+            ("-0.30 to -0.25%", -0.30, -0.25),
+            ("-0.25 to -0.20%", -0.25, -0.20),
+            ("-0.20 to -0.18%", -0.20, -0.18),
+            ("-0.18 to -0.16%", -0.18, -0.16),
+            ("-0.16 to -0.14%", -0.16, -0.14),
+            ("-0.14 to -0.12%", -0.14, -0.12),
+            ("-0.12 to -0.10%", -0.12, -0.10),
+            ("-0.10 to -0.08%", -0.10, -0.08),
+            ("-0.08 to -0.06%", -0.08, -0.06),
+            ("-0.06 to -0.04%", -0.06, -0.04),
+            ("-0.04 to -0.03%", -0.04, -0.03),
+            ("-0.03 to -0.02%", -0.03, -0.02),
+            ("-0.02 to -0.01%", -0.02, -0.01),
+            ("-0.01 to 0%", -0.01, 0.0),
+            ("0 to +0.01%", 0.0, 0.01),
+            ("+0.01 to +0.02%", 0.01, 0.02),
+            ("+0.02 to +0.03%", 0.02, 0.03),
+            ("+0.03 to +0.04%", 0.03, 0.04),
+            ("+0.04 to +0.06%", 0.04, 0.06),
+            ("+0.06 to +0.08%", 0.06, 0.08),
+            ("+0.08 to +0.10%", 0.08, 0.10),
+            ("+0.10 to +0.12%", 0.10, 0.12),
+            ("+0.12 to +0.14%", 0.12, 0.14),
+            ("+0.14 to +0.16%", 0.14, 0.16),
+            ("+0.16 to +0.18%", 0.16, 0.18),
+            ("+0.18 to +0.20%", 0.18, 0.20),
+            ("+0.20 to +0.25%", 0.20, 0.25),
+            ("+0.25 to +0.30%", 0.25, 0.30),
+            ("+0.30 to +0.40%", 0.30, 0.40),
+            ("+0.40 to +0.60%", 0.40, 0.60),
+            ("> +0.60%", 0.60, 999),
         ]
         pair_slope_orders = [o for o in orders if o.entry_ema20_slope is not None]
         for range_name, s_min, s_max in slope_ranges:
-            range_orders = [o for o in pair_slope_orders if s_min <= abs(o.entry_ema20_slope) < s_max]
+            range_orders = [o for o in pair_slope_orders if s_min <= o.entry_ema20_slope < s_max]
             if not range_orders:
                 continue
             for direction in ["LONG", "SHORT"]:
@@ -3408,7 +3427,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         # Performance by BTC EMA20 Slope (absolute value, 0.02% buckets)
         btc_slope_orders = [o for o in orders if o.entry_btc_ema20_slope is not None]
         for range_name, s_min, s_max in slope_ranges:
-            range_orders = [o for o in btc_slope_orders if s_min <= abs(o.entry_btc_ema20_slope) < s_max]
+            range_orders = [o for o in btc_slope_orders if s_min <= o.entry_btc_ema20_slope < s_max]
             if not range_orders:
                 continue
             for direction in ["LONG", "SHORT"]:
@@ -4920,24 +4939,61 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_slope_ranges = [("<0.06%", 0.00, 0.06), ("0.06-0.08%", 0.06, 0.08), ("0.08-0.10%", 0.08, 0.10), ("0.10-0.12%", 0.10, 0.12), ("0.12-0.14%", 0.12, 0.14), ("0.14-0.16%", 0.14, 0.16), ("0.16-0.18%", 0.16, 0.18), ("0.18-0.20%", 0.18, 0.20), ("0.20-0.25%", 0.20, 0.25), ("0.25-0.30%", 0.25, 0.30), ("0.30-0.40%", 0.30, 0.40), ("0.40-0.60%", 0.40, 0.60), (">0.60%", 0.60, 999)]
+            # May 12: signed buckets, matching Performance by Pair/BTC EMA20 Slope tables.
+            np_slope_ranges = [
+                ("< -0.60%", -999, -0.60),
+                ("-0.60 to -0.40%", -0.60, -0.40),
+                ("-0.40 to -0.30%", -0.40, -0.30),
+                ("-0.30 to -0.25%", -0.30, -0.25),
+                ("-0.25 to -0.20%", -0.25, -0.20),
+                ("-0.20 to -0.18%", -0.20, -0.18),
+                ("-0.18 to -0.16%", -0.18, -0.16),
+                ("-0.16 to -0.14%", -0.16, -0.14),
+                ("-0.14 to -0.12%", -0.14, -0.12),
+                ("-0.12 to -0.10%", -0.12, -0.10),
+                ("-0.10 to -0.08%", -0.10, -0.08),
+                ("-0.08 to -0.06%", -0.08, -0.06),
+                ("-0.06 to -0.04%", -0.06, -0.04),
+                ("-0.04 to -0.03%", -0.04, -0.03),
+                ("-0.03 to -0.02%", -0.03, -0.02),
+                ("-0.02 to -0.01%", -0.02, -0.01),
+                ("-0.01 to 0%", -0.01, 0.0),
+                ("0 to +0.01%", 0.0, 0.01),
+                ("+0.01 to +0.02%", 0.01, 0.02),
+                ("+0.02 to +0.03%", 0.02, 0.03),
+                ("+0.03 to +0.04%", 0.03, 0.04),
+                ("+0.04 to +0.06%", 0.04, 0.06),
+                ("+0.06 to +0.08%", 0.06, 0.08),
+                ("+0.08 to +0.10%", 0.08, 0.10),
+                ("+0.10 to +0.12%", 0.10, 0.12),
+                ("+0.12 to +0.14%", 0.12, 0.14),
+                ("+0.14 to +0.16%", 0.14, 0.16),
+                ("+0.16 to +0.18%", 0.16, 0.18),
+                ("+0.18 to +0.20%", 0.18, 0.20),
+                ("+0.20 to +0.25%", 0.20, 0.25),
+                ("+0.25 to +0.30%", 0.25, 0.30),
+                ("+0.30 to +0.40%", 0.30, 0.40),
+                ("+0.40 to +0.60%", 0.40, 0.60),
+                ("> +0.60%", 0.60, 999),
+            ]
             np_slope_trades = [o for o in np_trades if o.entry_ema20_slope is not None]
             all_slope_trades = [o for o in orders if o.entry_ema20_slope is not None]
             for rng, lo, hi in np_slope_ranges:
                 for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in np_slope_trades if lo <= abs(o.entry_ema20_slope) < hi and (o.direction or "LONG") == direction]
-                    all_in = len([o for o in all_slope_trades if lo <= abs(o.entry_ema20_slope) < hi and (o.direction or "LONG") == direction])
+                    bucket = [o for o in np_slope_trades if lo <= o.entry_ema20_slope < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_slope_trades if lo <= o.entry_ema20_slope < hi and (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "EMA20 Slope", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 
-            np_btc_slope_ranges = [("<0.06%", 0.00, 0.06), ("0.06-0.10%", 0.06, 0.10), ("0.10-0.14%", 0.10, 0.14), ("0.14-0.18%", 0.14, 0.18), ("0.18-0.25%", 0.18, 0.25), (">0.25%", 0.25, 999)]
+            # May 12: BTC EMA20 Slope NP deep dive uses same signed buckets as Pair.
+            np_btc_slope_ranges = np_slope_ranges
             np_btc_slope_trades = [o for o in np_trades if o.entry_btc_ema20_slope is not None]
             all_btc_slope_trades = [o for o in orders if o.entry_btc_ema20_slope is not None]
             for rng, lo, hi in np_btc_slope_ranges:
                 for direction in ["LONG", "SHORT"]:
-                    bucket = [o for o in np_btc_slope_trades if lo <= abs(o.entry_btc_ema20_slope) < hi and (o.direction or "LONG") == direction]
-                    all_in = len([o for o in all_btc_slope_trades if lo <= abs(o.entry_btc_ema20_slope) < hi and (o.direction or "LONG") == direction])
+                    bucket = [o for o in np_btc_slope_trades if lo <= o.entry_btc_ema20_slope < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_btc_slope_trades if lo <= o.entry_btc_ema20_slope < hi and (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "BTC EMA20 Slope", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)

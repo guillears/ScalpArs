@@ -1571,8 +1571,8 @@
 
                 <!-- Performance by Pair EMA20 Slope -->
                 <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Pair EMA20 Slope</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by pair EMA20 trend strength (absolute slope %) at entry</p>
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Pair EMA20 Slope <span class="text-xs text-gray-500 font-normal">(signed)</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by pair EMA20 signed slope % at entry. Negative = pair in downtrend, positive = uptrend. May 12: switched from absolute-value to signed bucketing to expose direction-specific patterns.</p>
                     <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                             <thead>
@@ -1600,8 +1600,8 @@
 
                 <!-- Performance by BTC EMA20 Slope -->
                 <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC EMA20 Slope</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by BTC EMA20 trend strength (absolute slope %) at entry</p>
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC EMA20 Slope <span class="text-xs text-gray-500 font-normal">(signed)</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by BTC EMA20 signed slope % at entry. Negative = BTC in downtrend, positive = uptrend. May 12: switched from absolute-value to signed bucketing.</p>
                     <div class="overflow-x-auto">
                     <table class="w-full text-sm">
                             <thead>
@@ -5230,7 +5230,7 @@
             }
 
             lines.push(`\n${hr2}`);
-            lines.push('## Performance by Pair EMA20 Slope (abs)\n');
+            lines.push('## Performance by Pair EMA20 Slope (signed)\n');
             lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)}`);
             for (const r of (perf.pair_slope_performance || [])) {
                 const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -5242,7 +5242,7 @@
             }
 
             lines.push(`\n${hr2}`);
-            lines.push('## Performance by BTC EMA20 Slope (abs)\n');
+            lines.push('## Performance by BTC EMA20 Slope (signed)\n');
             lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)}`);
             for (const r of (perf.btc_slope_performance || [])) {
                 const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -6214,7 +6214,7 @@
 
                 // --- PAIR EMA20 SLOPE ---
                 lines.push(`\n${hr2}`);
-                lines.push('## Performance by Pair EMA20 Slope (abs)\n');
+                lines.push('## Performance by Pair EMA20 Slope (signed)\n');
                 lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)}`);
                 for (const r of (perf.pair_slope_performance || [])) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
@@ -6227,7 +6227,7 @@
 
                 // --- BTC EMA20 SLOPE ---
                 lines.push(`\n${hr2}`);
-                lines.push('## Performance by BTC EMA20 Slope (abs)\n');
+                lines.push('## Performance by BTC EMA20 Slope (signed)\n');
                 lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'NP'.padEnd(10)}`);
                 for (const r of (perf.btc_slope_performance || [])) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');

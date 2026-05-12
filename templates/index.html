@@ -10932,8 +10932,10 @@
         // Effective Entry Map renderer (May 11 UTC-3)
         // Mirrors backend parser at services/trading_engine.py BTC_RSI_ADX_CROSS block.
         // Computes per-cell allow/block decision for BTC RSI × BTC ADX grid.
-        const _btcRsiBuckets = [
-            { label: '<40', mid: 35 },
+        // Per-direction buckets focus on the BTC RSI range where each direction
+        // actually fires signals (LONG: 40+, SHORT: ≤60). The opposite side is
+        // theoretically allowed by filters but rarely entered in practice.
+        const _btcRsiBucketsLong = [
             { label: '40-45', mid: 42.5 },
             { label: '45-50', mid: 47.5 },
             { label: '50-55', mid: 52.5 },
@@ -10941,6 +10943,15 @@
             { label: '60-65', mid: 62.5 },
             { label: '65-70', mid: 67.5 },
             { label: '≥70', mid: 75 },
+        ];
+        const _btcRsiBucketsShort = [
+            { label: '<30', mid: 27.5 },
+            { label: '30-35', mid: 32.5 },
+            { label: '35-40', mid: 37.5 },
+            { label: '40-45', mid: 42.5 },
+            { label: '45-50', mid: 47.5 },
+            { label: '50-55', mid: 52.5 },
+            { label: '55-60', mid: 57.5 },
         ];
         const _btcAdxBuckets = [
             { label: '<18', mid: 16 },
@@ -10998,6 +11009,8 @@
             for (const direction of ['long', 'short']) {
                 const container = document.getElementById(`btc-rsi-adx-map-${direction}`);
                 if (!container) continue;
+                // Per-direction BTC RSI rows (focuses on the firing range for each direction)
+                const _rsiBuckets = direction === 'long' ? _btcRsiBucketsLong : _btcRsiBucketsShort;
                 // Header row
                 let html = '<table class="w-full border-collapse"><thead><tr class="text-gray-500">';
                 html += '<th class="px-1 py-0.5 text-left text-xs">BTC RSI</th>';
@@ -11005,7 +11018,7 @@
                     html += `<th class="px-1 py-0.5 text-center text-xs">${ab.label}</th>`;
                 }
                 html += '</tr></thead><tbody>';
-                for (const rb of _btcRsiBuckets) {
+                for (const rb of _rsiBuckets) {
                     html += `<tr><td class="px-1 py-0.5 text-gray-400 font-medium">${rb.label}</td>`;
                     for (const ab of _btcAdxBuckets) {
                         const allowed = _cellAllowed(rb.mid, ab.mid, direction);

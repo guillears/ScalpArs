@@ -933,11 +933,16 @@
                                     <th class="text-right px-2" title="Avg P&L% at actual close">Avg Close%</th>
                                     <th class="text-right px-2" title="Avg Close% − Avg 1st Pullback%. Positive = confirmation helped">Δ pct</th>
                                     <th class="text-right px-2" title="Total $ delta vs hypothetical immediate-fire exits">Total $ Δ</th>
+                                    <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 1 min after the trade exited. NULL if tracking ended before 1 min mark.">+1min%</th>
+                                    <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 2 min after exit.">+2min%</th>
+                                    <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 5 min after exit.">+5min%</th>
+                                    <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 15 min after exit. NULL when signal lost / tracking ended before 15 min — interpret as 'this counterfactual is invalid for that trade'.">+15min%</th>
+                                    <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 30 min after exit.">+30min%</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="trailing-confirm-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
+                                <tr><td colspan="14" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4807,19 +4812,25 @@
                 }
             }
 
-            // Trailing Confirmation Performance (May 9, 2026)
+            // Trailing Confirmation Performance (May 9, 2026; May 12 LATE PM: + time snapshots)
             const _tcp1 = perf.trailing_confirmation_performance || {};
             if (_tcp1.rows && _tcp1.rows.length) {
+                const _snapStr1 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
                 lines.push(`\n${hr2}`);
                 lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
-                lines.push('Direction   TP     N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
-                lines.push('-'.repeat(92));
+                lines.push('Direction   TP     N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    +1min%      +2min%      +5min%      +15min%     +30min%     Verdict');
+                lines.push('-'.repeat(160));
                 _tcp1.rows.forEach(r => {
                     const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
                     const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
                     const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
                     const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
-                    lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                    const s1 = _snapStr1(r.avg_pnl_at_1min, r.n_at_1min);
+                    const s2 = _snapStr1(r.avg_pnl_at_2min, r.n_at_2min);
+                    const s5 = _snapStr1(r.avg_pnl_at_5min, r.n_at_5min);
+                    const s15 = _snapStr1(r.avg_pnl_at_15min, r.n_at_15min);
+                    const s30 = _snapStr1(r.avg_pnl_at_30min, r.n_at_30min);
+                    lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${s2} ${s5} ${s15} ${s30} ${r.verdict}`);
                 });
                 if (_tcp1.summary && _tcp1.summary.n > 0) {
                     const tot = (_tcp1.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp1.summary.total_dollar_delta).toFixed(2);
@@ -5736,19 +5747,25 @@
                     }
                 }
 
-                // Trailing Confirmation Performance (May 9, 2026)
+                // Trailing Confirmation Performance (May 9, 2026; May 12 LATE PM: + time snapshots)
                 const _tcp2 = perf.trailing_confirmation_performance || {};
                 if (_tcp2.rows && _tcp2.rows.length) {
+                    const _snapStr2 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
                     lines.push(`\n${hr2}`);
                     lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
-                    lines.push('Direction   TP     N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    Verdict');
-                    lines.push('-'.repeat(92));
+                    lines.push('Direction   TP     N    Reset  Avg1stPB%  AvgClose%   ΔPct      Total$Δ    +1min%      +2min%      +5min%      +15min%     +30min%     Verdict');
+                    lines.push('-'.repeat(160));
                     _tcp2.rows.forEach(r => {
                         const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
                         const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
                         const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
                         const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
-                        lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${r.verdict}`);
+                        const s1 = _snapStr2(r.avg_pnl_at_1min, r.n_at_1min);
+                        const s2 = _snapStr2(r.avg_pnl_at_2min, r.n_at_2min);
+                        const s5 = _snapStr2(r.avg_pnl_at_5min, r.n_at_5min);
+                        const s15 = _snapStr2(r.avg_pnl_at_15min, r.n_at_15min);
+                        const s30 = _snapStr2(r.avg_pnl_at_30min, r.n_at_30min);
+                        lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${fp.padStart(10)} ${cls.padStart(11)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${s2} ${s5} ${s15} ${s30} ${r.verdict}`);
                     });
                     if (_tcp2.summary && _tcp2.summary.n > 0) {
                         const tot = (_tcp2.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp2.summary.total_dollar_delta).toFixed(2);
@@ -7040,9 +7057,14 @@
                     const _tcpSummary = document.getElementById('trailing-confirm-perf-summary');
                     if (_tcpBody) {
                         if (!_tcp.rows || !_tcp.rows.length) {
-                            _tcpBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>';
+                            _tcpBody.innerHTML = '<tr><td colspan="14" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>';
                             if (_tcpSummary) _tcpSummary.textContent = '';
                         } else {
+                            const _fmtSnap = (v, n) => {
+                                if (v == null || n === 0) return '<span class="text-gray-600">-</span>';
+                                const cls = v >= 0 ? 'text-emerald-300' : 'text-red-300';
+                                return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(3)}%</span><span class="text-gray-600 text-[10px] ml-0.5">(${n})</span>`;
+                            };
                             _tcpBody.innerHTML = _tcp.rows.map(r => {
                                 const isTotal = r.tp_level === 'TOTAL';
                                 const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
@@ -7066,6 +7088,11 @@
                                     <td class="px-2 py-1 text-right ${closeClass}">${r.avg_close_pct >= 0 ? '+' : ''}${r.avg_close_pct.toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right ${deltaClass}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
                                     <td class="px-2 py-1 text-right ${dollarClass}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_1min, r.n_at_1min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_2min, r.n_at_2min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_5min, r.n_at_5min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_15min, r.n_at_15min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_30min, r.n_at_30min)}</td>
                                     <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
                                 </tr>`;
                             }).join('');

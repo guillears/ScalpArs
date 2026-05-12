@@ -5569,6 +5569,12 @@ def _compute_trailing_confirmation_performance(orders):
             'dollar_delta': dollar_delta,
             'pnl': o.pnl or 0.0,
             'resets': getattr(o, 'trailing_pullback_resets', 0) or 0,
+            # May 12 LATE PM: time-bucketed post-exit P&L snapshots
+            'pnl_at_1min': getattr(o, 'post_exit_pnl_at_1min', None),
+            'pnl_at_2min': getattr(o, 'post_exit_pnl_at_2min', None),
+            'pnl_at_5min': getattr(o, 'post_exit_pnl_at_5min', None),
+            'pnl_at_15min': getattr(o, 'post_exit_pnl_at_15min', None),
+            'pnl_at_30min': getattr(o, 'post_exit_pnl_at_30min', None),
         }
         by_dir_level.setdefault((d, tp_label), []).append(rec)
 
@@ -5584,11 +5590,26 @@ def _compute_trailing_confirmation_performance(orders):
             return "⚠ HURTING"
         return "✓ Marginal"
 
+    def _avg_skip_none(rs, key):
+        """Avg of non-None values for `key`. Returns (avg, n_with_data) or (None, 0)."""
+        vals = [r[key] for r in rs if r.get(key) is not None]
+        if not vals:
+            return None, 0
+        return round(sum(vals) / len(vals), 4), len(vals)
+
     def _row_from(rs, label_suffix=""):
         if not rs:
             return None
         n = len(rs)
         n_with_resets = sum(1 for r in rs if r['resets'] > 0)
+        # May 12 LATE PM: time-bucketed averages.
+        # n_at_Xmin tells operator how many trades had the snapshot captured
+        # (vs NULL = tracking ended before reaching that threshold).
+        avg_1m, n_1m = _avg_skip_none(rs, 'pnl_at_1min')
+        avg_2m, n_2m = _avg_skip_none(rs, 'pnl_at_2min')
+        avg_5m, n_5m = _avg_skip_none(rs, 'pnl_at_5min')
+        avg_15m, n_15m = _avg_skip_none(rs, 'pnl_at_15min')
+        avg_30m, n_30m = _avg_skip_none(rs, 'pnl_at_30min')
         return {
             'n': n,
             'n_with_resets': n_with_resets,
@@ -5596,6 +5617,11 @@ def _compute_trailing_confirmation_performance(orders):
             'avg_close_pct': round(sum(r['close_pct'] for r in rs) / n, 4),
             'avg_delta_pct': round(sum(r['delta_pct'] for r in rs) / n, 4),
             'total_dollar_delta': round(sum(r['dollar_delta'] for r in rs), 2),
+            'avg_pnl_at_1min': avg_1m, 'n_at_1min': n_1m,
+            'avg_pnl_at_2min': avg_2m, 'n_at_2min': n_2m,
+            'avg_pnl_at_5min': avg_5m, 'n_at_5min': n_5m,
+            'avg_pnl_at_15min': avg_15m, 'n_at_15min': n_15m,
+            'avg_pnl_at_30min': avg_30m, 'n_at_30min': n_30m,
             'verdict': _verdict(rs),
         }
 

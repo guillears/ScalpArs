@@ -134,6 +134,17 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_signal_regained FLOAT"))
                 if 'post_exit_floor_before_signal_regain' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_floor_before_signal_regain FLOAT"))
+                # May 12 LATE PM: time-bucketed post-exit P&L snapshots
+                if 'post_exit_pnl_at_1min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_1min FLOAT"))
+                if 'post_exit_pnl_at_2min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_2min FLOAT"))
+                if 'post_exit_pnl_at_5min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_5min FLOAT"))
+                if 'post_exit_pnl_at_15min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_15min FLOAT"))
+                if 'post_exit_pnl_at_30min' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_pnl_at_30min FLOAT"))
                 if 'phantom_be_l1_triggered_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_be_l1_triggered_at DATETIME"))
                 if 'phantom_be_l1_would_exit_pnl' not in columns:

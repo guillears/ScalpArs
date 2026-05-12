@@ -259,6 +259,16 @@ class Order(Base):
     post_exit_signal_regained_minutes = Column(Float, nullable=True)
     post_exit_pnl_at_signal_regained = Column(Float, nullable=True)
     post_exit_floor_before_signal_regain = Column(Float, nullable=True)
+    # May 12 (LATE PM): Direct time-bucketed P&L snapshots after exit.
+    # Answers "what would close % be if we held N min more?" Captured by
+    # post-exit monitor when (now - closed_at) first crosses each threshold.
+    # NULL = signal/tracking ended before the snapshot threshold was reached
+    # (interpret as "this counterfactual is invalid — trade was no longer holdable").
+    post_exit_pnl_at_1min = Column(Float, nullable=True)
+    post_exit_pnl_at_2min = Column(Float, nullable=True)
+    post_exit_pnl_at_5min = Column(Float, nullable=True)
+    post_exit_pnl_at_15min = Column(Float, nullable=True)
+    post_exit_pnl_at_30min = Column(Float, nullable=True)
 
     # Phantom BE shadow tracking: what would have happened if BE L1/L2 were active
     phantom_be_l1_triggered_at = Column(DateTime, nullable=True)

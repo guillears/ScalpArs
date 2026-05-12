@@ -357,6 +357,13 @@ class TradingEngine:
                 "floor_before_signal_regain": None,
                 "close_reason": order.close_reason,
                 "tick_prices": [],
+                # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min)
+                # Resume from DB if already captured pre-restart
+                "pnl_at_1min": order.post_exit_pnl_at_1min,
+                "pnl_at_2min": order.post_exit_pnl_at_2min,
+                "pnl_at_5min": order.post_exit_pnl_at_5min,
+                "pnl_at_15min": order.post_exit_pnl_at_15min,
+                "pnl_at_30min": order.post_exit_pnl_at_30min,
             }
             recovered += 1
             _resumed_tag = " (resumed running state)" if _resumed else " (fresh)"
@@ -3133,6 +3140,12 @@ class TradingEngine:
             "floor_before_signal_regain": None,
             "close_reason": reason,
             "tick_prices": cached_tick_buf,
+            # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min after exit)
+            "pnl_at_1min": None,
+            "pnl_at_2min": None,
+            "pnl_at_5min": None,
+            "pnl_at_15min": None,
+            "pnl_at_30min": None,
             **phantom_tick_states,
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
@@ -3198,6 +3211,36 @@ class TradingEngine:
             # Track running minimum P&L (from entry) for floor-before-recovery analysis
             if info["running_min_pnl"] is None or current_pnl < info["running_min_pnl"]:
                 info["running_min_pnl"] = current_pnl
+
+            # May 12 LATE PM: time-bucketed P&L snapshots (1/2/5/15/30 min after exit).
+            # Captures the answer to "if we held N min more, what would close% be?"
+            # Each snapshot is recorded only once, the first time elapsed crosses
+            # the threshold. NULL means tracking ended before reaching the threshold
+            # — interpret as "this counterfactual is invalid".
+            _elapsed_sec = (now - info["exit_time"]).total_seconds()
+            _snap_thresholds = [(60, "pnl_at_1min"), (120, "pnl_at_2min"),
+                                (300, "pnl_at_5min"), (900, "pnl_at_15min"),
+                                (1800, "pnl_at_30min")]
+            _snap_fired = []
+            for _thr_sec, _key in _snap_thresholds:
+                if _elapsed_sec >= _thr_sec and info.get(_key) is None:
+                    info[_key] = round(current_pnl, 4)
+                    _snap_fired.append(_key)
+            if _snap_fired:
+                # Persist new snapshots in a single update
+                try:
+                    _values = {
+                        f"post_exit_{k}": info[k] for k in _snap_fired
+                    }
+                    async with AsyncSessionLocal() as _pe_snap_db:
+                        await _pe_snap_db.execute(
+                            update(Order)
+                            .where(Order.id == order_id)
+                            .values(**_values)
+                        )
+                        await _pe_snap_db.commit()
+                except Exception as _pe_snap_exc:
+                    logger.debug(f"[POST_EXIT_SNAP] Failed to persist time snapshot for {info['pair']}: {_pe_snap_exc}")
 
             # Read pair_data for signal-lost, signal-regained, and RSI momentum checks (isolated session)
             pair_data = None

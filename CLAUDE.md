@@ -1,5 +1,130 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM) — ATR-based filter analysis (BOTH sides, watchlist for future batch)
+
+### Status: NOT shipped — locked methodology + evidence for next-batch decision
+
+Cross-batch ATR analysis (236 closed trades w/ ATR captured, deduped pool) reveals
+asymmetric LONG vs SHORT patterns that justify direction-specific ATR filters.
+Documented here for re-evaluation when next batch lands.
+
+### SHORT-side finding: ATR MINIMUM filter candidate (`atr_min_short: 0.30`)
+
+| ATR bucket | N | WR | Avg P&L % | Total $ |
+|---|---|---|---|---|
+| <0.20% | 8 | 25% | -0.27% | -$14 |
+| **0.20-0.30%** | **26** | **35%** | **-0.25%** | **-$177** ← biggest SHORT loser |
+| 0.30-0.40% | 17 | **71%** | +0.22% | +$239 ← sweet spot |
+| 0.40-0.50% | 17 | 65% | +0.01% | +$25 |
+| 0.50-0.65% | 8 | 62% | -0.20% | -$62 |
+| 0.65-0.80% | 5 | **100%** | +0.48% | +$187 |
+| 0.80-1.00% | 2 | 50% | -0.31% | -$38 |
+| ≥1.00% | 1 | 100% | +0.53% | +$32 |
+
+**Clean breakpoint at ATR 0.30%:**
+- Below: 34 SHORTs, 33% WR, -$190
+- At/above: 50 SHORTs, 70% WR, +$381
+
+**Why this makes sense**: SHORTs need price to drop to profit. ATR <0.30% means
+the pair barely moves enough to overcome roundtrip fees (0.09%) + slippage. The
+pairs in this zone are large-caps (LINK, ETH, SOL, BNB, BTC-tier) that don't
+trend on 5m. Already partially overlaps with the LINK/ICP/BNB blacklist shipped
+May 12 — ATR filter would be redundant for those but catches future low-vol
+shifts on other major-caps.
+
+**Filter design (when ready to ship):**
+- New config field `atr_min_short: 0.30` (default 0.0 = disabled)
+- Pass `atr_pct` from indicators to `get_signal()` (mirrors May 12 range_position pattern)
+- Filter check in SHORT block: `_record("PAIR_ATR_MIN", "SHORT")` if `atr_pct < atr_min_short`
+- UI input field
+
+### LONG-side finding: ATR RANGE filter candidate (`atr_min_long: 0.30`, `atr_max_long: 0.80`)
+
+| ATR bucket | N | WR | Avg P&L % | Total $ |
+|---|---|---|---|---|
+| <0.20% | 29 | 38% | -0.10% | -$156 |
+| 0.20-0.30% | 21 | 48% | -0.08% | -$124 |
+| 0.30-0.40% | 24 | 38% | -0.15% | -$459 |
+| 0.40-0.50% | 19 | 63% | -0.01% | -$194 |
+| 0.50-0.65% | 27 | 56% | -0.07% | -$328 |
+| **0.65-0.80%** | **12** | **75%** | **+0.04%** | **+$67** ← only profitable bucket |
+| 0.80-1.00% | 8 | 50% | -0.31% | -$112 |
+| ≥1.00% | 12 | 42% | -0.27% | -$253 |
+
+**LONG is structurally negative across most ATR buckets.** The single profitable
+zone is 0.65-0.80% (N=12, 75% WR). Above 0.80%, SL frequency doubles (concentrated
+in SKYAI/BUSDT/ZEREBRO low-cap memes — possible future blacklist candidates).
+
+**WHY NOT SHIP YET (per user direction May 12):**
+LONG side has been largely negative historically; ATR filter would likely overlap
+with existing pair blacklist + RP filter + BTC trend gap concerns. Strategic
+re-evaluation pending — LONG is being treated as a broader open question, not a
+filter-by-filter optimization.
+
+### Critical insight: ATR is NOT a "widen SL" lever — it's a "don't trade" lever
+
+For STOP_LOSS_WIDE trades across all ATR buckets:
+
+| ATR bucket | SL trades | Avg Trough % | Avg Close % | Trough-Close gap |
+|---|---|---|---|---|
+| <0.30% | 2 | -1.04% | -0.94% | -0.10% |
+| 0.30-0.50% | 8 | -0.90% | -0.90% | 0.00% |
+| 0.50-0.65% | 9 | -0.90% | -0.90% | 0.00% |
+| 0.65-0.80% | 2 | -0.89% | -0.89% | 0.00% |
+| 0.80-1.00% | 4 | -0.89% | -0.89% | 0.00% |
+| ≥1.00% | 4 | -0.90% | -0.90% | 0.00% |
+
+**Trades that hit -0.90% rarely went meaningfully deeper.** Widening SL on high-ATR
+pairs would just catch trades at deeper losses without saving recoveries. The
+correct intervention for high-ATR loser zones is **avoid the trade**, not adjust
+the SL. This is the methodology lock for any future SL-related decision: confirm
+the trough-close gap is meaningful (>0.20%) before considering wider SL.
+
+### Pre-committed gates for shipping ATR filters
+
+When the next ≥40-trade batch lands:
+
+**SHORT `atr_min_short: 0.30`** ships if:
+1. ATR 0.30-0.40% SHORT bucket shows ≥60% WR on N≥10 (sweet spot validated)
+2. ATR <0.30% SHORT bucket continues to show ≤45% WR on N≥10 (cut zone validated)
+3. The pattern is direction-isolated (LONG side decision deferred — see below)
+4. No simultaneous filter change in same batch (clean attribution)
+
+**LONG ATR filter SHIPS ONLY IF strategic LONG re-evaluation says ship.** Per
+user direction, LONG is being held for broader review — ATR filter is one of
+several candidate interventions for the LONG-mostly-negative pattern. Don't
+ship in isolation.
+
+### 7th asymmetric finding documented
+
+This makes the 7th instance of LONG/SHORT divergence in CLAUDE.md:
+1. SHORT slope min (April)
+2. SHORT vs LONG RP filter (May)
+3. SHORT vs LONG RSI cross-filter (May)
+4. SHORT vs LONG EMA gap max (May)
+5. SHORT vs LONG SL post-trough recovery (May)
+6. SHORT vs LONG winner regret (May)
+7. **SHORT vs LONG ATR optimal range (this entry)**
+
+Useful heuristic going forward: when evaluating a new filter dimension, SHORT
+side typically shows cleaner monotonic signal; LONG side shows messier patterns
+that don't always justify single-dimension filters.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The asymmetric SHORT vs LONG ATR pattern with cross-batch evidence
+2. The pre-committed criteria for shipping `atr_min_short: 0.30`
+3. The locked SL methodology: ATR is not a "widen SL" lever (trough = close)
+4. The reason LONG side is held back (strategic re-evaluation pending, not filter-
+   level optimization)
+
+Next batch reading order:
+1. Check the SHORT ATR 0.30-0.40% bucket — does sweet spot replicate?
+2. Check ATR <0.30% SHORT bucket — still losing?
+3. If both confirm → ship `atr_min_short: 0.30` with locked revert criteria
+4. Defer LONG ATR decision to broader strategic conversation
+
 ## May 12, 2026 UTC-3 (LATE PM) — Post-exit time-bucketed snapshots methodology
 
 ### What was added (infrastructure)

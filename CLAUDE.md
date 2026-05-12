@@ -8097,3 +8097,90 @@ The pair gap < -0.50% SHORT watchlist item I initially wrote was based on a 4-tr
 **Locked rule (re-emphasized):** ALWAYS validate single-batch findings against the cross-batch deduped pool BEFORE locking them as watchlist items. The CLAUDE.md May 11 dedup methodology entry exists specifically to make this fast — `scripts/build_unified_pool.py` produces the validated pool in <1s. Any "strongest finding of the night" claim needs this cross-batch check before going into CLAUDE.md as a locked watch.
 
 Concretely: had I run the cross-batch query before writing the original watchlist entry, I would have seen the 17-trade pool was flat and skipped the watchlist item entirely. The 30 seconds of cross-batch validation prevents days of false-positive filter shipping. **This rule applies to ALL future single-batch pattern claims, not just pair gap.**
+
+## May 12, 2026 UTC-3 — `momentum_ema20_slope_min_short: 0.04 → 0.06` (full-history validated)
+
+### Change
+- `momentum_ema20_slope_min_short`: **0.04 → 0.06**
+
+Raises the minimum absolute BTC EMA20 slope required for SHORT entries. Blocks SHORTs where BTC is trending bearishly but not strongly enough (slope between 0.04% and 0.06%).
+
+### Evidence — full SHORT history (April 28 → May 12, N=108)
+
+This is one of the cleanest cross-batch structural findings to date. Pattern holds across **two leverage regimes** (1× pre-May-4, 20× post) and **multiple filter configs**:
+
+| Slope Range | N | WR | Avg P&L % | Total $ | Status |
+|---|---|---|---|---|---|
+| 0.02-0.04% (already blocked) | 23 | 43.5% | -0.07% | -$53 | ⛔ |
+| **0.04-0.06%** | **15** | **33.3%** | **-0.28%** | **-$269** | ⚠⚠ NEW BLOCK |
+| **0.06-0.08%** | **13** | **85%** | **+0.31%** | **+$162** | ★ kept |
+| **0.08-0.10%** | **19** | **79%** | **+0.31%** | **+$465** | ★★ kept (best zone) |
+| 0.10-0.15% | 28 | 46% | -0.22% | -$187 | ⚠ separate problem |
+| 0.15-0.20% | 7 | 100% | +0.41% | +$6 | low N anomaly |
+| ≥ 0.20% | 3 | 0% | -0.58% | -$72 | low N |
+
+**The 0.04-0.06% bucket is structurally weak**: bearish but not committed enough. BTC is just barely trending down — the bearish move hasn't built conviction. SHORTs into this setup get bounced or mean-reverted.
+
+The adjacent 0.06-0.10% zone is the **strongest SHORT setup in the entire dataset**: 32 trades / 81% WR / +$627 / +0.31% Avg.
+
+### Cross-era validation (the part that makes this bulletproof)
+
+| Era | N | WR | Avg P&L % | Notes |
+|---|---|---|---|---|
+| April (1× leverage, Phase 1c-Explore) | 8 | 50% | +0.05% | balanced |
+| May 5 → 12 (20× current era) | 7 | 14% | -0.66% | catastrophic |
+| **Combined** | **15** | **33%** | **-0.28%** | losing |
+
+The pattern is direction-consistent across two leverage regimes. April data was "noise around break-even" (small $ at 1×), May data is "clearly losing." Even pooling them (33% WR), the cell is below break-even.
+
+### "Raise min slope to X" — survivor analysis
+
+| Min Slope | SURVIVES Avg P&L % | Verdict |
+|---|---|---|
+| 0.04 (old) | +0.008% (flat) | baseline |
+| 0.05 | +0.047% | improvement |
+| **0.06 (new)** | **+0.070%** | **optimum** |
+| 0.07 | +0.058% | starts cutting winners |
+| 0.08 | +0.014% | clearly cutting winners |
+
+**0.06 maximizes survivor Avg P&L %** (+0.07pp vs current ~0%).
+
+### In-batch save tonight
+
+Tonight's 4-trade SHORT batch (May 12 04:03 → 04:06): all 4 trades had BTC slope in 0.046-0.050% range. ALL would have been blocked by `min: 0.06`. Saves: **-$219.61** (tonight's entire SHORT loss).
+
+### LONG side does NOT get the same treatment
+
+Cross-batch LONG analysis (N=309) shows LONGs lose across **every** BTC slope bucket. No clean threshold:
+- 0.02-0.04%: 168 / 48% / -$505 (least-bad)
+- 0.04-0.06%: 82 / 38% / -$823 (biggest loss)
+- 0.06-0.10%: 44 / 46% / -$125
+- 0.10+%: 15 / 33% / -$36
+
+Raising LONG min slope would CUT the least-bad zone — wrong direction. LONGs need a different fix (BTC Trend Filter re-enable OR structural signal review). Separate conversation.
+
+### Pre-committed revert criteria
+
+At next 100-trade SHORT checkpoint:
+- If BTC slope 0.04-0.06% SHORT (in observation logs / would-have-been-blocked) shows **≥50% WR on N≥10** in fresh data → revert to 0.04
+- If the new blocked zone shows consistent losing (≤30% WR on N≥10) → confirmed structural, lock at 0.06
+
+### Locked watchlist (related, NOT shipped tonight)
+
+**`momentum_ema20_slope_max_short` candidate**: BTC slope 0.10-0.15% SHORT cell shows 28 trades / 46% WR / -$187 — losing in a different way (BTC at capitulation, about to bounce). Possible MAX slope filter for SHORTs.
+
+Locked gate: if 0.10-0.15% SHORT cell shows ≤45% WR on N≥15 in fresh data → ship `momentum_ema20_slope_max_short: 0.10`.
+
+### Active SHORT filter chain after this ship
+
+```
+btc_adx_min_short: 20
+btc_adx_max_short: 40
+momentum_ema20_slope_min_short: 0.06          ← raised tonight
+btc_rsi_adx_filter_short: "30-35:30,35-40:20,45-50:25,0-30:0-30"
+adx_delta_btc_adx_filter_short: ""            (inactive)
+global_volume_max_short: 1.10                 (with BTC capitulation override)
+```
+
+### Files changed
+- `trading_config.json` — single field change

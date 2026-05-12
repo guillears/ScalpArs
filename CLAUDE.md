@@ -1,5 +1,98 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 12, 2026 UTC-3 (LATE PM) — Watchlist: BUSDT + TAOUSDT (held below blacklist gate)
+
+Per-pair concentration audit of high-ATR LONG loser buckets surfaced two pairs
+that didn't clear the locked blacklist gate but show concerning patterns.
+Tracked here for resolution at next batch.
+
+### BUSDT — single-day cluster pattern
+
+```
+BUSDT history (deduped, all May 11 morning):
+  May 11 12:28  LONG  ATR=1.46%  pnl=+$3.88     TRAILING_STOP L1
+  May 11 12:37  LONG  ATR=1.42%  pnl=+$26.33    TRAILING_STOP L2
+  May 11 12:38  LONG  ATR=1.43%  pnl=-$109.27   STOP_LOSS_WIDE L1  ← May 11 "disaster trade"
+  May 11 12:45  LONG  ATR=1.42%  pnl=-$45.64    STOP_LOSS_WIDE L1
+
+  N=4, all LONG, 50% WR, Total$=-$125
+```
+
+**Doesn't clear strict blacklist gate** (50% WR > 25% bar; N=4 < 6 trades bar).
+But:
+- All 4 trades within a single 17-minute window on May 11
+- Both losers were full SL hits (-$109 + -$46)
+- Extreme ATR (1.42-1.46%) consistently across all 4 — suggests pair was in
+  high-vol state that day
+- This is the **same single-day BUSDT incident** that triggered the May 11 disaster
+  trade we discussed earlier
+
+Could be:
+- A single-day market regime artifact (BUSDT was unusually volatile that day) — would
+  resolve naturally
+- A pair-structural issue (BUSDT often trades like this) — would justify blacklist
+
+**Pre-committed criteria for promotion to blacklist:**
+- If next batch fires another BUSDT trade and it loses → ship blacklist immediately
+  (would be 5 trades / 40% WR, with 3/5 losers — clears the WR≤25% bar with N≥5 multi-batch)
+- If BUSDT trades and wins → stays on watchlist; pattern was likely regime-specific
+- If BUSDT doesn't fire next batch → status quo, keep watching
+
+### TAOUSDT — mixed across full history, but big single losses
+
+```
+TAOUSDT history (deduped, 15 trades total):
+  Total: N=15, 47% WR, -$229
+  LONG: 10 trades (5W/5L, -$242 cumulative)
+  SHORT: 5 trades (3W/2L, +$13 cumulative)
+
+  Big losers:
+    May 08  LONG  ATR=0.38%  -$100.60  EMA13_CROSS_EXIT
+    May 11  LONG  ATR=0.39%  -$104.85  STOP_LOSS_WIDE L1
+    May 12  SHORT ATR=0.29%  -$80.41   EMA13_CROSS_EXIT
+    May 10  LONG  ATR=0.54%  -$44.34   STOP_LOSS_WIDE L1
+    May 10  LONG  ATR=0.34%  -$19.01   EMA13_CROSS_EXIT
+```
+
+**Doesn't clear strict blacklist gate** (47% WR > 25% bar).
+
+But:
+- 4 single-trade losses ≥ $44 each on LONG side (largest losing pair in
+  multi-trade history)
+- Multi-direction failure (LONG side particularly bad: 5W/5L net -$242)
+- LONG-only blacklist would be cleaner if such mechanism existed (currently
+  doesn't — would require code change)
+
+**Pre-committed criteria for promotion to blacklist:**
+- If TAOUSDT LONG fires twice more in next ≥30-trade batch AND both lose
+  (clearing N≥7 LONG with WR ≤30%) → blacklist
+- If TAOUSDT SHORT continues winning (e.g., 2 more SHORT winners landing) →
+  pattern is direction-specific and full pair blacklist would cut profitable
+  SHORTs unnecessarily → leave alone, document the directional asymmetry
+- If LONG-only blacklist code mechanism is built (separate scope) → ship LONG-only
+  TAOUSDT block
+
+### Why these are on watchlist (not blacklisted)
+
+Both fail the strict CLAUDE.md May 3 gates:
+- ≥6 trades + WR ≤25%  → BUSDT N=4, TAOUSDT WR=47% — both fail
+- ≥4 trades + WR=0%    → BUSDT WR=50%, TAOUSDT WR=47% — both fail
+
+CLAUDE.md May 12 LATE PM discipline note locks: "N=5 with WR=20% multi-direction
+is the ceiling for discretionary override. Future borderline pairs at higher WR
+should wait for N≥6." Both BUSDT (WR=50%) and TAOUSDT (WR=47%) are well above
+the 20% override threshold. Wait for the 6th trade.
+
+### Methodology check: are these actionable via existing filters?
+
+| Pair | Pattern | Existing filter coverage |
+|---|---|---|
+| BUSDT | High ATR (1.4%+) cluster | ATR filter REJECTED earlier (per-pair concentration). High Entry Gap (we already capped LONG at 0.60). Pair-specific blacklist is the only mechanism. |
+| TAOUSDT | Mixed; LONG-side weak | LONG ATR ranges hit 0.30-0.40% and 0.50-0.65% — both ranges have other winners. Pair-level filter is the only mechanism, not dimension-level. |
+
+Confirms the May 12 LATE PM methodology lesson: when single-pair concentration
+explains the loss, per-pair blacklist is the right tool, not dimensional filters.
+
 ## May 12, 2026 UTC-3 (LATE PM, last commit) — SKYAIUSDT blacklisted (override of strict gate)
 
 ### Trigger

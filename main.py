@@ -5618,6 +5618,14 @@ def _compute_trailing_confirmation_performance(orders):
         avg_close_pct = round(sum(r['close_pct'] for r in rs) / n, 4)
         # Pullback used = peak - close (positive number = how much retraced before exit)
         avg_pullback_used = round(avg_peak_pct - avg_close_pct, 4) if avg_peak_pct is not None else None
+        # May 12 LATE PM (v2): PB needed to reach each +Nmin snapshot
+        # = max(0, peak - +Nmin%). Compare to avg_pullback_used:
+        #   below = recovery zone (wider PB might capture)
+        #   above = decay (wider PB would catch worse price)
+        def _pb_needed(avg_snap):
+            if avg_snap is None or avg_peak_pct is None:
+                return None
+            return round(max(0, avg_peak_pct - avg_snap), 4)
         return {
             'n': n,
             'n_with_resets': n_with_resets,
@@ -5632,6 +5640,11 @@ def _compute_trailing_confirmation_performance(orders):
             'avg_pnl_at_5min': avg_5m, 'n_at_5min': n_5m,
             'avg_pnl_at_15min': avg_15m, 'n_at_15min': n_15m,
             'avg_pnl_at_30min': avg_30m, 'n_at_30min': n_30m,
+            'pb_to_1min': _pb_needed(avg_1m),
+            'pb_to_2min': _pb_needed(avg_2m),
+            'pb_to_5min': _pb_needed(avg_5m),
+            'pb_to_15min': _pb_needed(avg_15m),
+            'pb_to_30min': _pb_needed(avg_30m),
             'verdict': _verdict(rs),
         }
 
@@ -5759,6 +5772,12 @@ def _compute_post_exit_snapshots_by_reason(orders):
             avg_15m, n_15m = _avg_skip_none(rs, 'pnl_at_15min')
             avg_30m, n_30m = _avg_skip_none(rs, 'pnl_at_30min')
             verdict = _verdict_ema13(rs, avg_close) if reason_base == 'EMA13_CROSS_EXIT' else _verdict_sl(rs)
+            # May 12 LATE PM (v2): PB needed to reach each +Nmin from peak.
+            # For SL: this translates to "SL widening needed" (same math).
+            def _pb_needed_pes(avg_snap):
+                if avg_snap is None or avg_peak is None:
+                    return None
+                return round(max(0, avg_peak - avg_snap), 4)
             rows_out.append({
                 'close_reason': reason_base,
                 'direction': d,
@@ -5770,6 +5789,11 @@ def _compute_post_exit_snapshots_by_reason(orders):
                 'avg_pnl_at_5min': avg_5m, 'n_at_5min': n_5m,
                 'avg_pnl_at_15min': avg_15m, 'n_at_15min': n_15m,
                 'avg_pnl_at_30min': avg_30m, 'n_at_30min': n_30m,
+                'pb_to_1min': _pb_needed_pes(avg_1m),
+                'pb_to_2min': _pb_needed_pes(avg_2m),
+                'pb_to_5min': _pb_needed_pes(avg_5m),
+                'pb_to_15min': _pb_needed_pes(avg_15m),
+                'pb_to_30min': _pb_needed_pes(avg_30m),
                 'verdict': verdict,
             })
 

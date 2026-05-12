@@ -936,15 +936,20 @@
                                     <th class="text-right px-2" title="Avg Close% − Avg 1st Pullback%. Positive = confirmation helped">Δ pct</th>
                                     <th class="text-right px-2" title="Total $ delta vs hypothetical immediate-fire exits">Total $ Δ</th>
                                     <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 1 min after the trade exited. NULL if tracking ended before 1 min mark.">+1min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Pullback distance needed to ride from peak to +1min price. Compare to Pullback Used: below = recovery zone (wider PB might capture); above = decay (wider PB would hurt).">PB→+1m</th>
                                     <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 2 min after exit.">+2min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Pullback distance needed to ride to +2min price.">PB→+2m</th>
                                     <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 5 min after exit.">+5min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Pullback distance needed to ride to +5min price.">PB→+5m</th>
                                     <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 15 min after exit. NULL when signal lost / tracking ended before 15 min — interpret as 'this counterfactual is invalid for that trade'.">+15min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Pullback distance needed to ride to +15min price.">PB→+15m</th>
                                     <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 30 min after exit.">+30min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Pullback distance needed to ride to +30min price.">PB→+30m</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="trailing-confirm-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="16" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
+                                <tr><td colspan="21" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -971,15 +976,20 @@
                                     <th class="text-right px-2 text-emerald-300" title="Avg peak P&L% during the trade (MFE). For EMA13_CROSS_EXIT this shows how high the trade got before the cross fired; for STOP_LOSS_WIDE shows whether the trade ever went positive.">Avg Peak%</th>
                                     <th class="text-right px-2">Avg Close%</th>
                                     <th class="text-right px-2 text-amber-300">+1min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="For EMA13: pullback distance needed to ride from peak to +1min — i.e., how much wider trailing/recovery tolerance would have captured the post-exit price. For STOP_LOSS_WIDE: SL widening needed to ride from peak to +1min recovery point.">PB→+1m</th>
                                     <th class="text-right px-2 text-amber-300">+2min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Distance needed to ride to +2min price.">PB→+2m</th>
                                     <th class="text-right px-2 text-amber-300">+5min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Distance needed to ride to +5min price.">PB→+5m</th>
                                     <th class="text-right px-2 text-amber-300">+15min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Distance needed to ride to +15min price.">PB→+15m</th>
                                     <th class="text-right px-2 text-amber-300">+30min%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="Distance needed to ride to +30min price.">PB→+30m</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="post-exit-snap-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="py-3 text-center text-gray-500">No snapshot data yet (engine starts capturing on next trade)</td></tr>
+                                <tr><td colspan="16" class="py-3 text-center text-gray-500">No snapshot data yet (engine starts capturing on next trade)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4854,8 +4864,9 @@
                 const _snapStr1 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
                 lines.push(`\n${hr2}`);
                 lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
-                lines.push('Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     ΔPct      Total$Δ    +1min%      +2min%      +5min%      +15min%     +30min%     Verdict');
-                lines.push('-'.repeat(160));
+                lines.push('Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     ΔPct      Total$Δ    +1min%      PB→1m       +2min%      PB→2m       +5min%      PB→5m       +15min%     PB→15m      +30min%     PB→30m      Verdict');
+                lines.push('-'.repeat(220));
+                const _pbStr1 = (v) => v == null ? '   -    ' : (v.toFixed(2) + '%').padStart(11);
                 _tcp1.rows.forEach(r => {
                     const pk = r.avg_peak_pct != null ? ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%') : '-';
                     const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
@@ -4868,7 +4879,8 @@
                     const s5 = _snapStr1(r.avg_pnl_at_5min, r.n_at_5min);
                     const s15 = _snapStr1(r.avg_pnl_at_15min, r.n_at_15min);
                     const s30 = _snapStr1(r.avg_pnl_at_30min, r.n_at_30min);
-                    lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${s2} ${s5} ${s15} ${s30} ${r.verdict}`);
+                    const pb1 = _pbStr1(r.pb_to_1min), pb2 = _pbStr1(r.pb_to_2min), pb5 = _pbStr1(r.pb_to_5min), pb15 = _pbStr1(r.pb_to_15min), pb30 = _pbStr1(r.pb_to_30min);
+                    lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30} ${r.verdict}`);
                 });
                 if (_tcp1.summary && _tcp1.summary.n > 0) {
                     const tot = (_tcp1.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp1.summary.total_dollar_delta).toFixed(2);
@@ -4885,8 +4897,9 @@
                 lines.push('## Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss (May 12 LATE PM)\n');
                 lines.push('For each exit type: avg P&L% at 1/2/5/15/30 min AFTER trade closed (avg(N) per cell).');
                 lines.push('EMA13: ★ EXIT TOO EARLY = +5min ≥ close + 0.20pp · STOP_LOSS: ⚠ SL ON NOISE = +5min > -0.50% · ★ SL CORRECT = +5min ≤ -0.70%.\n');
-                lines.push(`${'Close Reason'.padEnd(22)} ${'Dir'.padEnd(6)} ${'N'.padStart(4)} ${'AvgPeak%'.padStart(10)} ${'AvgClose%'.padStart(11)} ${'+1min%'.padStart(12)} ${'+2min%'.padStart(12)} ${'+5min%'.padStart(12)} ${'+15min%'.padStart(12)} ${'+30min%'.padStart(12)}   Verdict`);
+                lines.push(`${'Close Reason'.padEnd(22)} ${'Dir'.padEnd(6)} ${'N'.padStart(4)} ${'AvgPeak%'.padStart(10)} ${'AvgClose%'.padStart(11)} ${'+1min%'.padStart(12)} ${'PB→1m'.padStart(9)} ${'+2min%'.padStart(12)} ${'PB→2m'.padStart(9)} ${'+5min%'.padStart(12)} ${'PB→5m'.padStart(9)} ${'+15min%'.padStart(12)} ${'PB→15m'.padStart(9)} ${'+30min%'.padStart(12)} ${'PB→30m'.padStart(9)}   Verdict`);
                 lines.push('-'.repeat(140));
+                const _pbStrP1 = (v) => v == null ? '   -   ' : (v.toFixed(2) + '%').padStart(9);
                 _pes1.rows.forEach(r => {
                     const pk = r.avg_peak_pct != null ? ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%') : '-';
                     const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
@@ -4895,7 +4908,8 @@
                     const s5 = _snapStr3(r.avg_pnl_at_5min, r.n_at_5min);
                     const s15 = _snapStr3(r.avg_pnl_at_15min, r.n_at_15min);
                     const s30 = _snapStr3(r.avg_pnl_at_30min, r.n_at_30min);
-                    lines.push(`${r.close_reason.padEnd(22)} ${r.direction.padEnd(6)} ${String(r.n).padStart(4)} ${pk.padStart(10)} ${cls.padStart(11)} ${s1} ${s2} ${s5} ${s15} ${s30}   ${r.verdict}`);
+                    const pb1=_pbStrP1(r.pb_to_1min), pb2=_pbStrP1(r.pb_to_2min), pb5=_pbStrP1(r.pb_to_5min), pb15=_pbStrP1(r.pb_to_15min), pb30=_pbStrP1(r.pb_to_30min);
+                    lines.push(`${r.close_reason.padEnd(22)} ${r.direction.padEnd(6)} ${String(r.n).padStart(4)} ${pk.padStart(10)} ${cls.padStart(11)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30}   ${r.verdict}`);
                 });
             }
 
@@ -5813,8 +5827,9 @@
                     const _snapStr2 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
                     lines.push(`\n${hr2}`);
                     lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
-                    lines.push('Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     ΔPct      Total$Δ    +1min%      +2min%      +5min%      +15min%     +30min%     Verdict');
-                    lines.push('-'.repeat(160));
+                    lines.push('Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     ΔPct      Total$Δ    +1min%      PB→1m       +2min%      PB→2m       +5min%      PB→5m       +15min%     PB→15m      +30min%     PB→30m      Verdict');
+                    lines.push('-'.repeat(220));
+                    const _pbStr2 = (v) => v == null ? '   -    ' : (v.toFixed(2) + '%').padStart(11);
                     _tcp2.rows.forEach(r => {
                         const pk = r.avg_peak_pct != null ? ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%') : '-';
                         const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
@@ -5827,7 +5842,8 @@
                         const s5 = _snapStr2(r.avg_pnl_at_5min, r.n_at_5min);
                         const s15 = _snapStr2(r.avg_pnl_at_15min, r.n_at_15min);
                         const s30 = _snapStr2(r.avg_pnl_at_30min, r.n_at_30min);
-                        lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${s2} ${s5} ${s15} ${s30} ${r.verdict}`);
+                        const pb1 = _pbStr2(r.pb_to_1min), pb2 = _pbStr2(r.pb_to_2min), pb5 = _pbStr2(r.pb_to_5min), pb15 = _pbStr2(r.pb_to_15min), pb30 = _pbStr2(r.pb_to_30min);
+                        lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30} ${r.verdict}`);
                     });
                     if (_tcp2.summary && _tcp2.summary.n > 0) {
                         const tot = (_tcp2.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp2.summary.total_dollar_delta).toFixed(2);
@@ -5844,8 +5860,9 @@
                     lines.push('## Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss (May 12 LATE PM)\n');
                     lines.push('For each exit type: avg P&L% at 1/2/5/15/30 min AFTER trade closed (avg(N) per cell).');
                     lines.push('EMA13: ★ EXIT TOO EARLY = +5min ≥ close + 0.20pp · STOP_LOSS: ⚠ SL ON NOISE = +5min > -0.50% · ★ SL CORRECT = +5min ≤ -0.70%.\n');
-                    lines.push(`${'Close Reason'.padEnd(22)} ${'Dir'.padEnd(6)} ${'N'.padStart(4)} ${'AvgPeak%'.padStart(10)} ${'AvgClose%'.padStart(11)} ${'+1min%'.padStart(12)} ${'+2min%'.padStart(12)} ${'+5min%'.padStart(12)} ${'+15min%'.padStart(12)} ${'+30min%'.padStart(12)}   Verdict`);
+                    lines.push(`${'Close Reason'.padEnd(22)} ${'Dir'.padEnd(6)} ${'N'.padStart(4)} ${'AvgPeak%'.padStart(10)} ${'AvgClose%'.padStart(11)} ${'+1min%'.padStart(12)} ${'PB→1m'.padStart(9)} ${'+2min%'.padStart(12)} ${'PB→2m'.padStart(9)} ${'+5min%'.padStart(12)} ${'PB→5m'.padStart(9)} ${'+15min%'.padStart(12)} ${'PB→15m'.padStart(9)} ${'+30min%'.padStart(12)} ${'PB→30m'.padStart(9)}   Verdict`);
                     lines.push('-'.repeat(140));
+                    const _pbStrP2 = (v) => v == null ? '   -   ' : (v.toFixed(2) + '%').padStart(9);
                     _pes2.rows.forEach(r => {
                         const pk = r.avg_peak_pct != null ? ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%') : '-';
                         const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
@@ -5854,7 +5871,8 @@
                         const s5 = _snapStr4(r.avg_pnl_at_5min, r.n_at_5min);
                         const s15 = _snapStr4(r.avg_pnl_at_15min, r.n_at_15min);
                         const s30 = _snapStr4(r.avg_pnl_at_30min, r.n_at_30min);
-                        lines.push(`${r.close_reason.padEnd(22)} ${r.direction.padEnd(6)} ${String(r.n).padStart(4)} ${pk.padStart(10)} ${cls.padStart(11)} ${s1} ${s2} ${s5} ${s15} ${s30}   ${r.verdict}`);
+                        const pb1=_pbStrP2(r.pb_to_1min), pb2=_pbStrP2(r.pb_to_2min), pb5=_pbStrP2(r.pb_to_5min), pb15=_pbStrP2(r.pb_to_15min), pb30=_pbStrP2(r.pb_to_30min);
+                        lines.push(`${r.close_reason.padEnd(22)} ${r.direction.padEnd(6)} ${String(r.n).padStart(4)} ${pk.padStart(10)} ${cls.padStart(11)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30}   ${r.verdict}`);
                     });
                 }
 
@@ -7149,6 +7167,13 @@
                                 const cls = v >= 0 ? 'text-emerald-300' : 'text-red-300';
                                 return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(3)}%</span><span class="text-gray-600 text-[10px] ml-0.5">(${n})</span>`;
                             };
+                            const _fmtPB = (pb, pbUsed) => {
+                                if (pb == null) return '<span class="text-gray-600">-</span>';
+                                // Green = below pullback used (recovery zone, wider PB could capture)
+                                // Red = above pullback used (decay, wider PB would hurt)
+                                const cls = (pbUsed != null && pb < pbUsed) ? 'text-emerald-300' : (pbUsed != null && pb > pbUsed ? 'text-red-300' : 'text-gray-400');
+                                return `<span class="${cls}">${pb.toFixed(3)}%</span>`;
+                            };
                             _tcpBody.innerHTML = _tcp.rows.map(r => {
                                 const isTotal = r.tp_level === 'TOTAL';
                                 const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
@@ -7175,10 +7200,15 @@
                                     <td class="px-2 py-1 text-right ${deltaClass}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
                                     <td class="px-2 py-1 text-right ${dollarClass}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_1min, r.n_at_1min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB(r.pb_to_1min, r.avg_pullback_used)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_2min, r.n_at_2min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB(r.pb_to_2min, r.avg_pullback_used)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_5min, r.n_at_5min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB(r.pb_to_5min, r.avg_pullback_used)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_15min, r.n_at_15min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB(r.pb_to_15min, r.avg_pullback_used)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_30min, r.n_at_30min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB(r.pb_to_30min, r.avg_pullback_used)}</td>
                                     <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
                                 </tr>`;
                             }).join('');
@@ -7198,13 +7228,16 @@
                     const _pesBody = document.getElementById('post-exit-snap-body');
                     if (_pesBody) {
                         if (!_pes.rows || !_pes.rows.length) {
-                            _pesBody.innerHTML = '<tr><td colspan="11" class="py-3 text-center text-gray-500">No snapshot data yet (engine starts capturing on next trade)</td></tr>';
+                            _pesBody.innerHTML = '<tr><td colspan="16" class="py-3 text-center text-gray-500">No snapshot data yet (engine starts capturing on next trade)</td></tr>';
                         } else {
                             const _fmtSnap2 = (v, n) => {
                                 if (v == null || n === 0) return '<span class="text-gray-600">-</span>';
                                 const cls = v >= 0 ? 'text-emerald-300' : 'text-red-300';
                                 return `<span class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(3)}%</span><span class="text-gray-600 text-[10px] ml-0.5">(${n})</span>`;
                             };
+                            // PB needed cell — no "compare to pullback used" reference for these tables;
+                            // just show the raw value (operator interprets context per close reason)
+                            const _fmtPB2 = (pb) => pb == null ? '<span class="text-gray-600">-</span>' : `<span class="text-cyan-300">${pb.toFixed(3)}%</span>`;
                             _pesBody.innerHTML = _pes.rows.map(r => {
                                 const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                                 const closeClass = r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -7220,10 +7253,15 @@
                                     <td class="px-2 py-1 text-right text-emerald-300">${r.avg_peak_pct != null ? (r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%' : '-'}</td>
                                     <td class="px-2 py-1 text-right ${closeClass}">${r.avg_close_pct >= 0 ? '+' : ''}${r.avg_close_pct.toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_1min, r.n_at_1min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB2(r.pb_to_1min)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_2min, r.n_at_2min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB2(r.pb_to_2min)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_5min, r.n_at_5min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB2(r.pb_to_5min)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_15min, r.n_at_15min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB2(r.pb_to_15min)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap2(r.avg_pnl_at_30min, r.n_at_30min)}</td>
+                                    <td class="px-2 py-1 text-right">${_fmtPB2(r.pb_to_30min)}</td>
                                     <td class="px-2 py-1 ${verdictColor}">${r.verdict}</td>
                                 </tr>`;
                             }).join('');

@@ -5634,6 +5634,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
         # Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE (May 12 LATE PM)
         "post_exit_snapshots_by_reason": _compute_post_exit_snapshots_by_reason(orders),
+        # Fast-exit counterfactual grid (May 13 — Option A analytics).
+        # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
+        # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
+        # Uses peak_pnl + peak_reached_at — conservative (only catches trades whose
+        # peak happens within window; misses trades that crossed threshold before peak).
+        "fast_exit_counterfactual": _compute_fast_exit_counterfactual(orders),
     }
 
 
@@ -5911,6 +5917,203 @@ def _compute_post_exit_snapshots_by_reason(orders):
             })
 
     return {'rows': rows_out}
+
+
+# Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).
+_FAST_EXIT_THRESHOLDS = [0.10, 0.15, 0.20]   # P&L % triggers to test
+_FAST_EXIT_WINDOWS = [1, 2, 3, 5]            # minutes from entry
+_FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
+_FAST_EXIT_FEE_PCT = 0.063                   # taker round-trip fee approx
+
+
+def _compute_fast_exit_counterfactual(orders):
+    """Fast-exit counterfactual grid (May 13).
+
+    For each (threshold, window) pair: identify trades whose peak P&L reached
+    >= threshold within `window` minutes of entry. For those trades, the
+    hypothetical 'fast-exit' would have locked in `threshold - fee`. Compare
+    portfolio swing vs actual outcomes.
+
+    Returns three sections:
+      - grid_rows: 3 thresholds x 4 windows aggregate metrics
+      - direction_split: same grid but split LONG/SHORT to surface asymmetry
+      - close_reason_breakdown: for the default cell, what close reasons would fire
+
+    Limitation (conservative): uses `peak_reached_at` as proxy for "first cross".
+    Trades that crossed threshold earlier but peaked later are missed. Real edge
+    likely larger than what this shows.
+
+    Pool caveat: spans multiple configs across the date range. Net% is leverage-
+    invariant; raw $ is approximate. Use Net% for cross-batch comparison.
+    """
+    # Build a working list with timing
+    pool = []
+    for o in orders:
+        if getattr(o, 'status', None) != 'CLOSED':
+            continue
+        peak = getattr(o, 'peak_pnl', None)
+        peak_at = getattr(o, 'peak_reached_at', None)
+        opened = getattr(o, 'opened_at', None)
+        if peak is None or peak_at is None or opened is None:
+            continue
+        try:
+            peak_min = (peak_at - opened).total_seconds() / 60.0
+        except Exception:
+            continue
+        direction = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or 'LONG'
+        pool.append({
+            'pair': o.pair,
+            'direction': direction,
+            'pnl_pct': o.pnl_percentage or 0.0,
+            'pnl_usd': o.pnl or 0.0,
+            'peak_pct': peak,
+            'peak_min': peak_min,
+            'investment': o.investment or 0.0,
+            'leverage': o.leverage or 1,
+            'close_reason': (o.close_reason or 'UNKNOWN').split(' L')[0],
+        })
+
+    if not pool:
+        return {'grid_rows': [], 'direction_split': [], 'close_reason_breakdown': None,
+                'caveat': 'No trades with timing data available.'}
+
+    n_total = len(pool)
+
+    def cell_metrics(threshold, window_min, sub_pool):
+        """Compute fired-trades metrics for a single (threshold, window) cell."""
+        fired = [t for t in sub_pool if t['peak_pct'] >= threshold and t['peak_min'] <= window_min]
+        winners = [t for t in fired if t['pnl_pct'] > 0]
+        losers = [t for t in fired if t['pnl_pct'] <= 0]
+        # Pct-based metrics: leverage-invariant
+        give_up_pct = sum(t['pnl_pct'] - threshold for t in winners)  # negative-ish ($)
+        saved_pct = sum(threshold - t['pnl_pct'] for t in losers)     # positive
+        net_pct = saved_pct - give_up_pct
+        # $-based: approximate using investment * leverage and (threshold - fee)
+        cf_per_trade_usd = lambda t: t['investment'] * t['leverage'] * (threshold - _FAST_EXIT_FEE_PCT) / 100.0
+        real_dollars = sum(t['pnl_usd'] for t in fired)
+        cf_dollars = sum(cf_per_trade_usd(t) for t in fired)
+        return {
+            'fired': fired,
+            'winners': winners,
+            'losers': losers,
+            'give_up_pct': give_up_pct,
+            'saved_pct': saved_pct,
+            'net_pct': net_pct,
+            'real_dollars': real_dollars,
+            'cf_dollars': cf_dollars,
+            'delta_dollars': cf_dollars - real_dollars,
+        }
+
+    # Build grid (aggregate across direction)
+    grid_rows = []
+    for thr in _FAST_EXIT_THRESHOLDS:
+        for win in _FAST_EXIT_WINDOWS:
+            m = cell_metrics(thr, win, pool)
+            n_fire = len(m['fired'])
+            pct_fire = n_fire / n_total * 100 if n_total else 0
+            # Verdict
+            if m['delta_dollars'] > 0:
+                verdict = 'positive'
+            elif m['delta_dollars'] < 0:
+                verdict = 'negative'
+            else:
+                verdict = 'neutral'
+            grid_rows.append({
+                'threshold_pct': thr,
+                'window_min': win,
+                'n_fire': n_fire,
+                'pct_fire': round(pct_fire, 1),
+                'n_winners_cut': len(m['winners']),
+                'n_losers_saved': len(m['losers']),
+                'give_up_pct': round(-m['give_up_pct'], 2),   # display as negative
+                'saved_pct': round(m['saved_pct'], 2),
+                'net_pct': round(m['net_pct'], 2),
+                'real_dollars': round(m['real_dollars'], 2),
+                'cf_dollars': round(m['cf_dollars'], 2),
+                'delta_dollars': round(m['delta_dollars'], 2),
+                'verdict': verdict,
+            })
+
+    # Mark best Net% and best Δ$ cells
+    if grid_rows:
+        max_net = max(r['net_pct'] for r in grid_rows)
+        max_delta = max(r['delta_dollars'] for r in grid_rows)
+        for r in grid_rows:
+            r['is_best_net'] = (r['net_pct'] == max_net)
+            r['is_best_dollars'] = (r['delta_dollars'] == max_delta)
+
+    # Direction split
+    longs = [t for t in pool if t['direction'] == 'LONG']
+    shorts = [t for t in pool if t['direction'] == 'SHORT']
+    direction_split = []
+    for thr in _FAST_EXIT_THRESHOLDS:
+        for win in _FAST_EXIT_WINDOWS:
+            ml = cell_metrics(thr, win, longs)
+            ms = cell_metrics(thr, win, shorts)
+            # Verdict per-direction
+            long_pos = ml['delta_dollars'] > 0
+            short_pos = ms['delta_dollars'] > 0
+            if long_pos and short_pos:
+                v = 'OK both'
+            elif long_pos and not short_pos and len(ms['fired']) > 0:
+                v = 'LONG only'
+            elif long_pos and len(ms['fired']) == 0:
+                v = 'LONG only (no SHORT data)'
+            elif not long_pos and short_pos:
+                v = 'SHORT only'
+            else:
+                v = 'Negative both'
+            direction_split.append({
+                'threshold_pct': thr,
+                'window_min': win,
+                'long_n': len(ml['fired']),
+                'long_delta_dollars': round(ml['delta_dollars'], 2),
+                'short_n': len(ms['fired']),
+                'short_delta_dollars': round(ms['delta_dollars'], 2),
+                'verdict': v,
+            })
+
+    # Close-reason breakdown for the default cell
+    default_thr, default_win = _FAST_EXIT_DEFAULT_CELL
+    m_default = cell_metrics(default_thr, default_win, pool)
+    by_cr = {}
+    for t in m_default['fired']:
+        cr = t['close_reason']
+        by_cr.setdefault(cr, []).append(t)
+    cr_rows = []
+    for cr, trs in sorted(by_cr.items(), key=lambda kv: -len(kv[1])):
+        n = len(trs)
+        wins = sum(1 for t in trs if t['pnl_pct'] > 0)
+        avg_close = sum(t['pnl_pct'] for t in trs) / n
+        avg_peak = sum(t['peak_pct'] for t in trs) / n
+        wr = wins / n * 100
+        # Effect: GIVES UP if WR > 50, SAVES if WR < 50
+        if wr >= 50:
+            effect = 'GIVES UP'
+            per_trade_pct = round(-(avg_close - default_thr), 3)  # negative number for cut
+        else:
+            effect = 'SAVES'
+            per_trade_pct = round(default_thr - avg_close, 3)
+        cr_rows.append({
+            'close_reason': cr,
+            'n': n,
+            'actual_wr': round(wr, 0),
+            'avg_close_pct': round(avg_close, 3),
+            'avg_peak_pct': round(avg_peak, 3),
+            'effect': effect,
+            'per_trade_pct': per_trade_pct,
+        })
+
+    return {
+        'grid_rows': grid_rows,
+        'direction_split': direction_split,
+        'close_reason_breakdown': {
+            'threshold_pct': default_thr,
+            'window_min': default_win,
+            'rows': cr_rows,
+        },
+        'caveat': 'Conservative — uses peak_reached_at; trades crossing threshold before peak missed. Pool spans multiple configs; Net% is leverage-invariant, raw $ approximate.',
+    }
 
 
 def _compute_ema13_strict_performance(orders):

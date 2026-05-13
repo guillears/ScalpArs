@@ -995,6 +995,86 @@
                     </div>
                 </div>
 
+                <!-- Fast-Exit Counterfactual (May 13) — Option A analytics -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">🚦 Fast-Exit Counterfactual</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        Tests: "what if we exited at +X% the moment P&L reached it within N min of entry?"
+                        Compares real outcome vs hypothetical fast-exit across the (threshold × window) grid.
+                        <br/><em class="text-amber-400">Conservative — uses peak_reached_at as proxy for "first cross"; trades that crossed threshold before peak are missed. Pool spans multiple configs; Net% is leverage-invariant, raw $ approximate.</em>
+                    </p>
+                    <!-- Section 1: Aggregate grid -->
+                    <h4 class="text-xs font-semibold text-gray-400 mt-3 mb-2">Grid (aggregate across direction)</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Threshold</th>
+                                    <th class="text-left px-2">Window</th>
+                                    <th class="text-right px-2">#Fire</th>
+                                    <th class="text-right px-2">%Fire</th>
+                                    <th class="text-right px-2" title="Real winners that fast-exit would cut short">Win Cut</th>
+                                    <th class="text-right px-2" title="Real losers that fast-exit would save">Los Saved</th>
+                                    <th class="text-right px-2 text-red-400" title="Sum of % winners give up vs locking at threshold">GiveUp%</th>
+                                    <th class="text-right px-2 text-emerald-400" title="Sum of % losers saved by locking at threshold">Saved%</th>
+                                    <th class="text-right px-2" title="Net % swing — leverage-invariant">Net%</th>
+                                    <th class="text-right px-2">Real $</th>
+                                    <th class="text-right px-2">CF $</th>
+                                    <th class="text-right px-2" title="Counterfactual $ minus real $">Δ$</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fast-exit-grid-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Section 2: Direction split -->
+                    <h4 class="text-xs font-semibold text-gray-400 mt-5 mb-2">Direction split — surfaces LONG/SHORT asymmetry</h4>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Threshold</th>
+                                    <th class="text-left px-2">Window</th>
+                                    <th class="text-right px-2 text-emerald-300">LONG N</th>
+                                    <th class="text-right px-2 text-emerald-300">LONG Δ$</th>
+                                    <th class="text-right px-2 text-red-300">SHORT N</th>
+                                    <th class="text-right px-2 text-red-300">SHORT Δ$</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fast-exit-direction-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Section 3: Close-reason breakdown for default cell -->
+                    <h4 class="text-xs font-semibold text-gray-400 mt-5 mb-2">
+                        Close-reason breakdown for default cell
+                        <span id="fast-exit-default-cell" class="text-amber-300">(0.20% / 2min)</span>
+                    </h4>
+                    <p class="text-xs text-gray-500 mb-2">Which close reasons would the "would-fire" trades have come from? Shows the trade-off composition.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Close Reason</th>
+                                    <th class="text-right px-2">N Fired</th>
+                                    <th class="text-right px-2">Actual WR</th>
+                                    <th class="text-right px-2">Avg Close%</th>
+                                    <th class="text-right px-2">Avg Peak%</th>
+                                    <th class="text-left px-2">Effect</th>
+                                    <th class="text-right px-2" title="Per-trade % effect">Per-tr%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fast-exit-cr-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -4889,6 +4969,48 @@
                 }
             }
 
+            // Fast-Exit Counterfactual (May 13)
+            const _fec1 = perf.fast_exit_counterfactual || null;
+            if (_fec1 && _fec1.grid_rows && _fec1.grid_rows.length) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Fast-Exit Counterfactual (May 13)\n');
+                lines.push('"What if we exited at +X% the moment P&L reached it within N min?"');
+                lines.push('Conservative: uses peak_reached_at as proxy. Pool spans multiple configs; Net% leverage-invariant, $ approximate.\n');
+                lines.push('### Grid (aggregate)');
+                lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'#Fire'.padStart(6)} ${'%Fire'.padStart(7)} ${'WinCut'.padStart(8)} ${'LosSav'.padStart(8)} ${'GiveUp%'.padStart(10)} ${'Saved%'.padStart(9)} ${'Net%'.padStart(8)} ${'Real$'.padStart(9)} ${'CF$'.padStart(9)} ${'Δ$'.padStart(9)}   Verdict`);
+                lines.push('-'.repeat(115));
+                _fec1.grid_rows.forEach(r => {
+                    let v;
+                    if (r.is_best_net && r.is_best_dollars) v='★ Best Net%+Δ$';
+                    else if (r.is_best_net) v='★ Best Net%';
+                    else if (r.is_best_dollars) v='★ Best Δ$';
+                    else if (r.verdict==='positive') v='✓ Positive';
+                    else if (r.verdict==='negative') v='✗ Negative';
+                    else v='· Neutral';
+                    lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.n_fire).padStart(6)} ${(r.pct_fire.toFixed(1)+'%').padStart(7)} ${String(r.n_winners_cut).padStart(8)} ${String(r.n_losers_saved).padStart(8)} ${(r.give_up_pct.toFixed(2)+'%').padStart(10)} ${('+'+r.saved_pct.toFixed(2)+'%').padStart(9)} ${((r.net_pct>=0?'+':'')+r.net_pct.toFixed(2)+'%').padStart(8)} ${((r.real_dollars>=0?'+$':'-$')+Math.abs(r.real_dollars).toFixed(0)).padStart(9)} ${((r.cf_dollars>=0?'+$':'-$')+Math.abs(r.cf_dollars).toFixed(0)).padStart(9)} ${((r.delta_dollars>=0?'+$':'-$')+Math.abs(r.delta_dollars).toFixed(0)).padStart(9)}   ${v}`);
+                });
+                lines.push('\n### Direction split');
+                lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'LongN'.padStart(7)} ${'LongΔ$'.padStart(10)} ${'ShortN'.padStart(8)} ${'ShortΔ$'.padStart(10)}   Verdict`);
+                lines.push('-'.repeat(70));
+                _fec1.direction_split.forEach(r => {
+                    const ld = r.long_n > 0 ? ((r.long_delta_dollars>=0?'+$':'-$')+Math.abs(r.long_delta_dollars).toFixed(0)) : '-';
+                    const sd = r.short_n > 0 ? ((r.short_delta_dollars>=0?'+$':'-$')+Math.abs(r.short_delta_dollars).toFixed(0)) : '-';
+                    lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.long_n).padStart(7)} ${ld.padStart(10)} ${String(r.short_n).padStart(8)} ${sd.padStart(10)}   ${r.verdict}`);
+                });
+                if (_fec1.close_reason_breakdown && _fec1.close_reason_breakdown.rows && _fec1.close_reason_breakdown.rows.length) {
+                    const dc = _fec1.close_reason_breakdown;
+                    lines.push(`\n### Close-reason breakdown for default cell (${dc.threshold_pct.toFixed(2)}% / ${dc.window_min}min)`);
+                    lines.push(`${'Close Reason'.padEnd(28)} ${'N'.padStart(4)} ${'WR'.padStart(5)} ${'AvgClose%'.padStart(11)} ${'AvgPeak%'.padStart(11)} ${'Effect'.padEnd(10)} ${'Per-tr%'.padStart(10)}`);
+                    lines.push('-'.repeat(85));
+                    dc.rows.forEach(r => {
+                        const closePct = (r.avg_close_pct>=0?'+':'') + r.avg_close_pct.toFixed(3)+'%';
+                        const peakPct = '+'+r.avg_peak_pct.toFixed(3)+'%';
+                        const perTr = (r.per_trade_pct>=0?'+':'') + r.per_trade_pct.toFixed(3)+'%';
+                        lines.push(`${r.close_reason.padEnd(28)} ${String(r.n).padStart(4)} ${(r.actual_wr.toFixed(0)+'%').padStart(5)} ${closePct.padStart(11)} ${peakPct.padStart(11)} ${r.effect.padEnd(10)} ${perTr.padStart(10)}`);
+                    });
+                }
+            }
+
             // Post-Exit Snapshots: EMA13_CROSS_EXIT + STOP_LOSS_WIDE (May 12 LATE PM)
             const _pes1 = perf.post_exit_snapshots_by_reason || {};
             if (_pes1.rows && _pes1.rows.length) {
@@ -5853,6 +5975,48 @@
                 }
 
                 // Post-Exit Snapshots: EMA13_CROSS_EXIT + STOP_LOSS_WIDE (May 12 LATE PM)
+                // Fast-Exit Counterfactual (May 13)
+                const _fec2 = perf.fast_exit_counterfactual || null;
+                if (_fec2 && _fec2.grid_rows && _fec2.grid_rows.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Fast-Exit Counterfactual (May 13)\n');
+                    lines.push('"What if we exited at +X% the moment P&L reached it within N min?"');
+                    lines.push('Conservative: uses peak_reached_at as proxy. Pool spans multiple configs; Net% leverage-invariant, $ approximate.\n');
+                    lines.push('### Grid (aggregate)');
+                    lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'#Fire'.padStart(6)} ${'%Fire'.padStart(7)} ${'WinCut'.padStart(8)} ${'LosSav'.padStart(8)} ${'GiveUp%'.padStart(10)} ${'Saved%'.padStart(9)} ${'Net%'.padStart(8)} ${'Real$'.padStart(9)} ${'CF$'.padStart(9)} ${'Δ$'.padStart(9)}   Verdict`);
+                    lines.push('-'.repeat(115));
+                    _fec2.grid_rows.forEach(r => {
+                        let v;
+                        if (r.is_best_net && r.is_best_dollars) v='★ Best Net%+Δ$';
+                        else if (r.is_best_net) v='★ Best Net%';
+                        else if (r.is_best_dollars) v='★ Best Δ$';
+                        else if (r.verdict==='positive') v='✓ Positive';
+                        else if (r.verdict==='negative') v='✗ Negative';
+                        else v='· Neutral';
+                        lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.n_fire).padStart(6)} ${(r.pct_fire.toFixed(1)+'%').padStart(7)} ${String(r.n_winners_cut).padStart(8)} ${String(r.n_losers_saved).padStart(8)} ${(r.give_up_pct.toFixed(2)+'%').padStart(10)} ${('+'+r.saved_pct.toFixed(2)+'%').padStart(9)} ${((r.net_pct>=0?'+':'')+r.net_pct.toFixed(2)+'%').padStart(8)} ${((r.real_dollars>=0?'+$':'-$')+Math.abs(r.real_dollars).toFixed(0)).padStart(9)} ${((r.cf_dollars>=0?'+$':'-$')+Math.abs(r.cf_dollars).toFixed(0)).padStart(9)} ${((r.delta_dollars>=0?'+$':'-$')+Math.abs(r.delta_dollars).toFixed(0)).padStart(9)}   ${v}`);
+                    });
+                    lines.push('\n### Direction split');
+                    lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'LongN'.padStart(7)} ${'LongΔ$'.padStart(10)} ${'ShortN'.padStart(8)} ${'ShortΔ$'.padStart(10)}   Verdict`);
+                    lines.push('-'.repeat(70));
+                    _fec2.direction_split.forEach(r => {
+                        const ld = r.long_n > 0 ? ((r.long_delta_dollars>=0?'+$':'-$')+Math.abs(r.long_delta_dollars).toFixed(0)) : '-';
+                        const sd = r.short_n > 0 ? ((r.short_delta_dollars>=0?'+$':'-$')+Math.abs(r.short_delta_dollars).toFixed(0)) : '-';
+                        lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.long_n).padStart(7)} ${ld.padStart(10)} ${String(r.short_n).padStart(8)} ${sd.padStart(10)}   ${r.verdict}`);
+                    });
+                    if (_fec2.close_reason_breakdown && _fec2.close_reason_breakdown.rows && _fec2.close_reason_breakdown.rows.length) {
+                        const dc = _fec2.close_reason_breakdown;
+                        lines.push(`\n### Close-reason breakdown for default cell (${dc.threshold_pct.toFixed(2)}% / ${dc.window_min}min)`);
+                        lines.push(`${'Close Reason'.padEnd(28)} ${'N'.padStart(4)} ${'WR'.padStart(5)} ${'AvgClose%'.padStart(11)} ${'AvgPeak%'.padStart(11)} ${'Effect'.padEnd(10)} ${'Per-tr%'.padStart(10)}`);
+                        lines.push('-'.repeat(85));
+                        dc.rows.forEach(r => {
+                            const closePct = (r.avg_close_pct>=0?'+':'') + r.avg_close_pct.toFixed(3)+'%';
+                            const peakPct = '+'+r.avg_peak_pct.toFixed(3)+'%';
+                            const perTr = (r.per_trade_pct>=0?'+':'') + r.per_trade_pct.toFixed(3)+'%';
+                            lines.push(`${r.close_reason.padEnd(28)} ${String(r.n).padStart(4)} ${(r.actual_wr.toFixed(0)+'%').padStart(5)} ${closePct.padStart(11)} ${peakPct.padStart(11)} ${r.effect.padEnd(10)} ${perTr.padStart(10)}`);
+                        });
+                    }
+                }
+
                 const _pes2 = perf.post_exit_snapshots_by_reason || {};
                 if (_pes2.rows && _pes2.rows.length) {
                     const _snapStr4 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
@@ -7218,6 +7382,99 @@
                             } else if (_tcpSummary) {
                                 _tcpSummary.textContent = '';
                             }
+                        }
+                    }
+                }
+
+                // Fast-Exit Counterfactual (May 13)
+                if (data.fast_exit_counterfactual) {
+                    const _fec = data.fast_exit_counterfactual;
+                    const fmtPct = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                    const fmtUSD = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(0);
+
+                    // Grid
+                    const _grid = document.getElementById('fast-exit-grid-body');
+                    if (_grid) {
+                        if (!_fec.grid_rows || !_fec.grid_rows.length) {
+                            _grid.innerHTML = '<tr><td colspan="13" class="py-3 text-center text-gray-500">No data yet</td></tr>';
+                        } else {
+                            _grid.innerHTML = _fec.grid_rows.map(r => {
+                                const netCls = r.net_pct > 0 ? 'text-emerald-400' : r.net_pct < 0 ? 'text-red-400' : 'text-gray-400';
+                                const dollarCls = r.delta_dollars > 0 ? 'text-emerald-400' : r.delta_dollars < 0 ? 'text-red-400' : 'text-gray-400';
+                                let verdict;
+                                if (r.is_best_net && r.is_best_dollars) verdict = '★ Best Net% + Δ$';
+                                else if (r.is_best_net) verdict = '★ Best Net%';
+                                else if (r.is_best_dollars) verdict = '★ Best Δ$';
+                                else if (r.verdict === 'positive') verdict = '✓ Positive';
+                                else if (r.verdict === 'negative') verdict = '✗ Negative';
+                                else verdict = '· Neutral';
+                                const verdictCls = verdict.includes('★') ? 'text-amber-400' : verdict.includes('✓') ? 'text-emerald-400' : verdict.includes('✗') ? 'text-red-400' : 'text-gray-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 font-medium">${r.threshold_pct.toFixed(2)}%</td>
+                                    <td class="px-2 py-1">${r.window_min}min</td>
+                                    <td class="px-2 py-1 text-right">${r.n_fire}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.pct_fire.toFixed(1)}%</td>
+                                    <td class="px-2 py-1 text-right text-red-300">${r.n_winners_cut}</td>
+                                    <td class="px-2 py-1 text-right text-emerald-300">${r.n_losers_saved}</td>
+                                    <td class="px-2 py-1 text-right text-red-400">${r.give_up_pct.toFixed(2)}%</td>
+                                    <td class="px-2 py-1 text-right text-emerald-400">+${r.saved_pct.toFixed(2)}%</td>
+                                    <td class="px-2 py-1 text-right ${netCls} font-medium">${fmtPct(r.net_pct)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtUSD(r.real_dollars)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtUSD(r.cf_dollars)}</td>
+                                    <td class="px-2 py-1 text-right ${dollarCls} font-medium">${fmtUSD(r.delta_dollars)}</td>
+                                    <td class="px-2 py-1 ${verdictCls}">${verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+
+                    // Direction split
+                    const _dir = document.getElementById('fast-exit-direction-body');
+                    if (_dir) {
+                        if (!_fec.direction_split || !_fec.direction_split.length) {
+                            _dir.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No data yet</td></tr>';
+                        } else {
+                            _dir.innerHTML = _fec.direction_split.map(r => {
+                                const longCls = r.long_delta_dollars > 0 ? 'text-emerald-400' : r.long_delta_dollars < 0 ? 'text-red-400' : 'text-gray-400';
+                                const shortCls = r.short_delta_dollars > 0 ? 'text-emerald-400' : r.short_delta_dollars < 0 ? 'text-red-400' : 'text-gray-400';
+                                const vCls = r.verdict.includes('OK') ? 'text-emerald-400' : r.verdict.includes('LONG only') ? 'text-amber-400' : r.verdict.includes('SHORT only') ? 'text-amber-400' : 'text-red-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 font-medium">${r.threshold_pct.toFixed(2)}%</td>
+                                    <td class="px-2 py-1">${r.window_min}min</td>
+                                    <td class="px-2 py-1 text-right">${r.long_n}</td>
+                                    <td class="px-2 py-1 text-right ${longCls} font-medium">${r.long_n > 0 ? fmtUSD(r.long_delta_dollars) : '-'}</td>
+                                    <td class="px-2 py-1 text-right">${r.short_n}</td>
+                                    <td class="px-2 py-1 text-right ${shortCls} font-medium">${r.short_n > 0 ? fmtUSD(r.short_delta_dollars) : '-'}</td>
+                                    <td class="px-2 py-1 ${vCls}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+
+                    // Close reason breakdown
+                    const _crb = document.getElementById('fast-exit-cr-body');
+                    const _crbCell = document.getElementById('fast-exit-default-cell');
+                    if (_crbCell && _fec.close_reason_breakdown) {
+                        _crbCell.textContent = `(${_fec.close_reason_breakdown.threshold_pct.toFixed(2)}% / ${_fec.close_reason_breakdown.window_min}min)`;
+                    }
+                    if (_crb) {
+                        const crows = (_fec.close_reason_breakdown && _fec.close_reason_breakdown.rows) || [];
+                        if (!crows.length) {
+                            _crb.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No data yet</td></tr>';
+                        } else {
+                            _crb.innerHTML = crows.map(r => {
+                                const effectCls = r.effect === 'SAVES' ? 'text-emerald-400' : 'text-red-400';
+                                const closeCls = r.avg_close_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 font-medium">${r.close_reason}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right">${r.actual_wr.toFixed(0)}%</td>
+                                    <td class="px-2 py-1 text-right ${closeCls}">${(r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right text-emerald-300">+${r.avg_peak_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 ${effectCls} font-medium">${r.effect}</td>
+                                    <td class="px-2 py-1 text-right ${effectCls}">${(r.per_trade_pct >= 0 ? '+' : '') + r.per_trade_pct.toFixed(3)}%</td>
+                                </tr>`;
+                            }).join('');
                         }
                     }
                 }

@@ -6261,6 +6261,35 @@ def _compute_multiplier_cell_performance(orders):
     if not closed:
         return {"longs": [], "shorts": [], "summary": {}}
 
+    # May 13: parse CURRENT config multipliers so we can flag cells that have been
+    # demoted (historical trades stamped 2.0× but config now 1.0×).
+    def _parse_rules(s, prefix):
+        out = {}
+        if not s: return out
+        for rule in s.split(','):
+            rule = rule.strip()
+            if not rule: continue
+            parts = rule.split(':')
+            if prefix == 'STRETCH' and len(parts) == 2:
+                # "0.25-0.30:2.0" — stretch has no ADX
+                out[f"{prefix}_{parts[0]}"] = float(parts[1])
+            elif len(parts) == 3:
+                # "60-65:18-22:2.0"
+                out[f"{prefix}_{parts[0]}_{parts[1]}"] = float(parts[2])
+        return out
+
+    try:
+        th = config.trading_config.thresholds
+        cur_pair_long = _parse_rules(getattr(th, 'rsi_adx_multiplier_long', ''), 'PAIR')
+        cur_pair_short = _parse_rules(getattr(th, 'rsi_adx_multiplier_short', ''), 'PAIR')
+        cur_btc_long = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_long', ''), 'BTC')
+        cur_btc_short = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_short', ''), 'BTC')
+        cur_stretch_long = _parse_rules(getattr(th, 'ema5_stretch_multiplier_long', ''), 'STRETCH')
+        cur_stretch_short = _parse_rules(getattr(th, 'ema5_stretch_multiplier_short', ''), 'STRETCH')
+    except Exception:
+        cur_pair_long = cur_pair_short = cur_btc_long = cur_btc_short = {}
+        cur_stretch_long = cur_stretch_short = {}
+
     def _direction_baseline(direction):
         """Avg P&L% of NON-multiplied trades for this direction."""
         base_trades = [o for o in closed
@@ -6272,6 +6301,11 @@ def _compute_multiplier_cell_performance(orders):
 
     def _bucket_for_direction(direction):
         baseline = _direction_baseline(direction)
+        # Pick the appropriate current-config map for this direction
+        if direction == 'LONG':
+            current_map = {**cur_pair_long, **cur_btc_long, **cur_stretch_long}
+        else:
+            current_map = {**cur_pair_short, **cur_btc_short, **cur_stretch_short}
         # Group by source (NULL = baseline 1.0×)
         groups = {}
         for o in closed:
@@ -6326,9 +6360,14 @@ def _compute_multiplier_cell_performance(orders):
                 else:
                     verdict = '⚠ DRAG'
 
+            # May 13: current-config multiplier (for demotion flag)
+            current_mult = current_map.get(src) if not is_default else None
+            is_demoted = (current_mult is not None and current_mult < mult)
             rows.append({
                 'source': src,
                 'multiplier': round(mult, 2),
+                'current_config_multiplier': round(current_mult, 2) if current_mult is not None else None,
+                'is_demoted': is_demoted,
                 'n': n,
                 'wr_pct': round(wr, 1),
                 'avg_pnl_pct': round(avg_pct, 4),

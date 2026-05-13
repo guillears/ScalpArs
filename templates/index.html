@@ -7269,8 +7269,12 @@
                             r.multiplier >= 1.5 ? 'text-amber-300' :
                             'text-gray-300');
                         const pfStr = r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2);
+                        // May 13: demotion badge — current config multiplier differs from historical row
+                        const demotedBadge = r.is_demoted
+                            ? `<span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-900/40 text-amber-300 font-mono" title="Cell currently demoted in config — new trades will use ${r.current_config_multiplier.toFixed(1)}x instead of ${r.multiplier.toFixed(1)}x">↓ now ${r.current_config_multiplier.toFixed(1)}x</span>`
+                            : '';
                         return `<tr class="hover:bg-white/5">
-                            <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${r.source}</td>
+                            <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${r.source}${demotedBadge}</td>
                             <td class="px-2 py-1 text-right ${sourceColor}">${r.multiplier.toFixed(2)}x</td>
                             <td class="px-2 py-1 text-right">${r.n}</td>
                             <td class="px-2 py-1 text-right">${r.wr_pct.toFixed(1)}%</td>

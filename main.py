@@ -5921,7 +5921,7 @@ def _compute_post_exit_snapshots_by_reason(orders):
 
 # Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).
 _FAST_EXIT_THRESHOLDS = [0.10, 0.15, 0.20]   # P&L % triggers to test
-_FAST_EXIT_WINDOWS = [1, 2, 3, 5]            # minutes from entry
+_FAST_EXIT_WINDOWS = [1, 2, 5]               # minutes from entry (3min dropped May 13)
 _FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
 _FAST_EXIT_FEE_PCT = 0.063                   # taker round-trip fee approx
 
@@ -6083,12 +6083,16 @@ def _compute_fast_exit_counterfactual(orders):
             cr = t['close_reason']
             by_cr.setdefault(cr, []).append(t)
         cr_rows = []
+        cf_per_trade_usd = lambda t: t['investment'] * t['leverage'] * (thr - _FAST_EXIT_FEE_PCT) / 100.0
         for cr, trs in sorted(by_cr.items(), key=lambda kv: -len(kv[1])):
             n = len(trs)
             wins = sum(1 for t in trs if t['pnl_pct'] > 0)
             avg_close = sum(t['pnl_pct'] for t in trs) / n
             avg_peak = sum(t['peak_pct'] for t in trs) / n
             wr = wins / n * 100
+            real_dollars = sum(t['pnl_usd'] for t in trs)
+            cf_dollars = sum(cf_per_trade_usd(t) for t in trs)
+            delta_dollars = cf_dollars - real_dollars
             if wr >= 50:
                 effect = 'GIVES UP'
                 per_trade_pct = round(-(avg_close - thr), 3)
@@ -6103,6 +6107,9 @@ def _compute_fast_exit_counterfactual(orders):
                 'avg_peak_pct': round(avg_peak, 3),
                 'effect': effect,
                 'per_trade_pct': per_trade_pct,
+                'real_dollars': round(real_dollars, 2),
+                'cf_dollars': round(cf_dollars, 2),
+                'delta_dollars': round(delta_dollars, 2),
             })
         return cr_rows
 

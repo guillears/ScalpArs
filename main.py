@@ -6004,13 +6004,23 @@ def _compute_fast_exit_counterfactual(orders):
             'delta_dollars': cf_dollars - real_dollars,
         }
 
+    # Pool-wide totals — denominators for Win Fire% and Los Fire%
+    total_winners = sum(1 for t in pool if t['pnl_pct'] > 0)
+    total_losers = sum(1 for t in pool if t['pnl_pct'] <= 0)
+
     # Build grid (aggregate across direction)
     grid_rows = []
     for thr in _FAST_EXIT_THRESHOLDS:
         for win in _FAST_EXIT_WINDOWS:
             m = cell_metrics(thr, win, pool)
             n_fire = len(m['fired'])
+            n_winners_cut = len(m['winners'])
+            n_losers_saved = len(m['losers'])
             pct_fire = n_fire / n_total * 100 if n_total else 0
+            # New: hit-rate against each population. Stable denominators
+            # (pool-wide totals), so values are comparable across rows.
+            win_fire_pct = n_winners_cut / total_winners * 100 if total_winners else 0
+            los_fire_pct = n_losers_saved / total_losers * 100 if total_losers else 0
             # Verdict
             if m['delta_dollars'] > 0:
                 verdict = 'positive'
@@ -6022,9 +6032,11 @@ def _compute_fast_exit_counterfactual(orders):
                 'threshold_pct': thr,
                 'window_min': win,
                 'n_fire': n_fire,
-                'pct_fire': round(pct_fire, 1),
-                'n_winners_cut': len(m['winners']),
-                'n_losers_saved': len(m['losers']),
+                'pct_fire': round(pct_fire, 1),  # kept for backwards-compat
+                'win_fire_pct': round(win_fire_pct, 1),
+                'los_fire_pct': round(los_fire_pct, 1),
+                'n_winners_cut': n_winners_cut,
+                'n_losers_saved': n_losers_saved,
                 'give_up_pct': round(-m['give_up_pct'], 2),   # display as negative
                 'saved_pct': round(m['saved_pct'], 2),
                 'net_pct': round(m['net_pct'], 2),
@@ -6125,10 +6137,13 @@ def _compute_fast_exit_counterfactual(orders):
     return {
         'grid_rows': grid_rows,
         'direction_split': direction_split,
-        'close_reason_breakdowns': breakdowns,            # all 12 cells
+        'close_reason_breakdowns': breakdowns,            # all cells
         'default_breakdown_key': default_key,
         'available_thresholds': _FAST_EXIT_THRESHOLDS,
         'available_windows': _FAST_EXIT_WINDOWS,
+        'pool_total': n_total,
+        'pool_total_winners': total_winners,
+        'pool_total_losers': total_losers,
         # Backwards-compat: keep the default breakdown under the old name
         'close_reason_breakdown': {
             'threshold_pct': default_thr,

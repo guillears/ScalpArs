@@ -1004,7 +1004,9 @@
                         <br/><em class="text-amber-400">Conservative — uses peak_reached_at as proxy for "first cross"; trades that crossed threshold before peak are missed. Pool spans multiple configs; Net% is leverage-invariant, raw $ approximate.</em>
                     </p>
                     <!-- Section 1: Aggregate grid -->
-                    <h4 class="text-xs font-semibold text-gray-400 mt-3 mb-2">Grid (aggregate across direction)</h4>
+                    <h4 class="text-xs font-semibold text-gray-400 mt-3 mb-2">Grid (aggregate across direction)
+                        <span id="fast-exit-pool-totals" class="text-gray-500 font-normal ml-2"></span>
+                    </h4>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead class="text-gray-400 uppercase">
@@ -1012,7 +1014,8 @@
                                     <th class="text-left py-1 px-2">Threshold</th>
                                     <th class="text-left px-2">Window</th>
                                     <th class="text-right px-2">#Fire</th>
-                                    <th class="text-right px-2">%Fire</th>
+                                    <th class="text-right px-2 text-red-300" title="% of ALL real winners (pool-wide) that this rule would cut. Lower is better. Compare against Los Fire% — if Los% > Win%, rule has edge.">Win Fire%</th>
+                                    <th class="text-right px-2 text-emerald-300" title="% of ALL real losers (pool-wide) that this rule would save. Higher is better. If Los Fire% > Win Fire%, rule has discriminating edge.">Los Fire%</th>
                                     <th class="text-right px-2" title="Real winners that fast-exit would cut short">Win Cut</th>
                                     <th class="text-right px-2" title="Real losers that fast-exit would save">Los Saved</th>
                                     <th class="text-right px-2 text-red-400" title="Sum of % winners give up vs locking at threshold">GiveUp%</th>
@@ -1025,7 +1028,7 @@
                                 </tr>
                             </thead>
                             <tbody id="fast-exit-grid-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                <tr><td colspan="14" class="py-3 text-center text-gray-500">No data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -4997,8 +5000,8 @@
                 lines.push('"What if we exited at +X% the moment P&L reached it within N min?"');
                 lines.push('Conservative: uses peak_reached_at as proxy. Pool spans multiple configs; Net% leverage-invariant, $ approximate.\n');
                 lines.push('### Grid (aggregate)');
-                lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'#Fire'.padStart(6)} ${'%Fire'.padStart(7)} ${'WinCut'.padStart(8)} ${'LosSav'.padStart(8)} ${'GiveUp%'.padStart(10)} ${'Saved%'.padStart(9)} ${'Net%'.padStart(8)} ${'Real$'.padStart(9)} ${'CF$'.padStart(9)} ${'Δ$'.padStart(9)}   Verdict`);
-                lines.push('-'.repeat(115));
+                lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'#Fire'.padStart(6)} ${'WinFire%'.padStart(10)} ${'LosFire%'.padStart(10)} ${'WinCut'.padStart(8)} ${'LosSav'.padStart(8)} ${'GiveUp%'.padStart(10)} ${'Saved%'.padStart(9)} ${'Net%'.padStart(8)} ${'Real$'.padStart(9)} ${'CF$'.padStart(9)} ${'Δ$'.padStart(9)}   Verdict`);
+                lines.push('-'.repeat(125));
                 _fec1.grid_rows.forEach(r => {
                     let v;
                     if (r.is_best_net && r.is_best_dollars) v='★ Best Net%+Δ$';
@@ -5007,7 +5010,7 @@
                     else if (r.verdict==='positive') v='✓ Positive';
                     else if (r.verdict==='negative') v='✗ Negative';
                     else v='· Neutral';
-                    lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.n_fire).padStart(6)} ${(r.pct_fire.toFixed(1)+'%').padStart(7)} ${String(r.n_winners_cut).padStart(8)} ${String(r.n_losers_saved).padStart(8)} ${(r.give_up_pct.toFixed(2)+'%').padStart(10)} ${('+'+r.saved_pct.toFixed(2)+'%').padStart(9)} ${((r.net_pct>=0?'+':'')+r.net_pct.toFixed(2)+'%').padStart(8)} ${((r.real_dollars>=0?'+$':'-$')+Math.abs(r.real_dollars).toFixed(0)).padStart(9)} ${((r.cf_dollars>=0?'+$':'-$')+Math.abs(r.cf_dollars).toFixed(0)).padStart(9)} ${((r.delta_dollars>=0?'+$':'-$')+Math.abs(r.delta_dollars).toFixed(0)).padStart(9)}   ${v}`);
+                    lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.n_fire).padStart(6)} ${((r.win_fire_pct||0).toFixed(1)+'%').padStart(10)} ${((r.los_fire_pct||0).toFixed(1)+'%').padStart(10)} ${String(r.n_winners_cut).padStart(8)} ${String(r.n_losers_saved).padStart(8)} ${(r.give_up_pct.toFixed(2)+'%').padStart(10)} ${('+'+r.saved_pct.toFixed(2)+'%').padStart(9)} ${((r.net_pct>=0?'+':'')+r.net_pct.toFixed(2)+'%').padStart(8)} ${((r.real_dollars>=0?'+$':'-$')+Math.abs(r.real_dollars).toFixed(0)).padStart(9)} ${((r.cf_dollars>=0?'+$':'-$')+Math.abs(r.cf_dollars).toFixed(0)).padStart(9)} ${((r.delta_dollars>=0?'+$':'-$')+Math.abs(r.delta_dollars).toFixed(0)).padStart(9)}   ${v}`);
                 });
                 lines.push('\n### Direction split');
                 lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'LongN'.padStart(7)} ${'LongΔ$'.padStart(10)} ${'ShortN'.padStart(8)} ${'ShortΔ$'.padStart(10)}   Verdict`);
@@ -6014,7 +6017,7 @@
                         else if (r.verdict==='positive') v='✓ Positive';
                         else if (r.verdict==='negative') v='✗ Negative';
                         else v='· Neutral';
-                        lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.n_fire).padStart(6)} ${(r.pct_fire.toFixed(1)+'%').padStart(7)} ${String(r.n_winners_cut).padStart(8)} ${String(r.n_losers_saved).padStart(8)} ${(r.give_up_pct.toFixed(2)+'%').padStart(10)} ${('+'+r.saved_pct.toFixed(2)+'%').padStart(9)} ${((r.net_pct>=0?'+':'')+r.net_pct.toFixed(2)+'%').padStart(8)} ${((r.real_dollars>=0?'+$':'-$')+Math.abs(r.real_dollars).toFixed(0)).padStart(9)} ${((r.cf_dollars>=0?'+$':'-$')+Math.abs(r.cf_dollars).toFixed(0)).padStart(9)} ${((r.delta_dollars>=0?'+$':'-$')+Math.abs(r.delta_dollars).toFixed(0)).padStart(9)}   ${v}`);
+                        lines.push(`${(r.threshold_pct.toFixed(2)+'%').padEnd(7)} ${(r.window_min+'min').padEnd(5)} ${String(r.n_fire).padStart(6)} ${((r.win_fire_pct||0).toFixed(1)+'%').padStart(10)} ${((r.los_fire_pct||0).toFixed(1)+'%').padStart(10)} ${String(r.n_winners_cut).padStart(8)} ${String(r.n_losers_saved).padStart(8)} ${(r.give_up_pct.toFixed(2)+'%').padStart(10)} ${('+'+r.saved_pct.toFixed(2)+'%').padStart(9)} ${((r.net_pct>=0?'+':'')+r.net_pct.toFixed(2)+'%').padStart(8)} ${((r.real_dollars>=0?'+$':'-$')+Math.abs(r.real_dollars).toFixed(0)).padStart(9)} ${((r.cf_dollars>=0?'+$':'-$')+Math.abs(r.cf_dollars).toFixed(0)).padStart(9)} ${((r.delta_dollars>=0?'+$':'-$')+Math.abs(r.delta_dollars).toFixed(0)).padStart(9)}   ${v}`);
                     });
                     lines.push('\n### Direction split');
                     lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'LongN'.padStart(7)} ${'LongΔ$'.padStart(10)} ${'ShortN'.padStart(8)} ${'ShortΔ$'.padStart(10)}   Verdict`);
@@ -7413,11 +7416,19 @@
                     const fmtPct = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
                     const fmtUSD = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(0);
 
+                    // Pool-wide totals (denominators for Win/Los Fire%)
+                    const _poolTot = document.getElementById('fast-exit-pool-totals');
+                    if (_poolTot && _fec.pool_total != null) {
+                        const tw = _fec.pool_total_winners || 0;
+                        const tl = _fec.pool_total_losers || 0;
+                        _poolTot.textContent = `(Pool: ${_fec.pool_total} trades — ${tw} winners, ${tl} losers; denominators for Win/Los Fire%)`;
+                    }
+
                     // Grid
                     const _grid = document.getElementById('fast-exit-grid-body');
                     if (_grid) {
                         if (!_fec.grid_rows || !_fec.grid_rows.length) {
-                            _grid.innerHTML = '<tr><td colspan="13" class="py-3 text-center text-gray-500">No data yet</td></tr>';
+                            _grid.innerHTML = '<tr><td colspan="14" class="py-3 text-center text-gray-500">No data yet</td></tr>';
                         } else {
                             _grid.innerHTML = _fec.grid_rows.map(r => {
                                 const netCls = r.net_pct > 0 ? 'text-emerald-400' : r.net_pct < 0 ? 'text-red-400' : 'text-gray-400';
@@ -7430,11 +7441,16 @@
                                 else if (r.verdict === 'negative') verdict = '✗ Negative';
                                 else verdict = '· Neutral';
                                 const verdictCls = verdict.includes('★') ? 'text-amber-400' : verdict.includes('✓') ? 'text-emerald-400' : verdict.includes('✗') ? 'text-red-400' : 'text-gray-400';
+                                // Win Fire% vs Los Fire%: if Los% > Win%, rule has edge — emphasize that gap
+                                const winFire = r.win_fire_pct != null ? r.win_fire_pct : 0;
+                                const losFire = r.los_fire_pct != null ? r.los_fire_pct : 0;
+                                const edgeCls = losFire > winFire ? 'text-emerald-300' : losFire < winFire ? 'text-red-300' : 'text-gray-400';
                                 return `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1 font-medium">${r.threshold_pct.toFixed(2)}%</td>
                                     <td class="px-2 py-1">${r.window_min}min</td>
                                     <td class="px-2 py-1 text-right">${r.n_fire}</td>
-                                    <td class="px-2 py-1 text-right text-gray-400">${r.pct_fire.toFixed(1)}%</td>
+                                    <td class="px-2 py-1 text-right text-red-300">${winFire.toFixed(1)}%</td>
+                                    <td class="px-2 py-1 text-right ${edgeCls} font-medium">${losFire.toFixed(1)}%</td>
                                     <td class="px-2 py-1 text-right text-red-300">${r.n_winners_cut}</td>
                                     <td class="px-2 py-1 text-right text-emerald-300">${r.n_losers_saved}</td>
                                     <td class="px-2 py-1 text-right text-red-400">${r.give_up_pct.toFixed(2)}%</td>

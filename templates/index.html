@@ -1049,12 +1049,30 @@
                             </tbody>
                         </table>
                     </div>
-                    <!-- Section 3: Close-reason breakdown for default cell -->
+                    <!-- Section 3: Close-reason breakdown for selected cell -->
                     <h4 class="text-xs font-semibold text-gray-400 mt-5 mb-2">
-                        Close-reason breakdown for default cell
+                        Close-reason breakdown for selected cell
                         <span id="fast-exit-default-cell" class="text-amber-300">(0.20% / 2min)</span>
                     </h4>
                     <p class="text-xs text-gray-500 mb-2">Which close reasons would the "would-fire" trades have come from? Shows the trade-off composition.</p>
+                    <div class="flex items-center gap-3 mb-3 text-xs text-gray-300">
+                        <label>Threshold:
+                            <select id="fast-exit-thr-select" class="bg-gray-800 border border-white/10 rounded px-2 py-1 ml-1">
+                                <option value="0.10">0.10%</option>
+                                <option value="0.15">0.15%</option>
+                                <option value="0.20" selected>0.20%</option>
+                            </select>
+                        </label>
+                        <label>Window:
+                            <select id="fast-exit-win-select" class="bg-gray-800 border border-white/10 rounded px-2 py-1 ml-1">
+                                <option value="1">1 min</option>
+                                <option value="2" selected>2 min</option>
+                                <option value="3">3 min</option>
+                                <option value="5">5 min</option>
+                            </select>
+                        </label>
+                        <span class="text-gray-500 italic">Changes which cell's breakdown is shown — recompute is instant.</span>
+                    </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead class="text-gray-400 uppercase">
@@ -7451,32 +7469,47 @@
                         }
                     }
 
-                    // Close reason breakdown
+                    // Close reason breakdown — supports cell selector dropdowns
                     const _crb = document.getElementById('fast-exit-cr-body');
                     const _crbCell = document.getElementById('fast-exit-default-cell');
-                    if (_crbCell && _fec.close_reason_breakdown) {
-                        _crbCell.textContent = `(${_fec.close_reason_breakdown.threshold_pct.toFixed(2)}% / ${_fec.close_reason_breakdown.window_min}min)`;
-                    }
-                    if (_crb) {
-                        const crows = (_fec.close_reason_breakdown && _fec.close_reason_breakdown.rows) || [];
-                        if (!crows.length) {
-                            _crb.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No data yet</td></tr>';
-                        } else {
-                            _crb.innerHTML = crows.map(r => {
-                                const effectCls = r.effect === 'SAVES' ? 'text-emerald-400' : 'text-red-400';
-                                const closeCls = r.avg_close_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
-                                return `<tr class="hover:bg-white/5">
-                                    <td class="px-2 py-1 font-medium">${r.close_reason}</td>
-                                    <td class="px-2 py-1 text-right">${r.n}</td>
-                                    <td class="px-2 py-1 text-right">${r.actual_wr.toFixed(0)}%</td>
-                                    <td class="px-2 py-1 text-right ${closeCls}">${(r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3)}%</td>
-                                    <td class="px-2 py-1 text-right text-emerald-300">+${r.avg_peak_pct.toFixed(3)}%</td>
-                                    <td class="px-2 py-1 ${effectCls} font-medium">${r.effect}</td>
-                                    <td class="px-2 py-1 text-right ${effectCls}">${(r.per_trade_pct >= 0 ? '+' : '') + r.per_trade_pct.toFixed(3)}%</td>
-                                </tr>`;
-                            }).join('');
+                    const _thrSel = document.getElementById('fast-exit-thr-select');
+                    const _winSel = document.getElementById('fast-exit-win-select');
+                    const _breakdowns = _fec.close_reason_breakdowns || {};
+
+                    function renderCellBreakdown() {
+                        if (!_crb) return;
+                        const thr = parseFloat(_thrSel ? _thrSel.value : '0.20');
+                        const win = parseInt(_winSel ? _winSel.value : '2', 10);
+                        const key = `${thr.toFixed(2)}_${win}`;
+                        const rows = _breakdowns[key] || [];
+                        if (_crbCell) _crbCell.textContent = `(${thr.toFixed(2)}% / ${win}min)`;
+                        if (!rows.length) {
+                            _crb.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No trades fire in this cell</td></tr>';
+                            return;
                         }
+                        _crb.innerHTML = rows.map(r => {
+                            const effectCls = r.effect === 'SAVES' ? 'text-emerald-400' : 'text-red-400';
+                            const closeCls = r.avg_close_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1 font-medium">${r.close_reason}</td>
+                                <td class="px-2 py-1 text-right">${r.n}</td>
+                                <td class="px-2 py-1 text-right">${r.actual_wr.toFixed(0)}%</td>
+                                <td class="px-2 py-1 text-right ${closeCls}">${(r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1 text-right text-emerald-300">+${r.avg_peak_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1 ${effectCls} font-medium">${r.effect}</td>
+                                <td class="px-2 py-1 text-right ${effectCls}">${(r.per_trade_pct >= 0 ? '+' : '') + r.per_trade_pct.toFixed(3)}%</td>
+                            </tr>`;
+                        }).join('');
                     }
+                    if (_thrSel && !_thrSel._wired) {
+                        _thrSel.addEventListener('change', renderCellBreakdown);
+                        _thrSel._wired = true;
+                    }
+                    if (_winSel && !_winSel._wired) {
+                        _winSel.addEventListener('change', renderCellBreakdown);
+                        _winSel._wired = true;
+                    }
+                    renderCellBreakdown();
                 }
 
                 // Post-Exit Snapshots: EMA13_CROSS_EXIT + STOP_LOSS_WIDE (May 12 LATE PM)

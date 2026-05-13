@@ -6073,44 +6073,60 @@ def _compute_fast_exit_counterfactual(orders):
                 'verdict': v,
             })
 
-    # Close-reason breakdown for the default cell
+    # Close-reason breakdown for ALL cells (lets UI swap which cell is shown
+    # without re-fetching). Keyed by f"{thr}_{win}". Empty cells still listed
+    # with rows=[] so the UI doesn't show "no data" confusingly.
+    def _breakdown_for_cell(thr, win):
+        m = cell_metrics(thr, win, pool)
+        by_cr = {}
+        for t in m['fired']:
+            cr = t['close_reason']
+            by_cr.setdefault(cr, []).append(t)
+        cr_rows = []
+        for cr, trs in sorted(by_cr.items(), key=lambda kv: -len(kv[1])):
+            n = len(trs)
+            wins = sum(1 for t in trs if t['pnl_pct'] > 0)
+            avg_close = sum(t['pnl_pct'] for t in trs) / n
+            avg_peak = sum(t['peak_pct'] for t in trs) / n
+            wr = wins / n * 100
+            if wr >= 50:
+                effect = 'GIVES UP'
+                per_trade_pct = round(-(avg_close - thr), 3)
+            else:
+                effect = 'SAVES'
+                per_trade_pct = round(thr - avg_close, 3)
+            cr_rows.append({
+                'close_reason': cr,
+                'n': n,
+                'actual_wr': round(wr, 0),
+                'avg_close_pct': round(avg_close, 3),
+                'avg_peak_pct': round(avg_peak, 3),
+                'effect': effect,
+                'per_trade_pct': per_trade_pct,
+            })
+        return cr_rows
+
+    breakdowns = {}
+    for thr in _FAST_EXIT_THRESHOLDS:
+        for win in _FAST_EXIT_WINDOWS:
+            key = f"{thr:.2f}_{win}"
+            breakdowns[key] = _breakdown_for_cell(thr, win)
+
     default_thr, default_win = _FAST_EXIT_DEFAULT_CELL
-    m_default = cell_metrics(default_thr, default_win, pool)
-    by_cr = {}
-    for t in m_default['fired']:
-        cr = t['close_reason']
-        by_cr.setdefault(cr, []).append(t)
-    cr_rows = []
-    for cr, trs in sorted(by_cr.items(), key=lambda kv: -len(kv[1])):
-        n = len(trs)
-        wins = sum(1 for t in trs if t['pnl_pct'] > 0)
-        avg_close = sum(t['pnl_pct'] for t in trs) / n
-        avg_peak = sum(t['peak_pct'] for t in trs) / n
-        wr = wins / n * 100
-        # Effect: GIVES UP if WR > 50, SAVES if WR < 50
-        if wr >= 50:
-            effect = 'GIVES UP'
-            per_trade_pct = round(-(avg_close - default_thr), 3)  # negative number for cut
-        else:
-            effect = 'SAVES'
-            per_trade_pct = round(default_thr - avg_close, 3)
-        cr_rows.append({
-            'close_reason': cr,
-            'n': n,
-            'actual_wr': round(wr, 0),
-            'avg_close_pct': round(avg_close, 3),
-            'avg_peak_pct': round(avg_peak, 3),
-            'effect': effect,
-            'per_trade_pct': per_trade_pct,
-        })
+    default_key = f"{default_thr:.2f}_{default_win}"
 
     return {
         'grid_rows': grid_rows,
         'direction_split': direction_split,
+        'close_reason_breakdowns': breakdowns,            # all 12 cells
+        'default_breakdown_key': default_key,
+        'available_thresholds': _FAST_EXIT_THRESHOLDS,
+        'available_windows': _FAST_EXIT_WINDOWS,
+        # Backwards-compat: keep the default breakdown under the old name
         'close_reason_breakdown': {
             'threshold_pct': default_thr,
             'window_min': default_win,
-            'rows': cr_rows,
+            'rows': breakdowns.get(default_key, []),
         },
         'caveat': 'Conservative — uses peak_reached_at; trades crossing threshold before peak missed. Pool spans multiple configs; Net% is leverage-invariant, raw $ approximate.',
     }

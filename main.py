@@ -4832,6 +4832,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 gaps58 = [o.entry_ema_gap_5_8 for o in bucket_orders if o.entry_ema_gap_5_8 is not None]
                 rsis = [o.entry_rsi for o in bucket_orders if o.entry_rsi is not None]
                 adxs = [o.entry_adx for o in bucket_orders if o.entry_adx is not None]
+                gvols = [o.entry_global_volume_ratio for o in bucket_orders if o.entry_global_volume_ratio is not None]
                 by_conf = {}
                 for o in bucket_orders:
                     c = o.confidence or "LOW"
@@ -4857,6 +4858,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_entry_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
                     "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                     "avg_entry_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,
+                    "avg_entry_gvol": round(sum(gvols) / len(gvols), 3) if gvols else None,
                     "by_confidence": by_conf,
                     "by_close_reason": by_reason,
                     "signal_active": sig_active,

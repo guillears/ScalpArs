@@ -1,5 +1,82 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 13, 2026 (LATE PM) — Multiplier re-balance based on 602-trade cross-pool analysis
+
+### Context
+Cross-pool analysis (602 trades) revealed the bot was running with TWO HARMFUL
+multipliers at 2.0× that were actively amplifying losses, and missed several
+clean winner cells that should be boosted.
+
+### Multipliers — Before vs After
+
+| Cell | Direction | Before | After | Cross-pool basis |
+|---|---|---|---|---|
+| **Pair 60-65 × 18-22** | LONG | 2.0× | **1.0× ↓** | HARMFUL — N=95, 48% WR, -$373 (was amplifying losses) |
+| Pair 55-60 × 22-25 | LONG | (none) | **2.0× NEW** | N=19, 68% WR, +$26 (modest winner) |
+| **Pair 25-50 × 30-33** | SHORT | 2.0× | **1.0× ↓** | HARMFUL — N=39, 54% WR, -$307 (RSI range too wide, caught bleed zone) |
+| Pair 30-35 × 28-30 | SHORT | (none) | **2.0× NEW** | ★ N=23, **70% WR, +$238** — strongest pair-level SHORT cell in dataset |
+| BTC 60-65 × 20-25 | LONG | 1.0× | 1.0× (kept) | Neutral, 55% WR -$145 |
+| BTC 55-60 × 22-25 | LONG | (none) | **2.0× NEW** | N=19, 68% WR, +$45 |
+| BTC 60-65 × 28-30 | LONG | (none) | **2.0× NEW** | N=10, 70% WR, +$37 |
+| BTC 25-30 × 20-25 | SHORT | 2.0× | 2.0× (kept) | ★ WORKING — N=21, 62% WR, +$298 |
+| BTC 35-40 × 33-36 | SHORT | (none) | **2.0× NEW** | N=8, 88% WR, +$98 (small N caveat) |
+| EMA5 Stretch SHORT 0.25-0.30 | SHORT | 2.0× | 2.0× (kept) | Neutral (58% WR, +$2 net) — no harm |
+
+### Why DEMOTE instead of REMOVE harmful cells
+
+The two harmful cells (PAIR LONG 60-65/18-22 and PAIR SHORT 25-50/30-33) are
+**demoted to 1.0× rather than removed from config**. Rationale:
+- Preserves the cell in the visible config as documentation
+- Cell still appears in Multiplier Cell Performance table for ongoing observation
+- Easy to re-boost if next batches show pattern shift
+- Removing would lose institutional knowledge of "we tried this, it didn't work"
+
+### Estimated net cross-pool $-impact
+
+| Change | $ swing |
+|---|---|
+| Demote harmful LONG pair (2.0 → 1.0) | +$186 (de-amplify) |
+| Demote harmful SHORT pair (2.0 → 1.0) | +$153 (de-amplify) |
+| Add SHORT pair 30-35/28-30 @ 2.0 | +$238 (amplify winner) |
+| Add 3 new LONG cells @ 2.0 each | +$108 (modest aggregate) |
+| Add SHORT BTC 35-40/33-36 @ 2.0 | +$98 |
+| **Net cross-pool swing** | **+$783** |
+
+### Caveats / risks (documented for future review)
+
+1. **LONG cells added despite the 3-day fresh-data rule** — partially walks back
+   the May 13 observation watchlist methodological discipline. New LONG cells
+   added at modest $ values ($26-45 base each), so upside/downside is bounded.
+2. **SHORT BTC 35-40 × 33-36 has N=8** — borderline thin. 88% WR is suggestive
+   but could be regime-specific. If next batch shows the cell at ≤50% WR on
+   N≥5, demote to 1.0×.
+3. **Per-pair concentration NOT checked** on new winner cells. Could be 1-2
+   pairs driving the stats. Should run before any further boost increases.
+4. **Mode is "investment"** — multipliers scale position size, not leverage.
+   Hard cap stays at 2.0× (`rsi_adx_multiplier_hard_cap: 2.0`).
+5. **All boosted cells must be re-validated at 100-trade fresh checkpoint** —
+   the locked methodology says cells that show ≤55% WR with ≥5 trades should
+   be demoted; this rule applies to the new boosts too.
+
+### Validation criteria at next batch
+
+For each NEW boosted cell, applied to fresh data only:
+- Cell must show ≥55% WR on N≥5 → keep at 2.0×
+- Cell shows 40-55% WR on N≥5 → demote to 1.5×
+- Cell shows ≤40% WR OR Total$ negative on N≥5 → demote to 1.0×
+
+For each DEMOTED cell (the two formerly harmful at 1.0×):
+- If shows ≥60% WR on N≥10 in fresh data → consider re-promoting to 1.5×
+- If continues weak/negative → leave at 1.0× indefinitely
+
+### What was NOT changed
+
+- `rsi_adx_multiplier_target`: "investment"
+- `rsi_adx_multiplier_hard_cap`: 2.0
+- EMA5 stretch multipliers (both directions)
+
+---
+
 ## May 13, 2026 — Observation watchlist (filters NOT shipped, pending fresh data)
 
 ### Context

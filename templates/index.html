@@ -2129,7 +2129,6 @@
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg ADX</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Average global volume ratio at entry">Avg gVol</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap 5-8</th>
                                     <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
@@ -2138,7 +2137,7 @@
                             </tr>
                             </thead>
                             <tbody id="never-positive-deep-dive-body" class="divide-y divide-white/5">
-                                <tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                         </tbody>
                     </table>
                     </div>
@@ -5098,12 +5097,12 @@
             if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Never Positive Deep Dive\n');
-                lines.push(`${'Dimension'.padEnd(18)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvggVol'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
+                lines.push(`${'Dimension'.padEnd(18)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
                 for (const r of perf.never_positive_deep_dive) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
                     const pctStr = r.pct_of_total != null ? r.pct_of_total.toFixed(1)+'%' : '-';
-                    lines.push(`${(r.dimension||'').padEnd(18)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gvol!=null?r.avg_entry_gvol.toFixed(3):'-').padStart(7)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
+                    lines.push(`${(r.dimension||'').padEnd(18)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
                 }
             }
 
@@ -6069,12 +6068,12 @@
                 if (perf.never_positive_deep_dive && perf.never_positive_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Never Positive Deep Dive\n');
-                    lines.push(`${'Dimension'.padEnd(18)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvggVol'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
+                    lines.push(`${'Dimension'.padEnd(18)} ${'Value'.padEnd(14)} ${'Dir'.padEnd(6)} ${'#'.padEnd(5)} ${'%Tot'.padEnd(6)} ${'Avg P&L%'.padEnd(10)} ${'Avg$'.padEnd(9)} ${'Total$'.padEnd(11)} ${'AvgRSI'.padEnd(7)} ${'AvgADX'.padEnd(7)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)} ${'Conf'.padEnd(12)}`);
                     for (const r of perf.never_positive_deep_dive) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         const sigStr = `${r.signal_active||0}/${r.signal_inactive||0}`;
                         const pctStr = r.pct_of_total != null ? r.pct_of_total.toFixed(1)+'%' : '-';
-                        lines.push(`${(r.dimension||'').padEnd(18)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gvol!=null?r.avg_entry_gvol.toFixed(3):'-').padStart(7)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
+                        lines.push(`${(r.dimension||'').padEnd(18)} ${(r.value||'').padEnd(14)} ${(r.direction||'-').padEnd(6)} ${String(r.count).padEnd(5)} ${pctStr.padEnd(6)} ${((r.avg_close_pnl||0).toFixed(4)+'%').padStart(9)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(8)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(10)} ${(r.avg_entry_rsi!=null?r.avg_entry_rsi.toFixed(1):'-').padStart(6)} ${(r.avg_entry_adx!=null?r.avg_entry_adx.toFixed(1):'-').padStart(6)} ${(r.avg_entry_gap!=null?(r.avg_entry_gap.toFixed(2)+'%'):'-').padStart(7)} ${(r.avg_entry_gap58!=null?(r.avg_entry_gap58.toFixed(4)+'%'):'-').padStart(7)} ${(r.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)} ${confStr.padEnd(12)}`);
                     }
                 }
 
@@ -8217,7 +8216,6 @@
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(safe(r.total_pnl_usd))}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_entry_rsi != null ? r.avg_entry_rsi.toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_entry_adx != null ? r.avg_entry_adx.toFixed(1) : '-'}</td>
-                                <td class="px-3 py-2 text-right">${r.avg_entry_gvol != null ? r.avg_entry_gvol.toFixed(3) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_entry_gap != null ? r.avg_entry_gap.toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_entry_gap58 != null ? r.avg_entry_gap58.toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-center text-gray-400">${r.avg_duration || '-'}</td>
@@ -8227,7 +8225,7 @@
                         `;
                     }).join('');
                 } else {
-                    npBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    npBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Performance Over Time Chart - only rebuild if data changed

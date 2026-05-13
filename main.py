@@ -2078,11 +2078,17 @@ def _compute_daily_performance(orders):
 _TIME_BLOCK_LABELS = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
 
 _VOL_BINS = [
-    ("< 0.95", 0.0, 0.95),
+    # May 12: refined 5 → 8 bins. Split "< 0.95" into three (very-low/low/edge)
+    # and "> 1.25" into two (high/extreme) — both zones are where bleed lives.
+    # Empty cells in the 2D cross-tab auto-drop.
+    ("< 0.70", 0.0, 0.70),
+    ("0.70-0.85", 0.70, 0.85),
+    ("0.85-0.95", 0.85, 0.95),
     ("0.95-1.05", 0.95, 1.05),
     ("1.05-1.10", 1.05, 1.10),
     ("1.10-1.25", 1.10, 1.25),
-    ("> 1.25", 1.25, 999.0),
+    ("1.25-1.50", 1.25, 1.50),
+    ("> 1.50", 1.50, 999.0),
 ]
 
 def _compute_ttp_ratio(o):
@@ -3462,20 +3468,35 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "never_positive_pct": round(never_positive / count * 100, 1) if count else 0,
                 })
 
-        # Performance by Pair EMA20-EMA50 Gap at entry (May 5, observation-only)
-        # May 7: switched to fat-tailed buckets — granularity at extremes (where
-        # crypto gaps actually live in trending regimes), collapsed near-zero
-        # zone (rarely populated in current data) into ±0.10% bands.
+        # Performance by Pair EMA13-EMA50 Gap at entry (May 5, observation-only).
+        # May 12: refined to 24 signed buckets — fine 0.05% granularity in the
+        # ±0.50% activity zone, coarser tails. Empty rows auto-drop. Same scheme
+        # used by BTC version + NP Deep Dive gap dimension for apples-to-apples
+        # cross-table comparison.
         pair_ema_gap_ranges = [
             ("< -1.00%", -999, -1.00),
-            ("-1.00 to -0.50%", -1.00, -0.50),
-            ("-0.50 to -0.20%", -0.50, -0.20),
-            ("-0.20 to -0.10%", -0.20, -0.10),
-            ("-0.10 to 0%", -0.10, 0.0),
-            ("0 to +0.10%", 0.0, 0.10),
-            ("+0.10 to +0.20%", 0.10, 0.20),
-            ("+0.20 to +0.50%", 0.20, 0.50),
-            ("+0.50 to +1.00%", 0.50, 1.00),
+            ("-1.00 to -0.80%", -1.00, -0.80),
+            ("-0.80 to -0.60%", -0.80, -0.60),
+            ("-0.60 to -0.50%", -0.60, -0.50),
+            ("-0.50 to -0.40%", -0.50, -0.40),
+            ("-0.40 to -0.30%", -0.40, -0.30),
+            ("-0.30 to -0.25%", -0.30, -0.25),
+            ("-0.25 to -0.20%", -0.25, -0.20),
+            ("-0.20 to -0.15%", -0.20, -0.15),
+            ("-0.15 to -0.10%", -0.15, -0.10),
+            ("-0.10 to -0.05%", -0.10, -0.05),
+            ("-0.05 to 0%", -0.05, 0.0),
+            ("0 to +0.05%", 0.0, 0.05),
+            ("+0.05 to +0.10%", 0.05, 0.10),
+            ("+0.10 to +0.15%", 0.10, 0.15),
+            ("+0.15 to +0.20%", 0.15, 0.20),
+            ("+0.20 to +0.25%", 0.20, 0.25),
+            ("+0.25 to +0.30%", 0.25, 0.30),
+            ("+0.30 to +0.40%", 0.30, 0.40),
+            ("+0.40 to +0.50%", 0.40, 0.50),
+            ("+0.50 to +0.60%", 0.50, 0.60),
+            ("+0.60 to +0.80%", 0.60, 0.80),
+            ("+0.80 to +1.00%", 0.80, 1.00),
             ("> +1.00%", 1.00, 999),
         ]
         pair_ema20_ema50_gap_performance = []
@@ -3806,13 +3827,19 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         # Critical for understanding today's drill-down: 4 cell-trades all had BTC gap
         # +0.37% — over-extended zone. Need to test if gap > +0.20% is bad universally
         # or conditional on BTC ADX 25-30.
+        # May 12: modest cross-tab refinement (8 → 11 buckets) — split the wide
+        # ±0.20-0.50% zone where over-extension lives. Kept coarser than the
+        # single-dim tables because cross-tab cells need N ≥ 5 to be meaningful.
         btc_gap_ranges = [
-            ("< -0.20%", -999, -0.20),
+            ("< -0.50%", -999, -0.50),
+            ("-0.50 to -0.30%", -0.50, -0.30),
+            ("-0.30 to -0.20%", -0.30, -0.20),
             ("-0.20 to -0.10%", -0.20, -0.10),
             ("-0.10 to 0%", -0.10, 0.0),
             ("0 to +0.10%", 0.0, 0.10),
             ("+0.10 to +0.20%", 0.10, 0.20),
-            ("+0.20 to +0.50%", 0.20, 0.50),
+            ("+0.20 to +0.30%", 0.20, 0.30),
+            ("+0.30 to +0.50%", 0.30, 0.50),
             ("+0.50 to +1.00%", 0.50, 1.00),
             ("> +1.00%", 1.00, 999),
         ]
@@ -4832,7 +4859,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 gaps58 = [o.entry_ema_gap_5_8 for o in bucket_orders if o.entry_ema_gap_5_8 is not None]
                 rsis = [o.entry_rsi for o in bucket_orders if o.entry_rsi is not None]
                 adxs = [o.entry_adx for o in bucket_orders if o.entry_adx is not None]
-                gvols = [o.entry_global_volume_ratio for o in bucket_orders if o.entry_global_volume_ratio is not None]
                 by_conf = {}
                 for o in bucket_orders:
                     c = o.confidence or "LOW"
@@ -4858,7 +4884,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_entry_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
                     "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                     "avg_entry_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,
-                    "avg_entry_gvol": round(sum(gvols) / len(gvols), 3) if gvols else None,
                     "by_confidence": by_conf,
                     "by_close_reason": by_reason,
                     "signal_active": sig_active,
@@ -5085,13 +5110,34 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            # Pair EMA13-EMA50 Gap (signed — negative for SHORT context, positive for LONG context)
+            # Pair EMA13-EMA50 Gap (signed) — May 12: synced to 24-bucket scheme
+            # matching Performance by Pair EMA13-EMA50 Gap for apples-to-apples
+            # cross-table comparison.
             np_pgap_ranges = [
-                ("< -1.00%", -999, -1.00), ("-1.00 to -0.50%", -1.00, -0.50),
-                ("-0.50 to -0.20%", -0.50, -0.20), ("-0.20 to -0.10%", -0.20, -0.10),
-                ("-0.10 to 0%", -0.10, 0.00), ("0 to +0.10%", 0.00, 0.10),
-                ("+0.10 to +0.20%", 0.10, 0.20), ("+0.20 to +0.50%", 0.20, 0.50),
-                ("+0.50 to +1.00%", 0.50, 1.00), ("> +1.00%", 1.00, 999),
+                ("< -1.00%", -999, -1.00),
+                ("-1.00 to -0.80%", -1.00, -0.80),
+                ("-0.80 to -0.60%", -0.80, -0.60),
+                ("-0.60 to -0.50%", -0.60, -0.50),
+                ("-0.50 to -0.40%", -0.50, -0.40),
+                ("-0.40 to -0.30%", -0.40, -0.30),
+                ("-0.30 to -0.25%", -0.30, -0.25),
+                ("-0.25 to -0.20%", -0.25, -0.20),
+                ("-0.20 to -0.15%", -0.20, -0.15),
+                ("-0.15 to -0.10%", -0.15, -0.10),
+                ("-0.10 to -0.05%", -0.10, -0.05),
+                ("-0.05 to 0%", -0.05, 0.00),
+                ("0 to +0.05%", 0.00, 0.05),
+                ("+0.05 to +0.10%", 0.05, 0.10),
+                ("+0.10 to +0.15%", 0.10, 0.15),
+                ("+0.15 to +0.20%", 0.15, 0.20),
+                ("+0.20 to +0.25%", 0.20, 0.25),
+                ("+0.25 to +0.30%", 0.25, 0.30),
+                ("+0.30 to +0.40%", 0.30, 0.40),
+                ("+0.40 to +0.50%", 0.40, 0.50),
+                ("+0.50 to +0.60%", 0.50, 0.60),
+                ("+0.60 to +0.80%", 0.60, 0.80),
+                ("+0.80 to +1.00%", 0.80, 1.00),
+                ("> +1.00%", 1.00, 999),
             ]
             np_pgap_trades = [o for o in np_trades if o.entry_pair_ema20_ema50_gap_pct is not None]
             all_pgap_trades = [o for o in orders if o.entry_pair_ema20_ema50_gap_pct is not None]
@@ -5103,13 +5149,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
-            # BTC EMA13-EMA50 Gap (signed)
-            np_btcgap_ranges = [
-                ("< -0.20%", -999, -0.20), ("-0.20 to -0.10%", -0.20, -0.10),
-                ("-0.10 to -0.05%", -0.10, -0.05), ("-0.05 to 0%", -0.05, 0.00),
-                ("0 to +0.05%", 0.00, 0.05), ("+0.05 to +0.10%", 0.05, 0.10),
-                ("+0.10 to +0.20%", 0.10, 0.20), ("> +0.20%", 0.20, 999),
-            ]
+            # BTC EMA13-EMA50 Gap (signed) — May 12: synced to same 24-bucket
+            # scheme as Pair version for apples-to-apples cross-table comparison.
+            np_btcgap_ranges = np_pgap_ranges
             np_btcgap_trades = [o for o in np_trades if o.entry_btc_trend_gap_pct is not None]
             all_btcgap_trades = [o for o in orders if o.entry_btc_trend_gap_pct is not None]
             for rng, lo, hi in np_btcgap_ranges:
@@ -5150,6 +5192,19 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     bucket = [o for o in np_pvol_trades if lo <= o.entry_pair_volume_24h_usd < hi and (o.direction or "LONG") == direction]
                     all_in = len([o for o in all_pvol_trades if lo <= o.entry_pair_volume_24h_usd < hi and (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "Pair 24h Volume", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # Global Volume Ratio at Entry (May 12) — slicing dimension using shared
+            # _VOL_BINS (refined to 8 buckets the same day). Surfaces NP concentration
+            # in very-low / extreme gvol zones (e.g., SUI's gvol<0.70 LONG cell).
+            np_gvol_trades = [o for o in np_trades if o.entry_global_volume_ratio is not None]
+            all_gvol_trades = [o for o in orders if o.entry_global_volume_ratio is not None]
+            for rng, lo, hi in _VOL_BINS:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_gvol_trades if lo <= o.entry_global_volume_ratio < hi and (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_gvol_trades if lo <= o.entry_global_volume_ratio < hi and (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "Global Vol Ratio", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 

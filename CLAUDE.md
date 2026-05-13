@@ -1,5 +1,83 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 13, 2026 — Observation watchlist (filters NOT shipped, pending fresh data)
+
+### Context
+24-trade batch (May 12 evening → May 13 mid-morning): 15 LONG +$0 / 9 SHORT -$261.
+SHORT cluster 03:00-06:00 lost during BTC rally to 81288 → distribution top → 09:00 crash to 80067.
+Bot saw HEALTHY_BEAR on 5m indicators while BTC was structurally rallying on 4h
+(BTC EMA13 clearly above EMA50 for most of 23:00-06:00 window).
+3 LONG losses on May 13 morning all entered at BTC ADX 30-35 (BTC trend climax before reversal).
+
+### Two filter candidates identified (cross-pool validated where possible)
+
+**1. BTC Trend Filter for SHORTs — gap-based hysteresis**
+
+`btc_trend_filter_enabled: false → true` (currently OFF since May 8 13:34)
+Filter logic: block SHORTs unless `btc_ema13_ema50_gap_pct < -0.10%`
+(i.e., require BTC clearly below 4h trend — not just at boundary)
+
+Cross-pool evidence (45 SHORTs with BTC gap data):
+- Block ≥ 0% (counter-trend only): saves +$182
+- **Block ≥ -0.10% (hysteresis): saves +$302** ← chosen threshold
+- Block ≥ -0.20% (aggressive): saves +$370 but cuts 25/45 trades (56% volume reduction)
+- Block ≥ -0.05% trap: cuts the -0.05 to 0% winner zone (3 trades, 67% WR, +$112), net +$70 only
+
+The -0.10% threshold catches both loser zones:
+- `-0.10 to -0.05% gap` (4 trades, 0% WR, -$232) — BTC barely below trend, brief pullback within uptrend
+- `+0.05 to +0.10% gap` (3 trades, 0% WR, -$182) — BTC clearly above trend, counter-trend SHORT
+While preserving `-0.05 to 0% gap` (3 trades, 67% WR, +$112) — winners right at the trend line.
+
+This is the cleanest cross-pool filter signal in the entire dataset for SHORTs.
+
+**2. BTC ADX max for LONGs: 35 → 30 (conservative)**
+
+`btc_adx_max_long: 35 → 30`
+
+Batch-only evidence: 3 LONGs at BTC ADX 30-35 today went 0/0/-$205.
+Full-pool data suggests break is actually at 22 (45 LONGs at 18-22 = 62% WR / +$104, every bucket >22 is net negative) — but this is treated as **hypothesis to validate, not action**, because the LONG pool is config-polluted (see below).
+
+Conservative ship value: 30 (targets only the clearly-bad 30+ zone from today's batch).
+
+### Why LONG-side data is treated as polluted
+
+Multiple LONG-affecting config changes May 7-10 (see CLAUDE.md config change log):
+- May 8 13:34: `btc_trend_filter_enabled` True→False
+- May 8 13:20: `pair_trend_filter_enabled` True→False
+- May 8 04:06 / 13:37: `rsi_momentum_filter_enabled` toggled
+- May 7-10: `ema_gap_threshold` 0.05→0.02 (multiple times)
+- May 9-10: EMA5 stretch caps + multiplier changes
+- May 10: `rsi_adx_multiplier_long` activated
+
+109 LONG sample in dedupe pool spans these configs — not apples-to-apples for filter analysis.
+
+Decision: let bot run 3 days under current frozen config to generate clean ~50-70 LONG sample. Re-evaluate LONG-side filters at that point.
+
+### What is NOT being recommended
+
+- ❌ Pair Trend Filter (EMA13-EMA50 for pair): cross-pool data shows this is BACKWARDS in both directions.
+  - SHORT losers cluster at deep NEGATIVE pair gap (-0.40 to -1.00%, pair already crashed) — filter would CONFIRM not block
+  - LONG winners cluster at NEGATIVE pair gap (-0.10 to 0%, 75-100% WR) — filter would CUT winners
+- ❌ BTC Trend Filter for LONGs: best LONG zone in pool is BTC gap -0.05 to 0% (+$159 / 83% WR / 6 trades).
+  Filter would BLOCK these winners. The real LONG signal is BTC over-extension (gap ≥ +0.20% = -$373) — a different filter ("BTC Gap MAX") that doesn't exist in current config, deferred until fresh LONG data validates.
+- ❌ BTC ADX max LONG: 35 → 22 (full-pool break point): too aggressive given config pollution.
+
+### Methodology note
+
+Analysis followed locked per-pair concentration + cross-pool validation rules:
+- BTC Trend Filter for SHORTs: validated on 45 SHORTs across multiple configs (more stable signal than the 9-trade current batch suggested)
+- BTC ADX 30: conservative cap derived from current batch + supported by full pool directionally
+- Both stay in observation until decision-point batch arrives (3-day window for LONGs minimum)
+
+### Arithmetic correction (May 13 analysis)
+
+In the SHORT filter threshold table, two arithmetic errors in earlier markdown rendering:
+- "Block ≥ -0.05%" net swing was stated as -$42 HURTS — actually +$70 (positive but inefficient)
+- "Block ≥ -0.20%" net swing was stated as +$299 — actually +$370
+The bucket-level data was correct; only the threshold-summary arithmetic was sloppy. -0.10% remains the chosen threshold for signal-quality reasons (cuts 10/45 trades for +$302 vs 25/45 for +$370 — diminishing marginal return).
+
+---
+
 ## May 12, 2026 UTC-3 (LATE PM) — Watchlist: BCHUSDT + TRUMPUSDT + BTC slope signed-bucket finding
 
 ### Trigger

@@ -121,6 +121,14 @@ class Order(Base):
     # Captures multi-hour pair trend context (EMA50 spans ~4 hours on 5m chart).
     entry_pair_ema20_ema50_gap_pct = Column(Float, nullable=True)
 
+    # May 13 PM: Entry Extension / Late Entry Risk dimension.
+    # Signed distance from EMA13 at entry: (entry_price - ema13) / ema13 × 100.
+    # LONG positive = price ABOVE EMA13 = potentially chasing/late.
+    # SHORT negative = price BELOW EMA13 = potentially shorting after capitulation.
+    # Tests whether bad trades are late entries (timing) vs wrong signals (quality).
+    # Pre-deploy trades stay NULL — no retroactive backfill.
+    entry_dist_from_ema13_pct = Column(Float, nullable=True)
+
     # May 10: absolute pair 24h volume in USD at entry time. For size-bucket
     # analysis — find structural threshold below which pairs underperform,
     # rather than blacklisting one-by-one. NULL on pre-deploy trades.

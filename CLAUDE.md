@@ -1,5 +1,67 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 13, 2026 (PM) — Entry Extension / Late Entry Risk dimension (NEW, observation-only)
+
+### Hypothesis
+Existing entry filters (RSI, ADX, EMA gap, vol ratio) measure signal quality at
+candle close but say nothing about WHERE in the move we entered. Two trades can
+have identical filter signatures yet enter at very different points relative to
+the live trend. The hypothesis: trades entered far from EMA13 (chasing
+late-cycle moves) underperform trades entered near or before EMA13 (pullbacks),
+independent of signal quality.
+
+For LONGs: chasing pump = entry > EMA13. For SHORTs: late after capitulation =
+entry < EMA13. We measure the same thing directionally: positive extension
+(after sign flip on SHORT) means "late within the move."
+
+### What was added
+
+**New `Order.entry_dist_from_ema13_pct`** = `(entry_price − ema13) / ema13 × 100`
+(signed, post-deploy only). Captured on all live and paper entry paths.
+
+**Three new analytics tables** (Exploration Analytics surface, observation-only):
+
+1. **Performance by Entry Distance from EMA13** — single-dim, split LONG/SHORT,
+   8 buckets from "< -0.20%" through "> +0.60%". DOA% column flags trades that
+   peaked ≤ +0.10% — instantly wrong entries.
+2. **Extension × Pair Vol Ratio cross-tab** — 5 × 4 grid per direction. Tests
+   the "exhaustion signature" theory: high extension + high pvol = late on a
+   climactic candle.
+3. **Extension × ADX Delta cross-tab** — 5 × 5 grid per direction. Tests the
+   "accelerating-late-entry" theory: high extension + accelerating ADX =
+   momentum spike at the wrong time.
+
+### Status: observation-only, NO filter shipped
+
+No filter promotion until cross-pool validation across ≥150 trades populating
+the relevant buckets. Pre-committed promotion bar:
+- N ≥ 20 per bucket in the discriminating range
+- WR gap between best and worst bucket ≥ 15 pp
+- Avg P&L % gap ≥ 0.20 pp
+- TtP ≤ 0.45 on winning bucket
+- Direction-consistent OR documented theoretical asymmetry
+
+Likely filter form if validated: `entry_dist_from_ema13_max_long` (block LONG
+entries with extension > X%) and `entry_dist_from_ema13_min_short` (block
+SHORT entries with extension < -X% after the sign-flip). Numbers TBD.
+
+### Caveats
+- **Only populated post-deploy (May 13 PM).** Trades before this date show NULL
+  on this dimension and are excluded from the bucket aggregates.
+- **DOA column is the strongest early signal.** If buckets cleanly differ on
+  DOA%, the late-entry hypothesis is supported even before WR/Avg% have N.
+- **Avoid 1-batch decisions.** Same cross-pool validation discipline as every
+  other promoted dimension.
+
+### Files changed
+- `models.py`: `entry_dist_from_ema13_pct: Float, nullable=True`
+- `database.py`: auto-migrate `ADD COLUMN`
+- `services/trading_engine.py`: capture logic, threaded through
+  `_save_signal_expired_order` and `open_position` signatures and all 4 call sites
+- `main.py`: 3 new analytics functions + payload wiring
+- `templates/index.html`: new "Entry Extension Analytics" section (3 tables) +
+  JS renderer + both text-export sites
+
 ## May 13, 2026 (LATE PM) — Multiplier re-balance based on 602-trade cross-pool analysis
 
 ### Context

@@ -1098,6 +1098,150 @@
                     </div>
                 </div>
 
+                <!-- Entry Extension / Late Entry Risk (May 13 PM) -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">📐 Entry Extension Analytics (Late Entry Risk)</h3>
+                    <p class="text-xs text-gray-500 mb-2">
+                        Signed distance from EMA13 at entry. <strong>Direction-aware:</strong> positive = "late within the move" for both sides.
+                        LONG positive = entry above EMA13 (chasing pump). SHORT positive = entry below EMA13 (late after capitulation).
+                        Negative = pullback entry (ideal).
+                        <br/><em class="text-amber-400">Only populated post-deploy (May 13 PM). Trades before this date show "-" on this dimension and are excluded.</em>
+                    </p>
+
+                    <!-- Single-dim: Performance by Entry Extension -->
+                    <h4 class="text-xs font-semibold text-gray-400 mt-3 mb-2">Performance by Entry Distance from EMA13
+                        <span id="ema13-ext-pool" class="text-gray-500 font-normal ml-2"></span>
+                    </h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-emerald-300 mb-1">LONG</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Range</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Avg$</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2">Peak%</th>
+                                        <th class="text-right px-2" title="Peak ≤ +0.10% — entry was instantly wrong">DOA%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-long-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="8" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-red-300 mb-1">SHORT</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Range</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Avg$</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2">Peak%</th>
+                                        <th class="text-right px-2" title="Peak ≤ +0.10% — entry was instantly wrong">DOA%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-short-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="8" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Cross-tab: Extension × Pair Vol Ratio -->
+                    <h4 class="text-xs font-semibold text-gray-400 mt-5 mb-2">Extension × Pair Vol Ratio — exhaustion-signature test
+                        <span class="text-gray-500 font-normal ml-2">High extension + high pvol = pure exhaustion?</span>
+                    </h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-emerald-300 mb-1">LONG</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Extension</th>
+                                        <th class="text-left px-2">PVol</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-pvol-long-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="6" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-red-300 mb-1">SHORT</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Extension</th>
+                                        <th class="text-left px-2">PVol</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-pvol-short-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="6" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Cross-tab: Extension × ADX Delta -->
+                    <h4 class="text-xs font-semibold text-gray-400 mt-5 mb-2">Extension × ADX Delta — accelerating-late-entry test
+                        <span class="text-gray-500 font-normal ml-2">High extension + high ADX Δ = late + momentum spike = exhaustion?</span>
+                    </h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-emerald-300 mb-1">LONG</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Extension</th>
+                                        <th class="text-left px-2">ADX Δ</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-adxd-long-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="6" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-red-300 mb-1">SHORT</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Extension</th>
+                                        <th class="text-left px-2">ADX Δ</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-adxd-short-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="6" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -4940,6 +5084,50 @@
             _renderMultExport(_mcp1.longs, 'LONGs', (_mcp1.summary || {}).longs);
             _renderMultExport(_mcp1.shorts, 'SHORTs', (_mcp1.summary || {}).shorts);
 
+            // Entry Extension / Late Entry Risk (May 13 PM)
+            const _ext1 = perf.ema13_extension_performance || {};
+            const _extPvol1 = perf.ema13_extension_pvol_crosstab || {};
+            const _extAdxd1 = perf.ema13_extension_adxdelta_crosstab || {};
+            if (_ext1.pool_size) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## Entry Extension / Late Entry Risk — pool ${_ext1.pool_size} trades (post-deploy only)\n`);
+                ['longs', 'shorts'].forEach(k => {
+                    const rows = _ext1[k] || [];
+                    if (!rows.length) return;
+                    lines.push(`### ${k.toUpperCase()}`);
+                    lines.push('Range              Tag           N    WR%    Avg%       Avg$       Total$     Peak%      DOA%');
+                    lines.push('-'.repeat(95));
+                    rows.forEach(r => {
+                        lines.push(
+                            `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}`
+                        );
+                    });
+                    lines.push('');
+                });
+                ['longs', 'shorts'].forEach(k => {
+                    const rows = _extPvol1[k] || [];
+                    if (!rows.length) return;
+                    lines.push(`### ${k.toUpperCase()} — Extension × Pair Vol Ratio`);
+                    lines.push('Extension        PVol         N    WR%    Avg%       Total$');
+                    lines.push('-'.repeat(70));
+                    rows.forEach(r => {
+                        lines.push(`${r.extension.padEnd(16)} ${r.pvol_ratio.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}`);
+                    });
+                    lines.push('');
+                });
+                ['longs', 'shorts'].forEach(k => {
+                    const rows = _extAdxd1[k] || [];
+                    if (!rows.length) return;
+                    lines.push(`### ${k.toUpperCase()} — Extension × ADX Delta`);
+                    lines.push('Extension        ADX Δ        N    WR%    Avg%       Total$');
+                    lines.push('-'.repeat(70));
+                    rows.forEach(r => {
+                        lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}`);
+                    });
+                    lines.push('');
+                });
+            }
+
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
             if (_esp1.rows && _esp1.rows.length) {
@@ -5945,6 +6133,50 @@
                 const _mcp2 = perf.multiplier_cell_performance || {};
                 _renderMultExport2(_mcp2.longs, 'LONGs', (_mcp2.summary || {}).longs);
                 _renderMultExport2(_mcp2.shorts, 'SHORTs', (_mcp2.summary || {}).shorts);
+
+                // Entry Extension / Late Entry Risk (May 13 PM)
+                const _ext2 = perf.ema13_extension_performance || {};
+                const _extPvol2 = perf.ema13_extension_pvol_crosstab || {};
+                const _extAdxd2 = perf.ema13_extension_adxdelta_crosstab || {};
+                if (_ext2.pool_size) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## Entry Extension / Late Entry Risk — pool ${_ext2.pool_size} trades (post-deploy only)\n`);
+                    ['longs', 'shorts'].forEach(k => {
+                        const rows = _ext2[k] || [];
+                        if (!rows.length) return;
+                        lines.push(`### ${k.toUpperCase()}`);
+                        lines.push('Range              Tag           N    WR%    Avg%       Avg$       Total$     Peak%      DOA%');
+                        lines.push('-'.repeat(95));
+                        rows.forEach(r => {
+                            lines.push(
+                                `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}`
+                            );
+                        });
+                        lines.push('');
+                    });
+                    ['longs', 'shorts'].forEach(k => {
+                        const rows = _extPvol2[k] || [];
+                        if (!rows.length) return;
+                        lines.push(`### ${k.toUpperCase()} — Extension × Pair Vol Ratio`);
+                        lines.push('Extension        PVol         N    WR%    Avg%       Total$');
+                        lines.push('-'.repeat(70));
+                        rows.forEach(r => {
+                            lines.push(`${r.extension.padEnd(16)} ${r.pvol_ratio.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}`);
+                        });
+                        lines.push('');
+                    });
+                    ['longs', 'shorts'].forEach(k => {
+                        const rows = _extAdxd2[k] || [];
+                        if (!rows.length) return;
+                        lines.push(`### ${k.toUpperCase()} — Extension × ADX Delta`);
+                        lines.push('Extension        ADX Δ        N    WR%    Avg%       Total$');
+                        lines.push('-'.repeat(70));
+                        rows.forEach(r => {
+                            lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}`);
+                        });
+                        lines.push('');
+                    });
+                }
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)
                 const _esp2 = perf.ema13_strict_performance || {};
@@ -7302,6 +7534,68 @@
                         const fmt = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
                         sumEl.innerHTML = `LONG: ${sl.multiplied_trades_n || 0} multiplied trades, actual ${fmt(sl.actual_total_dollars)}, simulated baseline ${fmt(sl.simulated_baseline_dollars)}, uplift <span class="font-semibold ${upL >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upL)}</span> &nbsp; | &nbsp; SHORT: ${ss.multiplied_trades_n || 0} multiplied trades, uplift <span class="font-semibold ${upS >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt(upS)}</span>`;
                     }
+                }
+
+                // Entry Extension / Late Entry Risk (May 13 PM)
+                const _renderExtSingleDim = (rows, bodyId) => {
+                    const el = document.getElementById(bodyId);
+                    if (!el) return;
+                    if (!rows || !rows.length) {
+                        el.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
+                        return;
+                    }
+                    el.innerHTML = rows.map(r => {
+                        const avgCls = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totCls = r.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const doaCls = r.doa_pct >= 50 ? 'text-red-400' : (r.doa_pct >= 30 ? 'text-amber-400' : 'text-gray-400');
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1">${r.range} <span class="text-gray-500 text-[10px]">${r.tag}</span></td>
+                            <td class="px-2 py-1 text-right">${r.count}</td>
+                            <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${avgCls}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
+                            <td class="px-2 py-1 text-right ${avgCls}">${r.avg_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.avg_pnl_usd).toFixed(2)}</td>
+                            <td class="px-2 py-1 text-right ${totCls}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
+                            <td class="px-2 py-1 text-right text-gray-300">${r.avg_peak_pct >= 0 ? '+' : ''}${r.avg_peak_pct.toFixed(3)}%</td>
+                            <td class="px-2 py-1 text-right ${doaCls}">${r.doa_pct.toFixed(1)}%</td>
+                        </tr>`;
+                    }).join('');
+                };
+                const _renderExtCrosstab = (rows, bodyId, secondCol) => {
+                    const el = document.getElementById(bodyId);
+                    if (!el) return;
+                    if (!rows || !rows.length) {
+                        el.innerHTML = '<tr><td colspan="6" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
+                        return;
+                    }
+                    el.innerHTML = rows.map(r => {
+                        const avgCls = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totCls = r.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1">${r.extension}</td>
+                            <td class="px-2 py-1">${r[secondCol]}</td>
+                            <td class="px-2 py-1 text-right">${r.count}</td>
+                            <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${avgCls}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
+                            <td class="px-2 py-1 text-right ${totCls}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
+                        </tr>`;
+                    }).join('');
+                };
+                if (data.ema13_extension_performance) {
+                    const _ext = data.ema13_extension_performance;
+                    _renderExtSingleDim(_ext.longs, 'ema13-ext-long-body');
+                    _renderExtSingleDim(_ext.shorts, 'ema13-ext-short-body');
+                    const _pe = document.getElementById('ema13-ext-pool');
+                    if (_pe) _pe.textContent = _ext.pool_size ? `(pool: ${_ext.pool_size} trades)` : '(no post-deploy trades yet)';
+                }
+                if (data.ema13_extension_pvol_crosstab) {
+                    const _xp = data.ema13_extension_pvol_crosstab;
+                    _renderExtCrosstab(_xp.longs, 'ema13-ext-pvol-long-body', 'pvol_ratio');
+                    _renderExtCrosstab(_xp.shorts, 'ema13-ext-pvol-short-body', 'pvol_ratio');
+                }
+                if (data.ema13_extension_adxdelta_crosstab) {
+                    const _xa = data.ema13_extension_adxdelta_crosstab;
+                    _renderExtCrosstab(_xa.longs, 'ema13-ext-adxd-long-body', 'adx_delta');
+                    _renderExtCrosstab(_xa.shorts, 'ema13-ext-adxd-short-body', 'adx_delta');
                 }
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)

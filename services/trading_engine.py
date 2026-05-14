@@ -1304,6 +1304,7 @@ class TradingEngine:
         entry_ema50_slope: Optional[float] = None,
         entry_funding_rate: Optional[float] = None,
         entry_pair_ema20_ema50_gap_pct: Optional[float] = None,
+        entry_dist_from_ema13_pct: Optional[float] = None,
     ):
         """Persist a signal-expired entry attempt as a minimal Order row for reporting.
 
@@ -1377,6 +1378,7 @@ class TradingEngine:
                 entry_ema50_slope=entry_ema50_slope,
                 entry_funding_rate=entry_funding_rate,
                 entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
+                entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
             )
             db.add(order)
             await db.commit()
@@ -1861,6 +1863,8 @@ class TradingEngine:
         entry_ema50_slope: float = None,
         entry_funding_rate: float = None,
         entry_pair_ema20_ema50_gap_pct: float = None,
+        # May 13 PM: Entry Distance from EMA13 (Late Entry Risk dimension)
+        entry_dist_from_ema13_pct: float = None,
         # May 10: capture absolute pair 24h USD volume at entry for size-bucket analysis
         entry_pair_volume_24h_usd: float = None,
     ) -> Optional[Order]:
@@ -2039,6 +2043,7 @@ class TradingEngine:
                         entry_ema50_slope=entry_ema50_slope,
                         entry_funding_rate=entry_funding_rate,
                         entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
+                        entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
                     )
                     return None
                 if result:
@@ -2109,6 +2114,7 @@ class TradingEngine:
                         entry_ema50_slope=entry_ema50_slope,
                         entry_funding_rate=entry_funding_rate,
                         entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
+                        entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
                     )
                     return None
                 actual_price = result['price']
@@ -2162,6 +2168,7 @@ class TradingEngine:
             entry_ema50_slope=entry_ema50_slope,
             entry_funding_rate=entry_funding_rate,
             entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
+            entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
             # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
             entry_fee=entry_fee,
@@ -5007,6 +5014,12 @@ class TradingEngine:
                 _ema13_val = indicators.get('ema13')
                 if _ema13_val is not None and _ema50 is not None and _ema50 != 0:
                     _entry_pair_ema20_ema50_gap_pct = round((_ema13_val - _ema50) / _ema50 * 100, 4)
+                # May 13 PM: Entry Distance from EMA13 (Late Entry Risk dimension).
+                # Signed: positive = price above EMA13 (LONG chasing), negative = below (SHORT late).
+                _entry_dist_from_ema13_pct = None
+                _entry_price = indicators.get('price')
+                if _ema13_val is not None and _entry_price is not None and _ema13_val != 0:
+                    _entry_dist_from_ema13_pct = round((_entry_price - _ema13_val) / _ema13_val * 100, 4)
                 _entry_funding_rate = None
                 try:
                     _funding = await binance_service.fetch_funding_rate(symbol)
@@ -5053,6 +5066,7 @@ class TradingEngine:
                     entry_ema50_slope=_entry_ema50_slope,
                     entry_funding_rate=_entry_funding_rate,
                     entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
+                    entry_dist_from_ema13_pct=_entry_dist_from_ema13_pct,
                     # May 10: absolute pair 24h USD volume — sourced from binance scan
                     entry_pair_volume_24h_usd=volume_24h,
                 )

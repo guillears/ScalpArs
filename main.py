@@ -5634,6 +5634,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
         # Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE (May 12 LATE PM)
         "post_exit_snapshots_by_reason": _compute_post_exit_snapshots_by_reason(orders),
+        # Entry Extension / Late Entry Risk (May 13 PM) — tests whether bad trades
+        # are timing failures (late entries) vs signal-quality failures.
+        "ema13_extension_performance": _compute_ema13_extension_performance(orders),
+        "ema13_extension_pvol_crosstab": _compute_ema13_extension_pvol_crosstab(orders),
+        "ema13_extension_adxdelta_crosstab": _compute_ema13_extension_adxdelta_crosstab(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -5917,6 +5922,201 @@ def _compute_post_exit_snapshots_by_reason(orders):
             })
 
     return {'rows': rows_out}
+
+
+# =================================================================
+# Entry Extension / Late Entry Risk (May 13 PM)
+# Hypothesis: bad trades may be late entries (timing failures) rather
+# than wrong signals (quality failures). Distance from EMA13 at entry
+# measures how late within the move the entry fired.
+#
+# LONG: signed_dist > 0 = price above EMA13 = chasing/late
+# SHORT: signed_dist < 0 = price below EMA13 = late after capitulation
+# =================================================================
+
+def _compute_ema13_extension_performance(orders):
+    """Single-dim bucketing of EMA13 extension by direction.
+
+    For LONG: extension = signed_dist (positive = above EMA13 = late)
+    For SHORT: extension = -signed_dist (positive = below EMA13 = late)
+
+    So in both cases, "extension > 0" means the entry was late within the
+    move. "extension < 0" means we entered on a pullback (ideal).
+    """
+    closed = [o for o in orders if (o.status == 'CLOSED') and o.entry_dist_from_ema13_pct is not None]
+    if not closed:
+        return {"longs": [], "shorts": [], "pool_size": 0}
+
+    # Buckets sized for typical 5m crypto entries
+    # Negative buckets = pullback entry (ideal); positive = late
+    buckets = [
+        ('< -0.20%', -99, -0.20, 'pullback'),
+        ('-0.20 to -0.10%', -0.20, -0.10, 'pullback'),
+        ('-0.10 to 0%', -0.10, 0.0, 'near mean'),
+        ('0 to +0.10%', 0.0, 0.10, 'mild late'),
+        ('+0.10 to +0.20%', 0.10, 0.20, 'late'),
+        ('+0.20 to +0.40%', 0.20, 0.40, 'extended'),
+        ('+0.40 to +0.60%', 0.40, 0.60, 'very extended'),
+        ('> +0.60%', 0.60, 99, 'extreme'),
+    ]
+
+    def _bucket_for_direction(direction):
+        rows = []
+        dir_orders = [o for o in closed if o.direction == direction]
+        for label, lo, hi, tag in buckets:
+            # For LONG, extension = entry_dist (positive = chasing)
+            # For SHORT, extension = -entry_dist (positive = late)
+            if direction == 'LONG':
+                sub = [o for o in dir_orders if lo <= o.entry_dist_from_ema13_pct < hi]
+            else:
+                sub = [o for o in dir_orders if lo <= -o.entry_dist_from_ema13_pct < hi]
+            if not sub:
+                continue
+            n = len(sub)
+            wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+            total_pnl = sum(o.pnl or 0 for o in sub)
+            avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+            avg_peak = sum(o.peak_pnl or 0 for o in sub) / n
+            doa = sum(1 for o in sub if (o.peak_pnl or 0) <= 0.10)
+            conf = {}
+            for o in sub:
+                c = o.confidence or 'UNKNOWN'
+                conf[c] = conf.get(c, 0) + 1
+            rows.append({
+                'range': label,
+                'tag': tag,
+                'count': n,
+                'win_rate': round(wins / n * 100, 1),
+                'avg_pnl_pct': round(avg_pnl_pct, 4),
+                'avg_pnl_usd': round(total_pnl / n, 2),
+                'total_pnl_usd': round(total_pnl, 2),
+                'avg_peak_pct': round(avg_peak, 4),
+                'doa_count': doa,
+                'doa_pct': round(doa / n * 100, 1),
+                'by_confidence': conf,
+            })
+        return rows
+
+    return {
+        'longs': _bucket_for_direction('LONG'),
+        'shorts': _bucket_for_direction('SHORT'),
+        'pool_size': len(closed),
+    }
+
+
+def _compute_ema13_extension_pvol_crosstab(orders):
+    """Cross-tab: Entry Extension (directional, positive = late) × Pair Vol Ratio.
+
+    Per CLAUDE.md May 13 PM hypothesis: high extension + high pvol = exhaustion.
+    """
+    closed = [o for o in orders if (o.status == 'CLOSED') and o.entry_dist_from_ema13_pct is not None and o.entry_pair_volume_ratio is not None]
+    if not closed:
+        return {"longs": [], "shorts": [], "pool_size": 0}
+
+    ext_buckets = [
+        ('< 0%', -99, 0.0),
+        ('0 to +0.20%', 0.0, 0.20),
+        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('+0.40 to +0.60%', 0.40, 0.60),
+        ('> +0.60%', 0.60, 99),
+    ]
+    pvol_buckets = [
+        ('< 0.95', 0.0, 0.95),
+        ('0.95-1.10', 0.95, 1.10),
+        ('1.10-1.25', 1.10, 1.25),
+        ('> 1.25', 1.25, 99),
+    ]
+
+    def _crosstab_for(direction):
+        rows = []
+        dir_orders = [o for o in closed if o.direction == direction]
+        for ext_label, ext_lo, ext_hi in ext_buckets:
+            for pv_label, pv_lo, pv_hi in pvol_buckets:
+                # Direction-aware extension
+                if direction == 'LONG':
+                    sub = [o for o in dir_orders if ext_lo <= o.entry_dist_from_ema13_pct < ext_hi and pv_lo <= o.entry_pair_volume_ratio < pv_hi]
+                else:
+                    sub = [o for o in dir_orders if ext_lo <= -o.entry_dist_from_ema13_pct < ext_hi and pv_lo <= o.entry_pair_volume_ratio < pv_hi]
+                if not sub:
+                    continue
+                n = len(sub)
+                wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+                total_pnl = sum(o.pnl or 0 for o in sub)
+                avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                rows.append({
+                    'extension': ext_label,
+                    'pvol_ratio': pv_label,
+                    'count': n,
+                    'win_rate': round(wins / n * 100, 1),
+                    'avg_pnl_pct': round(avg_pnl_pct, 4),
+                    'avg_pnl_usd': round(total_pnl / n, 2),
+                    'total_pnl_usd': round(total_pnl, 2),
+                })
+        return rows
+
+    return {
+        'longs': _crosstab_for('LONG'),
+        'shorts': _crosstab_for('SHORT'),
+        'pool_size': len(closed),
+    }
+
+
+def _compute_ema13_extension_adxdelta_crosstab(orders):
+    """Cross-tab: Entry Extension × ADX Delta.
+
+    Tests: late entries (high extension) combined with accelerating
+    momentum (high ADX delta) = pure exhaustion signature.
+    """
+    closed = [o for o in orders if (o.status == 'CLOSED') and o.entry_dist_from_ema13_pct is not None and o.entry_adx_delta is not None]
+    if not closed:
+        return {"longs": [], "shorts": [], "pool_size": 0}
+
+    ext_buckets = [
+        ('< 0%', -99, 0.0),
+        ('0 to +0.20%', 0.0, 0.20),
+        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('+0.40 to +0.60%', 0.40, 0.60),
+        ('> +0.60%', 0.60, 99),
+    ]
+    adxd_buckets = [
+        ('< 0.3', -99, 0.3),
+        ('0.3-0.7', 0.3, 0.7),
+        ('0.7-1.2', 0.7, 1.2),
+        ('1.2-1.8', 1.2, 1.8),
+        ('> 1.8', 1.8, 99),
+    ]
+
+    def _crosstab_for(direction):
+        rows = []
+        dir_orders = [o for o in closed if o.direction == direction]
+        for ext_label, ext_lo, ext_hi in ext_buckets:
+            for adxd_label, adxd_lo, adxd_hi in adxd_buckets:
+                if direction == 'LONG':
+                    sub = [o for o in dir_orders if ext_lo <= o.entry_dist_from_ema13_pct < ext_hi and adxd_lo <= o.entry_adx_delta < adxd_hi]
+                else:
+                    sub = [o for o in dir_orders if ext_lo <= -o.entry_dist_from_ema13_pct < ext_hi and adxd_lo <= o.entry_adx_delta < adxd_hi]
+                if not sub:
+                    continue
+                n = len(sub)
+                wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+                total_pnl = sum(o.pnl or 0 for o in sub)
+                avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                rows.append({
+                    'extension': ext_label,
+                    'adx_delta': adxd_label,
+                    'count': n,
+                    'win_rate': round(wins / n * 100, 1),
+                    'avg_pnl_pct': round(avg_pnl_pct, 4),
+                    'avg_pnl_usd': round(total_pnl / n, 2),
+                    'total_pnl_usd': round(total_pnl, 2),
+                })
+        return rows
+
+    return {
+        'longs': _crosstab_for('LONG'),
+        'shorts': _crosstab_for('SHORT'),
+        'pool_size': len(closed),
+    }
 
 
 # Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).

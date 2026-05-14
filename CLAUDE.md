@@ -1,5 +1,120 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 14, 2026 (PM) — BTC 1h Slope dimension (NEW, observation-only — higher-TF macro context)
+
+### Hypothesis
+
+Today's analysis pass produced a hard finding: **all six "extension-class"
+dimensions added between Apr 28 and May 14 (EMA50 alignment, DI spread, ATR,
+funding, pair extension, BTC extension) show winners and losers with
+near-identical signatures.** Every measured 5m-timeframe dimension fails to
+discriminate.
+
+Mid-conversation we proposed a SHORT-side filter derived from cross-batch
+pool data (BTC slope <-0.10% kills SHORTs). When tested on the actual current
+batch, the filter was completely inactive (every SHORT in batch had slope
+in the cross-batch "winner zone" yet still lost -$486 total).
+
+The pattern across all of these failed filter attempts: **5m-timeframe
+indicators capture short-term micro-momentum but not multi-hour macro
+direction.** A "5m bearish blip during a 1h+ uptrend" looks identical on
+every 5m indicator to a "5m bearish move at the start of a real 1h+ down
+trend" — but their outcomes diverge sharply when BTC reverts to the larger
+trend within minutes of entry.
+
+The most cited concrete failure mode (May 13 05:00, 07:00, 19:00 and May 14
+08:00 windows — 12 SHORTs in 4 narrow hour-windows = -$629) all share that
+signature.
+
+### What was added
+
+**New `Order.entry_btc_1h_slope`** = BTC EMA20 slope computed on 1h candles
+at trade entry: `(ema20_1h - ema20_1h_prev3) / ema20_1h_prev3 × 100`.
+
+The 1h candle EMA20 spans 20 hours of history; the slope-over-3 measures
+direction over the prior 3 hours. By comparison the existing
+`entry_btc_ema20_slope` is the same calculation on 5m candles — direction
+over the prior 15 minutes.
+
+**Three new analytics surfaces** ("BTC 1h Slope Analytics" section in
+report dashboard):
+
+1. **Performance by BTC 1h Slope (signed)** — single-dim split L/S, 9 buckets
+   from <-0.20% to >+0.40%, with DOA-equivalent NP% column.
+2. **5m × 1h Slope Alignment cross-tab** — the diagnostic. Categories:
+   Aligned UP / Aligned DOWN / counter-trend (5m DOWN / 1h UP) /
+   counter-trend (5m UP / 1h DOWN) / 5m flat / 1h flat / Both flat.
+   The "SHORT × 5m DOWN / 1h UP" cell is the explicit test of the late-entry
+   SHORT hypothesis.
+3. **BTC 1h Slope × BTC ADX cross-tab** — 5×5 grid for conditional discovery.
+
+**Existing-surface integration:**
+- `Avg1hSlope` column added to Entry Conditions by Close Reason (ECR) — the
+  per-row average 1h slope of trades in each close-reason bucket.
+- Same column added to Entry Conditions by Outcome (Winners vs Losers) —
+  the headline comparison view. **If winners and losers differ on this
+  dimension after sufficient N, we have found the missing variable.**
+
+### Back-annotation script
+
+`scripts/backannotate_btc_1h_slope.py` fetches the last ~41 days of BTC 1h
+OHLCV from Binance, computes the slope series, and populates
+`entry_btc_1h_slope` on every CLOSED Order with NULL value where
+`opened_at` falls inside the fetched window. Idempotent.
+
+**Operating procedure:** run once after deploy lands on the running bot to
+back-annotate the ~200-trade recent pool. This gives ECR/ECO and the 3 new
+charts real data immediately rather than waiting for fresh trades to
+accumulate. After that, live capture keeps the field populated going forward.
+
+### Status: observation-only, NO filter shipped
+
+Same locked promotion bar as previous new dimensions:
+- N ≥ 20 per bucket in the discriminating range
+- WR gap between best/worst ≥ 15pp
+- Avg P&L % gap ≥ 0.20pp
+- Direction-consistent OR documented theoretical asymmetry
+- TtP ≤ 0.45 on winning bucket
+- **Plus: must NOT falsify on the current batch when tested before ship.**
+  This last condition was added today after the cross-batch-derived filter
+  Tier 1 proposal failed to apply (zero impact) on the current batch. Future
+  filter promotions must pass live-batch sanity in addition to historical
+  evidence.
+
+### Why this is high-stakes for the dimension-stacking question
+
+If the 1h slope ALSO shows identical winner/loser signatures on the
+back-annotated pool, the May 4 conclusion crystallizes: **entry-side filter
+work is the wrong path.** The bot's edge variance lives outside the
+indicator dimensions we've captured. At that point we should de-escalate
+entry-filter work and shift attention to exit/sizing optimization, time-of-
+day filters, or Tier-B external-data dimensions (open interest, liquidations,
+long/short ratio).
+
+If the 1h slope DOES show meaningful separation between winners and losers,
+we have our first real discriminator since the Apr-May addition spree. Then
+a filter design conversation begins — backed by **cross-batch + live-batch
+validation** rather than single-pool fitting.
+
+Either result is high-information. That's the value of this addition.
+
+### Files changed
+- `models.py`: `entry_btc_1h_slope: Float, nullable=True`
+- `database.py`: auto-migrate `ADD COLUMN`
+- `services/trading_engine.py`: new `_current_btc_1h_slope` global,
+  per-scan-cycle 1h OHLCV fetch + slope compute, threaded through
+  `_save_signal_expired_order` and `open_position` signatures, captured at
+  Order construction
+- `main.py`: 3 new analytics functions
+  (`_compute_btc_1h_slope_performance`,
+  `_compute_btc_5m_1h_slope_alignment_crosstab`,
+  `_compute_btc_1h_slope_adx_crosstab`) + payload wiring + ECR/ECO
+  `avg_btc_1h_slope` field
+- `templates/index.html`: new "BTC 1h Slope Analytics" UI section
+  (3 tables) + JS renderers + `Avg1hSlope` column in ECR/ECO + both
+  text-export sites
+- `scripts/backannotate_btc_1h_slope.py`: NEW standalone script
+
 ## May 14, 2026 — BTC Market Extension / BTC Late Regime Risk (NEW, observation-only — macro counterpart of pair extension)
 
 ### Hypothesis

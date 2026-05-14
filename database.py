@@ -321,6 +321,9 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_dist_from_ema13_pct FLOAT"))
                 if 'entry_btc_dist_from_ema13_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_dist_from_ema13_pct FLOAT"))
+                # May 14: BTC 1h EMA20 slope at entry (higher-TF discriminator candidate)
+                if 'entry_btc_1h_slope' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_1h_slope FLOAT"))
                 if 'entry_pair_volume_24h_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_volume_24h_usd FLOAT"))
                 if 'exit_pair_ema20_ema50_gap_pct' not in columns:

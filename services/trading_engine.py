@@ -68,6 +68,7 @@ _btc_ema20_slope_pct: float = 0.0
 _current_btc_ema20: Optional[float] = None
 _current_btc_ema13: Optional[float] = None  # May 6 — BTC Trend Filter switched to EMA13/EMA50
 _current_btc_price: Optional[float] = None  # May 14 — BTC price for BTC Market Extension dimension
+_current_btc_1h_slope: Optional[float] = None  # May 14 — BTC 1h EMA20 slope (higher-TF macro context)
 _current_btc_ema50: Optional[float] = None
 _current_btc_trend_gap_pct: Optional[float] = None  # As of May 6: (EMA13 - EMA50) / EMA50; was EMA20-based before
 # Module-level BTC indicators for regime classification at exit time
@@ -1307,6 +1308,7 @@ class TradingEngine:
         entry_pair_ema20_ema50_gap_pct: Optional[float] = None,
         entry_dist_from_ema13_pct: Optional[float] = None,
         entry_btc_dist_from_ema13_pct: Optional[float] = None,
+        entry_btc_1h_slope: Optional[float] = None,
     ):
         """Persist a signal-expired entry attempt as a minimal Order row for reporting.
 
@@ -1382,6 +1384,7 @@ class TradingEngine:
                 entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                 entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
                 entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
+                entry_btc_1h_slope=entry_btc_1h_slope,
             )
             db.add(order)
             await db.commit()
@@ -1870,6 +1873,8 @@ class TradingEngine:
         entry_dist_from_ema13_pct: float = None,
         # May 14: BTC Market Extension / BTC Late Regime Risk dimension
         entry_btc_dist_from_ema13_pct: float = None,
+        # May 14: BTC 1h EMA20 slope at entry (higher-TF macro context)
+        entry_btc_1h_slope: float = None,
         # May 10: capture absolute pair 24h USD volume at entry for size-bucket analysis
         entry_pair_volume_24h_usd: float = None,
     ) -> Optional[Order]:
@@ -2050,6 +2055,7 @@ class TradingEngine:
                         entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                         entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
                         entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
+                        entry_btc_1h_slope=entry_btc_1h_slope,
                     )
                     return None
                 if result:
@@ -2122,6 +2128,7 @@ class TradingEngine:
                         entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                         entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
                         entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
+                        entry_btc_1h_slope=entry_btc_1h_slope,
                     )
                     return None
                 actual_price = result['price']
@@ -2177,6 +2184,7 @@ class TradingEngine:
             entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
             entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
             entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
+            entry_btc_1h_slope=entry_btc_1h_slope,
             # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
             entry_fee=entry_fee,
@@ -4247,6 +4255,21 @@ class TradingEngine:
         _current_btc_ema50 = btc_ema50
         # May 14 — BTC price for BTC Market Extension dimension (price vs EMA13).
         _current_btc_price = btc_indicators.get('price') if btc_indicators else None
+        # May 14 — BTC 1h EMA20 slope: fetch 1h OHLCV and compute slope.
+        # Cached at the same cadence as the 5m scan (every cycle). 1h slope changes
+        # slowly so this is mildly redundant but keeps the pipeline simple.
+        try:
+            global _current_btc_1h_slope
+            btc_1h_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '1h', 50)
+            if btc_1h_ohlcv:
+                btc_1h_ind = calculate_indicators(btc_1h_ohlcv)
+                if btc_1h_ind:
+                    _ema20_1h = btc_1h_ind.get('ema20')
+                    _ema20_1h_prev3 = btc_1h_ind.get('ema20_prev3')
+                    if _ema20_1h is not None and _ema20_1h_prev3 is not None and _ema20_1h_prev3 != 0:
+                        _current_btc_1h_slope = round(((_ema20_1h - _ema20_1h_prev3) / _ema20_1h_prev3) * 100, 4)
+        except Exception as _e:
+            logger.debug(f'[BTC_1H_SLOPE] fetch/compute failed: {_e}')
         if btc_ema13 is not None and btc_ema50 is not None and btc_ema50 != 0:
             # Trend gap = (EMA13 - EMA50) / EMA50 × 100. EMA13 spans ~65 min on 5m chart;
             # EMA50 spans ~250 min (~4 hours). Gap > 0 = BTC in 4hr uptrend, gap < 0 = downtrend.
@@ -5084,6 +5107,7 @@ class TradingEngine:
                     entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
                     entry_dist_from_ema13_pct=_entry_dist_from_ema13_pct,
                     entry_btc_dist_from_ema13_pct=_entry_btc_dist_from_ema13_pct,
+                    entry_btc_1h_slope=_current_btc_1h_slope,
                     # May 10: absolute pair 24h USD volume — sourced from binance scan
                     entry_pair_volume_24h_usd=volume_24h,
                 )

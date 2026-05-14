@@ -136,6 +136,13 @@ class Order(Base):
     # Combined with pair extension (double-stretch detection), tests whether
     # losses cluster when BOTH levels are extended.
     entry_btc_dist_from_ema13_pct = Column(Float, nullable=True)
+    # May 14 — BTC 1h EMA20 slope at trade entry.
+    # Captures multi-hour BTC trend direction (12× longer than 5m slope).
+    # Slope = (ema20_1h - ema20_1h_prev3) / ema20_1h_prev3 × 100.
+    # Tests whether the "5m bearish blip during 1h uptrend" failure mode is the
+    # SHORT loss driver. Discriminator candidate after May 4 found that every
+    # existing 5m-timeframe dimension showed identical winner/loser signatures.
+    entry_btc_1h_slope = Column(Float, nullable=True)
 
     # May 10: absolute pair 24h volume in USD at entry time. For size-bucket
     # analysis — find structural threshold below which pairs underperform,

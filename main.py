@@ -4273,6 +4273,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 if _d is None:
                     continue
                 btc_ext_vals_ecr.append(_d if direction == 'LONG' else -_d)
+            # BTC 1h Slope (May 14) — higher-TF context, raw signed value
+            btc_1h_slopes_ecr = [getattr(o, 'entry_btc_1h_slope', None) for o in group if getattr(o, 'entry_btc_1h_slope', None) is not None]
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -4367,6 +4369,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_ext_pct": round(sum(ext_vals_ecr) / len(ext_vals_ecr), 4) if ext_vals_ecr else None,
                 # BTC Market Extension / BTC Late Regime Risk (May 14)
                 "avg_btc_ext_pct": round(sum(btc_ext_vals_ecr) / len(btc_ext_vals_ecr), 4) if btc_ext_vals_ecr else None,
+                # BTC 1h EMA20 slope (May 14) — higher-TF context, raw signed
+                "avg_btc_1h_slope": round(sum(btc_1h_slopes_ecr) / len(btc_1h_slopes_ecr), 4) if btc_1h_slopes_ecr else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -4508,6 +4512,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 if _d is None:
                     continue
                 btc_ext_vals_eco.append(_d if direction == 'LONG' else -_d)
+            # BTC 1h Slope (May 14)
+            btc_1h_slopes_eco = [getattr(o, 'entry_btc_1h_slope', None) for o in group if getattr(o, 'entry_btc_1h_slope', None) is not None]
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -4595,6 +4601,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_ext_pct": round(sum(ext_vals_eco) / len(ext_vals_eco), 4) if ext_vals_eco else None,
                 # BTC Market Extension / BTC Late Regime Risk (May 14)
                 "avg_btc_ext_pct": round(sum(btc_ext_vals_eco) / len(btc_ext_vals_eco), 4) if btc_ext_vals_eco else None,
+                # BTC 1h EMA20 slope (May 14) — higher-TF context, raw signed
+                "avg_btc_1h_slope": round(sum(btc_1h_slopes_eco) / len(btc_1h_slopes_eco), 4) if btc_1h_slopes_eco else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -5724,6 +5732,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "btc_extension_performance": _compute_btc_extension_performance(orders),
         "btc_extension_globalvol_crosstab": _compute_btc_extension_globalvol_crosstab(orders),
         "btc_extension_pair_extension_crosstab": _compute_btc_extension_pair_extension_crosstab(orders),
+        # BTC 1h Slope (May 14) — higher-TF macro context. Discriminator candidate
+        # after May 4 finding that every 5m-timeframe dimension showed identical
+        # winner/loser signatures. Tests "5m bearish blip during 1h uptrend" hypothesis.
+        "btc_1h_slope_performance": _compute_btc_1h_slope_performance(orders),
+        "btc_5m_1h_slope_alignment_crosstab": _compute_btc_5m_1h_slope_alignment_crosstab(orders),
+        "btc_1h_slope_adx_crosstab": _compute_btc_1h_slope_adx_crosstab(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -6411,6 +6425,142 @@ def _compute_btc_extension_pair_extension_crosstab(orders):
         'shorts': _crosstab_for('SHORT'),
         'pool_size': len(closed),
     }
+
+
+# BTC 1h Slope (May 14) — higher-TF macro context. Three analytics surfaces:
+# 1. Single-dim performance by 1h slope (signed buckets)
+# 2. 5m × 1h slope alignment cross-tab (the diagnostic — Aligned/Opposite/Flat)
+# 3. 1h slope × BTC ADX cross-tab
+
+def _compute_btc_1h_slope_performance(orders):
+    closed = [o for o in orders if o.status == 'CLOSED' and getattr(o, 'entry_btc_1h_slope', None) is not None]
+    if not closed:
+        return {'longs': [], 'shorts': [], 'pool_size': 0}
+    buckets = [
+        ('< -0.20%', -99, -0.20),
+        ('-0.20 to -0.10%', -0.20, -0.10),
+        ('-0.10 to -0.05%', -0.10, -0.05),
+        ('-0.05 to 0%', -0.05, 0.0),
+        ('0 to +0.05%', 0.0, 0.05),
+        ('+0.05 to +0.10%', 0.05, 0.10),
+        ('+0.10 to +0.20%', 0.10, 0.20),
+        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('> +0.40%', 0.40, 99),
+    ]
+    def _for(direction):
+        rows = []
+        dir_o = [o for o in closed if o.direction == direction]
+        for lbl, lo, hi in buckets:
+            sub = [o for o in dir_o if lo <= o.entry_btc_1h_slope < hi]
+            if not sub: continue
+            n = len(sub)
+            wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+            tot = sum(o.pnl or 0 for o in sub)
+            avg_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+            avg_peak = sum(o.peak_pnl or 0 for o in sub) / n
+            np_ct = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+            rows.append({
+                'range': lbl, 'count': n, 'win_rate': round(wins/n*100, 1),
+                'avg_pnl_pct': round(avg_pct, 4), 'avg_pnl_usd': round(tot/n, 2),
+                'total_pnl_usd': round(tot, 2), 'avg_peak_pct': round(avg_peak, 4),
+                'np_count': np_ct, 'np_pct': round(np_ct/n*100, 1),
+            })
+        return rows
+    return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
+
+
+def _compute_btc_5m_1h_slope_alignment_crosstab(orders):
+    """5m × 1h BTC slope alignment cross-tab.
+
+    Categories:
+    - Aligned: 5m and 1h slope same sign AND both magnitudes >= flat_threshold
+    - Opposite: 5m and 1h slope opposite signs (both magnitudes >= flat_threshold)
+    - 5m flat: |5m slope| < flat_threshold (1h drives direction)
+    - 1h flat: |1h slope| < flat_threshold (5m drives, no macro context)
+    - Both flat: both within flat_threshold
+
+    flat_threshold = 0.02% (matches existing macro_trend_flat_threshold).
+    """
+    closed = [o for o in orders if o.status == 'CLOSED'
+              and getattr(o, 'entry_btc_1h_slope', None) is not None
+              and getattr(o, 'entry_btc_ema20_slope', None) is not None]
+    if not closed:
+        return {'longs': [], 'shorts': [], 'pool_size': 0}
+    flat = 0.02
+
+    def _classify(s5, s1):
+        f5 = abs(s5) < flat
+        f1 = abs(s1) < flat
+        if f5 and f1: return 'Both flat'
+        if f5: return f'5m flat / 1h {"up" if s1 > 0 else "down"}'
+        if f1: return f'5m {"up" if s5 > 0 else "down"} / 1h flat'
+        # Both directional
+        if (s5 > 0 and s1 > 0): return 'Aligned UP'
+        if (s5 < 0 and s1 < 0): return 'Aligned DOWN'
+        if s5 < 0 and s1 > 0: return '5m DOWN / 1h UP (counter-trend)'
+        return '5m UP / 1h DOWN (counter-trend)'
+
+    def _for(direction):
+        rows = []
+        dir_o = [o for o in closed if o.direction == direction]
+        buckets = {}
+        for o in dir_o:
+            cat = _classify(o.entry_btc_ema20_slope, o.entry_btc_1h_slope)
+            buckets.setdefault(cat, []).append(o)
+        # Preserve a consistent display order
+        order = ['Aligned UP', 'Aligned DOWN', '5m UP / 1h DOWN (counter-trend)',
+                 '5m DOWN / 1h UP (counter-trend)', '5m flat / 1h up', '5m flat / 1h down',
+                 '5m up / 1h flat', '5m down / 1h flat', 'Both flat']
+        for cat in order:
+            sub = buckets.get(cat, [])
+            if not sub: continue
+            n = len(sub)
+            wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+            tot = sum(o.pnl or 0 for o in sub)
+            avg_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+            np_ct = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+            rows.append({
+                'alignment': cat, 'count': n, 'win_rate': round(wins/n*100, 1),
+                'avg_pnl_pct': round(avg_pct, 4), 'total_pnl_usd': round(tot, 2),
+                'avg_pnl_usd': round(tot/n, 2),
+                'np_count': np_ct, 'np_pct': round(np_ct/n*100, 1),
+            })
+        return rows
+    return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
+
+
+def _compute_btc_1h_slope_adx_crosstab(orders):
+    closed = [o for o in orders if o.status == 'CLOSED'
+              and getattr(o, 'entry_btc_1h_slope', None) is not None
+              and o.entry_btc_adx is not None]
+    if not closed:
+        return {'longs': [], 'shorts': [], 'pool_size': 0}
+    slope_bk = [('< -0.10%', -99, -0.10), ('-0.10 to 0%', -0.10, 0.0),
+                ('0 to +0.10%', 0.0, 0.10), ('+0.10 to +0.20%', 0.10, 0.20),
+                ('> +0.20%', 0.20, 99)]
+    adx_bk = [('15-20', 15, 20), ('20-25', 20, 25), ('25-30', 25, 30),
+              ('30-35', 30, 35), ('≥35', 35, 99)]
+    def _for(direction):
+        rows = []
+        dir_o = [o for o in closed if o.direction == direction]
+        for sl, slo, shi in slope_bk:
+            for al, alo, ahi in adx_bk:
+                sub = [o for o in dir_o if slo <= o.entry_btc_1h_slope < shi and alo <= o.entry_btc_adx < ahi]
+                if not sub: continue
+                n = len(sub)
+                wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+                tot = sum(o.pnl or 0 for o in sub)
+                avg_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                np_ct = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+                rows.append({
+                    'slope_1h': sl, 'btc_adx': al, 'count': n,
+                    'win_rate': round(wins/n*100, 1),
+                    'avg_pnl_pct': round(avg_pct, 4),
+                    'total_pnl_usd': round(tot, 2),
+                    'np_count': np_ct, 'np_pct': round(np_ct/n*100, 1),
+                })
+        return rows
+    return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
 
 
 # Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).

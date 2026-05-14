@@ -264,7 +264,102 @@ class TradingEngine:
             await self.save_state(db)
 
         await self._recover_post_exit_tracking(db)
+        # May 14 — One-time auto-backfill of entry_btc_1h_slope on historical Orders.
+        # Runs as a background task to avoid blocking startup. Idempotent: only fills
+        # NULL values, so safe to run on every boot (it returns ~immediately once done).
+        asyncio.create_task(self._backannotate_btc_1h_slope())
         self._initialized = True
+
+    async def _backannotate_btc_1h_slope(self):
+        """Auto-backfill `entry_btc_1h_slope` on historical Orders.
+
+        Mirrors scripts/backannotate_btc_1h_slope.py but runs in-process at startup.
+        Idempotent — only updates rows where the field is currently NULL.
+
+        Fetches ~41 days of BTC 1h OHLCV from Binance, computes EMA20 + 3-candle slope,
+        then for each Order with NULL entry_btc_1h_slope, looks up the slope at the
+        most recent 1h candle before opened_at and assigns it.
+        """
+        try:
+            from database import AsyncSessionLocal
+            from sqlalchemy import select as sa_select, update as sa_update
+            import pandas as pd
+
+            # Brief wait so the bot's main loop is up and any DB migration is settled.
+            await asyncio.sleep(5)
+
+            async with AsyncSessionLocal() as db:
+                # Check if there's anything to do (idempotent guard).
+                _q = await db.execute(
+                    sa_select(Order).where(
+                        Order.status == 'CLOSED',
+                        Order.entry_btc_1h_slope.is_(None),
+                    ).limit(1)
+                )
+                if _q.scalar_one_or_none() is None:
+                    logger.info('[BTC_1H_BACKFILL] No orders need backfill — skipping.')
+                    return
+
+            logger.info('[BTC_1H_BACKFILL] Starting auto-backfill of entry_btc_1h_slope on historical orders...')
+
+            # Fetch last 1000 1h candles (~41 days)
+            try:
+                ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '1h', 1000)
+            except Exception as e:
+                logger.error(f'[BTC_1H_BACKFILL] Failed to fetch BTC 1h OHLCV: {e}')
+                return
+
+            if not ohlcv or len(ohlcv) < 25:
+                logger.warning(f'[BTC_1H_BACKFILL] Insufficient OHLCV data ({len(ohlcv) if ohlcv else 0} candles). Aborting.')
+                return
+
+            df = pd.DataFrame(ohlcv, columns=['ts', 'open', 'high', 'low', 'close', 'volume'])
+            df['ts'] = pd.to_datetime(df['ts'], unit='ms')
+            df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
+            df['ema20_prev3'] = df['ema20'].shift(3)
+            df['slope_pct'] = (df['ema20'] - df['ema20_prev3']) / df['ema20_prev3'] * 100
+            df = df.dropna(subset=['slope_pct']).reset_index(drop=True)
+            if df.empty:
+                logger.warning('[BTC_1H_BACKFILL] Slope series empty after dropna. Aborting.')
+                return
+
+            earliest = df['ts'].iloc[0].to_pydatetime()
+            logger.info(f'[BTC_1H_BACKFILL] Slope series covers {earliest} → {df["ts"].iloc[-1].to_pydatetime()}')
+
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    sa_select(Order).where(
+                        Order.status == 'CLOSED',
+                        Order.entry_btc_1h_slope.is_(None),
+                    )
+                )
+                orders = result.scalars().all()
+                updated = 0
+                too_old = 0
+                no_open_ts = 0
+                for o in orders:
+                    if not o.opened_at:
+                        no_open_ts += 1
+                        continue
+                    opened = o.opened_at
+                    if opened.tzinfo is not None:
+                        opened = opened.replace(tzinfo=None)
+                    if opened < earliest:
+                        too_old += 1
+                        continue
+                    mask = df['ts'] <= opened
+                    if not mask.any():
+                        too_old += 1
+                        continue
+                    slope = float(df.loc[mask, 'slope_pct'].iloc[-1])
+                    o.entry_btc_1h_slope = round(slope, 4)
+                    updated += 1
+                await db.commit()
+                logger.info(
+                    f'[BTC_1H_BACKFILL] Done. Updated={updated}, too_old={too_old}, no_open_ts={no_open_ts}'
+                )
+        except Exception as e:
+            logger.error(f'[BTC_1H_BACKFILL] Backfill failed: {e}')
 
     async def _recover_post_exit_tracking(self, db: AsyncSession):
         """Re-register recently-closed orders for post-exit tracking that was interrupted by a restart.

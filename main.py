@@ -4259,6 +4259,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             # Volume context (May 10 evening) — Global Vol Ratio + Pair 24h $ Volume at entry
             global_vol_ratios = [o.entry_global_volume_ratio for o in group if getattr(o, 'entry_global_volume_ratio', None) is not None]
             pair_vol_usds = [getattr(o, 'entry_pair_volume_24h_usd', None) for o in group if getattr(o, 'entry_pair_volume_24h_usd', None) is not None]
+            # Entry Extension / Late Entry Risk (May 13 PM) — direction-aware (positive = late within move)
+            ext_vals_ecr = []
+            for _o in group:
+                _d = getattr(_o, 'entry_dist_from_ema13_pct', None)
+                if _d is None:
+                    continue
+                ext_vals_ecr.append(_d if direction == 'LONG' else -_d)
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -4349,6 +4356,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 # Volume context (May 10 evening)
                 "avg_global_vol_ratio": round(sum(global_vol_ratios) / len(global_vol_ratios), 3) if global_vol_ratios else None,
                 "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
+                # Entry Extension / Late Entry Risk (May 13 PM) — direction-aware: positive = late
+                "avg_ext_pct": round(sum(ext_vals_ecr) / len(ext_vals_ecr), 4) if ext_vals_ecr else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -4476,6 +4485,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             # Volume context (May 10 evening)
             global_vol_ratios = [o.entry_global_volume_ratio for o in group if getattr(o, 'entry_global_volume_ratio', None) is not None]
             pair_vol_usds = [getattr(o, 'entry_pair_volume_24h_usd', None) for o in group if getattr(o, 'entry_pair_volume_24h_usd', None) is not None]
+            # Entry Extension / Late Entry Risk (May 13 PM) — direction-aware (positive = late within move)
+            ext_vals_eco = []
+            for _o in group:
+                _d = getattr(_o, 'entry_dist_from_ema13_pct', None)
+                if _d is None:
+                    continue
+                ext_vals_eco.append(_d if direction == 'LONG' else -_d)
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -4559,6 +4575,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 # Volume context (May 10 evening)
                 "avg_global_vol_ratio": round(sum(global_vol_ratios) / len(global_vol_ratios), 3) if global_vol_ratios else None,
                 "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
+                # Entry Extension / Late Entry Risk (May 13 PM) — direction-aware: positive = late
+                "avg_ext_pct": round(sum(ext_vals_eco) / len(ext_vals_eco), 4) if ext_vals_eco else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -4914,6 +4932,32 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     bucket = [o for o in np_adx_trades if lo <= o.entry_adx < hi and (o.direction or "LONG") == direction]
                     all_in = len([o for o in all_adx_trades if lo <= o.entry_adx < hi and (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "ADX", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # Entry Extension / Late Entry Risk (May 13 PM) — direction-aware buckets.
+            # extension = entry_dist_from_ema13_pct for LONG, -entry_dist_from_ema13_pct for SHORT
+            # so "positive extension = late within the move" for both sides.
+            np_ext_ranges = [
+                ("< -0.20%", -99, -0.20),
+                ("-0.20 to -0.10%", -0.20, -0.10),
+                ("-0.10 to 0%", -0.10, 0.0),
+                ("0 to +0.10%", 0.0, 0.10),
+                ("+0.10 to +0.20%", 0.10, 0.20),
+                ("+0.20 to +0.40%", 0.20, 0.40),
+                ("+0.40 to +0.60%", 0.40, 0.60),
+                ("> +0.60%", 0.60, 99),
+            ]
+            np_ext_trades = [o for o in np_trades if getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
+            all_ext_trades = [o for o in orders if getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
+            for rng, lo, hi in np_ext_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    def _ext_of(o, d=direction):
+                        v = o.entry_dist_from_ema13_pct
+                        return v if d == "LONG" else -v
+                    bucket = [o for o in np_ext_trades if (o.direction or "LONG") == direction and lo <= _ext_of(o) < hi]
+                    all_in = len([o for o in all_ext_trades if (o.direction or "LONG") == direction and lo <= _ext_of(o) < hi])
+                    row = _np_bucket_stats(bucket, "Extension", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 

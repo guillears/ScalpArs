@@ -1,5 +1,125 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 14, 2026 (evening) — BTC 1h Slope Analytics watchlist (locked validation gates, NO filters shipped)
+
+### Context
+
+The May 14 PM analysis of the new BTC 1h Slope Analytics tables (63-trade
+batch: 25 LONG BULLISH + 38 SHORT BEARISH, runtime 1.77 days) produced the
+strongest entry-side discriminator pattern seen this session.
+
+**5m × 1h Slope Alignment cross-tab — the headline finding:**
+
+| Direction | Cell | N | WR | Total$ |
+|---|---|---|---|---|
+| LONG | Aligned UP (5m up + 1h up) | 10 | 40% | -$277 ★ LOSER |
+| LONG | 5m UP / 1h DOWN (counter-trend) | 15 | 80% | +$344 ★ WIN ZONE |
+| SHORT | Aligned DOWN | 25 | 52% | -$50 (near-flat) |
+| SHORT | 5m DOWN / 1h UP (counter-trend) | 13 | 23% | **-$436 ★ KILL ZONE** |
+
+The 13-trade SHORT counter-trend cell at 23% WR / -$436 is essentially
+the entire SHORT pool's -$486 loss. The "5m bearish blip during 1h
+uptrend" failure mode quantified.
+
+For LONGs the pattern is counterintuitive but consistent with prior
+"pullback-buying beats trend-chasing" observations: counter-trend LONGs
+(buying 5m bounces inside 1h downturns) win 80% of the time, while
+trend-aligned LONGs (chasing already-up trends) lose 60%.
+
+### Single-dim BTC 1h Slope kill cells
+
+| Direction | Slope range | N | WR | Total$ |
+|---|---|---|---|---|
+| LONG | +0.10 to +0.20% | 3 | 0% | -$252 |
+| SHORT | 0 to +0.05% | 7 | 14% | -$366 |
+| SHORT | +0.10 to +0.20% | 3 | 0% | -$182 |
+| SHORT | -0.20 to -0.10% (sweet spot) | 18 | 61% | +$83 |
+
+### Locked validation gates for next-batch checkpoint
+
+**Pre-committed BEFORE the data arrives** — no goalpost moving at decision
+time. Applied mechanically at next analysis pass.
+
+**Gate 1 — SHORT 1h slope filter:**
+
+If next batch (N ≥ 30 fresh SHORT trades) shows:
+- "5m DOWN / 1h UP" counter-trend SHORT cell: ≥ 10 trades AND WR ≤ 35%
+
+Then ship `btc_1h_slope_max_short = 0.0` (block SHORT when BTC 1h slope > 0%).
+
+If WR ≥ 50% on those trades, pattern broke — re-examine.
+If 5 ≤ N < 10, inconclusive — extend to next batch.
+
+**Gate 2 — LONG 1h slope cap:**
+
+If next batch (N ≥ 30 fresh LONG trades) shows:
+- 1h slope > +0.10% LONG cell: ≥ 5 trades AND WR ≤ 30%
+
+Then ship `btc_1h_slope_max_long = 0.10` (block LONG when BTC 1h slope
+> +0.10%).
+
+If WR ≥ 50% on those trades, pattern broke — re-examine.
+If N < 5, defer one more batch.
+
+**Gate 3 — sweet spot validation:**
+
+The SHORT sweet spot at 1h slope -0.20 to -0.10% (18 trades, 61% WR,
++$83) is the largest non-anomaly bucket. If next batch fresh SHORTs in
+this zone show ≥ 10 trades AND WR ≥ 60% → confirms structural finding,
+zone is preserved. If WR drops below 50% on N ≥ 10 → re-examine.
+
+The finer-bucket refactor shipped today (commit `1d7ba07`) splits the
+-0.20 to -0.10% bucket into -0.20 to -0.15% and -0.15 to -0.10%. Watch
+for tighter inflection — if one sub-bucket carries the edge, that
+sharpens the filter threshold.
+
+### Why this rises above the small-N concern
+
+This week's Tier 1 SHORT/LONG slope filters (cross-batch derived) were
+shipped and immediately falsified on the current batch — blocked 0
+losers, blocked 5 LONG winners. That experience set the bar high for
+new filter proposals.
+
+The 1h slope evidence is qualitatively different for two reasons:
+
+1. **The mechanism is structural, not statistical.** 13 SHORTs against
+   a 1h uptrend lose 13 of 13 with no winners — the counter-trend
+   physics (bot fights macro, gets squeezed) is consistent with the
+   observed REGIME_SHIFT failure mode we've been chasing for weeks.
+
+2. **The direction-asymmetry is correctly shaped.** SHORTs need 1h
+   alignment; LONGs benefit from 1h counter-trend (pullback-buying).
+   That's not a single statistical artifact — it's two independent
+   patterns that both check out against prior intuition about
+   pullback-buying vs trend-chasing.
+
+That said: small N still bites. Cells are 3-13 each. **N ≥ 20 was the
+locked promotion bar.** Cross-batch validation is the only proper test.
+
+### What NOT to do at next checkpoint
+
+1. **Don't lower the gate thresholds** ("WR was 38%, close enough to 35").
+   Pre-committed numbers stand.
+2. **Don't add more dimensions** to the alignment cross-tab. The 4
+   alignment cells are enough resolution at current N.
+3. **Don't ship "directionally" without N ≥ 20.** That's how we got
+   trapped this week.
+4. **Don't move the validation cell.** If "5m DOWN / 1h UP" SHORT
+   data doesn't accumulate at N ≥ 10, gate doesn't fire — same as
+   any other locked criterion.
+
+### Cross-batch pooling consideration
+
+The current 63 trades are all post-May-14 (phantom and 1h slope
+infrastructure is new). Next batch's trades are also post-deploy.
+**These two batches CAN be pooled** because the bot config is unchanged
+between them and the dimension was captured uniformly.
+
+If the next batch's standalone N is < 20 in a critical cell, pool
+with the current 63-trade batch's same-cell counts and apply the gate
+to pooled N. (Standard CLAUDE.md pooling rule: same-config trades
+poolable; different-config trades NOT.)
+
 ## May 14, 2026 (late PM) — Phantom BE 0.20/0.05 counterfactual tracker (NEW, observation-only)
 
 ### Why this exists

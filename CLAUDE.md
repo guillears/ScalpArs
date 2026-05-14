@@ -31,6 +31,55 @@ entry < EMA13. We measure the same thing directionally: positive extension
    "accelerating-late-entry" theory: high extension + accelerating ADX =
    momentum spike at the wrong time.
 
+### ⭐ FLAGGED FOR DEEP REVIEW AT EVERY FUTURE CHECKPOINT ⭐
+
+**This is the first new entry-side dimension captured since the May 4 Winners-vs-Losers
+table revealed near-identical signatures on every existing dimension** (RSI, ADX, EMA
+gaps, BTC RSI, BTC ADX, Range Position, Breadth, vol ratios, ADX delta, EMA50
+alignment, DI spread, funding, ATR, TtP, EMA13/EMA50 trend gaps — all of them showed
+winners and losers within noise of each other).
+
+The structural question "is there ANY entry-side variable that meaningfully
+distinguishes winners from losers" is currently unanswered. Entry Extension is the
+strongest theoretical candidate because it measures **timing within a move** rather
+than **signal quality at candle close** — an orthogonal axis we have never measured.
+
+**At every batch checkpoint going forward, the FIRST analytical question is:**
+
+1. **Does Entry Distance from EMA13 differentiate Winners vs Losers** where every
+   other dimension failed? Compute the Winners-vs-Losers signature on this column
+   FIRST, before any other analysis. If Winners cluster at `extension < 0` (pullback
+   entries) and Losers cluster at `extension > +0.20%` (chasing) → **this is the
+   discriminator we have been missing for 6 weeks.** Promote aggressively.
+
+2. **DOA% is the early-signal column.** If DOA% rises monotonically with extension
+   (e.g., 18% at -0.10 to 0%, 45% at +0.40 to +0.60%), the late-entry hypothesis is
+   supported even before WR/Avg% reach the strict N≥20 bar. DOA pattern shows up
+   at smaller N because peak ≤ +0.10% is a binary outcome.
+
+3. **The cross-tabs answer "is it timing alone, or timing × something?"**
+   - Extension × Pair Vol Ratio: if high extension only kills when pvol > 1.25,
+     filter form is conditional (kill late entries on climax candles, not just
+     late entries in general).
+   - Extension × ADX Delta: if high extension × high ADXΔ is uniquely bad, the
+     signature is "late entry on accelerating momentum spike" — exhaustion.
+
+4. **Direction asymmetry matters.** LONGs chase pumps; SHORTs short capitulations.
+   The mechanism is similar but the price action context differs. Watch whether
+   LONG and SHORT bucket curves move together or diverge.
+
+**Why this gets review priority over every other observation-only dimension:**
+
+The May 4 "all dimensions look identical" finding implied we either (a) need a new
+dimension or (b) the bot's edge is being driven by something orthogonal to entry
+quality (regime, exits, sizing). Entry Extension directly tests (a). If it produces
+a clean discriminator, hypothesis (a) wins. If it ALSO shows winners and losers
+identical, hypothesis (b) becomes the working conclusion and entry-side filter work
+should de-escalate in favor of exit/sizing optimization.
+
+This is therefore a **high-information-value experiment**. The result either way
+materially changes strategy direction.
+
 ### Status: observation-only, NO filter shipped
 
 No filter promotion until cross-pool validation across ≥150 trades populating

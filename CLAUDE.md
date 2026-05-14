@@ -35,43 +35,94 @@ trend-aligned LONGs (chasing already-up trends) lose 60%.
 | SHORT | +0.10 to +0.20% | 3 | 0% | -$182 |
 | SHORT | -0.20 to -0.10% (sweet spot) | 18 | 61% | +$83 |
 
-### Locked validation gates for next-batch checkpoint
+### Asymmetric LONG/SHORT pattern — the puzzle that tightens the bar
 
-**Pre-committed BEFORE the data arrives** — no goalpost moving at decision
-time. Applied mechanically at next analysis pass.
+User flagged on review (correctly): the 5m × 1h alignment produces
+OPPOSITE outcomes for LONGs vs SHORTs:
+- Counter-trend LONG ("5m UP / 1h DOWN"): 80% WR, +$344 — wins
+- Counter-trend SHORT ("5m DOWN / 1h UP"): 23% WR, -$436 — loses
 
-**Gate 1 — SHORT 1h slope filter:**
+If "counter-trend" were a clean causal driver, the dimension should
+affect both directions the same way. The asymmetry means **the
+dimension is correlated with the actual driver, not equal to it.**
 
-If next batch (N ≥ 30 fresh SHORT trades) shows:
-- "5m DOWN / 1h UP" counter-trend SHORT cell: ≥ 10 trades AND WR ≤ 35%
+Three competing explanations:
 
-Then ship `btc_1h_slope_max_short = 0.0` (block SHORT when BTC 1h slope > 0%).
+A. **Crypto positive drift**: counter-trend LONG catches the upward
+   reversal that drift produces; counter-trend SHORT fights the same
+   drift and gets squeezed. Same mechanism, asymmetric outcome.
+B. **Hidden regime confounder**: BULLISH LONGs and BEARISH SHORTs
+   sample different market states. The same alignment label means
+   different underlying conditions across direction.
+C. **Small-N artifact**: 15 LONGs and 13 SHORTs; flipping 3 trades
+   per cell changes the headline. Statistical noise that vanishes
+   next batch.
 
-If WR ≥ 50% on those trades, pattern broke — re-examine.
-If 5 ≤ N < 10, inconclusive — extend to next batch.
+Until we can distinguish (A) from (B/C), only the SHORT side has a
+clean mechanistic story (counter-trend SHORTs squeezed during macro
+regime shifts — matches our long-standing REGIME_SHIFT failure mode).
+The LONG winning cell could be drift, could be artifact — too
+ambiguous to filter on.
 
-**Gate 2 — LONG 1h slope cap:**
+### Locked validation gates for next-batch checkpoint (REVISED Apr 14 evening)
 
-If next batch (N ≥ 30 fresh LONG trades) shows:
-- 1h slope > +0.10% LONG cell: ≥ 5 trades AND WR ≤ 30%
+**Pre-committed BEFORE the data arrives** — no goalpost moving at
+decision time. Applied mechanically at next analysis pass.
 
-Then ship `btc_1h_slope_max_long = 0.10` (block LONG when BTC 1h slope
-> +0.10%).
+After review, **Gate 2 (LONG 1h slope cap) is DROPPED**. The LONG-side
+asymmetry has no clean mechanism and the kill cell is only 3 trades.
+SHORT-side bar raised to N ≥ 20 to avoid the small-N trap.
 
-If WR ≥ 50% on those trades, pattern broke — re-examine.
-If N < 5, defer one more batch.
+**Gate 1 — SHORT 1h slope filter (CONSERVATIVE):**
 
-**Gate 3 — sweet spot validation:**
+If next batch shows in the "5m DOWN / 1h UP" counter-trend SHORT cell:
+- N ≥ 20 trades AND
+- WR ≤ 30%
 
-The SHORT sweet spot at 1h slope -0.20 to -0.10% (18 trades, 61% WR,
-+$83) is the largest non-anomaly bucket. If next batch fresh SHORTs in
-this zone show ≥ 10 trades AND WR ≥ 60% → confirms structural finding,
-zone is preserved. If WR drops below 50% on N ≥ 10 → re-examine.
+Then ship `btc_1h_slope_max_short = 0.0` (block SHORT when BTC 1h
+slope > 0%).
+
+If WR ≥ 50% on N ≥ 20 → pattern broke, drop the candidate filter.
+If 10 ≤ N < 20 → inconclusive, pool with current 63-trade batch
+under same-config rule and re-check.
+If N < 10 → defer one more batch.
+
+**Gate 2 — DROPPED.** No LONG 1h slope filter from this data. The 3-trade
+kill cell (LONG 1h slope +0.10 to +0.20%, 0% WR) is too small and the
+LONG-side asymmetry is unresolved. If at next checkpoint the LONG
+side shows a structurally different pattern (e.g., kill cell stays
+0% WR on N ≥ 10), reconsider — but not from current data.
+
+**Gate 3 — SHORT sweet spot validation (TIGHTENED):**
+
+The current SHORT sweet spot at 1h slope -0.20 to -0.10% (18 trades,
+61% WR, +$83) is the largest non-anomaly bucket. If next batch fresh
+SHORTs in this zone show:
+- N ≥ 20 trades AND
+- WR ≥ 60%
+
+→ confirms structural finding, zone is preserved as the "where SHORTs
+work" region. No filter shipped from this alone — it's validation that
+SHORTs entered here are doing what we expect.
+
+If WR drops below 50% on N ≥ 20 → re-examine; the sweet spot may have
+been regime-specific.
 
 The finer-bucket refactor shipped today (commit `1d7ba07`) splits the
 -0.20 to -0.10% bucket into -0.20 to -0.15% and -0.15 to -0.10%. Watch
 for tighter inflection — if one sub-bucket carries the edge, that
-sharpens the filter threshold.
+sharpens any future filter threshold.
+
+### Engineering note for future investigation
+
+The cleanest test of the underlying mechanism would be a dedicated
+"BTC 1h reversal moment" dimension: did BTC's 1h direction CHANGE in
+the last N candles before entry? If SHORTs at reversal moments lose
+AND LONGs at reversal moments win, that's the actual signal. The 1h
+slope alignment is just a correlate. Not building this now (more
+engineering than needed for current question), but note it for the
+next round of analytics work if the validation gates above don't
+clarify the picture.
 
 ### Why this rises above the small-N concern
 

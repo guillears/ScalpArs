@@ -6022,6 +6022,7 @@ def _compute_ema13_extension_performance(orders):
             avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
             avg_peak = sum(o.peak_pnl or 0 for o in sub) / n
             doa = sum(1 for o in sub if (o.peak_pnl or 0) <= 0.10)
+            np = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
             conf = {}
             for o in sub:
                 c = o.confidence or 'UNKNOWN'
@@ -6037,6 +6038,8 @@ def _compute_ema13_extension_performance(orders):
                 'avg_peak_pct': round(avg_peak, 4),
                 'doa_count': doa,
                 'doa_pct': round(doa / n * 100, 1),
+                'np_count': np,
+                'np_pct': round(np / n * 100, 1),
                 'by_confidence': conf,
             })
         return rows
@@ -6087,6 +6090,7 @@ def _compute_ema13_extension_pvol_crosstab(orders):
                 wins = sum(1 for o in sub if (o.pnl or 0) > 0)
                 total_pnl = sum(o.pnl or 0 for o in sub)
                 avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                np = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
                 rows.append({
                     'extension': ext_label,
                     'pvol_ratio': pv_label,
@@ -6095,6 +6099,8 @@ def _compute_ema13_extension_pvol_crosstab(orders):
                     'avg_pnl_pct': round(avg_pnl_pct, 4),
                     'avg_pnl_usd': round(total_pnl / n, 2),
                     'total_pnl_usd': round(total_pnl, 2),
+                    'np_count': np,
+                    'np_pct': round(np / n * 100, 1),
                 })
         return rows
 
@@ -6145,6 +6151,7 @@ def _compute_ema13_extension_adxdelta_crosstab(orders):
                 wins = sum(1 for o in sub if (o.pnl or 0) > 0)
                 total_pnl = sum(o.pnl or 0 for o in sub)
                 avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                np = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
                 rows.append({
                     'extension': ext_label,
                     'adx_delta': adxd_label,
@@ -6153,6 +6160,8 @@ def _compute_ema13_extension_adxdelta_crosstab(orders):
                     'avg_pnl_pct': round(avg_pnl_pct, 4),
                     'avg_pnl_usd': round(total_pnl / n, 2),
                     'total_pnl_usd': round(total_pnl, 2),
+                    'np_count': np,
+                    'np_pct': round(np / n * 100, 1),
                 })
         return rows
 

@@ -6576,7 +6576,22 @@ def _compute_btc_1h_slope_adx_crosstab(orders):
 # would-exit P&L (≈+0.05% by construction). $ Δ shown per bucket.
 
 def _compute_phantom_be_aggr_by_close_reason(orders):
-    closed = [o for o in orders if o.status == 'CLOSED']
+    # Phantom BE 0.20/0.05 tracker shipped 2026-05-14 ~19:00 UTC (commit 320b110).
+    # Pre-deploy trades have no phantom data — including them produces misleading
+    # "BE not armed" verdicts on trades the tracker never observed. Filter to
+    # post-deploy trades only.
+    from datetime import datetime
+    _PHANTOM_BE_AGGR_DEPLOY_AT = datetime(2026, 5, 14, 19, 0, 0)
+
+    def _is_post_deploy(o):
+        if not o.opened_at:
+            return False
+        opened = o.opened_at
+        if opened.tzinfo is not None:
+            opened = opened.replace(tzinfo=None)
+        return opened >= _PHANTOM_BE_AGGR_DEPLOY_AT
+
+    closed = [o for o in orders if o.status == 'CLOSED' and _is_post_deploy(o)]
     if not closed:
         return {'rows': [], 'pool': {'total': 0, 'armed': 0, 'fired': 0, 'total_dollar_delta': 0.0}}
 

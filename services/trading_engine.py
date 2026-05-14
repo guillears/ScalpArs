@@ -67,6 +67,7 @@ _btc_ema20_slope_pct: float = 0.0
 # Updated in BTC scan loop. Surfaced in /api/engine/state for header badge.
 _current_btc_ema20: Optional[float] = None
 _current_btc_ema13: Optional[float] = None  # May 6 — BTC Trend Filter switched to EMA13/EMA50
+_current_btc_price: Optional[float] = None  # May 14 — BTC price for BTC Market Extension dimension
 _current_btc_ema50: Optional[float] = None
 _current_btc_trend_gap_pct: Optional[float] = None  # As of May 6: (EMA13 - EMA50) / EMA50; was EMA20-based before
 # Module-level BTC indicators for regime classification at exit time
@@ -1305,6 +1306,7 @@ class TradingEngine:
         entry_funding_rate: Optional[float] = None,
         entry_pair_ema20_ema50_gap_pct: Optional[float] = None,
         entry_dist_from_ema13_pct: Optional[float] = None,
+        entry_btc_dist_from_ema13_pct: Optional[float] = None,
     ):
         """Persist a signal-expired entry attempt as a minimal Order row for reporting.
 
@@ -1379,6 +1381,7 @@ class TradingEngine:
                 entry_funding_rate=entry_funding_rate,
                 entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                 entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
+                entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
             )
             db.add(order)
             await db.commit()
@@ -1865,6 +1868,8 @@ class TradingEngine:
         entry_pair_ema20_ema50_gap_pct: float = None,
         # May 13 PM: Entry Distance from EMA13 (Late Entry Risk dimension)
         entry_dist_from_ema13_pct: float = None,
+        # May 14: BTC Market Extension / BTC Late Regime Risk dimension
+        entry_btc_dist_from_ema13_pct: float = None,
         # May 10: capture absolute pair 24h USD volume at entry for size-bucket analysis
         entry_pair_volume_24h_usd: float = None,
     ) -> Optional[Order]:
@@ -2044,6 +2049,7 @@ class TradingEngine:
                         entry_funding_rate=entry_funding_rate,
                         entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                         entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
+                        entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
                     )
                     return None
                 if result:
@@ -2115,6 +2121,7 @@ class TradingEngine:
                         entry_funding_rate=entry_funding_rate,
                         entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
                         entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
+                        entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
                     )
                     return None
                 actual_price = result['price']
@@ -2169,6 +2176,7 @@ class TradingEngine:
             entry_funding_rate=entry_funding_rate,
             entry_pair_ema20_ema50_gap_pct=entry_pair_ema20_ema50_gap_pct,
             entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
+            entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
             # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
             entry_fee=entry_fee,
@@ -4228,7 +4236,7 @@ class TradingEngine:
                 if btc_ema20 and btc_ema20_prev3 and btc_ema20_prev3 != 0:
                     btc_ema20_slope_pct = round(((btc_ema20 - btc_ema20_prev3) / btc_ema20_prev3) * 100, 4)
         global _current_btc_regime, _btc_ema20_slope_pct, _current_btc_adx, _current_btc_rsi
-        global _current_btc_ema20, _current_btc_ema13, _current_btc_ema50, _current_btc_trend_gap_pct
+        global _current_btc_ema20, _current_btc_ema13, _current_btc_ema50, _current_btc_trend_gap_pct, _current_btc_price
         _current_btc_regime = btc_regime
         _btc_ema20_slope_pct = btc_ema20_slope_pct if btc_ema20_slope_pct is not None else 0.0
         _current_btc_adx = btc_adx
@@ -4237,6 +4245,8 @@ class TradingEngine:
         _current_btc_ema20 = btc_ema20
         _current_btc_ema13 = btc_ema13
         _current_btc_ema50 = btc_ema50
+        # May 14 — BTC price for BTC Market Extension dimension (price vs EMA13).
+        _current_btc_price = btc_indicators.get('price') if btc_indicators else None
         if btc_ema13 is not None and btc_ema50 is not None and btc_ema50 != 0:
             # Trend gap = (EMA13 - EMA50) / EMA50 × 100. EMA13 spans ~65 min on 5m chart;
             # EMA50 spans ~250 min (~4 hours). Gap > 0 = BTC in 4hr uptrend, gap < 0 = downtrend.
@@ -5020,6 +5030,12 @@ class TradingEngine:
                 _entry_price = indicators.get('price')
                 if _ema13_val is not None and _entry_price is not None and _ema13_val != 0:
                     _entry_dist_from_ema13_pct = round((_entry_price - _ema13_val) / _ema13_val * 100, 4)
+                # May 14: BTC Market Extension / BTC Late Regime Risk dimension.
+                # Signed: positive = BTC price above EMA13 (LONG-risk: chasing market top),
+                # negative = BTC below EMA13 (SHORT-risk: late after capitulation).
+                _entry_btc_dist_from_ema13_pct = None
+                if _current_btc_ema13 is not None and _current_btc_price is not None and _current_btc_ema13 != 0:
+                    _entry_btc_dist_from_ema13_pct = round((_current_btc_price - _current_btc_ema13) / _current_btc_ema13 * 100, 4)
                 _entry_funding_rate = None
                 try:
                     _funding = await binance_service.fetch_funding_rate(symbol)
@@ -5067,6 +5083,7 @@ class TradingEngine:
                     entry_funding_rate=_entry_funding_rate,
                     entry_pair_ema20_ema50_gap_pct=_entry_pair_ema20_ema50_gap_pct,
                     entry_dist_from_ema13_pct=_entry_dist_from_ema13_pct,
+                    entry_btc_dist_from_ema13_pct=_entry_btc_dist_from_ema13_pct,
                     # May 10: absolute pair 24h USD volume — sourced from binance scan
                     entry_pair_volume_24h_usd=volume_24h,
                 )

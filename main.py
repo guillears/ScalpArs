@@ -4266,6 +4266,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 if _d is None:
                     continue
                 ext_vals_ecr.append(_d if direction == 'LONG' else -_d)
+            # BTC Market Extension / BTC Late Regime Risk (May 14) — same direction-flip rule
+            btc_ext_vals_ecr = []
+            for _o in group:
+                _d = getattr(_o, 'entry_btc_dist_from_ema13_pct', None)
+                if _d is None:
+                    continue
+                btc_ext_vals_ecr.append(_d if direction == 'LONG' else -_d)
             # Breadth: LONGs use Bull%, SHORTs use Bear%
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
@@ -4358,6 +4365,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
                 # Entry Extension / Late Entry Risk (May 13 PM) — direction-aware: positive = late
                 "avg_ext_pct": round(sum(ext_vals_ecr) / len(ext_vals_ecr), 4) if ext_vals_ecr else None,
+                # BTC Market Extension / BTC Late Regime Risk (May 14)
+                "avg_btc_ext_pct": round(sum(btc_ext_vals_ecr) / len(btc_ext_vals_ecr), 4) if btc_ext_vals_ecr else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -4492,6 +4501,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 if _d is None:
                     continue
                 ext_vals_eco.append(_d if direction == 'LONG' else -_d)
+            # BTC Market Extension / BTC Late Regime Risk (May 14)
+            btc_ext_vals_eco = []
+            for _o in group:
+                _d = getattr(_o, 'entry_btc_dist_from_ema13_pct', None)
+                if _d is None:
+                    continue
+                btc_ext_vals_eco.append(_d if direction == 'LONG' else -_d)
             if direction == "LONG":
                 breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None]
             else:
@@ -4577,6 +4593,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "avg_pair_vol_usd": round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None,
                 # Entry Extension / Late Entry Risk (May 13 PM) — direction-aware: positive = late
                 "avg_ext_pct": round(sum(ext_vals_eco) / len(ext_vals_eco), 4) if ext_vals_eco else None,
+                # BTC Market Extension / BTC Late Regime Risk (May 14)
+                "avg_btc_ext_pct": round(sum(btc_ext_vals_eco) / len(btc_ext_vals_eco), 4) if btc_ext_vals_eco else None,
                 "avg_peak_pct": round(sum(peaks) / count, 4),
                 "avg_trough_pct": round(sum(troughs) / len(troughs), 4) if troughs else None,
                 "worst_trough_pct": round(min(troughs), 4) if troughs else None,
@@ -4958,6 +4976,22 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     bucket = [o for o in np_ext_trades if (o.direction or "LONG") == direction and lo <= _ext_of(o) < hi]
                     all_in = len([o for o in all_ext_trades if (o.direction or "LONG") == direction and lo <= _ext_of(o) < hi])
                     row = _np_bucket_stats(bucket, "Extension", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # BTC Market Extension / BTC Late Regime Risk (May 14) — same direction-aware
+            # bucketing as pair extension. Positive = BTC stretched within the move.
+            np_btc_ext_ranges = np_ext_ranges  # share bucket definitions
+            np_btc_ext_trades = [o for o in np_trades if getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
+            all_btc_ext_trades = [o for o in orders if getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
+            for rng, lo, hi in np_btc_ext_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    def _btc_ext_of(o, d=direction):
+                        v = o.entry_btc_dist_from_ema13_pct
+                        return v if d == "LONG" else -v
+                    bucket = [o for o in np_btc_ext_trades if (o.direction or "LONG") == direction and lo <= _btc_ext_of(o) < hi]
+                    all_in = len([o for o in all_btc_ext_trades if (o.direction or "LONG") == direction and lo <= _btc_ext_of(o) < hi])
+                    row = _np_bucket_stats(bucket, "BTC Ext", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 
@@ -5683,6 +5717,13 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "ema13_extension_performance": _compute_ema13_extension_performance(orders),
         "ema13_extension_pvol_crosstab": _compute_ema13_extension_pvol_crosstab(orders),
         "ema13_extension_adxdelta_crosstab": _compute_ema13_extension_adxdelta_crosstab(orders),
+        # BTC Market Extension / BTC Late Regime Risk (May 14) — macro counterpart of
+        # pair extension. Tests whether losses cluster when BTC itself is stretched
+        # (price far from BTC EMA13), and especially when both BTC and pair are
+        # extended simultaneously (double-stretch).
+        "btc_extension_performance": _compute_btc_extension_performance(orders),
+        "btc_extension_globalvol_crosstab": _compute_btc_extension_globalvol_crosstab(orders),
+        "btc_extension_pair_extension_crosstab": _compute_btc_extension_pair_extension_crosstab(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -6155,6 +6196,206 @@ def _compute_ema13_extension_adxdelta_crosstab(orders):
                 rows.append({
                     'extension': ext_label,
                     'adx_delta': adxd_label,
+                    'count': n,
+                    'win_rate': round(wins / n * 100, 1),
+                    'avg_pnl_pct': round(avg_pnl_pct, 4),
+                    'avg_pnl_usd': round(total_pnl / n, 2),
+                    'total_pnl_usd': round(total_pnl, 2),
+                    'np_count': np,
+                    'np_pct': round(np / n * 100, 1),
+                })
+        return rows
+
+    return {
+        'longs': _crosstab_for('LONG'),
+        'shorts': _crosstab_for('SHORT'),
+        'pool_size': len(closed),
+    }
+
+
+# BTC Market Extension / BTC Late Regime Risk (May 14) — macro counterpart of pair extension.
+# Tests whether losses cluster when BTC itself is stretched (price far from BTC EMA13),
+# and especially when both BTC and pair are extended simultaneously (double-stretch).
+
+def _compute_btc_extension_performance(orders):
+    """Single-dim bucketing of BTC Market Extension by direction.
+
+    Direction-aware (same as pair extension):
+    - LONG: extension = entry_btc_dist_from_ema13_pct (positive = BTC above EMA13)
+    - SHORT: extension = -entry_btc_dist_from_ema13_pct (positive = BTC below EMA13)
+
+    Positive extension = BTC stretched within the move = market late-entry risk.
+    """
+    closed = [o for o in orders if (o.status == 'CLOSED') and getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
+    if not closed:
+        return {"longs": [], "shorts": [], "pool_size": 0}
+
+    buckets = [
+        ('< -0.20%', -99, -0.20, 'pullback'),
+        ('-0.20 to -0.10%', -0.20, -0.10, 'pullback'),
+        ('-0.10 to 0%', -0.10, 0.0, 'near mean'),
+        ('0 to +0.10%', 0.0, 0.10, 'mild late'),
+        ('+0.10 to +0.20%', 0.10, 0.20, 'late'),
+        ('+0.20 to +0.40%', 0.20, 0.40, 'extended'),
+        ('+0.40 to +0.60%', 0.40, 0.60, 'very extended'),
+        ('> +0.60%', 0.60, 99, 'extreme'),
+    ]
+
+    def _bucket_for_direction(direction):
+        rows = []
+        dir_orders = [o for o in closed if o.direction == direction]
+        for label, lo, hi, tag in buckets:
+            if direction == 'LONG':
+                sub = [o for o in dir_orders if lo <= o.entry_btc_dist_from_ema13_pct < hi]
+            else:
+                sub = [o for o in dir_orders if lo <= -o.entry_btc_dist_from_ema13_pct < hi]
+            if not sub:
+                continue
+            n = len(sub)
+            wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+            total_pnl = sum(o.pnl or 0 for o in sub)
+            avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+            avg_peak = sum(o.peak_pnl or 0 for o in sub) / n
+            doa = sum(1 for o in sub if (o.peak_pnl or 0) <= 0.10)
+            np = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+            conf = {}
+            for o in sub:
+                c = o.confidence or 'UNKNOWN'
+                conf[c] = conf.get(c, 0) + 1
+            rows.append({
+                'range': label,
+                'tag': tag,
+                'count': n,
+                'win_rate': round(wins / n * 100, 1),
+                'avg_pnl_pct': round(avg_pnl_pct, 4),
+                'avg_pnl_usd': round(total_pnl / n, 2),
+                'total_pnl_usd': round(total_pnl, 2),
+                'avg_peak_pct': round(avg_peak, 4),
+                'doa_count': doa,
+                'doa_pct': round(doa / n * 100, 1),
+                'np_count': np,
+                'np_pct': round(np / n * 100, 1),
+                'by_confidence': conf,
+            })
+        return rows
+
+    return {
+        'longs': _bucket_for_direction('LONG'),
+        'shorts': _bucket_for_direction('SHORT'),
+        'pool_size': len(closed),
+    }
+
+
+def _compute_btc_extension_globalvol_crosstab(orders):
+    """Cross-tab: BTC Market Extension × Global Volume Ratio.
+
+    Market climax detector: BTC stretched + global volume spiking = whole market
+    may be at exhaustion. Macro version of Pair Extension × Pair Volume Ratio.
+    """
+    closed = [o for o in orders if (o.status == 'CLOSED')
+              and getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None
+              and getattr(o, 'entry_global_volume_ratio', None) is not None]
+    if not closed:
+        return {"longs": [], "shorts": [], "pool_size": 0}
+
+    ext_buckets = [
+        ('< 0%', -99, 0.0),
+        ('0 to +0.20%', 0.0, 0.20),
+        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('+0.40 to +0.60%', 0.40, 0.60),
+        ('> +0.60%', 0.60, 99),
+    ]
+    gvol_buckets = [
+        ('< 0.85', 0.0, 0.85),
+        ('0.85-1.00', 0.85, 1.00),
+        ('1.00-1.20', 1.00, 1.20),
+        ('> 1.20', 1.20, 99),
+    ]
+
+    def _crosstab_for(direction):
+        rows = []
+        dir_orders = [o for o in closed if o.direction == direction]
+        for ext_label, ext_lo, ext_hi in ext_buckets:
+            for gv_label, gv_lo, gv_hi in gvol_buckets:
+                if direction == 'LONG':
+                    sub = [o for o in dir_orders if ext_lo <= o.entry_btc_dist_from_ema13_pct < ext_hi and gv_lo <= o.entry_global_volume_ratio < gv_hi]
+                else:
+                    sub = [o for o in dir_orders if ext_lo <= -o.entry_btc_dist_from_ema13_pct < ext_hi and gv_lo <= o.entry_global_volume_ratio < gv_hi]
+                if not sub:
+                    continue
+                n = len(sub)
+                wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+                total_pnl = sum(o.pnl or 0 for o in sub)
+                avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                np = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+                rows.append({
+                    'btc_extension': ext_label,
+                    'global_vol': gv_label,
+                    'count': n,
+                    'win_rate': round(wins / n * 100, 1),
+                    'avg_pnl_pct': round(avg_pnl_pct, 4),
+                    'avg_pnl_usd': round(total_pnl / n, 2),
+                    'total_pnl_usd': round(total_pnl, 2),
+                    'np_count': np,
+                    'np_pct': round(np / n * 100, 1),
+                })
+        return rows
+
+    return {
+        'longs': _crosstab_for('LONG'),
+        'shorts': _crosstab_for('SHORT'),
+        'pool_size': len(closed),
+    }
+
+
+def _compute_btc_extension_pair_extension_crosstab(orders):
+    """Cross-tab: BTC Extension × Pair Extension — DOUBLE-STRETCH DETECTOR.
+
+    The highest-information-value cell of the new BTC dimension: are losses
+    concentrated when BOTH market and pair are stretched simultaneously?
+    """
+    closed = [o for o in orders if (o.status == 'CLOSED')
+              and getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None
+              and getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
+    if not closed:
+        return {"longs": [], "shorts": [], "pool_size": 0}
+
+    btc_ext_buckets = [
+        ('< 0%', -99, 0.0),
+        ('0 to +0.20%', 0.0, 0.20),
+        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('> +0.40%', 0.40, 99),
+    ]
+    pair_ext_buckets = [
+        ('< 0%', -99, 0.0),
+        ('0 to +0.20%', 0.0, 0.20),
+        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('> +0.40%', 0.40, 99),
+    ]
+
+    def _crosstab_for(direction):
+        rows = []
+        dir_orders = [o for o in closed if o.direction == direction]
+        for btc_label, btc_lo, btc_hi in btc_ext_buckets:
+            for pair_label, pair_lo, pair_hi in pair_ext_buckets:
+                if direction == 'LONG':
+                    sub = [o for o in dir_orders
+                           if btc_lo <= o.entry_btc_dist_from_ema13_pct < btc_hi
+                           and pair_lo <= o.entry_dist_from_ema13_pct < pair_hi]
+                else:
+                    sub = [o for o in dir_orders
+                           if btc_lo <= -o.entry_btc_dist_from_ema13_pct < btc_hi
+                           and pair_lo <= -o.entry_dist_from_ema13_pct < pair_hi]
+                if not sub:
+                    continue
+                n = len(sub)
+                wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+                total_pnl = sum(o.pnl or 0 for o in sub)
+                avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                np = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+                rows.append({
+                    'btc_extension': btc_label,
+                    'pair_extension': pair_label,
                     'count': n,
                     'win_rate': round(wins / n * 100, 1),
                     'avg_pnl_pct': round(avg_pnl_pct, 4),

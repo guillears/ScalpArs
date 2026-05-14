@@ -128,6 +128,14 @@ class Order(Base):
     # Tests whether bad trades are late entries (timing) vs wrong signals (quality).
     # Pre-deploy trades stay NULL — no retroactive backfill.
     entry_dist_from_ema13_pct = Column(Float, nullable=True)
+    # May 14: BTC Market Extension / BTC Late Regime Risk dimension.
+    # Signed distance of BTC price from BTC EMA13 at the trade's entry instant:
+    # (btc_price - btc_ema13) / btc_ema13 × 100. Macro counterpart of pair extension.
+    # Positive = BTC above its EMA13 (LONGs are entering a stretched market);
+    # negative = BTC below its EMA13 (SHORTs are entering after market capitulation).
+    # Combined with pair extension (double-stretch detection), tests whether
+    # losses cluster when BOTH levels are extended.
+    entry_btc_dist_from_ema13_pct = Column(Float, nullable=True)
 
     # May 10: absolute pair 24h volume in USD at entry time. For size-bucket
     # analysis — find structural threshold below which pairs underperform,

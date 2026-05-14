@@ -1,5 +1,106 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 14, 2026 — BTC Market Extension / BTC Late Regime Risk (NEW, observation-only — macro counterpart of pair extension)
+
+### Hypothesis
+
+Pair Extension (May 13) measures whether the **pair** was already stretched at
+entry. But many failure modes are driven by the **market leader** (BTC) being
+stretched, regardless of pair-level conditions. A "good" pair signal that
+fires while BTC is already at the top of its current leg often loses because
+BTC reverts and drags everything with it.
+
+This is the BTC-level twin of pair extension, asking: was the market itself
+late within the current move when we entered?
+
+### What was added
+
+**New `Order.entry_btc_dist_from_ema13_pct`** = `(BTC_price − BTC_EMA13) / BTC_EMA13 × 100`
+(signed, post-May-14-deploy only). Same denominator (`EMA13`) as pair
+extension for direct comparability and pool consistency.
+
+**Three new analytics tables** (BTC Market Extension Analytics section):
+
+1. **Performance by BTC Market Extension** — single-dim, split LONG/SHORT,
+   8 buckets from "< -0.20%" through "> +0.60%". DOA% + NP% columns flag
+   instant-fail entries.
+2. **BTC Extension × Global Volume Ratio cross-tab** — market climax detector.
+   Tests: BTC stretched + global volume spiking = whole market exhausting?
+3. **BTC Extension × Pair Extension cross-tab — DOUBLE-STRETCH DETECTOR**.
+   Critical cell: are losses concentrated when BOTH BTC AND pair are stretched
+   simultaneously, even though each individually looks acceptable?
+
+### Existing-surface integration
+
+The new dimension also flows into the three existing winner-vs-loser comparison views:
+- **Entry Conditions by Close Reason**: new `AvgBTCExt%` column (amber)
+- **Entry Conditions by Outcome (Winners vs Losers)**: same column
+- **Never Positive Deep Dive**: new `BTC Ext` dimension block (8 buckets × LONG/SHORT)
+
+Direction-aware sign-flip applied everywhere: positive value always = "late
+within the move" regardless of trade direction.
+
+### Why this gets review priority along with pair extension
+
+Same logic as the May 13 Entry Extension entry: as of May 4, every existing
+entry-side dimension showed winners and losers with near-identical signatures
+(RSI, ADX, EMA gaps, BTC RSI, BTC ADX, RangePos, Breadth, vol ratios, ADXdelta,
+EMA50align, DI, funding, ATR, TtP, trend gaps). The structural question "is
+there ANY entry-side variable that meaningfully discriminates winners from
+losers" remains open.
+
+Pair extension (May 13) tested timing-within-the-move at the **pair** level.
+BTC extension (May 14) tests the same at the **market** level. The
+**double-stretch cross-tab** is the highest-EV cell because it asks whether
+the failure mode is conditional (only when both are stretched), which
+single-dim tables structurally can't reveal.
+
+### At every checkpoint, the FIRST analytical questions are now:
+
+1. **Does Pair Extension (AvgExt%) differentiate Winners vs Losers?** (May 13 hypothesis)
+2. **Does BTC Extension (AvgBTCExt%) differentiate Winners vs Losers?** (May 14 hypothesis)
+3. **In the BTC × Pair double-stretch cross-tab, is the (BTC stretched + Pair stretched) quadrant materially worse than the other 3 quadrants on WR and NP%?** This is the conditional-failure test that single dimensions can't answer.
+4. **Direction asymmetry**: do LONG and SHORT respond to BTC extension differently? (e.g., SHORT into BTC oversold = squeeze risk may be a stronger pattern than LONG into BTC stretched)
+
+### Status: observation-only, NO filter shipped
+
+Pre-committed promotion bar (same as pair extension):
+- N ≥ 20 per bucket
+- WR gap between best/worst ≥ 15pp
+- Avg P&L % gap ≥ 0.20pp
+- Direction-consistent OR documented theoretical asymmetry
+- TtP ≤ 0.45 on winning bucket
+
+If validated, likely filter form: `btc_dist_from_ema13_max_long` and
+`btc_dist_from_ema13_min_short` (after sign-flip). Could also be expressed
+as a conditional rule: "block entry when BOTH `btc_extension > X` AND
+`pair_extension > Y`" — the double-stretch zone.
+
+### Caveats
+
+- **Only populated post-May-14 deploy.** Pre-deploy trades show NULL.
+- **NP% on the double-stretch cell is the strongest early signal** — if NP%
+  in the double-stretch quadrant is materially higher than the other 3 cells,
+  the conditional hypothesis is supported even before WR/Avg% have N≥20.
+- **Pool with caution**: BTC extension at any given moment is the same value
+  across all open positions in that instant. Don't over-interpret variance
+  within a single market session.
+
+### Files changed
+- `models.py`: `entry_btc_dist_from_ema13_pct: Float, nullable=True`
+- `database.py`: auto-migrate `ADD COLUMN`
+- `services/trading_engine.py`: new `_current_btc_price` global, capture logic,
+  threaded through `_save_signal_expired_order` and `open_position` signatures
+  and all 4 Order constructor sites
+- `main.py`: 3 new analytics functions
+  (`_compute_btc_extension_performance`,
+  `_compute_btc_extension_globalvol_crosstab`,
+  `_compute_btc_extension_pair_extension_crosstab`) + payload wiring + ECR/ECO
+  `avg_btc_ext_pct` field + NP Deep Dive `BTC Ext` dimension block
+- `templates/index.html`: new "BTC Market Extension Analytics" section
+  (3 tables) + JS renderer + AvgBTCExt% column in ECR/ECO + both text-export
+  sites updated
+
 ## May 13, 2026 (PM) — Entry Extension / Late Entry Risk dimension (NEW, observation-only)
 
 ### Hypothesis

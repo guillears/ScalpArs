@@ -5408,7 +5408,7 @@
                     lines.push('Extension        ADX Δ        N    WR%    Avg%       Total$');
                     lines.push('-'.repeat(70));
                     rows.forEach(r => {
-                        lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`);
+                        lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                     });
                     lines.push('');
                 });
@@ -5429,7 +5429,7 @@
                     lines.push('-'.repeat(103));
                     rows.forEach(r => {
                         lines.push(
-                            `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`
+                            `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`
                         );
                     });
                     lines.push('');
@@ -5441,7 +5441,7 @@
                     lines.push('BTC Ext          GlobalVol    N    WR%    Avg%       Total$     NP%');
                     lines.push('-'.repeat(78));
                     rows.forEach(r => {
-                        lines.push(`${r.btc_extension.padEnd(16)} ${r.global_vol.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`);
+                        lines.push(`${r.btc_extension.padEnd(16)} ${r.global_vol.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                     });
                     lines.push('');
                 });
@@ -5452,7 +5452,7 @@
                     lines.push('BTC Ext          Pair Ext     N    WR%    Avg%       Total$     NP%');
                     lines.push('-'.repeat(78));
                     rows.forEach(r => {
-                        lines.push(`${r.btc_extension.padEnd(16)} ${r.pair_extension.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`);
+                        lines.push(`${r.btc_extension.padEnd(16)} ${r.pair_extension.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                     });
                     lines.push('');
                 });
@@ -5472,7 +5472,7 @@
                     lines.push('Slope               N    WR%    Avg%       Total$     Peak%      NP%');
                     lines.push('-'.repeat(80));
                     rows.forEach(r => {
-                        lines.push(`${r.range.padEnd(20)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.np_pct.toFixed(1).padStart(5)}`);
+                        lines.push(`${r.range.padEnd(20)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
                     });
                     lines.push('');
                 });
@@ -5483,7 +5483,7 @@
                     lines.push('Alignment                                     N    WR%    Avg%       Total$     NP%');
                     lines.push('-'.repeat(90));
                     rows.forEach(r => {
-                        lines.push(`${r.alignment.padEnd(45)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${r.np_pct.toFixed(1).padStart(5)}`);
+                        lines.push(`${r.alignment.padEnd(45)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
                     });
                     lines.push('');
                 });
@@ -5494,7 +5494,7 @@
                     lines.push('1h Slope         BTC ADX    N    WR%    Avg%       Total$     NP%');
                     lines.push('-'.repeat(80));
                     rows.forEach(r => {
-                        lines.push(`${r.slope_1h.padEnd(16)} ${r.btc_adx.padEnd(10)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${r.np_pct.toFixed(1).padStart(5)}`);
+                        lines.push(`${r.slope_1h.padEnd(16)} ${r.btc_adx.padEnd(10)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
                     });
                     lines.push('');
                 });
@@ -6521,7 +6521,7 @@
                         lines.push('-'.repeat(103));
                         rows.forEach(r => {
                             lines.push(
-                                `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`
+                                `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`
                             );
                         });
                         lines.push('');
@@ -6533,7 +6533,7 @@
                         lines.push('Extension        PVol         N    WR%    Avg%       Total$     NP%');
                         lines.push('-'.repeat(78));
                         rows.forEach(r => {
-                            lines.push(`${r.extension.padEnd(16)} ${r.pvol_ratio.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`);
+                            lines.push(`${r.extension.padEnd(16)} ${r.pvol_ratio.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -6544,7 +6544,7 @@
                         lines.push('Extension        ADX Δ        N    WR%    Avg%       Total$     NP%');
                         lines.push('-'.repeat(78));
                         rows.forEach(r => {
-                            lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`);
+                            lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -6565,7 +6565,7 @@
                         lines.push('-'.repeat(103));
                         rows.forEach(r => {
                             lines.push(
-                                `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`
+                                `${r.range.padEnd(18)} ${(r.tag||'').padEnd(13)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.avg_pnl_usd>=0?'+$':'-$')}${Math.abs(r.avg_pnl_usd).toFixed(2).padStart(7)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.doa_pct.toFixed(1).padStart(5)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`
                             );
                         });
                         lines.push('');
@@ -6577,7 +6577,7 @@
                         lines.push('BTC Ext          GlobalVol    N    WR%    Avg%       Total$     NP%');
                         lines.push('-'.repeat(78));
                         rows.forEach(r => {
-                            lines.push(`${r.btc_extension.padEnd(16)} ${r.global_vol.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`);
+                            lines.push(`${r.btc_extension.padEnd(16)} ${r.global_vol.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -6588,7 +6588,7 @@
                         lines.push('BTC Ext          Pair Ext     N    WR%    Avg%       Total$     NP%');
                         lines.push('-'.repeat(78));
                         rows.forEach(r => {
-                            lines.push(`${r.btc_extension.padEnd(16)} ${r.pair_extension.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? r.np_pct.toFixed(1) : '-').padStart(5)}`);
+                            lines.push(`${r.btc_extension.padEnd(16)} ${r.pair_extension.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -6608,7 +6608,7 @@
                         lines.push('Slope               N    WR%    Avg%       Total$     Peak%      NP%');
                         lines.push('-'.repeat(80));
                         rows.forEach(r => {
-                            lines.push(`${r.range.padEnd(20)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${r.np_pct.toFixed(1).padStart(5)}`);
+                            lines.push(`${r.range.padEnd(20)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.avg_peak_pct>=0?'+':'')}${r.avg_peak_pct.toFixed(3).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -6619,7 +6619,7 @@
                         lines.push('Alignment                                     N    WR%    Avg%       Total$     NP%');
                         lines.push('-'.repeat(90));
                         rows.forEach(r => {
-                            lines.push(`${r.alignment.padEnd(45)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${r.np_pct.toFixed(1).padStart(5)}`);
+                            lines.push(`${r.alignment.padEnd(45)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -6630,7 +6630,7 @@
                         lines.push('1h Slope         BTC ADX    N    WR%    Avg%       Total$     NP%');
                         lines.push('-'.repeat(80));
                         rows.forEach(r => {
-                            lines.push(`${r.slope_1h.padEnd(16)} ${r.btc_adx.padEnd(10)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${r.np_pct.toFixed(1).padStart(5)}`);
+                            lines.push(`${r.slope_1h.padEnd(16)} ${r.btc_adx.padEnd(10)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -8022,7 +8022,7 @@
                             <td class="px-2 py-1 text-right ${totCls}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
                             <td class="px-2 py-1 text-right text-gray-300">${r.avg_peak_pct >= 0 ? '+' : ''}${r.avg_peak_pct.toFixed(3)}%</td>
                             <td class="px-2 py-1 text-right ${doaCls}">${r.doa_pct.toFixed(1)}%</td>
-                            <td class="px-2 py-1 text-right ${npCls}">${r.np_pct != null ? r.np_pct.toFixed(1) + '%' : '-'}</td>
+                            <td class="px-2 py-1 text-right ${npCls}">${r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-'}</td>
                         </tr>`;
                     }).join('');
                 };
@@ -8044,7 +8044,7 @@
                             <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-2 py-1 text-right ${avgCls}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
                             <td class="px-2 py-1 text-right ${totCls}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
-                            <td class="px-2 py-1 text-right ${npCls}">${r.np_pct != null ? r.np_pct.toFixed(1) + '%' : '-'}</td>
+                            <td class="px-2 py-1 text-right ${npCls}">${r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-'}</td>
                         </tr>`;
                     }).join('');
                 };
@@ -8085,7 +8085,7 @@
                             <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-2 py-1 text-right ${avgCls}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
                             <td class="px-2 py-1 text-right ${totCls}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
-                            <td class="px-2 py-1 text-right ${npCls}">${r.np_pct != null ? r.np_pct.toFixed(1) + '%' : '-'}</td>
+                            <td class="px-2 py-1 text-right ${npCls}">${r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-'}</td>
                         </tr>`;
                     }).join('');
                 };
@@ -8126,7 +8126,7 @@
                             <td class="px-2 py-1 text-right ${avg}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
                             <td class="px-2 py-1 text-right ${tot}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
                             <td class="px-2 py-1 text-right text-gray-300">${r.avg_peak_pct >= 0 ? '+' : ''}${r.avg_peak_pct.toFixed(3)}%</td>
-                            <td class="px-2 py-1 text-right ${np}">${r.np_pct.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${np}">${(r.np_count || 0)} (${r.np_pct.toFixed(1)}%)</td>
                         </tr>`;
                     }).join('');
                 };
@@ -8149,7 +8149,7 @@
                             <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-2 py-1 text-right ${avg}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
                             <td class="px-2 py-1 text-right ${tot}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
-                            <td class="px-2 py-1 text-right ${np}">${r.np_pct.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${np}">${(r.np_count || 0)} (${r.np_pct.toFixed(1)}%)</td>
                         </tr>`;
                     }).join('');
                 };
@@ -8171,7 +8171,7 @@
                             <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
                             <td class="px-2 py-1 text-right ${avg}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
                             <td class="px-2 py-1 text-right ${tot}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
-                            <td class="px-2 py-1 text-right ${np}">${r.np_pct.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${np}">${(r.np_count || 0)} (${r.np_pct.toFixed(1)}%)</td>
                         </tr>`;
                     }).join('');
                 };

@@ -1,5 +1,73 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 14, 2026 (late PM) — Phantom BE 0.20/0.05 counterfactual tracker (NEW, observation-only)
+
+### Why this exists
+
+Discussion across the May 14 session converged on: BE at trigger +0.20% / floor +0.05% might rescue the Pos-No-BE bucket (25 trades = -$1,142 in current batch) without sacrificing trailing winners. The user pushed back hard, repeatedly, on the risk that ANY BE design with a tight gap would fire on normal candle noise during a winner's climb. My empirical analysis from the existing phantom_be_l1 data (which tracks BE @ 0.50/0.20) showed zero winner-kill in 25 armed trades — but that's the wrong configuration. We can't validate BE 0.20/0.05 from existing phantom data because trigger is too high.
+
+**Solution:** add a SECOND phantom tracker at the exact parameters we want to evaluate. Observation-only. After N≥40 trades populate, the data tells us definitively whether BE 0.20/0.05 helps or hurts.
+
+### What was added
+
+**New tracker in `_SHADOW_BE` block** (services/trading_engine.py):
+- Mirrors existing phantom_be_l1/l2 pattern
+- Trigger: peak first ≥ +0.20% → record `phantom_be_aggr_triggered_at`
+- Fire: P&L retraced to ≤ +0.05% after triggering → record `phantom_be_aggr_would_exit_pnl` (records the actual P&L at fire moment, ≈+0.05%)
+- ZERO live behavior change. Just two new column writes per scan cycle on each open order.
+
+**New Order columns:**
+- `phantom_be_aggr_triggered_at` (DateTime, nullable)
+- `phantom_be_aggr_would_exit_pnl` (Float, nullable)
+
+**New analytics surface:** Phantom BE 0.20/0.05 Counterfactual — by Close Reason
+
+For each `(close_reason, direction)` bucket:
+- N (total trades)
+- Armed (count where phantom triggered, peak ≥ +0.20%)
+- Fired (count where phantom would have actually exited, retraced to ≤ +0.05%)
+- Actual Avg% (current avg close on fired trades only)
+- BE Avg% (phantom exit avg, ≈+0.05% by construction)
+- Δ% (BE − Actual per fired trade)
+- Total $ Δ (counterfactual $ improvement if BE had fired)
+- Verdict: ★ HELPING / ⚠ HURTING / ✓ Marginal / BE dormant / BE not armed
+
+Plus a pool summary line: total trades, armed, fired, net $ Δ.
+
+### Locked decision criteria at next review
+
+After **N ≥ 40 trades** with the new phantom data populated:
+
+1. **Per close_reason bucket** (with Fired ≥ 5):
+   - If TRAILING_STOP L1+ shows `⚠ HURTING` (Total$ Δ ≤ -$10): BE 0.20/0.05 sacrifices real winners. DO NOT SHIP.
+   - If STOP_LOSS_WIDE / STOP_LOSS / EMA13_CROSS_EXIT shows `★ HELPING` (Total$ Δ ≥ +$20): BE 0.20/0.05 rescues losers. Net positive on this bucket.
+
+2. **Pool-level verdict**:
+   - Total $ Δ ≥ +$200 AND no bucket with Fired ≥ 5 is ⚠ HURTING → **ship BE 0.20/0.05 live**.
+   - Any bucket with Fired ≥ 5 is ⚠ HURTING → **do not ship**, even if net positive (we'd be sacrificing real winners).
+   - Inconclusive: keep observing, revisit at N ≥ 80.
+
+3. **Don't move goalposts.** If pool delta is +$180 (just under threshold), don't ship. Numbers are pre-committed.
+
+### Why these specific thresholds
+
+- +$200 minimum: substantial enough that it's not noise at N=40 trade scale.
+- "No HURTING bucket" requirement: we'd rather miss some saves than kill the trailing winners that drive the strategy's edge.
+- Fired ≥ 5 per bucket: minimum N to call a bucket verdict.
+
+### Caveats
+
+- **Phantom doesn't account for path-dependence on live BE.** If BE were active live, some trades that today reach peak +0.30% would have exited at +0.05% BEFORE reaching higher peaks. The counterfactual replaces only the exit price, not the trade journey beyond the BE fire point. So $ Δ is approximate.
+- **Doesn't rescue trades with peak < +0.20%.** The Pos-No-BE BEARISH bucket has AvgPeak +0.18% — many BEARISH SHORTs never arm. This BE design is more useful for BULLISH side (where Pos-No-BE peaks avg +0.28%).
+- **Live BE may have side effects** the phantom can't predict: shorter trade duration, freed capacity for new entries, different risk profile.
+
+### Files changed
+- `models.py`: 2 new columns
+- `database.py`: auto-migrate
+- `services/trading_engine.py`: `_SHADOW_BE` block extended; cache init, persistence in close path, payload in `get_position_status` recovery
+- `main.py`: new `_compute_phantom_be_aggr_by_close_reason` + payload wiring
+- `templates/index.html`: new UI section + JS renderer + both text-export sites
+
 ## May 14, 2026 (PM) — BTC 1h Slope dimension (NEW, observation-only — higher-TF macro context)
 
 ### Hypothesis

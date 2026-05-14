@@ -324,6 +324,11 @@ async def init_db():
                 # May 14: BTC 1h EMA20 slope at entry (higher-TF discriminator candidate)
                 if 'entry_btc_1h_slope' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_1h_slope FLOAT"))
+                # May 14: Phantom BE @ 0.20/0.05 (aggressive observation tracker)
+                if 'phantom_be_aggr_triggered_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_be_aggr_triggered_at DATETIME"))
+                if 'phantom_be_aggr_would_exit_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_be_aggr_would_exit_pnl FLOAT"))
                 if 'entry_pair_volume_24h_usd' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pair_volume_24h_usd FLOAT"))
                 if 'exit_pair_ema20_ema50_gap_pct' not in columns:

@@ -143,6 +143,11 @@ class Order(Base):
     # SHORT loss driver. Discriminator candidate after May 4 found that every
     # existing 5m-timeframe dimension showed identical winner/loser signatures.
     entry_btc_1h_slope = Column(Float, nullable=True)
+    # May 14 — Phantom BE @ 0.20/0.05 (observation-only counterfactual tracker).
+    # Mirrors existing phantom_be_l1/l2 mechanism but at aggressive trigger/floor.
+    # Triggered: peak first crossed +0.20%. Would-exit: P&L retraced to ≤+0.05%.
+    phantom_be_aggr_triggered_at = Column(DateTime, nullable=True)
+    phantom_be_aggr_would_exit_pnl = Column(Float, nullable=True)
 
     # May 10: absolute pair 24h volume in USD at entry time. For size-bucket
     # analysis — find structural threshold below which pairs underperform,

@@ -5738,6 +5738,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "btc_1h_slope_performance": _compute_btc_1h_slope_performance(orders),
         "btc_5m_1h_slope_alignment_crosstab": _compute_btc_5m_1h_slope_alignment_crosstab(orders),
         "btc_1h_slope_adx_crosstab": _compute_btc_1h_slope_adx_crosstab(orders),
+        # Phantom BE 0.20/0.05 counterfactual by close reason (May 14)
+        "phantom_be_aggr_by_close_reason": _compute_phantom_be_aggr_by_close_reason(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -6561,6 +6563,102 @@ def _compute_btc_1h_slope_adx_crosstab(orders):
                 })
         return rows
     return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
+
+
+# Phantom BE 0.20/0.05 counterfactual by close reason (May 14) — observation-only.
+# Mirrors the engine's _SHADOW_BE 'aggr' tracker. For each (close_reason, direction)
+# bucket, shows what BE at trigger +0.20% / floor +0.05% would have done.
+#
+# - Armed: trades where peak first crossed +0.20% (phantom_be_aggr_triggered_at is set)
+# - Fired: trades where, AFTER arming, price retraced to ≤+0.05% (would_exit_pnl set)
+#
+# For "fired" trades, the counterfactual replaces actual close P&L with the phantom
+# would-exit P&L (≈+0.05% by construction). $ Δ shown per bucket.
+
+def _compute_phantom_be_aggr_by_close_reason(orders):
+    closed = [o for o in orders if o.status == 'CLOSED']
+    if not closed:
+        return {'rows': [], 'pool': {'total': 0, 'armed': 0, 'fired': 0, 'total_dollar_delta': 0.0}}
+
+    # Group by (close_reason, direction)
+    groups = {}
+    for o in closed:
+        cr = o.close_reason or 'UNKNOWN'
+        d = o.direction or 'LONG'
+        groups.setdefault((cr, d), []).append(o)
+
+    rows = []
+    total_armed = 0
+    total_fired = 0
+    total_dollar_delta = 0.0
+
+    for (cr, d), group in groups.items():
+        n = len(group)
+        armed_list = [o for o in group if getattr(o, 'phantom_be_aggr_triggered_at', None) is not None]
+        fired_list = [o for o in group if getattr(o, 'phantom_be_aggr_would_exit_pnl', None) is not None]
+        armed = len(armed_list)
+        fired = len(fired_list)
+        total_armed += armed
+        total_fired += fired
+
+        if fired_list:
+            avg_actual_pct = sum(o.pnl_percentage or 0 for o in fired_list) / fired
+            avg_phantom_pct = sum(o.phantom_be_aggr_would_exit_pnl or 0 for o in fired_list) / fired
+            delta_pct = avg_phantom_pct - avg_actual_pct
+            dollar_delta = 0.0
+            for o in fired_list:
+                actual_pnl = o.pnl or 0
+                actual_pct = o.pnl_percentage or 0
+                phantom_pct = o.phantom_be_aggr_would_exit_pnl or 0
+                if actual_pct != 0:
+                    phantom_pnl = actual_pnl * (phantom_pct / actual_pct)
+                else:
+                    phantom_pnl = 0
+                dollar_delta += (phantom_pnl - actual_pnl)
+            total_dollar_delta += dollar_delta
+
+            # Verdict
+            if dollar_delta > 5:
+                verdict = '★ HELPING'
+            elif dollar_delta < -5:
+                verdict = '⚠ HURTING'
+            else:
+                verdict = '✓ Marginal'
+        else:
+            avg_actual_pct = sum(o.pnl_percentage or 0 for o in group) / n
+            avg_phantom_pct = None
+            delta_pct = None
+            dollar_delta = 0.0
+            if armed > 0:
+                verdict = 'BE dormant (armed, no retrace)'
+            else:
+                verdict = 'BE not armed (peak < 0.20%)'
+
+        rows.append({
+            'close_reason': cr,
+            'direction': d,
+            'count': n,
+            'armed': armed,
+            'fired': fired,
+            'avg_actual_pct': round(avg_actual_pct, 4) if fired_list or n else None,
+            'avg_phantom_pct': round(avg_phantom_pct, 4) if avg_phantom_pct is not None else None,
+            'delta_pct': round(delta_pct, 4) if delta_pct is not None else None,
+            'dollar_delta': round(dollar_delta, 2),
+            'verdict': verdict,
+        })
+
+    # Sort by direction then close_reason for readability
+    rows.sort(key=lambda r: (r['direction'], r['close_reason']))
+
+    return {
+        'rows': rows,
+        'pool': {
+            'total': len(closed),
+            'armed': total_armed,
+            'fired': total_fired,
+            'total_dollar_delta': round(total_dollar_delta, 2),
+        },
+    }
 
 
 # Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).

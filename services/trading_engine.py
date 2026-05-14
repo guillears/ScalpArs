@@ -2362,6 +2362,10 @@ class TradingEngine:
                 'phantom_be_l2_triggered': False,
                 'phantom_be_l2_triggered_at': None,
                 'phantom_be_l2_would_exit_pnl': None,
+                # May 14 — Aggressive phantom BE @ 0.20/0.05 (observation-only)
+                'phantom_be_aggr_triggered': False,
+                'phantom_be_aggr_triggered_at': None,
+                'phantom_be_aggr_would_exit_pnl': None,
                 'phantom_regime_change_triggered': False,
                 'phantom_regime_change_exit_triggered_at': None,
                 'phantom_regime_change_exit_pnl': None,
@@ -2953,6 +2957,9 @@ class TradingEngine:
                     order.phantom_be_l1_would_exit_pnl = cached.get('phantom_be_l1_would_exit_pnl')
                     order.phantom_be_l2_triggered_at = cached.get('phantom_be_l2_triggered_at')
                     order.phantom_be_l2_would_exit_pnl = cached.get('phantom_be_l2_would_exit_pnl')
+                    # May 14 — aggressive phantom BE @ 0.20/0.05
+                    order.phantom_be_aggr_triggered_at = cached.get('phantom_be_aggr_triggered_at')
+                    order.phantom_be_aggr_would_exit_pnl = cached.get('phantom_be_aggr_would_exit_pnl')
                     order.phantom_regime_change_exit_triggered_at = cached.get('phantom_regime_change_exit_triggered_at')
                     order.phantom_regime_change_exit_pnl = cached.get('phantom_regime_change_exit_pnl')
                     for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
@@ -5513,6 +5520,16 @@ class TradingEngine:
                     order_info[_ak] = datetime.utcnow()
                 if order_info.get(_tk) and order_info.get(_ek) is None and pnl_pct <= _soff:
                     order_info[_ek] = pnl_pct
+            # May 14: Aggressive phantom BE @ 0.20/0.05 — observation-only counterfactual
+            # for the BE design proposed in CLAUDE.md May 14. Arms when peak ≥ +0.20%,
+            # fires (records would_exit_pnl) when P&L retraces to ≤ +0.05% after arming.
+            if not order_info.get('phantom_be_aggr_triggered') and current_peak >= 0.20:
+                order_info['phantom_be_aggr_triggered'] = True
+                order_info['phantom_be_aggr_triggered_at'] = datetime.utcnow()
+            if (order_info.get('phantom_be_aggr_triggered')
+                    and order_info.get('phantom_be_aggr_would_exit_pnl') is None
+                    and pnl_pct <= 0.05):
+                order_info['phantom_be_aggr_would_exit_pnl'] = pnl_pct
 
             # Get TP target to determine if trailing stop would be active
             tp_level = order_info.get('current_tp_level', 1)
@@ -6284,6 +6301,10 @@ class TradingEngine:
                 'phantom_be_l2_triggered': order.phantom_be_l2_triggered_at is not None,
                 'phantom_be_l2_triggered_at': order.phantom_be_l2_triggered_at,
                 'phantom_be_l2_would_exit_pnl': order.phantom_be_l2_would_exit_pnl,
+                # May 14 — aggressive phantom BE @ 0.20/0.05 (observation-only)
+                'phantom_be_aggr_triggered': order.phantom_be_aggr_triggered_at is not None,
+                'phantom_be_aggr_triggered_at': order.phantom_be_aggr_triggered_at,
+                'phantom_be_aggr_would_exit_pnl': order.phantom_be_aggr_would_exit_pnl,
                 'phantom_tick_a_triggered': order.phantom_tick_a_triggered_at is not None,
                 'phantom_tick_a_triggered_at': order.phantom_tick_a_triggered_at,
                 'phantom_tick_a_pnl': order.phantom_tick_a_pnl,

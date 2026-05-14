@@ -1528,6 +1528,37 @@
                     </div>
                 </div>
 
+                <!-- Phantom BE 0.20/0.05 Counterfactual (May 14) — observation-only -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🧪 Phantom BE 0.20/0.05 Counterfactual (observation-only)</h3>
+                    <p class="text-xs text-gray-500 mb-2">
+                        Shadow tracker for BE at trigger <strong>+0.20%</strong> / floor <strong>+0.05%</strong>. Records what BE would have done on every trade. <strong>Use to validate before shipping live BE.</strong>
+                        <br/><em class="text-fuchsia-400">Armed = peak crossed +0.20%. Fired = price retraced to ≤+0.05% after arming. For "fired" trades, BE would have exited at the would-exit P&L. Only populated post-May-14 deploy.</em>
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="phantom-be-aggr-pool">(no post-deploy trades yet)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Close Reason</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="Trades where peak ≥ +0.20% (BE would have armed)">Armed</th>
+                                    <th class="text-right px-2" title="Trades where, after arming, P&L retraced to ≤ +0.05% (BE would have fired)">Fired</th>
+                                    <th class="text-right px-2" title="Avg actual close P&L% on fired trades only">Actual Avg%</th>
+                                    <th class="text-right px-2" title="Avg phantom exit P&L% on fired trades (≈+0.05% by construction)">BE Avg%</th>
+                                    <th class="text-right px-2" title="BE Avg% − Actual Avg% per fired trade">Δ%</th>
+                                    <th class="text-right px-2" title="Counterfactual $ improvement if BE had fired instead of actual exit">Total$ Δ</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="phantom-be-aggr-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -5500,6 +5531,23 @@
                 });
             }
 
+            // Phantom BE 0.20/0.05 Counterfactual (May 14)
+            const _pba1 = perf.phantom_be_aggr_by_close_reason || {};
+            if (_pba1.rows && _pba1.rows.length) {
+                lines.push(`\n${hr2}`);
+                const _p = _pba1.pool || {};
+                const _dd = _p.total_dollar_delta || 0;
+                lines.push(`## Phantom BE 0.20/0.05 Counterfactual (observation-only)`);
+                lines.push(`Pool: ${_p.total || 0} trades · ${_p.armed || 0} armed · ${_p.fired || 0} would have fired · Net ${_dd >= 0 ? '+$' : '-$'}${Math.abs(_dd).toFixed(2)} $ Δ vs actual\n`);
+                lines.push('Close Reason             Dir   N    Armed  Fired  Actual%    BE%        Δ%         Total$Δ      Verdict');
+                lines.push('-'.repeat(110));
+                _pba1.rows.forEach(r => {
+                    const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
+                    lines.push(`${r.close_reason.padEnd(24)} ${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)}  ${String(r.fired).padStart(5)}  ${fmt(r.avg_actual_pct)}  ${fmt(r.avg_phantom_pct)}  ${fmt(r.delta_pct)}  ${(r.dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.dollar_delta).toFixed(2).padStart(7)}  ${r.verdict}`);
+                });
+                lines.push('');
+            }
+
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
             if (_esp1.rows && _esp1.rows.length) {
@@ -6634,6 +6682,23 @@
                         });
                         lines.push('');
                     });
+                }
+
+                // Phantom BE 0.20/0.05 Counterfactual (May 14)
+                const _pba2 = perf.phantom_be_aggr_by_close_reason || {};
+                if (_pba2.rows && _pba2.rows.length) {
+                    lines.push(`\n${hr2}`);
+                    const _p2 = _pba2.pool || {};
+                    const _dd2 = _p2.total_dollar_delta || 0;
+                    lines.push(`## Phantom BE 0.20/0.05 Counterfactual (observation-only)`);
+                    lines.push(`Pool: ${_p2.total || 0} trades · ${_p2.armed || 0} armed · ${_p2.fired || 0} would have fired · Net ${_dd2 >= 0 ? '+$' : '-$'}${Math.abs(_dd2).toFixed(2)} $ Δ vs actual\n`);
+                    lines.push('Close Reason             Dir   N    Armed  Fired  Actual%    BE%        Δ%         Total$Δ      Verdict');
+                    lines.push('-'.repeat(110));
+                    _pba2.rows.forEach(r => {
+                        const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
+                        lines.push(`${r.close_reason.padEnd(24)} ${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)}  ${String(r.fired).padStart(5)}  ${fmt(r.avg_actual_pct)}  ${fmt(r.avg_phantom_pct)}  ${fmt(r.delta_pct)}  ${(r.dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.dollar_delta).toFixed(2).padStart(7)}  ${r.verdict}`);
+                    });
+                    lines.push('');
                 }
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)
@@ -8191,6 +8256,50 @@
                     const _bx = data.btc_1h_slope_adx_crosstab;
                     _render1hSlopeAdx(_bx.longs, 'btc-1h-slope-adx-long-body');
                     _render1hSlopeAdx(_bx.shorts, 'btc-1h-slope-adx-short-body');
+                }
+
+                // Phantom BE 0.20/0.05 Counterfactual (May 14)
+                if (data.phantom_be_aggr_by_close_reason) {
+                    const _pba = data.phantom_be_aggr_by_close_reason;
+                    const _body = document.getElementById('phantom-be-aggr-body');
+                    const _poolEl = document.getElementById('phantom-be-aggr-pool');
+                    if (_poolEl && _pba.pool) {
+                        const p = _pba.pool;
+                        if (p.total > 0) {
+                            const ddCls = p.total_dollar_delta >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            _poolEl.innerHTML = `Pool: <strong>${p.total}</strong> trades · <strong>${p.armed}</strong> armed (peak ≥+0.20%) · <strong>${p.fired}</strong> would have fired · Net <span class="${ddCls} font-semibold">${p.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(p.total_dollar_delta).toFixed(2)}</span> $ Δ vs actual`;
+                        } else {
+                            _poolEl.textContent = '(no post-deploy trades yet)';
+                        }
+                    }
+                    if (_body) {
+                        if (!_pba.rows || !_pba.rows.length) {
+                            _body.innerHTML = '<tr><td colspan="10" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
+                        } else {
+                            _body.innerHTML = _pba.rows.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const dCls = r.delta_pct == null ? 'text-gray-400' : (r.delta_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
+                                const totCls = r.dollar_delta >= 5 ? 'text-emerald-400' : (r.dollar_delta <= -5 ? 'text-red-400' : 'text-gray-400');
+                                const vCls = r.verdict.startsWith('★') ? 'text-emerald-400 font-semibold'
+                                    : r.verdict.startsWith('⚠ HURT') ? 'text-red-400 font-semibold'
+                                    : r.verdict.startsWith('✓') ? 'text-blue-400'
+                                    : 'text-gray-500';
+                                const fmt = (v, d=3) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1">${r.close_reason}</td>
+                                    <td class="px-2 py-1 ${dirCls}">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.count}</td>
+                                    <td class="px-2 py-1 text-right">${r.armed}</td>
+                                    <td class="px-2 py-1 text-right font-semibold">${r.fired}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.avg_actual_pct)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.avg_phantom_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${dCls}">${fmt(r.delta_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${totCls}">${r.dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.dollar_delta).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${vCls}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
                 }
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)

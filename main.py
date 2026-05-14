@@ -6438,15 +6438,23 @@ def _compute_btc_1h_slope_performance(orders):
     closed = [o for o in orders if o.status == 'CLOSED' and getattr(o, 'entry_btc_1h_slope', None) is not None]
     if not closed:
         return {'longs': [], 'shorts': [], 'pool_size': 0}
+    # Finer granularity in both negative and positive ranges to surface the
+    # actual inflection point (May 14 — earlier table lumped <-0.20% which
+    # hid potential signal in the deep-bear zone).
     buckets = [
-        ('< -0.20%', -99, -0.20),
-        ('-0.20 to -0.10%', -0.20, -0.10),
+        ('< -0.40%', -99, -0.40),
+        ('-0.40 to -0.30%', -0.40, -0.30),
+        ('-0.30 to -0.20%', -0.30, -0.20),
+        ('-0.20 to -0.15%', -0.20, -0.15),
+        ('-0.15 to -0.10%', -0.15, -0.10),
         ('-0.10 to -0.05%', -0.10, -0.05),
         ('-0.05 to 0%', -0.05, 0.0),
         ('0 to +0.05%', 0.0, 0.05),
         ('+0.05 to +0.10%', 0.05, 0.10),
-        ('+0.10 to +0.20%', 0.10, 0.20),
-        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('+0.10 to +0.15%', 0.10, 0.15),
+        ('+0.15 to +0.20%', 0.15, 0.20),
+        ('+0.20 to +0.30%', 0.20, 0.30),
+        ('+0.30 to +0.40%', 0.30, 0.40),
         ('> +0.40%', 0.40, 99),
     ]
     def _for(direction):

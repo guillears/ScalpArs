@@ -46,12 +46,37 @@
     scanTotal: 50,
     scanCurrent: 0,
     scanCurrentPair: '',
-    // radar — { symbol: { angle, dist, lastSeen, ttl } }
+    // radar — { symbol: { angle, brightness, state, lastSweepHit } }
+    // Persistent across the session. State: 'dim' | 'bright' | 'amber' | 'reject'
     radarBlips: new Map(),
+    radarSweepAngle: 0,             // current sweep angle (rad), driven by rAF
+    radarSweepStarted: 0,           // performance.now() reference
+    radarSymbolEvents: [],          // {ts, symbol} for last 60s — drives score
+    radarRejectFlash: new Map(),    // symbol → expiry timestamp (ms)
     // positions — { symbol: { pnl_pct, direction } }
     positions: new Map(),
+    // last closed trade (most recent EXIT seen) — drives positions waiting state
+    lastClosed: null,               // { symbol, pnl_pct, at }
     // top scans — keep last ~6 scanned pairs
     topScans: [],
+    // filter funnel — last parsed values, drives funnel panel
+    funnel: {
+      totalBinance: null,
+      afterNewListing: null,
+      afterAlpha: null,
+      afterBlacklist: null,
+      active: null,
+      excludedNewListing: 0,
+      excludedAlpha: 0,
+      excludedBlacklist: 0,
+    },
+    // equity curve — cumulative pnl history from EXIT events
+    equityHistory: [],   // {ts, cum_pnl}
+    cumPnl: 0,
+    // regime tracking for change banner
+    lastSeenRegime: null,
+    // activity pulse throttle
+    lastPulseAt: 0,
     // latency — last server_time and observed gap
     lastServerTime: 0,
     lastServerArrivalLocal: 0,
@@ -74,7 +99,8 @@
   let elView, elFeed, elLatencyBar, elLatencyText,
     elConstellation, elEvMin, elScanCrawlBar, elScanCrawlText, elCycleNum,
     elRadarSvg, elPosBody, elScansBody, elHeatmap, elFooterStats, elBoot,
-    elBootLines, elAlertBanner, elAlertMsg, elKatakana, elHbDot;
+    elBootLines, elAlertBanner, elAlertMsg, elKatakana, elHbDot,
+    elFeedPulse, elRegimeBanner, elFunnelBody, elEquityCurve;
 
   // ─── Public API ────────────────────────────────────────────────────────
   function show() {
@@ -167,8 +193,17 @@
     // HEARTBEAT — update bot state, health, positions panel
     if (evt.tag === 'HEARTBEAT') {
       if (evt.hb) {
-        if (evt.hb.state) state.botState = evt.hb.state;
+        if (evt.hb.state) {
+          // Detect regime change for banner
+          const newRegime = evt.hb.state.regime;
+          if (state.lastSeenRegime && newRegime && newRegime !== state.lastSeenRegime) {
+            showRegimeBanner(state.lastSeenRegime, newRegime);
+          }
+          if (newRegime) state.lastSeenRegime = newRegime;
+          state.botState = evt.hb.state;
+        }
         if (evt.hb.health) { state.health = evt.hb.health; updateConstellation(); }
+        updatePositionsPanel();
         updateFooterStats();
         state.health.log = true;
         updateConstellation();
@@ -176,9 +211,26 @@
       return;
     }
 
-    // SCAN events — update radar, scan crawl, top-scans list
+    // Track every symbol-bearing event for the radar frequency score
+    if (evt.symbol && !isReplay) {
+      state.radarSymbolEvents.push({ ts: Date.now(), symbol: evt.symbol });
+      const cutoff = Date.now() - 60000;
+      while (state.radarSymbolEvents.length > 0 && state.radarSymbolEvents[0].ts < cutoff) {
+        state.radarSymbolEvents.shift();
+      }
+    }
+    // Reject flash on radar
+    if (evt.category === 'REJECT' && evt.symbol) {
+      state.radarRejectFlash.set(evt.symbol, Date.now() + 1000);
+    }
+    // Filter funnel parsing — only [BINANCE] and [SCAN] tags carry the relevant lines
+    if (evt.tag === 'BINANCE' || evt.tag === 'SCAN') {
+      parseFilterFunnel(evt.msg || '');
+    }
+
+    // SCAN events — drive scan crawl (radar updates via the symbol-events
+    // tracker added above, no per-event radar call needed)
     if (evt.category === 'SCAN' && evt.symbol) {
-      addRadarBlip(evt.symbol);
       bumpScanCrawl(evt.symbol);
     }
     if (evt.symbol && (evt.category === 'SCAN' || evt.category === 'WATCH')) {
@@ -193,7 +245,7 @@
       updatePositionsPanel();
     }
 
-    // EXIT — read pnl_pct from kv, increment stats
+    // EXIT — read pnl_pct from kv, increment stats, append equity curve
     if (evt.category === 'EXIT' && evt.symbol) {
       const pnlPct = parseFloat(evt.kv?.pnl_pct ?? evt.kv?.pnl ?? '0');
       const isWin = isFinite(pnlPct) ? pnlPct > 0 : null;
@@ -205,6 +257,20 @@
         } else if (isWin === false) {
           state.pnlToday += pnlPct;
         }
+        // Equity curve history (live trades only — replay would distort timestamps)
+        if (isFinite(pnlPct)) {
+          state.cumPnl += pnlPct;
+          state.equityHistory.push({ ts: evt.ts * 1000, cum_pnl: state.cumPnl });
+          if (state.equityHistory.length > 200) state.equityHistory.shift();
+        }
+      }
+      // Record last-closed for positions waiting state
+      if (isFinite(pnlPct)) {
+        state.lastClosed = {
+          symbol: evt.symbol,
+          pnl_pct: pnlPct,
+          at: evt.ts * 1000,
+        };
       }
       state.positions.delete(evt.symbol);
       updatePositionsPanel();
@@ -260,6 +326,7 @@
     // Type-on animation for new events (skip on replay — too much work)
     if (!isReplay) {
       typeOn(row, body);
+      triggerActivityPulse(evt.level);
     }
 
     // Cap row count
@@ -326,9 +393,12 @@
     for (let i = 0; i < state.heat.length; i++) {
       const bar = bars[i];
       if (!bar) continue;
-      const pct = state.heat[i].count / state.heatMaxRecent;
-      bar.style.height = (pct * 100).toFixed(0) + '%';
-      bar.style.opacity = (0.25 + 0.75 * pct).toFixed(2);
+      // Logarithmic scaling: tiny bursts look substantial, heavy activity still differentiates
+      // height_percent = min(100, ln(count + 1) * 30)
+      const c = state.heat[i].count;
+      const h = Math.min(100, Math.log(c + 1) * 30);
+      bar.style.height = h.toFixed(0) + '%';
+      bar.style.opacity = (0.25 + 0.75 * Math.min(1, c / Math.max(state.heatMaxRecent, 1))).toFixed(2);
     }
   }
 
@@ -384,15 +454,24 @@
     if (elCycleNum) elCycleNum.textContent = `#${state.scanCycle}`;
   }
 
-  // ─── Radar (SVG) ───────────────────────────────────────────────────────
+  // ─── Radar (SVG) — persistent blips + sweep collision + frequency score ─
+  // Layout: 220×220 viewBox, center (110,110), three rings at r=40/70/100.
+  // Score proxy = symbol frequency in last 60s of events. Higher score →
+  // closer to center. Angle is deterministic from symbol hash.
+  // Sweep is rAF-driven so we can detect blip collisions and brighten them.
   function buildRadar() {
     const ns = 'http://www.w3.org/2000/svg';
     elRadarSvg.innerHTML = '';
     const w = 220, h = 220, cx = w / 2, cy = h / 2;
     elRadarSvg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     elRadarSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    // Rings
-    for (const r of [40, 70, 100]) {
+    // Rings + edge-right labels indicating what each ring means
+    const ringSpec = [
+      { r: 30, label: 'score>85' },
+      { r: 60, label: 'score>70' },
+      { r: 95, label: 'score>50' },
+    ];
+    for (const { r, label } of ringSpec) {
       const c = document.createElementNS(ns, 'circle');
       c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r);
       c.setAttribute('fill', 'none');
@@ -400,6 +479,13 @@
       c.setAttribute('stroke-opacity', '0.18');
       c.setAttribute('stroke-width', '1');
       elRadarSvg.appendChild(c);
+      // Ring label, anchored to right-edge inside the SVG
+      const t = document.createElementNS(ns, 'text');
+      t.setAttribute('class', 'lt-ring-label');
+      t.setAttribute('x', cx + r + 4);
+      t.setAttribute('y', cy - 2);
+      t.textContent = label;
+      elRadarSvg.appendChild(t);
     }
     // Crosshair
     for (const [x1, y1, x2, y2] of [[cx, cy - 100, cx, cy + 100], [cx - 100, cy, cx + 100, cy]]) {
@@ -410,84 +496,212 @@
       l.setAttribute('stroke-opacity', '0.12');
       elRadarSvg.appendChild(l);
     }
-    // Sweep line (rotates via CSS)
-    const sweep = document.createElementNS(ns, 'path');
-    sweep.setAttribute('id', 'lt-radar-sweep');
-    sweep.setAttribute('d', `M ${cx} ${cy} L ${cx + 100} ${cy} A 100 100 0 0 0 ${cx + 100 * Math.cos(-Math.PI / 6)} ${cy + 100 * Math.sin(-Math.PI / 6)} Z`);
-    sweep.setAttribute('fill', 'url(#lt-sweep-grad)');
-    sweep.style.transformOrigin = `${cx}px ${cy}px`;
-    sweep.style.animation = 'lt-radar-spin 4s linear infinite';
-    // Gradient
+    // Defs (gradient for sweep)
     const defs = document.createElementNS(ns, 'defs');
     defs.innerHTML = `<linearGradient id="lt-sweep-grad" x1="0" y1="0" x2="1" y2="0">
       <stop offset="0%" stop-color="#22c55e" stop-opacity="0.6"/>
       <stop offset="100%" stop-color="#22c55e" stop-opacity="0"/>
     </linearGradient>`;
     elRadarSvg.appendChild(defs);
+    // Sweep — rAF-driven so we can detect blip collisions
+    const sweep = document.createElementNS(ns, 'path');
+    sweep.setAttribute('id', 'lt-radar-sweep');
+    sweep.setAttribute('d', `M ${cx} ${cy} L ${cx + 100} ${cy} A 100 100 0 0 0 ${cx + 100 * Math.cos(-Math.PI / 6)} ${cy + 100 * Math.sin(-Math.PI / 6)} Z`);
+    sweep.setAttribute('fill', 'url(#lt-sweep-grad)');
+    sweep.style.transformOrigin = `${cx}px ${cy}px`;
     elRadarSvg.appendChild(sweep);
+    // Container groups for blips and labels (rendered above sweep)
+    const blipGroup = document.createElementNS(ns, 'g');
+    blipGroup.setAttribute('id', 'lt-blip-group');
+    elRadarSvg.appendChild(blipGroup);
+    const labelGroup = document.createElementNS(ns, 'g');
+    labelGroup.setAttribute('id', 'lt-blip-label-group');
+    elRadarSvg.appendChild(labelGroup);
     // Center dot
     const center = document.createElementNS(ns, 'circle');
     center.setAttribute('cx', cx); center.setAttribute('cy', cy); center.setAttribute('r', 2);
     center.setAttribute('fill', '#4ade80');
     elRadarSvg.appendChild(center);
-    // Inject sweep animation keyframes (one-time)
-    if (!document.getElementById('lt-radar-anim-style')) {
-      const s = document.createElement('style');
-      s.id = 'lt-radar-anim-style';
-      s.textContent = '@keyframes lt-radar-spin { from {transform:rotate(0deg);} to {transform:rotate(360deg);} } @keyframes lt-blip-flash { 0% { opacity:1; r:4; } 100% { opacity:0; r:8; } }';
-      document.head.appendChild(s);
+    // Kick off the rAF sweep loop
+    state.radarSweepStarted = performance.now();
+    requestAnimationFrame(radarTick);
+  }
+
+  // Per-frame: advance sweep, recompute blip positions/states, render.
+  function radarTick(now) {
+    if (!state.inTerminal || !elRadarSvg) {
+      // Pause the loop when terminal hidden, but reschedule for when we come back
+      setTimeout(() => requestAnimationFrame(radarTick), 200);
+      return;
     }
+    // Sweep angle — full rotation every 4s, clockwise.  Convert to radians.
+    const elapsed = (now - state.radarSweepStarted) / 1000;
+    const sweepDeg = (elapsed * 90) % 360;          // 90 deg/s = 4s/rev
+    const sweepAngle = (sweepDeg * Math.PI) / 180;
+    state.radarSweepAngle = sweepAngle;
+    const sweepEl = elRadarSvg.querySelector('#lt-radar-sweep');
+    if (sweepEl) sweepEl.setAttribute('transform', `rotate(${sweepDeg} 110 110)`);
+    renderRadarBlips(sweepAngle);
+    requestAnimationFrame(radarTick);
   }
 
-  function addRadarBlip(symbol) {
-    const { angle, dist } = symbolToPolar(symbol);
-    state.radarBlips.set(symbol, { angle, dist, lastSeen: Date.now() });
-    // Render blip immediately
-    const ns = 'http://www.w3.org/2000/svg';
-    const cx = 110, cy = 110;
-    const x = cx + dist * Math.cos(angle);
-    const y = cy + dist * Math.sin(angle);
-    const id = 'lt-blip-' + symbol;
-    let existing = elRadarSvg.querySelector('#' + id);
-    if (existing) existing.parentNode.removeChild(existing);
-    const blip = document.createElementNS(ns, 'circle');
-    blip.setAttribute('id', id);
-    blip.setAttribute('cx', x); blip.setAttribute('cy', y); blip.setAttribute('r', 3);
-    blip.setAttribute('fill', '#4ade80');
-    blip.style.animation = 'lt-blip-flash 1.6s ease-out 1';
-    elRadarSvg.appendChild(blip);
-    // Auto-cleanup after fade
-    setTimeout(() => { try { blip.parentNode.removeChild(blip); } catch (_) { } }, 1700);
+  // Frequency score per symbol from last 60s. Returns Map<symbol, score 0..100>.
+  function computeRadarScores() {
+    const counts = new Map();
+    for (const e of state.radarSymbolEvents) {
+      counts.set(e.symbol, (counts.get(e.symbol) || 0) + 1);
+    }
+    if (counts.size === 0) return counts;
+    // Normalize: max-frequency symbol = 100
+    let maxC = 1;
+    counts.forEach(v => { if (v > maxC) maxC = v; });
+    const out = new Map();
+    counts.forEach((v, k) => out.set(k, (v / maxC) * 100));
+    return out;
   }
 
-  // Hash → polar coordinates (deterministic, client-side only)
-  function symbolToPolar(symbol) {
+  // Hash → 0..2π (deterministic per symbol; preserves prior placement so blips
+  // don't jump as their score changes).
+  function symbolToAngle(symbol) {
     let h = 5381;
     for (let i = 0; i < symbol.length; i++) {
       h = ((h << 5) + h + symbol.charCodeAt(i)) | 0;
     }
-    const angle = ((Math.abs(h) % 360) * Math.PI) / 180;
-    const dist = 30 + (Math.abs(h >> 8) % 70); // 30..100 from center
-    return { angle, dist };
+    return ((Math.abs(h) % 360) * Math.PI) / 180;
   }
+
+  // Score → distance from center (px). Higher score = closer to center.
+  function scoreToDist(score) {
+    // score 100 → r=20 (inside inner ring), score 0 → r=100 (outer edge)
+    return 100 - Math.max(0, Math.min(100, score)) * 0.8;
+  }
+
+  function renderRadarBlips(sweepAngle) {
+    const blipGroup = elRadarSvg.querySelector('#lt-blip-group');
+    const labelGroup = elRadarSvg.querySelector('#lt-blip-label-group');
+    if (!blipGroup || !labelGroup) return;
+    const ns = 'http://www.w3.org/2000/svg';
+    const cx = 110, cy = 110;
+    const scores = computeRadarScores();
+    if (scores.size === 0) {
+      blipGroup.innerHTML = '';
+      labelGroup.innerHTML = '';
+      return;
+    }
+    // Determine top-3 for amber state
+    const sortedSymbols = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+    const top3 = new Set(sortedSymbols.slice(0, 3).map(e => e[0]));
+    const topClosest = sortedSymbols.slice(0, 5).map(e => e[0]);
+    const now = Date.now();
+    // Build set of existing blip elements for diff
+    const seen = new Set();
+    scores.forEach((score, symbol) => {
+      seen.add(symbol);
+      const angle = symbolToAngle(symbol);
+      const dist = scoreToDist(score);
+      const x = cx + dist * Math.cos(angle);
+      const y = cy + dist * Math.sin(angle);
+      // Determine state
+      let stateClass = 'lt-blip-dim';
+      // Reject flash (highest priority)
+      const rejectUntil = state.radarRejectFlash.get(symbol);
+      if (rejectUntil && rejectUntil > now) {
+        stateClass = 'lt-blip-reject';
+      } else if (rejectUntil) {
+        state.radarRejectFlash.delete(symbol);
+      }
+      // Top-3 amber
+      if (stateClass === 'lt-blip-dim' && top3.has(symbol)) {
+        stateClass = 'lt-blip-amber';
+      }
+      // Sweep collision — bright for ~0.8s after pass
+      const diff = Math.abs(((angle - sweepAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const onSweep = diff > (Math.PI - 0.18);  // within ~10° of sweep
+      if (onSweep) {
+        const blip = state.radarBlips.get(symbol) || {};
+        blip.lastSweepHit = now;
+        state.radarBlips.set(symbol, blip);
+      }
+      const hit = state.radarBlips.get(symbol);
+      if (hit && hit.lastSweepHit && (now - hit.lastSweepHit) < 800) {
+        if (stateClass === 'lt-blip-dim' || stateClass === 'lt-blip-amber') {
+          stateClass = 'lt-blip-bright';
+        }
+      }
+      const id = 'lt-blip-' + cssId(symbol);
+      let circle = blipGroup.querySelector('#' + id);
+      if (!circle) {
+        circle = document.createElementNS(ns, 'circle');
+        circle.setAttribute('id', id);
+        circle.setAttribute('r', '2.5');
+        circle.setAttribute('class', 'lt-blip ' + stateClass);
+        blipGroup.appendChild(circle);
+      }
+      circle.setAttribute('cx', x.toFixed(1));
+      circle.setAttribute('cy', y.toFixed(1));
+      circle.setAttribute('class', 'lt-blip ' + stateClass);
+    });
+    // Cleanup blips for symbols that aged out
+    Array.from(blipGroup.children).forEach(c => {
+      const sym = c.id.replace('lt-blip-', '');
+      const realSym = sym; // simplified — cssId is reversible since it just maps
+      if (!seen.has(realSym)) c.remove();
+    });
+    // Render labels for top-5 closest only
+    labelGroup.innerHTML = '';
+    topClosest.forEach(symbol => {
+      const angle = symbolToAngle(symbol);
+      const dist = scoreToDist(scores.get(symbol));
+      const x = cx + dist * Math.cos(angle);
+      const y = cy + dist * Math.sin(angle);
+      const t = document.createElementNS(ns, 'text');
+      t.setAttribute('class', 'lt-blip-label');
+      t.setAttribute('x', (x + 4).toFixed(1));
+      t.setAttribute('y', (y + 2).toFixed(1));
+      t.textContent = symbol.replace('USDT', '');
+      labelGroup.appendChild(t);
+    });
+  }
+
+  // Sanitize a symbol for use as an SVG id (USDT pairs are already safe but be defensive)
+  function cssId(s) { return String(s).replace(/[^A-Za-z0-9_-]/g, '_'); }
 
   // ─── Positions panel ───────────────────────────────────────────────────
   function updatePositionsPanel() {
     if (!elPosBody) return;
-    if (state.positions.size === 0) {
-      elPosBody.innerHTML = '<div class="lt-pos-row" style="opacity:0.4">no open positions</div>';
+    if (state.positions.size > 0) {
+      const html = [];
+      for (const [sym, pos] of state.positions.entries()) {
+        const sym4 = sym.replace('USDT', '').padEnd(4).substring(0, 4);
+        const pnl = isFinite(pos.pnl_pct) ? pos.pnl_pct : 0;
+        const cls = pnl >= 0 ? 'lt-pos-up' : 'lt-pos-dn';
+        const bar = pnlBar(pnl);
+        const pnlStr = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
+        html.push(`<div class="lt-pos-row"><span>${sym4}</span><span class="lt-pos-bar ${cls}">${bar}</span><span class="${cls}">${pnlStr}</span></div>`);
+      }
+      elPosBody.innerHTML = html.join('');
       return;
     }
-    const html = [];
-    for (const [sym, pos] of state.positions.entries()) {
-      const sym4 = sym.replace('USDT', '').padEnd(4).substring(0, 4);
-      const pnl = isFinite(pos.pnl_pct) ? pos.pnl_pct : 0;
-      const cls = pnl >= 0 ? 'lt-pos-up' : 'lt-pos-dn';
-      const bar = pnlBar(pnl);
+    // Waiting state — always has motion + status
+    const scanned = state.botState && state.botState.scanned_pairs_count
+      ? state.botState.scanned_pairs_count
+      : (state.funnel.active || '—');
+    const cycle = state.scanCycle;
+    let lastClosedLine = '';
+    if (state.lastClosed) {
+      const ago = Math.max(0, Math.floor((Date.now() - state.lastClosed.at) / 60000));
+      const sym = state.lastClosed.symbol.replace('USDT', '');
+      const pnl = state.lastClosed.pnl_pct;
       const pnlStr = (pnl >= 0 ? '+' : '') + pnl.toFixed(2) + '%';
-      html.push(`<div class="lt-pos-row"><span>${sym4}</span><span class="lt-pos-bar ${cls}">${bar}</span><span class="${cls}">${pnlStr}</span></div>`);
+      const cls = pnl >= 0 ? 'lt-pos-up' : 'lt-pos-dn';
+      lastClosedLine = `<div class="lt-pos-line"><span class="lt-label-mini">last closed:</span><span>${sym}</span><span class="${cls}">${pnlStr}</span><span class="lt-label-mini">· ${ago}m ago</span></div>`;
     }
-    elPosBody.innerHTML = html.join('');
+    elPosBody.innerHTML = `<div class="lt-pos-waiting">
+      <div class="lt-pos-line" style="opacity:0.5">no open positions</div>
+      <div class="lt-pos-line"><span class="lt-spin">◌</span><span>waiting for entry signal</span></div>
+      <div class="lt-pos-line"><span class="lt-label-mini">scanning ${scanned} pairs · cycle</span><span>#${cycle}</span></div>
+      ${lastClosedLine}
+    </div>`;
   }
 
   function pnlBar(pct) {
@@ -513,26 +727,147 @@
   // was retired. Scan crawl + radar + heatmap + feed type-on already
   // give the "alive" feel.
 
-  // ─── Footer stats ──────────────────────────────────────────────────────
+  // ─── Footer stats — bigger, glowing values + inline equity sparkline ───
   function updateFooterStats() {
     if (!elFooterStats) return;
     const wr = state.closedTrades > 0
       ? Math.round((state.winsToday / state.closedTrades) * 100)
       : 0;
     const pnlStr = (state.pnlToday >= 0 ? '+' : '') + state.pnlToday.toFixed(2) + '%';
+    const pnlCls = state.pnlToday >= 0 ? '' : ' lt-stat-neg';
     const ts = new Date();
     const tyo = new Date(ts.getTime() + 9 * 60 * 60 * 1000);
     const ldn = new Date(ts.getTime() + 0 * 60 * 60 * 1000);
     const nyc = new Date(ts.getTime() - 5 * 60 * 60 * 1000);
     const fmt = (d) => `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
     elFooterStats.innerHTML = `
-      <span><span class="lt-label">trades</span> <span class="lt-chip">${state.closedTrades}</span></span>
-      <span><span class="lt-label">pnl</span> <span class="lt-chip">${pnlStr}</span></span>
-      <span><span class="lt-label">win</span> <span class="lt-chip">${wr}%</span></span>
+      <span><span class="lt-stat-label">trades</span><span class="lt-stat-value">${state.closedTrades}</span></span>
+      <span><span class="lt-stat-label">pnl</span><span class="lt-stat-value${pnlCls}">${pnlStr}</span><svg class="lt-equity-curve" viewBox="0 0 120 24" preserveAspectRatio="none"></svg></span>
+      <span><span class="lt-stat-label">win</span><span class="lt-stat-value">${wr}%</span></span>
       <span class="lt-clock-cell">TYO ${fmt(tyo)} · LDN ${fmt(ldn)} · NYC ${fmt(nyc)}</span>
     `;
+    renderEquityCurve();
   }
   setInterval(updateFooterStats, 5000);
+
+  // ─── Equity curve ──────────────────────────────────────────────────────
+  function renderEquityCurve() {
+    const svg = elFooterStats && elFooterStats.querySelector('.lt-equity-curve');
+    if (!svg) return;
+    const hist = state.equityHistory;
+    const W = 120, H = 24;
+    if (hist.length < 2) {
+      // <2 trades — pulsing dot at right edge only (per spec)
+      svg.innerHTML = `<circle class="lt-equity-dot" cx="${W - 4}" cy="${H / 2}" r="2"></circle>`;
+      return;
+    }
+    // Auto-scale Y to session range; X spreads evenly across history
+    const min = Math.min(...hist.map(p => p.cum_pnl));
+    const max = Math.max(...hist.map(p => p.cum_pnl));
+    const yPad = 2;
+    const range = Math.max(0.01, max - min);
+    const yFor = v => yPad + ((max - v) / range) * (H - yPad * 2);
+    const xFor = i => (i / (hist.length - 1)) * W;
+    const points = hist.map((p, i) => `${xFor(i).toFixed(1)},${yFor(p.cum_pnl).toFixed(1)}`);
+    const d = 'M ' + points.join(' L ');
+    const lastX = xFor(hist.length - 1).toFixed(1);
+    const lastY = yFor(hist[hist.length - 1].cum_pnl).toFixed(1);
+    svg.innerHTML = `<path d="${d}"></path><circle class="lt-equity-dot" cx="${lastX}" cy="${lastY}" r="2"></circle>`;
+  }
+
+  // ─── Filter funnel ─────────────────────────────────────────────────────
+  function parseFilterFunnel(msg) {
+    if (!msg) return;
+    let changed = false;
+    // [BINANCE] Fetched N pairs from Binance (limit=M)
+    let m = msg.match(/Fetched (\d+) pairs from Binance/);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (state.funnel.active !== n) { state.funnel.active = n; changed = true; }
+    }
+    // [BINANCE] New-listing filter (180d): excluded N/M pairs
+    m = msg.match(/New-listing filter[^:]*:\s*excluded (\d+)\/(\d+)\s*pairs/);
+    if (m) {
+      const excl = parseInt(m[1], 10);
+      const total = parseInt(m[2], 10);
+      const after = total - excl;
+      if (state.funnel.totalBinance !== total) { state.funnel.totalBinance = total; changed = true; }
+      if (state.funnel.afterNewListing !== after) { state.funnel.afterNewListing = after; changed = true; }
+      if (state.funnel.excludedNewListing !== excl) { state.funnel.excludedNewListing = excl; changed = true; }
+    }
+    // [BINANCE] Alpha-subtype filter: excluded N/M pairs
+    m = msg.match(/Alpha-subtype filter:\s*excluded (\d+)\/(\d+)\s*pairs/);
+    if (m) {
+      const excl = parseInt(m[1], 10);
+      const inputTotal = parseInt(m[2], 10);
+      const after = inputTotal - excl;
+      if (state.funnel.afterAlpha !== after) { state.funnel.afterAlpha = after; changed = true; }
+      if (state.funnel.excludedAlpha !== excl) { state.funnel.excludedAlpha = excl; changed = true; }
+    }
+    // [SCAN] Blacklist active: excluded N pairs (...)
+    m = msg.match(/Blacklist active:\s*excluded (\d+)\s*pairs/);
+    if (m) {
+      const excl = parseInt(m[1], 10);
+      if (state.funnel.excludedBlacklist !== excl) {
+        state.funnel.excludedBlacklist = excl;
+        if (state.funnel.afterAlpha != null) {
+          state.funnel.afterBlacklist = state.funnel.afterAlpha - excl;
+        }
+        changed = true;
+      }
+    }
+    if (changed) renderFunnel(true);
+  }
+
+  function renderFunnel(flash) {
+    if (!elFunnelBody) return;
+    const f = state.funnel;
+    const fmt = v => v == null ? '—' : String(v);
+    const fmtDelta = v => (v == null || v === 0) ? '' : `-${v}`;
+    const flashCls = flash ? ' lt-funnel-flash' : '';
+    elFunnelBody.innerHTML = `
+      <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.totalBinance)}</span><span class="lt-funnel-label">total Binance</span></div>
+      <div class="lt-funnel-arrow">▼ new-listing filter</div>
+      <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.afterNewListing)}</span><span class="lt-funnel-delta">${fmtDelta(f.excludedNewListing)}</span></div>
+      <div class="lt-funnel-arrow">▼ alpha-subtype filter</div>
+      <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.afterAlpha)}</span><span class="lt-funnel-delta">${fmtDelta(f.excludedAlpha)}</span></div>
+      <div class="lt-funnel-arrow">▼ blacklist</div>
+      <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.afterBlacklist)}</span><span class="lt-funnel-delta">${fmtDelta(f.excludedBlacklist)}</span></div>
+      <div class="lt-funnel-arrow">▼ scan limit</div>
+      <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.active)}</span><span class="lt-funnel-label">active</span></div>
+    `;
+    if (flash) {
+      setTimeout(() => {
+        elFunnelBody.querySelectorAll('.lt-funnel-flash').forEach(el => el.classList.remove('lt-funnel-flash'));
+      }, 220);
+    }
+  }
+
+  // ─── Regime change banner ──────────────────────────────────────────────
+  function showRegimeBanner(prev, curr) {
+    if (!elRegimeBanner) return;
+    // Strip subtype suffixes for the banner — show family only
+    const fam = (r) => (r || '').replace(/_.*$/, '').replace('HEALTHY', '').trim() || (r || '—');
+    elRegimeBanner.textContent = `▸ REGIME CHANGE   ${prev} → ${curr}`;
+    // Re-trigger CSS animation by removing/adding the class
+    elRegimeBanner.classList.remove('lt-regime-banner-active');
+    void elRegimeBanner.offsetWidth;  // force reflow so animation replays
+    elRegimeBanner.classList.add('lt-regime-banner-active');
+  }
+
+  // ─── Activity pulse (throttled to 100ms minimum gap) ──────────────────
+  function triggerActivityPulse(level) {
+    if (!elFeedPulse) return;
+    const now = performance.now();
+    if (now - state.lastPulseAt < 100) return;
+    state.lastPulseAt = now;
+    let cls = 'lt-pulse-info';
+    if (level === 'ERROR' || level === 'CRITICAL') cls = 'lt-pulse-error';
+    else if (level === 'WARNING') cls = 'lt-pulse-warn';
+    elFeedPulse.className = 'lt-feed-pulse ' + cls;
+    // Fade back to 0 after 150ms
+    setTimeout(() => { if (elFeedPulse) elFeedPulse.className = 'lt-feed-pulse'; }, 150);
+  }
 
   // ─── Alert banner ──────────────────────────────────────────────────────
   function triggerAlert(evt) {
@@ -617,6 +952,10 @@
     elAlertMsg = document.getElementById('lt-alert-msg');
     elKatakana = document.getElementById('lt-katakana');
     elHbDot = document.getElementById('lt-hb-dot');
+    elFeedPulse = document.getElementById('lt-feed-pulse');
+    elRegimeBanner = document.getElementById('lt-regime-banner');
+    elFunnelBody = document.getElementById('lt-funnel-body');
+    elEquityCurve = null;  // resolved per render inside footer
 
     if (elHeatmap) {
       const frag = document.createDocumentFragment();
@@ -635,6 +974,7 @@
     updateLatencyBar();
     updatePositionsPanel();
     updateFooterStats();
+    renderFunnel(false);
 
     // Double-click background → return to dashboard
     elView.addEventListener('dblclick', (e) => {

@@ -62,9 +62,30 @@
             border-bottom: 2px solid #10b981;
             color: #10b981;
         }
+        /* Live Terminal mode — paint the two existing dashboard header rows
+           black. body.lt-mode is added by live_terminal.js show(). Inline
+           so it loads with the page (immune to live_terminal.css caching). */
+        body.lt-mode {
+            background: #050505 !important;
+            overflow: hidden !important;
+        }
+        body.lt-mode header,
+        body.lt-mode header.glass,
+        body.lt-mode header + div.glass,
+        body.lt-mode header.glass + div.glass,
+        body.lt-mode .glass.sticky,
+        body.lt-mode header.glass + .glass {
+            background: #050505 !important;
+            background-image: none !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            border-color: #1a1a1a !important;
+            border-bottom-color: #1a1a1a !important;
+        }
     </style>
     <!-- Live Terminal — phosphor-green observability view (UI-only, additive) -->
-    <link rel="stylesheet" href="/static/live_terminal.css">
+    <!-- Cache-bust query param: bump when CSS changes meaningfully -->
+    <link rel="stylesheet" href="/static/live_terminal.css?v=4">
 </head>
 <body class="text-gray-100 font-sans">
     <!-- Toast Notification -->
@@ -4983,6 +5004,9 @@
             <span id="lt-alert-msg"></span>
         </div>
 
+        <!-- Regime change banner — slides in on macro regime transition -->
+        <div class="lt-regime-banner" id="lt-regime-banner"></div>
+
         <div class="lt-shell">
             <!-- Status bar -->
             <div class="lt-statusbar">
@@ -5006,7 +5030,10 @@
 
             <!-- Main grid -->
             <div class="lt-main">
-                <div class="lt-feed" id="lt-feed"></div>
+                <div class="lt-feed" id="lt-feed">
+                    <!-- Right-edge activity pulse (peripheral motion indicator) -->
+                    <div class="lt-feed-pulse" id="lt-feed-pulse"></div>
+                </div>
                 <div class="lt-radar">
                     <div class="lt-radar-label">RADAR</div>
                     <svg id="lt-radar-svg"></svg>
@@ -5014,9 +5041,12 @@
                 <div class="lt-side">
                     <div class="lt-side-panel">
                         <h4>POSITIONS</h4>
-                        <div id="lt-positions-body">
-                            <div class="lt-pos-row" style="opacity:0.4">no open positions</div>
-                        </div>
+                        <div id="lt-positions-body"></div>
+                    </div>
+                    <!-- Filter funnel — pair-filtering pipeline snapshot -->
+                    <div class="lt-side-panel">
+                        <h4>PAIR FUNNEL</h4>
+                        <div id="lt-funnel-body"></div>
                     </div>
                     <div class="lt-side-panel">
                         <h4>TOP SCANS</h4>
@@ -5440,7 +5470,7 @@
                 dot.className = 'w-2 h-2 rounded-full bg-emerald-400 pulse-green';
                 text.textContent = 'RUNNING';
                 btn.className = 'px-6 py-2 rounded-lg font-semibold transition-all duration-200 bg-yellow-500 hover:bg-yellow-600 text-white flex items-center space-x-2';
-                btnText.textContent = 'Pause Bot';
+                btnText.textContent = 'Pause';
                 btnIcon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>';
             } else {
                 badge.className = 'flex items-center space-x-2 px-3 py-1 rounded-full bg-yellow-500/20 text-yellow-400';
@@ -13607,6 +13637,6 @@
     </script>
 
     <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->
-    <script src="/static/live_terminal.js"></script>
+    <script src="/static/live_terminal.js?v=4"></script>
 </body>
 </html>

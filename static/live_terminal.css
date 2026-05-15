@@ -512,3 +512,194 @@ body.lt-mode header.glass + .glass * {
   background: rgba(255,255,255,0.04);
   color: #cbd5e1;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   POLISH PASS — May 15 PM
+   Aesthetic upgrades. No behavior change.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Regime change banner ─────────────────────────────────────────────── */
+#live-terminal-view .lt-regime-banner {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 9;
+  padding: 8px 28px;
+  background: rgba(34, 197, 94, 0.15);
+  border-bottom: 1px solid rgba(34, 197, 94, 0.35);
+  color: var(--lt-fg-bright);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 8px currentColor;
+  text-align: left;
+  font-weight: 600;
+  display: none;
+  pointer-events: none;
+}
+#live-terminal-view .lt-regime-banner.lt-regime-banner-active {
+  display: block;
+  animation: lt-regime-cycle 4.8s ease-out 1 forwards;
+}
+@keyframes lt-regime-cycle {
+  0%   { transform: translateX(-100%); opacity: 0; }
+  6%   { transform: translateX(0);     opacity: 1; }       /* ~300ms slide-in */
+  89%  { transform: translateX(0);     opacity: 1; }       /* ~4s hold */
+  100% { transform: translateX(0);     opacity: 0; }        /* ~500ms fade */
+}
+
+/* ── Right-edge activity pulse strip ──────────────────────────────────── */
+#live-terminal-view .lt-feed { position: relative; }
+#live-terminal-view .lt-feed-pulse {
+  position: absolute;
+  top: 0; right: 0;
+  width: 3px; height: 100%;
+  background: var(--lt-fg-bright);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+  transition: opacity 0.15s ease-out;
+}
+#live-terminal-view .lt-feed-pulse.lt-pulse-info  { opacity: 0.25; }
+#live-terminal-view .lt-feed-pulse.lt-pulse-warn  { opacity: 0.55; background: var(--lt-amber); }
+#live-terminal-view .lt-feed-pulse.lt-pulse-error { opacity: 0.85; background: var(--lt-red); }
+
+/* ── Radar — persistent blips + ring labels ───────────────────────────── */
+#live-terminal-view .lt-radar svg .lt-blip {
+  fill: var(--lt-fg-bright);
+  transition: opacity 0.8s ease-out, fill 0.2s ease-out;
+}
+#live-terminal-view .lt-radar svg .lt-blip.lt-blip-dim     { opacity: 0.30; }
+#live-terminal-view .lt-radar svg .lt-blip.lt-blip-bright  { opacity: 1.0; }
+#live-terminal-view .lt-radar svg .lt-blip.lt-blip-amber   { fill: var(--lt-amber); opacity: 0.85; }
+#live-terminal-view .lt-radar svg .lt-blip.lt-blip-reject  {
+  fill: var(--lt-red);
+  opacity: 1;
+  animation: lt-blip-reject 1s ease-out 1;
+}
+@keyframes lt-blip-reject {
+  0%   { opacity: 1; }
+  100% { opacity: 0.3; }
+}
+#live-terminal-view .lt-radar svg .lt-blip-label {
+  fill: rgba(34, 197, 94, 0.65);
+  font-size: 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  pointer-events: none;
+}
+#live-terminal-view .lt-radar svg .lt-ring-label {
+  fill: rgba(148, 163, 184, 0.5);
+  font-size: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  pointer-events: none;
+}
+
+/* ── Positions waiting state ──────────────────────────────────────────── */
+#live-terminal-view .lt-pos-waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--lt-fg-dim);
+  padding-top: 6px;
+}
+#live-terminal-view .lt-pos-waiting .lt-spin {
+  display: inline-block;
+  font-size: 12px;
+  animation: lt-spin 2s linear infinite;
+  color: var(--lt-fg-bright);
+}
+@keyframes lt-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+#live-terminal-view .lt-pos-waiting .lt-pos-line {
+  display: flex; align-items: center; gap: 6px;
+  white-space: nowrap;
+}
+#live-terminal-view .lt-pos-waiting .lt-label-mini { color: var(--lt-label); font-size: 10px; }
+
+/* ── Filter funnel panel ──────────────────────────────────────────────── */
+#live-terminal-view .lt-funnel-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 1px 0;
+  color: var(--lt-fg);
+  transition: background 0.2s ease-out;
+  border-radius: 0;
+}
+#live-terminal-view .lt-funnel-row .lt-funnel-num {
+  font-weight: 600;
+  color: var(--lt-fg-bright);
+  min-width: 36px;
+  text-align: right;
+}
+#live-terminal-view .lt-funnel-row .lt-funnel-label {
+  color: var(--lt-label);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+#live-terminal-view .lt-funnel-row .lt-funnel-delta {
+  color: rgba(239, 68, 68, 0.7);
+  font-size: 10px;
+  margin-left: 6px;
+}
+#live-terminal-view .lt-funnel-row.lt-funnel-flash {
+  background: rgba(34, 197, 94, 0.18);
+}
+#live-terminal-view .lt-funnel-arrow {
+  text-align: center;
+  font-size: 9px;
+  color: rgba(34, 197, 94, 0.4);
+  letter-spacing: 0.2em;
+  padding: 0;
+  animation: lt-arrow-pulse 2.6s ease-in-out infinite;
+}
+@keyframes lt-arrow-pulse {
+  0%, 100% { opacity: 0.25; }
+  50%      { opacity: 0.75; }
+}
+
+/* ── Stats bar — bigger, glow on values ───────────────────────────────── */
+#live-terminal-view .lt-footerbar {
+  font-size: 13px !important;
+  padding: 6px 0 4px 0 !important;
+  gap: 28px !important;
+  border-top: 1px solid var(--lt-border);
+}
+#live-terminal-view .lt-footerbar .lt-stat-label {
+  color: #6b7280;
+  font-size: 11px;
+  margin-right: 4px;
+}
+#live-terminal-view .lt-footerbar .lt-stat-value {
+  color: var(--lt-fg-bright);
+  text-shadow: 0 0 4px currentColor;
+  font-weight: 600;
+}
+#live-terminal-view .lt-footerbar .lt-stat-value.lt-stat-neg {
+  color: var(--lt-red);
+}
+#live-terminal-view .lt-equity-curve {
+  display: inline-block;
+  width: 120px;
+  height: 24px;
+  vertical-align: middle;
+  margin: 0 6px;
+}
+#live-terminal-view .lt-equity-curve path {
+  fill: none;
+  stroke: var(--lt-fg-bright);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 3px var(--lt-fg-bright));
+}
+#live-terminal-view .lt-equity-curve .lt-equity-dot {
+  fill: var(--lt-fg-bright);
+  filter: drop-shadow(0 0 4px var(--lt-fg-bright));
+  animation: lt-equity-dot-pulse 1.6s ease-in-out infinite;
+}
+@keyframes lt-equity-dot-pulse {
+  0%, 100% { r: 1.5; opacity: 0.5; }
+  50%      { r: 2.5; opacity: 1; }
+}

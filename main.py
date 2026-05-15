@@ -6627,10 +6627,16 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
         total_armed += armed
         total_fired += fired
 
+        # Actual% column always reflects the FULL group average (what these
+        # trades actually closed at). Phantom% and Δ% are computed against
+        # the FIRED subset only (the trades where phantom BE would have
+        # changed the outcome). Dollar delta also aggregates over fired only.
+        avg_actual_pct = sum(o.pnl_percentage or 0 for o in group) / n
         if fired_list:
-            avg_actual_pct = sum(o.pnl_percentage or 0 for o in fired_list) / fired
             avg_phantom_pct = sum(o.phantom_be_aggr_would_exit_pnl or 0 for o in fired_list) / fired
-            delta_pct = avg_phantom_pct - avg_actual_pct
+            # Δ% compares phantom outcome vs actual outcome on the SAME fired trades
+            fired_actual_avg = sum(o.pnl_percentage or 0 for o in fired_list) / fired
+            delta_pct = avg_phantom_pct - fired_actual_avg
             dollar_delta = 0.0
             for o in fired_list:
                 actual_pnl = o.pnl or 0
@@ -6651,7 +6657,6 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
             else:
                 verdict = '✓ Marginal'
         else:
-            avg_actual_pct = sum(o.pnl_percentage or 0 for o in group) / n
             avg_phantom_pct = None
             delta_pct = None
             dollar_delta = 0.0

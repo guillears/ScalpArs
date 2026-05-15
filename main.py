@@ -2223,6 +2223,8 @@ def _compute_atr_bucket_performance(orders):
         return []
     # May 9: finer 0.10% buckets in the discriminating zone (0.25-0.85), with
     # wider 0.85-1.00 and ≥1.00 catchalls since data is thin at high ATR.
+    # May 15 PM: split ≥1.00% into 1.00-1.25 / 1.25-1.50 / 1.50-2.00 / >2.00
+    # to expose the LONG-ATR-cap zone (cross-sample 1.25-1.50 LONG = killer).
     buckets = [
         ("<0.25%", 0.0, 0.25),
         ("0.25-0.35%", 0.25, 0.35),
@@ -2232,7 +2234,10 @@ def _compute_atr_bucket_performance(orders):
         ("0.65-0.75%", 0.65, 0.75),
         ("0.75-0.85%", 0.75, 0.85),
         ("0.85-1.00%", 0.85, 1.00),
-        ("≥1.00%", 1.00, 999),
+        ("1.00-1.25%", 1.00, 1.25),
+        ("1.25-1.50%", 1.25, 1.50),
+        ("1.50-2.00%", 1.50, 2.00),
+        (">2.00%", 2.00, 999),
     ]
     rows = []
     for label, lo, hi in buckets:

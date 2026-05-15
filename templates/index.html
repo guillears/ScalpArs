@@ -4044,9 +4044,12 @@
                         </div>
                         <p class="text-xs text-gray-500 mt-3 mb-1">Entry Quality Score block filter (May 15 PM, opt-in). 6-point composite of pair RSI/ADX/gap sweet-spot hits + macro alignment. <strong>Threshold matches the Performance by Quality Score table</strong> — set to <code>1</code> to block Score 0 AND Score 1; set to <code>2</code> to block Score 0-2. Cross-sample evidence: Score ≤ 1 across 10 archived samples = N=95, 34.7% WR, −$684. <strong>Default: disabled.</strong></p>
                         <div class="flex items-center gap-4 mt-1 flex-wrap">
-                            <label class="flex items-center gap-2">
-                                <input type="checkbox" id="config-entry-quality-score-filter-enabled" class="rounded">
-                                <span class="text-xs text-gray-400">Enable Quality Score filter</span>
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-entry-quality-score-filter-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                    <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                </div>
+                                <span class="ml-2 text-xs text-gray-400">Enable Quality Score filter</span>
                             </label>
                             <div class="flex items-center gap-1">
                                 <span class="text-xs text-gray-400">Block score ≤</span>

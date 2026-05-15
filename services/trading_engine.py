@@ -3997,6 +3997,19 @@ class TradingEngine:
             
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
             order.trough_pnl = exit_result.get("trough_pnl", order.trough_pnl)
+            # May 14 — sync DB peak/trough updates back to realtime cache.
+            # Without this, the realtime callback's phantom BE / BE / FL checks
+            # use a stale cached peak/trough and miss extremes that monitor saw
+            # between WebSocket ticks. Caused Phantom BE 0.20/0.05 to never arm
+            # on trades where peak was reached between realtime ticks.
+            if cached is not None:
+                async with _cache_lock:
+                    _db_peak = order.peak_pnl
+                    _db_trough = order.trough_pnl
+                    if _db_peak is not None and _db_peak > cached.get('peak_pnl', 0):
+                        cached['peak_pnl'] = _db_peak
+                    if _db_trough is not None and _db_trough < cached.get('trough_pnl', 0):
+                        cached['trough_pnl'] = _db_trough
             reason = exit_result.get("reason")
 
             # ─── FL1[WIDE_SL] interception: convert STOP_LOSS_WIDE into a flag instead of closing ───

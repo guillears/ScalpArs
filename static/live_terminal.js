@@ -41,7 +41,6 @@
     heat: Array.from({ length: MAX_HEATMAP_BARS }, (_, i) => ({ sec: 0, count: 0 })),
     heatMaxRecent: 1,
     // ticker pairs
-    tickerData: {},  // { 'BTCUSDT': { price: 68000, change: 0.42 } }
     // scan crawl
     scanCycle: 0,
     scanTotal: 50,
@@ -72,7 +71,7 @@
   };
 
   // ─── DOM hooks ─────────────────────────────────────────────────────────
-  let elView, elFeed, elTicker, elTickerTrack, elLatencyBar, elLatencyText,
+  let elView, elFeed, elLatencyBar, elLatencyText,
     elConstellation, elEvMin, elScanCrawlBar, elScanCrawlText, elCycleNum,
     elRadarSvg, elPosBody, elScansBody, elHeatmap, elFooterStats, elBoot,
     elBootLines, elAlertBanner, elAlertMsg, elKatakana, elHbDot;
@@ -509,46 +508,10 @@
     ).join('') || '<div class="lt-scan-row" style="opacity:0.4">awaiting scans…</div>';
   }
 
-  // ─── Ticker ────────────────────────────────────────────────────────────
-  // Pull pair prices from existing /api/balance or /api/status endpoints
-  // every 30s. Simple — no backend changes.
-  async function refreshTicker() {
-    if (!state.inTerminal) return;
-    try {
-      const r = await fetch('/api/orders/open');
-      const data = await r.json();
-      if (Array.isArray(data) && data.length > 0) {
-        for (const o of data) {
-          if (o.pair && o.current_price && o.entry_price) {
-            const change = ((o.current_price - o.entry_price) / o.entry_price) * 100;
-            state.tickerData[o.pair] = { price: o.current_price, change };
-          }
-        }
-      }
-    } catch (_) { /* silent */ }
-    // Always include BTC if we have it from heartbeat
-    renderTicker();
-  }
-
-  function renderTicker() {
-    if (!elTickerTrack) return;
-    const entries = Object.entries(state.tickerData);
-    if (entries.length === 0) {
-      elTickerTrack.innerHTML = '<span class="lt-ticker-item" style="opacity:0.4">awaiting prices…</span>';
-      return;
-    }
-    // Repeat the list once so the loop has overlap
-    const buildItems = () => entries.map(([sym, d]) => {
-      const symShort = sym.replace('USDT', '');
-      const priceStr = d.price >= 1000 ? d.price.toFixed(0) : d.price.toPrecision(5);
-      const cls = d.change >= 0 ? 'lt-up' : 'lt-dn';
-      const arrow = d.change >= 0 ? '▲' : '▼';
-      return `<span class="lt-ticker-item">${symShort} ${priceStr} <span class="${cls}">${arrow}${Math.abs(d.change).toFixed(2)}%</span></span><span class="lt-ticker-sep">│</span>`;
-    }).join('');
-    elTickerTrack.innerHTML = buildItems() + buildItems();
-  }
-
-  setInterval(refreshTicker, 30000);
+  // Ticker removed (May 15 PM) — the empty "awaiting prices…" bar
+  // was always-empty when no positions were open, so the whole strip
+  // was retired. Scan crawl + radar + heatmap + feed type-on already
+  // give the "alive" feel.
 
   // ─── Footer stats ──────────────────────────────────────────────────────
   function updateFooterStats() {
@@ -636,8 +599,6 @@
     elView = document.getElementById('live-terminal-view');
     if (!elView) return;
     elFeed = document.getElementById('lt-feed');
-    elTicker = document.getElementById('lt-ticker');
-    elTickerTrack = document.getElementById('lt-ticker-track');
     elLatencyBar = document.getElementById('lt-latency-bar');
     elLatencyText = document.getElementById('lt-latency-text');
     elConstellation = document.getElementById('lt-constellation');

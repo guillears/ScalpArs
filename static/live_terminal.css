@@ -5,6 +5,25 @@
    its current styling — only the area below the header gets terminalized.
    ──────────────────────────────────────────────────────────────────────── */
 
+/* ─── Page-level adjustments when Live Terminal is active ─────────────── */
+/* These rules paint the existing dashboard headers black ONLY when the
+   user is in terminal mode. body.lt-mode is added/removed by JS.        */
+body.lt-mode {
+  background: #050505 !important;
+  overflow: hidden;  /* prevent page-level scroll; feed scrolls internally */
+}
+body.lt-mode header.glass,
+body.lt-mode header.glass + .glass {
+  background: #050505 !important;
+  background-image: none !important;
+  border-bottom-color: #1a1a1a !important;
+  backdrop-filter: none !important;
+}
+body.lt-mode header.glass *,
+body.lt-mode header.glass + .glass * {
+  /* Allow inline colors to remain (so badges stay readable). No restyle. */
+}
+
 #live-terminal-view {
   --lt-bg: #050505;
   --lt-fg: rgba(34, 197, 94, 0.85);            /* phosphor green at 85% */
@@ -19,7 +38,12 @@
   color: var(--lt-fg);
   background: var(--lt-bg);
   position: relative;
-  min-height: calc(100vh - 200px); /* leaves room for the dashboard header */
+  /* Fit the available viewport below the two header rows. Use flex column
+     so the feed grows/shrinks to fill, eliminating page-level scroll. */
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+  min-height: 460px;
   overflow: hidden;
 }
 
@@ -91,10 +115,12 @@
 #live-terminal-view .lt-shell {
   position: relative;
   z-index: 3;
-  padding: 12px 28px 12px 28px;
+  padding: 8px 28px 6px 28px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  flex: 1 1 auto;     /* fill remaining height in the column */
+  min-height: 0;       /* allow inner overflow:auto to kick in */
 }
 
 /* Ticker tape */
@@ -130,14 +156,17 @@
 #live-terminal-view .lt-statusbar {
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 16px;
   font-size: 11px;
   color: var(--lt-label);
-  padding: 6px 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--lt-border);
   border-bottom: 1px solid var(--lt-border);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
 }
-#live-terminal-view .lt-statusbar > * { display: flex; align-items: center; gap: 6px; }
+#live-terminal-view .lt-statusbar > * { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 #live-terminal-view .lt-lat-bar {
   display: inline-block;
   width: 80px; height: 6px;
@@ -202,19 +231,18 @@
   transition: width 0.5s ease-out;
 }
 
-/* Main grid: feed | radar | side */
+/* Main grid: feed | radar | side. Flex-grow so it fills available height. */
 #live-terminal-view .lt-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px 230px;
   gap: 12px;
-  height: 60vh;
-  min-height: 460px;
+  flex: 1 1 auto;
+  min-height: 0;     /* required for inner overflow:auto on the feed */
 }
 @media (max-width: 1100px) {
   #live-terminal-view .lt-main {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr auto auto;
-    height: auto;
   }
 }
 
@@ -357,10 +385,11 @@
   display: flex;
   align-items: flex-end;
   gap: 1px;
-  height: 30px;
+  height: 22px;
   border-top: 1px solid var(--lt-border);
   border-bottom: 1px solid var(--lt-border);
   padding: 2px 0;
+  flex-shrink: 0;
 }
 #live-terminal-view .lt-heatmap-bar {
   flex: 1;
@@ -377,6 +406,7 @@
   font-size: 11px;
   color: var(--lt-label);
   padding: 4px 0 2px 0;
+  flex-shrink: 0;
 }
 #live-terminal-view .lt-footerbar .lt-chip { color: var(--lt-fg); }
 #live-terminal-view .lt-footerbar .lt-clock-cell { color: var(--lt-fg-dim); }

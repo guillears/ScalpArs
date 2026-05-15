@@ -9935,3 +9935,83 @@ global_volume_max_short: 1.10                 (with BTC capitulation override)
 
 ### Files changed
 - `trading_config.json` — single field change
+
+## May 15, 2026 PM — BTC Volatility Regime + BTC 1h RSI Direction (observation-only)
+
+### Why added
+
+The 50-trade across-day analysis showed that no single entry-time variable cleanly discriminated winners from losers across regimes. Pair-level dimensions had identical signatures between Winners and Losers; the macro dimensions already captured (BTC RSI 5m/30m direction, BTC ADX, BTC EMA13/50 gap, BTC 1h slope) didn't separate cleanly across days either. Two competing hypotheses for the missing discriminator:
+
+1. **Volatility regime** — BTC in "violent chop" (high ATR, low ADX) vs "clean trend" (mid ATR, high ADX). ADX alone can't see this distinction.
+2. **Longer-timeframe macro reversal** — the 5m and 30m windows miss when BTC 1h momentum is genuinely reversing under a still-positive 5m read.
+
+Both are captured by this ship.
+
+### What's new (observation-only, zero filter logic)
+
+Three new Order columns populated at entry from existing BTC indicator pipelines (zero new API calls):
+
+| Column | Source | Meaning |
+|---|---|---|
+| `entry_btc_atr_pct` | BTC 5m calculate_indicators `atr` / BTC price × 100 | BTC swing magnitude % of price |
+| `entry_btc_rsi_1h` | BTC 1h calculate_indicators `rsi` | BTC 1h RSI at entry |
+| `entry_btc_rsi_1h_prev` | BTC 1h calculate_indicators `rsi_prev1` | BTC 1h RSI 1 hour ago |
+
+### New analytics surfaces
+
+- **Performance by BTC Volatility Regime** (6 ATR% buckets × direction) — dashboard + both text exports
+- **Performance by BTC 1h RSI Direction** (Rising / Falling × direction) — dashboard + both text exports
+- **BTC Volatility × BTC ADX Cross-Tab** (3 ATR × 3 ADX × direction) — the "violent chop" detector
+- **BTC 1h RSI × BTC 5m RSI Cross-Tab** (multi-TF alignment) — aligned cells vs transition zones
+- **Entry Conditions by Close Reason / by Outcome** — payload-level avg_btc_atr_pct, btc_rsi_1h_rising/falling
+- **Never Positive Deep Dive** — 6 BTC Vol bucket rows + Rising/Falling 1h RSI rows × direction
+
+### Pre-deploy trades have NULL for these columns
+
+Cannot be backfilled (BTC ATR + 1h RSI at historical entry instants not recoverable from current data alone). Data accumulates from this deploy onward.
+
+### Pre-committed promotion gates (locked NOW, before data arrives)
+
+A dimension qualifies for promotion to entry filter ONLY if ALL of these are true:
+
+1. **N ≥ 20 trades per bucket** in the discriminating range
+2. **WR gap ≥ 15pp** between best and worst bucket (same direction)
+3. **Avg P&L % gap ≥ 0.20pp** between best and worst (same direction)
+4. **Direction-consistent OR theoretically asymmetric** with documented mechanism
+5. **Cross-tab confirmation** — pattern must hold in the 2D cross-tab, not just the 1D table
+
+If only ONE dimension passes → ship that one as filter; defer the other.
+
+If NEITHER passes → these dimensions also don't help. The strategy's edge does NOT come from a static entry-time macro filter; pivot to:
+  - **Runtime regime-pausing** (don't trade in detected chop regimes)
+  - **Exit-side mechanisms** (Phantom BE counterfactuals are already pointing here)
+  - Both
+
+### Filter candidates if promoted
+
+**BTC Volatility:** "skip all entries when BTC ATR% > X" (some threshold like 0.35%). Single threshold pauses trading in energetic chop.
+
+**BTC 1h RSI Direction:** "block SHORTs when BTC 1h RSI Rising, block LONGs when BTC 1h RSI Falling" — longer-TF analog of the existing 5m BTC RSI Direction filter. Likely `btc_rsi_1h_dir_long` / `btc_rsi_1h_dir_short` config fields.
+
+If the cross-tab shows the discriminator is the COMBINATION (aligned 1h+5m wins, mixed loses) — ship as multi-TF rule rather than two independent filters.
+
+### Decision sequencing at next checkpoint
+
+1. **Health check** — count trades with non-NULL values. If < 30 in either column → defer, keep collecting.
+2. **Single-dim tables** — apply 6-criterion bar.
+3. **Cross-tabs** — only if single-dim passes. Cross-tab-only signals are 2D conditional filters (harder to ship, lower confidence).
+4. **At most one new filter per checkpoint** — per discipline.
+
+### Files changed
+
+- `models.py` — 3 new nullable Float columns
+- `database.py` — 3 ADD COLUMN auto-migrations
+- `services/trading_engine.py` — BTC scan computes `btc_atr_pct` + extracts 1h RSI from existing 1h fetch; passes through internal call chain (_record_signal_expired_order signature + body, open_position signature + Order() constructor + 2 SIGNAL_EXPIRED call sites, external scan-loop call site)
+- `main.py` — 2 single-dim builders + 2 cross-tab builders in `_compute_performance`; new fields in Entry Conditions by Close Reason / by Outcome; 2 NPDD blocks (volatility + 1h dir); payload entries; both empty-data fallback sections
+- `templates/index.html` — 4 new UI tables (after BTC RSI 30m × 5m crosstab) with JS renderers; both text export sites updated with 4 new sections
+- `CLAUDE.md` — this entry
+
+### Why this entry exists
+
+To anchor the locked promotion gates (before data arrives, to prevent post-hoc bar-lowering), the pre-deploy NULL caveat for historical-comparison analyses, and the explicit pivot path if neither dimension passes (runtime regime detection + exit-side, not more entry-variable hunting).
+

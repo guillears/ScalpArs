@@ -2463,6 +2463,110 @@
                 </div>
             </div>
 
+                <!-- Performance by BTC Volatility Regime (May 15 PM) — ATR/price × 100 -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Volatility Regime (ATR%)</h3>
+                    <p class="text-xs text-gray-500 mb-3">BTC ATR(14) as % of price at entry. Measures swing magnitude regardless of direction — orthogonal to ADX (which measures trend strength). Hypothesis: high ATR + low ADX = "violent chop" regime where directional signals reverse violently. Post-May-15-PM deploy only.</p>
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">BTC ATR%</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                        </thead>
+                            <tbody id="btc-volatility-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+            </div>
+
+                <!-- Performance by BTC 1h RSI Direction (May 15 PM) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC 1h RSI Direction</h3>
+                    <p class="text-xs text-gray-500 mb-3">BTC RSI(14) on the 1h timeframe — direction = RSI now vs 1h ago. Adds higher-TF momentum slice on top of 5m (vs prev1) and 30m (vs prev6) tables. Useful for detecting macro reversals that haven't shown on 5m yet. Post-May-15-PM deploy only.</p>
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">BTC 1h RSI Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                        </thead>
+                            <tbody id="btc-rsi-1h-direction-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+            </div>
+
+                <!-- BTC Volatility × BTC ADX Cross-Tab (May 15 PM) — violent-chop detector -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">BTC Volatility × BTC ADX Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Decomposes regime character. High ATR + Low ADX = violent chop (big swings, no direction). Mid ATR + High ADX = clean trend (ride-able momentum). Low ATR + High ADX = slow steady trend. Low ATR + Low ADX = quiet range. Hypothesis: the violent-chop cell is where signals fire and immediately reverse.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">BTC ATR%</th>
+                                    <th class="px-3 py-2 font-medium text-left">BTC ADX</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-left">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                            </thead>
+                            <tbody id="btc-vol-adx-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+                <!-- BTC 1h RSI × BTC 5m RSI Cross-Tab (May 15 PM) — multi-TF alignment -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">BTC 1h RSI × BTC 5m RSI Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Multi-timeframe alignment. Both Rising = clean macro uptrend. Both Falling = clean macro downtrend. 1h Rising + 5m Falling = local pullback inside uptrend (potential LONG dip-buy). 1h Falling + 5m Rising = bounce inside downtrend (catch-falling-knife risk). Aligned cells should outperform mixed cells if multi-TF hypothesis is right.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">BTC 1h RSI</th>
+                                    <th class="px-3 py-2 font-medium text-left">BTC 5m RSI</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-left">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                            </thead>
+                            <tbody id="btc-rsi-1h-5m-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
                 <!-- Performance by BTC Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Entry RSI</h3>
@@ -6298,6 +6402,46 @@
                 }
             }
 
+            if (perf.btc_volatility_performance && perf.btc_volatility_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC Volatility Regime (ATR%) — May 15 PM observation-only\n');
+                lines.push(`${'BTC ATR%'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.btc_volatility_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_volatility||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
+            if (perf.btc_rsi_1h_direction_performance && perf.btc_rsi_1h_direction_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC 1h RSI Direction — May 15 PM observation-only\n');
+                lines.push(`${'BTC 1h Dir'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.btc_rsi_1h_direction_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_rsi_1h_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
+            if (perf.btc_vol_adx_crosstab && perf.btc_vol_adx_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## BTC Volatility x BTC ADX Cross-Tab — violent-chop detector (May 15 PM)\n');
+                lines.push(`${'BTC ATR%'.padEnd(16)} ${'BTC ADX'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.btc_vol_adx_crosstab) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_volatility||'').padEnd(16)} ${(r.btc_adx||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                }
+            }
+
+            if (perf.btc_rsi_1h_5m_crosstab && perf.btc_rsi_1h_5m_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## BTC 1h RSI x BTC 5m RSI Cross-Tab — multi-TF alignment (May 15 PM)\n');
+                lines.push(`${'BTC 1h'.padEnd(10)} ${'BTC 5m'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.btc_rsi_1h_5m_crosstab) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_rsi_1h_dir||'').padEnd(10)} ${(r.btc_rsi_5m_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                }
+            }
+
             if (perf.volume_crosstab && perf.volume_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Volume Cross-Tab (Global x Pair)\n');
@@ -7551,6 +7695,50 @@
                     for (const r of perf.btc_rsi_30m_5m_crosstab) {
                         const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.btc_rsi_30m_dir||'').padEnd(10)} ${(r.btc_rsi_5m_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                    }
+                }
+
+                // --- BTC VOLATILITY PERFORMANCE (May 15 PM) ---
+                if (perf.btc_volatility_performance && perf.btc_volatility_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by BTC Volatility Regime (ATR%) — May 15 PM observation-only\n');
+                    lines.push(`${'BTC ATR%'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf.btc_volatility_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.btc_volatility||'').padEnd(16)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- BTC 1h RSI DIRECTION PERFORMANCE (May 15 PM) ---
+                if (perf.btc_rsi_1h_direction_performance && perf.btc_rsi_1h_direction_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by BTC 1h RSI Direction — May 15 PM observation-only\n');
+                    lines.push(`${'BTC 1h Dir'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf.btc_rsi_1h_direction_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.btc_rsi_1h_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- BTC VOL x BTC ADX CROSS-TAB (May 15 PM) ---
+                if (perf.btc_vol_adx_crosstab && perf.btc_vol_adx_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## BTC Volatility x BTC ADX Cross-Tab — violent-chop detector (May 15 PM)\n');
+                    lines.push(`${'BTC ATR%'.padEnd(16)} ${'BTC ADX'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                    for (const r of perf.btc_vol_adx_crosstab) {
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.btc_volatility||'').padEnd(16)} ${(r.btc_adx||'').padEnd(12)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                    }
+                }
+
+                // --- BTC 1h RSI x BTC 5m RSI CROSS-TAB (May 15 PM) ---
+                if (perf.btc_rsi_1h_5m_crosstab && perf.btc_rsi_1h_5m_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## BTC 1h RSI x BTC 5m RSI Cross-Tab — multi-TF alignment (May 15 PM)\n');
+                    lines.push(`${'BTC 1h'.padEnd(10)} ${'BTC 5m'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                    for (const r of perf.btc_rsi_1h_5m_crosstab) {
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.btc_rsi_1h_dir||'').padEnd(10)} ${(r.btc_rsi_5m_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
                     }
                 }
 
@@ -9778,6 +9966,124 @@
                     }).join('');
                 } else {
                     btcRsi30m5mCtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>';
+                }
+
+                // Performance by BTC Volatility Regime (May 15 PM)
+                const btcVolBody = document.getElementById('btc-volatility-performance-body');
+                const btcVolConfColors = { 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400' };
+                if (data.btc_volatility_performance && data.btc_volatility_performance.length > 0) {
+                    btcVolBody.innerHTML = data.btc_volatility_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${btcVolConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-gray-200">${r.btc_volatility}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcVolBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>';
+                }
+
+                // Performance by BTC 1h RSI Direction (May 15 PM)
+                const btcRsi1hDirBody = document.getElementById('btc-rsi-1h-direction-performance-body');
+                if (data.btc_rsi_1h_direction_performance && data.btc_rsi_1h_direction_performance.length > 0) {
+                    btcRsi1hDirBody.innerHTML = data.btc_rsi_1h_direction_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor1h = r.btc_rsi_1h_direction === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${btcVolConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${dirColor1h}">${r.btc_rsi_1h_direction}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcRsi1hDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>';
+                }
+
+                // BTC Volatility × BTC ADX Cross-Tab (May 15 PM)
+                const btcVolAdxCtBody = document.getElementById('btc-vol-adx-crosstab-body');
+                if (data.btc_vol_adx_crosstab && data.btc_vol_adx_crosstab.length > 0) {
+                    btcVolAdxCtBody.innerHTML = data.btc_vol_adx_crosstab.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(2) + '%';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${btcVolConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-gray-200">${r.btc_volatility}</td>
+                                <td class="px-3 py-2 font-medium text-gray-200">${r.btc_adx}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${avgPnlPctStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcVolAdxCtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>';
+                }
+
+                // BTC 1h RSI × BTC 5m RSI Cross-Tab (May 15 PM)
+                const btcRsi1h5mCtBody = document.getElementById('btc-rsi-1h-5m-crosstab-body');
+                if (data.btc_rsi_1h_5m_crosstab && data.btc_rsi_1h_5m_crosstab.length > 0) {
+                    btcRsi1h5mCtBody.innerHTML = data.btc_rsi_1h_5m_crosstab.map(r => {
+                        const dir1hColor = r.btc_rsi_1h_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dir5mColor = r.btc_rsi_5m_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(2) + '%';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${btcVolConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${dir1hColor}">${r.btc_rsi_1h_dir}</td>
+                                <td class="px-3 py-2 font-medium ${dir5mColor}">${r.btc_rsi_5m_dir}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${avgPnlPctStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcRsi1h5mCtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15-PM deploy only)</td></tr>';
                 }
 
                 // Performance by BTC Entry RSI

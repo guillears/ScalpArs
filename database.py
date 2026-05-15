@@ -201,6 +201,13 @@ async def init_db():
                 # May 15: BTC RSI 6 candles prior (~30min) for sustained-momentum analytics
                 if 'entry_btc_rsi_prev6' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_prev6 FLOAT"))
+                # May 15 PM: BTC Volatility Regime + BTC 1h RSI Direction
+                if 'entry_btc_atr_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_atr_pct FLOAT"))
+                if 'entry_btc_rsi_1h' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_1h FLOAT"))
+                if 'entry_btc_rsi_1h_prev' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_1h_prev FLOAT"))
                 if 'peak_reached_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN peak_reached_at DATETIME"))
                 if 'trough_reached_at' not in columns:

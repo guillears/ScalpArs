@@ -1293,6 +1293,9 @@ class TradingEngine:
         entry_btc_rsi: Optional[float] = None,
         entry_btc_rsi_prev: Optional[float] = None,
         entry_btc_rsi_prev6: Optional[float] = None,
+        entry_btc_atr_pct: Optional[float] = None,
+        entry_btc_rsi_1h: Optional[float] = None,
+        entry_btc_rsi_1h_prev: Optional[float] = None,
         entry_price_vs_ema5_pct: Optional[float] = None,
         entry_global_volume_ratio: Optional[float] = None,
         entry_pair_volume_ratio: Optional[float] = None,
@@ -1370,6 +1373,9 @@ class TradingEngine:
                 entry_btc_rsi=entry_btc_rsi,
                 entry_btc_rsi_prev=entry_btc_rsi_prev,
                 entry_btc_rsi_prev6=entry_btc_rsi_prev6,
+                entry_btc_atr_pct=entry_btc_atr_pct,
+                entry_btc_rsi_1h=entry_btc_rsi_1h,
+                entry_btc_rsi_1h_prev=entry_btc_rsi_1h_prev,
                 entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                 entry_global_volume_ratio=entry_global_volume_ratio,
                 entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -1859,6 +1865,10 @@ class TradingEngine:
         entry_btc_rsi: float = None,
         entry_btc_rsi_prev: float = None,
         entry_btc_rsi_prev6: float = None,
+        # May 15 PM: BTC Volatility Regime + BTC 1h RSI Direction (observation-only)
+        entry_btc_atr_pct: float = None,
+        entry_btc_rsi_1h: float = None,
+        entry_btc_rsi_1h_prev: float = None,
         entry_price_vs_ema5_pct: float = None,
         entry_global_volume_ratio: float = None,
         entry_pair_volume_ratio: float = None,
@@ -2045,6 +2055,9 @@ class TradingEngine:
                         entry_btc_rsi=entry_btc_rsi,
                         entry_btc_rsi_prev=entry_btc_rsi_prev,
                         entry_btc_rsi_prev6=entry_btc_rsi_prev6,
+                        entry_btc_atr_pct=entry_btc_atr_pct,
+                        entry_btc_rsi_1h=entry_btc_rsi_1h,
+                        entry_btc_rsi_1h_prev=entry_btc_rsi_1h_prev,
                         entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                         entry_global_volume_ratio=entry_global_volume_ratio,
                         entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -2120,6 +2133,9 @@ class TradingEngine:
                         entry_btc_rsi=entry_btc_rsi,
                         entry_btc_rsi_prev=entry_btc_rsi_prev,
                         entry_btc_rsi_prev6=entry_btc_rsi_prev6,
+                        entry_btc_atr_pct=entry_btc_atr_pct,
+                        entry_btc_rsi_1h=entry_btc_rsi_1h,
+                        entry_btc_rsi_1h_prev=entry_btc_rsi_1h_prev,
                         entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                         entry_global_volume_ratio=entry_global_volume_ratio,
                         entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -2176,6 +2192,9 @@ class TradingEngine:
             entry_btc_rsi=entry_btc_rsi,
             entry_btc_rsi_prev=entry_btc_rsi_prev,
             entry_btc_rsi_prev6=entry_btc_rsi_prev6,
+            entry_btc_atr_pct=entry_btc_atr_pct,
+            entry_btc_rsi_1h=entry_btc_rsi_1h,
+            entry_btc_rsi_1h_prev=entry_btc_rsi_1h_prev,
             entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
             entry_global_volume_ratio=entry_global_volume_ratio,
             entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -4252,6 +4271,10 @@ class TradingEngine:
         btc_adx_prev = None
         btc_rsi = None
         btc_rsi_prev = None
+        btc_rsi_prev6 = None
+        btc_atr_pct = None
+        btc_rsi_1h = None
+        btc_rsi_1h_prev = None
         # Always fetch BTC data for regime/slope display; the toggle only gates entry filters
         btc_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '5m', 100)
         if btc_ohlcv:
@@ -4266,6 +4289,13 @@ class TradingEngine:
                 btc_rsi = btc_indicators.get('rsi')
                 btc_rsi_prev = btc_indicators.get('rsi_prev1')
                 btc_rsi_prev6 = btc_indicators.get('rsi_prev6')  # May 15: 30min sustained-momentum window
+                # May 15 PM: BTC Volatility Regime (ATR / price × 100)
+                _btc_atr_raw = btc_indicators.get('atr')
+                _btc_price_now = btc_indicators.get('price')
+                if _btc_atr_raw is not None and _btc_price_now is not None and _btc_price_now > 0:
+                    btc_atr_pct = round((_btc_atr_raw / _btc_price_now) * 100, 4)
+                else:
+                    btc_atr_pct = None
                 _flat_th_long = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_long',
                                        config.trading_config.thresholds.macro_trend_flat_threshold)
                 _flat_th_short = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_short',
@@ -4301,6 +4331,13 @@ class TradingEngine:
                     _ema20_1h_prev3 = btc_1h_ind.get('ema20_prev3')
                     if _ema20_1h is not None and _ema20_1h_prev3 is not None and _ema20_1h_prev3 != 0:
                         _current_btc_1h_slope = round(((_ema20_1h - _ema20_1h_prev3) / _ema20_1h_prev3) * 100, 4)
+                    # May 15 PM: BTC 1h RSI Direction. rsi_prev1 on 1h timeframe = 1h ago.
+                    _rsi_1h_now = btc_1h_ind.get('rsi')
+                    _rsi_1h_prev = btc_1h_ind.get('rsi_prev1')
+                    if _rsi_1h_now is not None:
+                        btc_rsi_1h = round(_rsi_1h_now, 1)
+                    if _rsi_1h_prev is not None:
+                        btc_rsi_1h_prev = round(_rsi_1h_prev, 1)
         except Exception as _e:
             logger.debug(f'[BTC_1H_SLOPE] fetch/compute failed: {_e}')
         if btc_ema13 is not None and btc_ema50 is not None and btc_ema50 != 0:
@@ -5124,6 +5161,9 @@ class TradingEngine:
                     entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
                     entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
                     entry_btc_rsi_prev6=round(btc_rsi_prev6, 1) if btc_rsi_prev6 is not None else None,
+                    entry_btc_atr_pct=btc_atr_pct,
+                    entry_btc_rsi_1h=btc_rsi_1h,
+                    entry_btc_rsi_1h_prev=btc_rsi_1h_prev,
                     entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                     entry_global_volume_ratio=round(_global_volume_ratio, 4),
                     entry_pair_volume_ratio=round(_pair_volume_ratio, 4),

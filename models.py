@@ -85,6 +85,15 @@ class Order(Base):
     entry_btc_rsi_prev = Column(Float, nullable=True)
     # BTC RSI 6 candles prior (~30min) — sustained-momentum dimension. May 15.
     entry_btc_rsi_prev6 = Column(Float, nullable=True)
+    # May 15 PM — BTC Volatility Regime + BTC 1h RSI Direction (observation-only).
+    # See CLAUDE.md May 15 entry for hypothesis and promotion gates.
+    # BTC ATR(14) / BTC price × 100 at entry. Measures swing magnitude regardless of direction.
+    # Distinct from BTC ADX (which measures trend strength). High ATR + low ADX = violent chop.
+    entry_btc_atr_pct = Column(Float, nullable=True)
+    # BTC 1h RSI(14) at entry — multi-hour momentum slice (vs 5m and 30m already captured).
+    entry_btc_rsi_1h = Column(Float, nullable=True)
+    # BTC 1h RSI(14) 1 candle prior (= 1h ago). With entry_btc_rsi_1h enables 1h direction.
+    entry_btc_rsi_1h_prev = Column(Float, nullable=True)
     # Volume ratios at entry (for volume filter analytics)
     entry_global_volume_ratio = Column(Float, nullable=True)
     entry_pair_volume_ratio = Column(Float, nullable=True)

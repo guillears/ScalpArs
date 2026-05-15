@@ -184,11 +184,11 @@ class SignalThresholds(BaseModel):
     ema5_stretch_max_long: float = 0.0   # Max EMA5 stretch % for LONG entries (0 = disabled)
     ema5_stretch_min_short: float = 0.0  # Min EMA5 stretch % for SHORT entries (0 = disabled)
     ema5_stretch_max_short: float = 0.0  # Max EMA5 stretch % for SHORT entries (0 = disabled)
-    # Stretch-based premium multipliers (May 9 — 1D, complement to RSI×ADX 2D multipliers).
-    # Format: "STRETCH_LO-STRETCH_HI:multiplier,..." — comma-separated rules.
-    # Cross-sample evidence (7 reports): LONG 0.25-0.30 = 49 trades 65% WR; SHORT
-    # 0.25-0.30 = 44 trades 68% WR. Strongest 1D single-dimension cross-sample signal.
-    # When stretch + RSI×ADX both match same trade, HIGHER multiplier wins (capped at hard_cap).
+    # REMOVED May 15 PM — Stretch-based multiplier retired (UI panel + engine
+    # lookup deleted). Fields kept here purely so old JSON files with these
+    # keys still load without Pydantic errors. No code reads them anymore.
+    # Historical trades with cell_multiplier_source = "STRETCH_*" retain their
+    # attribution in the Multiplier Cell Performance table.
     ema5_stretch_multiplier_long: str = ""
     ema5_stretch_multiplier_short: str = ""
     # Trailing pullback confirmation (May 9): require N seconds of sustained

@@ -7663,11 +7663,10 @@ def _compute_multiplier_cell_performance(orders):
         cur_pair_short = _parse_rules(getattr(th, 'rsi_adx_multiplier_short', ''), 'PAIR')
         cur_btc_long = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_long', ''), 'BTC')
         cur_btc_short = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_short', ''), 'BTC')
-        cur_stretch_long = _parse_rules(getattr(th, 'ema5_stretch_multiplier_long', ''), 'STRETCH')
-        cur_stretch_short = _parse_rules(getattr(th, 'ema5_stretch_multiplier_short', ''), 'STRETCH')
+        # STRETCH-based multiplier retired May 15 PM. Historical STRETCH_* sources
+        # in cell_multiplier_source still render in the table from past-config diffs.
     except Exception:
         cur_pair_long = cur_pair_short = cur_btc_long = cur_btc_short = {}
-        cur_stretch_long = cur_stretch_short = {}
 
     def _direction_baseline(direction):
         """Avg P&L% of NON-multiplied trades for this direction."""
@@ -7682,9 +7681,9 @@ def _compute_multiplier_cell_performance(orders):
         baseline = _direction_baseline(direction)
         # Pick the appropriate current-config map for this direction
         if direction == 'LONG':
-            current_map = {**cur_pair_long, **cur_btc_long, **cur_stretch_long}
+            current_map = {**cur_pair_long, **cur_btc_long}
         else:
-            current_map = {**cur_pair_short, **cur_btc_short, **cur_stretch_short}
+            current_map = {**cur_pair_short, **cur_btc_short}
         # Group by source (NULL = baseline 1.0×)
         groups = {}
         for o in closed:

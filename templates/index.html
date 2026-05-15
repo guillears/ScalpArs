@@ -2358,6 +2358,58 @@
                     </div>
             </div>
 
+                <!-- Performance by BTC RSI Direction 30min (May 15) — sustained-momentum window -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC RSI Direction (30min — sustained momentum)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by whether BTC RSI was rising or falling vs 6 candles ago (~30min). Compares against the existing 5min table — sustained 30min direction filters out single-candle noise.</p>
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">BTC RSI Dir 30m</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                        </thead>
+                            <tbody id="btc-rsi-direction-30m-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+            </div>
+
+                <!-- BTC RSI 30m × BTC RSI 5m Cross-Tab (May 15) — sustained vs flicker diagnostic -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">BTC RSI 30m × BTC RSI 5m Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Sustained vs flickering momentum. Both Falling = clean sustained bear. Both Rising = aligned bull. 30m Falling + 5m Rising = early bounce inside sustained bear (catch-falling-knife risk). 30m Rising + 5m Falling = late-cycle peak forming (snap-back risk).</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">BTC RSI 30m</th>
+                                    <th class="px-3 py-2 font-medium text-left">BTC RSI 5m</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-left">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                            </thead>
+                            <tbody id="btc-rsi-30m-5m-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
                 <!-- Performance by BTC Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Entry RSI</h3>
@@ -6153,6 +6205,26 @@
                 }
             }
 
+            if (perf.btc_rsi_direction_30m_performance && perf.btc_rsi_direction_30m_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC RSI Direction 30m (sustained-momentum, vs btc_rsi_prev6)\n');
+                lines.push(`${'BTC RSI 30m'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.btc_rsi_direction_30m_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_rsi_direction_30m||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
+            if (perf.btc_rsi_30m_5m_crosstab && perf.btc_rsi_30m_5m_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## BTC RSI 30m x BTC RSI 5m Cross-Tab (sustained vs flicker)\n');
+                lines.push(`${'RSI30m'.padEnd(10)} ${'RSI5m'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.btc_rsi_30m_5m_crosstab) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_rsi_30m_dir||'').padEnd(10)} ${(r.btc_rsi_5m_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                }
+            }
+
             if (perf.volume_crosstab && perf.volume_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Volume Cross-Tab (Global x Pair)\n');
@@ -7362,6 +7434,28 @@
                     for (const r of perf.btc_rsi_direction_performance) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.btc_rsi_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- BTC RSI DIRECTION 30m PERFORMANCE (May 15) ---
+                if (perf.btc_rsi_direction_30m_performance && perf.btc_rsi_direction_30m_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by BTC RSI Direction 30m (sustained-momentum, vs btc_rsi_prev6)\n');
+                    lines.push(`${'BTC RSI 30m'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf.btc_rsi_direction_30m_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.btc_rsi_direction_30m||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- BTC RSI 30m x BTC RSI 5m CROSS-TAB (May 15) ---
+                if (perf.btc_rsi_30m_5m_crosstab && perf.btc_rsi_30m_5m_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## BTC RSI 30m x BTC RSI 5m Cross-Tab (sustained vs flicker)\n');
+                    lines.push(`${'RSI30m'.padEnd(10)} ${'RSI5m'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                    for (const r of perf.btc_rsi_30m_5m_crosstab) {
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.btc_rsi_30m_dir||'').padEnd(10)} ${(r.btc_rsi_5m_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
                     }
                 }
 
@@ -9462,6 +9556,71 @@
                     }).join('');
                 } else {
                     btcRsiDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC RSI direction)</td></tr>';
+                }
+
+                // Performance by BTC RSI Direction 30m (May 15)
+                const btcRsi30mDirBody = document.getElementById('btc-rsi-direction-30m-performance-body');
+                if (data.btc_rsi_direction_30m_performance && data.btc_rsi_direction_30m_performance.length > 0) {
+                    const confCols30m = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    btcRsi30mDirBody.innerHTML = data.btc_rsi_direction_30m_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor30m = r.btc_rsi_direction_30m === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => `<span class="${confCols30m[conf] || 'text-gray-400'} text-xs">${conf[0]}:${count}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${dirColor30m}">${r.btc_rsi_direction_30m}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcRsi30mDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>';
+                }
+
+                // BTC RSI 30m × BTC RSI 5m Cross-Tab (May 15)
+                const btcRsi30m5mCtBody = document.getElementById('btc-rsi-30m-5m-crosstab-body');
+                const btcRsiCtConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                if (data.btc_rsi_30m_5m_crosstab && data.btc_rsi_30m_5m_crosstab.length > 0) {
+                    btcRsi30m5mCtBody.innerHTML = data.btc_rsi_30m_5m_crosstab.map(r => {
+                        const dir30mColor = r.btc_rsi_30m_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dir5mColor = r.btc_rsi_5m_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(2) + '%';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${btcRsiCtConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${dir30mColor}">${r.btc_rsi_30m_dir}</td>
+                                <td class="px-3 py-2 font-medium ${dir5mColor}">${r.btc_rsi_5m_dir}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${avgPnlPctStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcRsi30m5mCtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>';
                 }
 
                 // Performance by BTC Entry RSI

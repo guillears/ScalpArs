@@ -83,6 +83,8 @@ class Order(Base):
     entry_btc_rsi = Column(Float, nullable=True)
     # BTC RSI(14) one candle prior (for BTC RSI direction analysis)
     entry_btc_rsi_prev = Column(Float, nullable=True)
+    # BTC RSI 6 candles prior (~30min) — sustained-momentum dimension. May 15.
+    entry_btc_rsi_prev6 = Column(Float, nullable=True)
     # Volume ratios at entry (for volume filter analytics)
     entry_global_volume_ratio = Column(Float, nullable=True)
     entry_pair_volume_ratio = Column(Float, nullable=True)

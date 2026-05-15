@@ -75,6 +75,8 @@ def calculate_indicators(ohlcv: List, pair_volume_bars: int = 20, global_volume_
         'rsi_prev1': float(rsi.iloc[-2]) if len(rsi) >= 2 and not pd.isna(rsi.iloc[-2]) else None,
         'rsi_prev2': float(rsi.iloc[-3]) if len(rsi) >= 3 and not pd.isna(rsi.iloc[-3]) else None,
         'rsi_prev3': float(rsi.iloc[-4]) if len(rsi) >= 4 and not pd.isna(rsi.iloc[-4]) else None,
+        # May 15: rsi_prev6 = RSI 6 candles ago (~30min on 5m chart) for sustained momentum analytics
+        'rsi_prev6': float(rsi.iloc[-7]) if len(rsi) >= 7 and not pd.isna(rsi.iloc[-7]) else None,
         'adx': float(adx.iloc[-1]) if not pd.isna(adx.iloc[-1]) else None,
         'adx_prev1': float(adx.iloc[-2]) if len(adx) >= 2 and not pd.isna(adx.iloc[-2]) else None,
         # Exploration Analytics (Apr 28): +DI / -DI / ATR for next-batch bucket analysis

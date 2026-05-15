@@ -1600,7 +1600,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -2795,7 +2795,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "btc_slope_performance": [],
             "pair_ema20_ema50_gap_performance": [],
             "btc_ema20_ema50_gap_performance": [],
-            "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "rsi_direction_performance": [],
+            "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "rsi_direction_performance": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -3035,8 +3035,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     btc_adx_performance = []
     btc_adx_direction_performance = []
     btc_rsi_direction_performance = []  # May 15: BTC RSI direction at entry
+    btc_rsi_direction_30m_performance = []  # May 15: BTC RSI direction over 30min (sustained-momentum)
     adx_dir_crosstab = []
     rsi_dir_crosstab = []  # May 15: Pair RSI Dir × BTC RSI Dir cross-tab
+    btc_rsi_30m_5m_crosstab = []  # May 15: BTC RSI 30m × BTC RSI 5m cross-tab
     btc_slope_adx_crosstab = []
     pair_slope_adx_crosstab = []
     btc_rsi_performance = []
@@ -3726,6 +3728,77 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "by_confidence": brd_conf
                 })
 
+        # Performance by BTC RSI Direction (30min — sustained momentum) — May 15
+        btc_rsi_30m_dir_orders = [o for o in orders if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
+        for brsi30_dir_label in ["Rising", "Falling"]:
+            if brsi30_dir_label == "Rising":
+                br30_dir_pool = [o for o in btc_rsi_30m_dir_orders if o.entry_btc_rsi > o.entry_btc_rsi_prev6]
+            else:
+                br30_dir_pool = [o for o in btc_rsi_30m_dir_orders if o.entry_btc_rsi <= o.entry_btc_rsi_prev6]
+            if not br30_dir_pool:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                br30d_orders = [o for o in br30_dir_pool if (o.direction or "LONG") == direction]
+                br30d_count = len(br30d_orders)
+                if br30d_count == 0:
+                    continue
+                br30d_wins = len([o for o in br30d_orders if (o.pnl or 0) > 0])
+                br30d_pnl_sum = sum(o.pnl or 0 for o in br30d_orders)
+                br30d_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in br30d_orders)
+                br30d_avg_dur = sum((o.closed_at - o.opened_at).total_seconds() for o in br30d_orders if o.closed_at) / br30d_count if br30d_count > 0 else 0
+                br30d_h, br30d_m, br30d_s = int(br30d_avg_dur // 3600), int((br30d_avg_dur % 3600) // 60), int(br30d_avg_dur % 60)
+                br30d_conf = {}
+                for o in br30d_orders:
+                    c = o.confidence or "UNKNOWN"
+                    br30d_conf[c] = br30d_conf.get(c, 0) + 1
+                btc_rsi_direction_30m_performance.append({
+                    "btc_rsi_direction_30m": brsi30_dir_label,
+                    "direction": direction,
+                    "count": br30d_count,
+                    "win_rate": round(br30d_wins / br30d_count * 100, 1),
+                    "avg_pnl_usd": round(br30d_pnl_sum / br30d_count, 2),
+                    "avg_pnl_pct": round(br30d_pnl_pct_sum / br30d_count, 4),
+                    "total_pnl_usd": round(br30d_pnl_sum, 2),
+                    "avg_duration": f"{br30d_h:02d}:{br30d_m:02d}:{br30d_s:02d}",
+                    "by_confidence": br30d_conf
+                })
+
+        # BTC RSI 30m × BTC RSI 5m Cross-Tab — May 15
+        # Diagnoses sustained-momentum vs flicker. Both Falling = clean bear; mixed = transition zones.
+        btc_rsi_ct_orders = [o for o in orders if o.entry_btc_rsi is not None
+                             and o.entry_btc_rsi_prev is not None
+                             and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
+        for rsi30_dir in ["Rising", "Falling"]:
+            for rsi5_dir in ["Rising", "Falling"]:
+                pool = [o for o in btc_rsi_ct_orders
+                        if (o.entry_btc_rsi > o.entry_btc_rsi_prev6) == (rsi30_dir == "Rising")
+                        and (o.entry_btc_rsi > o.entry_btc_rsi_prev) == (rsi5_dir == "Rising")]
+                if not pool:
+                    continue
+                for direction in ["LONG", "SHORT"]:
+                    p_orders = [o for o in pool if (o.direction or "LONG") == direction]
+                    p_count = len(p_orders)
+                    if p_count == 0:
+                        continue
+                    p_wins = len([o for o in p_orders if (o.pnl or 0) > 0])
+                    p_pnl = sum(o.pnl or 0 for o in p_orders)
+                    p_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in p_orders)
+                    p_conf = {}
+                    for o in p_orders:
+                        c = o.confidence or "UNKNOWN"
+                        p_conf[c] = p_conf.get(c, 0) + 1
+                    btc_rsi_30m_5m_crosstab.append({
+                        "btc_rsi_30m_dir": rsi30_dir,
+                        "btc_rsi_5m_dir": rsi5_dir,
+                        "direction": direction,
+                        "trades": p_count,
+                        "win_rate": round(p_wins / p_count * 100, 1),
+                        "avg_pnl": round(p_pnl / p_count, 2),
+                        "avg_pnl_pct": round(p_pnl_pct_sum / p_count, 4),
+                        "total_pnl": round(p_pnl, 2),
+                        "by_confidence": p_conf,
+                    })
+
         # Pair RSI Dir × BTC RSI Dir Cross-Tab — May 15
         rsi_ct_orders = [o for o in orders if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None
                          and o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
@@ -4178,8 +4251,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         btc_adx_performance = []
         btc_adx_direction_performance = []
         btc_rsi_direction_performance = []  # May 15
+        btc_rsi_direction_30m_performance = []  # May 15
         adx_dir_crosstab = []
         rsi_dir_crosstab = []  # May 15
+        btc_rsi_30m_5m_crosstab = []  # May 15
         btc_slope_adx_crosstab = []
         pair_slope_adx_crosstab = []
         btc_rsi_performance = []
@@ -4328,6 +4403,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             # May 15: Pair RSI direction (matches RSI Momentum Filter — rsi vs rsi_prev2)
             rsi_rising = sum(1 for o in group if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None and o.entry_rsi > o.entry_rsi_prev)
             rsi_falling = sum(1 for o in group if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None and o.entry_rsi <= o.entry_rsi_prev)
+            # May 15: BTC RSI 30min sustained-momentum direction
+            btc_rsi_30m_rising = sum(1 for o in group if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None and o.entry_btc_rsi > o.entry_btc_rsi_prev6)
+            btc_rsi_30m_falling = sum(1 for o in group if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None and o.entry_btc_rsi <= o.entry_btc_rsi_prev6)
             ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
             adx_deltas = [o.entry_adx_delta for o in group if o.entry_adx_delta is not None]
             range_positions = [o.entry_range_position for o in group if o.entry_range_position is not None]
@@ -4456,6 +4534,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "btc_rsi_falling": btc_rsi_falling,
                 "rsi_rising": rsi_rising,
                 "rsi_falling": rsi_falling,
+                "btc_rsi_30m_rising": btc_rsi_30m_rising,
+                "btc_rsi_30m_falling": btc_rsi_30m_falling,
                 "avg_ema5_dist": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
                 "avg_adx_delta": round(sum(adx_deltas) / len(adx_deltas), 4) if adx_deltas else None,
                 "avg_range_position": round(sum(range_positions) / len(range_positions), 1) if range_positions else None,
@@ -4576,6 +4656,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             # May 15: Pair RSI direction (matches RSI Momentum Filter — rsi vs rsi_prev2)
             rsi_rising = sum(1 for o in group if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None and o.entry_rsi > o.entry_rsi_prev)
             rsi_falling = sum(1 for o in group if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None and o.entry_rsi <= o.entry_rsi_prev)
+            # May 15: BTC RSI 30min sustained-momentum direction
+            btc_rsi_30m_rising = sum(1 for o in group if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None and o.entry_btc_rsi > o.entry_btc_rsi_prev6)
+            btc_rsi_30m_falling = sum(1 for o in group if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None and o.entry_btc_rsi <= o.entry_btc_rsi_prev6)
             ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
             adx_deltas = [o.entry_adx_delta for o in group if o.entry_adx_delta is not None]
             range_positions = [o.entry_range_position for o in group if o.entry_range_position is not None]
@@ -4694,6 +4777,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 "btc_rsi_falling": btc_rsi_falling,
                 "rsi_rising": rsi_rising,
                 "rsi_falling": rsi_falling,
+                "btc_rsi_30m_rising": btc_rsi_30m_rising,
+                "btc_rsi_30m_falling": btc_rsi_30m_falling,
                 "avg_ema5_dist": round(sum(ema5_dists) / len(ema5_dists), 4) if ema5_dists else None,
                 "avg_adx_delta": round(sum(adx_deltas) / len(adx_deltas), 4) if adx_deltas else None,
                 "avg_range_position": round(sum(range_positions) / len(range_positions), 1) if range_positions else None,
@@ -5335,6 +5420,23 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     if row:
                         never_positive_deep_dive.append(row)
 
+            # BTC RSI Direction 30min (May 15) — sustained-momentum window (vs btc_rsi_prev6)
+            for np_btc_rsi30_dir_label in ["Rising", "Falling"]:
+                np_btc_rsi30_dir_trades = [o for o in np_trades if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
+                all_btc_rsi30_dir_trades = [o for o in orders if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None]
+                if np_btc_rsi30_dir_label == "Rising":
+                    np_btc_rsi30_dir_pool = [o for o in np_btc_rsi30_dir_trades if o.entry_btc_rsi > o.entry_btc_rsi_prev6]
+                    all_btc_rsi30_dir_pool = [o for o in all_btc_rsi30_dir_trades if o.entry_btc_rsi > o.entry_btc_rsi_prev6]
+                else:
+                    np_btc_rsi30_dir_pool = [o for o in np_btc_rsi30_dir_trades if o.entry_btc_rsi <= o.entry_btc_rsi_prev6]
+                    all_btc_rsi30_dir_pool = [o for o in all_btc_rsi30_dir_trades if o.entry_btc_rsi <= o.entry_btc_rsi_prev6]
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_btc_rsi30_dir_pool if (o.direction or "LONG") == direction]
+                    all_in = len([o for o in all_btc_rsi30_dir_pool if (o.direction or "LONG") == direction])
+                    row = _np_bucket_stats(bucket, "BTC RSI Direction 30m", np_btc_rsi30_dir_label, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
             # Market Breadth at Entry — LONGs binned by Bull%, SHORTs by Bear%
             for direction in ["LONG", "SHORT"]:
                 dir_np = [o for o in np_trades if (o.direction or "LONG") == direction]
@@ -5826,8 +5928,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "btc_adx_performance": btc_adx_performance,
         "btc_adx_direction_performance": btc_adx_direction_performance,
         "btc_rsi_direction_performance": btc_rsi_direction_performance,
+        "btc_rsi_direction_30m_performance": btc_rsi_direction_30m_performance,
         "adx_dir_crosstab": adx_dir_crosstab,
         "rsi_dir_crosstab": rsi_dir_crosstab,
+        "btc_rsi_30m_5m_crosstab": btc_rsi_30m_5m_crosstab,
         "pair_slope_adx_crosstab": pair_slope_adx_crosstab,
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
         "adx_delta_btc_adx_crosstab": adx_delta_btc_adx_crosstab,

@@ -1292,6 +1292,7 @@ class TradingEngine:
         entry_btc_adx_prev: Optional[float] = None,
         entry_btc_rsi: Optional[float] = None,
         entry_btc_rsi_prev: Optional[float] = None,
+        entry_btc_rsi_prev6: Optional[float] = None,
         entry_price_vs_ema5_pct: Optional[float] = None,
         entry_global_volume_ratio: Optional[float] = None,
         entry_pair_volume_ratio: Optional[float] = None,
@@ -1368,6 +1369,7 @@ class TradingEngine:
                 entry_btc_adx_prev=entry_btc_adx_prev,
                 entry_btc_rsi=entry_btc_rsi,
                 entry_btc_rsi_prev=entry_btc_rsi_prev,
+                entry_btc_rsi_prev6=entry_btc_rsi_prev6,
                 entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                 entry_global_volume_ratio=entry_global_volume_ratio,
                 entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -1856,6 +1858,7 @@ class TradingEngine:
         entry_btc_adx_prev: float = None,
         entry_btc_rsi: float = None,
         entry_btc_rsi_prev: float = None,
+        entry_btc_rsi_prev6: float = None,
         entry_price_vs_ema5_pct: float = None,
         entry_global_volume_ratio: float = None,
         entry_pair_volume_ratio: float = None,
@@ -2041,6 +2044,7 @@ class TradingEngine:
                         entry_btc_adx_prev=entry_btc_adx_prev,
                         entry_btc_rsi=entry_btc_rsi,
                         entry_btc_rsi_prev=entry_btc_rsi_prev,
+                        entry_btc_rsi_prev6=entry_btc_rsi_prev6,
                         entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                         entry_global_volume_ratio=entry_global_volume_ratio,
                         entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -2115,6 +2119,7 @@ class TradingEngine:
                         entry_btc_adx_prev=entry_btc_adx_prev,
                         entry_btc_rsi=entry_btc_rsi,
                         entry_btc_rsi_prev=entry_btc_rsi_prev,
+                        entry_btc_rsi_prev6=entry_btc_rsi_prev6,
                         entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                         entry_global_volume_ratio=entry_global_volume_ratio,
                         entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -2170,6 +2175,7 @@ class TradingEngine:
             entry_btc_adx_prev=entry_btc_adx_prev,
             entry_btc_rsi=entry_btc_rsi,
             entry_btc_rsi_prev=entry_btc_rsi_prev,
+            entry_btc_rsi_prev6=entry_btc_rsi_prev6,
             entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
             entry_global_volume_ratio=entry_global_volume_ratio,
             entry_pair_volume_ratio=entry_pair_volume_ratio,
@@ -4259,6 +4265,7 @@ class TradingEngine:
                 btc_adx_prev = btc_indicators.get('adx_prev1')
                 btc_rsi = btc_indicators.get('rsi')
                 btc_rsi_prev = btc_indicators.get('rsi_prev1')
+                btc_rsi_prev6 = btc_indicators.get('rsi_prev6')  # May 15: 30min sustained-momentum window
                 _flat_th_long = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_long',
                                        config.trading_config.thresholds.macro_trend_flat_threshold)
                 _flat_th_short = getattr(config.trading_config.thresholds, 'macro_trend_flat_threshold_short',
@@ -5116,6 +5123,7 @@ class TradingEngine:
                     entry_btc_adx_prev=round(btc_adx_prev, 4) if btc_adx_prev is not None else None,
                     entry_btc_rsi=round(btc_rsi, 1) if btc_rsi is not None else None,
                     entry_btc_rsi_prev=round(btc_rsi_prev, 1) if btc_rsi_prev is not None else None,
+                    entry_btc_rsi_prev6=round(btc_rsi_prev6, 1) if btc_rsi_prev6 is not None else None,
                     entry_price_vs_ema5_pct=entry_price_vs_ema5_pct,
                     entry_global_volume_ratio=round(_global_volume_ratio, 4),
                     entry_pair_volume_ratio=round(_pair_volume_ratio, 4),

@@ -46,6 +46,18 @@ logging.basicConfig(
 logging.getLogger("services").setLevel(logging.INFO)
 logger = logging.getLogger("scalpars")
 
+# Live Terminal — attach the logging handler that captures every LogRecord
+# into a thread-safe ring buffer for the /api/terminal/stream SSE endpoint.
+# Purely additive: it sits alongside the existing stdout StreamHandler.
+# Never raises (see live_terminal/handler.py).
+from live_terminal.handler import install as _install_terminal_handler
+from live_terminal.stream import (
+    start_heartbeat as _start_terminal_heartbeat,
+    stop_heartbeat as _stop_terminal_heartbeat,
+    event_stream_generator as _terminal_event_stream,
+)
+_install_terminal_handler()
+
 # Background task control
 _scan_task = None
 _monitor_task = None
@@ -242,10 +254,14 @@ async def lifespan(app: FastAPI):
         if open_orders:
             logger.info(f"[STARTUP] Subscribed to {len(open_orders)} open order pairs for WebSocket tracking (preserved existing tracking)")
     
+    # Live Terminal — start background heartbeat task once event loop is up
+    _start_terminal_heartbeat()
+
     logger.info("[STARTUP] SCALPARS Trading Platform started")
     yield
     # Shutdown
     logger.info("[SHUTDOWN] Stopping background tasks...")
+    _stop_terminal_heartbeat()
     await stop_background_tasks()
     
     # Save runtime before shutdown (so it persists across server restarts)
@@ -380,6 +396,27 @@ async def root(request: Request):
     """Serve main page"""
     with open("templates/index.html", "r") as f:
         return HTMLResponse(content=f.read())
+
+
+# ----- Live Terminal (UI-only observability) -----
+
+@app.get("/api/terminal/stream")
+async def terminal_event_stream(request: Request):
+    """Server-Sent Events stream for the Live Terminal view.
+
+    Replays the current ring buffer on connect, then streams new log
+    events as they arrive. See live_terminal/stream.py for details.
+    Purely additive — does not touch trading logic.
+    """
+    return StreamingResponse(
+        _terminal_event_stream(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",  # disable nginx/proxy buffering
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # ----- Bot Status -----

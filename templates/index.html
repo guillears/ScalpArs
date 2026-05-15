@@ -63,6 +63,8 @@
             color: #10b981;
         }
     </style>
+    <!-- Live Terminal — phosphor-green observability view (UI-only, additive) -->
+    <link rel="stylesheet" href="/static/live_terminal.css">
 </head>
 <body class="text-gray-100 font-sans">
     <!-- Toast Notification -->
@@ -139,6 +141,12 @@
                         </div>
                     </div>
 
+                    <!-- Live Terminal nav toggle — switches body content; header stays visible -->
+                    <div class="lt-nav-toggle">
+                        <button id="lt-nav-dashboard" class="active" onclick="if(window.LiveTerminal)window.LiveTerminal.hide()">Dashboard</button>
+                        <button id="lt-nav-terminal" onclick="if(window.LiveTerminal)window.LiveTerminal.show()">Live Terminal</button>
+                    </div>
+
                     <!-- Logout Button -->
                     <a href="/logout" class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-all duration-200" title="Logout">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,6 +201,8 @@
         </div>
     </div>
 
+    <!-- Dashboard view — hidden when Live Terminal is active -->
+    <div id="dashboard-view">
     <main class="container mx-auto px-6 py-8 space-y-8">
         <!-- Balance Cards -->
         <section>
@@ -4943,6 +4953,95 @@
             <p>SCALPARS Neural Decision Engine v1.0</p>
         </div>
     </footer>
+    </div><!-- /#dashboard-view -->
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         LIVE TERMINAL VIEW — phosphor-green observability UI
+         Hidden by default; toggled on/off by the nav buttons in the header.
+         Header above stays visible in both views (per design spec).
+         ════════════════════════════════════════════════════════════════════ -->
+    <div id="live-terminal-view" style="display:none">
+        <div class="lt-scanlines"></div>
+        <div class="lt-vignette"></div>
+        <div class="lt-katakana" id="lt-katakana"></div>
+
+        <!-- Boot sequence (plays once per tab session) -->
+        <div class="lt-boot" id="lt-boot">
+            <div class="lt-boot-wordmark">
+  ____   ____    _    _     ____   _    ____  ____
+ / ___| / ___|  / \  | |   |  _ \ / \  |  _ \/ ___|
+ \___ \| |     / _ \ | |   | |_) / _ \ | |_) \___ \
+  ___) | |___ / ___ \| |___|  __/ ___ \|  _ < ___) |
+ |____/ \____/_/   \_\_____|_| /_/   \_\_| \_\____/
+            </div>
+            <div class="lt-boot-lines" id="lt-boot-lines"></div>
+        </div>
+
+        <!-- Alert banner (sticky on ERROR/CRITICAL) -->
+        <div class="lt-alert-banner" id="lt-alert-banner">
+            <button id="lt-alert-dismiss" type="button">dismiss</button>
+            <span id="lt-alert-msg"></span>
+        </div>
+
+        <div class="lt-shell">
+            <!-- Price tape ticker -->
+            <div class="lt-ticker" id="lt-ticker">
+                <div class="lt-ticker-track" id="lt-ticker-track">
+                    <span class="lt-ticker-item" style="opacity:0.4">awaiting prices…</span>
+                </div>
+            </div>
+
+            <!-- Status bar -->
+            <div class="lt-statusbar">
+                <span id="lt-latency-text" class="lt-glow">LAT 30ms</span>
+                <span class="lt-lat-bar" id="lt-latency-bar"><div></div></span>
+                <span class="lt-constellation" id="lt-constellation">
+                    <span class="lt-dot dot-ws">ws</span>
+                    <span class="lt-dot dot-api">api</span>
+                    <span class="lt-dot dot-log">log</span>
+                    <span class="lt-dot dot-ex">ex</span>
+                </span>
+                <span id="lt-evmin" class="lt-glow">ev/min 0</span>
+                <span class="lt-crawl">
+                    <span style="opacity:0.7">▸ sweeping</span>
+                    <span class="lt-crawl-bar" id="lt-crawl-bar"><div></div></span>
+                    <span id="lt-crawl-text" class="lt-glow">0/50 · —</span>
+                    <span style="opacity:0.5">cyc</span>
+                    <span id="lt-cycle-num" class="lt-glow">#0</span>
+                </span>
+            </div>
+
+            <!-- Main grid -->
+            <div class="lt-main">
+                <div class="lt-feed" id="lt-feed"></div>
+                <div class="lt-radar">
+                    <div class="lt-radar-label">RADAR</div>
+                    <svg id="lt-radar-svg"></svg>
+                </div>
+                <div class="lt-side">
+                    <div class="lt-side-panel">
+                        <h4>POSITIONS</h4>
+                        <div id="lt-positions-body">
+                            <div class="lt-pos-row" style="opacity:0.4">no open positions</div>
+                        </div>
+                    </div>
+                    <div class="lt-side-panel">
+                        <h4>TOP SCANS</h4>
+                        <div id="lt-scans-body">
+                            <div class="lt-scan-row" style="opacity:0.4">awaiting scans…</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Activity heatmap -->
+            <div class="lt-heatmap" id="lt-heatmap"></div>
+
+            <!-- Footer stats -->
+            <div class="lt-footerbar" id="lt-footer-stats"></div>
+        </div>
+    </div>
+    <!-- ════════════════════════════════════════════════════════════════════ -->
 
     <script>
         // State
@@ -13513,5 +13612,8 @@
 
         // (Backtest engine removed)
     </script>
+
+    <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->
+    <script src="/static/live_terminal.js"></script>
 </body>
 </html>

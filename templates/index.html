@@ -1937,7 +1937,7 @@
                 <!-- Performance by Range Position -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Range Position</h3>
-                    <p class="text-xs text-gray-500 mb-3">Where price was in the 20-candle high-low range at entry. 0%=bottom, 100%=top. LONGs should enter low, SHORTs should enter high.</p>
+                    <p class="text-xs text-gray-500 mb-3">Where price was in the 20-candle high-low range at entry. 0%=bottom, 100%=top. LONGs should enter low, SHORTs should enter high. Avg Duration tests the "low-range losers ride longer" hypothesis (May 15).</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -1949,15 +1949,68 @@
                                     <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
                                     <th class="px-3 py-2 font-medium text-center">Confidence</th>
                                 </tr>
                             </thead>
                             <tbody id="range-position-performance-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting range position)</td></tr>
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting range position)</td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
+
+                <!-- Range Position × BTC RSI Direction Cross-Tab (May 15) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Range Position × BTC RSI Direction Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Diagnostic for "chasing the move" entries: low-range SHORTs entered while BTC RSI is Rising = chasing into reversal (squeeze risk). Low-range SHORTs with BTC RSI Falling = chasing during continuation (more sustainable).</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">Range Pos</th>
+                                    <th class="px-3 py-2 font-medium text-left">BTC RSI Dir</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-left">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                            </thead>
+                            <tbody id="range-pos-btc-rsi-dir-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting range pos × BTC RSI dir)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+                <!-- Range Position × Pair RSI Direction Cross-Tab (May 15) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Range Position × Pair RSI Direction Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Pair-level RSI momentum (vs rsi_prev2 ~10min, matches RSI Momentum Filter). Tests whether pair RSI direction discriminates within each Range Position bucket. Post-May-15 deploy only.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">Range Pos</th>
+                                    <th class="px-3 py-2 font-medium text-left">Pair RSI Dir</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-left">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                            </thead>
+                            <tbody id="range-pos-pair-rsi-dir-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
                 <!-- Performance by ADX Delta -->
                 <div class="mt-6 pt-6 border-t border-white/10">
@@ -6065,10 +6118,30 @@
             if (perf.range_position_performance && perf.range_position_performance.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by Range Position\n');
-                lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
                 for (const r of perf.range_position_performance) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
-                    lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+                    lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
+            if (perf.range_pos_btc_rsi_dir_crosstab && perf.range_pos_btc_rsi_dir_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Range Position x BTC RSI Direction Cross-Tab\n');
+                lines.push(`${'RangePos'.padEnd(12)} ${'BtcRsiDir'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.range_pos_btc_rsi_dir_crosstab) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.range_position||'').padEnd(12)} ${(r.btc_rsi_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                }
+            }
+
+            if (perf.range_pos_pair_rsi_dir_crosstab && perf.range_pos_pair_rsi_dir_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Range Position x Pair RSI Direction Cross-Tab (vs rsi_prev2)\n');
+                lines.push(`${'RangePos'.padEnd(12)} ${'PairRsiDir'.padEnd(11)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.range_pos_pair_rsi_dir_crosstab) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.range_position||'').padEnd(12)} ${(r.pair_rsi_dir||'').padEnd(11)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
                 }
             }
 
@@ -7284,10 +7357,32 @@
                 if (perf.range_position_performance && perf.range_position_performance.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Performance by Range Position\n');
-                    lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
                     for (const r of perf.range_position_performance) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
-                        lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+                        lines.push(`${(r.range||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- RANGE POSITION x BTC RSI DIRECTION CROSS-TAB (May 15) ---
+                if (perf.range_pos_btc_rsi_dir_crosstab && perf.range_pos_btc_rsi_dir_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Range Position x BTC RSI Direction Cross-Tab\n');
+                    lines.push(`${'RangePos'.padEnd(12)} ${'BtcRsiDir'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                    for (const r of perf.range_pos_btc_rsi_dir_crosstab) {
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.range_position||'').padEnd(12)} ${(r.btc_rsi_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                    }
+                }
+
+                // --- RANGE POSITION x PAIR RSI DIRECTION CROSS-TAB (May 15) ---
+                if (perf.range_pos_pair_rsi_dir_crosstab && perf.range_pos_pair_rsi_dir_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Range Position x Pair RSI Direction Cross-Tab (vs rsi_prev2)\n');
+                    lines.push(`${'RangePos'.padEnd(12)} ${'PairRsiDir'.padEnd(11)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                    for (const r of perf.range_pos_pair_rsi_dir_crosstab) {
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.range_position||'').padEnd(12)} ${(r.pair_rsi_dir||'').padEnd(11)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
                     }
                 }
 
@@ -8983,12 +9078,74 @@
                                 <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
                                 <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
                                 <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
                             </tr>
                         `;
                     }).join('');
                 } else {
-                    rpBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting range position)</td></tr>';
+                    rpBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting range position)</td></tr>';
+                }
+
+                // Range Position × BTC RSI Direction Cross-Tab (May 15)
+                const rpBtcRsiBody = document.getElementById('range-pos-btc-rsi-dir-crosstab-body');
+                const rpConfCols = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                if (data.range_pos_btc_rsi_dir_crosstab && data.range_pos_btc_rsi_dir_crosstab.length > 0) {
+                    rpBtcRsiBody.innerHTML = data.range_pos_btc_rsi_dir_crosstab.map(r => {
+                        const rsiDirColor = r.btc_rsi_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(2) + '%';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${rpConfCols[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${r.range_position}</td>
+                                <td class="px-3 py-2 font-medium ${rsiDirColor}">${r.btc_rsi_dir}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${avgPnlPctStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    rpBtcRsiBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting range pos × BTC RSI dir)</td></tr>';
+                }
+
+                // Range Position × Pair RSI Direction Cross-Tab (May 15)
+                const rpPairRsiBody = document.getElementById('range-pos-pair-rsi-dir-crosstab-body');
+                if (data.range_pos_pair_rsi_dir_crosstab && data.range_pos_pair_rsi_dir_crosstab.length > 0) {
+                    rpPairRsiBody.innerHTML = data.range_pos_pair_rsi_dir_crosstab.map(r => {
+                        const rsiDirColor = r.pair_rsi_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(2) + '%';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${rpConfCols[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${r.range_position}</td>
+                                <td class="px-3 py-2 font-medium ${rsiDirColor}">${r.pair_rsi_dir}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${avgPnlPctStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    rpPairRsiBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>';
                 }
 
                 // Performance by ADX Delta

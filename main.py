@@ -1600,7 +1600,7 @@ async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -2795,7 +2795,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
             "btc_slope_performance": [],
             "pair_ema20_ema50_gap_performance": [],
             "btc_ema20_ema50_gap_performance": [],
-            "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "rsi_direction_performance": [],
+            "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "rsi_direction_performance": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -3039,6 +3039,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
     adx_dir_crosstab = []
     rsi_dir_crosstab = []  # May 15: Pair RSI Dir × BTC RSI Dir cross-tab
     btc_rsi_30m_5m_crosstab = []  # May 15: BTC RSI 30m × BTC RSI 5m cross-tab
+    range_pos_btc_rsi_dir_crosstab = []  # May 15: Range Position × BTC RSI Direction (5m)
+    range_pos_pair_rsi_dir_crosstab = []  # May 15: Range Position × Pair RSI Direction (vs prev2)
     btc_slope_adx_crosstab = []
     pair_slope_adx_crosstab = []
     btc_rsi_performance = []
@@ -3346,6 +3348,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
                     conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                # May 15: avg duration column — tests "low-range losers ride longer" hypothesis
+                avg_dur_secs = sum((o.closed_at - o.opened_at).total_seconds() for o in dir_orders if o.closed_at) / count if count > 0 else 0
+                dh, dm, ds = int(avg_dur_secs // 3600), int((avg_dur_secs % 3600) // 60), int(avg_dur_secs % 60)
                 range_position_performance.append({
                     "range": range_name,
                     "direction": direction,
@@ -3354,8 +3359,92 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
+                    "avg_duration": f"{dh:02d}:{dm:02d}:{ds:02d}",
                     "by_confidence": conf_breakdown
                 })
+
+        # Range Position × BTC RSI Direction Cross-Tab (May 15)
+        # Tests: does macro RSI direction discriminate within Range Position buckets?
+        # Specifically: low-range SHORTs (chasing) — do they fail more when BTC RSI Rising?
+        rp_btcrsi_orders = [o for o in orders if o.entry_range_position is not None
+                            and o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None]
+        for rp_name, rp_min, rp_max in range_pos_ranges:
+            for btc_rsi_dir in ["Rising", "Falling"]:
+                if btc_rsi_dir == "Rising":
+                    pool = [o for o in rp_btcrsi_orders
+                            if rp_min <= o.entry_range_position < rp_max
+                            and o.entry_btc_rsi > o.entry_btc_rsi_prev]
+                else:
+                    pool = [o for o in rp_btcrsi_orders
+                            if rp_min <= o.entry_range_position < rp_max
+                            and o.entry_btc_rsi <= o.entry_btc_rsi_prev]
+                if not pool:
+                    continue
+                for direction in ["LONG", "SHORT"]:
+                    cell = [o for o in pool if (o.direction or "LONG") == direction]
+                    c_count = len(cell)
+                    if c_count == 0:
+                        continue
+                    c_wins = len([o for o in cell if (o.pnl or 0) > 0])
+                    c_pnl = sum(o.pnl or 0 for o in cell)
+                    c_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in cell)
+                    c_conf = {}
+                    for o in cell:
+                        c = o.confidence or "UNKNOWN"
+                        c_conf[c] = c_conf.get(c, 0) + 1
+                    range_pos_btc_rsi_dir_crosstab.append({
+                        "range_position": rp_name,
+                        "btc_rsi_dir": btc_rsi_dir,
+                        "direction": direction,
+                        "trades": c_count,
+                        "win_rate": round(c_wins / c_count * 100, 1),
+                        "avg_pnl": round(c_pnl / c_count, 2),
+                        "avg_pnl_pct": round(c_pnl_pct_sum / c_count, 4),
+                        "total_pnl": round(c_pnl, 2),
+                        "by_confidence": c_conf,
+                    })
+
+        # Range Position × Pair RSI Direction Cross-Tab (May 15)
+        # Tests: does pair-level RSI direction discriminate within Range Position buckets?
+        # Pair RSI direction uses rsi_prev2 (~10min, matches RSI Momentum Filter logic).
+        # Post-deploy trades only — entry_rsi_prev is NULL for historical orders.
+        rp_pairrsi_orders = [o for o in orders if o.entry_range_position is not None
+                             and o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None]
+        for rp_name, rp_min, rp_max in range_pos_ranges:
+            for pair_rsi_dir in ["Rising", "Falling"]:
+                if pair_rsi_dir == "Rising":
+                    pool = [o for o in rp_pairrsi_orders
+                            if rp_min <= o.entry_range_position < rp_max
+                            and o.entry_rsi > o.entry_rsi_prev]
+                else:
+                    pool = [o for o in rp_pairrsi_orders
+                            if rp_min <= o.entry_range_position < rp_max
+                            and o.entry_rsi <= o.entry_rsi_prev]
+                if not pool:
+                    continue
+                for direction in ["LONG", "SHORT"]:
+                    cell = [o for o in pool if (o.direction or "LONG") == direction]
+                    c_count = len(cell)
+                    if c_count == 0:
+                        continue
+                    c_wins = len([o for o in cell if (o.pnl or 0) > 0])
+                    c_pnl = sum(o.pnl or 0 for o in cell)
+                    c_pnl_pct_sum = sum(o.pnl_percentage or 0 for o in cell)
+                    c_conf = {}
+                    for o in cell:
+                        c = o.confidence or "UNKNOWN"
+                        c_conf[c] = c_conf.get(c, 0) + 1
+                    range_pos_pair_rsi_dir_crosstab.append({
+                        "range_position": rp_name,
+                        "pair_rsi_dir": pair_rsi_dir,
+                        "direction": direction,
+                        "trades": c_count,
+                        "win_rate": round(c_wins / c_count * 100, 1),
+                        "avg_pnl": round(c_pnl / c_count, 2),
+                        "avg_pnl_pct": round(c_pnl_pct_sum / c_count, 4),
+                        "total_pnl": round(c_pnl, 2),
+                        "by_confidence": c_conf,
+                    })
 
         # Performance by ADX Delta (adx - adx_prev at entry)
         adx_delta_ranges = [
@@ -4255,6 +4344,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         adx_dir_crosstab = []
         rsi_dir_crosstab = []  # May 15
         btc_rsi_30m_5m_crosstab = []  # May 15
+        range_pos_btc_rsi_dir_crosstab = []  # May 15
+        range_pos_pair_rsi_dir_crosstab = []  # May 15
         btc_slope_adx_crosstab = []
         pair_slope_adx_crosstab = []
         btc_rsi_performance = []
@@ -5932,6 +6023,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         "adx_dir_crosstab": adx_dir_crosstab,
         "rsi_dir_crosstab": rsi_dir_crosstab,
         "btc_rsi_30m_5m_crosstab": btc_rsi_30m_5m_crosstab,
+        "range_pos_btc_rsi_dir_crosstab": range_pos_btc_rsi_dir_crosstab,
+        "range_pos_pair_rsi_dir_crosstab": range_pos_pair_rsi_dir_crosstab,
         "pair_slope_adx_crosstab": pair_slope_adx_crosstab,
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
         "adx_delta_btc_adx_crosstab": adx_delta_btc_adx_crosstab,

@@ -10111,3 +10111,44 @@ Strongest single cross-sample entry-filter finding in the dataset (10 samples, N
 2. The promotion gates are pre-committed (no post-hoc threshold lowering)
 3. If user changes their mind and says "ship it", all the implementation context is documented
 
+## May 15, 2026 PM — Analytical baseline convention (May 14 onwards)
+
+### Decision
+
+**Default analytical window for table/bucket analysis = May 14 onwards.** Use the "Last 2 Days" filter on the dashboard (or `?window_hours=48` on the API). Older samples (May 4-12) are used for **cross-sample pattern validation only**, not pooled aggregation.
+
+### Rationale
+
+The May 4-12 batches each ran under materially different configs: leverage changes, filter additions and reverts, exit-rule retunes, blacklist changes, phantom BE infrastructure shipped + bug-fixed, BTC Vol + 1h RSI dimensions added, multiple ATR/EMA cap shifts.
+
+Per the locked Core Operating Principle on pooling: **"Never pool raw trades across different configs. Each run = different strategy. Use cross-sample patterns only."** May 4-12 trades count for cross-sample pattern *validation* (does X replicate in multiple samples?), not for daily aggregate analysis.
+
+May 14 onwards is the closest thing to a stable-config window we have. Even within it, several changes shipped (RSI Momentum filter disable, Score watchlist documented, time-window filter, phantom BE aggr cache-rebuild fix, BTC Vol/1h RSI columns) — but materially fewer than the earlier weeks. It's the right baseline going forward.
+
+### Rules
+
+1. **Default to May 14+ for tables and bucket analysis** unless explicitly stated otherwise.
+2. **When going wider than May 14+ (e.g., 10-sample cross-history), call it out explicitly** in the response. Example: "10-sample cross-history (Apr 28 – May 14)" or "pooled across all archived samples + today."
+3. **For brand-new dimensions** populated only post-May-15-PM (BTC Vol, BTC 1h RSI, post-fix phantom_be_aggr), call out small N explicitly. Don't draw conclusions from <10 trades in those buckets.
+4. **For cross-sample patterns** (locked HARD BLOCKS, locked PREMIUM ZONES), reference the original multi-sample evidence — those are the cross-history findings that justify the rules. They do NOT need re-validation within the 2-day window.
+
+### Column-by-column data availability
+
+For reference when reading reports:
+
+| Column | First populated | Available in May 14+ window? |
+|---|---|---|
+| `entry_btc_atr_pct`, `entry_btc_rsi_1h`, `entry_btc_rsi_1h_prev` | May 15 PM | Partial (post-deploy only) |
+| `phantom_be_aggr_*` (without cache-rebuild bug) | May 15 PM | Partial (post-fix only) |
+| `entry_btc_rsi_prev6`, `entry_rsi_prev` | May 15 AM | Yes (full May 15+) |
+| `entry_pair_volume_24h_usd` | May 10 | Yes |
+| `entry_dist_from_ema13_pct`, `entry_btc_dist_from_ema13_pct`, `entry_btc_1h_slope` | May 13-14 | Yes (full May 14+) |
+| Everything else (RSI/ADX/gap/breadth/regime/etc.) | ≥ Apr 28 | Yes |
+
+### Why this entry exists
+
+To anchor the analytical default — prevent accidental pooling of 6 weeks of mixed-config data in future analysis. Also: future-Claude (or future-User) reading reports from now on should mentally default to "Last 2 Days" unless cross-sample work explicitly invoked.
+
+This is a methodological lock-in, same character as the anti-overfit and the pooling-across-configs rules already in CLAUDE.md.
+
+

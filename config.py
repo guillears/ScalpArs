@@ -289,6 +289,12 @@ class SignalThresholds(BaseModel):
     btc_rsi_adx_multiplier_short: str = ""  # BTC-level multiplier rules for SHORT
     rsi_adx_multiplier_target: str = "investment"  # "investment" (multiply position size $) or "leverage"
     rsi_adx_multiplier_hard_cap: float = 2.0  # UI-configurable safety cap; engine clamps any cell to this
+    # Entry Quality Score floor (May 15 PM, opt-in). Default 0 = disabled.
+    # When ≥ 1, blocks entries with entry_quality_score < min. Cross-sample
+    # evidence (CLAUDE.md May 15 watchlist): Score ≤ 1 across 10 archived
+    # samples + today = N=95, 34.7% WR, −$684, direction-consistent loser.
+    # Ship gated behind explicit operator opt-in; do not enable by default.
+    entry_quality_score_min: int = 0
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
     global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)

@@ -5062,6 +5062,20 @@ class TradingEngine:
                     signal, entry_rsi, entry_adx, entry_gap,
                     _market_bull_pct, _market_bear_pct, btc_adx, pair_ema20_slope_pct
                 )
+                # Entry Quality Score floor filter (May 15 PM) — opt-in.
+                # Default 0 = disabled. When ≥ 1, blocks entries with score < threshold.
+                # Cross-sample evidence (CLAUDE.md May 15 watchlist): Score ≤ 1 across
+                # 10 archived samples + today = N=95, 34.7% WR, −$684 cumulative,
+                # 9/10 samples with WR ≤ 50%. Direction-consistent loser.
+                # No code action on score >= threshold; this filter does not down-weight
+                # high scores, only blocks below the floor.
+                _qs_min = getattr(config.trading_config.thresholds, 'entry_quality_score_min', 0) or 0
+                if _qs_min > 0 and entry_quality_score < _qs_min:
+                    logger.info(
+                        f"[QUALITY_SCORE_GATE] {pair}: {signal} blocked — entry_quality_score={entry_quality_score} < min={_qs_min}"
+                    )
+                    self._record_filter_block("ENTRY_QUALITY_SCORE_MIN", signal, had_room=_scan_had_room_snapshot)
+                    continue
                 entry_btc_regime = classify_btc_regime(btc_adx, btc_rsi, btc_ema20_slope_pct)
 
                 # Exploration Analytics (Apr 28) — observation-only fields

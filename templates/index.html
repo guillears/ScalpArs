@@ -4019,6 +4019,14 @@
                                 <input type="number" id="config-min-adx-delta-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.10">
                             </div>
                         </div>
+                        <p class="text-xs text-gray-500 mt-3 mb-1">Entry Quality Score floor (May 15 PM, opt-in). 6-point composite of pair RSI/ADX/gap sweet-spot hits + macro alignment. Blocks entries with score &lt; threshold. Cross-sample evidence: Score ≤ 1 across 10 archived samples = N=95, 34.7% WR, −$684 cumulative. <strong>0 = disabled (default)</strong>. Set to 2 to block both Score 0 and Score 1.</p>
+                        <div class="flex items-center gap-4 mt-1 flex-wrap">
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">Min Quality Score:</span>
+                                <input type="number" id="config-entry-quality-score-min" step="1" min="0" max="6" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0">
+                                <span class="text-xs text-gray-500">/ 6 (0 = disabled)</span>
+                            </div>
+                        </div>
                         <p class="text-xs text-gray-500 mt-3 mb-1">Range Position filter (price position in 20-candle high-low range, 0%=bottom, 100%=top). May 12: SHORT @ RP &lt;2% = cross-batch pile-on (N=22, 32% WR, -$452). LONG max 100 = disabled (90-95% hole on watchlist). 0/100 = disabled.</p>
                         <div class="flex items-center gap-4 mt-1 flex-wrap">
                             <div class="flex items-center gap-1">
@@ -6649,6 +6657,7 @@
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
             lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
+            lines.push(`  Entry Quality Score Min: ${th.entry_quality_score_min || 0}  (May 15 PM opt-in; 0 = disabled. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA13 gap compressing vs prev 1 or 2 candles)`);
 
@@ -12724,6 +12733,8 @@
                 // Stretch-based multipliers retired May 15 PM.
                 document.getElementById('config-mult-target').value = config.thresholds.rsi_adx_multiplier_target || 'investment';
                 document.getElementById('config-mult-hard-cap').value = config.thresholds.rsi_adx_multiplier_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_hard_cap : 2.0;
+                const _qsMinEl = document.getElementById('config-entry-quality-score-min');
+                if (_qsMinEl) _qsMinEl.value = config.thresholds.entry_quality_score_min !== undefined ? config.thresholds.entry_quality_score_min : 0;
                 document.getElementById('config-regime-change-exit-enabled').checked = config.thresholds.regime_change_exit_enabled !== undefined ? config.thresholds.regime_change_exit_enabled : true;
                 document.getElementById('config-rsi-handoff-active').checked = config.thresholds.rsi_handoff_active !== undefined ? config.thresholds.rsi_handoff_active : false;
                 document.getElementById('config-rsi-handoff-level').value = config.thresholds.rsi_handoff_level !== undefined ? config.thresholds.rsi_handoff_level : 3;
@@ -13368,6 +13379,7 @@
                     btc_rsi_adx_multiplier_short: collectMultRules('short', 'btc'),
                     rsi_adx_multiplier_target: document.getElementById('config-mult-target').value || 'investment',
                     rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
+                    entry_quality_score_min: parseInt((document.getElementById('config-entry-quality-score-min') || {}).value) || 0,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,
                     rsi_handoff_active: document.getElementById('config-rsi-handoff-active').checked,
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,

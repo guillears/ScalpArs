@@ -1572,12 +1572,16 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 # ----- Performance Metrics -----
 
 @app.get("/api/performance")
-async def get_performance(regime: str = None, db: AsyncSession = Depends(get_db)):
-    """Get closed orders performance metrics, optionally filtered by macro trend regime"""
+async def get_performance(regime: str = None, window_hours: int = None, db: AsyncSession = Depends(get_db)):
+    """Get closed orders performance metrics, optionally filtered by macro trend regime and/or time window.
+
+    window_hours: int — restrict to trades closed within the last N hours (e.g., 24=last day, 168=last week).
+                  None / 0 / negative = no time filter (default).
+    """
     await trading_engine.initialize(db)
-    
+
     try:
-        return await _compute_performance(db, regime=regime)
+        return await _compute_performance(db, regime=regime, window_hours=window_hours)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         return {
@@ -2645,7 +2649,7 @@ def _compute_time_buckets(orders, bucket_minutes=15):
         return []
 
 
-async def _compute_performance(db: AsyncSession, regime: str = None):
+async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None):
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
@@ -2728,7 +2732,17 @@ async def _compute_performance(db: AsyncSession, regime: str = None):
         orders = [o for o in all_orders if (o.entry_macro_trend or 'NEUTRAL') == regime]
     else:
         orders = all_orders
-    
+
+    # Apply time-window filter if requested (May 15 PM).
+    # window_hours = N restricts to trades closed within the last N hours.
+    # Applied AFTER the regime filter so the two compose. Same window applied
+    # to signal_expired_orders so SIGNAL_EXPIRED rows in Entry Conditions by
+    # Outcome / Signal Expired Breakdown reflect the same recency cut.
+    if window_hours and window_hours > 0:
+        _cutoff = datetime.utcnow() - timedelta(hours=window_hours)
+        orders = [o for o in orders if o.closed_at and o.closed_at >= _cutoff]
+        signal_expired_orders = [o for o in signal_expired_orders if o.closed_at and o.closed_at >= _cutoff]
+
     if not orders:
         logger.warning("[PERF] No closed orders found for is_paper=%s (regime=%s), returning empty performance",
                        trading_engine.is_paper_mode, regime)

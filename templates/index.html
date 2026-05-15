@@ -444,7 +444,7 @@
                 <p class="text-xs text-gray-500 mb-4">All metrics below are calculated from closed orders only</p>
 
                 <!-- Regime Filter & Copy Buttons -->
-                <div class="mb-4 flex items-center gap-4">
+                <div class="mb-4 flex items-center gap-4 flex-wrap">
                     <span class="text-sm font-semibold text-gray-300">Filter by Macro Trend:</span>
                     <select id="regime-filter" class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()">
                         <option value="">All Regimes</option>
@@ -453,6 +453,20 @@
                         <option value="NEUTRAL">NEUTRAL</option>
                     </select>
                     <span id="regime-filter-badge" class="text-xs text-gray-500"></span>
+                    <span class="text-sm font-semibold text-gray-300">Filter by Time Window:</span>
+                    <select id="window-filter" class="bg-white/5 border border-white/10 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()">
+                        <option value="">All Time</option>
+                        <option value="6">Last 6h</option>
+                        <option value="12">Last 12h</option>
+                        <option value="24">Last 1 Day</option>
+                        <option value="48">Last 2 Days</option>
+                        <option value="72">Last 3 Days</option>
+                        <option value="120">Last 5 Days</option>
+                        <option value="168">Last 7 Days</option>
+                        <option value="360">Last 15 Days</option>
+                        <option value="720">Last 30 Days</option>
+                    </select>
+                    <span id="window-filter-badge" class="text-xs text-gray-500"></span>
                     <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
@@ -6739,7 +6753,11 @@
             btn.disabled = true;
             try {
                 const regimeFilter = document.getElementById('regime-filter').value;
-                const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
+                const windowFilter = (document.getElementById('window-filter') || {}).value || '';
+                const _params1 = [];
+                if (regimeFilter) _params1.push(`regime=${regimeFilter}`);
+                if (windowFilter) _params1.push(`window_hours=${windowFilter}`);
+                const regimeParam = _params1.length ? '?' + _params1.join('&') : '';
                 const [perfRes, cfgRes, logRes, statusRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance${regimeParam}`),
                     fetch(`${API_BASE}/api/config`),
@@ -6759,6 +6777,10 @@
                 const _rpt1 = new Date(Date.now() - 3 * 60 * 60 * 1000);
                 lines.push(`Generated: ${_rpt1.toISOString().replace('T',' ').substring(0,19)} UTC-3`);
                 if (regimeFilter) lines.push(`Filter: ${regimeFilter} trades only`);
+                if (windowFilter) {
+                    const _wLabels1 = { '6':'last 6h','12':'last 12h','24':'last 1 day','48':'last 2 days','72':'last 3 days','120':'last 5 days','168':'last 7 days','360':'last 15 days','720':'last 30 days' };
+                    lines.push(`Time window: ${_wLabels1[windowFilter] || windowFilter + 'h'}`);
+                }
                 lines.push(hr);
 
                 lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));
@@ -7963,9 +7985,11 @@
             btn.textContent = 'Loading...';
             btn.disabled = true;
             try {
+                const windowFilter = (document.getElementById('window-filter') || {}).value || '';
+                const _winSuffix = windowFilter ? `&window_hours=${windowFilter}` : '';
                 const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes] = await Promise.all([
-                    fetch(`${API_BASE}/api/performance?regime=BULLISH`),
-                    fetch(`${API_BASE}/api/performance?regime=BEARISH`),
+                    fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
+                    fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/config`),
                     fetch(`${API_BASE}/api/config/changelog?limit=50`),
                     fetch(`${API_BASE}/api/status`)
@@ -7984,6 +8008,10 @@
                 lines.push('TRADING BOT SPLIT ANALYTICS REPORT');
                 const _rpt2 = new Date(Date.now() - 3 * 60 * 60 * 1000);
                 lines.push(`Generated: ${_rpt2.toISOString().replace('T',' ').substring(0,19)} UTC-3`);
+                if (windowFilter) {
+                    const _wLabels2 = { '6':'last 6h','12':'last 12h','24':'last 1 day','48':'last 2 days','72':'last 3 days','120':'last 5 days','168':'last 7 days','360':'last 15 days','720':'last 30 days' };
+                    lines.push(`Time window: ${_wLabels2[windowFilter] || windowFilter + 'h'}`);
+                }
                 lines.push(hr);
 
                 lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));
@@ -8039,11 +8067,20 @@
             try {
                 const safe = (v, fb=0) => (v != null && !isNaN(v)) ? v : fb;
                 const regimeFilter = document.getElementById('regime-filter').value;
-                const regimeParam = regimeFilter ? `?regime=${regimeFilter}` : '';
+                const windowFilter = (document.getElementById('window-filter') || {}).value || '';
+                const params = [];
+                if (regimeFilter) params.push(`regime=${regimeFilter}`);
+                if (windowFilter) params.push(`window_hours=${windowFilter}`);
+                const queryStr = params.length ? '?' + params.join('&') : '';
                 const badge = document.getElementById('regime-filter-badge');
                 badge.textContent = regimeFilter ? `Showing ${regimeFilter} trades only` : '';
+                const wBadge = document.getElementById('window-filter-badge');
+                if (wBadge) {
+                    const wLabel = { '6':'last 6h','12':'last 12h','24':'last 1 day','48':'last 2 days','72':'last 3 days','120':'last 5 days','168':'last 7 days','360':'last 15 days','720':'last 30 days' }[windowFilter];
+                    wBadge.textContent = wLabel ? `Showing ${wLabel}` : '';
+                }
                 const [res, balRes] = await Promise.all([
-                    fetch(`${API_BASE}/api/performance${regimeParam}`),
+                    fetch(`${API_BASE}/api/performance${queryStr}`),
                     fetch(`${API_BASE}/api/balance`)
                 ]);
                 const data = await res.json();

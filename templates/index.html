@@ -755,6 +755,7 @@
                                     <th class="px-3 py-2 font-medium text-right">AvgRSI</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgADX</th>
                                     <th class="px-3 py-2 font-medium text-center" title="ADX Direction at entry: Rising/Falling count">ADXDir</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="Pair RSI Direction at entry: Rising/Falling count vs rsi_prev2 (matches RSI Momentum Filter). May 15.">RSIDir</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average EMA20 gap at entry">AvgGap</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average EMA5-EMA8 gap at entry">Gap5-8</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average EMA5 stretch (price-to-EMA5 distance)">Stretch</th>
@@ -806,6 +807,7 @@
                                     <th class="px-3 py-2 font-medium text-right">AvgRSI</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgADX</th>
                                     <th class="px-3 py-2 font-medium text-center" title="ADX Direction at entry: Rising/Falling count">ADXDir</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="Pair RSI Direction at entry: Rising/Falling count vs rsi_prev2 (matches RSI Momentum Filter). May 15.">RSIDir</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average EMA20 gap at entry">AvgGap</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average EMA5-EMA8 gap at entry">Gap5-8</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Average EMA5 stretch (price-to-EMA5 distance)">Stretch</th>
@@ -2033,6 +2035,32 @@
                     </div>
                 </div>
 
+                <!-- Performance by RSI Direction (May 15) — matches RSI Momentum Filter comparison (rsi vs rsi_prev2) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by RSI Direction at Entry</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by whether pair RSI was rising or falling at entry (RSI vs 2 candles ago — ~10min — matches RSI Momentum Filter logic). Helps decide whether to re-enable the filter.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">RSI Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rsi-direction-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by EMA5 Stretch -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by EMA5 Stretch</h3>
@@ -2304,6 +2332,32 @@
                     </div>
             </div>
 
+                <!-- Performance by BTC RSI Direction (May 15) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC RSI Direction at Entry</h3>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and P&L by whether BTC RSI was rising or falling at entry (BTC RSI vs previous 5m candle). Falling BTC RSI = momentum continuing down (favorable for SHORTs); Rising BTC RSI = potential snapback risk for SHORTs.</p>
+                    <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">BTC RSI Dir</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Duration</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                        </thead>
+                            <tbody id="btc-rsi-direction-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC RSI direction)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+            </div>
+
                 <!-- Performance by BTC Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Entry RSI</h3>
@@ -2357,7 +2411,33 @@
                     </table>
                 </div>
             </div>
-            
+
+                <!-- Pair RSI Dir x BTC RSI Dir Cross-Tab (May 15) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Pair RSI Dir x BTC RSI Dir Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Performance by combination of pair RSI direction (vs 2 candles ago — matches RSI Momentum Filter) and BTC RSI direction (vs prev candle). Falling pair + Falling BTC = momentum aligned; Rising = counter-momentum entry.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-gray-300">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium text-left">Pair RSI Dir</th>
+                                    <th class="px-3 py-2 font-medium text-left">BTC RSI Dir</th>
+                                    <th class="px-3 py-2 font-medium text-right"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-left">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Confidence</th>
+                            </tr>
+                            </thead>
+                            <tbody id="rsi-dir-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
                 <!-- Pair EMA20 Slope x Pair ADX Cross-Tab (NEW May 2) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Pair EMA20 Slope x Pair ADX Cross-Tab</h3>
@@ -5299,7 +5379,7 @@
 
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Close Reason\n');
-            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+            lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
             const _fmtVolUSDexp = (v) => v == null ? '-' : (v >= 1e9 ? '$'+(v/1e9).toFixed(2)+'B' : '$'+(v/1e6).toFixed(0)+'M');
             for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                 const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
@@ -5307,6 +5387,7 @@
                 const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
                 const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
                 const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
+                const rsiDirStr = `${r.rsi_rising||0}R/${r.rsi_falling||0}F`;
                 const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
                 const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
                 const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
@@ -5331,12 +5412,12 @@
                 const slProfStr = (_slP + _slN + _slBE) === 0 ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                 const _gvolStr = r.avg_global_vol_ratio != null ? r.avg_global_vol_ratio.toFixed(2) : '-';
                 const _pvolStr = _fmtVolUSDexp(r.avg_pair_vol_usd);
-                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStr.padEnd(10)} ${_pvolStr.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStr.padEnd(10)} ${_pvolStr.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
             }
 
             lines.push(`\n${hr2}`);
             lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
-            lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+            lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
             const _ecoOrder = (a, b) => {
                 const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
                 const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
@@ -5348,6 +5429,7 @@
                 const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
                 const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
                 const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
+                const rsiDirStr = `${r.rsi_rising||0}R/${r.rsi_falling||0}F`;
                 const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
                 const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
                 const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
@@ -5374,7 +5456,7 @@
                 const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                 const _gvolStrO = r.avg_global_vol_ratio != null ? r.avg_global_vol_ratio.toFixed(2) : '-';
                 const _pvolStrO = _fmtVolUSDexp(r.avg_pair_vol_usd);
-                lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
             }
 
             // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
@@ -5966,6 +6048,16 @@
                 }
             }
 
+            if (perf.rsi_direction_performance && perf.rsi_direction_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by RSI Direction at Entry (vs rsi_prev2 — matches RSI Momentum Filter)\n');
+                lines.push(`${'RSI Dir'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.rsi_direction_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.rsi_direction||'').padEnd(10)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by EMA5 Stretch\n');
             lines.push(`${'Range'.padEnd(16)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
@@ -6048,6 +6140,16 @@
                 for (const r of perf.btc_adx_direction_performance) {
                     const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     lines.push(`${(r.btc_adx_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                }
+            }
+
+            if (perf.btc_rsi_direction_performance && perf.btc_rsi_direction_performance.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by BTC RSI Direction at Entry\n');
+                lines.push(`${'BTC RSI Dir'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const r of perf.btc_rsi_direction_performance) {
+                    const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.btc_rsi_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
                 }
             }
 
@@ -6149,6 +6251,16 @@
                 for (const r of perf.adx_dir_crosstab) {
                     const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     lines.push(`${(r.pair_adx_dir||'').padEnd(10)} ${(r.btc_adx_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                }
+            }
+
+            if (perf.rsi_dir_crosstab && perf.rsi_dir_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Pair RSI Dir x BTC RSI Dir Cross-Tab\n');
+                lines.push(`${'PairRSI'.padEnd(10)} ${'BtcRSI'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                for (const r of perf.rsi_dir_crosstab) {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(r.pair_rsi_dir||'').padEnd(10)} ${(r.btc_rsi_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
                 }
             }
 
@@ -6451,7 +6563,7 @@
                 // --- ENTRY CONDITIONS BY CLOSE REASON ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Close Reason\n');
-                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+                lines.push(`${'Reason'.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
                 const _fmtVolUSDexp2 = (v) => v == null ? '-' : (v >= 1e9 ? '$'+(v/1e9).toFixed(2)+'B' : '$'+(v/1e6).toFixed(0)+'M');
                 for (const r of (perf.entry_conditions_by_reason || []).sort((a, b) => b.trades - a.trades)) {
                     const dirSuffix = r.direction === 'LONG' ? ' (L)' : ' (S)';
@@ -6459,6 +6571,7 @@
                     const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
                     const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
                     const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
+                const rsiDirStr = `${r.rsi_rising||0}R/${r.rsi_falling||0}F`;
                     const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
                     const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
                     const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
@@ -6483,13 +6596,13 @@
                     const slProfStr = (_slP + _slN + _slBE) === 0 ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                     const _gvolStr = r.avg_global_vol_ratio != null ? r.avg_global_vol_ratio.toFixed(2) : '-';
                     const _pvolStr = _fmtVolUSDexp2(r.avg_pair_vol_usd);
-                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStr.padEnd(10)} ${_pvolStr.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                    lines.push(`${(r.reason + dirSuffix).padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStr.padEnd(10)} ${_pvolStr.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
                 }
 
                 // --- ENTRY CONDITIONS BY OUTCOME (Winners vs Losers, May 2) ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Conditions by Outcome (Winners vs Losers)\n');
-                lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
+                lines.push(`${'Outcome'.padEnd(14)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`);
                 const _ecoOrder2 = (a, b) => {
                     const dirRank = (r) => r.direction === 'LONG' ? 0 : 1;
                     const outRank = (r) => r.outcome === 'Winners' ? 0 : (r.outcome === 'Losers' ? 1 : 2);
@@ -6501,6 +6614,7 @@
                     const adxDirStr = `${r.adx_rising}R/${r.adx_falling}F`;
                     const btcAdxDirStr = `${r.btc_adx_rising}R/${r.btc_adx_falling}F`;
                     const btcRsiDirStr = `${r.btc_rsi_rising||0}R/${r.btc_rsi_falling||0}F`;
+                const rsiDirStr = `${r.rsi_rising||0}R/${r.rsi_falling||0}F`;
                     const gapStr = r.avg_gap != null ? r.avg_gap.toFixed(2) + '%' : '-';
                     const gap58Str = r.avg_gap58 != null ? r.avg_gap58.toFixed(2) + '%' : '-';
                     const stretchStr = r.avg_stretch != null ? r.avg_stretch.toFixed(2) + '%' : '-';
@@ -6527,7 +6641,7 @@
                     const slProfStr = (_isWinner || _isAborted || (_slP + _slN + _slBE) === 0) ? '-' : (`P:${_slP} N:${_slN}` + (_slBE > 0 ? ` BE:${_slBE}` : ''));
                     const _gvolStrO = r.avg_global_vol_ratio != null ? r.avg_global_vol_ratio.toFixed(2) : '-';
                     const _pvolStrO = _fmtVolUSDexp2(r.avg_pair_vol_usd);
-                    lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                    lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
                 }
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
@@ -7136,6 +7250,17 @@
                     }
                 }
 
+                // --- RSI DIRECTION PERFORMANCE (May 15) ---
+                if (perf.rsi_direction_performance && perf.rsi_direction_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by RSI Direction at Entry (vs rsi_prev2 — matches RSI Momentum Filter)\n');
+                    lines.push(`${'RSI Dir'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf.rsi_direction_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.rsi_direction||'').padEnd(10)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
                 // --- STRETCH PERFORMANCE ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by EMA5 Stretch\n');
@@ -7226,6 +7351,17 @@
                     for (const r of perf.btc_adx_direction_performance) {
                         const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.btc_adx_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
+                    }
+                }
+
+                // --- BTC RSI DIRECTION PERFORMANCE (May 15) ---
+                if (perf.btc_rsi_direction_performance && perf.btc_rsi_direction_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by BTC RSI Direction at Entry\n');
+                    lines.push(`${'BTC RSI Dir'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Duration'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                    for (const r of perf.btc_rsi_direction_performance) {
+                        const confStr = Object.entries(r.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.btc_rsi_direction||'').padEnd(12)} ${String(r.count).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${(r.avg_duration||'-').padEnd(10)} ${confStr.padEnd(14)}`);
                     }
                 }
 
@@ -7332,6 +7468,17 @@
                     for (const r of perf.adx_dir_crosstab) {
                         const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                         lines.push(`${(r.pair_adx_dir||'').padEnd(10)} ${(r.btc_adx_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
+                    }
+                }
+
+                // --- PAIR RSI DIR x BTC RSI DIR CROSS-TAB (May 15) ---
+                if (perf.rsi_dir_crosstab && perf.rsi_dir_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Pair RSI Dir x BTC RSI Dir Cross-Tab\n');
+                    lines.push(`${'PairRSI'.padEnd(10)} ${'BtcRSI'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Confidence'.padEnd(20)}`);
+                    for (const r of perf.rsi_dir_crosstab) {
+                        const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        lines.push(`${(r.pair_rsi_dir||'').padEnd(10)} ${(r.btc_rsi_dir||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.direction||'').padEnd(7)} ${(r.win_rate+'%').padEnd(6)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr}`);
                     }
                 }
 
@@ -7873,6 +8020,7 @@
                             const adxDirStr = `<span class="text-emerald-400 text-xs">${r.adx_rising}R</span>/<span class="text-red-400 text-xs">${r.adx_falling}F</span>`;
                             const btcAdxDirStr = `<span class="text-emerald-400 text-xs">${r.btc_adx_rising}R</span>/<span class="text-red-400 text-xs">${r.btc_adx_falling}F</span>`;
                             const btcRsiDirStr = `<span class="text-emerald-400 text-xs">${r.btc_rsi_rising || 0}R</span>/<span class="text-red-400 text-xs">${r.btc_rsi_falling || 0}F</span>`;
+                            const rsiDirStr = `<span class="text-emerald-400 text-xs">${r.rsi_rising || 0}R</span>/<span class="text-red-400 text-xs">${r.rsi_falling || 0}F</span>`;
                             const totalPnlUsd = r.total_pnl_usd || 0;
                             const totalPnlClass = totalPnlUsd >= 0 ? 'text-emerald-400' : 'text-red-400';
                             return `
@@ -7883,6 +8031,7 @@
                                 <td class="px-3 py-2 text-right">${r.avg_rsi != null ? safe(r.avg_rsi).toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_adx != null ? safe(r.avg_adx).toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-center">${adxDirStr}</td>
+                                <td class="px-3 py-2 text-center">${rsiDirStr}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_gap != null ? safe(r.avg_gap).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_gap58 != null ? safe(r.avg_gap58).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_stretch != null ? safe(r.avg_stretch).toFixed(2) + '%' : '-'}</td>
@@ -7955,6 +8104,7 @@
                             const adxDirStr = `<span class="text-emerald-400 text-xs">${r.adx_rising}R</span>/<span class="text-red-400 text-xs">${r.adx_falling}F</span>`;
                             const btcAdxDirStr = `<span class="text-emerald-400 text-xs">${r.btc_adx_rising}R</span>/<span class="text-red-400 text-xs">${r.btc_adx_falling}F</span>`;
                             const btcRsiDirStr = `<span class="text-emerald-400 text-xs">${r.btc_rsi_rising || 0}R</span>/<span class="text-red-400 text-xs">${r.btc_rsi_falling || 0}F</span>`;
+                            const rsiDirStr = `<span class="text-emerald-400 text-xs">${r.rsi_rising || 0}R</span>/<span class="text-red-400 text-xs">${r.rsi_falling || 0}F</span>`;
                             const totalPnlUsd = r.total_pnl_usd || 0;
                             const totalPnlClass = totalPnlUsd >= 0 ? 'text-emerald-400' : 'text-red-400';
                             return `
@@ -7965,6 +8115,7 @@
                                 <td class="px-3 py-2 text-right">${r.avg_rsi != null ? safe(r.avg_rsi).toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_adx != null ? safe(r.avg_adx).toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-center">${adxDirStr}</td>
+                                <td class="px-3 py-2 text-center">${rsiDirStr}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_gap != null ? safe(r.avg_gap).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_gap58 != null ? safe(r.avg_gap58).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right">${r.avg_stretch != null ? safe(r.avg_stretch).toFixed(2) + '%' : '-'}</td>
@@ -8863,6 +9014,48 @@
                     adxDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction)</td></tr>';
                 }
 
+                // Performance by RSI Direction (May 15) — mirrors ADX Direction renderer above
+                const rsiDirBody = document.getElementById('rsi-direction-performance-body');
+                if (data.rsi_direction_performance && data.rsi_direction_performance.length > 0) {
+                    const confBadgeColorsRsiDir = {
+                        'LOW': 'text-yellow-400',
+                        'MEDIUM': 'text-orange-400',
+                        'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400',
+                        'VERY_STRONG': 'text-purple-400',
+                        'STRONG_BUY': 'text-pink-400'
+                    };
+                    rsiDirBody.innerHTML = data.rsi_direction_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const rsiDirColor = r.rsi_direction === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confBadgeColorsRsiDir[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${rsiDirColor}">${r.rsi_direction}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    rsiDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>';
+                }
+
                 // Performance by EMA5 Stretch
                 const stretchBody = document.getElementById('stretch-performance-body');
                 if (data.stretch_performance && data.stretch_performance.length > 0) {
@@ -9234,6 +9427,43 @@
                     btcAdxDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC ADX direction)</td></tr>';
                 }
 
+                // Performance by BTC RSI Direction (May 15)
+                const btcRsiDirBody = document.getElementById('btc-rsi-direction-performance-body');
+                if (data.btc_rsi_direction_performance && data.btc_rsi_direction_performance.length > 0) {
+                    const confColsBtcRsiDir = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    btcRsiDirBody.innerHTML = data.btc_rsi_direction_performance.map(r => {
+                        const pnlClass = r.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const btcRsiDirColor = r.btc_rsi_direction === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confColsBtcRsiDir[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${btcRsiDirColor}">${r.btc_rsi_direction}</td>
+                                <td class="px-3 py-2 text-center">${r.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(r.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${r.avg_pnl_pct != null ? (r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${r.avg_duration || '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    btcRsiDirBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting BTC RSI direction)</td></tr>';
+                }
+
                 // Performance by BTC Entry RSI
                 const btcRsiBody = document.getElementById('btc-rsi-performance-body');
                 if (data.btc_rsi_performance && data.btc_rsi_performance.length > 0) {
@@ -9300,6 +9530,40 @@
                     }).join('');
                 } else {
                     adxDirCtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting ADX direction cross-tab)</td></tr>';
+                }
+
+                // Pair RSI Dir x BTC RSI Dir Cross-Tab (May 15)
+                const rsiDirCtBody = document.getElementById('rsi-dir-crosstab-body');
+                const rsiCtConfColors = { 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400', 'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400', 'EXTREME': 'text-blue-400' };
+                if (data.rsi_dir_crosstab && data.rsi_dir_crosstab.length > 0) {
+                    rsiDirCtBody.innerHTML = data.rsi_dir_crosstab.map(r => {
+                        const pairDirColor = r.pair_rsi_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const btcDirColor = r.btc_rsi_dir === 'Rising' ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = r.total_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlClass = r.avg_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPnlPctStr = ((r.avg_pnl_pct || 0) >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(2) + '%';
+                        const confBadges = Object.entries(r.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([c, n]) => `<span class="${rsiCtConfColors[c] || 'text-gray-400'} text-xs">${c[0]}:${n}</span>`)
+                            .join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium ${pairDirColor}">${r.pair_rsi_dir}</td>
+                                <td class="px-3 py-2 font-medium ${btcDirColor}">${r.btc_rsi_dir}</td>
+                                <td class="px-3 py-2 text-right">${r.trades}</td>
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(r.total_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlClass} font-medium">${formatUSD(r.avg_pnl)}</td>
+                                <td class="px-3 py-2 text-right ${avgPnlPctClass} font-medium">${avgPnlPctStr}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    rsiDirCtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (post-May-15 deploy only)</td></tr>';
                 }
 
                 // Pair Slope x Pair ADX Cross-Tab AND BTC Slope x BTC ADX Cross-Tab

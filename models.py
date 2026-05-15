@@ -58,6 +58,9 @@ class Order(Base):
     entry_ema_gap_5_8 = Column(Float, nullable=True)
     # RSI(12) value at time of entry
     entry_rsi = Column(Float, nullable=True)
+    # RSI(12) value 2 candles prior (~10min ago, matches RSI Momentum Filter comparison
+    # which uses rsi_prev2). Used by Pair RSI Direction analytics. May 15.
+    entry_rsi_prev = Column(Float, nullable=True)
     # ADX(14) value at time of entry
     entry_adx = Column(Float, nullable=True)
     # ADX(14) value one candle prior (for ADX direction analysis)

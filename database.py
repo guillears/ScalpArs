@@ -195,6 +195,9 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN exit_ema5_crossed BOOLEAN"))
                 if 'entry_btc_rsi_prev' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_prev FLOAT"))
+                # May 15: pair RSI prev for Pair RSI Direction analytics
+                if 'entry_rsi_prev' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_rsi_prev FLOAT"))
                 if 'peak_reached_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN peak_reached_at DATETIME"))
                 if 'trough_reached_at' not in columns:

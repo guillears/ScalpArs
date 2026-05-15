@@ -32,3 +32,6 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code worktrees (local-only, never commit)
+.claude/

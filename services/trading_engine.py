@@ -4267,7 +4267,7 @@ class TradingEngine:
         # slowly so this is mildly redundant but keeps the pipeline simple.
         try:
             global _current_btc_1h_slope
-            btc_1h_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '1h', 50)
+            btc_1h_ohlcv = await binance_service.get_ohlcv('BTC/USDT:USDT', '1h', 100)
             if btc_1h_ohlcv:
                 btc_1h_ind = calculate_indicators(btc_1h_ohlcv)
                 if btc_1h_ind:

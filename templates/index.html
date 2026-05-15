@@ -1534,7 +1534,7 @@
                     <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🧪 Phantom BE 0.20/0.05 Counterfactual (observation-only)</h3>
                     <p class="text-xs text-gray-500 mb-2">
                         Shadow tracker for BE at trigger <strong>+0.20%</strong> / floor <strong>+0.05%</strong>. Records what BE would have done on every trade. <strong>Use to validate before shipping live BE.</strong>
-                        <br/><em class="text-fuchsia-400">Armed = peak crossed +0.20%. Fired = price retraced to ≤+0.05% after arming. For "fired" trades, BE would have exited at the would-exit P&L. Only populated post-May-14 deploy.</em>
+                        <br/><em class="text-fuchsia-400">Armed = peak crossed +0.20%. Fired = price retraced to ≤+0.05% after arming. <strong>Avg% columns and Δ are WHOLE-GROUP</strong> — BE-scenario uses phantom exit for fired trades + actual close for the rest. Only populated post-May-14 deploy.</em>
                     </p>
                     <div class="text-xs text-gray-400 mb-2" id="phantom-be-aggr-pool">(no post-deploy trades yet)</div>
                     <div class="overflow-x-auto">
@@ -1546,10 +1546,10 @@
                                     <th class="text-right px-2">N</th>
                                     <th class="text-right px-2" title="Trades where peak ≥ +0.20% (BE would have armed)">Armed</th>
                                     <th class="text-right px-2" title="Trades where, after arming, P&L retraced to ≤ +0.05% (BE would have fired)">Fired</th>
-                                    <th class="text-right px-2" title="Avg actual close P&L% on fired trades only">Actual Avg%</th>
-                                    <th class="text-right px-2" title="Avg phantom exit P&L% on fired trades (≈+0.05% by construction)">BE Avg%</th>
-                                    <th class="text-right px-2" title="BE Avg% − Actual Avg% per fired trade">Δ%</th>
-                                    <th class="text-right px-2" title="Counterfactual $ improvement if BE had fired instead of actual exit">Total$ Δ</th>
+                                    <th class="text-right px-2" title="Whole-group average of actual closed P&L%">Actual Avg%</th>
+                                    <th class="text-right px-2" title="Whole-group BE-scenario average: phantom exit pnl for fired trades + actual pnl for the rest">BE Avg%</th>
+                                    <th class="text-right px-2" title="BE Avg% − Actual Avg% (whole-group delta)">Δ%</th>
+                                    <th class="text-right px-2" title="Counterfactual $ impact across the whole group (sum of fired trades' $ delta)">Total$ Δ</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
                             </thead>

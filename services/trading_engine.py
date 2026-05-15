@@ -6460,6 +6460,13 @@ class TradingEngine:
                                 for _key in [f'phantom_be_l{_lvl}_triggered', f'phantom_be_l{_lvl}_triggered_at', f'phantom_be_l{_lvl}_would_exit_pnl']:
                                     if old_info.get(_key) is not None:
                                         new_info[_key] = old_info[_key]
+                            # May 15 PM bug fix: phantom_be_aggr_* (added May 14) was omitted from the
+                            # preservation loop above. Result: monitor cache rebuild silently reset arm
+                            # flags to False between realtime ticks; if an exit (e.g., EMA13_CROSS) fired
+                            # before the next tick could re-arm, the counterfactual recorded nothing.
+                            for _key in ('phantom_be_aggr_triggered', 'phantom_be_aggr_triggered_at', 'phantom_be_aggr_would_exit_pnl'):
+                                if old_info.get(_key) is not None:
+                                    new_info[_key] = old_info[_key]
                             for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:
                                 for _key in [f'phantom_tick_{_lbl}_triggered', f'phantom_tick_{_lbl}_triggered_at', f'phantom_tick_{_lbl}_pnl']:
                                     if old_info.get(_key) is not None:

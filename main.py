@@ -7205,43 +7205,51 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
         total_armed += armed
         total_fired += fired
 
-        # Actual% column always reflects the FULL group average (what these
-        # trades actually closed at). Phantom% and Δ% are computed against
-        # the FIRED subset only (the trades where phantom BE would have
-        # changed the outcome). Dollar delta also aggregates over fired only.
+        # May 15 PM redesign: WHOLE-GROUP semantics.
+        # - Actual Avg%: group average of actual closed pnl%
+        # - BE Avg%: group average under the phantom-BE scenario. For each trade:
+        #     · if it fired (would have exited at the floor) → use phantom would_exit_pnl
+        #     · otherwise (not armed OR armed but never retraced) → use actual pnl%
+        # - Δ% = BE Avg% − Actual Avg% (whole-group delta, not fired-only)
+        # - Total$ Δ: dollar impact of BE on the whole group, sum of per-trade $ delta
+        #   where fired trades' counterfactual $ is computed by scaling actual $ to
+        #   the phantom %; non-fired trades contribute $0 delta.
         avg_actual_pct = sum(o.pnl_percentage or 0 for o in group) / n
-        if fired_list:
-            avg_phantom_pct = sum(o.phantom_be_aggr_would_exit_pnl or 0 for o in fired_list) / fired
-            # Δ% compares phantom outcome vs actual outcome on the SAME fired trades
-            fired_actual_avg = sum(o.pnl_percentage or 0 for o in fired_list) / fired
-            delta_pct = avg_phantom_pct - fired_actual_avg
-            dollar_delta = 0.0
-            for o in fired_list:
-                actual_pnl = o.pnl or 0
-                actual_pct = o.pnl_percentage or 0
-                phantom_pct = o.phantom_be_aggr_would_exit_pnl or 0
+
+        # Build per-trade BE-scenario pnl% list
+        be_scenario_pcts = []
+        dollar_delta = 0.0
+        for o in group:
+            actual_pct = o.pnl_percentage or 0
+            actual_pnl = o.pnl or 0
+            phantom_pct = getattr(o, 'phantom_be_aggr_would_exit_pnl', None)
+            if phantom_pct is not None:  # fired
+                be_scenario_pcts.append(phantom_pct)
                 if actual_pct != 0:
                     phantom_pnl = actual_pnl * (phantom_pct / actual_pct)
                 else:
                     phantom_pnl = 0
                 dollar_delta += (phantom_pnl - actual_pnl)
-            total_dollar_delta += dollar_delta
-
-            # Verdict
-            if dollar_delta > 5:
-                verdict = '★ HELPING'
-            elif dollar_delta < -5:
-                verdict = '⚠ HURTING'
             else:
-                verdict = '✓ Marginal'
-        else:
-            avg_phantom_pct = None
-            delta_pct = None
-            dollar_delta = 0.0
+                be_scenario_pcts.append(actual_pct)
+                # no delta contribution
+
+        avg_be_pct = sum(be_scenario_pcts) / n
+        delta_pct = avg_be_pct - avg_actual_pct
+        total_dollar_delta += dollar_delta
+
+        # Verdict — whole-group thresholds
+        if fired == 0:
             if armed > 0:
                 verdict = 'BE dormant (armed, no retrace)'
             else:
                 verdict = 'BE not armed (peak < 0.20%)'
+        elif dollar_delta > 5:
+            verdict = '★ HELPING'
+        elif dollar_delta < -5:
+            verdict = '⚠ HURTING'
+        else:
+            verdict = '✓ Marginal'
 
         rows.append({
             'close_reason': cr,
@@ -7249,9 +7257,10 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
             'count': n,
             'armed': armed,
             'fired': fired,
-            'avg_actual_pct': round(avg_actual_pct, 4) if fired_list or n else None,
-            'avg_phantom_pct': round(avg_phantom_pct, 4) if avg_phantom_pct is not None else None,
-            'delta_pct': round(delta_pct, 4) if delta_pct is not None else None,
+            'avg_actual_pct': round(avg_actual_pct, 4) if n else None,
+            # avg_phantom_pct (legacy field name) now holds the WHOLE-GROUP BE-scenario avg
+            'avg_phantom_pct': round(avg_be_pct, 4) if n else None,
+            'delta_pct': round(delta_pct, 4) if n else None,
             'dollar_delta': round(dollar_delta, 2),
             'verdict': verdict,
         })

@@ -3117,7 +3117,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -5062,19 +5062,20 @@ class TradingEngine:
                     signal, entry_rsi, entry_adx, entry_gap,
                     _market_bull_pct, _market_bear_pct, btc_adx, pair_ema20_slope_pct
                 )
-                # Entry Quality Score floor filter (May 15 PM) — opt-in.
-                # Default 0 = disabled. When ≥ 1, blocks entries with score < threshold.
-                # Cross-sample evidence (CLAUDE.md May 15 watchlist): Score ≤ 1 across
-                # 10 archived samples + today = N=95, 34.7% WR, −$684 cumulative,
-                # 9/10 samples with WR ≤ 50%. Direction-consistent loser.
-                # No code action on score >= threshold; this filter does not down-weight
-                # high scores, only blocks below the floor.
-                _qs_min = getattr(config.trading_config.thresholds, 'entry_quality_score_min', 0) or 0
-                if _qs_min > 0 and entry_quality_score < _qs_min:
+                # Entry Quality Score block filter (May 15 PM) — opt-in.
+                # Toggle + threshold. When enabled, blocks entries with
+                # entry_quality_score <= block_max. Threshold matches table
+                # semantics: block_max=1 → blocks Score 0 AND Score 1.
+                # Cross-sample evidence (CLAUDE.md May 15 watchlist): Score ≤ 1
+                # across 10 archived samples + today = N=95, 34.7% WR, −$684,
+                # direction-consistent loser.
+                _qs_enabled = getattr(config.trading_config.thresholds, 'entry_quality_score_filter_enabled', False)
+                _qs_block_max = getattr(config.trading_config.thresholds, 'entry_quality_score_block_max', 1)
+                if _qs_enabled and entry_quality_score <= _qs_block_max:
                     logger.info(
-                        f"[QUALITY_SCORE_GATE] {pair}: {signal} blocked — entry_quality_score={entry_quality_score} < min={_qs_min}"
+                        f"[QUALITY_SCORE_GATE] {pair}: {signal} blocked — entry_quality_score={entry_quality_score} <= block_max={_qs_block_max}"
                     )
-                    self._record_filter_block("ENTRY_QUALITY_SCORE_MIN", signal, had_room=_scan_had_room_snapshot)
+                    self._record_filter_block("ENTRY_QUALITY_SCORE", signal, had_room=_scan_had_room_snapshot)
                     continue
                 entry_btc_regime = classify_btc_regime(btc_adx, btc_rsi, btc_ema20_slope_pct)
 
@@ -5346,6 +5347,43 @@ class TradingEngine:
                 pnl = (entry_price - current_price) * quantity - total_fees
             
             pnl_pct = (pnl / entry_notional) * 100
+
+            # ════════════════════════════════════════════════════════════════
+            # Fast Exit (May 15 PM, opt-in) — quick-profit lock for trades
+            # that hit a threshold within a small window after entry. Fires
+            # FIRST in the exit-check chain so it wins against EMA13_CROSS /
+            # trailing / etc. Closes immediately as "FAST_EXIT L1".
+            # Mirrors the Fast-Exit Counterfactual mechanic but fires LIVE on
+            # first qualifying tick (vs. peak-time proxy in counterfactual).
+            # ════════════════════════════════════════════════════════════════
+            _fe_enabled = getattr(config.trading_config.thresholds, 'fast_exit_enabled', False)
+            if _fe_enabled and not order_info.get('_closing_in_progress'):
+                _fe_thr = getattr(config.trading_config.thresholds, 'fast_exit_threshold_pct', 0.20)
+                _fe_window_min = getattr(config.trading_config.thresholds, 'fast_exit_window_minutes', 2)
+                _fe_opened_at = order_info.get('opened_at')
+                if _fe_opened_at is not None and pnl_pct >= _fe_thr:
+                    _fe_opened_naive = _fe_opened_at.replace(tzinfo=None) if _fe_opened_at.tzinfo is not None else _fe_opened_at
+                    _fe_elapsed_min = (datetime.utcnow() - _fe_opened_naive).total_seconds() / 60.0
+                    if _fe_elapsed_min <= _fe_window_min:
+                        logger.warning(
+                            f"[REALTIME_FAST_EXIT] {pair} {direction}: pnl={pnl_pct:.4f}% >= threshold={_fe_thr}%, "
+                            f"elapsed={_fe_elapsed_min:.2f}min <= window={_fe_window_min}min - CLOSING NOW!"
+                        )
+                        order_info['_closing_in_progress'] = True
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    closed = await self.close_position(db, order, current_price, "FAST_EXIT L1")
+                                    if closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_FAST_EXIT] Error closing {pair}: {e}")
+                        continue  # Trade is closed; skip remaining checks for this order
 
             # ════════════════════════════════════════════════════════════════
             # Phase 1 shadow tracking (May 6) — counterfactual exit at first
@@ -6279,6 +6317,9 @@ class TradingEngine:
                 'quantity': order.quantity,
                 'entry_fee': order.entry_fee,
                 'confidence': order.confidence,
+                # May 15 PM: required by FAST_EXIT (Fast Exit) realtime check —
+                # computes elapsed-minutes from open against fast_exit_window_minutes.
+                'opened_at': order.opened_at,
                 'stop_loss': conf_config.stop_loss,
                 'signal_active_sl': conf_config.signal_active_sl,
                 'signal_active': is_signal_direction_active(

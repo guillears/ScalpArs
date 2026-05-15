@@ -3634,6 +3634,29 @@
                             <p class="text-xs text-gray-500 mt-1">Closes trade when EMA5 crosses EMA8 against direction (LONG: ema5 &lt; ema8, SHORT: ema5 &gt; ema8) past the handoff level. <strong>Suppresses trailing past level</strong> — becomes the exclusive natural exit there (Option A architecture, like RSI Handoff). Faster than RSI 2-drop (~5min vs ~15min). Close reason: <code class="text-violet-300">EMA_STACK_CROSS_EXIT L&lt;level&gt;</code>.</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">Fast Exit <span class="text-xs text-violet-400 font-normal">(May 15 PM — quick-profit lock, mirrors Fast-Exit Counterfactual)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-fast-exit-enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-violet-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Threshold ≥
+                                    <input type="number" step="0.01" min="0" id="config-fast-exit-threshold-pct" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.20">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Window ≤
+                                    <input type="number" step="1" min="1" max="60" id="config-fast-exit-window-minutes" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2">
+                                    <span class="ml-1 text-xs text-gray-500">min</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Closes trade immediately at the first tick where P&L reaches threshold WITHIN the window from open. Fires FIRST in the exit chain (wins against EMA13_CROSS / trailing / handoffs). Close reason: <code class="text-violet-300">FAST_EXIT L1</code>. <span class="text-amber-400">Live behavior differs from the Fast-Exit Counterfactual table:</span> the table uses peak-time as proxy (conservative); live fires on first qualifying tick → expect SMALLER locked profits than the counterfactual implied on big peakers. Validates Post-Exit Regret tracking (whitelist updated).</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Tick Momentum Exit</label>
                             <div class="flex items-center gap-4 flex-wrap">
                                 <label class="flex items-center cursor-pointer">
@@ -4019,12 +4042,16 @@
                                 <input type="number" id="config-min-adx-delta-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.10">
                             </div>
                         </div>
-                        <p class="text-xs text-gray-500 mt-3 mb-1">Entry Quality Score floor (May 15 PM, opt-in). 6-point composite of pair RSI/ADX/gap sweet-spot hits + macro alignment. Blocks entries with score &lt; threshold. Cross-sample evidence: Score ≤ 1 across 10 archived samples = N=95, 34.7% WR, −$684 cumulative. <strong>0 = disabled (default)</strong>. Set to 2 to block both Score 0 and Score 1.</p>
+                        <p class="text-xs text-gray-500 mt-3 mb-1">Entry Quality Score block filter (May 15 PM, opt-in). 6-point composite of pair RSI/ADX/gap sweet-spot hits + macro alignment. <strong>Threshold matches the Performance by Quality Score table</strong> — set to <code>1</code> to block Score 0 AND Score 1; set to <code>2</code> to block Score 0-2. Cross-sample evidence: Score ≤ 1 across 10 archived samples = N=95, 34.7% WR, −$684. <strong>Default: disabled.</strong></p>
                         <div class="flex items-center gap-4 mt-1 flex-wrap">
+                            <label class="flex items-center gap-2">
+                                <input type="checkbox" id="config-entry-quality-score-filter-enabled" class="rounded">
+                                <span class="text-xs text-gray-400">Enable Quality Score filter</span>
+                            </label>
                             <div class="flex items-center gap-1">
-                                <span class="text-xs text-gray-400">Min Quality Score:</span>
-                                <input type="number" id="config-entry-quality-score-min" step="1" min="0" max="6" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0">
-                                <span class="text-xs text-gray-500">/ 6 (0 = disabled)</span>
+                                <span class="text-xs text-gray-400">Block score ≤</span>
+                                <input type="number" id="config-entry-quality-score-block-max" step="1" min="0" max="5" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="1">
+                                <span class="text-xs text-gray-500">/ 6</span>
                             </div>
                         </div>
                         <p class="text-xs text-gray-500 mt-3 mb-1">Range Position filter (price position in 20-candle high-low range, 0%=bottom, 100%=top). May 12: SHORT @ RP &lt;2% = cross-batch pile-on (N=22, 32% WR, -$452). LONG max 100 = disabled (90-95% hole on watchlist). 0/100 = disabled.</p>
@@ -6657,7 +6684,7 @@
             lines.push(`  EMA20 Filter Long: ${th.momentum_ema20_filter_long}  |  Short: ${th.momentum_ema20_filter_short}`);
             lines.push(`  EMA20 Slope Long: ${th.momentum_ema20_slope_filter_long}  |  Short: ${th.momentum_ema20_slope_filter_short}  |  Min Slope L: ${th.momentum_ema20_slope_min_long || 0}%  |  Min Slope S: ${th.momentum_ema20_slope_min_short || 0}%`);
             lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
-            lines.push(`  Entry Quality Score Min: ${th.entry_quality_score_min || 0}  (May 15 PM opt-in; 0 = disabled. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
+            lines.push(`  Entry Quality Score Filter: ${th.entry_quality_score_filter_enabled ? 'ON' : 'OFF'}  |  Block when score ≤ ${th.entry_quality_score_block_max ?? 1}  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
             lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA13 gap compressing vs prev 1 or 2 candles)`);
 
@@ -6692,6 +6719,7 @@
             lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
             lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
+            lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  (May 15 PM, opt-in. Fires FIRST in exit chain. Close reason: FAST_EXIT L1. Live ≠ Fast-Exit Counterfactual — live fires at first tick crossing threshold, table uses peak-time proxy.)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
             lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.8}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
@@ -12733,8 +12761,10 @@
                 // Stretch-based multipliers retired May 15 PM.
                 document.getElementById('config-mult-target').value = config.thresholds.rsi_adx_multiplier_target || 'investment';
                 document.getElementById('config-mult-hard-cap').value = config.thresholds.rsi_adx_multiplier_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_hard_cap : 2.0;
-                const _qsMinEl = document.getElementById('config-entry-quality-score-min');
-                if (_qsMinEl) _qsMinEl.value = config.thresholds.entry_quality_score_min !== undefined ? config.thresholds.entry_quality_score_min : 0;
+                const _qsEnabledEl = document.getElementById('config-entry-quality-score-filter-enabled');
+                if (_qsEnabledEl) _qsEnabledEl.checked = config.thresholds.entry_quality_score_filter_enabled === true;
+                const _qsBlockMaxEl = document.getElementById('config-entry-quality-score-block-max');
+                if (_qsBlockMaxEl) _qsBlockMaxEl.value = config.thresholds.entry_quality_score_block_max !== undefined ? config.thresholds.entry_quality_score_block_max : 1;
                 document.getElementById('config-regime-change-exit-enabled').checked = config.thresholds.regime_change_exit_enabled !== undefined ? config.thresholds.regime_change_exit_enabled : true;
                 document.getElementById('config-rsi-handoff-active').checked = config.thresholds.rsi_handoff_active !== undefined ? config.thresholds.rsi_handoff_active : false;
                 document.getElementById('config-rsi-handoff-level').value = config.thresholds.rsi_handoff_level !== undefined ? config.thresholds.rsi_handoff_level : 3;
@@ -12832,6 +12862,13 @@
                 if (_esce) _esce.checked = config.thresholds.ema_stack_cross_exit_enabled === true;
                 const _escl = document.getElementById('config-ema-stack-cross-exit-level');
                 if (_escl) _escl.value = config.thresholds.ema_stack_cross_exit_level !== undefined ? config.thresholds.ema_stack_cross_exit_level : 2;
+                // Fast Exit (May 15 PM) — quick-profit lock, default OFF
+                const _feEn = document.getElementById('config-fast-exit-enabled');
+                if (_feEn) _feEn.checked = config.thresholds.fast_exit_enabled === true;
+                const _feThr = document.getElementById('config-fast-exit-threshold-pct');
+                if (_feThr) _feThr.value = config.thresholds.fast_exit_threshold_pct !== undefined ? config.thresholds.fast_exit_threshold_pct : 0.20;
+                const _feWin = document.getElementById('config-fast-exit-window-minutes');
+                if (_feWin) _feWin.value = config.thresholds.fast_exit_window_minutes !== undefined ? config.thresholds.fast_exit_window_minutes : 2;
                 document.getElementById('config-tick-momentum-exit-enabled').checked = config.thresholds.tick_momentum_exit_enabled !== undefined ? config.thresholds.tick_momentum_exit_enabled : false;
                 document.getElementById('config-tick-momentum-exit-min-profit').value = config.thresholds.tick_momentum_exit_min_profit !== undefined ? config.thresholds.tick_momentum_exit_min_profit : 0.05;
                 document.getElementById('config-tick-momentum-exit-min-deltas').value = config.thresholds.tick_momentum_exit_min_deltas !== undefined ? config.thresholds.tick_momentum_exit_min_deltas : '';
@@ -13379,7 +13416,8 @@
                     btc_rsi_adx_multiplier_short: collectMultRules('short', 'btc'),
                     rsi_adx_multiplier_target: document.getElementById('config-mult-target').value || 'investment',
                     rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
-                    entry_quality_score_min: parseInt((document.getElementById('config-entry-quality-score-min') || {}).value) || 0,
+                    entry_quality_score_filter_enabled: (document.getElementById('config-entry-quality-score-filter-enabled') || {}).checked === true,
+                    entry_quality_score_block_max: parseInt((document.getElementById('config-entry-quality-score-block-max') || {}).value) || 1,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,
                     rsi_handoff_active: document.getElementById('config-rsi-handoff-active').checked,
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,
@@ -13413,6 +13451,9 @@
                     ema13_cross_requires_stack_flip: (document.getElementById('config-ema13-cross-requires-stack-flip') ? document.getElementById('config-ema13-cross-requires-stack-flip').checked : false),
                     ema_stack_cross_exit_enabled: (document.getElementById('config-ema-stack-cross-exit-enabled') ? document.getElementById('config-ema-stack-cross-exit-enabled').checked : false),
                     ema_stack_cross_exit_level: parseInt(document.getElementById('config-ema-stack-cross-exit-level') ? document.getElementById('config-ema-stack-cross-exit-level').value : 2) || 2,
+                    fast_exit_enabled: ((document.getElementById('config-fast-exit-enabled') || {}).checked === true),
+                    fast_exit_threshold_pct: safeFloat((document.getElementById('config-fast-exit-threshold-pct') || {}).value) || 0.20,
+                    fast_exit_window_minutes: parseInt((document.getElementById('config-fast-exit-window-minutes') || {}).value) || 2,
                     tick_momentum_exit_enabled: document.getElementById('config-tick-momentum-exit-enabled').checked,
                     tick_momentum_exit_min_profit: safeFloat(document.getElementById('config-tick-momentum-exit-min-profit').value),
                     tick_momentum_exit_min_deltas: document.getElementById('config-tick-momentum-exit-min-deltas').value.trim(),

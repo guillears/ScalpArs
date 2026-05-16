@@ -1818,6 +1818,9 @@
                                     <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit %</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit Min</th>
                                     <th class="px-3 py-2 font-medium text-center text-cyan-400">RSI Exit P&L</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="May 16: % of trades where EMA13 cross-against-direction would have fired post-exit (strict mode if configured)">EMA13X %</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="Avg minutes after exit when EMA13 cross would have fired">EMA13X Min</th>
+                                    <th class="px-3 py-2 font-medium text-center text-fuchsia-400" title="Avg P&L % at the moment EMA13 cross would have fired">EMA13X P&L</th>
                                     <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.20% P&L if held">Rec -0.20%</th>
                                     <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.10% P&L if held">Rec -0.10%</th>
                                     <th class="px-3 py-2 font-medium text-center text-amber-400" title="% of trades that would have recovered to -0.05% P&L if held">Rec -0.05%</th>
@@ -1836,7 +1839,7 @@
                                 </tr>
                             </thead>
                             <tbody id="post-exit-regret-body" class="divide-y divide-white/5">
-                                <tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
+                                <tr><td colspan="36" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>
                             </tbody>
                         </table>
                         <p class="text-xs text-gray-500 mt-3 leading-relaxed">
@@ -6237,7 +6240,7 @@
             if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Post-Exit Regret Deep Dive\n');
-                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
+                lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
                 // Null-safe formatters — essential because FL_RECOVERED / FL_DEEP_STOP /
                 // FL_EMERGENCY_SL / FL_NO_EXPANSION rows may have null fields if none of the
                 // trades in the group reached a post-exit peak/trough/signal-loss event.
@@ -6252,6 +6255,9 @@
                     const rsiExPct = _perFpct(r.rsi_exit_pct);
                     const rsiExMin = r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) : '-';
                     const rsiExPnl = _perFp(r.avg_rsi_exit_pnl);
+                    const ema13xPct = _perFpct(r.ema13_cross_pct);
+                    const ema13xMin = r.avg_ema13_cross_min != null ? r.avg_ema13_cross_min.toFixed(1) : '-';
+                    const ema13xPnl = _perFp(r.avg_ema13_cross_pnl);
                     const recNeg020 = _perFpct(r.recovery_neg020_pct);
                     const recNeg010 = _perFpct(r.recovery_neg010_pct);
                     const recNeg005 = _perFpct(r.recovery_neg005_pct);
@@ -6267,7 +6273,7 @@
                     const ema5Dst = _perFp(r.avg_exit_ema5_dist);
                     const ema5Slp = _perFp(r.avg_exit_ema5_slope);
                     const ema5X = _perFpct(r.exit_ema5_crossed_pct);
-                    lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${_perFp(r.avg_close_pnl).padStart(9)} ${_perFp(r.avg_post_peak).padStart(10)} ${_perFm(r.avg_peak_min).padStart(8)} ${_perFp(r.avg_post_trough).padStart(10)} ${_perFm(r.avg_trough_min).padStart(8)} ${_perFpct(r.peak_first_pct).padStart(9)} ${_perFp(r.avg_final_pnl).padStart(9)} ${_perFpct(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
+                    lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${_perFp(r.avg_close_pnl).padStart(9)} ${_perFp(r.avg_post_peak).padStart(10)} ${_perFm(r.avg_peak_min).padStart(8)} ${_perFp(r.avg_post_trough).padStart(10)} ${_perFm(r.avg_trough_min).padStart(8)} ${_perFpct(r.peak_first_pct).padStart(9)} ${_perFp(r.avg_final_pnl).padStart(9)} ${_perFpct(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
                 }
             }
 
@@ -7520,7 +7526,7 @@
                 if (perf.post_exit_regret_deep_dive && perf.post_exit_regret_deep_dive.length > 0) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Post-Exit Regret Deep Dive\n');
-                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
+                    lines.push(`${'Reason'.padEnd(20)} ${'#'.padEnd(4)} ${'Dir'.padEnd(8)} ${'Duration'.padEnd(10)} ${'Close%'.padStart(9)} ${'PostPeak%'.padStart(10)} ${'PeakMin'.padStart(8)} ${'PostTrgh%'.padStart(10)} ${'TrghMin'.padStart(8)} ${'PkFirst%'.padStart(9)} ${'Final%'.padStart(9)} ${'SigLost%'.padStart(9)} ${'SLMin'.padStart(7)} ${'P&L@SL'.padStart(9)} ${'ReachPk%'.padStart(9)} ${'RSIEx%'.padStart(8)} ${'RSIMin'.padStart(7)} ${'RSIP&L'.padStart(9)} ${'EMA13X%'.padStart(8)} ${'EMA13XMin'.padStart(9)} ${'EMA13XP&L'.padStart(10)} ${'R-.20%'.padStart(8)} ${'R-.10%'.padStart(8)} ${'R-.05%'.padStart(8)} ${'R+.05%'.padStart(8)} ${'R+.10%'.padStart(8)} ${'SigReg%'.padStart(8)} ${'RegMin'.padStart(7)} ${'RegP&L'.padStart(9)} ${'Flr@SR'.padStart(9)} ${'NR-.20%'.padStart(8)} ${'NR-.10%'.padStart(8)} ${'NR-.05%'.padStart(8)} ${'EMA5Dst'.padStart(10)} ${'EMA5Slp'.padStart(10)} ${'EMA5X%'.padStart(8)}`);
                     // Null-safe formatters — essential because FL_RECOVERED / FL_DEEP_STOP /
                     // FL_EMERGENCY_SL / FL_NO_EXPANSION rows may have null fields if none of
                     // the trades in the group reached a post-exit peak/trough/signal-loss event.
@@ -7535,6 +7541,9 @@
                         const rsiExPct = _perFpct2(r.rsi_exit_pct);
                         const rsiExMin = r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) : '-';
                         const rsiExPnl = _perFp2(r.avg_rsi_exit_pnl);
+                        const ema13xPct = _perFpct2(r.ema13_cross_pct);
+                        const ema13xMin = r.avg_ema13_cross_min != null ? r.avg_ema13_cross_min.toFixed(1) : '-';
+                        const ema13xPnl = _perFp2(r.avg_ema13_cross_pnl);
                         const recNeg020 = _perFpct2(r.recovery_neg020_pct);
                         const recNeg010 = _perFpct2(r.recovery_neg010_pct);
                         const recNeg005 = _perFpct2(r.recovery_neg005_pct);
@@ -7550,7 +7559,7 @@
                         const ema5Dst = _perFp2(r.avg_exit_ema5_dist);
                         const ema5Slp = _perFp2(r.avg_exit_ema5_slope);
                         const ema5X = _perFpct2(r.exit_ema5_crossed_pct);
-                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${_perFp2(r.avg_close_pnl).padStart(9)} ${_perFp2(r.avg_post_peak).padStart(10)} ${_perFm2(r.avg_peak_min).padStart(8)} ${_perFp2(r.avg_post_trough).padStart(10)} ${_perFm2(r.avg_trough_min).padStart(8)} ${_perFpct2(r.peak_first_pct).padStart(9)} ${_perFp2(r.avg_final_pnl).padStart(9)} ${_perFpct2(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
+                        lines.push(`${r.reason.padEnd(20)} ${String(r.count).padEnd(4)} ${dirStr.padEnd(8)} ${(r.avg_duration||'-').padEnd(10)} ${_perFp2(r.avg_close_pnl).padStart(9)} ${_perFp2(r.avg_post_peak).padStart(10)} ${_perFm2(r.avg_peak_min).padStart(8)} ${_perFp2(r.avg_post_trough).padStart(10)} ${_perFm2(r.avg_trough_min).padStart(8)} ${_perFpct2(r.peak_first_pct).padStart(9)} ${_perFp2(r.avg_final_pnl).padStart(9)} ${_perFpct2(r.sig_lost_pct).padStart(9)} ${slMin.padStart(7)} ${slPnl.padStart(9)} ${reachPk.padStart(9)} ${rsiExPct.padStart(8)} ${rsiExMin.padStart(7)} ${rsiExPnl.padStart(9)} ${ema13xPct.padStart(8)} ${ema13xMin.padStart(9)} ${ema13xPnl.padStart(10)} ${recNeg020.padStart(8)} ${recNeg010.padStart(8)} ${recNeg005.padStart(8)} ${rec005.padStart(8)} ${rec010.padStart(8)} ${sigRegPct.padStart(8)} ${sigRegMin.padStart(7)} ${sigRegPnl.padStart(9)} ${flrSR.padStart(9)} ${nrNeg020.padStart(8)} ${nrNeg010.padStart(8)} ${nrNeg005.padStart(8)} ${ema5Dst.padStart(10)} ${ema5Slp.padStart(10)} ${ema5X.padStart(8)}`);
                     }
                 }
 
@@ -11581,6 +11590,9 @@
                                 <td class="px-3 py-2 text-right text-cyan-400">${r.rsi_exit_pct != null ? r.rsi_exit_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-cyan-400">${r.avg_rsi_exit_min != null ? r.avg_rsi_exit_min.toFixed(1) + 'm' : '-'}</td>
                                 <td class="px-3 py-2 text-right ${rsiPnlClass} font-medium">${r.avg_rsi_exit_pnl != null ? (r.avg_rsi_exit_pnl >= 0 ? '+' : '') + r.avg_rsi_exit_pnl.toFixed(4) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-fuchsia-400">${r.ema13_cross_pct != null ? r.ema13_cross_pct.toFixed(1) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-right text-fuchsia-400">${r.avg_ema13_cross_min != null ? r.avg_ema13_cross_min.toFixed(1) + 'm' : '-'}</td>
+                                <td class="px-3 py-2 text-right font-medium ${r.avg_ema13_cross_pnl != null ? (r.avg_ema13_cross_pnl >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-fuchsia-400'}">${r.avg_ema13_cross_pnl != null ? (r.avg_ema13_cross_pnl >= 0 ? '+' : '') + r.avg_ema13_cross_pnl.toFixed(4) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right font-medium ${r.recovery_neg020_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg020_pct != null ? r.recovery_neg020_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right font-medium ${r.recovery_neg010_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg010_pct != null ? r.recovery_neg010_pct.toFixed(1) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right font-medium ${r.recovery_neg005_pct >= 44 ? 'text-emerald-400' : 'text-amber-400'}">${r.recovery_neg005_pct != null ? r.recovery_neg005_pct.toFixed(1) + '%' : '-'}</td>
@@ -11601,7 +11613,7 @@
                     }).join('');
                     peBody.innerHTML = peRows;
                 } else {
-                    peBody.innerHTML = '<tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
+                    peBody.innerHTML = '<tr><td colspan="36" class="px-3 py-4 text-center text-gray-500">No post-exit data yet</td></tr>';
                 }
 
                 // Flagged Exits

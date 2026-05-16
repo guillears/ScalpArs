@@ -6013,6 +6013,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 avg_rsi_exit_min = sum(o.post_exit_rsi_exit_minutes for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
                 avg_rsi_exit_pnl = sum(o.post_exit_rsi_exit_pnl or 0 for o in rsi_exit_orders) / len(rsi_exit_orders) if rsi_exit_orders else None
 
+                ema13_cross_orders = [o for o in group if getattr(o, 'post_exit_ema13_cross_minutes', None) is not None]
+                ema13_cross_pct = round(len(ema13_cross_orders) / count * 100, 1) if count > 0 else 0
+                avg_ema13_cross_min = sum(o.post_exit_ema13_cross_minutes for o in ema13_cross_orders) / len(ema13_cross_orders) if ema13_cross_orders else None
+                avg_ema13_cross_pnl = sum(o.post_exit_ema13_cross_pnl or 0 for o in ema13_cross_orders) / len(ema13_cross_orders) if ema13_cross_orders else None
+
                 rec_neg020 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.20)
                 rec_neg010 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.10)
                 rec_neg005 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.05)
@@ -6057,6 +6062,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "rsi_exit_pct": rsi_exit_pct,
                     "avg_rsi_exit_min": round(avg_rsi_exit_min, 1) if avg_rsi_exit_min is not None else None,
                     "avg_rsi_exit_pnl": round(avg_rsi_exit_pnl, 4) if avg_rsi_exit_pnl is not None else None,
+                    "ema13_cross_pct": ema13_cross_pct,
+                    "avg_ema13_cross_min": round(avg_ema13_cross_min, 1) if avg_ema13_cross_min is not None else None,
+                    "avg_ema13_cross_pnl": round(avg_ema13_cross_pnl, 4) if avg_ema13_cross_pnl is not None else None,
                     "recovery_neg020_pct": round(rec_neg020 / count * 100, 1),
                     "recovery_neg010_pct": round(rec_neg010 / count * 100, 1),
                     "recovery_neg005_pct": round(rec_neg005 / count * 100, 1),

@@ -353,6 +353,8 @@ class TradingEngine:
                 "rsi3_exit_at": None,
                 "rsi3_exit_pnl": None,
                 "rsi_history": [],
+                "ema13_cross_at": None,
+                "ema13_cross_pnl": None,
                 "signal_regained_at": None,
                 "pnl_at_signal_regained": None,
                 "running_min_pnl": None,
@@ -3158,6 +3160,8 @@ class TradingEngine:
             "rsi3_exit_at": None,
             "rsi3_exit_pnl": None,
             "rsi_history": [],
+            "ema13_cross_at": None,
+            "ema13_cross_pnl": None,
             "signal_regained_at": None,
             "pnl_at_signal_regained": None,
             "running_min_pnl": None,
@@ -3266,9 +3270,9 @@ class TradingEngine:
                 except Exception as _pe_snap_exc:
                     logger.debug(f"[POST_EXIT_SNAP] Failed to persist time snapshot for {info['pair']}: {_pe_snap_exc}")
 
-            # Read pair_data for signal-lost, signal-regained, and RSI momentum checks (isolated session)
+            # Read pair_data for signal-lost, signal-regained, RSI momentum, and EMA13 cross checks (isolated session)
             pair_data = None
-            if info["signal_lost_at"] is None or info["signal_regained_at"] is None or info["rsi_exit_at"] is None:
+            if info["signal_lost_at"] is None or info["signal_regained_at"] is None or info["rsi_exit_at"] is None or info["ema13_cross_at"] is None:
                 try:
                     async with AsyncSessionLocal() as pe_read_db:
                         pd_result = await pe_read_db.execute(
@@ -3327,6 +3331,35 @@ class TradingEngine:
                         info["rsi3_exit_at"] = now
                         info["rsi3_exit_pnl"] = current_pnl
 
+            # May 16: EMA13 cross counterfactual — would the EMA13_CROSS_EXIT
+            # mechanism have fired during the post-exit window?
+            # LONG cross-against: price < EMA13; SHORT cross-against: price > EMA13.
+            # Mirrors live detection in the realtime loop (around line 5443+),
+            # including strict-mode (require EMA5/EMA8 stack flip).
+            # Records the FIRST moment the condition would have fired.
+            if info["ema13_cross_at"] is None and pair_data and pair_data.ema13 is not None and pair_data.ema13 > 0:
+                _ema13 = pair_data.ema13
+                if direction == "LONG":
+                    _cross_fires = price < _ema13
+                else:
+                    _cross_fires = price > _ema13
+                if _cross_fires:
+                    # Apply strict-mode gate if configured (same as live path)
+                    _strict = getattr(config.trading_config.thresholds, 'ema13_cross_requires_stack_flip', False)
+                    _stack_confirms = True
+                    if _strict:
+                        _es5 = pair_data.ema5
+                        _es8 = pair_data.ema8
+                        if _es5 is None or _es8 is None or _es5 <= 0 or _es8 <= 0:
+                            _stack_confirms = False  # fail-closed, matches live
+                        elif direction == "LONG":
+                            _stack_confirms = _es5 < _es8
+                        else:
+                            _stack_confirms = _es5 > _es8
+                    if _stack_confirms:
+                        info["ema13_cross_at"] = now
+                        info["ema13_cross_pnl"] = current_pnl
+
             # Track reachable peak (best P&L while signal still active)
             if info["signal_lost_at"] is None:
                 if current_pnl > info["peak_before_signal_lost"]:
@@ -3372,6 +3405,9 @@ class TradingEngine:
                 rsi3_exit_minutes = None
                 if info["rsi3_exit_at"]:
                     rsi3_exit_minutes = (info["rsi3_exit_at"] - exit_time).total_seconds() / 60.0
+                ema13_cross_minutes = None
+                if info["ema13_cross_at"]:
+                    ema13_cross_minutes = (info["ema13_cross_at"] - exit_time).total_seconds() / 60.0
                 sig_regained_minutes = None
                 if info["signal_regained_at"]:
                     sig_regained_minutes = (info["signal_regained_at"] - exit_time).total_seconds() / 60.0
@@ -3394,6 +3430,8 @@ class TradingEngine:
                                 post_exit_rsi_exit_pnl=round(info["rsi_exit_pnl"], 4) if info["rsi_exit_pnl"] is not None else None,
                                 post_exit_rsi3_exit_minutes=round(rsi3_exit_minutes, 2) if rsi3_exit_minutes is not None else None,
                                 post_exit_rsi3_exit_pnl=round(info["rsi3_exit_pnl"], 4) if info["rsi3_exit_pnl"] is not None else None,
+                                post_exit_ema13_cross_minutes=round(ema13_cross_minutes, 2) if ema13_cross_minutes is not None else None,
+                                post_exit_ema13_cross_pnl=round(info["ema13_cross_pnl"], 4) if info["ema13_cross_pnl"] is not None else None,
                                 post_exit_signal_regained_minutes=round(sig_regained_minutes, 2) if sig_regained_minutes is not None else None,
                                 post_exit_pnl_at_signal_regained=round(info["pnl_at_signal_regained"], 4) if info["pnl_at_signal_regained"] is not None else None,
                                 post_exit_floor_before_signal_regain=round(info["floor_before_signal_regain"], 4) if info["floor_before_signal_regain"] is not None else None,
@@ -3417,10 +3455,11 @@ class TradingEngine:
                     sig_info = f", sig_lost={sig_lost_minutes:.1f}min" if sig_lost_minutes is not None else ""
                     rsi_info = f", rsi_exit={rsi_exit_minutes:.1f}min@{info['rsi_exit_pnl']:.4f}%" if rsi_exit_minutes is not None else ""
                     rsi3_info = f", rsi3_exit={rsi3_exit_minutes:.1f}min@{info['rsi3_exit_pnl']:.4f}%" if rsi3_exit_minutes is not None else ""
+                    ema13_info = f", ema13_cross={ema13_cross_minutes:.1f}min@{info['ema13_cross_pnl']:.4f}%" if ema13_cross_minutes is not None else ""
                     logger.info(
                         f"[POST_EXIT] {info['pair']} order {order_id}: "
                         f"peak={peak_pnl:.4f}%@{peak_minutes:.1f}min trough={trough_pnl:.4f}%@{trough_minutes:.1f}min "
-                        f"final={final_pnl:.4f}%{sig_info}{rsi_info}{rsi3_info}"
+                        f"final={final_pnl:.4f}%{sig_info}{rsi_info}{rsi3_info}{ema13_info}"
                     )
                 except Exception as e:
                     logger.error(f"[POST_EXIT] Error saving order {order_id}: {e}")

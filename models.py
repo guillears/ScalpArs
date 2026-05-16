@@ -298,6 +298,14 @@ class Order(Base):
     post_exit_rsi_exit_pnl = Column(Float, nullable=True)
     post_exit_rsi3_exit_minutes = Column(Float, nullable=True)
     post_exit_rsi3_exit_pnl = Column(Float, nullable=True)
+    # May 16: EMA13 cross counterfactual during post-exit window.
+    # Records the first moment EMA13 cross-against-direction condition would
+    # have fired (strict-mode: requires EMA5/EMA8 stack flip too) after we exited.
+    # Used to validate "extended hold" exit experiments (tp_min raise, wider
+    # pullback) — answers "would EMA13 cross have caught this before our
+    # hypothetical new exit fired?"
+    post_exit_ema13_cross_minutes = Column(Float, nullable=True)
+    post_exit_ema13_cross_pnl = Column(Float, nullable=True)
     post_exit_signal_regained_minutes = Column(Float, nullable=True)
     post_exit_pnl_at_signal_regained = Column(Float, nullable=True)
     post_exit_floor_before_signal_regain = Column(Float, nullable=True)

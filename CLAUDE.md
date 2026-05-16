@@ -10673,4 +10673,115 @@ To preserve:
 
 Future decisions should explicitly reference this framework. When proposing a new filter or multiplier, ask: which pattern does it target? Which patterns are already covered? Don't ship redundant protection or assume one mechanism solves all three.
 
+## May 16, 2026 PM — Watchlist WL-D: BTC-Gap-Floor SHORT filter (locked gates)
 
+After today's session-wide audit converged on a single trade (FILUSDT) as **5-lens uncatchable**, formally locking the BTC-Gap-Floor SHORT filter as a watchlist candidate. This is the first filter (not multiplier) entry on the watchlist, targeting **Pattern C** failures (Never Positive / macro-adverse SHORTs) that BE + EQS + current cross-filters all miss.
+
+### What this watchlist would filter
+
+A new filter mechanism: block SHORT entries when BTC EMA13-EMA50 gap is barely-negative (i.e., BTC is structurally close to crossing above its 4hr trend). The intuition: SHORTs work when BTC is **clearly committed bearish** (gap ≤ -0.10%), not when BTC is **borderline crossing back to bullish** (gap -0.10% to 0%).
+
+**Proposed config field:** `btc_gap_floor_short: -0.10` (require `entry_btc_trend_gap_pct ≤ -0.10%` for SHORT to fire). Default 0 = disabled. Engine work ~30 LOC + UI + config schema.
+
+### Today's observation — the disaster cell
+
+| Cell | N | WR | Total$ |
+|---|---|---|---|
+| **BTC Gap (-0.10%, 0%) × BTC ADX [18, 25] SHORT** | **10** | **30%** | **-$351** ← biggest single SHORT loser cell today |
+
+For reference, adjacent cells:
+- BTC gap [-0.20%, -0.10%] × ADX [18-25] SHORT: 10 trades, 80% WR, +$258 (WL-A winner zone)
+- BTC gap [-0.25%, -0.20%] × ADX [25-30] SHORT: 2 trades, 100% WR, +$139
+- BTC gap > 0% SHORT: blocked by various existing filters
+
+The dimension shows a **clean monotonic edge** at gap -0.10%:
+- Gap ≤ -0.10% (BTC clearly below trend): SHORTs WIN
+- Gap (-0.10%, 0%) (BTC barely below trend, squeeze zone): SHORTs LOSE catastrophically
+- Gap > 0% (BTC above trend): not currently blocked binary but should not enter SHORT
+
+### The 5-lens convergence today
+
+FILUSDT (-$109 SHORT) is the prototype trade that this filter would have caught. It appeared as the singular uncatchable in 5 separate cross-tab audits:
+
+1. **BTC RSI × BTC ADX** (S-P1 cell at 0% WR): FIL the 1 of 3 BE-uncatchable
+2. **Volume Cross-Tab >1.5 × >1.5** (3 SHORTs, 0% WR): FIL the 1 BE-uncatchable
+3. **ADX Δ × BTC ADX >2.0 × 18-25** (2 SHORTs, 0% WR): FIL the 1 BE-uncatchable
+4. **Pattern C (Never Positive)** taxonomy: FIL the structural Pattern C
+5. **BTC EMA13-50 Gap × BTC ADX disaster cell** (the dimension THIS filter would target)
+
+Five different lenses, same flag. The trade's macro signature (BTC gap -0.065% + low BTC vol + high pair vol + extreme oversold pair RSI + Never Positive) is a real failure mode, not bad luck.
+
+XRPUSDT (-$70 SHORT, BTC gap -0.059%) shares the same signature on a different RSI band. **Combined: $179 of $208 BE-uncatchable losses today (86%) sit in this gap disaster cell.**
+
+### Why this filter is on watchlist, NOT shipped
+
+**1-sample evidence only.** Cross-sample CLAUDE.md May 5 BTC Trend Filter analysis mentions the binary gap=0 threshold but does NOT contain validated data specifically for the (-0.10%, 0%) sub-zone. Today's 10-trade disaster cell is a single batch.
+
+Discipline rule: filter ships from 1-sample evidence are the same trap as multiplier ships from 1-sample evidence. The framework just locked says: don't ship from 1-sample regardless of cross-tab convergence.
+
+### Pre-committed promotion gate at next ≥100-trade SHORT checkpoint
+
+Ship `btc_gap_floor_short: -0.10` (block SHORTs when BTC gap > -0.10%) if ALL of the following hold in fresh post-May-16 data:
+
+1. **N ≥ 12** SHORT trades in fresh data with BTC gap in (-0.10%, 0%) AND BTC ADX in [18, 25]
+2. **WR ≤ 40%** on the fresh sample
+3. **Avg P&L % ≤ -0.20%**
+4. **≥ 50% of losses in cell are Pattern C** (Never Positive, peak < 0.05%) — confirms BE-incompatibility, filter is the right mechanism
+5. **Adjacent winning cell** (BTC gap [-0.20%, -0.10%] × ADX [18, 25]) maintains WR ≥ 65% on N ≥ 10 — confirms the threshold sits at the right boundary
+6. **Mechanism prerequisite:** new config field shipped (~30 LOC engine + UI + schema)
+
+### Drop criteria
+
+Drop from watchlist if at next batch:
+- Disaster cell shows ≥ 55% WR on N ≥ 10 (1-sample noise confirmed)
+- Pattern C losses are < 30% of cell's losses (BE catches majority — no filter needed)
+- Adjacent winner cell drops below 50% WR (the threshold isn't structurally where we think)
+
+### Why ship at "block direct" not 1.5× (unlike multiplier candidates)
+
+This is a FILTER, not a multiplier. The decision is binary: trade fires or doesn't. The cell is dominated by Pattern C losses BE can't reach — keeping the cell open at any size amplifies the unhandled risk.
+
+If the gate passes, the filter ships at full block, not partial. The implementation choice (gap threshold -0.10 vs -0.08 vs -0.12) is a secondary parameter to tune at deploy time based on cross-sample finer-bucket analysis.
+
+### Why this is high-priority on the watchlist
+
+Unlike WL-A/WL-B/WL-C (multiplier candidates that amplify existing winners), WL-D addresses an **unhandled loss bucket**:
+
+| Mechanism shipping today | Catches Pattern C | Today's data |
+|---|---|---|
+| BE Layer 1 | ✗ | Misses FIL, XRP big, FARTCOIN, AVAX, 1000PEPE losses |
+| EQS Filter | Partial | Catches AVAX + 1000PEPE (both Score 1), but Score 2-3 trades like FIL slip through |
+| Existing cross-filters | ✗ | All 3 uncatchable trades pass current filters |
+| **WL-D (proposed)** | ★ Direct | Would catch FIL + XRP big at -$179 today |
+
+The bot's current stack covers Patterns A + B well. Pattern C is the dominant unaddressed loss source. WL-D is the cleanest single mechanism to address it.
+
+### Mechanism prerequisite (~30 LOC)
+
+`config.py`:
+```python
+btc_gap_floor_short: float = 0.0  # 0 = disabled. Set to -0.10 to require BTC gap ≤ -0.10% for SHORT.
+```
+
+`trading_config.json`: add `"btc_gap_floor_short": 0.0` (disabled by default).
+
+`services/trading_engine.py`: in the BTC-level filter chain (alongside btc_adx_min/max, btc_rsi_adx_filter, btc_trend_filter), add:
+```python
+gap_floor = float(getattr(th, 'btc_gap_floor_short', 0.0) or 0.0)
+if signal == 'SHORT' and gap_floor < 0:
+    btc_gap = self._current_btc_trend_gap_pct
+    if btc_gap is not None and btc_gap > gap_floor:
+        self._record_filter_block('BTC_GAP_FLOOR_SHORT', 'SHORT')
+        log.info(f"[BTC_GAP_FLOOR_SHORT] {pair}: SHORT blocked — BTC gap {btc_gap:.3f}% > floor {gap_floor:.3f}%")
+        continue
+```
+
+`templates/index.html`: input in BTC Independent Filters section.
+
+Fail-open: missing/null BTC gap data → don't block (defer to existing filters).
+
+### Why this entry exists in CLAUDE.md
+
+To formally lock WL-D so the next checkpoint analysis applies the gates mechanically without re-litigation. The 5-lens convergence today (FIL flagged uncatchable in 5 cross-tabs) is the kind of structural evidence that justifies elevating WL-D from "framework mention" to "locked watchlist with code prerequisites pre-thought."
+
+If next batch's data passes the 6 promotion gates, this filter ships. If it fails, this entry is the locked rationale for dropping the candidate — no re-debate.

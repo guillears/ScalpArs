@@ -503,12 +503,16 @@
       <stop offset="100%" stop-color="#22c55e" stop-opacity="0"/>
     </linearGradient>`;
     elRadarSvg.appendChild(defs);
-    // Sweep — rAF-driven so we can detect blip collisions
+    // Sweep — rAF-driven so we can detect blip collisions. Radius 95 to
+    // match outer ring exactly (was 100, overshooting). Pivot is specified
+    // via SVG `transform="rotate(deg cx cy)"` attribute in radarTick — do
+    // NOT set CSS transform-origin here (mixes coordinate systems on SVG
+    // and visibly shifts the wedge off-center in some browsers).
+    const R = 95;
     const sweep = document.createElementNS(ns, 'path');
     sweep.setAttribute('id', 'lt-radar-sweep');
-    sweep.setAttribute('d', `M ${cx} ${cy} L ${cx + 100} ${cy} A 100 100 0 0 0 ${cx + 100 * Math.cos(-Math.PI / 6)} ${cy + 100 * Math.sin(-Math.PI / 6)} Z`);
+    sweep.setAttribute('d', `M ${cx} ${cy} L ${cx + R} ${cy} A ${R} ${R} 0 0 0 ${cx + R * Math.cos(-Math.PI / 6)} ${cy + R * Math.sin(-Math.PI / 6)} Z`);
     sweep.setAttribute('fill', 'url(#lt-sweep-grad)');
-    sweep.style.transformOrigin = `${cx}px ${cy}px`;
     elRadarSvg.appendChild(sweep);
     // Container groups for blips and labels (rendered above sweep)
     const blipGroup = document.createElementNS(ns, 'g');

@@ -10785,3 +10785,90 @@ Fail-open: missing/null BTC gap data → don't block (defer to existing filters)
 To formally lock WL-D so the next checkpoint analysis applies the gates mechanically without re-litigation. The 5-lens convergence today (FIL flagged uncatchable in 5 cross-tabs) is the kind of structural evidence that justifies elevating WL-D from "framework mention" to "locked watchlist with code prerequisites pre-thought."
 
 If next batch's data passes the 6 promotion gates, this filter ships. If it fails, this entry is the locked rationale for dropping the candidate — no re-debate.
+
+## May 16, 2026 (19:22 UTC-3) — `tp_min: 0.50 → 0.80` shipped (SHORT-side Post-Exit Regret driven)
+
+### Change
+`trading_config.json`:
+- `confidence_levels.VERY_STRONG.tp_min`: 0.50 → **0.80**
+- `confidence_levels.STRONG_BUY.tp_min`: 0.50 → **0.80**
+
+Lower-tier slots (LOW/MEDIUM/HIGH/EXTREME) left at 0.5 — not currently active.
+
+Other exit parameters UNCHANGED: pullback_trigger 0.20, BE1 0.20/0.05 active, BE2 disabled (99/99),
+RSI Handoff at L≥2 (active per May 4 evening entry), EMA13 Cross Exit strict ON, regime change exit OFF.
+
+### Evidence base (51-trade 18:23 UTC-3 split report — 13L BULLISH + 38S BEARISH)
+
+SHORT side Post-Exit Regret Deep Dive showed material runway given up by current trailing:
+- TRAIL_L1 SHORT (N=9): close +0.27%, PostPeak **+2.13%** at +10.3min, +30min still at +0.90%, PkFirst 88.9%
+- TRAIL_L2 SHORT (N=11): close +0.39%, PostPeak **+1.36%** at +13.8min, +30min +0.67%, PkFirst 72.7%
+- TRAIL_L3+ SHORT (N=6): close +0.96%, PostPeak **+2.52%** at +9.4min, +30min +1.80%, PkFirst 80%
+  - L3+ PostTrough stays POSITIVE (+0.75%) — extension is risk-free on this tier
+
+### Per-trade simulation (corrected, trailing-armed-first logic)
+
+Pool: 26 SHORT trailing trades, avg notional $6,657/trade.
+
+| Config | Total $ | vs Status Quo |
+|---|---|---|
+| Status quo (tp 0.50, BE1 only) | +$834 | — |
+| **tp 0.80, no BE2 (shipped)** | **+$2,700** | **+$1,866** |
+| tp 1.00, no BE2 | +$2,599 | +$1,765 (worse — loses TIAUSDT-class trades in [0.80,1.00] peak band) |
+| tp 0.80 + BE2 0.80/0.60 | +$2,700 | +$1,866 (IDENTICAL — BE2 floor = trailing exit at peak 0.80, redundant) |
+
+**Why tp 0.80, no BE2 was chosen:**
+- BE2 0.80/0.60 is mathematically redundant with pullback 0.20. At peak 0.80, trailing fires at 0.60 (peak − pullback) = BE2 floor. At any peak > 0.80, trailing fires HIGHER than BE2 floor. BE2 dormant in every armable case.
+- tp 1.00 is strictly worse than tp 0.80 because trades with true_peak ∈ [0.80, 1.00] fall back to BE1 (~+0.05) under tp 1.00 vs trailing (~+0.60+) under tp 0.80.
+- BE2 0.80/0.65 to 0.80/0.75 add only $1-7 vs no BE2 on this batch (sample noise).
+
+### Pre-committed revert criteria (locked NOW)
+
+At next 100-trade SHORT batch (or earlier if extreme deviation):
+
+| Outcome | Action |
+|---|---|
+| New SHORT batch AvgClose% improves ≥ +0.40pp weighted by tier vs current batch | ★ Keep at 0.80 |
+| AvgClose% within ±0.20pp of current | Inconclusive — extend test 100 more trades |
+| AvgClose% drops > 0.10pp | Revert to 0.50 |
+| New EMA13_CROSS_EXIT count rises by >50% AND those trades AvgClose% < -0.30% | Revert (extended hold dying at EMA13 instead of reaching PostPeak) |
+| New STOP_LOSS_WIDE count rises > 100% on trades that previously trailed | Revert (trough-first path more common than estimated; previously protected by trailing fired at peak − 0.20, now exposed when peak < 0.80) |
+
+### Caveats accepted
+
+1. **N=26 SHORT trailing trades** in the simulation source batch. Real forward lift will differ.
+2. **PkFirst% may be regime-specific.** 73-89% PkFirst in current BEARISH regime. Choppier regimes could invert, making trough-first more common.
+3. **LONG side untouched** — LONG had 13 trades, very different structure (BULLISH regime, less PostPeak runway, +0.86x return multiple, BE Layer 1 already catching Pattern B losers). No tp_min change for LONG until SHORT-side validation completes.
+4. **Phantom BE 0.20/0.05 tracking on LONG** continues — that data informs future LONG decisions.
+5. **Same-batch simulation source.** The +$1,866 estimate is partly in-sample. The CLAUDE.md May 4 224-trade lesson: trades can look great in their own simulation batch and fail at next checkpoint. Locked criteria above are the test.
+
+### Partition methodology for next analysis (no reset needed)
+
+Per CLAUDE.md May 16 partition framework:
+- **Slice A (pre-change)**: trades with `closed_at < 2026-05-16 19:22:34 UTC-3` (= 2026-05-16 22:22:34 UTC)
+- **Slice B (post-change)**: trades with `opened_at >= 2026-05-16 19:22:34 UTC-3`
+
+Use `opened_at` for cleaner cut (a trade opened just before the change but closed after experienced OLD exit logic for most of its life).
+
+Config Change Log section of the next text report will show this change with its DB-stored timestamp (changed_at).
+
+### What to specifically look for in next batch's Post-Exit Regret Deep Dive
+
+The new `post_exit_ema13_cross_minutes` and `post_exit_ema13_cross_pnl` columns shipped earlier today
+will give EMPIRICAL data on whether EMA13 cross would have fired during the extended hold:
+
+- If EMA13X% fires at ≥40% of post-change trailing trades AND EMA13X P&L is meaningfully negative
+  (< -0.30%) → extended hold is exposed to EMA13 we previously didn't see. May need to revert.
+- If EMA13X% is low (<20%) or fires at positive P&L → the extended hold is structurally safe.
+  Keep tp_min 0.80.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The exact timestamp (UTC-3) and field-level change so next-batch slicing is unambiguous
+2. The pre-committed revert gates so future-Claude doesn't re-litigate at checkpoint
+3. The honest reasoning chain (5 passes to get the analysis right — including the buggy first simulation, the user-driven push to use Post-Exit Regret data properly, the EMA13 modeling correction, the BE1-miss elimination, and the final BE2 redundancy catch)
+4. The asymmetric SHORT-only scope (LONG side intentionally not changed)
+5. The locked verification step using the NEW EMA13 post-exit column (shipped earlier today specifically to validate this kind of extended-hold experiment)
+
+If at next checkpoint the verdict says revert, this entry is the locked roll-back rationale. If it says keep, this entry is the audit trail of why it was shipped on what evidence.

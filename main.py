@@ -7271,6 +7271,7 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
         #   where fired trades' counterfactual $ is computed by scaling actual $ to
         #   the phantom %; non-fired trades contribute $0 delta.
         avg_actual_pct = sum(o.pnl_percentage or 0 for o in group) / n
+        actual_dollar_total = sum(o.pnl or 0 for o in group)
 
         # Build per-trade BE-scenario pnl% list
         be_scenario_pcts = []
@@ -7292,6 +7293,7 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
 
         avg_be_pct = sum(be_scenario_pcts) / n
         delta_pct = avg_be_pct - avg_actual_pct
+        be_dollar_total = actual_dollar_total + dollar_delta
         total_dollar_delta += dollar_delta
 
         # Verdict — whole-group thresholds
@@ -7317,6 +7319,10 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
             # avg_phantom_pct (legacy field name) now holds the WHOLE-GROUP BE-scenario avg
             'avg_phantom_pct': round(avg_be_pct, 4) if n else None,
             'delta_pct': round(delta_pct, 4) if n else None,
+            # May 16 PM: absolute $ context for the delta — easier to read magnitude at a glance.
+            # actual_dollar_total = sum of real pnl; be_dollar_total = actual + counterfactual delta.
+            'actual_dollar_total': round(actual_dollar_total, 2),
+            'be_dollar_total': round(be_dollar_total, 2),
             'dollar_delta': round(dollar_delta, 2),
             'verdict': verdict,
         })
@@ -7324,12 +7330,18 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
     # Sort by direction then close_reason for readability
     rows.sort(key=lambda r: (r['direction'], r['close_reason']))
 
+    # May 16 PM: pool-level absolute $ totals to match per-row context.
+    pool_actual_total = sum(r['actual_dollar_total'] for r in rows)
+    pool_be_total = sum(r['be_dollar_total'] for r in rows)
+
     return {
         'rows': rows,
         'pool': {
             'total': len(closed),
             'armed': total_armed,
             'fired': total_fired,
+            'actual_dollar_total': round(pool_actual_total, 2),
+            'be_dollar_total': round(pool_be_total, 2),
             'total_dollar_delta': round(total_dollar_delta, 2),
         },
     }

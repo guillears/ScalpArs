@@ -10560,6 +10560,117 @@ When the next report arrives, the analyst:
 4. Reports each mechanism's verdict independently
 5. Decides per-mechanism revert/keep without bundling
 
+## May 16, 2026 PM — Structural framework: 3-pattern failure taxonomy + BE-compatibility rule
 
+Emerged across multiple analyses today (Score 1 LONG breakdown + BTC_25-30_20-25 multiplier counterfactual + Volume Cross-Tab >1.5×>1.5 audit + BTC RSI × BTC ADX BE-rescue check). Locking the framework here because it provides a structural way to evaluate ANY future filter/multiplier decision.
+
+### The 3 failure patterns
+
+Every losing trade falls into one of these structural categories:
+
+| Pattern | Signature | What catches it | Today's example |
+|---|---|---|---|
+| **A. Low-conviction entry** | Entry signal failed multiple quality criteria (Score ≤ 1) | **EQS filter** | TAOUSDT, AVAXUSDT, 1000PEPEUSDT LONGs (3 of 4 Score 1) |
+| **B. Peak-and-retrace** | Trade hit peak ≥+0.20%, then retraced through floor | **BE Layer 1** | DOTUSDT SHORT, NEARUSDT SHORT, TONUSDT LONG |
+| **C. Never-positive / macro adverse** | Trade went adverse from minute 1, peak < +0.05% | **Macro entry veto** (BTC Trend Filter, BTC gap floor, BTC Volatility) | FILUSDT, XRPUSDT(big), FARTCOINUSDT |
+
+The three categories are **structurally distinct populations** — a trade typically falls into ONE pattern, not multiple. Each pattern has its own ideal protection mechanism, and each mechanism is INVISIBLE to the others' target population.
+
+### Today's data validates the taxonomy
+
+**Score 1 LONG analysis (4 trades, -$150.75):**
+| Trade | Pattern | Peak | Rescued by |
+|---|---|---|---|
+| TONUSDT | **B (peak-retrace)** | +0.317% | BE fires → +$3.59 (Δ +$40.34) |
+| TAOUSDT | **C (never-positive)** | +0.060% | NONE — BE invisible |
+| AVAXUSDT | **C (never-positive)** | 0.000% | NONE — BE invisible |
+| 1000PEPEUSDT | **C (never-positive)** | 0.000% | NONE — BE invisible |
+
+3 of 4 Score 1 LONGs fall into Pattern C — confirms EQS filter catches a population BE can't reach.
+
+**BTC_25-30_20-25 SHORT counterfactual (3 trades, -$208.54):**
+| Trade | Pattern | Peak | Rescued by |
+|---|---|---|---|
+| DOTUSDT | **B (peak-retrace)** | +0.245% | BE fires → +$3.95 (Δ +$21.08) |
+| NEARUSDT | **B (peak-retrace)** | +0.330% | BE fires → +$7.89 (Δ +$90.26) |
+| FILUSDT | **C (never-positive)** | 0.000% | NONE — BE invisible |
+
+2 of 3 in Pattern B (BE catches), 1 in Pattern C (BE invisible). 67% rescue rate.
+
+**Volume Cross-Tab >1.5 × >1.5 SHORT** = same 3 trades as the multiplier cell, same 67% rescue.
+
+**BTC RSI × BTC ADX uncatchable analysis** (3 trades, -$220 uncatchable):
+- 2 of 3 (FIL + XRP) sit in the WL-A INVERSE disaster cell: `BTC EMA13-50 Gap [-0.10, 0%] × BTC ADX [18, 25]`
+- 0 are catchable by any tweak to BTC RSI × ADX cross-filter rules
+- All 3 are Pattern C — only catchable by macro entry veto
+
+### Mechanism-to-pattern protection matrix
+
+| Mechanism | Catches Pattern A | Catches Pattern B | Catches Pattern C |
+|---|---|---|---|
+| Entry Quality Score filter (block ≤ 1) | ★ Primary | Partial overlap (low-Score trades may also peak high before failing) | ★ Catches most-of-them (low-Score correlates with low-peak failures) |
+| BE Layer 1 (0.20/0.05) | No | ★ Primary | No |
+| BTC Trend Filter (binary) | No | No | Partial (catches gap-positive shorts only) |
+| BTC Gap Floor filter (≤ -0.10% for SHORT) | No | No | ★ Primary (proposed, not shipped) |
+| BTC Volatility filter (e.g., block <0.10% ATR) | No | No | Partial (catches violent-chop entries) |
+| Pair blacklist | No | No | Surgical (only known-bad pairs) |
+| Cross-filter (RSI × ADX rules) | Indirect | No | Indirect (only via cell exclusion) |
+
+**Key observation:** No single mechanism covers all 3 patterns. The bot's edge requires STACKING mechanisms that target different patterns. Today we have A + B covered. C is the largest unaddressed leak.
+
+### BE-Compatibility rule for multiplier cells
+
+A multiplier cell's appropriate boost level depends on which failure pattern dominates its losses:
+
+| Cell loss pattern dominates | BE protection on losses | Appropriate multiplier |
+|---|---|---|
+| Pattern B (peak-retrace) | ✓ BE caps downside | **Safe at 2.0×** — losses bounded by +0.05% floor × leverage |
+| Pattern A (low-conviction) | Partial (some peak-retrace, some never-positive) | **1.5× cautious** — BE catches some, EQS filter catches others |
+| Pattern C (never-positive / macro adverse) | ✗ BE invisible | **1.0× only** — boosting amplifies unbounded losses |
+
+### Today's multiplier decisions revalidated by this framework
+
+| Cell | Dominant failure pattern (from data) | Decision | Verdict-of-framework |
+|---|---|---|---|
+| **BTC_25-30_20-25 SHORT** (S-P1) | Pattern B (2 of 3 losses peak ≥0.20%) | **Kept at 2.0×** | ✓ BE-compatible, multiplier safe |
+| **PAIR_30-35_28-30 SHORT** | Pattern C (DOTUSDT peak +0.136%, XRPUSDT peak 0%) | **Demoted to 1.0×** | ✓ BE-incompatible, multiplier was amplifying uncatchable losses |
+| **BTC_55-60_22-25 LONG** | (N=1 winner, no failures yet) | Kept at 2.0× | Defer — no data on failure pattern |
+
+The PAIR_30-35_28-30 demote was the **first explicit application of this framework**. Decision confirmed: demoting was correct.
+
+### Rule for future multiplier promotion decisions
+
+Before shipping a cell at 2.0×, check what failure pattern dominates the cell's historical losses:
+
+1. Pull the cell's losing trades from cross-sample data
+2. Bucket each loss by peak: ≥+0.20% (Pattern B) vs <+0.20% (Pattern A or C)
+3. If ≥60% of losses are Pattern B → BE-compatible → 2.0× safe
+4. If <60% of losses are Pattern B → BE-incompatible → cap at 1.0× or 1.5× max
+
+This rule must be applied alongside the existing cross-sample backing requirement (5-sample structural OR 3+ samples direction-consistent at N≥10 each).
+
+### Today's unaddressed leak: Pattern C macro-adverse trades
+
+3 trades today fell into Pattern C and were uncatchable by any current mechanism:
+- FILUSDT SHORT: -$109 (BTC gap -0.065% — barely-below-trend zone)
+- XRPUSDT SHORT: -$70 (BTC gap -0.059% — same zone)
+- FARTCOINUSDT SHORT: -$41 (BTC gap -0.134% — adjacent winning zone but still Never Positive)
+
+86% of the uncatchable Pattern C losses ($179 of $208) sit in the **BTC EMA13-EMA50 Gap [-0.10, 0%] × BTC ADX [18, 25]** disaster cell.
+
+**Next filter to investigate:** BTC-Gap-Floor SHORT filter. Block SHORTs when BTC gap > -0.10% (require BTC clearly below 4hr trend, not just barely). This would catch 2 of today's 3 Pattern C uncatchable trades.
+
+This becomes **WL-D** on the multiplier/filter watchlist — but it's a FILTER candidate (block entry), not a multiplier candidate. Different mechanism class.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The 3-pattern failure taxonomy as a structural framework for ALL future filter/multiplier decisions
+2. The mechanism-to-pattern protection matrix (no single mechanism catches everything)
+3. The BE-compatibility rule for multiplier cells (≥60% Pattern B = safe at 2.0×)
+4. Today's data validating the framework (Score 1, S-P1 cell, PAIR demote, BTC RSI × ADX audit)
+5. The unaddressed Pattern C leak (BTC barely-below-trend SHORTs) as the next target
+
+Future decisions should explicitly reference this framework. When proposing a new filter or multiplier, ask: which pattern does it target? Which patterns are already covered? Don't ship redundant protection or assume one mechanism solves all three.
 
 

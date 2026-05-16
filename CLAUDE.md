@@ -10151,4 +10151,144 @@ To anchor the analytical default — prevent accidental pooling of 6 weeks of mi
 
 This is a methodological lock-in, same character as the anti-overfit and the pooling-across-configs rules already in CLAUDE.md.
 
+## May 16, 2026 — Observation: SHORT BTC 1h Slope × BTC ADX cell structure + BTC Volatility candidate confound (analyze later)
+
+Logged during review of the May 14+ window (48-trade pool, 12L BULLISH / 36S BEARISH). NOT shipped — observation-only for the next checkpoint. Both points rest on small N within the 48-trade window; CLAUDE.md May 14 PM locked validation gates already govern the related dimensions, so this entry is just a reminder of what to look at when fresh data arrives.
+
+### Point 1 — SHORT BTC 1h Slope × BTC ADX cell structure (local pattern)
+
+Pattern visible in the SHORT cross-tab (current 48-trade window):
+
+| BTC 1h Slope × BTC ADX | N | WR | Total$ |
+|---|---|---|---|
+| `< -0.10% × 20-25` | 7 | 43% | -$106 ← loser |
+| `< -0.10% × 25-30` | 4 | 75% | +$38 |
+| `-0.10 to 0% × 30-35` | 3 | 100% | +$150 |
+| `0 to +0.10% × 25-30` | 6 | 100% | +$150 |
+
+Two-flavor read:
+- SHORTs love either **mature 1h-down trend at high ADX** (`-0.10 to 0% × 30-35`) OR **counter-trend SHORTs when 1h slope is mildly positive at ADX 25-30** (`0 to +0.10% × 25-30`).
+- The losing cell is `<-0.10% × 20-25`: early-stage 1h down + weak ADX. Plausible mechanism: bot catches the bounce *before* the macro down-leg has committed. Trade sells into a pullback, gets squeezed.
+
+N is small per cell. Pattern lines up structurally and matches what CLAUDE.md May 14 PM already locked as the BTC 1h Slope SHORT validation framework. No new action needed — let the May 14 PM locked gates play out at next checkpoint. This entry just flags the local cell pattern so the analyst doesn't miss it.
+
+### Point 2 — BTC Volatility SHORT candidate (probable confound with busted multiplier cell)
+
+Current 48-trade window shows a clean cliff at BTC ATR%:
+
+| BTC ATR% (SHORT) | N | WR | Total$ |
+|---|---|---|---|
+| `< 0.10%` | 3 | **0%** | **-$209** |
+| `0.10-0.15%` | 7 | 71% | +$96 |
+
+Looks like a clean structural cliff. BUT: the 3 trades in the `<0.10%` bucket are *exactly* the 3 `BTC_25-30_20-25` SHORT multiplier cell trades (S-P1 5-sample PREMIUM that broke at N=3 in this batch). So the "BTC Volatility <0.10% bad for SHORTs" observation may not be a new dimension — it may be the macro confound explaining why S-P1 broke. **Cannot disentangle at N=3.**
+
+Confounds to test before treating BTC Volatility as a real SHORT filter candidate:
+1. Are losers in `<0.10%` correlated with the BTC_25-30_20-25 cell, or do they appear at other BTC RSI × BTC ADX combinations too?
+2. Cross-sample: BTC ATR was only populated post-May-15-PM, so we have no historical pool. Cannot validate cross-batch yet.
+3. If the next batch produces fresh losers at `<0.10%` ATR that are NOT in the BTC_25-30_20-25 cell → BTC Volatility is an independent signal worth investigating
+4. If all `<0.10%` ATR SHORT losers continue to concentrate in BTC_25-30_20-25 → it's the multiplier cell decaying, not a new filter dimension
+
+### Why this entry exists in CLAUDE.md
+
+To anchor two observations from the May 16 morning review of the May 14+ window:
+1. The SHORT BTC 1h Slope × BTC ADX cell structure (local pattern, falls under CLAUDE.md May 14 PM locked gates) so the analyst looks at it fresh at next checkpoint rather than re-discovering it
+2. The BTC Volatility SHORT candidate confound suspicion (NOT to be shipped as a filter without disentangling from the S-P1 multiplier decay)
+
+Neither point is actionable today. Both are checkpoint-time reminders.
+
+## May 16, 2026 — Pre-BE-activation baseline (locked at commit `1aad9e6`)
+
+BE Layer 1 at 0.20/0.05 was activated mid-batch on this report. Baseline locked here so that the next ≥12-trade post-deploy slice can be A/B'd against pre-deploy behavior on the same batch. **All numbers below are pre-deploy (BE was inactive when these trades closed).**
+
+### Batch composition
+- 12 LONG (BULLISH) + 38 SHORT (BEARISH) = 50 trades
+- Runtime 1.46 days, 20× leverage
+- Combined Total $: +$62.81 (-$274.57 LONG / +$337.38 SHORT)
+
+### Stop Loss Deep Dive — pre-BE baseline
+
+**BULLISH LONG SL bucket (8 trades):**
+
+| Category | N | %SL | AvgPeak | AvgClose | Total$ | Avg Duration |
+|---|---|---|---|---|---|---|
+| **Positive, No BE** | **6** | **75%** | **+0.106%** | **-0.753%** | **-$351.36** | 19:27 |
+| Never Positive | 2 | 25% | 0.000% | -0.547% | -$81.76 | 34:40 |
+| All SL | 8 | 100% | — | — | **-$433.12** | — |
+
+**BEARISH SHORT SL bucket (11 trades):**
+
+| Category | N | %SL | AvgPeak | AvgClose | Total$ | Avg Duration |
+|---|---|---|---|---|---|---|
+| **Positive, No BE** | **9** | **81.8%** | **+0.275%** | **-0.398%** | **-$326.62** | 49:10 |
+| Never Positive | 2 | 18.2% | 0.000% | -0.565% | -$179.17 | 29:34 |
+| All SL | 11 | 100% | — | — | **-$505.79** | — |
+
+**Total SL loss pre-BE: -$938.91 across 19 SL trades (8L + 11S).**
+
+### Phantom BE 0.20/0.05 counterfactual (pre-deploy projection)
+
+Was projecting net **+$176.84 if BE had been active** at this point in the batch:
+
+| Direction | Close Reason | N | Armed | Fired | Δ$ |
+|---|---|---|---|---|---|
+| LONG | EMA13_CROSS_EXIT L1 | 4 | 1 | 1 | +$40.03 |
+| LONG | STOP_LOSS L1 | 1 | 0 | 0 | $0 (peak 0%) |
+| LONG | STOP_LOSS_WIDE L1 | 3 | 0 | 0 | $0 (peak < 0.20%) |
+| LONG | TRAILING_STOP L1 | 2 | 2 | 0 | $0 (dormant) |
+| LONG | TRAILING_STOP L2 | 2 | 2 | 0 | $0 (dormant) |
+| SHORT | EMA13_CROSS_EXIT L1 | 11 | 5 | 5 | **+$113.25** |
+| SHORT | STOP_LOSS_WIDE L1 | 1 | 1 | 1 | +$16.15 |
+| SHORT | TRAILING_STOP L1 | 9 | 9 | 1 | +$7.41 |
+| SHORT | TRAILING_STOP L2-L4 | 17 | 17 | 0 | $0 (dormant) |
+| **TOTAL** | | **50** | **42** | **8** | **+$176.84** |
+
+### Key observations
+
+1. **LONG SL trades had low peaks (avg +0.106%)** — most below BE trigger 0.20%. Only 1 of 8 LONG SL trades would have armed BE phantom. **LONG rescue surface is thin on this batch.**
+
+2. **SHORT SL trades had higher peaks (avg +0.275%)** — most above BE trigger. **SHORT rescue surface is wider — most actual rescues come from SHORT side.**
+
+3. **Total SL losses (-$939) >> Phantom rescue projection (+$177)**: BE rescues only ~19% of total SL losses on this batch. SL loss bucket remains the dominant loss source even with BE active.
+
+4. **All armed-not-fired trades are TRAILING_STOP winners**: 28 of 42 armed phantom trades didn't fire because they didn't retrace through 0.05% before exiting via trailing/EMA13. Confirms BE rarely steals from healthy winners on this trade distribution.
+
+### What to track in the next batch (post-BE-deploy validation)
+
+Once 12+ closed trades accumulate POST commit `1aad9e6`:
+
+| Metric | Expected direction | Pre-deploy baseline | Watch threshold |
+|---|---|---|---|
+| `Positive, No BE` count (LONG) | ↓ (rescued by BE) | 6 | < 4 in next 12L |
+| `Positive, No BE` count (SHORT) | ↓ sharper drop | 9 | < 4 in next 12S |
+| New close reason `BE_LEVEL1` | should appear | 0 | should fire on ≥3 trades |
+| Trade Outcome Distribution `0% to +0.15%` | grows | 1 trade | grows ≥+3 |
+| Trade Outcome Distribution `< -0.40%` | shrinks | 14 trades | shrinks ≥-2 |
+| Combined Avg P&L % | improves +0.04-0.08pp | -0.10% | ≥ -0.05% |
+| Combined Total $ on N≥40 fresh trades | ~+$176 better | +$63 | ≥ +$200 |
+
+### Pre-committed verdict at next 50+ closed-trade checkpoint
+
+| Outcome | Verdict |
+|---|---|
+| Total $ improves ≥ +$120 vs pre-baseline at similar N AND Positive-No-BE bucket ≥ halved | ★ KEEP — BE working as designed |
+| Total $ improves +$50-120 AND Positive-No-BE drops 30-50% | ✓ Working but weaker than projection — keep |
+| Total $ flat (±$50) AND Positive-No-BE unchanged | ⚠ BE not firing — investigate trigger/floor logic |
+| Total $ worse OR any close_reason bucket Total $Δ < -$30 with N≥5 fires | ✗ REVERT — `be_levels_enabled: true → false` per CLAUDE.md May 1 locked criteria |
+
+### Phantom BE table semantics post-deploy
+
+Phantom and actual converge to the same value on rescued trades (both close at +0.05%), so the table's Δ$ column drops to ~$0 for those trades. **The real BE evaluation lives in:**
+- Stop Loss Deep Dive bucket changes (above)
+- New `BE_LEVEL1` close_reason in Closing Reason Summary
+- Trade Outcome Distribution shifts
+- Total $ improvement vs baseline
+
+The Phantom table remains as observation infrastructure but its diagnostic value flips from "would BE help" → "is BE still operating correctly" (sanity check).
+
+### Why this entry exists
+
+To anchor a fixed pre-deploy reference point so the post-BE-activation behavior on this same batch (and the immediate next batch) can be A/B'd cleanly. Without this snapshot, the BE impact would be hard to isolate from regime drift.
+
+
 

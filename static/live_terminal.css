@@ -39,10 +39,12 @@ body.lt-mode header.glass + .glass * {
   background: var(--lt-bg);
   position: relative;
   /* Fit the available viewport below the two header rows. Use flex column
-     so the feed grows/shrinks to fill, eliminating page-level scroll. */
+     so the feed grows/shrinks to fill, eliminating page-level scroll.
+     160px subtraction empirically fits the two dashboard header rows
+     (~108-130px depending on viewport) plus the larger 13px-font footer. */
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 160px);
   min-height: 460px;
   overflow: hidden;
 }

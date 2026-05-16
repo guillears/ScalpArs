@@ -10290,5 +10290,189 @@ The Phantom table remains as observation infrastructure but its diagnostic value
 
 To anchor a fixed pre-deploy reference point so the post-BE-activation behavior on this same batch (and the immediate next batch) can be A/B'd cleanly. Without this snapshot, the BE impact would be hard to isolate from regime drift.
 
+## May 16, 2026 — Watchlist: Entry Quality Score 3 SHORT as multiplier candidate
+
+### Observation (today, BEARISH 38S batch)
+
+| Score | N | WR | Avg P&L% | Total$ |
+|---|---|---|---|---|
+| 1 | 2 | 50% | +0.14% | +$19 |
+| 2 | 7 | 43% | -0.04% | -$73 |
+| **3** | **12** | **83%** | **+0.47%** | **+$307** ← peak cell |
+| 4 | 9 | 89% | +0.23% | +$132 |
+| 5 | 8 | 50% | +0.01% | -$47 |
+
+Score 3 SHORT was the strongest single bucket in today's batch — N=12 (above the locked multiplier ≥5 verdict gate), 83% WR (well above 70% ★ WORKING threshold), +$307 (the biggest single-bucket contribution to SHORT P&L this batch).
+
+### Why NOT shipped as multiplier today (despite striking numbers)
+
+1. **1-sample only.** Cross-sample CLAUDE.md May 15 PM locked Quality Score finding is "Score ≤ 1 = STRUCTURAL LOSER" (N=95 / 34.7% WR). The "Score 3 = WINNER" claim is from today's single batch only. No cross-sample weight.
+
+2. **Internal consistency with same-day discipline.** Today's Multiplier Cell Performance review demoted PAIR_30-35_28-30 SHORT (2.0× → 1.0×) explicitly because it was 1-sample-activated and didn't survive contact with reality. Activating Score 3 at 2.0× from 1-sample would be the exact same mistake on the same day. The discipline that catches the PAIR failure must also catch the Score 3 temptation.
+
+3. **Non-monotonic pattern — statistically suspect.** If Quality Score measured entry quality cleanly, Score 5 (all 6 criteria met) should beat Score 3 (3 criteria met). Instead the curve peaks at Score 3 then DROPS through 4 to 5. This is the same "over-aligned = exhaustion" pattern CLAUDE.md Apr 14 documented: "More aligned filters ≠ higher edge." Real structural signals have clean ordering. Non-monotonic peak at the mid-range is a red flag for over-fitting OR for a regime-specific pattern that won't generalize.
+
+4. **Mechanism doesn't exist yet.** Today's multiplier system is cell-based on RSI×ADX coordinates (pair-level + BTC-level). It does NOT support score-based multipliers. Shipping Score 3 multiplier requires code work: ~60-80 lines to extend the multiplier engine + UI + config schema. Pre-condition before any activation, regardless of evidence weight.
+
+### Symmetric LONG observation (weaker but worth tracking)
+
+LONG side Quality Score today:
+
+| Score | N | WR | Total$ |
+|---|---|---|---|
+| 1 | 4 | 0% | -$151 |
+| 2 | 3 | 33% | -$104 |
+| 4 | 4 | 50% | -$66 |
+| 5 | 1 | 100% | +$46 |
+
+LONG side IS monotonic (rising WR with score) but only N=12 total and biggest cell at N=4. Much weaker signal than SHORT. Track but lower priority.
+
+### Confound noted: EQS filter activation changes the distribution
+
+The Entry Quality Score filter (`entry_quality_score_filter_enabled: true`, block ≤ 1) was activated TODAY (commit `80175d8`). Going forward, Score 1 trades won't enter at all — that bucket disappears from future data. The Score 3 watchlist therefore evaluates against a *post-filter* trade distribution. Pre-filter Score 3 cells may behave differently than post-filter Score 3 cells (selection bias on what got admitted).
+
+### Pre-committed promotion criteria (locked NOW, evaluate at next ≥100-trade SHORT checkpoint)
+
+A multiplier on Entry Quality Score 3 SHORT qualifies for shipping ONLY if ALL conditions below are true at the next checkpoint:
+
+1. **Sample size**: Score 3 SHORT cell shows N ≥ 15 in fresh data (post-May-16 trades)
+2. **WR threshold**: ≥ 70% WR on the fresh sample (matches ★ WORKING multiplier verdict gate)
+3. **Avg P&L %**: ≥ +0.35% on the fresh sample (preserves the structural edge magnitude observed today)
+4. **Cross-bucket consistency**: Score 4 SHORT (next bucket up) shows compatible direction (≥+0.10% Avg, not catastrophically negative). If Score 4 drops to losing while Score 3 holds, the non-monotonicity is structural and the multiplier becomes risky.
+5. **Cross-sample backup**: at least ONE prior archived batch when re-bucketed shows Score 3 SHORT ≥ 65% WR on N ≥ 8 (any May 4-14 sample re-aggregated would qualify)
+6. **Mechanism shipped**: Score-based multiplier dimension implemented in the engine (prerequisite — config-only ship not possible)
+
+If ANY condition fails:
+- Conditions 1-3 fail (low N, low WR, or low Avg%) → defer to 200-trade checkpoint
+- Condition 4 fails (Score 4 collapses) → drop watchlist entirely, non-monotonic pattern confirmed as regime-specific
+- Condition 5 fails (no historical replication) → drop watchlist, pattern was today-only artifact
+- Condition 6 fails (no mechanism) → can't ship regardless
+
+### Pre-committed multiplier value if promoted
+
+If all promotion gates pass: ship at **1.5×** initially, NOT 2.0×. Reasoning:
+- 1.5× is a more conservative first-deployment value for any new multiplier dimension
+- Provides a safety margin while real post-filter live data accumulates
+- Aligns with CLAUDE.md May 4 phase-3 staging principle (don't jump to max cap on first activation)
+- After 50+ trades at 1.5×, if cell continues ★ WORKING per locked verdict matrix, step up to 2.0× per the existing escalation pattern
+
+### Watchlist drop criteria
+
+Drop from watchlist immediately if:
+- Score 3 SHORT cell shows ≤ 55% WR on N ≥ 10 in any next batch (regime-specific noise confirmed)
+- Score 4 SHORT cell crashes while Score 3 holds (non-monotonicity = unstable pattern)
+- The full Quality Score system gets retired or redesigned (mechanism dependency)
+
+### Methodological lesson preserved
+
+The decision NOT to ship Score 3 multiplier from today's data documents the discipline that the multiplier system as a whole has learned the hard way through PAIR_30-35_28-30 and BTC_25-30_25-30 (May 4 ships, now being walked back). The pattern is consistent:
+
+> 1-sample multiplier activations look beautiful on the sample they were chosen from. They consistently underperform when fresh data arrives. The fix is not "be more careful with 1-sample picks" — the fix is "never ship multipliers from 1-sample evidence, regardless of how clean the numbers look."
+
+This entry is the test case for whether the discipline holds when the next striking 1-sample observation appears.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The locked promotion gates so the next checkpoint decision is mechanical, not re-litigated
+2. The pre-committed 1.5× initial value (not 2.0×) so escalation discipline applies
+3. The 4 specific drop criteria so dismissal is also mechanical
+4. The methodological lesson (1-sample multiplier ships consistently fail) so future-Claude doesn't repeat the pattern
+
+When the next batch lands with N ≥ 15 Score 3 SHORT trades, this entry is the locked test. No re-analysis required.
+
+## May 16, 2026 — Watchlist: 3 SHORT multiplier candidates (1-sample, locked gates)
+
+After today's PAIR_30-35_28-30 demote (1-sample evidence broke at N=3) and Entry Quality Score 3 SHORT watchlist add, audited the rest of today's SHORT cross-tabs for additional multiplier candidates. Three cells emerged with N≥5 and clean WR/$ direction. **None ship today** (same 1-sample discipline). Locked here as watchlist entries for next ≥100-trade SHORT checkpoint.
+
+### Today's observation summary
+
+| Watchlist | Cell | N | WR | Total$ | Avg/trade |
+|---|---|---|---|---|---|
+| **WL-A** | BTC EMA13-EMA50 Gap `[-0.20, -0.10]` × BTC ADX `[18, 25]` SHORT | 10 | 80% | +$258 | +$26 |
+| **WL-B** | ADX Δ `[1.0, 2.0)` × BTC ADX `[25, 30]` SHORT | 11 | 82% | +$240 | +$22 |
+| **WL-C** | BTC RSI `[25, 30]` × BTC ADX `[25, 30]` SHORT (S-P1 ADX extension) | 4 | 100% | +$209 | +$52 |
+
+### WL-A: BTC EMA13-EMA50 Gap × BTC ADX
+
+**Mechanism:** BTC clearly below 4hr trend AND moderate BTC ADX = clean macro-bearish setup. Effectively "BTC Trend Filter validates this trade" + "BTC has trend conviction but not climaxing." Direction-symmetric to the inverse failure cell (BTC gap `[-0.10, 0]` × ADX 18-25 = N=10, 30% WR, -$351 — disaster zone). Adjacency check: BTC gap -0.30 to -0.20 × ADX 25-30 = N=2, 100% WR, +$139 (consistent direction, low N).
+
+**Promotion gate at next ≥100-trade SHORT checkpoint:**
+- Cell shows **N ≥ 15** in fresh post-May-16 data
+- WR ≥ 70% on fresh sample
+- Avg P&L % ≥ +0.30% on fresh sample
+- Adjacent loser cell (BTC gap `[-0.10, 0]` × ADX 18-25) still shows ≤45% WR on N≥10 (mechanism confirmed)
+- Mechanism prerequisite: multiplier system needs to support BTC-Gap-based dimension (currently only supports RSI×ADX) — config schema + UI work ~80 lines
+
+**Ship value if promoted:** 1.5× initially (CLAUDE.md May 4 phase-3 staging — first deployment of new dimension always at 1.5×, not 2.0×).
+
+**Drop gate:**
+- Cell shows ≤55% WR on N≥10 in next batch
+- Adjacent loser cell flips to ≥55% WR (mechanism inverted, regime-specific)
+- Implementation cost outweighs benefit if expected uplift < +$30/batch at validated cell
+
+### WL-B: ADX Δ × BTC ADX
+
+**Mechanism:** Moderate pair-ADX acceleration (1.0-2.0) AND BTC in established trend (ADX 25-30) = high-conviction continuation entry. Critically REGIME-CONDITIONAL: same ADX Δ range at BTC ADX 18-25 was a LOSER today (N=9, 44% WR, -$94). The cell's edge is ENTIRELY in the BTC ADX 25-30 sub-range. Already has filter mechanism support via existing `adx_delta_btc_adx_filter_short` field (currently `"2.0-99:24-99"` blocks high-end). Multiplier would use parallel `adx_delta_btc_adx_multiplier_short` field (doesn't exist yet — schema/UI work ~50 lines).
+
+**Promotion gate:**
+- N ≥ 15 in `ADX Δ [1.0, 2.0) × BTC ADX [25, 30]` cell at next checkpoint
+- WR ≥ 70%
+- Avg P&L % ≥ +0.25%
+- **Regime-conditional check**: adjacent ADX Δ 1.0-2.0 × BTC ADX 18-25 cell continues to show <50% WR (confirms the conditionality is structural, not noise)
+- Mechanism prerequisite: implement `adx_delta_btc_adx_multiplier_short` config field + engine reader
+
+**Ship value if promoted:** 1.5× initially.
+
+**Drop gate:**
+- Cell drops to ≤55% WR on N≥10
+- Conditionality flips: ADX Δ 1.0-2.0 × BTC ADX 18-25 starts winning at ≥55% (the regime-conditional argument collapses)
+
+### WL-C: BTC RSI × BTC ADX — S-P1 adjacency
+
+**Mechanism:** This is the **STRONGEST structural argument** of the 3, because it's an EXTENSION of S-P1 (BTC RSI 25-30 × BTC ADX 20-25), which has 5-sample structural backing per CLAUDE.md Apr 17. S-P1's mechanism (deep BTC oversold + moderate BTC ADX = strong SHORT setup) plausibly extends 5 ADX points further into the 25-30 BTC ADX bucket. Today N=4, 100% WR, +$209 supports the extension hypothesis.
+
+**Important caveat:** the S-P1 5-sample evidence was specifically for BTC ADX 20-25. CLAUDE.md does NOT have validated cross-sample for the 25-30 sub-cell. This watchlist promotion would extend the S-P1 mechanism beyond its validated range — a structurally-defensible but evidence-thin move.
+
+**Promotion gate (LOWER bar because of S-P1 adjacency):**
+- N ≥ 10 in fresh data (vs N≥15 for the other two)
+- WR ≥ 75% on fresh sample
+- S-P1 itself (BTC RSI 25-30 × BTC ADX 20-25) MUST continue at ≥65% WR on N≥10 — if S-P1's structural backing collapses, the extension argument collapses too
+- Mechanism prerequisite: NONE. Multiplier engine already supports BTC RSI × BTC ADX dimensions. Single config field append.
+
+**Ship value if promoted:** 2.0× directly (not 1.5×) BECAUSE it's an extension of an existing 5-sample-validated cell at 2.0×, not a fresh 1-sample bet. Inherits S-P1's structural confidence.
+
+**Drop gate:**
+- N≥10 with WR ≤60% in next batch → drop
+- S-P1 (the parent cell) drops to ≤60% WR on N≥10 → drop this AND demote S-P1 to 1.0× (the structural mechanism broke for both)
+
+### Why all 3 are watchlisted, none shipped today
+
+Same discipline applied to PAIR_30-35_28-30 demote and EQS Score 3 watchlist this morning. Multipliers from 1-sample evidence consistently fail. CLAUDE.md May 11 PM filter-overlap methodology + CLAUDE.md May 4 phase-3 staging both anchor this rule.
+
+The structural mechanism strength differs across the 3 candidates:
+- **WL-C (strongest):** extends a 5-sample-validated cell, plausible mechanism continuity
+- **WL-A (moderate):** mechanism aligns with documented BTC Trend Filter logic (CLAUDE.md May 5), but cell itself is 1-sample
+- **WL-B (weakest):** today's 11-trade pattern + clean regime-conditional shape, but no cross-sample backing whatsoever
+
+If pressed for a single ship-today decision: WL-C is the only one with non-1-sample structural backing (via S-P1 inheritance). Still chose to watchlist all 3 for consistency with the discipline.
+
+### Multiplier-design rule reinforced (CLAUDE.md May 16 supplemental)
+
+Earlier today the analysis on BE counterfactual surfaced this rule: multiplier cells should be evaluated for BE-protection compatibility. Cells whose losses peak ≥+0.20% have bounded downside post-BE (BE floor catches retracers). Cells whose losses peak <+0.20% retain unbounded downside.
+
+Applying to these 3 watchlist candidates:
+- **WL-A (BTC EMA gap):** today's 10 trades — most reached peaks well above +0.20% (Avg/trade +$26 implies AvgPeak likely +0.30-0.50%). BE-compatible.
+- **WL-B (ADX Δ):** today's 11 trades — same population characteristics. BE-compatible.
+- **WL-C (S-P1 extension):** today's 4 trades — peaks likely +0.30-0.50%+. BE-compatible.
+
+All 3 candidates pass the BE-compatibility test. This is a positive signal — losses (if any) at 2.0× will be bounded by BE protection.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor 3 specific watchlist gates BEFORE the next checkpoint, so promotion decisions are mechanical and not re-litigated. The locked promotion criteria explicitly differ across the 3 watchlist entries based on the strength of their structural backing — WL-C gets a lower N bar because S-P1 inheritance gives it cross-sample weight; WL-A and WL-B require N≥15 because they're pure 1-sample today.
+
+Also reinforces the BE-compatibility rule as a checklist item for any future multiplier promotion decision.
+
 
 

@@ -10474,5 +10474,92 @@ To anchor 3 specific watchlist gates BEFORE the next checkpoint, so promotion de
 
 Also reinforces the BE-compatibility rule as a checklist item for any future multiplier promotion decision.
 
+## May 16, 2026 — Partition timestamps for next-checkpoint analysis (NO RESET decision)
+
+After shipping 3 changes today, the operator chose NOT to reset (4 resets in 11 days already, today's changes are surgical not structural). Locking the exact commit timestamps so the next-checkpoint analysis can partition the CSV by `closed_at` mechanically without resetting.
+
+### Today's commit timeline (UTC-3, exact from git log)
+
+| Time (UTC-3) | Commit | Change |
+|---|---|---|
+| 11:02:19 | `1aad9e6` | **BE Layer 1 0.20/0.05 activated** on VERY_STRONG + STRONG_BUY |
+| 11:08:47 | `80175d8` | **Entry Quality Score filter activated** (block ≤ 1) |
+| 11:25:31 | `f871979` | **PAIR_30-35_28-30 SHORT demoted** 2.0× → 1.0× |
+
+All 3 commits within a 23-minute window. AWS auto-deploy lag adds ~5-15min after each commit, so changes were live by ~11:45 UTC-3.
+
+**Partition cutoff for next-checkpoint analysis: `closed_at >= 2026-05-16T14:45:00Z` (UTC)** = `closed_at >= 2026-05-16 11:45 UTC-3`. Any trade closed before that is Slice A (pre-deploy); any trade closed after is Slice B (post-deploy).
+
+### Why "no reset" is the right call here
+
+1. **Surgical changes, not structural.** BE = exit-side rescue (doesn't change which trades open). EQS filter = ~1-2 entries blocked per batch. PAIR demote = 1 cell's sizing only. Trade population going forward is ~95% the same as pre-deploy.
+
+2. **CSV has `closed_at` on every trade** — natural partition key. Analyst at checkpoint partitions by timestamp, gets clean before/after slices.
+
+3. **Reset count discipline.** 4 resets in 11 days (May 5 morning, May 5 third-of-week, May 6 PM, May 7 PM) is already a drift signal. Continuing to reset on every config-change day erodes the "patient observation" discipline that locked-checkpoint criteria require.
+
+4. **The CLAUDE.md May 16 BE pre-deploy baseline entry already serves the "reset" function logically.** Pre-state numbers locked (Positive-No-BE 6 LONG / 9 SHORT, total SL bleed -$939, Phantom rescue projection +$177). Next-batch data gets compared against these without losing today's 50 closed trades.
+
+### Pre-committed partition methodology at next ≥50-trade checkpoint
+
+When analyzing the next report, the analyst (Claude or human) MUST partition by:
+
+**Slice A — Pre-deploy (today's batch, ~50 trades, closed_at < 2026-05-16 11:45 UTC-3 / 14:45 UTC):**
+- Serves as "old config" reference
+- Pre-BE Stop Loss bleed pattern (Positive-No-BE 15 trades, -$678 total)
+- Pre-EQS-filter entry distribution (includes Score 1 trades)
+- PAIR_30-35_28-30 at 2.0× verdict (3 trades, 33% WR, -$88)
+
+**Slice B — Post-deploy (next batch, closed_at ≥ 2026-05-16 11:45 UTC-3 / 14:45 UTC):**
+- Tests the 3 changes' actual impact
+- Should show: new `BE_LEVEL1` close reason appearing, Positive-No-BE bucket shrinking, Score 1 trades absent from new entries, PAIR_30-35_28-30 multiplier line at 1.0× with new trades
+- Distribution shift toward 0% to +0.15% bucket
+- EQS-blocked entries counted in filter blocks table (not in trade table)
+
+**Reports to use:**
+1. **Slice A**: today's saved report (Generated 2026-05-16 ~11:25 UTC-3 archived as the BE pre-deploy baseline reference)
+2. **Slice B**: next report at ≥50 fresh closed trades
+
+**Comparison metrics:**
+
+| Metric | Slice A baseline | Slice B target | Verdict gate |
+|---|---|---|---|
+| Positive-No-BE count (LONG) | 6 | <4 (rescued by BE) | BE working if drop ≥30% |
+| Positive-No-BE count (SHORT) | 9 | <4 (rescued by BE) | BE working if drop ≥50% |
+| BE_LEVEL1 close reason | 0 | ≥3 fires | BE firing as designed |
+| Score 1 trades (entry count) | 4L + 2S = 6 | 0 (all blocked) | EQS filter active |
+| Trade Outcome 0% to +0.15% bucket | 1 trade | ≥+3 trades | BE-rescue distribution shift |
+| Trade Outcome < -0.40% bucket | 14 trades | -2 to -5 trades | SL bleed reduced |
+| PAIR_30-35_28-30 multi | 2.0× | 1.0× | Verified demote (no Δ$ on this cell going forward) |
+| Combined Total $ on N≥40 fresh | +$63 (baseline) | ≥ +$200 | All 3 changes combined target |
+
+### What partition does NOT cleanly give us
+
+Honest caveats:
+- **Counterfactual approximation issues**: Phantom BE Δ$ goes to ~$0 for newly-rescued trades. The Phantom table's verdict becomes "is BE still operating" sanity check, not "would BE help."
+- **Compound attribution**: if next batch shows +$300, hard to fully isolate BE contribution from EQS contribution from regime tailwind. The verdict gates above are designed to be defensible per-mechanism (BE → bucket count shifts; EQS → trade count shifts; PAIR demote → multiplier table line change).
+- **Multiplier verdicts can confound across the partition** — the Multiplier Cell Performance table aggregates all closed trades. We need to specifically filter to post-deploy trades for clean BTC_25-30_20-25 / BTC_55-60_22-25 etc. verdicts. CSV partitioning enables this; the dashboard table doesn't by default.
+
+### If post-deploy slice DOESN'T validate
+
+Pre-committed reverts (each change independently per CLAUDE.md May 16 BE entry + EQS commit message + multiplier demote commit message):
+
+- **BE not firing (BE_LEVEL1 count 0 on N≥30 trades)**: investigate trigger/floor logic. Don't revert yet — could be regime not producing peak ≥0.20% trades.
+- **BE firing but Total $ worse**: any close_reason bucket with N≥5 fires showing ⚠ HURTING → revert `be_levels_enabled: false` per CLAUDE.md May 1 BE Layer plan
+- **EQS filter cutting good trades**: Score 1 in observation logs ≥55% WR on N≥10 fresh → revert `entry_quality_score_filter_enabled: false`
+- **PAIR_30-35_28-30 demote was wrong**: if cell shows ≥70% WR on N≥10 fresh at 1.0× → re-promote to 1.5× (then 2.0× at next 50-trade gate per phase-3 escalation)
+
+### Why this entry exists in CLAUDE.md
+
+To make the next-checkpoint partition methodology mechanical. Without these timestamps and pre-committed verdict gates locked, the temptation at next checkpoint will be to either (a) re-litigate whether reset was right, or (b) pool the data lazily and miss the structural before/after signal. This entry forecloses both options.
+
+When the next report arrives, the analyst:
+1. Pulls the CSV
+2. Partitions by `closed_at` timestamp
+3. Applies the verdict gate table above to Slice B
+4. Reports each mechanism's verdict independently
+5. Decides per-mechanism revert/keep without bundling
+
+
 
 

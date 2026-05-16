@@ -521,7 +521,7 @@
                                     <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">PF</th>
                                     <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total fees paid (entry + exit)">Fees</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg exit slippage (+ = worse fill, - = better fill). Only live trades.">Slip %</th>
-                                    <th class="px-3 py-2 font-medium text-right text-blue-400" title="Projected balance if current Daily Compound Return continues for this period. Formula: Current Balance × (1 + DCR)^days">Projected Balance</th>
+                                    <th class="px-3 py-2 font-medium text-right text-blue-400" title="Projected balance using Return Multiple as the per-period rate. Formula: Current Balance × Return_Multiple^days. Stays stable when bot is idle (RM doesn't decay over runtime, unlike DCR).">Projected Balance</th>
                                 </tr>
                             </thead>
                             <tbody id="period-performance-body" class="divide-y divide-white/5">
@@ -8232,15 +8232,18 @@
                 
                 // Period Performance table
                 const ppBody = document.getElementById('period-performance-body');
-                // Projected Balance: current balance × (1 + DCR)^days
+                // Projected Balance: current balance × Return_Multiple^days.
+                // Uses Return Multiple as the per-period multiplier so the
+                // projection stays stable when the bot is idle (DCR decays
+                // over runtime, RM doesn't).
                 const _ppCurrentBal = balData ? (balData.total_portfolio || ((balData.usdt_balance || 0) + (balData.usdt_in_orders || 0))) : null;
-                const _ppDCR = (data.daily_compound_return || 0) / 100; // convert % to decimal
+                const _ppRM = data.return_multiple || 1;
                 const _ppDaysMap = {'Last 6h': 0.25, 'Last 12h': 0.5, '1 Day': 1, '2 Days': 2, '3 Days': 3, '5 Days': 5, '7 Days': 7, '15 Days': 15, '30 Days': 30, 'Total': null};
                 const _ppProjected = (period) => {
-                    if (!_ppCurrentBal || _ppDCR === 0) return null;
+                    if (!_ppCurrentBal || _ppRM === 1) return null;
                     const days = _ppDaysMap[period];
                     if (days == null) return _ppCurrentBal; // "Total" row shows current balance
-                    return _ppCurrentBal * Math.pow(1 + _ppDCR, days);
+                    return _ppCurrentBal * Math.pow(_ppRM, days);
                 };
                 if (data.period_performance && data.period_performance.length > 0) {
                     ppBody.innerHTML = data.period_performance.map(r => {

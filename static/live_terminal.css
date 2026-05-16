@@ -355,8 +355,9 @@ body.lt-mode header.glass + .glass * {
 #live-terminal-view .lt-side-panel {
   border: 1px solid var(--lt-border);
   background: #060906;
-  padding: 8px 10px;
+  padding: 6px 10px;
   flex: 1;
+  min-height: 0;       /* allow shrink to fit column */
   overflow-y: auto;
   font-size: 11px;
 }
@@ -364,7 +365,7 @@ body.lt-mode header.glass + .glass * {
   font-size: 10px;
   letter-spacing: 0.18em;
   color: var(--lt-label);
-  margin: 0 0 6px 0;
+  margin: 0 0 4px 0;
   font-weight: 500;
 }
 #live-terminal-view .lt-pos-row, #live-terminal-view .lt-scan-row {
@@ -626,7 +627,8 @@ body.lt-mode header.glass + .glass * {
   align-items: baseline;
   justify-content: space-between;
   font-size: 11px;
-  padding: 1px 0;
+  line-height: 14px;
+  padding: 0;
   color: var(--lt-fg);
   transition: background 0.2s ease-out;
   border-radius: 0;
@@ -653,9 +655,11 @@ body.lt-mode header.glass + .glass * {
 #live-terminal-view .lt-funnel-arrow {
   text-align: center;
   font-size: 9px;
+  line-height: 12px;
   color: rgba(34, 197, 94, 0.4);
-  letter-spacing: 0.2em;
+  letter-spacing: 0.15em;
   padding: 0;
+  margin: 0;
   animation: lt-arrow-pulse 2.6s ease-in-out infinite;
 }
 @keyframes lt-arrow-pulse {

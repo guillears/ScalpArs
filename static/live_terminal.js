@@ -479,11 +479,13 @@
       c.setAttribute('stroke-opacity', '0.18');
       c.setAttribute('stroke-width', '1');
       elRadarSvg.appendChild(c);
-      // Ring label, anchored to right-edge inside the SVG
+      // Ring label — placed at the TOP of each ring's right side so the
+      // three labels are vertically staggered (one per ring) instead of
+      // stacking on the same y and visually overlapping each other.
       const t = document.createElementNS(ns, 'text');
       t.setAttribute('class', 'lt-ring-label');
-      t.setAttribute('x', cx + r + 4);
-      t.setAttribute('y', cy - 2);
+      t.setAttribute('x', cx + 4);
+      t.setAttribute('y', cy - r - 2);
       t.textContent = label;
       elRadarSvg.appendChild(t);
     }
@@ -829,11 +831,12 @@
     const fmt = v => v == null ? '—' : String(v);
     const fmtDelta = v => (v == null || v === 0) ? '' : `-${v}`;
     const flashCls = flash ? ' lt-funnel-flash' : '';
+    // Labels shortened (drop "filter" suffix) so they fit the panel width.
     elFunnelBody.innerHTML = `
-      <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.totalBinance)}</span><span class="lt-funnel-label">total Binance</span></div>
-      <div class="lt-funnel-arrow">▼ new-listing filter</div>
+      <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.totalBinance)}</span><span class="lt-funnel-label">total</span></div>
+      <div class="lt-funnel-arrow">▼ new-listing</div>
       <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.afterNewListing)}</span><span class="lt-funnel-delta">${fmtDelta(f.excludedNewListing)}</span></div>
-      <div class="lt-funnel-arrow">▼ alpha-subtype filter</div>
+      <div class="lt-funnel-arrow">▼ alpha-subtype</div>
       <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.afterAlpha)}</span><span class="lt-funnel-delta">${fmtDelta(f.excludedAlpha)}</span></div>
       <div class="lt-funnel-arrow">▼ blacklist</div>
       <div class="lt-funnel-row${flashCls}"><span class="lt-funnel-num">${fmt(f.afterBlacklist)}</span><span class="lt-funnel-delta">${fmtDelta(f.excludedBlacklist)}</span></div>

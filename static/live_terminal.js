@@ -211,15 +211,34 @@
       return;
     }
 
-    // Track every symbol-bearing event for the radar frequency score
-    if (evt.symbol && !isReplay) {
-      state.radarSymbolEvents.push({ ts: Date.now(), symbol: evt.symbol });
-      const cutoff = Date.now() - 60000;
-      while (state.radarSymbolEvents.length > 0 && state.radarSymbolEvents[0].ts < cutoff) {
-        state.radarSymbolEvents.shift();
+    // Track ALL symbols mentioned in the event for the radar frequency score
+    // and top-scans list.  Skip filter-out lines (excluded / Blacklist /
+    // "filter:") so the radar reflects pairs we're actively scanning, not
+    // pairs we just filtered away.  Multi-symbol messages contribute every
+    // symbol — previously only the first match was captured.
+    if (!isReplay) {
+      const msg = evt.msg || '';
+      const isFilterOut = /\b(excluded|Blacklist active|new-listing filter|Alpha-subtype filter)\b/i.test(msg);
+      if (!isFilterOut) {
+        const allSyms = msg.match(/\b(?:\d+)?[A-Z]{2,10}USDT\b/g);
+        if (allSyms && allSyms.length > 0) {
+          const now = Date.now();
+          for (const sym of allSyms) {
+            state.radarSymbolEvents.push({ ts: now, symbol: sym });
+            pushTopScan(sym);
+          }
+          const cutoff = now - 60000;
+          while (state.radarSymbolEvents.length > 0 && state.radarSymbolEvents[0].ts < cutoff) {
+            state.radarSymbolEvents.shift();
+          }
+        } else if (evt.symbol) {
+          // Fallback: at least record the parsed primary symbol
+          state.radarSymbolEvents.push({ ts: Date.now(), symbol: evt.symbol });
+        }
       }
     }
-    // Reject flash on radar
+    // Reject flash on radar — always honor parsed primary symbol (REJECT
+    // category by definition mentions the rejected pair).
     if (evt.category === 'REJECT' && evt.symbol) {
       state.radarRejectFlash.set(evt.symbol, Date.now() + 1000);
     }
@@ -233,9 +252,9 @@
     if (evt.category === 'SCAN' && evt.symbol) {
       bumpScanCrawl(evt.symbol);
     }
-    if (evt.symbol && (evt.category === 'SCAN' || evt.category === 'WATCH')) {
-      pushTopScan(evt.symbol);
-    }
+    // (TOP SCANS now fed from the all-symbol extraction above —
+    // the old single-symbol SCAN/WATCH branch was getting stuck on
+    // the first match of filter-out lists.)
 
     // ENTRY — open position tracking
     if (evt.category === 'ENTRY' && evt.symbol) {

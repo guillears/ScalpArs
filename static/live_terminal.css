@@ -359,12 +359,13 @@ body.lt-mode header.glass + .glass * {
 #live-terminal-view .lt-heat-compass {
   border: 1px solid var(--lt-border);
   background: #060906;
-  position: relative;
+  position: relative;     /* anchor for the absolutely-positioned label */
   flex: 1 1 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   padding: 4px 6px 6px;
+  overflow: hidden;
 }
 #live-terminal-view .lt-heat-compass-label {
   position: absolute;
@@ -374,13 +375,18 @@ body.lt-mode header.glass + .glass * {
   letter-spacing: 0.15em;
   z-index: 2;
 }
+/* May 16 fix: previous CSS used height:auto + flex:1 1 auto which collapsed
+   the SVG to ~0 in a flex column (no aspect ratio hint for flexbox). Using
+   aspect-ratio gives the browser the viewBox intrinsic ratio; flex:0 0 auto
+   prevents the flex algorithm from shrinking it; margin-bottom:auto pushes
+   the footer to the bottom of remaining space. */
 #live-terminal-view .lt-heat-compass svg {
   display: block;
   width: 100%;
-  height: auto;
-  flex: 1 1 auto;
-  min-height: 0;
-  margin-top: 16px;  /* clear the label */
+  aspect-ratio: 260 / 190;
+  flex: 0 0 auto;
+  margin-top: 16px;   /* clear the label */
+  margin-bottom: auto;
 }
 /* Compass rings & cardinals */
 #live-terminal-view .lt-heat-compass .lt-hc-ring {

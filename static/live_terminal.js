@@ -817,6 +817,9 @@
 
   function updateHeatCompass(s) {
     if (!elHeatCompassSvg || !s) return;
+    // TEMP DIAGNOSTIC (May 16) — remove once payload confirmed
+    console.log('[HC]', 'bull=', s.breadth_n_bull, 'bear=', s.breadth_n_bear,
+                'gv=', s.global_volume_ratio, 'adx=', s.btc_adx, 'regime=', s.regime);
     _hcLastBeatAt = Date.now();
     if (elHcPanel) elHcPanel.classList.remove('lt-hc-stale');
 

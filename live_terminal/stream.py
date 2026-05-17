@@ -52,6 +52,12 @@ def _gather_bot_state() -> dict:
         "btc_atr_pct": None,
         "bull_pct": None,
         "bear_pct": None,
+        # May 16: counts + global vol exposed for Live Terminal HEAT COMPASS panel.
+        # Already-computed module globals — no new computation, just exposure.
+        "breadth_n_bull": None,
+        "breadth_n_bear": None,
+        "breadth_n_total": None,
+        "global_volume_ratio": None,
         "ban_active": False,
     }
     health = {"ws": True, "api": True, "log": True, "ex": True}
@@ -71,6 +77,10 @@ def _gather_bot_state() -> dict:
         state["btc_1h_slope"] = getattr(te, "_current_btc_1h_slope", None)
         state["bull_pct"] = getattr(te, "_market_bull_pct", None)
         state["bear_pct"] = getattr(te, "_market_bear_pct", None)
+        state["breadth_n_bull"] = getattr(te, "_breadth_n_bull", None)
+        state["breadth_n_bear"] = getattr(te, "_breadth_n_bear", None)
+        state["breadth_n_total"] = getattr(te, "_breadth_n_total", None)
+        state["global_volume_ratio"] = getattr(te, "_global_volume_ratio", None)
     except Exception as exc:
         logger.debug(f"[HEARTBEAT_STATE] read failed (non-fatal): {exc}")
         health["log"] = False

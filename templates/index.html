@@ -5039,9 +5039,23 @@
                     <!-- Right-edge activity pulse (peripheral motion indicator) -->
                     <div class="lt-feed-pulse" id="lt-feed-pulse"></div>
                 </div>
-                <div class="lt-radar">
-                    <div class="lt-radar-label">RADAR</div>
-                    <svg id="lt-radar-svg"></svg>
+                <div class="lt-col-radar">
+                    <div class="lt-radar">
+                        <div class="lt-radar-label">RADAR</div>
+                        <svg id="lt-radar-svg"></svg>
+                    </div>
+                    <!-- May 16: HEAT COMPASS — cardinal-compass summary of bull/bear/vol/vlt -->
+                    <div class="lt-heat-compass">
+                        <div class="lt-heat-compass-label">HEAT COMPASS</div>
+                        <svg id="lt-heat-compass-svg" viewBox="0 0 260 190" preserveAspectRatio="xMidYMid meet"></svg>
+                        <div class="lt-heat-compass-footer" id="lt-heat-compass-footer">
+                            <span class="lt-hc-foot-cell"><span class="lt-hc-foot-label">LEAN</span> <span class="lt-hc-foot-val" id="lt-hc-foot-lean">—</span></span>
+                            <span class="lt-hc-foot-sep">·</span>
+                            <span class="lt-hc-foot-cell"><span class="lt-hc-foot-label">REGIME</span> <span class="lt-hc-foot-val" id="lt-hc-foot-regime">—</span></span>
+                            <span class="lt-hc-foot-sep">·</span>
+                            <span class="lt-hc-foot-cell"><span class="lt-hc-foot-label">PRESSURE</span> <span class="lt-hc-foot-val" id="lt-hc-foot-pressure">—</span></span>
+                        </div>
+                    </div>
                 </div>
                 <div class="lt-side">
                     <div class="lt-side-panel">

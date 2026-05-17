@@ -100,7 +100,9 @@
     elConstellation, elEvMin, elScanCrawlBar, elScanCrawlText, elCycleNum,
     elRadarSvg, elPosBody, elScansBody, elHeatmap, elFooterStats, elBoot,
     elBootLines, elAlertBanner, elAlertMsg, elKatakana, elHbDot,
-    elFeedPulse, elRegimeBanner, elFunnelBody, elEquityCurve;
+    elFeedPulse, elRegimeBanner, elFunnelBody, elEquityCurve,
+    elHeatCompassSvg, elHcPanel, elHcFootLean, elHcFootRegime, elHcFootPressure;
+  let _hcLastBeatAt = 0;
 
   // ─── Public API ────────────────────────────────────────────────────────
   function show() {
@@ -205,6 +207,7 @@
         if (evt.hb.health) { state.health = evt.hb.health; updateConstellation(); }
         updatePositionsPanel();
         updateFooterStats();
+        if (evt.hb.state) updateHeatCompass(evt.hb.state);
         state.health.log = true;
         updateConstellation();
       }
@@ -691,6 +694,243 @@
   // Sanitize a symbol for use as an SVG id (USDT pairs are already safe but be defensive)
   function cssId(s) { return String(s).replace(/[^A-Za-z0-9_-]/g, '_'); }
 
+  // ─── HEAT COMPASS (May 16) ─────────────────────────────────────────────
+  // Cardinal-compass visualization: LONGS (N) / SHORTS (S) / VOL (E) / VLT (W).
+  // Center drift dot summarizes overall market lean. Data from HEARTBEAT.
+  const HC = {
+    cx: 130, cy: 95,              // viewBox center (0 0 260 190)
+    rings: [22, 38, 54],          // 3 concentric ring radii
+    cardLabelOffset: 70,          // cardinal label distance from center
+    barMaxN: 50,                  // max bar extent in viewBox units
+    barThickness: 6,              // bar thickness
+    bullScale: 30,                // bull/bear count → bar length (count of 30 → max bar)
+    volScale: 2.0,                // global vol 0..2.0 maps to 0..1
+  };
+  function buildHeatCompassSvg() {
+    if (!elHeatCompassSvg) return;
+    const { cx, cy, rings, cardLabelOffset } = HC;
+    elHeatCompassSvg.innerHTML = '';
+
+    // Concentric rings
+    rings.forEach((r, i) => {
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', r);
+      c.setAttribute('class', 'lt-hc-ring' + (i === rings.length - 1 ? ' lt-hc-ring-outer' : ''));
+      elHeatCompassSvg.appendChild(c);
+    });
+
+    // Cross lines (faint cardinal guides)
+    const crossSpan = rings[rings.length - 1] + 4;
+    [
+      [cx, cy - crossSpan, cx, cy + crossSpan],
+      [cx - crossSpan, cy, cx + crossSpan, cy],
+    ].forEach(([x1, y1, x2, y2]) => {
+      const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+      l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+      l.setAttribute('class', 'lt-hc-cross');
+      elHeatCompassSvg.appendChild(l);
+    });
+
+    // Cardinal labels (LONGS / SHORTS / VOL / VLT)
+    const cards = [
+      { id: 'lt-hc-card-n', x: cx,                       y: cy - cardLabelOffset,           t: 'LONGS' },
+      { id: 'lt-hc-card-s', x: cx,                       y: cy + cardLabelOffset + 6,       t: 'SHORTS' },
+      { id: 'lt-hc-card-e', x: cx + cardLabelOffset + 8, y: cy + 3,                         t: 'VOL' },
+      { id: 'lt-hc-card-w', x: cx - cardLabelOffset - 8, y: cy + 3,                         t: 'VLT' },
+    ];
+    cards.forEach(({ id, x, y, t }) => {
+      const tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      tx.setAttribute('id', id); tx.setAttribute('x', x); tx.setAttribute('y', y);
+      tx.setAttribute('class', 'lt-hc-card-label'); tx.textContent = t;
+      elHeatCompassSvg.appendChild(tx);
+    });
+
+    // Bars (rect elements, sized at update time) and numeric labels
+    const t = HC.barThickness;
+    const bars = [
+      { id: 'lt-hc-bar-n', cls: 'lt-hc-bar lt-hc-bar-n', x: cx - t/2, y: cy,         w: t, h: 0 },
+      { id: 'lt-hc-bar-s', cls: 'lt-hc-bar lt-hc-bar-s', x: cx - t/2, y: cy,         w: t, h: 0 },
+      { id: 'lt-hc-bar-e', cls: 'lt-hc-bar lt-hc-bar-e', x: cx,       y: cy - t/2,   w: 0, h: t },
+      { id: 'lt-hc-bar-w', cls: 'lt-hc-bar lt-hc-bar-w', x: cx,       y: cy - t/2,   w: 0, h: t },
+    ];
+    bars.forEach(b => {
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('id', b.id); r.setAttribute('class', b.cls);
+      r.setAttribute('x', b.x); r.setAttribute('y', b.y);
+      r.setAttribute('width', b.w); r.setAttribute('height', b.h);
+      r.setAttribute('rx', 1); r.setAttribute('ry', 1);
+      elHeatCompassSvg.appendChild(r);
+    });
+
+    // Numeric labels at bar tips (positioned at update time)
+    const nums = [
+      { id: 'lt-hc-num-n', cls: 'lt-hc-num lt-hc-num-green', x: cx, y: cy - 14 },
+      { id: 'lt-hc-num-s', cls: 'lt-hc-num lt-hc-num-red',   x: cx, y: cy + 18 },
+      { id: 'lt-hc-num-e', cls: 'lt-hc-num lt-hc-num-green', x: cx + 14, y: cy + 3 },
+      { id: 'lt-hc-num-w', cls: 'lt-hc-num',                 x: cx - 14, y: cy + 3 },
+    ];
+    nums.forEach(n => {
+      const tx = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      tx.setAttribute('id', n.id); tx.setAttribute('class', n.cls);
+      tx.setAttribute('x', n.x); tx.setAttribute('y', n.y);
+      tx.textContent = '—';
+      elHeatCompassSvg.appendChild(tx);
+    });
+
+    // Center drift dot — outer <g> handles data-driven translate (CSS transition),
+    // inner <g> runs the continuous wander animation (CSS keyframe), innermost is the circle itself
+    const drift = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    drift.setAttribute('id', 'lt-hc-drift');
+    drift.setAttribute('class', 'lt-hc-center-drift');
+    drift.style.transform = 'translate(0px, 0px)';
+    drift.style.transformOrigin = `${cx}px ${cy}px`;
+    drift.style.transformBox = 'fill-box';
+
+    const wander = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    wander.setAttribute('class', 'lt-hc-center-wander');
+
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('class', 'lt-hc-center-dot');
+    dot.setAttribute('cx', cx); dot.setAttribute('cy', cy); dot.setAttribute('r', 3.5);
+    wander.appendChild(dot);
+    drift.appendChild(wander);
+    elHeatCompassSvg.appendChild(drift);
+  }
+
+  function _hcClassifyVlt(adx) {
+    if (adx == null || isNaN(adx)) return { label: '—', frac: 0 };
+    if (adx < 20) return { label: 'LOW',  frac: 0.30 };
+    if (adx <= 25) return { label: 'MID', frac: 0.65 };
+    return { label: 'HIGH', frac: 1.0 };
+  }
+  function _hcClassifyPressure(gv, adx) {
+    // Simple heuristic: high pressure = high vol AND high ADX. Low = both low.
+    if (gv == null && adx == null) return { label: '—', cls: 'lt-hc-foot-grey' };
+    const v = gv == null ? 0 : Math.min(gv / 1.5, 1);
+    const a = adx == null ? 0 : Math.min(adx / 35, 1);
+    const score = (v + a) / 2;
+    if (score < 0.40) return { label: 'LOW',  cls: 'lt-hc-foot-grey' };
+    if (score < 0.70) return { label: 'MID',  cls: '' };           // default green
+    return { label: 'HIGH', cls: 'lt-hc-foot-amber' };
+  }
+
+  function updateHeatCompass(s) {
+    if (!elHeatCompassSvg || !s) return;
+    _hcLastBeatAt = Date.now();
+    if (elHcPanel) elHcPanel.classList.remove('lt-hc-stale');
+
+    const { cx, cy, barMaxN, barThickness: bt, bullScale, volScale } = HC;
+    const bull = s.breadth_n_bull;
+    const bear = s.breadth_n_bear;
+    const gv   = s.global_volume_ratio;
+    const adx  = s.btc_adx;
+
+    // N bar — LONGS count → height upward
+    const barN = document.getElementById('lt-hc-bar-n');
+    const numN = document.getElementById('lt-hc-num-n');
+    if (barN && numN) {
+      const h = bull == null ? 0 : Math.min(bull / bullScale, 1) * barMaxN;
+      barN.setAttribute('y', cy - h);
+      barN.setAttribute('height', h);
+      const tipY = Math.max(cy - h - 4, cy - barMaxN - 4);
+      numN.setAttribute('x', cx);
+      numN.setAttribute('y', tipY);
+      numN.textContent = bull == null ? '—' : String(bull);
+    }
+    // S bar — SHORTS count → height downward
+    const barS = document.getElementById('lt-hc-bar-s');
+    const numS = document.getElementById('lt-hc-num-s');
+    if (barS && numS) {
+      const h = bear == null ? 0 : Math.min(bear / bullScale, 1) * barMaxN;
+      barS.setAttribute('y', cy);
+      barS.setAttribute('height', h);
+      const tipY = Math.min(cy + h + 10, cy + barMaxN + 10);
+      numS.setAttribute('x', cx);
+      numS.setAttribute('y', tipY);
+      numS.textContent = bear == null ? '—' : String(bear);
+    }
+    // E bar — VOL → width rightward
+    const barE = document.getElementById('lt-hc-bar-e');
+    const numE = document.getElementById('lt-hc-num-e');
+    if (barE && numE) {
+      const w = gv == null ? 0 : Math.min(gv / volScale, 1) * barMaxN;
+      barE.setAttribute('x', cx);
+      barE.setAttribute('width', w);
+      const tipX = Math.min(cx + w + 12, cx + barMaxN + 12);
+      numE.setAttribute('x', tipX);
+      numE.setAttribute('y', cy + 3);
+      numE.textContent = gv == null ? '—' : gv.toFixed(2);
+    }
+    // W bar — VLT (BTC ADX classified) → width leftward
+    const vlt = _hcClassifyVlt(adx);
+    const barW = document.getElementById('lt-hc-bar-w');
+    const numW = document.getElementById('lt-hc-num-w');
+    if (barW && numW) {
+      const w = vlt.frac * barMaxN;
+      barW.setAttribute('x', cx - w);
+      barW.setAttribute('width', w);
+      const tipX = Math.max(cx - w - 12, cx - barMaxN - 12);
+      numW.setAttribute('x', tipX);
+      numW.setAttribute('y', cy + 3);
+      numW.textContent = vlt.label;
+    }
+
+    // Center drift dot — data-driven offset on the outer <g>
+    const drift = document.getElementById('lt-hc-drift');
+    if (drift) {
+      const totBB = (bull || 0) + (bear || 0);
+      const xLean = totBB > 0 ? (((bull || 0) - (bear || 0)) / totBB) * 6 : 0;
+      const adxNorm = adx == null ? 0 : Math.min(adx / 30, 1);
+      const volNorm = gv == null ? 0 : Math.min(gv / 1.5, 1);
+      const yLean = -((volNorm + adxNorm) / 2 - 0.5) * 6;
+      const xOff = Math.max(-8, Math.min(8, xLean));
+      const yOff = Math.max(-8, Math.min(8, yLean));
+      drift.style.transform = `translate(${xOff.toFixed(2)}px, ${yOff.toFixed(2)}px)`;
+    }
+
+    // Footer meta line
+    if (elHcFootLean) {
+      if (bull == null || bear == null) {
+        elHcFootLean.textContent = '—';
+        elHcFootLean.className = 'lt-hc-foot-val lt-hc-foot-grey';
+      } else {
+        const diff = bull - bear;
+        if (diff === 0) {
+          elHcFootLean.textContent = 'BALANCED';
+          elHcFootLean.className = 'lt-hc-foot-val lt-hc-foot-grey';
+        } else if (diff > 0) {
+          elHcFootLean.textContent = `LONG +${diff}`;
+          elHcFootLean.className = 'lt-hc-foot-val';
+        } else {
+          elHcFootLean.textContent = `SHORT +${Math.abs(diff)}`;
+          elHcFootLean.className = 'lt-hc-foot-val lt-hc-foot-red';
+        }
+      }
+    }
+    if (elHcFootRegime) {
+      const r = s.regime || '—';
+      elHcFootRegime.textContent = r;
+      const isBull = /BULL/i.test(r);
+      const isBear = /BEAR/i.test(r);
+      elHcFootRegime.className = 'lt-hc-foot-val' +
+        (isBull ? '' : isBear ? ' lt-hc-foot-red' : ' lt-hc-foot-grey');
+    }
+    if (elHcFootPressure) {
+      const p = _hcClassifyPressure(gv, adx);
+      elHcFootPressure.textContent = p.label;
+      elHcFootPressure.className = 'lt-hc-foot-val' + (p.cls ? ' ' + p.cls : '');
+    }
+  }
+
+  // Mark compass stale if no heartbeat for >6s (2 missed beats)
+  setInterval(() => {
+    if (!elHcPanel) return;
+    if (_hcLastBeatAt && (Date.now() - _hcLastBeatAt) > 6000) {
+      elHcPanel.classList.add('lt-hc-stale');
+    }
+  }, 2000);
+
   // ─── Positions panel ───────────────────────────────────────────────────
   function updatePositionsPanel() {
     if (!elPosBody) return;
@@ -982,6 +1222,13 @@
     elRegimeBanner = document.getElementById('lt-regime-banner');
     elFunnelBody = document.getElementById('lt-funnel-body');
     elEquityCurve = null;  // resolved per render inside footer
+    // HEAT COMPASS (May 16)
+    elHcPanel = document.querySelector('#live-terminal-view .lt-heat-compass');
+    elHeatCompassSvg = document.getElementById('lt-heat-compass-svg');
+    elHcFootLean = document.getElementById('lt-hc-foot-lean');
+    elHcFootRegime = document.getElementById('lt-hc-foot-regime');
+    elHcFootPressure = document.getElementById('lt-hc-foot-pressure');
+    buildHeatCompassSvg();
 
     if (elHeatmap) {
       const frag = document.createDocumentFragment();

@@ -330,11 +330,21 @@ body.lt-mode header.glass + .glass * {
   100% { opacity: 0; transform: translateY(-32px); }
 }
 
+/* Radar column — split vertically: top half RADAR, bottom half HEAT COMPASS */
+#live-terminal-view .lt-col-radar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
 /* Radar */
 #live-terminal-view .lt-radar {
   border: 1px solid var(--lt-border);
   background: #060906;
   position: relative;
+  flex: 1 1 0;
+  min-height: 0;
 }
 #live-terminal-view .lt-radar svg { display: block; width: 100%; height: 100%; }
 #live-terminal-view .lt-radar-label {
@@ -344,6 +354,153 @@ body.lt-mode header.glass + .glass * {
   color: var(--lt-label);
   letter-spacing: 0.15em;
 }
+
+/* HEAT COMPASS — May 16. Cardinal-compass summary panel below RADAR. */
+#live-terminal-view .lt-heat-compass {
+  border: 1px solid var(--lt-border);
+  background: #060906;
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 6px 6px;
+}
+#live-terminal-view .lt-heat-compass-label {
+  position: absolute;
+  top: 6px; left: 8px;
+  font-size: 10px;
+  color: var(--lt-label);
+  letter-spacing: 0.15em;
+  z-index: 2;
+}
+#live-terminal-view .lt-heat-compass svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 16px;  /* clear the label */
+}
+/* Compass rings & cardinals */
+#live-terminal-view .lt-heat-compass .lt-hc-ring {
+  fill: none;
+  stroke: rgba(34, 197, 94, 0.18);
+  stroke-width: 0.6;
+}
+#live-terminal-view .lt-heat-compass .lt-hc-ring.lt-hc-ring-outer {
+  stroke: rgba(34, 197, 94, 0.28);
+}
+#live-terminal-view .lt-heat-compass .lt-hc-cross {
+  stroke: rgba(34, 197, 94, 0.10);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 3;
+}
+#live-terminal-view .lt-heat-compass .lt-hc-card-label {
+  fill: var(--lt-label);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.18em;
+  text-anchor: middle;
+  font-weight: 600;
+}
+#live-terminal-view .lt-heat-compass .lt-hc-num {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  fill: var(--lt-fg);
+  text-anchor: middle;
+}
+#live-terminal-view .lt-heat-compass .lt-hc-num.lt-hc-num-red { fill: var(--lt-red, #ef4444); }
+#live-terminal-view .lt-heat-compass .lt-hc-num.lt-hc-num-green { fill: var(--lt-fg-bright, #22c55e); }
+/* Magnitude bars */
+#live-terminal-view .lt-heat-compass .lt-hc-bar {
+  transition: x 0.6s ease-out, y 0.6s ease-out, width 0.6s ease-out, height 0.6s ease-out, opacity 0.6s ease-out;
+}
+#live-terminal-view .lt-heat-compass .lt-hc-bar-n {
+  fill: #22c55e;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 3px rgba(34, 197, 94, 0.55));
+}
+#live-terminal-view .lt-heat-compass .lt-hc-bar-s {
+  fill: #ef4444;
+  opacity: 0.65;
+  filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.45));
+}
+#live-terminal-view .lt-heat-compass .lt-hc-bar-e {
+  fill: #22c55e;
+  opacity: 0.80;
+  filter: drop-shadow(0 0 3px rgba(34, 197, 94, 0.50));
+}
+#live-terminal-view .lt-heat-compass .lt-hc-bar-w {
+  fill: #22c55e;
+  opacity: 0.55;
+  filter: drop-shadow(0 0 2px rgba(34, 197, 94, 0.35));
+}
+/* Numeric labels glide with the bar tips */
+#live-terminal-view .lt-heat-compass .lt-hc-num {
+  transition: x 0.6s ease-out, y 0.6s ease-out;
+}
+/* Center drift dot — outer <g> handles data-driven translate, inner does continuous wander */
+#live-terminal-view .lt-heat-compass .lt-hc-center-drift {
+  transition: transform 0.6s ease-out;
+}
+#live-terminal-view .lt-heat-compass .lt-hc-center-wander {
+  animation: lt-hc-wander 4s ease-in-out infinite;
+}
+#live-terminal-view .lt-heat-compass .lt-hc-center-dot {
+  fill: #22c55e;
+  filter: drop-shadow(0 0 6px rgba(34, 197, 94, 1));
+  animation: lt-hc-pulse 2.4s ease-in-out infinite;
+}
+@keyframes lt-hc-pulse {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 1.0; }
+}
+@keyframes lt-hc-wander {
+  0%   { transform: translate(0px, 0px); }
+  25%  { transform: translate(1.4px, -1.0px); }
+  50%  { transform: translate(-0.8px, 1.6px); }
+  75%  { transform: translate(-1.2px, -1.2px); }
+  100% { transform: translate(0px, 0px); }
+}
+/* Stale (no recent heartbeat) */
+#live-terminal-view .lt-heat-compass.lt-hc-stale svg,
+#live-terminal-view .lt-heat-compass.lt-hc-stale .lt-heat-compass-footer { opacity: 0.5; }
+/* Footer meta line */
+#live-terminal-view .lt-heat-compass-footer {
+  border-top: 1px solid #1a1a1a;
+  padding: 8px 4px 2px;
+  margin-top: 6px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+#live-terminal-view .lt-heat-compass-footer .lt-hc-foot-label { color: #94a3b8; letter-spacing: 0.08em; }
+#live-terminal-view .lt-heat-compass-footer .lt-hc-foot-val {
+  color: #22c55e;
+  text-shadow: 0 0 4px rgba(34, 197, 94, 0.5);
+  font-weight: 600;
+  margin-left: 3px;
+  transition: color 0.4s ease-out;
+}
+#live-terminal-view .lt-heat-compass-footer .lt-hc-foot-val.lt-hc-foot-red {
+  color: #ef4444;
+  text-shadow: 0 0 4px rgba(239, 68, 68, 0.5);
+}
+#live-terminal-view .lt-heat-compass-footer .lt-hc-foot-val.lt-hc-foot-amber {
+  color: var(--lt-amber, #f59e0b);
+  text-shadow: 0 0 4px rgba(245, 158, 11, 0.5);
+}
+#live-terminal-view .lt-heat-compass-footer .lt-hc-foot-val.lt-hc-foot-grey {
+  color: #94a3b8;
+  text-shadow: none;
+}
+#live-terminal-view .lt-heat-compass-footer .lt-hc-foot-sep { color: #1f2937; }
 
 /* Side panels (positions / scans) */
 #live-terminal-view .lt-side {

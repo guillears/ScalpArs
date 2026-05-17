@@ -161,7 +161,7 @@
     "rsi_adx_multiplier_hard_cap": 2.0,
     "entry_quality_score_filter_enabled": true,
     "entry_quality_score_block_max": 1,
-    "fast_exit_enabled": false,
+    "fast_exit_enabled": true,
     "fast_exit_threshold_pct": 0.20,
     "fast_exit_window_minutes": 2,
     "global_volume_filter_enabled": true,

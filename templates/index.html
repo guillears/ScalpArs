@@ -9355,9 +9355,8 @@
                             _padBody.innerHTML = '<tr><td colspan="12" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
                         } else {
                             const fmt = (v, d=3) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
-                            // Dim low-N rows (Armed < 5) so they don't visually dominate.
+                            // Pattern column stays blank when armed<5; that's the low-N signal.
                             const _padRowHtml = _pad.rows.map(r => {
-                                const dim = r.armed < 5 ? ' opacity-50' : '';
                                 const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                                 const lt5Cls = r.lt_be5 > 0 ? 'text-red-400 font-semibold' : 'text-gray-500';
                                 const be5_10Cls = r.be5_be10 > 0 ? 'text-amber-400 font-semibold' : 'text-gray-500';
@@ -9368,7 +9367,7 @@
                                     : r.pattern.startsWith('🟡') ? 'text-amber-400 font-semibold'
                                     : r.pattern.startsWith('✓') ? 'text-emerald-400'
                                     : 'text-gray-500';
-                                return `<tr class="hover:bg-white/5${dim}">
+                                return `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1">${r.reason}</td>
                                     <td class="px-2 py-1 ${dirCls}">${r.direction}</td>
                                     <td class="px-2 py-1 text-right">${r.count}</td>

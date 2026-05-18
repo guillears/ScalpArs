@@ -7525,7 +7525,7 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
 
 
 # Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).
-_FAST_EXIT_THRESHOLDS = [0.10, 0.15, 0.20]   # P&L % triggers to test
+_FAST_EXIT_THRESHOLDS = [0.20, 0.30, 0.40]   # P&L % triggers to test (May 17: shifted from [0.10,0.15,0.20] now that 0.20 is live)
 _FAST_EXIT_WINDOWS = [1, 2, 5]               # minutes from entry (3min dropped May 13)
 _FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
 _FAST_EXIT_FEE_PCT = 0.063                   # taker round-trip fee approx

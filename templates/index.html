@@ -9222,6 +9222,62 @@
                                     <td class="px-2 py-1 ${vCls}">${r.verdict}</td>
                                 </tr>`;
                             }).join('');
+
+                            // TOTAL rows: LONG, SHORT, BOTH (May 17 PM)
+                            const _aggDir = (dir) => {
+                                const rs = (dir === 'BOTH') ? _bfcf.rows : _bfcf.rows.filter(r => r.direction === dir);
+                                if (!rs.length) return null;
+                                const sum = (k) => rs.reduce((a, r) => a + (r[k] || 0), 0);
+                                const t = {
+                                    direction: dir,
+                                    count: sum('count'), armed: sum('armed'),
+                                    be_new_fires: sum('be_new_fires'),
+                                    cut_winners: sum('cut_winners'), saved: sum('saved'),
+                                    actual_total_usd: sum('actual_total_usd'),
+                                    cf_total_usd: sum('cf_total_usd'),
+                                    delta_usd: sum('delta_usd'),
+                                };
+                                t.actual_avg_pct = t.count > 0 ? rs.reduce((a, r) => a + (r.actual_avg_pct || 0) * (r.count || 0), 0) / t.count : 0;
+                                t.cf_avg_pct = t.count > 0 ? rs.reduce((a, r) => a + (r.cf_avg_pct || 0) * (r.count || 0), 0) / t.count : 0;
+                                if (t.cut_winners > 0) t.verdict = '⚠ CUTS WINNERS';
+                                else if (t.delta_usd > 10) t.verdict = '★ HELPING';
+                                else if (t.delta_usd < -10) t.verdict = '⚠ HURTING';
+                                else t.verdict = '✓ Marginal';
+                                return t;
+                            };
+                            const _totalRow = (t, label) => {
+                                if (!t) return '';
+                                const actCls = t.actual_total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const cfCls = t.cf_total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const dCls = t.delta_usd > 5 ? 'text-emerald-400 font-bold'
+                                    : t.delta_usd < -5 ? 'text-red-400 font-bold'
+                                    : 'text-gray-400 font-bold';
+                                const vCls = t.verdict.startsWith('★') ? 'text-emerald-400 font-bold'
+                                    : t.verdict.startsWith('⚠') ? 'text-red-400 font-bold'
+                                    : 'text-blue-400 font-bold';
+                                const dirCls = t.direction === 'LONG' ? 'text-emerald-400 font-bold'
+                                    : t.direction === 'SHORT' ? 'text-red-400 font-bold'
+                                    : 'text-amber-300 font-bold';
+                                const cutCls = t.cut_winners > 0 ? 'text-red-400 font-bold' : 'text-gray-400 font-bold';
+                                const savedCls = t.saved > 0 ? 'text-emerald-400 font-bold' : 'text-gray-400 font-bold';
+                                return `<tr class="border-t border-amber-700/40 bg-amber-900/10">
+                                    <td class="px-2 py-1 font-bold text-amber-300">${label}</td>
+                                    <td class="px-2 py-1 ${dirCls}">${t.direction}</td>
+                                    <td class="px-2 py-1 text-right font-bold">${t.count}</td>
+                                    <td class="px-2 py-1 text-right font-bold">${t.armed}</td>
+                                    <td class="px-2 py-1 text-right font-bold">${t.be_new_fires}</td>
+                                    <td class="px-2 py-1 text-right ${cutCls}">${t.cut_winners}</td>
+                                    <td class="px-2 py-1 text-right ${savedCls}">${t.saved}</td>
+                                    <td class="px-2 py-1 text-right text-gray-200 font-bold">${fmt(t.actual_avg_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${actCls}">${fmt$(t.actual_total_usd)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-200 font-bold">${fmt(t.cf_avg_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${cfCls}">${fmt$(t.cf_total_usd)}</td>
+                                    <td class="px-2 py-1 text-right ${dCls}">${fmt$(t.delta_usd)}</td>
+                                    <td class="px-2 py-1 ${vCls}">${t.verdict}</td>
+                                </tr>`;
+                            };
+                            const _tL = _aggDir('LONG'), _tS = _aggDir('SHORT'), _tB = _aggDir('BOTH');
+                            _bfcfBody.innerHTML += _totalRow(_tL, 'TOTAL LONG') + _totalRow(_tS, 'TOTAL SHORT') + _totalRow(_tB, 'TOTAL ALL');
                         }
                     }
                 }

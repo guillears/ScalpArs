@@ -11003,3 +11003,65 @@ Two reasons:
 The instrumentation is the diagnostic. The counterfactual table is the
 report surface. The methodology section above is the operating rule for
 acting on what it shows.
+
+## May 17, 2026 UTC-3 — Entry Quality Score filter disabled (test under new BE 0.05 floor)
+
+### Pre-disable snapshot (post-May-16 BE-active sample)
+
+Reference Performance by Entry Quality Score table at time of disable:
+
+| Score | Dir | N | WR | Total $ | Avg % | Confidence (S/V) |
+|---|---|---|---|---|---|---|
+| 1 | LONG | 4 | 0% | -$150.75 | -0.51% | S:3 V:1 |
+| 1 | SHORT | 2 | 50% | +$18.87 | +0.14% | V:2 |
+| 2 | LONG | 4 | 50% | -$99.44 | -0.30% | S:3 V:1 |
+| 2 | SHORT | 9 | 56% | -$68.01 | -0.02% | S:5 V:4 |
+| 3 | SHORT | 24 | 83% | +$324.82 | +0.24% | S:13 V:11 |
+| 4 | LONG | 4 | 50% | -$65.95 | -0.22% | V:3 S:1 |
+| 4 | SHORT | 15 | 87% | +$203.75 | +0.18% | S:10 V:5 |
+| 5 | LONG | 1 | 100% | +$45.69 | +0.30% | V:1 |
+| 5 | SHORT | 13 | 69% | +$23.94 | +0.07% | S:12 V:1 |
+| 6 | SHORT | 4 | 100% | +$40.08 | +0.10% | S:4 |
+
+### Read
+
+Score ≤ 1 still net negative under new BE config (N=6, -$131.88). Direction-
+consistent with the May 15 cross-sample finding (Score ≤ 1: 10-sample N=95,
+35% WR, -$684). The recent BE 0.05 floor activation did NOT rescue the
+score-≤-1 bucket — the entries are structurally weak regardless of exit logic.
+
+Score 2 is also weak (N=13 combined, -$167). Score ≥ 3 SHORT consistently
+profitable (24/15/13/4 trades, all positive Avg %).
+
+### Why disable instead of ship
+
+User direction: disable to A/B-test the new BE 0.05 floor without the score
+filter confounding the data. The CLAUDE.md May 15 promotion gate for shipping
+`entry_quality_score_min: 2` is still valid — but applying it WHILE testing a
+new exit setting creates attribution problems if results shift.
+
+Disable plan:
+- `entry_quality_score_min: 2` → `0` (or whatever the field is — disable mechanism)
+- Run the BE 0.05 floor test cleanly
+- After ~100 trades on new BE config, re-evaluate score filter against fresh data
+- Pre-committed: if Score ≤ 1 in fresh data shows ≥45% WR on N≥10 → drop the
+  filter idea permanently. If ≤35% WR on N≥10 → re-enable
+
+### What to compare at next checkpoint
+
+1. **Score ≤ 1 in fresh batch**: WR, Total $, count. Compare to the table above.
+2. **BE Floor CF table TOTAL ALL**: did the new BE save what we hoped? Is the
+   Score ≤ 1 cluster getting rescued by BE 0.05, or does it stay bad?
+3. **Decision branches**:
+   - Score ≤ 1 still bad AND BE 0.05 helping marginal → ship score filter,
+     keep BE 0.05
+   - Score ≤ 1 still bad AND BE 0.05 hurting → ship score filter, revert BE
+   - Score ≤ 1 fine AND BE 0.05 helping → keep both off-filter, lock BE 0.05
+   - Score ≤ 1 fine AND BE 0.05 hurting → revert BE, leave score off
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The pre-disable performance snapshot so we can A/B compare cleanly
+2. The intentional confounding-avoidance reasoning (disable score during BE test)
+3. The pre-committed decision matrix at next checkpoint

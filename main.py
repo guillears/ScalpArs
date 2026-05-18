@@ -1445,7 +1445,7 @@ _reconcile_skip_counter = 0
 # The bot sets Order.closing_in_progress=True + close_initiated_at=NOW() before
 # sending a close to Binance.  Reconciler skips such rows if the intent is
 # younger than CLOSE_INTENT_STALE_SECONDS, so the bot's own close path can
-# commit the real exit reason (TRAILING_STOP, BREAKEVEN_SL, FL_*, ...) without
+# commit the real exit reason (TRAILING_STOP, BREAKEVEN_EXIT, FL_*, ...) without
 # being overwritten by EXTERNAL_CLOSE.  Older intents are treated as stale
 # (close path likely crashed) so the row is still reconciled eventually.
 #
@@ -5179,7 +5179,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # the direct branch is a harmless no-op for those.
         _sl_reason_prefixes = [
             "STOP_LOSS", "MOMENTUM_EXIT", "PNL_TRAILING", "SLOPE_EXIT",
-            "SIGNAL_LOST", "BREAKEVEN_SL",
+            "SIGNAL_LOST", "BREAKEVEN_EXIT",
             "DEEP_STOP",          # FL_DEEP_STOP at -1% — modern stop-loss for flagged trades
             "EMERGENCY_SL",       # FL1 WIDE_SL backstop at -1.2%
             "RSI_MOMENTUM_EXIT",  # RSI faded, trade cut on losing side
@@ -5981,7 +5981,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     post_exit_regret_deep_dive = []
     try:
         # Include every close reason that has post-exit tracking data.
-        # The old hand-picked whitelist (BREAKEVEN_SL / SIGNAL_LOST / STOP_LOSS
+        # The old hand-picked whitelist (BREAKEVEN_EXIT / SIGNAL_LOST / STOP_LOSS
         # / TICK_MOMENTUM_EXIT / RSI_MOMENTUM_EXIT / REGIME_CHANGE) was silently
         # dropping the majority of trades, including TRAILING_STOP (the single
         # most useful regret signal — "did we exit too early?"), the new FL2

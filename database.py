@@ -428,6 +428,23 @@ async def init_db():
         await conn.run_sync(_migrate)
 
     # ────────────────────────────────────────────────────────────────────
+    # One-off data migration (May 17, 2026): rename BREAKEVEN_SL_L* close_reason
+    # values to BREAKEVEN_EXIT_L* (the close is a BE floor exit, not a stop loss).
+    # Idempotent: matches only the legacy prefix.
+    # ────────────────────────────────────────────────────────────────────
+    async with engine.begin() as conn:
+        def _rename_breakeven(connection):
+            inspector = sa_inspect(connection)
+            if 'orders' in inspector.get_table_names():
+                result = connection.execute(text(
+                    "UPDATE orders SET close_reason = 'BREAKEVEN_EXIT' || substr(close_reason, 13) "
+                    "WHERE close_reason LIKE 'BREAKEVEN_SL%'"
+                ))
+                if result.rowcount > 0:
+                    print(f"[DB_MIGRATE] Renamed {result.rowcount} BREAKEVEN_SL_L* rows -> BREAKEVEN_EXIT_L*")
+        await conn.run_sync(_rename_breakeven)
+
+    # ────────────────────────────────────────────────────────────────────
     # One-off data migration: backfill legacy CHOPPY rows with the new
     # CHOPPY_WEAK / CHOPPY_FLAT sub-labels.  Idempotent: skips if any row
     # already has a sub-label (meaning we've already backfilled once).

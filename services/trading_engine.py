@@ -305,7 +305,7 @@ class TradingEngine:
             # bot restart never got post_exit_peak_pnl written → silently
             # missing from Post-Exit Regret Deep Dive table. Live registration
             # whitelist (line ~2994) already had these; recovery had drifted.
-            if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or
+            if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or
                     _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or
                     _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or
                     _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or
@@ -2511,7 +2511,7 @@ class TradingEngine:
             exit_result = None
 
             _urgent_exit = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
             ))
 
             for attempt in range(1, max_exit_retries + 1):
@@ -2689,7 +2689,7 @@ class TradingEngine:
             # --- Paper mode: no retry needed, no slippage ---
             _slippage_pct = None
             _urgent_exit_paper = any(reason.startswith(p) for p in (
-                "STOP_LOSS", "BREAKEVEN_SL", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
+                "STOP_LOSS", "BREAKEVEN_EXIT", "FL_SIGNAL_LOST", "FL_REGIME_CHANGE", "FL_TICK_MOMENTUM", "FL_EMERGENCY_SL", "FL_DEEP_STOP", "FL_RECOVERED",
             ))
             if maker_exit_enabled and reason != "MANUAL" and not _urgent_exit_paper:
                 exit_result = await self._simulate_maker_exit_paper(
@@ -3134,7 +3134,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_SL") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -5750,7 +5750,7 @@ class TradingEngine:
             # Check if stop loss triggered (epsilon 0.01% to avoid boundary precision issues)
             if pnl_pct <= effective_sl + 0.01:
                 if breakeven_active:
-                    close_reason = f"BREAKEVEN_SL_L{be_level}"
+                    close_reason = f"BREAKEVEN_EXIT_L{be_level}"
                 elif signal_still_active:
                     close_reason = f"STOP_LOSS_WIDE L{tp_level}"
                 else:

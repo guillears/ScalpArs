@@ -724,7 +724,7 @@ def check_exit_conditions(
     # Check Stop Loss (P&L based, with break-even adjustment in pre-TP zone only)
     if pnl_pct <= effective_stop_loss:
         if breakeven_active:
-            close_reason = f"BREAKEVEN_SL_L{be_level}"
+            close_reason = f"BREAKEVEN_EXIT_L{be_level}"
         elif signal_active:
             close_reason = f"STOP_LOSS_WIDE L{current_tp_level}"
         else:

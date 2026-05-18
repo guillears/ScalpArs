@@ -275,6 +275,10 @@ class SignalThresholds(BaseModel):
     # Multi-batch evidence: catastrophic loser zone (N=49 pooled, 31% WR, -$267).
     adx_delta_btc_adx_filter_long: str = ""
     adx_delta_btc_adx_filter_short: str = ""
+    # May 18: master toggle for the cross-filter. When False, rules are stored
+    # but not enforced — lets the operator disable for A/B testing without
+    # losing the rule definitions.
+    adx_delta_btc_adx_filter_enabled: bool = True
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

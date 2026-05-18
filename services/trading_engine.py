@@ -4821,7 +4821,10 @@ class TradingEngine:
             # Rule format: "deltaLo-deltaHi:btcAdxLo-btcAdxHi" — block when ADX Delta
             # in [deltaLo, deltaHi) AND BTC ADX in [btcAdxLo, btcAdxHi).
             # Multiple rules separated by commas.  Empty = filter inactive.
-            if signal in ["LONG", "SHORT"] and btc_adx is not None:
+            # May 18: gated by adx_delta_btc_adx_filter_enabled master toggle.
+            _adx_df_enabled = getattr(config.trading_config.thresholds,
+                                      'adx_delta_btc_adx_filter_enabled', True)
+            if _adx_df_enabled and signal in ["LONG", "SHORT"] and btc_adx is not None:
                 _pair_adx_now = indicators.get('adx')
                 _pair_adx_pre = indicators.get('adx_prev1')
                 if _pair_adx_now is not None and _pair_adx_pre is not None:

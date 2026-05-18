@@ -4338,8 +4338,15 @@
                         </div>
                     </div>
                     <div class="mt-3 mb-2 px-4">
-                        <span class="text-sm text-gray-300">ADX Delta × BTC ADX Cross-Filter <span class="text-amber-400 text-xs">(May 11)</span></span>
-                        <p class="text-xs text-gray-500 mb-2">Block entry when pair ADX is accelerating fast (ΔADX in range) AND BTC ADX is in a specific magnitude range. Catches "late entry with weak macro" pattern. Empty = allow all.</p>
+                        <div class="flex items-center gap-3 mb-1">
+                            <span class="text-sm text-gray-300">ADX Delta × BTC ADX Cross-Filter <span class="text-amber-400 text-xs">(May 11)</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-adx-delta-btc-adx-filter-enabled" class="sr-only peer">
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                <span class="ml-2 text-xs text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">Block entry when pair ADX is accelerating fast (ΔADX in range) AND BTC ADX is in a specific magnitude range. Catches "late entry with weak macro" pattern. Empty = allow all. <span class="text-amber-400">Master toggle (May 18): disable to A/B test without losing rules.</span></p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
@@ -13429,6 +13436,9 @@
                 renderBtcRsiAdxMap();
                 loadAdxDeltaBtcAdxFilter('long', config.thresholds.adx_delta_btc_adx_filter_long || '');
                 loadAdxDeltaBtcAdxFilter('short', config.thresholds.adx_delta_btc_adx_filter_short || '');
+                // May 18: master toggle for the cross-filter
+                const _adxDfEn = document.getElementById('config-adx-delta-btc-adx-filter-enabled');
+                if (_adxDfEn) _adxDfEn.checked = (config.thresholds.adx_delta_btc_adx_filter_enabled !== false);
                 // Premium Multipliers (May 4, 2026)
                 loadMultRules('long', 'pair', config.thresholds.rsi_adx_multiplier_long || '');
                 loadMultRules('short', 'pair', config.thresholds.rsi_adx_multiplier_short || '');
@@ -14085,6 +14095,7 @@
                     btc_rsi_adx_filter_short: collectBtcRsiAdxFilter('short'),
                     adx_delta_btc_adx_filter_long: collectAdxDeltaBtcAdxFilter('long'),
                     adx_delta_btc_adx_filter_short: collectAdxDeltaBtcAdxFilter('short'),
+                    adx_delta_btc_adx_filter_enabled: ((document.getElementById('config-adx-delta-btc-adx-filter-enabled') || {}).checked === true),
                     // Premium Multipliers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
                     rsi_adx_multiplier_long: collectMultRules('long', 'pair'),
                     rsi_adx_multiplier_short: collectMultRules('short', 'pair'),

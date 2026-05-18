@@ -11471,3 +11471,116 @@ gates here are the operating rules; the originals are the rationale.
 
 If a gate ever proves wrong, fix it BEFORE the next checkpoint by editing the
 original entry AND this consolidated list, not at decision time.
+
+## May 18, 2026 UTC-3 — Volume + ADX Δ filters DISABLED for A/B test (locked decision pending next batch)
+
+### What changed (deployed live, NOT a revert)
+
+User-directed disable of the two heaviest entry filters to A/B-test whether
+their evidence still holds under the new exit stack (BE 0.05 + Fast Exit
+0.20 + Trailing Confirmation = 0). Tier 1 priority at next checkpoint.
+
+| Filter | Before | After |
+|---|---|---|
+| `global_volume_filter_enabled` | true | **false** |
+| `adx_delta_btc_adx_filter_enabled` | (didn't exist) | **false** (new master toggle, May 18) |
+
+The Volume Filter has a pre-existing master toggle (flipped to false). The
+ADX Δ Cross-Filter had no toggle — added `adx_delta_btc_adx_filter_enabled`
+config field + UI toggle so the rule strings are preserved (not removed)
+while the filter is inactive. Easy revert without re-typing rules.
+
+### Pre-disable historical block counts (proxy from CLAUDE.md May 18 analysis)
+
+Across 5 pre-filter-ship CSVs (May 4 → May 11 pool, 280L + 100S CLOSED):
+
+| Filter | Direction | Blocked count | % of direction |
+|---|---|---|---|
+| Global Min L 0.95 | LONG | 204 | **72.9%** |
+| Global Max S 1.10 (no override) | SHORT | 28 | 28.0% |
+| Capitulation override rescue | SHORT | 19 | 19.0% |
+| ADX Δ × BTC ADX LONG `1.0-2.0:18-30` | LONG | 57 | 20.4% |
+| ADX Δ × BTC ADX SHORT `2.0-99:24-99` | SHORT | 7 | 7.0% |
+
+**Global Min L 0.95 is the dominant blocker** — disabling re-admits ~73%
+of LONGs that the filter was historically blocking. Highest A/B variance
+on this dimension.
+
+### Honest methodology caveat (locked at deploy)
+
+This change creates a **multi-variable A/B**:
+- Current state under test: BE 0.05 ON + Fast Exit ON + Trailing Confirm = 0
+  + Volume Filter OFF + ADX Δ Cross-Filter OFF
+- Prior baseline reference: same exits + filters ON
+
+Attribution between the new exits and the removed filters is **not cleanly
+separable**. If next batch performs better → could be exits compensating
+for filter removal, or filters were redundant. If worse → could be
+filters were doing real work, or new exits aren't enough.
+
+The cleanest test (per CLAUDE.md May 18 earlier discussion) would have
+been removing ONLY the ADX Δ SHORT side (weakest 1-sample evidence). User
+chose speed over methodological cleanliness — acknowledged.
+
+### Pre-committed revert criteria (locked NOW, mechanical at next batch)
+
+At next ≥100-trade checkpoint (post-2026-05-18 UTC), apply gates:
+
+**1. Pattern C (Never Positive) trade explosion check:**
+- If Pattern C rate (peak < 0.05% across all closes) is materially worse
+  than prior May-17+ baseline (e.g., +30% more Pattern C trades per day) →
+  **filters were doing work BE/FE can't replace. Re-enable BOTH.**
+
+**2. Combined Avg P&L % comparison:**
+- If combined Avg P&L % ≤ -0.10% on N≥80 fresh trades →
+  **filters were earning their keep. Re-enable BOTH.**
+- If combined Avg P&L % ≥ +0.05% on N≥80 →
+  **exit stack compensates. Keep filters OFF, lock as default.**
+- If marginal (-0.10% to +0.05%) →
+  **inconclusive, re-enable ONE filter (Volume LONG first — heaviest
+  blocker) and extend for another batch.**
+
+**3. Direction-specific dissection:**
+- LONG side: if entries with `entry_global_volume_ratio < 0.95` show ≤45%
+  WR on N≥30 → Volume Filter LONG was right, re-enable
+- SHORT side: if entries matching old ADX Δ SHORT rule (`ADX Δ ≥ 2.0 AND
+  BTC ADX ≥ 24`) show ≤45% WR on N≥10 → re-enable that specific rule
+- BOTH should be evaluated independently
+
+**4. Cross-reference with new diagnostics:**
+- 📊 Post-Arm Min Distribution: did "% of armed trades retracing past BE
+  trigger" increase? If yes, more Pattern C trades reached arming and BE
+  caught them — exit stack IS handling what filters used to handle.
+- 🎯 BE Floor Counterfactual: did Cut Winners count rise? If yes, filter
+  removal is OK and BE 0.10 might be the next floor adjustment.
+
+### Order of revert if gates trigger
+
+Per CLAUDE.md May 18 block-rate ranking, if gates say revert, restore in
+this order (heaviest impact first):
+
+1. **Global Min L 0.95 LONG** — 73% historical block rate, 3-sample evidence
+2. **Global Max S 1.10 SHORT + capitulation override** — 5-sample evidence
+3. **ADX Δ Cross-Filter LONG `1.0-2.0:18-30`** — pool evidence, weaker
+4. **ADX Δ Cross-Filter SHORT `2.0-99:24-99`** — 1-sample at deploy, weakest
+
+### Files changed (commit incoming)
+
+- `config.py`: added `adx_delta_btc_adx_filter_enabled: bool = True` field
+- `trading_config.json`: `global_volume_filter_enabled: false`,
+  `adx_delta_btc_adx_filter_enabled: false`
+- `services/trading_engine.py`: gated ADX Δ filter check on the new toggle
+- `templates/index.html`: new UI toggle next to ADX Δ Cross-Filter rules,
+  load + save handlers wired
+
+### Why this entry exists in CLAUDE.md
+
+To lock the pre-committed revert criteria BEFORE seeing the next batch's
+results. Without these gates, the post-batch temptation will be to either
+(a) attribute results lazily to one factor, or (b) keep the filters off
+even if Pattern C explodes. The gates here are mechanical: at next ≥100
+trades, apply 1-4, ship reverts in the documented order.
+
+If results decisively confirm filters were redundant (combined Avg P&L ≥
++0.05% AND Pattern C stable AND blocked-zone trades show ≥50% WR) → this
+entry is the audit trail of why we accepted multi-variable A/B for speed.

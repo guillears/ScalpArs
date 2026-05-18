@@ -4538,6 +4538,18 @@
                             </div>
                         </div>
                         <p class="text-xs text-gray-500 mt-2">Defaults to 1.0× for any cell not listed. Per-cell value clamped to [0.5, hard cap]. If available balance &lt; multiplied target, trade uses all available (logged as <code>[CELL_MULT_CAPPED]</code>) — never aborts on capital alone. <span class="text-cyan-300">Pair + BTC both match? HIGHER wins.</span></p>
+                        <div class="text-xs text-amber-400/80 mb-2 mt-3">⚠ Entry Quality Score (1D, new dimension May 18) — format <code>scoreMin-scoreMax:multi</code>, e.g. <code>4-5:2.0</code> matches score=4 only</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <input type="text" id="config-score-mult-long" class="w-full mt-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs" placeholder="e.g. 4-5:2.0" />
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <input type="text" id="config-score-mult-short" class="w-full mt-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs" placeholder="e.g. 3-4:2.0,6-7:2.0" />
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Combined with RSI×ADX cells via HIGHER-wins; hard cap applies. Source labels in Multiplier Cell Performance table prefixed <code>SCORE_</code>.</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI Momentum Filter</span>
@@ -13493,6 +13505,11 @@
                 loadMultRules('short', 'pair', config.thresholds.rsi_adx_multiplier_short || '');
                 loadMultRules('long', 'btc', config.thresholds.btc_rsi_adx_multiplier_long || '');
                 loadMultRules('short', 'btc', config.thresholds.btc_rsi_adx_multiplier_short || '');
+                // Score multipliers (May 18, NEW dim) — plain text rule strings
+                const _sml = document.getElementById('config-score-mult-long');
+                if (_sml) _sml.value = config.thresholds.score_multiplier_long || '';
+                const _sms = document.getElementById('config-score-mult-short');
+                if (_sms) _sms.value = config.thresholds.score_multiplier_short || '';
                 // Stretch-based multipliers retired May 15 PM.
                 document.getElementById('config-mult-target').value = config.thresholds.rsi_adx_multiplier_target || 'investment';
                 document.getElementById('config-mult-hard-cap').value = config.thresholds.rsi_adx_multiplier_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_hard_cap : 2.0;
@@ -14197,6 +14214,8 @@
                     btc_rsi_adx_multiplier_short: collectMultRules('short', 'btc'),
                     rsi_adx_multiplier_target: document.getElementById('config-mult-target').value || 'investment',
                     rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
+                    score_multiplier_long: ((document.getElementById('config-score-mult-long') || {}).value || '').trim(),
+                    score_multiplier_short: ((document.getElementById('config-score-mult-short') || {}).value || '').trim(),
                     entry_quality_score_filter_enabled: (document.getElementById('config-entry-quality-score-filter-enabled') || {}).checked === true,
                     entry_quality_score_block_max: parseInt((document.getElementById('config-entry-quality-score-block-max') || {}).value) || 1,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,

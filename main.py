@@ -8056,11 +8056,12 @@ def _compute_multiplier_cell_performance(orders):
             rule = rule.strip()
             if not rule: continue
             parts = rule.split(':')
-            if prefix == 'STRETCH' and len(parts) == 2:
-                # "0.25-0.30:2.0" — stretch has no ADX
+            if prefix in ('STRETCH', 'SCORE') and len(parts) == 2:
+                # 1D rule format: "<lo>-<hi>:<multiplier>" (no second dimension)
+                # STRETCH retired May 15 PM; SCORE shipped May 18 (new dimension).
                 out[f"{prefix}_{parts[0]}"] = float(parts[1])
             elif len(parts) == 3:
-                # "60-65:18-22:2.0"
+                # 2D rule format: "<dim1_lo>-<dim1_hi>:<dim2_lo>-<dim2_hi>:<multiplier>"
                 out[f"{prefix}_{parts[0]}_{parts[1]}"] = float(parts[2])
         return out
 
@@ -8070,10 +8071,14 @@ def _compute_multiplier_cell_performance(orders):
         cur_pair_short = _parse_rules(getattr(th, 'rsi_adx_multiplier_short', ''), 'PAIR')
         cur_btc_long = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_long', ''), 'BTC')
         cur_btc_short = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_short', ''), 'BTC')
+        # SCORE-based multipliers (May 18, NEW dim) — 1D rule format "lo-hi:mult"
+        cur_score_long = _parse_rules(getattr(th, 'score_multiplier_long', ''), 'SCORE')
+        cur_score_short = _parse_rules(getattr(th, 'score_multiplier_short', ''), 'SCORE')
         # STRETCH-based multiplier retired May 15 PM. Historical STRETCH_* sources
         # in cell_multiplier_source still render in the table from past-config diffs.
     except Exception:
         cur_pair_long = cur_pair_short = cur_btc_long = cur_btc_short = {}
+        cur_score_long = cur_score_short = {}
 
     def _direction_baseline(direction):
         """Avg P&L% of NON-multiplied trades for this direction."""
@@ -8088,9 +8093,9 @@ def _compute_multiplier_cell_performance(orders):
         baseline = _direction_baseline(direction)
         # Pick the appropriate current-config map for this direction
         if direction == 'LONG':
-            current_map = {**cur_pair_long, **cur_btc_long}
+            current_map = {**cur_pair_long, **cur_btc_long, **cur_score_long}
         else:
-            current_map = {**cur_pair_short, **cur_btc_short}
+            current_map = {**cur_pair_short, **cur_btc_short, **cur_score_short}
         # Group by source (NULL = baseline 1.0×)
         groups = {}
         for o in closed:

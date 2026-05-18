@@ -12179,3 +12179,117 @@ help — revert and consider whether this zone needs a different mechanism.
 ### Files changed
 - `trading_config.json` — single field change
 - `CLAUDE.md` — this entry
+
+## May 18, 2026 (late PM) — Entry Quality Score multiplier shipped (NEW dimension, 3 cells at 2.0×)
+
+### What ships
+
+New 1D multiplier dimension on Entry Quality Score. Three cells activated
+at **2.0×** (user-directed, accepting discipline trade-offs documented below).
+
+**Config (`trading_config.json`):**
+- `score_multiplier_long`: `""` → **`"4-5:2.0"`** (Score=4 only)
+- `score_multiplier_short`: `""` → **`"3-4:2.0,6-7:2.0"`** (Score=3 OR Score=6)
+
+**Rule format:** `<score_lo>-<score_hi>:<multiplier>`, comma-separated. Half-open
+range `[lo, hi)`. Score is integer (1-6), so `4-5:2.0` matches score=4 only.
+
+### Cross-batch evidence (5-window scan, May 4 → May 18)
+
+**Score 4 LONG** (cell shipped at 2.0×): pool N=52, 65% WR, +$171.
+3 of 5 batches winning (May 4-8, May 12-14, May 17-18 all ★).
+Most cross-batch-defensible LONG multiplier candidate.
+
+**Score 3 SHORT** (cell shipped at 2.0×): pool N=86, 66% WR, +$249.
+Regime-conditional — last 2 batches ★ (May 15-16: 12/83%/+$307, May 17-18:
+25/84%/+$78), older 3 mixed/losing. Pool $-improvement concentrated in
+recent 2 batches.
+
+**Score 6 SHORT** (cell shipped at 2.0×): pool N=9, 89% WR, +$211.
+2 of 2 robust-N batches winning (May 9-11: 4/75%/+$156, May 17-18:
+4/100%/+$40), 100% direction-consistent across 3 batches. **N=9 total
+— below all locked promotion gates** (CLAUDE.md May 4 Phase 3 N≥10/cell,
+May 16 multiplier discipline N≥15).
+
+### Discipline acknowledgment
+
+This ship violates the CLAUDE.md May 4 Phase 3 staging principle
+("first deployment of new dim = 1.5×, not 2.0×") AND the May 16 watchlist
+gate ("Score 3 SHORT at 1.5× initially"). User chose 2.0× across all 3
+cells after evidence review, explicitly accepting:
+
+1. **Score 3 SHORT** could revert under the same regime-shift mechanism
+   that broke S-P1 (May 4 PREMIUM → May 18 demote). Recent-strength bias
+   acknowledged.
+2. **Score 6 SHORT** N=9 is the same "1-sample trap" profile that produced
+   PAIR_30-35_28-30 demote (May 16) and S-P1 demote (May 18). Highest
+   revert risk of the three.
+3. **Score 4 LONG** is the most defensible at 2.0× (cross-batch breadth,
+   N=52, 3 of 5 batches winning).
+
+Counterbalance: the new exit stack (BE 0.10 + TP 0.50 + PB 0.25) caps
+downside on Pattern B losers per CLAUDE.md May 16 BE-compatibility rule.
+If a cell's losses concentrate in Pattern B (peak ≥+0.20% then retrace),
+BE intercepts before full SL hit — making 2.0× less catastrophic than it
+was pre-BE.
+
+### Mechanism (new generic 1D primitive)
+
+`services/trading_engine.py::_lookup_1d_multiplier(value, rule_string, source_prefix)`
+— ~25 LOC. Reusable for future single-dim multipliers (BTC ATR%,
+BTC 1h Slope, BTC Gap candidates from same session).
+
+Integrated into `open_position` alongside `_lookup_rsi_adx_multiplier`
+calls (pair + BTC). Added to `_candidates` list — **HIGHER-wins** conflict
+resolution unchanged. Hard cap 2.0× still applies.
+
+Source labels follow `SCORE_<lo>-<hi>` convention (e.g. `SCORE_4-5`,
+`SCORE_3-4`, `SCORE_6-7`). Will appear in Multiplier Cell Performance
+table at next batch — verdict logic same as existing cells.
+
+### Pre-committed revert criteria (locked NOW for next ≥100-trade batch)
+
+Apply CLAUDE.md May 4 verdict matrix per cell:
+
+| Verdict | Threshold | Action |
+|---|---|---|
+| ★ WORKING | WR ≥70% AND Total$ positive AND N≥5 | Keep at 2.0× |
+| ✓ Marginal | WR 50-70% | Drop to 1.5× |
+| ⚠ DRAG | Δ$ vs BL < -$1 | Drop to 1.5× |
+| ✗ HARMFUL | Total$ negative on N≥5 | Revert to 1.0× immediately |
+| ⚠ Low N | N < 5 | Extend test, no decision |
+
+**Highest-risk cell to watch**: Score 6 SHORT. If N at next batch ≥ 5 AND
+WR drops below 75% → drop to 1.5×. If Total$ negative on any N≥3 → revert
+to 1.0× (more aggressive than standard gate, given the N=9 starting point).
+
+### Filter interaction note
+
+Entry Quality Score filter (`entry_quality_score_filter_enabled: true`)
+currently blocks Score ≤ 1. So Score-1 entries never reach the multiplier
+lookup. Multiplier only fires on entries that pass all entry filters AND
+match a score rule. Score 2 and Score 5 entries pass through at 1.0×
+(no rule defined). Symmetric: Score 4 LONG / Score 3 SHORT / Score 6
+SHORT each fire at 2.0× when score matches; everything else stays 1.0×.
+
+### Files changed
+
+- `config.py` — 2 new fields (`score_multiplier_long/short`)
+- `trading_config.json` — fields populated with 3 cell rules
+- `services/trading_engine.py` — `_lookup_1d_multiplier` helper + integration
+  in `open_position` `_candidates` list
+- `templates/index.html` — UI inputs (2 text fields) + load handlers + save
+  handlers
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The exact cross-batch evidence (per-window N/WR/$ breakdown) at ship time
+2. The honest discipline-violation acknowledgment — 2.0× on Score 6 SHORT
+   (N=9) and Score 3 SHORT (regime-conditional) is more aggressive than
+   May 4 Phase 3 staging or May 16 watchlist gates would have allowed
+3. The locked revert criteria so the next ≥100-trade verdict is mechanical
+4. The new 1D multiplier primitive (`_lookup_1d_multiplier`) is now reusable
+   — future BTC-dim multiplier ships (the May 18 deferred WL-E/F/G
+   candidates) can use it without adding more scaffolding

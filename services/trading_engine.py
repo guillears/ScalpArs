@@ -1104,6 +1104,36 @@ class TradingEngine:
     # Historical trades with cell_multiplier_source starting "STRETCH_..." retain
     # their attribution in the Multiplier Cell Performance table.
 
+    def _lookup_1d_multiplier(
+        self, value: Optional[float], rule_string: str, source_prefix: str,
+    ) -> Tuple[float, Optional[str]]:
+        """
+        Generic 1D range multiplier lookup (May 18).
+        Rule string format: "<lo>-<hi>:<multiplier>,...". Half-open range [lo, hi).
+        Returns (1.0, None) if no rule matches or input is missing.
+        Used by Score-based multipliers; reusable for future BTC ATR / 1h Slope / Gap dims.
+        """
+        if value is None or not rule_string:
+            return 1.0, None
+        for rule in rule_string.split(','):
+            rule = rule.strip()
+            if not rule:
+                continue
+            try:
+                parts = rule.split(':')
+                if len(parts) != 2:
+                    logger.warning(f"[CELL_MULT_1D] Malformed rule '{rule}' (expected 2 parts), skipping")
+                    continue
+                range_part, mult_part = parts
+                lo, hi = map(float, range_part.split('-'))
+                mult = float(mult_part)
+                if lo <= float(value) < hi:
+                    return mult, f"{source_prefix}_{range_part}"
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[CELL_MULT_1D] Failed to parse rule '{rule}': {e}, skipping")
+                continue
+        return 1.0, None
+
     async def _revalidate_entry_signal(
         self, symbol: str, pair: str, original_direction: str, original_confidence: str
     ) -> Tuple[bool, str]:
@@ -1940,10 +1970,14 @@ class TradingEngine:
         _btc_rules = getattr(_th, f'btc_rsi_adx_multiplier_{direction.lower()}', '')
         _pair_mult, _pair_src = self._lookup_rsi_adx_multiplier(entry_rsi, entry_adx, _pair_rules, 'PAIR')
         _btc_mult, _btc_src = self._lookup_rsi_adx_multiplier(entry_btc_rsi, entry_btc_adx, _btc_rules, 'BTC')
+        # Entry Quality Score multiplier (May 18, new dimension)
+        _score_rules = getattr(_th, f'score_multiplier_{direction.lower()}', '')
+        _score_val = float(entry_quality_score) if entry_quality_score is not None else None
+        _score_mult, _score_src = self._lookup_1d_multiplier(_score_val, _score_rules, 'SCORE')
         # HIGHER multiplier wins — when multiple rules match, use the strongest.
         # Hard cap (~2.0x) prevents stacking past the safety guard.
         # Stretch-based multiplier retired May 15 PM (was a third candidate).
-        _candidates = [(_pair_mult, _pair_src), (_btc_mult, _btc_src)]
+        _candidates = [(_pair_mult, _pair_src), (_btc_mult, _btc_src), (_score_mult, _score_src)]
         cell_mult, cell_src = max(_candidates, key=lambda c: c[0])
         # Hard cap clamp — non-negotiable safety guard
         if cell_mult > _hard_cap:

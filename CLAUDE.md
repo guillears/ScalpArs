@@ -11684,3 +11684,75 @@ all — it adds false confidence to a wrong decision.
 
 This 4-step test takes 60 seconds and prevents the May 18 incident from
 repeating.
+
+## May 18, 2026 (PM) — `btc_adx_max_long: 35 → 40` (symmetric with SHORT)
+
+### Change
+- `btc_adx_max_long`: **35 → 40**
+
+LONG BTC ADX entry window now `[18, 40]`, matching SHORT side `[20, 40]`.
+
+### Context
+
+The May 5 CLAUDE.md entry shipped `btc_adx_max_long: 40 → 35` based on
+4-sample pooled evidence (BTC ADX 35+ LONG: 34 trades / ~32% WR /
+direction-consistent negative across Apr 13 + Apr 17 + May 4 + May 5).
+That was a hard block on the 35+ zone.
+
+User-directed loosening for next batch. The new exit stack (BE 0.10,
+TP 0.50, PB 0.25 — shipped same session as commit `52b875f`) materially
+changes the per-trade risk profile of marginal entries: smaller losses
+on low-peak failures, and trades that peak ≥0.50% now escape BE
+entirely to trailing. The hypothesis is that the previously-bad
+BTC ADX 35-40 LONG zone may be redeemable under the new exit stack.
+
+This is also a **bracket-symmetry** move: LONG and SHORT now have the
+same upper macro-ADX ceiling, which is operationally simpler and
+removes one direction-asymmetric filter pending re-evaluation.
+
+### Pre-committed validation criterion (locked for next batch checkpoint)
+
+Add to the next-batch decision checklist:
+
+**Q: BTC ADX 35-40 LONG zone under new exit stack — does it perform?**
+
+Apply per-cell gates at next 100-trade LONG checkpoint:
+
+| Outcome | Action |
+|---|---|
+| N ≥ 10 in BTC ADX 35-40 LONG bucket AND WR ≥ 50% AND Avg P&L % ≥ 0% | ★ KEEP at 40 — new exit stack rescues the zone |
+| N ≥ 10 AND WR ≤ 40% OR Avg P&L % ≤ -0.20% | ✗ REVERT to 35 — exit stack didn't rescue this zone |
+| N < 10 | Insufficient data, extend test |
+| N ≥ 10 AND WR 40-50% (mixed) | Hold at 40 for one more batch, decide at next |
+
+This is a clean A/B test: same regime (post-May-18-exit-stack), same
+config except this one field. The May 5 evidence was under the OLD exit
+stack (no BE 0.10, no TP 0.50, no PB 0.25). The relax tests whether the
+new exit stack changes the verdict.
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the explicit reversal of the May 5 hard block, with a
+   pre-committed gate that mechanically decides at next checkpoint
+   whether the reversal was correct.
+2. To anchor the "new exit stack changes per-cell verdicts" hypothesis —
+   if BTC ADX 35-40 LONG performs under the new exit stack, other
+   previously-hard-blocked cells may also be worth re-testing
+   (candidates: `momentum_long_rsi_max: 65` cap, `btc_rsi_adx_filter_long`
+   `70-100:35` and `65-70:30` rules).
+3. To prevent goalpost-moving: the gate is locked at WR ≥ 50% / Avg ≥ 0%
+   on N ≥ 10 — strict. No "close enough" passes.
+
+### What was NOT changed in this entry
+
+- `btc_adx_min_long`: 18 (unchanged)
+- `btc_adx_min_short`: 20 (unchanged)
+- `btc_adx_max_short`: 40 (unchanged — already at 40)
+- All other LONG entry filters unchanged
+- All SHORT filters unchanged
+- All multipliers unchanged
+- Exit stack unchanged from same-session ship (BE 0.10, TP 0.50, PB 0.25)
+
+### Files changed
+- `trading_config.json` — single field change
+- `CLAUDE.md` — this entry

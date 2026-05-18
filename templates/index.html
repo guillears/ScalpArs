@@ -5996,6 +5996,7 @@
             }
 
             // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+            const _fmtSrc1 = (s) => { const m = s && s.match(/^SCORE_(\d+)-/); return m ? `Score ${m[1]}` : s; };
             const _renderMultExport = (rows, label, summary) => {
                 lines.push(`\n${hr2}`);
                 lines.push(`## Multiplier Cell Performance — ${label}\n`);
@@ -6007,7 +6008,7 @@
                         const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                         const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
                         const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
-                        lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                        lines.push(`${_fmtSrc1(r.source).padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                     }
                 }
                 if (summary && summary.multiplied_trades_n) {
@@ -7327,6 +7328,7 @@
                 }
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+                const _fmtSrc2 = (s) => { const m = s && s.match(/^SCORE_(\d+)-/); return m ? `Score ${m[1]}` : s; };
                 const _renderMultExport2 = (rows, label, summary) => {
                     lines.push(`\n${hr2}`);
                     lines.push(`## Multiplier Cell Performance — ${label}\n`);
@@ -7338,7 +7340,7 @@
                             const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                             const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
                             const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
-                            lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                            lines.push(`${_fmtSrc2(r.source).padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                         }
                     }
                     if (summary && summary.multiplied_trades_n) {
@@ -9049,6 +9051,14 @@
                 }
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier)
+                const _formatMultSource = (src) => {
+                    // SCORE_<lo>-<hi> → "Score <lo>" (range is integer-width, lo is the value)
+                    if (src && src.startsWith('SCORE_')) {
+                        const m = src.match(/^SCORE_(\d+)-/);
+                        if (m) return `Score ${m[1]}`;
+                    }
+                    return src;
+                };
                 const _renderMultRows = (rows, tbodyId) => {
                     const tb = document.getElementById(tbodyId);
                     if (!tb) return;
@@ -9079,7 +9089,7 @@
                             ? `<span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-900/40 text-amber-300 font-mono" title="Cell currently demoted in config — new trades will use ${r.current_config_multiplier.toFixed(1)}x instead of ${r.multiplier.toFixed(1)}x">↓ now ${r.current_config_multiplier.toFixed(1)}x</span>`
                             : '';
                         return `<tr class="hover:bg-white/5">
-                            <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${r.source}${demotedBadge}</td>
+                            <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${_formatMultSource(r.source)}${demotedBadge}</td>
                             <td class="px-2 py-1 text-right ${sourceColor}">${r.multiplier.toFixed(2)}x</td>
                             <td class="px-2 py-1 text-right">${r.n}</td>
                             <td class="px-2 py-1 text-right">${r.wr_pct.toFixed(1)}%</td>

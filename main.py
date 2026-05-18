@@ -5296,7 +5296,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "all_avg_entry_rsi": round(sum(all_sl_rsis) / len(all_sl_rsis), 1) if all_sl_rsis else None,
             "all_avg_duration": calc_avg_duration(sl_orders),
             "all_signal_active": sum(1 for o in sl_orders if o.signal_active_at_close is True),
-            "all_signal_inactive": sum(1 for o in sl_orders if o.signal_active_at_close is False)
+            "all_signal_inactive": sum(1 for o in sl_orders if o.signal_active_at_close is False),
+            # May 18: post-arm-min aggregate for BE-floor counterfactual context
+            "all_avg_post_arm_min_pct": round(sum(p for p in (getattr(o, 'post_arm_min_pnl_pct', None) for o in sl_orders) if p is not None) / max(1, sum(1 for o in sl_orders if getattr(o, 'post_arm_min_pnl_pct', None) is not None)), 4) if any(getattr(o, 'post_arm_min_pnl_pct', None) is not None for o in sl_orders) else None,
+            "all_post_arm_min_n": sum(1 for o in sl_orders if getattr(o, 'post_arm_min_pnl_pct', None) is not None),
         }
         
         winning_orders = [o for o in orders if o.pnl and o.pnl > 0]

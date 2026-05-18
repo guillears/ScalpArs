@@ -1777,6 +1777,7 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Gap</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg RSI</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Peak P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-amber-300" title="May 17: Avg minimum P&L observed AFTER peak first crossed BE trigger (0.20%). For BE-floor counterfactual: if &lt; 0.10, BE 0.10 would have fired; if &lt; 0.05, current BE fired. NULL pre-instrumentation.">Post-Arm Min %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Worst Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
@@ -1787,7 +1788,7 @@
                                 </tr>
                             </thead>
                             <tbody id="sl-deep-dive-body" class="divide-y divide-white/5">
-                                <tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
+                                <tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1811,6 +1812,7 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right">Worst Trough %</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Average peak P&L % reached before exit">Avg Peak %</th>
+                                    <th class="px-3 py-2 font-medium text-right text-amber-300" title="May 17: Avg minimum P&L observed AFTER peak first crossed BE trigger (0.20%). For BE-floor counterfactual: if &lt; 0.10, BE 0.10 would have fired; if &lt; 0.05, current BE fired. NULL pre-instrumentation.">Post-Arm Min %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg Close P&L %</th>
                                     <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price">Avg Pullback %</th>
                                     <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Post-exit: avg best hypothetical P&L if trade stayed open 45min after close">Post Peak %</th>
@@ -1821,7 +1823,7 @@
                                 </tr>
                             </thead>
                             <tbody id="winning-drawdown-body" class="divide-y divide-white/5">
-                                <tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
+                                <tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6272,7 +6274,7 @@
                 ['Positive, No BE', sld.positive_no_be],
                 ['Never Positive', sld.never_positive]
             ];
-            lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Peak%'.padEnd(11)} ${'AvgTrough%'.padEnd(11)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+            lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Peak%'.padEnd(11)} ${'PostArmMin%'.padEnd(12)} ${'AvgTrough%'.padEnd(11)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
             const slTotal = sld.total_sl_trades || 0;
             for (const [name, d] of slCats) {
                 if (!d || d.count === 0) continue;
@@ -6282,13 +6284,14 @@
                 const pctStr = slTotal > 0 ? (d.count / slTotal * 100).toFixed(1) + '%' : '-';
                 const gapStr = d.avg_entry_gap != null ? (d.avg_entry_gap.toFixed(2) + '%') : '-';
                 const rsiStr = d.avg_entry_rsi != null ? d.avg_entry_rsi.toFixed(1) : '-';
-                lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_trough_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                const pamStr = d.avg_post_arm_min_pct != null ? (d.avg_post_arm_min_pct.toFixed(4) + '%') : '-';
+                lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${pamStr.padStart(11)} ${((d.avg_trough_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
             }
-            lines.push(`${'All SL Trades'.padEnd(18)} ${String(slTotal).padEnd(5)} ${'100%'.padEnd(7)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'}`);
+            lines.push(`${'All SL Trades'.padEnd(18)} ${String(slTotal).padEnd(5)} ${'100%'.padEnd(7)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'} PostArmMin: ${sld.all_avg_post_arm_min_pct != null ? sld.all_avg_post_arm_min_pct.toFixed(4)+'%' : '-'} (N=${sld.all_post_arm_min_n||0})`);
 
             lines.push(`\n${hr2}`);
             lines.push('## Winning Trades Drawdown\n');
-            lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+            lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Peak%'.padEnd(11)} ${'PostArmMin%'.padEnd(12)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
             const wdAll = perf.winning_trades_drawdown || [];
             const wdTotalCount = wdAll.reduce((sum, w) => sum + (w.count || 0), 0);
             let allWinCount = 0, allWinTrough = 0, allWinPeak = 0, allWinClose = 0, allWinDrop = 0, allWinTotal = 0, allWinWorst = 0;
@@ -6302,7 +6305,8 @@
                 const postTroughStr = w.avg_post_exit_trough_pnl != null ? (w.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
                 const wdGapStr = w.avg_entry_gap != null ? (w.avg_entry_gap.toFixed(2) + '%') : '-';
                 const wdRsiStr = w.avg_entry_rsi != null ? w.avg_entry_rsi.toFixed(1) : '-';
-                lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${wdGapStr.padEnd(8)} ${wdRsiStr.padEnd(8)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                const wdPamStr = w.avg_post_arm_min_pct != null ? (w.avg_post_arm_min_pct.toFixed(4) + '%') : '-';
+                lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${wdGapStr.padEnd(8)} ${wdRsiStr.padEnd(8)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${wdPamStr.padStart(11)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
                 const n = w.count || 0;
                 allWinCount += n;
                 allWinTrough += (w.avg_trough_pnl||0) * n;
@@ -7575,7 +7579,7 @@
                     ['Positive, No BE', sld.positive_no_be],
                     ['Never Positive', sld.never_positive]
                 ];
-                lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Peak%'.padEnd(11)} ${'AvgTrough%'.padEnd(11)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                lines.push(`${'Category'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Peak%'.padEnd(11)} ${'PostArmMin%'.padEnd(12)} ${'AvgTrough%'.padEnd(11)} ${'Worst%'.padEnd(10)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
                 const slTotal = sld.total_sl_trades || 0;
                 for (const [name, d] of slCats) {
                     if (!d || d.count === 0) continue;
@@ -7585,14 +7589,15 @@
                     const pctStr = slTotal > 0 ? (d.count / slTotal * 100).toFixed(1) + '%' : '-';
                     const gapStr = d.avg_entry_gap != null ? (d.avg_entry_gap.toFixed(2) + '%') : '-';
                 const rsiStr = d.avg_entry_rsi != null ? d.avg_entry_rsi.toFixed(1) : '-';
-                lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_trough_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                const pamStr = d.avg_post_arm_min_pct != null ? (d.avg_post_arm_min_pct.toFixed(4) + '%') : '-';
+                lines.push(`${name.padEnd(18)} ${String(d.count).padEnd(5)} ${pctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${gapStr.padEnd(8)} ${rsiStr.padEnd(8)} ${((d.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${pamStr.padStart(11)} ${((d.avg_trough_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((d.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((d.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${('$'+((d.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(d.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
                 }
-                lines.push(`${'All SL Trades'.padEnd(18)} ${String(slTotal).padEnd(5)} ${'100%'.padEnd(7)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'}`);
+                lines.push(`${'All SL Trades'.padEnd(18)} ${String(slTotal).padEnd(5)} ${'100%'.padEnd(7)} ${((sld.all_by_direction||{}).LONG||0)+'L/'+((sld.all_by_direction||{}).SHORT||0)+'S'} PostArmMin: ${sld.all_avg_post_arm_min_pct != null ? sld.all_avg_post_arm_min_pct.toFixed(4)+'%' : '-'} (N=${sld.all_post_arm_min_n||0})`);
 
                 // --- WINNING TRADES DRAWDOWN ---
                 lines.push(`\n${hr2}`);
                 lines.push('## Winning Trades Drawdown\n');
-                lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Peak%'.padEnd(11)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
+                lines.push(`${'Reason'.padEnd(18)} ${'#'.padEnd(5)} ${'%'.padEnd(7)} ${'Dir'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgGap'.padEnd(8)} ${'AvgRSI'.padEnd(8)} ${'Avg Trough%'.padEnd(12)} ${'Worst%'.padEnd(10)} ${'Avg Peak%'.padEnd(11)} ${'PostArmMin%'.padEnd(12)} ${'Avg Close%'.padEnd(11)} ${'Pullback%'.padEnd(10)} ${'PostPeak%'.padEnd(10)} ${'PostTrough%'.padEnd(11)} ${'Total$'.padEnd(12)} ${'Duration'.padEnd(10)} ${'Signal'.padEnd(8)}`);
                 const wdAll = perf.winning_trades_drawdown || [];
                 const wdTotalCount = wdAll.reduce((sum, w) => sum + (w.count || 0), 0);
                 let allWinCount = 0, allWinTrough = 0, allWinPeak = 0, allWinClose = 0, allWinDrop = 0, allWinTotal = 0, allWinWorst = 0;
@@ -7606,7 +7611,8 @@
                     const postTroughStr = w.avg_post_exit_trough_pnl != null ? (w.avg_post_exit_trough_pnl.toFixed(4) + '%') : '-';
                     const wdGapStr = w.avg_entry_gap != null ? (w.avg_entry_gap.toFixed(2) + '%') : '-';
                 const wdRsiStr = w.avg_entry_rsi != null ? w.avg_entry_rsi.toFixed(1) : '-';
-                lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${wdGapStr.padEnd(8)} ${wdRsiStr.padEnd(8)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
+                const wdPamStr = w.avg_post_arm_min_pct != null ? (w.avg_post_arm_min_pct.toFixed(4) + '%') : '-';
+                lines.push(`${(w.close_reason||'?').padEnd(18)} ${String(w.count).padEnd(5)} ${wdPctStr.padEnd(7)} ${dirStr.padEnd(10)} ${confStr.padEnd(14)} ${wdGapStr.padEnd(8)} ${wdRsiStr.padEnd(8)} ${((w.avg_trough_pnl||0).toFixed(4)+'%').padStart(11)} ${((w.worst_trough_pnl||0).toFixed(4)+'%').padStart(9)} ${((w.avg_peak_pnl||0).toFixed(4)+'%').padStart(10)} ${wdPamStr.padStart(11)} ${((w.avg_close_pnl||0).toFixed(4)+'%').padStart(10)} ${((w.avg_price_drop||0).toFixed(4)+'%').padStart(9)} ${postPeakStr.padStart(9)} ${postTroughStr.padStart(10)} ${('$'+((w.total_pnl_usd||0).toFixed(2))).padStart(11)} ${(w.avg_duration||'-').padEnd(10)} ${sigStr.padEnd(8)}`);
                     const n = w.count || 0;
                     allWinCount += n;
                     allWinTrough += (w.avg_trough_pnl||0) * n;
@@ -11613,6 +11619,7 @@
                                 <td class="px-3 py-2 text-right text-cyan-400">${c.data.avg_entry_gap != null ? safe(c.data.avg_entry_gap).toFixed(2) + '%' : '-'}</td>
                                 <td class="px-3 py-2 text-right text-purple-400">${c.data.avg_entry_rsi != null ? safe(c.data.avg_entry_rsi).toFixed(1) : '-'}</td>
                                 <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(c.data.avg_peak_pnl) >= 0 ? '+' : ''}${safe(c.data.avg_peak_pnl).toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${c.data.avg_post_arm_min_pct == null ? 'text-gray-600' : (c.data.avg_post_arm_min_pct < 0.05 ? 'text-red-400' : (c.data.avg_post_arm_min_pct < 0.10 ? 'text-amber-400' : 'text-gray-400'))} font-medium" title="${c.data.post_arm_min_n != null ? 'N=' + c.data.post_arm_min_n : 'No post-arm data'}">${c.data.avg_post_arm_min_pct == null ? '-' : (c.data.avg_post_arm_min_pct >= 0 ? '+' : '') + c.data.avg_post_arm_min_pct.toFixed(4) + '%'}</td>
                                 <td class="px-3 py-2 text-right ${troughClass} font-medium">${safe(c.data.avg_trough_pnl) >= 0 ? '+' : ''}${safe(c.data.avg_trough_pnl).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${worstTroughClass} font-medium">${safe(c.data.worst_trough_pnl) >= 0 ? '+' : ''}${safe(c.data.worst_trough_pnl).toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${safe(c.data.avg_close_pnl) >= 0 ? '+' : ''}${safe(c.data.avg_close_pnl).toFixed(4)}%</td>
@@ -11634,6 +11641,7 @@
                             <td class="px-3 py-2 text-right text-cyan-400">${sld.all_avg_entry_gap != null ? sld.all_avg_entry_gap.toFixed(2) + '%' : '-'}</td>
                             <td class="px-3 py-2 text-right text-purple-400">${sld.all_avg_entry_rsi != null ? sld.all_avg_entry_rsi.toFixed(1) : '-'}</td>
                             <td class="px-3 py-2 text-right ${sld.avg_peak_all_sl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.avg_peak_all_sl >= 0 ? '+' : ''}${sld.avg_peak_all_sl.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${sld.all_avg_post_arm_min_pct == null ? 'text-gray-600' : (sld.all_avg_post_arm_min_pct < 0.05 ? 'text-red-400' : (sld.all_avg_post_arm_min_pct < 0.10 ? 'text-amber-400' : 'text-gray-400'))} font-medium" title="${sld.all_post_arm_min_n != null ? 'N=' + sld.all_post_arm_min_n : 'No post-arm data'}">${sld.all_avg_post_arm_min_pct == null ? '-' : (sld.all_avg_post_arm_min_pct >= 0 ? '+' : '') + sld.all_avg_post_arm_min_pct.toFixed(4) + '%'}</td>
                             <td class="px-3 py-2 text-right ${(sld.all_avg_trough_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(sld.all_avg_trough_pnl || 0) >= 0 ? '+' : ''}${(sld.all_avg_trough_pnl || 0).toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${(sld.all_worst_trough_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${(sld.all_worst_trough_pnl || 0) >= 0 ? '+' : ''}${(sld.all_worst_trough_pnl || 0).toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${sld.all_avg_close_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${sld.all_avg_close_pnl >= 0 ? '+' : ''}${sld.all_avg_close_pnl.toFixed(4)}%</td>
@@ -11646,7 +11654,7 @@
                     
                     slBody.innerHTML = rows;
                 } else {
-                    slBody.innerHTML = '<tr><td colspan="15" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
+                    slBody.innerHTML = '<tr><td colspan="16" class="px-3 py-4 text-center text-gray-500">No stop loss trades yet</td></tr>';
                 }
                 
                 // Winning Trades Drawdown
@@ -11667,6 +11675,7 @@
                     let allDir = {LONG: 0, SHORT: 0};
                     let allConf = {};
                     let allSigActive = 0, allSigInactive = 0;
+                    let allPostArmSum = 0, allPostArmN = 0;  // May 18: aggregate post-arm-min
                     
                     let rows = wdd.map(w => {
                         totalCount += w.count;
@@ -11690,6 +11699,10 @@
                         }
                         allSigActive += w.signal_active || 0;
                         allSigInactive += w.signal_inactive || 0;
+                        if (w.avg_post_arm_min_pct != null && w.post_arm_min_n) {
+                            allPostArmSum += w.avg_post_arm_min_pct * w.post_arm_min_n;
+                            allPostArmN += w.post_arm_min_n;
+                        }
 
                         const troughClass = w.avg_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const worstClass = w.worst_trough_pnl >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -11723,6 +11736,7 @@
                                 <td class="px-3 py-2 text-right ${troughClass} font-medium">${w.avg_trough_pnl >= 0 ? '+' : ''}${w.avg_trough_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${worstClass} font-medium">${w.worst_trough_pnl >= 0 ? '+' : ''}${w.worst_trough_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right ${wdPeakClass} font-medium">${wdPeakVal >= 0 ? '+' : ''}${wdPeakVal.toFixed(4)}%</td>
+                                <td class="px-3 py-2 text-right ${w.avg_post_arm_min_pct == null ? 'text-gray-600' : (w.avg_post_arm_min_pct < 0.05 ? 'text-red-400' : (w.avg_post_arm_min_pct < 0.10 ? 'text-amber-400' : 'text-gray-400'))} font-medium" title="${w.post_arm_min_n != null ? 'N=' + w.post_arm_min_n : 'No post-arm data'}">${w.avg_post_arm_min_pct == null ? '-' : (w.avg_post_arm_min_pct >= 0 ? '+' : '') + w.avg_post_arm_min_pct.toFixed(4) + '%'}</td>
                                 <td class="px-3 py-2 text-right ${closeClass} font-medium">${w.avg_close_pnl >= 0 ? '+' : ''}${w.avg_close_pnl.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${wdDropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right">${wdPostPeakStr}</td>
@@ -11759,6 +11773,7 @@
                             <td class="px-3 py-2 text-right ${avgTrough >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgTrough >= 0 ? '+' : ''}${avgTrough.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${worstOverall >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${worstOverall >= 0 ? '+' : ''}${worstOverall.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right ${avgPeakAll >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgPeakAll >= 0 ? '+' : ''}${avgPeakAll.toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${allPostArmN === 0 ? 'text-gray-600' : ((allPostArmSum/allPostArmN) < 0.05 ? 'text-red-400' : ((allPostArmSum/allPostArmN) < 0.10 ? 'text-amber-400' : 'text-gray-400'))} font-medium" title="${allPostArmN ? 'N=' + allPostArmN : 'No post-arm data'}">${allPostArmN === 0 ? '-' : ((allPostArmSum/allPostArmN) >= 0 ? '+' : '') + (allPostArmSum/allPostArmN).toFixed(4) + '%'}</td>
                             <td class="px-3 py-2 text-right ${avgClose >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${avgClose >= 0 ? '+' : ''}${avgClose.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right text-amber-400 font-medium">${avgDrop.toFixed(4)}%</td>
                             <td class="px-3 py-2 text-right"><span class="text-gray-600">-</span></td>
@@ -11771,7 +11786,7 @@
                     
                     wdBody.innerHTML = rows;
                 } else {
-                    wdBody.innerHTML = '<tr><td colspan="17" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
+                    wdBody.innerHTML = '<tr><td colspan="18" class="px-3 py-4 text-center text-gray-500">No winning trades yet</td></tr>';
                 }
 
                 // Post-Exit Regret Deep Dive

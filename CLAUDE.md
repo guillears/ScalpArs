@@ -11960,3 +11960,160 @@ To anchor:
 If at the next 100-trade checkpoint the filter shows zero blocks OR
 becomes unjustified by fresh evidence, revert is one config-line edit.
 The cost of being wrong is bounded.
+
+## May 18, 2026 PM (FINAL BATCH) — Multi-ship session: exit stack + 3 LONG filters + 2 mult demotions
+
+Capturing all configuration changes shipped today after the consolidated checklist was locked, so the next session has a complete handoff.
+
+### Live config at batch reset (May 18 PM)
+
+#### Exit stack (commit `52b875f`)
+- `tp_min` (V_S + S_B): 0.80 → **0.50**
+- `pullback_trigger` (V_S + S_B): 0.20 → **0.25**
+- `be_level1_offset` (V_S + S_B): 0.05 → **0.10**
+- `be_level1_trigger`: 0.20 (unchanged — peak must hit 0.20% to arm BE)
+
+Simulation on May 17+ batch projected +$245.83 swing. Trade flow:
+- Peak <0.20%: BE never arms — outcome unchanged
+- Peak 0.20-0.50%: BE arms, retraces below +0.10% → exit at +0.10% (was +0.05%)
+- Peak ≥0.50%: trailing arms first (TP threshold), exits at peak−0.25
+  rather than firing BE at +0.10%
+
+Counterfactual simulation on subsequent 102-trade batch projected
++$731 swing vs original config.
+
+#### Fast-Exit Counterfactual extension (commit `2676dc9`)
+The Fast-Exit Counterfactual table now consults post-exit snapshots
+(`post_exit_pnl_at_{1,2,5,15,30}min`, `post_exit_peak_pnl`) within the
+window-from-entry budget. This makes the 0.30% and 0.40% threshold
+cells honest even when live Fast Exit fired at 0.20% — they reflect
+"did peak ≥ X happen within Y min of entry, in-trade OR post-exit."
+
+Pre-May-13 trades lack post-exit data and fall back to in-trade peak.
+
+#### LONG filter ships (commit `bef62d7`)
+Three filters shipped together targeting the LONG loss patterns from
+today's batch + yesterday's May 16+ data (7 losers / -$333):
+
+1. **Global Volume Filter LONG — re-enabled with new thresholds**
+   - `global_volume_filter_enabled`: false → **true**
+   - `global_volume_threshold_long`: 0.95 → **0.70**
+   - `pair_volume_usd_rescue_long`: $100M → **$50M**
+   - Catches: small-cap pair in quiet market (币安人生 -$51, ARB -$25, FARTCOIN -$34)
+   - Cuts: 1000LUNC winner +$28
+
+2. **BTC RSI 55-60 LONG full block via cross-filter rule modification**
+   - `btc_rsi_adx_filter_long`: `"...55-60:0-25"` → `"...55-60:99-100"`
+   - The 99-100 ADX range is unsatisfiable → effectively blocks ALL
+     BTC RSI 55-60 LONG entries
+   - Cross-batch evidence (May 18 PM analysis): N=6, 33% WR, -$99
+   - Catches: FF -$73, INJ 17:40 -$38, ARB -$25, FARTCOIN -$34
+   - Cuts: SAGA winner +$44, 1000LUNC winner +$28
+   - **Important interaction**: BTC RSI 55-60 LONG entries are now
+     impossible. Any multiplier cells referencing BTC RSI 55-60 are
+     operationally dead (see Mult Demotion 2 below).
+
+3. **Entry Quality Score Filter — enabled**
+   - `entry_quality_score_filter_enabled`: false → **true**
+   - `entry_quality_score_block_max`: 1 (block entries with score ≤ 1)
+   - 10-sample cross-batch evidence (CLAUDE.md May 15 PM): N=95,
+     34.7% WR, -$684
+   - Today's BTCUSDT SHORT loser had score=1 — matches the pattern
+
+#### Multiplier demotions (commit `fa2dcbe`)
+
+1. **BTC_25-30_20-25 SHORT (S-P1) ✗ HARMFUL — primary demote**
+   - `btc_rsi_adx_multiplier_short`: `"25-30:20-25:2.0,...` → `"25-30:20-25:1.0,..."`
+   - N=9 trades across today + yesterday May 16+
+   - WR 33%, Total $: **-$381**
+   - Per CLAUDE.md May 4 verdict matrix: Total $ negative on N≥5 → revert
+   - Despite 5-sample historical structural backing, recent regime is
+     hammering this cell. Discipline locked: revert to 1.0×.
+   - Cell stays in config for future re-activation if evidence shifts.
+
+2. **BTC_55-60_22-25 LONG — dead code housekeeping**
+   - `btc_rsi_adx_multiplier_long`: `"...55-60:22-25:2.0,..."` → `"...55-60:22-25:1.0,..."`
+   - This cell can never fire while the BTC RSI 55-60 block filter is
+     active (LONG filter #2 above). Demoted to 1.0× as cleanup.
+
+### Active multipliers AFTER demotions
+
+| Cell | Side | Value | Status |
+|---|---|---|---|
+| BTC_60-65_28-30 LONG | LONG | 2.0× | Active, no data |
+| PAIR_55-60_22-25 LONG | LONG | 2.0× | Active, no data |
+| BTC_35-40_33-36 SHORT | SHORT | 2.0× | Active, 3 trades / 100% WR / +$52 (Low N — keep) |
+| All other cells | both | 1.0× | Neutralized (preserved in config) |
+
+### Effective LONG entry surface AFTER tonight's ships
+
+```
+Pair RSI: [40, 65]
+Pair ADX: [15, 30]
+Pair ADX direction: rising
+BTC ADX: [18, 40]     ← max raised to 40 earlier today (commit 5ecdae1)
+BTC ADX direction: both
+BTC RSI x BTC ADX cross-filter:
+  "70-100:35"   → RSI 70+: require ADX ≥35
+  "65-70:30"    → RSI 65-70: require ADX ≥30
+  "60-65:0-25"  → RSI 60-65: require ADX ≤25
+  "55-60:99-100" → RSI 55-60: FULL BLOCK (new tonight) ★
+Global Vol Filter: ON, Min L 0.70, Rescue Pair Vol $50M
+Entry Quality Score Filter: ON, block score ≤ 1
+RngPos × ADX Δ cross-filter: empty (LONG side inactive)
+ADX Δ × BTC ADX cross-filter: DISABLED (toggle off)
+```
+
+### Effective SHORT entry surface
+
+```
+Pair RSI: [25, 50]
+Pair ADX: [22, 33]
+Pair ADX direction: rising
+BTC ADX: [20, 40]
+BTC ADX direction: both
+BTC RSI x BTC ADX cross-filter:
+  "30-35:30"   → RSI 30-35: require ADX ≥30
+  "35-40:20"   → RSI 35-40: require ADX ≥20
+  "45-50:25"   → RSI 45-50: require ADX ≥25
+  "0-30:0-30"  → RSI <30: require ADX ≤30
+Global Vol max short: 1.10 (with BTC capitulation override)
+RngPos × ADX Δ cross-filter: SHORT rule "5-10:1.0-2.0" ★ active (shipped today)
+ADX Δ × BTC ADX cross-filter: DISABLED (toggle off)
+```
+
+### Update to TIER 0 of consolidated checklist
+
+**TIER 0a — Global Volume Filter**: was DISABLED for A/B test. **NOW RE-ENABLED**
+at Min L 0.70 + Rescue $50M (different from prior settings 0.95 / $100M).
+At next checkpoint, evaluate as a fresh activation (not a revert).
+
+**TIER 0b — ADX Δ × BTC ADX Cross-Filter**: still DISABLED. Evaluated
+tonight against this batch:
+- LONG rule would have CUT 1 winner (1000LUNC +$28) and caught 0 losers
+- SHORT rule had 0 matches
+- **Verdict: leave DISABLED** — no evidence supporting re-enable
+
+### Pre-committed revert criteria (locked NOW for next checkpoint)
+
+| Item | Revert trigger |
+|---|---|
+| GVol filter (Min L 0.70 + Rescue $50M) | If would-have-been-blocked LONGs show ≥55% WR on N≥10 |
+| BTC RSI 55-60 LONG block (`55-60:99-100`) | If observed BTC RSI 55-60 LONGs (in obs logs) show ≥55% WR on N≥10 |
+| Entry Quality Score filter | If would-have-been-blocked score-1 trades show ≥55% WR on N≥10 |
+| S-P1 multiplier demote (back at 1.0×) | If S-P1 cell next batch shows WR ≥70% on N≥5 AND Total $ positive → re-promote to 2.0× |
+| Exit stack (BE 0.10 / TP 0.50 / PB 0.25) | If combined Avg P&L worsens >0.05% per locked May 5 stop rule |
+
+### Why this entry exists
+
+To capture the FINAL config state at May 18 PM reset so the next session
+has a clean handoff. Several ships happened after the consolidated
+checklist was locked, and the checklist itself needs to be read with
+the awareness that:
+- TIER 0a is NO LONGER disabled (re-enabled with new values)
+- TIER 3 multiplier list has 2 cells now at 1.0× (S-P1 SHORT, BTC_55-60 LONG)
+- TIER 4 watchlist items WL-X is still observation-only
+- A new BTC RSI 55-60 LONG block was added to the cross-filter rules
+
+The 36-item checklist remains the analytical framework for next checkpoint,
+but cross-reference this entry for the current live config.

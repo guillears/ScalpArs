@@ -11280,6 +11280,37 @@ Reference: same entry as #8.
 **Watch 2** (`0.5-1.0 × 25-30`): if N≥8 in fresh data AND WR≤45% → extend rule.
 **Watch 3** (`0.1-0.3 × 25-30`): activates only if Watch 2 also confirms; consider broader rule.
 
+#### 9b. BTC RSI 55-60 LONG — `55-60:20-25` rule validation (NEW May 18 late PM)
+
+Reference: CLAUDE.md May 18 late PM "BTC RSI 55-60 LONG cap rollback 99-100 → 20-25".
+
+Rule shipped after the May 18 full-block (`55-60:99-100`) was over-restrictive
+on cross-batch evidence (102-trade pool showed BTC ADX 22-25 sub-cell was a
+clean 79% WR winner). Current rule allows ADX [20, 25] for BTC RSI 55-60 LONG,
+blocks 25+ AND <20.
+
+Cross-batch evidence at ship time (BTC RSI 55-60 LONG):
+- Allow zone `[20, 25]`: N=40, ~62% WR, +$346 net
+- Sub-cell 22-25: N=19, 79% WR, +$285 ★ structural winner (11 dates)
+- Sub-cell 20-22: N=21, 48% WR, +$61 (mixed)
+- Blocked zone <20 (now blocked): 18-20 cell was -$238 disaster (16 trades, 31% WR, 9 dates)
+- Blocked zone ≥25: catastrophic 25-30 (-$398, 20 trades, 35% WR)
+
+**Promotion/revert gate at next ≥100-trade LONG checkpoint:**
+
+| Outcome (BTC RSI 55-60 × BTC ADX 20-25 in fresh data) | Action |
+|---|---|
+| N ≥ 10 AND WR ≥ 60% AND Avg P&L % ≥ +0.10% | ★ KEEP `55-60:20-25` |
+| N ≥ 10 AND WR ≤ 45% OR Avg P&L % ≤ -0.10% | ✗ REVERT to `55-60:99-100` (full block) |
+| N < 10 | Insufficient data, extend test |
+| Mixed (WR 45-60%) | Hold for one more batch |
+
+**Sub-cell vigilance:**
+- If 20-22 sub-cell drops to ≤40% WR on N≥10 → tighten further to `55-60:22-25` (cut the mixed-positive zone, keep only the 79% sweet spot)
+- If 22-25 sub-cell shows ≤55% WR on N≥10 → the entire rollback was wrong; revert to full block
+
+Pair-level vigilance: this is the **3rd loosening of BTC RSI × BTC ADX cross-filter rules** in 24 hours (60-65 ADX cap 25→30 today, 55-60 from full-block to 20-25 today, plus btc_adx_max_long 35→40 May 18). Compound attribution risk if next batch shows LONG-side regression — need to dissect which loosening drove which result.
+
 ---
 
 ### TIER 3 — Multiplier cell verdicts (8 cells active + 1 demote validation)
@@ -12293,3 +12324,69 @@ To preserve:
 4. The new 1D multiplier primitive (`_lookup_1d_multiplier`) is now reusable
    — future BTC-dim multiplier ships (the May 18 deferred WL-E/F/G
    candidates) can use it without adding more scaffolding
+
+## May 18, 2026 (late PM) — BTC RSI 55-60 LONG cap rollback `99-100 → 20-25`
+
+### Change
+- `btc_rsi_adx_filter_long`: `"...55-60:99-100"` → `"...55-60:20-25"`
+
+Partial rollback of the May 18 PM full-block. BTC RSI 55-60 LONG entries
+now ALLOWED when BTC ADX in `[20, 25]`, BLOCKED outside that range.
+
+### Why — full-block was over-restrictive on 102-trade cross-batch evidence
+
+May 18 PM shipped `55-60:99-100` (full block) based on N=6 / 33% WR / -$99
+single-window evidence. Cross-batch sweep against all archived batches reveals
+a much richer 102-trade dataset showing the full block cuts a clean winner cell:
+
+| BTC ADX × BTC RSI 55-60 LONG | N | WR | Total $ |
+|---|---|---|---|
+| 15-18 | 6 | 67% | -$38 (small losers) |
+| **18-20** | **16** | **31%** | **-$238 ✗** (9 dates — multi-batch disaster) |
+| 20-22 | 21 | 48% | +$61 (slight winner) |
+| **22-25** | **19** | **79%** | **+$285 ★** (11 dates — structural sweet spot) |
+| **25-30** | **20** | **35%** | **-$398 ✗** (catastrophic, 8 dates) |
+| 30-35 | 17 | 59% | +$158 (decent winner, 5 dates) |
+| 35+ | 3 | 33% | -$3 (thin N) |
+
+### Threshold choice — Option B (`20-25`)
+
+Three options were evaluated:
+
+| Rule | Allow zone | Block zone net | Trade-off |
+|---|---|---|---|
+| `0-25` (original pre-May-18) | N=62, 55% WR, +$70 | -$243 saved | Admits 18-20 disaster |
+| **`20-25`** (shipped) | **N=40, ~62% WR, +$346** | **-$430 saved** | Surgical — cuts 18-20 disaster, keeps 22-25 sweet spot |
+| `22-25` (data-optimal) | N=19, 79% WR, +$285 | -$458 saved | Strictest, but cuts the 30-35 winners (syntax can't preserve) |
+
+User chose Option B as the surgical compromise — admits the 79% WR
+sweet spot (22-25), keeps the mixed-positive 20-22 zone, but cuts the
+known -$238 disaster zone at 18-20.
+
+### Pre-committed revert criteria (locked NOW)
+
+Added to consolidated checklist as item **9b** (TIER 2). See that entry
+for the full gate matrix. Summary:
+
+- N ≥ 10 fresh AND WR ≥ 60% → KEEP at `20-25`
+- N ≥ 10 fresh AND WR ≤ 45% → REVERT to `99-100` (full block)
+- 20-22 sub-cell ≤40% WR on N≥10 → tighten to `22-25` (cut the mixed zone)
+
+### Filter design philosophy reinforced
+
+This is the **3rd loosening of BTC RSI × BTC ADX cross-filter rules
+within 24 hours**:
+1. `60-65:0-25` → `60-65:0-30` (commit `cdb8a60`)
+2. `55-60:99-100` → `55-60:20-25` (this entry)
+3. `btc_adx_max_long: 35 → 40` (commit earlier May 18)
+
+Compound attribution risk acknowledged: if next batch shows LONG
+regression, all three are simultaneous suspects. The CLAUDE.md May 16 BE
+Layer activation provides downside protection on Pattern B (peak-and-
+retrace) failures across all three loosenings — but Pattern C (Never
+Positive) failures remain unhandled.
+
+### Files changed
+
+- `trading_config.json` — single field change
+- `CLAUDE.md` — this entry + watchlist item 9b in consolidated checklist

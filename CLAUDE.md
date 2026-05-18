@@ -12117,3 +12117,65 @@ the awareness that:
 
 The 36-item checklist remains the analytical framework for next checkpoint,
 but cross-reference this entry for the current live config.
+
+## May 18, 2026 (late PM) — `btc_rsi_adx_filter_long` rule `60-65:0-25 → 60-65:0-30` (loosen)
+
+### Change
+- `btc_rsi_adx_filter_long`: `"70-100:35,65-70:30,60-65:0-25,55-60:99-100"` → `"70-100:35,65-70:30,60-65:0-30,55-60:99-100"`
+
+LONG BTC RSI 60-65 zone now allows BTC ADX up to 30 (previously capped at 25).
+Re-admits the BTC RSI 60-65 × BTC ADX [25, 30] cell that was blocked May 11.
+
+### Context — partial reversal of May 11 block
+
+The original `60-65:0-25` rule (CLAUDE.md May 11) was shipped based on:
+- Cross-batch pool: 13 trades / 62% WR / **-$194** in BTC RSI 60-65 × BTC ADX 25-30 LONG
+- Today's afternoon batch (May 11): 4 trades / 3 losers / -$180 in same cell
+- "Deceptive 62% WR cell with asymmetric loss magnitude" — losers > winners by 2x ratio
+
+User-directed loosening for next batch. Hypothesis: under the new exit stack
+(BE 0.10 floor + TP 0.50 + PB 0.25, shipped same session via commit `52b875f`),
+the previously-bad asymmetric-loss-magnitude pattern may flip — BE now catches
+peak-and-retrace failures (Pattern B) that were the dominant loss mode in the
+25-30 cell.
+
+This is **bracket-symmetric** with the May 18 PM `btc_adx_max_long: 35 → 40`
+change (same rationale: new exit stack changes per-cell verdicts; previously
+hard-blocked zones may be redeemable).
+
+### What stays blocked
+
+The adjacent zone `60-65 × BTC ADX [30, 35]` is **still blocked** (this rule
+caps at 30, and the existing `btc_adx_max_long: 40` allows up to 40, but no
+cross-filter rule opens 30-35 for RSI 60-65 specifically — wait, actually
+`60-65:0-30` means "for RSI 60-65, require BTC ADX in [0, 30]". So 30-35 IS
+blocked).
+
+L-P1 multiplier cell (BTC RSI 60-65 × BTC ADX 20-25) remains unaffected
+(within 0-30 allowed range, still at 2.0×).
+
+### Pre-committed revert criterion (locked at next ≥100-trade LONG checkpoint)
+
+Apply per-cell gate to BTC RSI 60-65 × BTC ADX [25, 30] LONG in fresh data:
+
+| Outcome | Action |
+|---|---|
+| N ≥ 10 AND WR ≥ 55% AND Avg P&L % ≥ 0% | ★ KEEP at `0-30` — new exit stack rescues the zone |
+| N ≥ 10 AND WR ≤ 45% OR Avg P&L % ≤ -0.15% | ✗ REVERT to `0-25` — exit stack didn't rescue |
+| N < 10 | Insufficient data, extend test |
+| N ≥ 10 AND WR 45-55% (mixed) | Hold at `0-30` one more batch |
+
+Cross-check: ≥50% of cell losses (if any) should be Pattern B (peak ≥+0.20%
+then retraced to BE floor +$0.10 then deeper) to confirm BE handled them
+properly. If losses are Pattern C (Never Positive, peak <0.05%), BE didn't
+help — revert and consider whether this zone needs a different mechanism.
+
+### Hard floor (do NOT loosen further this batch)
+
+- Do NOT change `0-30` to `0-35` or wider mid-batch
+- Do NOT extend the same logic to other RSI bands without independent evidence
+- Do NOT touch `55-60:99-100` block (May 18 PM full-block decision separate)
+
+### Files changed
+- `trading_config.json` — single field change
+- `CLAUDE.md` — this entry

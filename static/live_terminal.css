@@ -923,21 +923,46 @@ body.lt-mode header.glass + .glass * {
 }
 #live-terminal-view .lt-pair-cell {
   aspect-ratio: 1 / 1;
-  background: #0f1f0f;
+  background: #0a1a0a;            /* base — same as lt-pc-idle */
   border-radius: 1px;
   transition: background 0.5s, box-shadow 0.5s;
   cursor: default;
+  position: relative;             /* anchor for ::after + .lt-pc-label */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-#live-terminal-view .lt-pair-cell.lt-pc-low { background: #1a2818; }
-#live-terminal-view .lt-pair-cell.lt-pc-mid { background: #2d5a2d; }
-#live-terminal-view .lt-pair-cell.lt-pc-high {
+/* 5-tier palette (Theater Pass v2.1, May 18 polish) */
+#live-terminal-view .lt-pair-cell.lt-pc-idle { background: #0a1a0a; }
+#live-terminal-view .lt-pair-cell.lt-pc-low  { background: #1d3a1d; }
+#live-terminal-view .lt-pair-cell.lt-pc-mid  { background: #2d5a2d; }
+#live-terminal-view .lt-pair-cell.lt-pc-hi   { background: #3b8b3b; }
+#live-terminal-view .lt-pair-cell.lt-pc-top {
   background: #22c55e;
   box-shadow: 0 0 4px #22c55e;
 }
+/* Blacklist — sticky terminal state, red-outlined × marker */
+#live-terminal-view .lt-pair-cell.lt-pc-blacklist {
+  background: #0a1a0a;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: none;
+}
+#live-terminal-view .lt-pair-cell.lt-pc-blacklist::after {
+  content: "×";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: rgba(239, 68, 68, 0.5);
+  pointer-events: none;
+}
+/* WATCH / REJECT / ENTRY overlays */
 #live-terminal-view .lt-pair-cell.lt-pc-watch {
   background: #4ade80;
   box-shadow: 0 0 8px #4ade80;
-  animation: lt-pc-pulse 1.5s ease-in-out infinite;
+  animation: lt-pc-watch-pulse 1.5s ease-in-out infinite;
 }
 #live-terminal-view .lt-pair-cell.lt-pc-reject {
   background: #5a1818;
@@ -946,7 +971,28 @@ body.lt-mode header.glass + .glass * {
 #live-terminal-view .lt-pair-cell.lt-pc-flash {
   animation: lt-pc-flash 1.2s ease-out;
 }
-@keyframes lt-pc-pulse {
+/* Touch shimmer — fires on every event referencing the cell. GPU-composited
+   filter; 600ms, ease-out, then auto-cleared via setTimeout. */
+#live-terminal-view .lt-pair-cell.lt-shimmer {
+  animation: lt-pc-shimmer 600ms ease-out;
+}
+/* Symbol label — opacity-driven by state class. Hidden by default, shown
+   on lt-pc-hi and lt-pc-top only (per May 18 polish spec). */
+#live-terminal-view .lt-pair-cell .lt-pc-label {
+  font-size: 7px;
+  font-family: 'JetBrains Mono', 'IBM Plex Mono', Menlo, monospace;
+  color: #050505;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+#live-terminal-view .lt-pair-cell.lt-pc-hi  .lt-pc-label,
+#live-terminal-view .lt-pair-cell.lt-pc-top .lt-pc-label {
+  opacity: 1;
+}
+@keyframes lt-pc-watch-pulse {
   0%, 100% { box-shadow: 0 0 4px #4ade80; }
   50%      { box-shadow: 0 0 14px #4ade80; }
 }
@@ -954,6 +1000,10 @@ body.lt-mode header.glass + .glass * {
   0%   { background: #ffffff; box-shadow: 0 0 20px #ffffff; }
   20%  { background: #d1fadf; box-shadow: 0 0 16px #ffffff; }
   100% { background: #22c55e; box-shadow: 0 0 4px #22c55e; }
+}
+@keyframes lt-pc-shimmer {
+  0%   { filter: brightness(1.5); }
+  100% { filter: brightness(1); }
 }
 #live-terminal-view .lt-pair-heatmap-tooltip {
   position: absolute;

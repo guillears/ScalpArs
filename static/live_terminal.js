@@ -225,11 +225,16 @@
       const isFilterOut = /\b(excluded|Blacklist active|new-listing filter|Alpha-subtype filter)\b/i.test(msg);
       if (isFilterOut) {
         // FILTER-OUT path: heatmap-only awareness. Do NOT touch radar/top-scans.
+        // Discriminate the [SCAN] Blacklist active line — those symbols get
+        // the sticky lt-pc-blacklist state. 20ms stagger creates a sweep
+        // effect across simultaneously-revealed cells (May 18 polish).
         const filterSyms = msg.match(/\b(?:\d+)?[A-Z]{2,10}USDT\b/g);
         if (filterSyms) {
-          for (const sym of filterSyms) {
-            updatePairHeatmap(sym, 'AWARENESS');
-          }
+          const isBlacklist = /\bBlacklist active\b/.test(msg);
+          const type = isBlacklist ? 'BLACKLIST' : 'AWARENESS';
+          filterSyms.forEach((sym, i) => {
+            updatePairHeatmap(sym, type, { pulseDelay: i * 20 });
+          });
         }
       } else {
         // ACTIVE-SCAN path: radar + top-scans + heatmap.
@@ -1242,6 +1247,12 @@
     if (maxN === 0) return 0;
     return Math.round((myCount / maxN) * 100);
   }
+  // Short symbol for cell label: strip USDT suffix + leading digits, truncate >4.
+  function _shortenSym(sym) {
+    let s = sym.replace(/USDT$/, '').replace(/^\d+/, '');
+    if (s.length > 4) s = s.slice(0, 4);
+    return s || sym.slice(0, 4);
+  }
   function _ensurePairCell(sym) {
     if (_pairCells.has(sym)) return _pairCells.get(sym);
     const grid = document.getElementById('lt-pair-heatmap-grid');
@@ -1249,18 +1260,24 @@
     const el = document.createElement('div');
     el.className = 'lt-pair-cell';
     el.dataset.symbol = sym;
+    // Label always present — visible via CSS opacity on hi/top tiers only.
+    const label = document.createElement('span');
+    label.className = 'lt-pc-label';
+    label.textContent = _shortenSym(sym);
+    el.appendChild(label);
     // Tooltip handlers
     el.addEventListener('mouseenter', _showPairTooltip);
     el.addEventListener('mouseleave', _hidePairTooltip);
     grid.appendChild(el);
-    // aware = true when the symbol has been mentioned in any event (incl.
-    // filter-out lines). Keeps cell at lt-pc-low floor even if score=0.
-    const rec = { el, state: 'idle', rejectUntil: 0, aware: false };
+    // aware       = mentioned in any event (filter-out OR real)
+    // blacklisted = sticky terminal state (from [SCAN] Blacklist active line)
+    const rec = { el, state: 'idle', rejectUntil: 0, aware: false, blacklisted: false };
     _pairCells.set(sym, rec);
     return rec;
   }
   function _classForScore(sc) {
-    if (sc >= 70) return 'lt-pc-high';
+    if (sc > 85) return 'lt-pc-top';
+    if (sc >= 70) return 'lt-pc-hi';
     if (sc >= 50) return 'lt-pc-mid';
     if (sc > 0)   return 'lt-pc-low';
     return '';
@@ -1270,39 +1287,67 @@
     const sym = rec.el.dataset.symbol;
     const score = _scoreForSymbol(sym);
     rec.el.dataset.score = String(score);
-    // Reject overrides score color for 3s
     let base = 'lt-pair-cell';
     const now = Date.now();
-    if (rec.rejectUntil && now < rec.rejectUntil) {
+    if (rec.blacklisted) {
+      // Sticky terminal — never upgrades regardless of score.
+      base += ' lt-pc-blacklist';
+    } else if (rec.rejectUntil && now < rec.rejectUntil) {
       base += ' lt-pc-reject';
     } else {
       const sc = _classForScore(score);
       if (sc) {
         base += ' ' + sc;
       } else if (rec.aware) {
-        // Score=0 but symbol is in awareness universe → dim baseline.
-        base += ' lt-pc-low';
+        // Score=0 but symbol is in awareness universe → idle baseline.
+        base += ' lt-pc-idle';
       }
     }
     if (extra) base += ' ' + extra;
     rec.el.className = base;
   }
-  function updatePairHeatmap(sym, evtType) {
+  // Shimmer pulse — fires on every event touch (May 18 polish).
+  // Reset cleanly via remove + reflow + setTimeout cleanup (NOT animationend).
+  function _shimmer(rec) {
+    if (!rec || !rec.el) return;
+    rec.el.classList.remove('lt-shimmer');
+    void rec.el.offsetWidth;          // force reflow so animation restarts
+    rec.el.classList.add('lt-shimmer');
+    setTimeout(() => {
+      if (rec.el) rec.el.classList.remove('lt-shimmer');
+    }, 620);
+  }
+  function updatePairHeatmap(sym, evtType, opts) {
     if (!sym) return;
     const rec = _ensurePairCell(sym);
     if (!rec) return;
-    if (evtType === 'AWARENESS') {
-      // Bot is aware of this pair (filter-out mention). Set dim floor only.
-      // Do NOT downgrade if cell has already been promoted via real events.
-      if (!rec.aware) {
+    // Shimmer fires for EVERY touch — even on no-op state changes.
+    // Optional pulseDelay (ms) lets callers stagger waves of simultaneous events.
+    const delay = (opts && typeof opts.pulseDelay === 'number') ? opts.pulseDelay : 0;
+    if (delay > 0) setTimeout(() => _shimmer(rec), delay);
+    else _shimmer(rec);
+
+    if (evtType === 'BLACKLIST') {
+      // Blacklist is sticky — once set, never unset. Still gets shimmer above.
+      if (!rec.blacklisted) {
+        rec.blacklisted = true;
         rec.aware = true;
-        // Only repaint if cell is currently below lt-pc-low. _applyCellClass
-        // handles the "aware floor" rule.
         _applyCellClass(rec);
       }
       return;
     }
-    // Real event paths — also mark aware so score=0 doesn't drop back to idle.
+    if (rec.blacklisted) {
+      // Blacklisted cells don't react to other event types (still shimmer though).
+      return;
+    }
+    if (evtType === 'AWARENESS') {
+      if (!rec.aware) {
+        rec.aware = true;
+        _applyCellClass(rec);
+      }
+      return;
+    }
+    // Real event paths — mark aware so score=0 doesn't drop back to bare cell.
     rec.aware = true;
     if (evtType === 'REJECT') {
       rec.rejectUntil = Date.now() + 3000;

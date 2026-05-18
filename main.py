@@ -7509,7 +7509,9 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
         pool_armed += armed_n
 
     # Sort by absolute delta (biggest impact first)
-    rows.sort(key=lambda r: -abs(r["delta_usd"]))
+    # Match Phantom BE 0.20/0.05 sort order (direction then close_reason) for
+    # at-a-glance side-by-side comparison across the two BE counterfactual tables.
+    rows.sort(key=lambda r: (r['direction'], r['reason']))
 
     summary = {
         "new_floor": new_floor,

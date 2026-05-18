@@ -11065,3 +11065,85 @@ To anchor:
 1. The pre-disable performance snapshot so we can A/B compare cleanly
 2. The intentional confounding-avoidance reasoning (disable score during BE test)
 3. The pre-committed decision matrix at next checkpoint
+
+## May 18, 2026 UTC-3 — Next-batch BE floor decision: 0.05 → 0.10
+
+### What to evaluate
+
+At the next ≥30-armed-trade checkpoint, decide whether to raise the BE floor
+from current **0.20/0.05** to **0.20/0.10**. Both BE counterfactual tables
+in the dashboard now provide the data:
+
+1. **🎯 BE Floor Counterfactual: 0.05 vs 0.10** (May 17, observation-only)
+   — per (close_reason × direction) bucket, simulates BE 0.20/0.10 against
+   actual BE 0.20/0.05 outcomes using the `post_arm_min_pnl_pct` per-trade
+   column. Shows Cut Winners, Saved, Δ$, and verdict per bucket plus three
+   TOTAL rows (LONG / SHORT / ALL). Sort now matches Phantom BE table for
+   side-by-side reading.
+2. **🧪 Phantom BE 0.20/0.05 Counterfactual** (May 14, observation-only)
+   — per (close_reason × direction) bucket, shows what BE 0.20/0.05 actually
+   captured vs hypothetical no-BE outcome. Same sort.
+
+Reading both tables together gives the full picture: Phantom BE shows
+"is BE doing useful work at all" (the 0.05 floor); BE Floor CF shows
+"would 0.10 be better" (the floor-shift question).
+
+### Decision criteria (locked NOW before data arrives)
+
+Ship `be_level1_offset: 0.05 → 0.10` if ALL of the following:
+
+1. **N ≥ 30 armed trades total** (sum of TOTAL ALL row's "Armed" column)
+2. **TOTAL ALL Δ$ ≥ +$50** in the BE Floor CF table
+3. **TOTAL ALL Cut Winners = 0** AND no individual bucket with Fired ≥ 5
+   shows Cut Winners ≥ 1
+4. **Avg P&L % gap improvement**: TOTAL ALL "BE10 %" ≥ TOTAL ALL "Actual %"
+   by ≥ +0.05pp
+5. **No ⚠ HURTING bucket** with Fired ≥ 5
+
+If 1-2 hold but 3 fails (a single Cut Winner appears at Fired ≥ 5) →
+**defer to 200-trade batch** rather than ship. The bar against killing real
+winners is hard.
+
+### Why these specific gates
+
+- N ≥ 30 armed cuts noise from low-fire buckets
+- Δ$ ≥ +$50 ensures the change is material at current ~$0.50/trade scale
+- Cut Winners = 0 is the safety-first signal — a single $20-30 winner killed
+  by BE 0.10 in steady-state would compound out into a real cost
+- Avg % gap ≥ +0.05pp confirms the dollar improvement isn't a small-N artifact
+- "No ⚠ HURTING bucket" prevents shipping a change that's net positive overall
+  but harms a specific exit reason (e.g., kills trailing-stop runners)
+
+### Caveats baked into the analysis
+
+1. **Selection bias on filter survivors.** Trades not yet closed
+   under the BE 0.05/0.10 regime will be missing from both tables.
+   Wait until enough fresh trades accumulate post-Trailing-Confirmation-0s.
+2. **Cross-sample correlation.** The current ~30-armed sample is one regime
+   (BULLISH-mixed) — if next batch shifts to BEARISH-strong, results may
+   change. Re-run gate criteria on fresh batch only.
+3. **Floor 0.10 vs 0.15 considered already.** May 17 BE Floor CF was sized
+   for 0.05 vs 0.10 specifically; not a multi-floor comparison. If user
+   wants 0.10 vs 0.15 next round, separate analysis required.
+4. **`Post-Arm Min %` columns now live** in: Closing Reason Summary,
+   Stop Loss Deep Dive (May 18 commit `3bab836`), Winning Trades Drawdown
+   (May 18 commit `3bab836`). Cross-reference these columns to verify the
+   BE Floor CF table's bucket-level reads.
+
+### What success looks like
+
+If all 5 criteria hold cleanly → ship `be_level1_offset: 0.05 → 0.10` as a
+single config change. Locked revert criterion at next-batch validation: if
+TOTAL ALL Cut Winners > 0 OR Δ$ ≤ -$30 vs the projected gain → revert
+immediately.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The locked decision gates BEFORE seeing fresh data (prevents post-hoc
+   bar-lowering when actual numbers come in)
+2. The instruction to read BOTH counterfactual tables together — Phantom BE
+   answers "is BE working?", BE Floor CF answers "would 0.10 be better?"
+3. The sort-order alignment between both tables so future-Claude (or
+   future-User) reads them side-by-side without column reshuffling
+4. The Post-Arm Min % cross-reference paths (3 tables now expose the data)

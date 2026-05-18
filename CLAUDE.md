@@ -10872,3 +10872,134 @@ To anchor:
 5. The locked verification step using the NEW EMA13 post-exit column (shipped earlier today specifically to validate this kind of extended-hold experiment)
 
 If at next checkpoint the verdict says revert, this entry is the locked roll-back rationale. If it says keep, this entry is the audit trail of why it was shipped on what evidence.
+
+## May 17, 2026 (21:12 UTC-3) — Post-arm-min instrumentation + BE Floor Counterfactual table
+
+Locked methodology for analyzing BE Layer 1 and trailing-stop behavior properly,
+using the new `post_arm_min_pnl_pct` column shipped this evening.
+
+### Why this exists
+
+A series of conversations today exposed a structural flaw in earlier BE analyses
+(my own, repeatedly):
+
+1. Sometimes I claimed "BE 0.10 wouldn't affect trailing trades because close > 0.10" — which uses CLOSE as a proxy for the trade's path. The user correctly pointed out: a trade could go `peak 0.90 → dip to 0.08 → bounce back → trailing at 0.60`. Close at 0.60 doesn't tell you the path touched 0.08.
+2. I then proposed `post_peak_min_pnl_pct` (minimum P&L AFTER global peak). User again correctly pointed out: this misses the case where the trade dips between BE arming and global peak. Path `arm at 0.20 → dip to 0.08 → climb to 0.90 → close 0.60` would have BE 0.10 firing on the dip, but my proposed metric (post-peak) wouldn't see it.
+
+The correct window is **post-arm**, not post-peak. BE arms when peak first crosses
+trigger (0.20). Once armed, any subsequent P&L below the floor fires BE. So the
+diagnostic metric is: **minimum P&L observed after first-arm event, through trade close**.
+
+### What was added (engineering)
+
+**`Order.post_arm_min_pnl_pct`** (Float, nullable) + **`Order.post_arm_min_pnl_at`** (DateTime, nullable)
+
+- NULL if peak never reached BE trigger (trade never armed BE)
+- Otherwise: minimum P&L from the first moment peak crossed `be_level1_trigger`
+  (typically 0.20%) onward, until close
+- Captures BOTH pre-global-peak dips after BE armed AND post-peak retraces
+
+Captured in `services/trading_engine.py` realtime callback, parallel to existing
+peak tracking. Persisted on close from `_open_orders_cache`. Pre-deploy trades
+have NULL forever (no backfill possible).
+
+### What was added (UI)
+
+1. **BE Floor Counterfactual table** (new) — top of dashboard analytics, after Phantom BE table. Per (close_reason × direction) bucket:
+   - N, Armed, **BE10 Fires** (post_arm_min < 0.10), **Cut Winners** (BE10 fires AND actual close > 0.10), **Saved** (BE10 fires AND actual close ≤ 0.10)
+   - Actual % / $ vs BE10 % / $, Δ$, Verdict
+2. **`Post-Arm Min %`** column in Closing Reason Summary — avg post-arm-min per bucket
+3. Both text-export sites surface the new table and column
+4. `avg_post_arm_min_pct` data also flows to Stop Loss Deep Dive and Winning Trades Drawdown aggregator payloads (UI columns not yet rendered — follow-up)
+
+### How to use this to analyze BE transactions
+
+**Question 1: "Is BE catching too early?"**
+
+Read `Cut Winners` column in BE Floor Counterfactual table. For each non-BREAKEVEN_SL_L1 bucket:
+- **Cut Winners = 0** → BE 0.10 doesn't pre-empt any winners in this bucket → safe to raise floor
+- **Cut Winners ≥ 1** → BE 0.10 would have killed N winners → cost = N × (avg actual close − 0.10) × notional
+
+**Question 2: "Is BE 0.10 better than current BE 0.05?"**
+
+Read the pool summary at top of table. Verdict at pool level:
+- **Δ$ > +$30 AND Cut Winners < Saved** → BE 0.10 is net positive AND not pre-empting too many winners → ship it
+- **Cut Winners ≥ Saved/2** → BE 0.10 is pre-empting too many winners → don't ship
+- **Δ$ ≤ +$10** → marginal, no clear winner, defer
+
+**Question 3: "Did BE actually fire on the trades it should have?"**
+
+For each BREAKEVEN_SL_L1 trade in Closing Reason Summary, check `Post-Arm Min %`:
+- If avg post_arm_min ≈ +0.05% (or slightly below): BE caught at exactly the floor — working as designed
+- If avg post_arm_min < +0.04%: BE has slippage (price slipped past floor before bot caught it) — investigate monitor loop cadence
+- If avg post_arm_min > +0.06%: trade exited at +0.06% via BE — interesting, indicates BE caught on the way up before retrace deepened (rare with current floor design)
+
+### How to use this to analyze trailing-stop behavior
+
+**Question 4: "Are trailing winners being pre-empted by BE in some cases?"**
+
+For TRAILING_STOP buckets in BE Floor Counterfactual:
+- **BE10 Fires = 0** in all TRAILING buckets → trailing's post-arm path stayed above 0.10 → safe ceiling
+- **BE10 Fires > 0** in any TRAILING bucket → those trailing winners DID dip below 0.10 after arming → BE 0.10 would have cut them at +0.10 instead of their actual higher trailing exit. Read **Cut Winners** count for the actual damage.
+
+This directly answers the question: "did the trade touch 0.10 after BE armed but before reaching peak?" If `post_arm_min_pnl_pct < 0.10` on a TRAILING winner → YES, it touched 0.10.
+
+**Question 5: "Where is trailing's typical retrace floor relative to BE?"**
+
+For each TRAILING bucket, read `Post-Arm Min %`:
+- TRAILING_STOP L1: AvgPostArmMin% = ? (e.g., +0.18%) → typical L1 winner dipped to +0.18% before climbing to peak. BE 0.10 wouldn't fire on these; BE 0.15 would.
+- TRAILING_STOP L2: AvgPostArmMin% = ? (e.g., +0.12%) → L2 winners dip closer to 0.10. BE 0.10 might catch some.
+- TRAILING_STOP L3+: AvgPostArmMin% = ? (e.g., +0.30%) → big peaks have deeper buffer. Safe from any reasonable BE floor.
+
+The closer the AvgPostArmMin% is to a candidate BE floor, the higher the **pre-emption risk** for that BE floor.
+
+### Pre-committed methodology for BE-floor decisions
+
+Going forward, before changing BE floor, BE trigger, or even adding BE2:
+
+**ALWAYS check the BE Floor Counterfactual table for the candidate floor.** Concretely:
+
+1. **Identify "would help" buckets** — BREAKEVEN_SL_L1, EMA13_CROSS_EXIT, STOP_LOSS_WIDE with BE10 Fires ≥ 5 and net positive Δ$
+2. **Identify "would hurt" buckets** — TRAILING_STOP L1/L2/L3+ with Cut Winners > 0. Calculate the pre-emption cost = sum of (actual_avg − new_floor) × notional × cut_winners
+3. **Apply gate**: ship the floor change ONLY if `sum(would_help Δ$) > 2 × sum(would_hurt cost)`. The 2x buffer accounts for in-sample bias.
+
+This replaces the earlier sloppy heuristic of "look at close vs floor." Close-based reasoning was wrong (close is post-everything, not post-arm-only). Post-arm-min-based reasoning is the right diagnostic.
+
+### Sample-size requirements
+
+- **N ≥ 30 armed trades** in the pool before any BE-floor change is considered
+- **N ≥ 5 BE10 fires per BE-affected bucket** for that bucket's verdict to count
+- **N ≥ 5 TRAILING_STOP trades per L-level** to assess pre-emption risk per tier
+
+Below these N, treat the table as exploratory observation — don't act.
+
+### What this does NOT capture
+
+1. **Pre-instrumentation trades have NULL** in `post_arm_min_pnl_pct`. The counterfactual table will exclude them from BE10 Fires count, falling back to actual-close as a conservative proxy. Don't draw conclusions about historical trades from this table.
+2. **Time-since-arm** isn't separately tracked. A trade that armed at +0.20, immediately dipped to +0.08, and then climbed slowly to +0.90 looks identical to one that armed at +0.20, climbed straight to +0.90, and then on the retrace dipped to +0.08. Both have post_arm_min +0.08. The PRE-peak dip case is the one the user flagged today and is the one we'd otherwise have missed.
+3. **EMA13 cross race conditions** aren't directly modeled. The simulation assumes BE fires the moment retrace crosses floor, but in reality EMA13 cross or RSI exit could fire at a different P&L during the retrace. The Counterfactual is approximate — use it as a directional signal, not a precise dollar prediction.
+
+### Pooling rule for this column
+
+Once enough data accumulates (N ≥ 30 armed trades), the column is poolable
+**across the SAME config**. Cross-config pooling rule from CLAUDE.md April 14
+applies: don't pool post-arm-min from trades that ran under different BE
+trigger values, different tp_min values (which affect what counts as "armed"
+indirectly via trailing competition), or fundamentally different exit chains.
+
+### Why this entry exists in CLAUDE.md
+
+Two reasons:
+
+1. **Codify the right diagnostic** — earlier today I made the same mistake
+   TWICE (close-based reasoning, then post-peak-only metric). Both were wrong.
+   The user's pushback drove the correction. The right metric is `post_arm_min`,
+   not `post_peak_min` and not `close`.
+2. **Lock the analysis methodology** — future Claude (or future user) reading
+   the BE Floor Counterfactual table for the first time has the framework here
+   to interpret it correctly: which buckets matter, which gates apply, what
+   sample sizes are required, what the table CAN and CANNOT answer.
+
+The instrumentation is the diagnostic. The counterfactual table is the
+report surface. The methodology section above is the operating rule for
+acting on what it shows.

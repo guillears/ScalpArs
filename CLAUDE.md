@@ -11846,3 +11846,117 @@ new exit stack changes the verdict.
 ### Files changed
 - `trading_config.json` — single field change
 - `CLAUDE.md` — this entry
+
+## May 18, 2026 PM — `rngpos_adx_delta_filter_short: "5-10:1.0-2.0"` shipped (new 2D primitive)
+
+### What ships
+
+New 2D cross-filter (Option C from the May 18 PM deep analysis). Active rule:
+**block SHORT when range_position in [5, 10] AND ADX Δ in [1.0, 2.0)**.
+
+Config:
+- `rngpos_adx_delta_filter_long: ""` (empty)
+- `rngpos_adx_delta_filter_short: "5-10:1.0-2.0"` (active)
+- `rngpos_adx_delta_filter_enabled: true`
+
+UI: new section "Range Position × ADX Δ Cross-Filter" with master toggle,
+LONG rules table, SHORT rules table. Mirror of ADX Δ × BTC ADX filter UI.
+
+### Why — cross-batch evidence
+
+May 18 PM systematic SHORT analysis (today's 12 SHORTs + yesterday's
+May-16-onward 54 SHORTs, total 66 trades) found this cell as the
+strongest cross-batch loser:
+
+| Sample | N | WR | Total $ |
+|---|---|---|---|
+| Today (12 SHORTs) | 5 | 20% | -$277 |
+| Yesterday May 16+ (54 SHORTs) | 5 | 40% | -$82 |
+| **Combined** | **10** | **30%** | **-$359** |
+
+Adjacent cells confirm a clean cliff (winners around it):
+- RngPos 5-10 × ADX Δ <1.0: 5 trades, 80% WR, -$30 (flat)
+- **RngPos 5-10 × ADX Δ 1.0-2.0: 10 trades, 30% WR, -$359** ★★ blocked zone
+- RngPos ≤5 × ADX Δ 1.5-2.0: 5 trades, 100% WR, +$36 (preserved)
+- RngPos 10-15 × ADX Δ 1.5-2.0: 5 trades, 100% WR, +$58 (preserved)
+- RngPos 15-25 × ADX Δ 1.5-2.0: 7 trades, 86% WR, +$27 (preserved)
+
+The blocked zone catches **all 4 of today's SHORT cluster losers**:
+- 1000PEPE: RngPos 8, ADX Δ +1.77 ✓
+- TONUSDT: RngPos 9, ADX Δ +1.40 ✓
+- SUIUSDT: RngPos 8, ADX Δ +1.33 ✓
+- BTCUSDT: RngPos 9, ADX Δ +1.27 ✓
+
+### Mechanism
+
+"SHORTing right at the bottom of recent range while ADX is sharply
+accelerating." The bot's SHORT signal fires (RSI low, EMAs crossed,
+gap expanding, ADX rising) just as the breakdown is climaxing. Price
+is already at the bottom 5-10% of the 20-candle range, ADX is jumping
++1 to +2 points per candle — late-cycle momentum, the kind that
+reverses. SHORTs entered here get squeezed instead of riding
+continuation.
+
+### Why this couldn't be expressed by existing filters
+
+| Filter | What it does | Why it misses this cell |
+|---|---|---|
+| `range_position_min_short: 2.0` | Block SHORT when RngPos <2% | Today's losers at 8-9% are above threshold |
+| `min_adx_delta_short: 0.10` | Block SHORT when ADX Δ <0.10 | Today's losers at 1.27-1.77 are well above threshold (wrong direction) |
+| `adx_delta_btc_adx_filter_short: "2.0-99:24-99"` | Block when ADX Δ ≥2.0 AND BTC ADX ≥24 | Today's losers had ADX Δ 1.27-1.77 — below 2.0 floor |
+
+The pattern lives in 2D space (RngPos × ADX Δ) that no existing single
+filter could express. Option A (raise RngPos min to 10) would cut the
+RngPos ≤5 winner zone (+$36 yesterday). Option B (extend ADX Δ × BTC
+ADX filter) would block a different cell shape.
+
+Option C (new 2D primitive) is the clean fit — minimum surgical block.
+
+### Pre-committed revert criteria (locked at next checkpoint)
+
+If at next ≥30-trade SHORT batch the blocked-zone trades (visible via
+the `RNGPOS_ADX_DELTA_CROSS` Filter Blocks counter) would have won
+≥55% WR on N≥10 → revert (set `rngpos_adx_delta_filter_short: ""`).
+
+If kept-zone (RngPos NOT 5-10 OR ADX Δ NOT in 1.0-2.0) WR drops
+materially (≥5pp lower than baseline) → investigate; filter may be
+cutting collateral winners we didn't predict.
+
+If filter activates but ≤3 entries blocked across 100+ trades →
+pattern was regime-specific to May 18 PM, may not be structural.
+Keep one more batch then decide.
+
+### Symmetry note
+
+LONG side of the filter is **empty** by default. The mirror pattern
+(RngPos ≥90 × ADX Δ 1.0-2.0 LONG = "LONG into late top-fishing") was
+NOT systematically validated in this analysis — focused only on SHORTs
+per user direction. If a similar cross-batch loser cell surfaces for
+LONGs, the same primitive handles it via `rngpos_adx_delta_filter_long`.
+
+### Filter Blocks counter
+
+New tag `RNGPOS_ADX_DELTA_CROSS` registered. Will appear in dashboard
+Filter Blocks panel + reports. Monitor at next batch:
+- Block count: expected ~3-5 per ~100 SHORTs based on cross-batch rate
+- Per-direction: SHORT only (LONG rule empty)
+- Watch for unexpected high counts — would indicate over-restriction
+
+### Files changed
+- `config.py` — 3 new fields
+- `trading_config.json` — fields populated, SHORT rule active
+- `services/trading_engine.py` — filter check (~45 lines after ADX_DELTA_BTC_ADX_CROSS block)
+- `templates/index.html` — UI section + load/collect handlers + save payload
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The cross-batch evidence (N=10, 30% WR, -$359 over today + yesterday May 16+)
+2. The reason existing filters can't express the cell (1D structure mismatch)
+3. The locked revert criteria for next-checkpoint validation
+4. The 1-batch ship discipline acknowledgment — this IS a 1-batch finding (the today + yesterday May 16+ data are sequential, not truly cross-config). The user explicitly chose to ship vs watchlist because the pattern is mechanism-clean (bottom-fishing + momentum acceleration) and the action is fully reversible (one config string).
+
+If at the next 100-trade checkpoint the filter shows zero blocks OR
+becomes unjustified by fresh evidence, revert is one config-line edit.
+The cost of being wrong is bounded.

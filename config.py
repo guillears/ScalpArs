@@ -279,6 +279,21 @@ class SignalThresholds(BaseModel):
     # but not enforced — lets the operator disable for A/B testing without
     # losing the rule definitions.
     adx_delta_btc_adx_filter_enabled: bool = True
+    # Range Position × ADX Delta 2D Cross-Filter (May 18 PM).
+    # Catches the "bottom/top-fishing into momentum acceleration" pattern that
+    # the existing filters don't cover. Range Position alone blocks only <2%
+    # (too tight), ADX Delta filters only block LOW delta (wrong direction).
+    # This 2D rule blocks entries where price is at the EXTREME of recent
+    # range (5-10% for SHORTs, 90-95% for LONGs) AND ADX Δ is in the
+    # accelerating-but-not-extreme zone (1.0-2.0).
+    # Format per rule: "<rngposLo>-<rngposHi>:<adxDeltaLo>-<adxDeltaHi>".
+    # Block when range_position in [rngposLo, rngposHi] AND ADX Δ in [adxDeltaLo, adxDeltaHi).
+    # Cross-batch evidence (today + May 16+): N=10, 30% WR, -$359 SHORT.
+    # Captures 4 of 4 May 18 SHORT cluster losers (1000PEPE/TON/SUI/BTC).
+    rngpos_adx_delta_filter_long: str = ""
+    rngpos_adx_delta_filter_short: str = ""
+    # Master toggle for the RngPos × ADX Δ cross-filter. Same A/B pattern.
+    rngpos_adx_delta_filter_enabled: bool = True
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

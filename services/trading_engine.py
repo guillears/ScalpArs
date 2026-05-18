@@ -4854,6 +4854,57 @@ class TradingEngine:
                             except (ValueError, TypeError):
                                 continue
 
+            # RngPos × ADX Δ 2D Cross-Filter (May 18 PM).
+            # Catches "bottom/top-fishing into momentum acceleration" — the
+            # pattern that killed 4 SHORTs in the May 18 cluster (RngPos 8-9,
+            # ADX Δ 1.27-1.77, BTC RSI low). Cross-batch evidence: N=10, 30%
+            # WR, -$359 in the SHORT 5-10 × 1.0-2.0 cell. Existing filters
+            # don't catch this — range_position_min_short blocks only <2%
+            # and min_adx_delta_short blocks only the LOW delta side.
+            # Rule format: "<rngLo>-<rngHi>:<adxdLo>-<adxdHi>" — block when
+            # range_position in [rngLo, rngHi] AND ADX Δ in [adxdLo, adxdHi).
+            # Multiple rules separated by commas. Empty = filter inactive.
+            _rpad_enabled = getattr(config.trading_config.thresholds,
+                                    'rngpos_adx_delta_filter_enabled', True)
+            if _rpad_enabled and signal in ["LONG", "SHORT"]:
+                _pair_adx_now = indicators.get('adx')
+                _pair_adx_pre = indicators.get('adx_prev1')
+                _price = indicators.get('price')
+                _hi20 = indicators.get('high_20')
+                _lo20 = indicators.get('low_20')
+                _rngpos_val = None
+                if (_price is not None and _hi20 is not None and _lo20 is not None
+                        and _hi20 != _lo20):
+                    _rngpos_val = (_price - _lo20) / (_hi20 - _lo20) * 100
+                if (_pair_adx_now is not None and _pair_adx_pre is not None
+                        and _rngpos_val is not None):
+                    _adx_delta_val2 = _pair_adx_now - _pair_adx_pre
+                    _th2 = config.trading_config.thresholds
+                    _rpad_key = ('rngpos_adx_delta_filter_long' if signal == 'LONG'
+                                 else 'rngpos_adx_delta_filter_short')
+                    _rpad_str = getattr(_th2, _rpad_key, '')
+                    if _rpad_str and _rpad_str.strip():
+                        for _rpad_rule in _rpad_str.split(','):
+                            _rpad_rule = _rpad_rule.strip()
+                            if not _rpad_rule or ':' not in _rpad_rule:
+                                continue
+                            try:
+                                _rp_part, _ad_part = _rpad_rule.split(':')
+                                _rp_lo, _rp_hi = map(float, _rp_part.split('-'))
+                                _ad_lo, _ad_hi = map(float, _ad_part.split('-'))
+                                if (_rp_lo <= _rngpos_val <= _rp_hi and
+                                        _ad_lo <= _adx_delta_val2 < _ad_hi):
+                                    logger.info(
+                                        f"[RNGPOS_ADX_DELTA_CROSS] {pair}: {signal} blocked — "
+                                        f"RngPos {_rngpos_val:.1f} in [{_rp_lo}-{_rp_hi}] "
+                                        f"AND ADXΔ {_adx_delta_val2:.2f} in [{_ad_lo}-{_ad_hi})"
+                                    )
+                                    self._record_filter_block("RNGPOS_ADX_DELTA_CROSS", signal, had_room=_had_room)
+                                    signal = "NO_TRADE"
+                                    break
+                            except (ValueError, TypeError):
+                                continue
+
             # BTC Trend Filter — runs independently of Macro Trend toggle (May 5).
             # Compares BTC EMA13 vs BTC EMA50 on the 5m chart (May 6 — switched from
             # EMA20 to EMA13 for faster reversal detection; EMA13 spans ~65 min vs EMA20's

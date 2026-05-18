@@ -2330,14 +2330,10 @@ def _compute_volume_intersection_crosstab(orders):
     M = 1_000_000.0
     B = 1_000_000_000.0
 
-    # Bucket boundaries — match existing individual tables
-    global_buckets = [
-        ("<0.95", -1.0, 0.95),
-        ("0.95-1.05", 0.95, 1.05),
-        ("1.05-1.10", 1.05, 1.10),
-        ("1.10-1.25", 1.10, 1.25),
-        (">1.25", 1.25, 1e6),
-    ]
+    # Bucket boundaries — match existing individual tables.
+    # May 18: Global Vol rows use the same _VOL_BINS as Volume Cross-Tab (8-bucket
+    # granular scheme) so the two tables align side-by-side. Empty cells still drop.
+    global_buckets = list(_VOL_BINS)
     pair_buckets = [
         ("<$30M", 0, 30 * M),
         ("$30-50M", 30 * M, 50 * M),

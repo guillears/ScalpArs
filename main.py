@@ -1609,16 +1609,22 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 # ----- Performance Metrics -----
 
 @app.get("/api/performance")
-async def get_performance(regime: str = None, window_hours: int = None, db: AsyncSession = Depends(get_db)):
+async def get_performance(regime: str = None, window_hours: int = None,
+                          from_date: str = None, to_date: str = None,
+                          db: AsyncSession = Depends(get_db)):
     """Get closed orders performance metrics, optionally filtered by macro trend regime and/or time window.
 
     window_hours: int — restrict to trades closed within the last N hours (e.g., 24=last day, 168=last week).
                   None / 0 / negative = no time filter (default).
+    from_date / to_date: str (ISO YYYY-MM-DD) — restrict to trades closed within [from_date 00:00 UTC,
+                  to_date 23:59:59 UTC]. Both required for the date range to apply; takes precedence
+                  over window_hours when both provided.
     """
     await trading_engine.initialize(db)
 
     try:
-        return await _compute_performance(db, regime=regime, window_hours=window_hours)
+        return await _compute_performance(db, regime=regime, window_hours=window_hours,
+                                          from_date=from_date, to_date=to_date)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         return {
@@ -2691,7 +2697,8 @@ def _compute_time_buckets(orders, bucket_minutes=15):
         return []
 
 
-async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None):
+async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
+                                from_date: str = None, to_date: str = None):
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
@@ -2777,10 +2784,20 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
     # Apply time-window filter if requested (May 15 PM).
     # window_hours = N restricts to trades closed within the last N hours.
+    # from_date / to_date (ISO YYYY-MM-DD, May 18) restrict to a date range and
+    # take precedence over window_hours when both provided.
     # Applied AFTER the regime filter so the two compose. Same window applied
     # to signal_expired_orders so SIGNAL_EXPIRED rows in Entry Conditions by
     # Outcome / Signal Expired Breakdown reflect the same recency cut.
-    if window_hours and window_hours > 0:
+    if from_date and to_date:
+        try:
+            _start = datetime.strptime(from_date, "%Y-%m-%d")
+            _end = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)  # inclusive end of day
+            orders = [o for o in orders if o.closed_at and _start <= o.closed_at < _end]
+            signal_expired_orders = [o for o in signal_expired_orders if o.closed_at and _start <= o.closed_at < _end]
+        except ValueError:
+            logger.warning(f"[PERF] Invalid date range from_date={from_date} to_date={to_date}, skipping filter")
+    elif window_hours and window_hours > 0:
         _cutoff = datetime.utcnow() - timedelta(hours=window_hours)
         orders = [o for o in orders if o.closed_at and o.closed_at >= _cutoff]
         signal_expired_orders = [o for o in signal_expired_orders if o.closed_at and o.closed_at >= _cutoff]

@@ -215,15 +215,24 @@
       return;
     }
 
-    // Track ALL symbols mentioned in the event for the radar frequency score
-    // and top-scans list.  Skip filter-out lines (excluded / Blacklist /
-    // "filter:") so the radar reflects pairs we're actively scanning, not
-    // pairs we just filtered away.  Multi-symbol messages contribute every
-    // symbol — previously only the first match was captured.
+    // Heatmap and radar have DIFFERENT population rules (May 18, Option A):
+    //   - RADAR = "currently being actively watched" — skips filter-out lines.
+    //   - HEATMAP = "bot's full awareness universe" — parses filter-out lines
+    //     too, adding cells in dim 'AWARENESS' state. Real scan events later
+    //     upgrade those cells to score-based colors.
     if (!isReplay) {
       const msg = evt.msg || '';
       const isFilterOut = /\b(excluded|Blacklist active|new-listing filter|Alpha-subtype filter)\b/i.test(msg);
-      if (!isFilterOut) {
+      if (isFilterOut) {
+        // FILTER-OUT path: heatmap-only awareness. Do NOT touch radar/top-scans.
+        const filterSyms = msg.match(/\b(?:\d+)?[A-Z]{2,10}USDT\b/g);
+        if (filterSyms) {
+          for (const sym of filterSyms) {
+            updatePairHeatmap(sym, 'AWARENESS');
+          }
+        }
+      } else {
+        // ACTIVE-SCAN path: radar + top-scans + heatmap.
         const allSyms = msg.match(/\b(?:\d+)?[A-Z]{2,10}USDT\b/g);
         if (allSyms && allSyms.length > 0) {
           const now = Date.now();
@@ -1244,7 +1253,9 @@
     el.addEventListener('mouseenter', _showPairTooltip);
     el.addEventListener('mouseleave', _hidePairTooltip);
     grid.appendChild(el);
-    const rec = { el, state: 'idle', rejectUntil: 0 };
+    // aware = true when the symbol has been mentioned in any event (incl.
+    // filter-out lines). Keeps cell at lt-pc-low floor even if score=0.
+    const rec = { el, state: 'idle', rejectUntil: 0, aware: false };
     _pairCells.set(sym, rec);
     return rec;
   }
@@ -1266,7 +1277,12 @@
       base += ' lt-pc-reject';
     } else {
       const sc = _classForScore(score);
-      if (sc) base += ' ' + sc;
+      if (sc) {
+        base += ' ' + sc;
+      } else if (rec.aware) {
+        // Score=0 but symbol is in awareness universe → dim baseline.
+        base += ' lt-pc-low';
+      }
     }
     if (extra) base += ' ' + extra;
     rec.el.className = base;
@@ -1275,6 +1291,19 @@
     if (!sym) return;
     const rec = _ensurePairCell(sym);
     if (!rec) return;
+    if (evtType === 'AWARENESS') {
+      // Bot is aware of this pair (filter-out mention). Set dim floor only.
+      // Do NOT downgrade if cell has already been promoted via real events.
+      if (!rec.aware) {
+        rec.aware = true;
+        // Only repaint if cell is currently below lt-pc-low. _applyCellClass
+        // handles the "aware floor" rule.
+        _applyCellClass(rec);
+      }
+      return;
+    }
+    // Real event paths — also mark aware so score=0 doesn't drop back to idle.
+    rec.aware = true;
     if (evtType === 'REJECT') {
       rec.rejectUntil = Date.now() + 3000;
       _applyCellClass(rec);

@@ -11147,3 +11147,327 @@ To preserve:
 3. The sort-order alignment between both tables so future-Claude (or
    future-User) reads them side-by-side without column reshuffling
 4. The Post-Arm Min % cross-reference paths (3 tables now expose the data)
+
+## May 18, 2026 UTC-3 — NEXT-BATCH DECISION CHECKLIST (consolidated, locked)
+
+Single consolidated reference for the next ≥100-trade checkpoint. Pulls every
+locked watchlist + gate scattered across the entries above. At checkpoint
+time, apply gates mechanically — do NOT re-litigate criteria. If a gate
+needs revision, do that BEFORE seeing the fresh data, not after.
+
+Counts: **33 items** across 8 tiers. Mandatory work at checkpoint = Tiers
+1-2 (9 items) + multiplier verdict table (Tier 4, ~10 cells automated).
+Everything else is conditional or background.
+
+---
+
+### TIER 1 — Primary exit/floor decisions (4 items)
+
+#### 1. BE floor 0.05 → 0.10
+Reference: CLAUDE.md May 17 PM "Next-batch BE floor decision" + this consolidated entry.
+Read 📊 Post-Arm Min Distribution + 🎯 BE Floor CF side-by-side.
+
+**Ship `be_level1_offset: 0.05 → 0.10` if ALL 5 hold:**
+- N ≥ 30 armed trades (TOTAL ALL row of BE Floor CF)
+- TOTAL ALL Δ$ ≥ +$50
+- TOTAL ALL Cut Winners = 0 AND no bucket with Fired ≥ 5 shows Cut Winners ≥ 1
+- TOTAL ALL "BE10 %" ≥ "Actual %" by ≥ +0.05pp
+- No ⚠ HURTING bucket with Fired ≥ 5
+
+If gates 1-2 hold but 3 fails (single Cut Winner at Fired ≥ 5) → defer
+to 200-trade batch. Hard bar against winner kills.
+
+#### 2. Re-evaluate Entry Quality Score filter (currently OFF)
+Reference: CLAUDE.md May 17 PM "Entry Quality Score filter disabled".
+
+Decision matrix (4 branches):
+- Score ≤ 1 ≤45% WR on N≥10 fresh AND BE 0.05 helping → ship `entry_quality_score_min: 2`, keep BE 0.05
+- Score ≤ 1 ≤45% AND BE 0.05 hurting → ship score filter, revert BE
+- Score ≤ 1 ≥55% AND BE 0.05 helping → keep both off-filter, lock BE 0.05
+- Score ≤ 1 ≥55% AND BE 0.05 hurting → revert BE, leave score off
+
+#### 3. Trailing Pullback Confirmation = 0 validation
+Reference: commit `314617c` (set May 17 evening, was 15s).
+Read "Trailing Confirmation Performance" table:
+- Did Δ$ across L1+L2+L3 stop being net negative?
+- Are L1 trades exiting earlier than they used to?
+- Any new TRAILING_STOP losers that previously got saved by the 15s timer?
+
+Revert to 15s if combined Δ$ < -$30 across N≥30 trailing exits.
+
+#### 4. Fast Exit threshold 0.20 → 0.30
+Reference: CLAUDE.md May 18 commit `ab2bf8b` (grid shifted to 0.20/0.30/0.40).
+Read 🚦 Fast-Exit Counterfactual.
+
+**Ship `fast_exit_threshold_pct: 0.20 → 0.30` if:**
+- 0.30 / 2min cell: N ≥ 10 AND Δ$ ≥ +$50 AND Net% ≥ +1.0%
+- 0.20 / 2min cell: Δ$ near zero (confirms current FE is working as designed)
+
+---
+
+### TIER 2 — Pre-committed cell-level filters (5 items)
+
+#### 5. BTC 1h Slope validation gates
+Reference: CLAUDE.md May 14 PM "BTC 1h Slope Analytics watchlist".
+
+3 sub-gates locked:
+- **Gate 1 (SHORT 1h slope filter):** if "5m DOWN / 1h UP" cell shows N≥20 AND WR≤30% → ship `btc_1h_slope_max_short: 0.0`
+- **Gate 2:** DROPPED (LONG-side asymmetry unresolved; 3-trade kill cell too small)
+- **Gate 3 (SHORT sweet spot validation):** if fresh SHORTs in 1h slope `[-0.20, -0.10]` cell show N≥20 AND WR≥60% → zone preserved (no filter ship, validation only)
+
+#### 6. SHORT GlobalVol > 1.10 filter (multi-axis with BTC capitulation override)
+Reference: CLAUDE.md May 11 "SHORT GlobalVol cliff" + commit notes.
+
+**Ship `global_volume_max_short: 1.10` (with BTC capitulation override
+preserving the 1.30-1.50 winner anomaly) if at next ≥15 fresh SHORTs at GV > 1.10:**
+- WR ≤ 45%
+- Avg P&L % ≤ -0.15%
+- BTC capitulation override (`btc_rsi<30 AND btc_slope<0`) correctly
+  preserves the 1.30-1.50 winner anomaly cell
+
+#### 7. SUIUSDT-style pattern: BTC RSI 35-40 × BTC ADX 30+ SHORT
+Reference: CLAUDE.md May 12 "SUIUSDT-style watchlist".
+
+Currently N=3 / 14% WR / -$123. **Ship rule if next batch shows N≥8 with WR≤40%** in this exact cell. Implementation TBD at deploy (likely a 3D filter combining BTC RSI 35-40 × BTC ADX 30+ × pair gap < -0.50%).
+
+#### 8. ADX Δ × BTC ADX 25-30 LONG zone (Watch 1)
+Reference: CLAUDE.md May 11 "ADX Δ × BTC ADX cross-tab" pool findings.
+
+Currently N=28 / 48% / -$551 cross-batch. **Ship rule extension
+`adx_delta_btc_adx_filter_long: "1.0-2.0:18-25,0.0-2.0:25-30"` if fresh batch confirms:**
+- Aggregate WR ≤45% on N≥15 in BTC ADX 25-30 LONG (all ADX Δ sub-cells)
+- Avg P&L % ≤ -0.10%
+
+#### 9. ADX Δ × BTC ADX 25-30 LONG sub-cells (Watch 2 + Watch 3)
+Reference: same entry as #8.
+
+**Watch 2** (`0.5-1.0 × 25-30`): if N≥8 in fresh data AND WR≤45% → extend rule.
+**Watch 3** (`0.1-0.3 × 25-30`): activates only if Watch 2 also confirms; consider broader rule.
+
+---
+
+### TIER 3 — Multiplier cell verdicts (8 cells active + 1 demote validation)
+
+For each cell, apply the locked verdict logic (CLAUDE.md May 4 Phase 3 verdict matrix):
+- ★ WORKING: WR ≥70% AND Total $ positive AND N≥5 → keep at current multiplier
+- ⚠ DRAG: Δ$ < -$1 in Δ$ vs BL column → drop to 1.5×
+- ✗ HARMFUL: Total $ negative → revert to 1.0×
+
+Active cells to evaluate (all currently at 2.0× unless noted):
+
+10. **L-P1** (BTC 60-65 × 20-25 LONG) — 5-sample structural. Lowest revert risk.
+11. **BTC 65-70 × 25-30 LONG** — 1-sample. Medium revert risk.
+12. **Pair 55-60 × 22-25 LONG** — 1-sample. Medium revert risk.
+13. **S-P1** (BTC 25-30 × 20-25 SHORT) — 5-sample structural. Lowest revert risk.
+14. **BTC 25-30 × 25-30 SHORT** — 1-sample. Medium revert risk.
+15. **Pair 20-30 × 30-33 SHORT** — 1-sample (sub-cell of weakening parent). **Highest revert risk.**
+16. **Pair 30-35 × 25-28 SHORT** — 1-sample (new bet). Medium-high revert risk.
+17. **PAIR_30-35_28-30 demote validation** — was at 2.0× → demoted to 1.0× May 16. Watch if demote was justified at fresh N.
+
+---
+
+### TIER 4 — Multiplier/filter candidates pending promotion (4 watchlists)
+
+#### 18. WL-A — BTC EMA13-EMA50 Gap × BTC ADX SHORT multiplier
+Reference: CLAUDE.md May 16 "3 SHORT multiplier candidates".
+
+Cell: BTC gap `[-0.20%, -0.10%]` × BTC ADX `[18, 25]` SHORT.
+
+**Promotion gates (ALL must hold):**
+- N ≥ 15 in fresh post-May-16 data
+- WR ≥ 70%
+- Avg P&L % ≥ +0.30%
+- Adjacent loser cell (gap `[-0.10%, 0]` × ADX `[18, 25]`) still ≤45% WR on N≥10
+- Mechanism prerequisite: new BTC-Gap multiplier dimension (~80 LOC)
+
+**Ship value if promoted:** 1.5× (first deployment of new dim, Phase 3 staging).
+
+#### 19. WL-B — ADX Δ × BTC ADX SHORT multiplier
+Same reference.
+
+Cell: ADX Δ `[1.0, 2.0)` × BTC ADX `[25, 30]` SHORT.
+
+**Promotion gates:**
+- N ≥ 15 in fresh data
+- WR ≥ 70%
+- Avg P&L % ≥ +0.25%
+- Regime-conditional check: adjacent ADX Δ 1.0-2.0 × BTC ADX 18-25 still ≤50% WR
+- Mechanism prerequisite: new `adx_delta_btc_adx_multiplier_short` field (~50 LOC)
+
+**Ship value:** 1.5×.
+
+#### 20. WL-C — BTC RSI × BTC ADX SHORT multiplier (S-P1 adjacency)
+Same reference.
+
+Cell: BTC RSI `[25, 30]` × BTC ADX `[25, 30]` SHORT (extends S-P1 by 5 ADX points).
+
+**Promotion gates (LOWER N bar via S-P1 inheritance):**
+- N ≥ 10 in fresh data
+- WR ≥ 75%
+- S-P1 itself MUST continue at ≥65% WR on N≥10 (parent collapse → extension collapse)
+- Mechanism prerequisite: NONE (engine supports BTC RSI × BTC ADX already)
+
+**Ship value:** 2.0× direct (inherits S-P1's structural confidence).
+
+#### 21. WL-D — BTC-Gap-Floor SHORT FILTER (not multiplier)
+Reference: CLAUDE.md May 16 PM "Watchlist WL-D".
+
+Proposed: `btc_gap_floor_short: -0.10` (block SHORTs when BTC gap > -0.10%).
+
+**Promotion gates (ALL 6 must hold):**
+- N ≥ 12 SHORTs in `(-0.10%, 0%) × ADX [18, 25]` in fresh data
+- WR ≤ 40%
+- Avg P&L % ≤ -0.20%
+- ≥ 50% of cell losses are Pattern C (Never Positive, peak < 0.05%)
+- Adjacent winning cell (gap `[-0.20%, -0.10%]` × ADX `[18, 25]`) maintains WR ≥ 65% on N ≥ 10
+- New config field shipped (~30 LOC)
+
+**Ship as:** Full block, not partial scaling. Filter, not multiplier.
+
+**Priority ranking across WL-A/B/C/D:** Recommended priority is **D > C > A > B**.
+- D: highest impact (unhandled losses), lowest implementation cost
+- C: strongest structural backing (S-P1 inheritance), zero prerequisite work
+- A: high-value cell but needs new dim scaffolding
+- B: weakest structural (pure 1-sample), needs new dim too
+
+---
+
+### TIER 5 — Pair blacklist watchlists (4 candidates)
+
+Reference: CLAUDE.md May 12 entries.
+
+22. **BCHUSDT** — close to blacklist gate. Needs 1 more SHORT loss → N=7, WR=29% → clears gate → ship blacklist.
+23. **TRUMPUSDT** — direction-specific failure. 1 more LONG loss → N=12, WR≈25% → clears LONG-specific gate.
+24. **BUSDT** — single-day cluster. 1 more loss → 3/5 losers → clears WR≤25% bar on multi-batch.
+25. **TAOUSDT LONG-only** — needs 2 more LONG losses to reach N≥7 / WR≤30% on LONG side. SHORT side stays profitable; would require LONG-only blacklist mechanism (separate code work).
+
+---
+
+### TIER 6 — Cross-sample re-validation of locked rules
+
+#### 26. 17c re-validation: 8 pre-committed BTC RSI × BTC ADX rules
+Reference: CLAUDE.md Apr 14 "Phase 2 Pre-committed rules".
+
+For each rule, validate against fresh data:
+- **HARD BLOCKS** (L-B1, S-B1, S-B2, S-B3): drop if cell shows ≥55% WR on N≥5
+- **PREMIUM ZONES** (L-P1, L-P2, S-P1, S-P2): demote if cell shows ≤55% WR on N≥5
+- Insufficient N (<5): no decision, defer
+
+Special attention: S-P2 already weakened in Apr 17 audit (pool 57% WR vs original 83%) — likely demote candidate. L-P2 has thin post-Mar-30 evidence (N=2 ex-Mar30).
+
+#### 27. `adx_strong` SHORT 20 → 22 revert candidate
+Reference: CLAUDE.md May 11 addendum.
+
+Watch the 18-22 ADX SHORT zone admitted by May 8 loosening. **Revert if N≥8 fresh trades with WR ≤35% AND Avg P&L % ≤ -0.20%.**
+
+#### 28. ADX delta < 2.0 watchlist
+Reference: CLAUDE.md Apr 18.
+
+1-sample finding (Apr 18). **Ship `short_min_adx_delta: 2.0` if 2-sample replication: next batch SHORTs with ADXΔ<2.0 at ≤30% WR on N≥10.**
+
+---
+
+### TIER 7 — May 15 PM dimension validations (instrumentation post-deploy only)
+
+#### 29. BTC Volatility Regime (ATR%)
+Reference: CLAUDE.md May 15 PM "BTC Volatility Regime + BTC 1h RSI Direction".
+
+**Health check first:** count trades with non-NULL `entry_btc_atr_pct`. If <30 → defer.
+
+**Promotion gates (ALL 5 must hold):**
+- N ≥ 20 trades per ATR bucket in discriminating range
+- WR gap ≥ 15pp between best and worst bucket (same direction)
+- Avg P&L % gap ≥ 0.20pp
+- Direction-consistent OR documented theoretical asymmetry
+- Cross-tab confirmation in BTC Vol × BTC ADX cross-tab
+
+**Ship value:** single threshold like `btc_atr_max: 0.35` (skip entries when BTC ATR% > X).
+
+#### 30. BTC 1h RSI Direction
+Same reference.
+
+**Health check + 5 promotion gates** (identical structure to #29).
+
+If promoted, filter form:
+```
+btc_rsi_1h_dir_long: "rising"   # block LONG when BTC 1h RSI Falling
+btc_rsi_1h_dir_short: "falling" # block SHORT when BTC 1h RSI Rising
+```
+
+If cross-tab shows the discriminator is the **combination** (1h Rising + 5m Rising = SHORT loser) rather than 1h alone → ship as conditional multi-TF rule.
+
+**Discipline rule:** at most ONE new filter per checkpoint. If both #29 AND #30 pass, ship the stronger and defer the other.
+
+**Structural pivot branch:** if NEITHER passes → strategy edge does NOT come from a static entry-time macro filter. Pivot to runtime regime-pausing + exit-side mechanisms. This is the "we've hit the entry-filter ceiling" branch.
+
+#### 31. Entry Quality Score ≤ 1 watchlist (currently disabled for BE A/B)
+Reference: CLAUDE.md May 15 PM + May 17 disable.
+
+Already 10-sample structural finding (N=95 / 34.7% WR / -$684). Currently DISABLED to A/B-test BE 0.05. **Re-evaluation logic is item #2 (Tier 1) — the decision matrix already covers this.**
+
+---
+
+### TIER 8 — Methodology / structural
+
+#### 32. Partition timestamps mechanism
+Reference: CLAUDE.md May 16 PM "Partition timestamps".
+
+Slice A = `closed_at < 2026-05-16 11:45 UTC-3` (pre-BE-deploy).
+Slice B = `closed_at ≥ 2026-05-16 11:45 UTC-3` (post-BE-deploy).
+
+Use Custom Date Range filter (shipped May 18) to apply these partitions
+mechanically. Slice B is the only batch where BE counterfactual analysis
+is valid.
+
+#### 33. Combined Avg P&L % stop rule
+Reference: CLAUDE.md May 5 reset entry + locked stop rule.
+
+At end of next batch (Slice B):
+- ≥ +0.10% combined Avg P&L → genuine edge, advance phase
+- 0.00 to +0.10% → marginal, extend one more batch
+- -0.05% to 0.00% → break-even, structural pivot conversation
+- < -0.05% → negative edge, abandon current architecture
+
+This is the **highest-level rule** — overrides all per-item ships if the combined number says "stop tuning, pivot."
+
+---
+
+### Filter Blocks counter audit (background check)
+
+At checkpoint, read Filter Blocks panel and verify each recent filter is firing as expected:
+- `BTC_RSI_ADX_CROSS` (cross-filter, should fire on ~15-25% of attempted SHORTs)
+- `ADX_DELTA_BTC_ADX_CROSS` (LONG only, should fire when ADX Δ 1.0-2.0 in BTC ADX 18-30)
+- `BTC_GAP_FLOOR_SHORT` (only if WL-D promoted)
+- `PAIR_TREND_FILTER` (should fire on countertrend pair entries)
+
+If any active filter shows 0 blocks across 100+ trades → investigate dead code.
+
+---
+
+### How to use this list at next checkpoint
+
+**Mandatory work (~half a day analysis):**
+1. Read combined Avg P&L % first (#33). If verdict is "structural pivot" → stop.
+2. Apply Tier 1 gates (#1-4). Ship/revert mechanically.
+3. Read Multiplier Cell Performance table → apply Tier 3 verdicts (auto).
+4. Apply Tier 2 (#5-9) and Tier 4 (#18-21) gates.
+
+**Conditional work (only if relevant):**
+5. Tier 5 pair blacklists — 2-minute decisions if their gate trades arrived.
+6. Tier 6 re-validations — background, run alongside primary work.
+7. Tier 7 dimension validations — only if N≥30 in instrumented column.
+
+**Pre-commit discipline:**
+- Do NOT lower gate thresholds. If a gate fails by a hair, the answer is "no ship."
+- Ship at most ONE new filter per checkpoint (Tier 7 discipline rule, extended).
+- Multiplier verdicts are mechanical — don't override unless evidence is overwhelming.
+
+### Why this consolidated entry exists in CLAUDE.md
+
+To eliminate the "33 items scattered across 30+ entries" problem. Future-Claude
+(or future-User) reads this entry first at checkpoint time, then drills into
+the referenced original entries only when needed for full context. The locked
+gates here are the operating rules; the originals are the rationale.
+
+If a gate ever proves wrong, fix it BEFORE the next checkpoint by editing the
+original entry AND this consolidated list, not at decision time.

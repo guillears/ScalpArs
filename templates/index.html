@@ -1061,7 +1061,7 @@
                     <p class="text-xs text-gray-500 mb-3">
                         Tests: "what if we exited at +X% the moment P&L reached it within N min of entry?"
                         Compares real outcome vs hypothetical fast-exit across the (threshold × window) grid.
-                        <br/><em class="text-amber-400">Conservative — uses peak_reached_at as proxy for "first cross"; trades that crossed threshold before peak are missed. Pool spans multiple configs; Net% is leverage-invariant, raw $ approximate.</em>
+                        <br/><em class="text-amber-400">May 18: consults post-exit snapshots (post_exit_pnl_at_*min, post_exit_peak_pnl) capped at window-from-entry, so higher-threshold cells reflect movement AFTER live close. Pre-May-13 trades lack post-exit data and use in-trade peak only. Pool spans multiple configs; Net% leverage-invariant, raw $ approximate.</em>
                     </p>
                     <!-- Section 1: Aggregate grid -->
                     <h4 class="text-xs font-semibold text-gray-400 mt-3 mb-2">Grid (aggregate across direction)
@@ -6210,8 +6210,8 @@
             if (_fec1 && _fec1.grid_rows && _fec1.grid_rows.length) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Fast-Exit Counterfactual (May 13)\n');
-                lines.push('"What if we exited at +X% the moment P&L reached it within N min?"');
-                lines.push('Conservative: uses peak_reached_at as proxy. Pool spans multiple configs; Net% leverage-invariant, $ approximate.\n');
+                lines.push('"What if we exited at +X% the moment P&L reached it within N min of ENTRY?"');
+                lines.push('May 18: consults post-exit snapshots inside window-from-entry budget (higher thresholds now honest even when live Fast Exit fired earlier). Pool spans multiple configs; Net% leverage-invariant, $ approximate.\n');
                 lines.push('### Grid (aggregate)');
                 lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'#Fire'.padStart(6)} ${'WinFire%'.padStart(10)} ${'LosFire%'.padStart(10)} ${'WinCut'.padStart(8)} ${'LosSav'.padStart(8)} ${'GiveUp%'.padStart(10)} ${'Saved%'.padStart(9)} ${'Net%'.padStart(8)} ${'Real$'.padStart(9)} ${'CF$'.padStart(9)} ${'Δ$'.padStart(9)}   Verdict`);
                 lines.push('-'.repeat(125));
@@ -7009,7 +7009,7 @@
             lines.push(`  Regime Change Exit: ${th.regime_change_exit_enabled !== undefined ? th.regime_change_exit_enabled : true}  (close on opposite BTC regime shift)`);
             lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
-            lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  (May 15 PM, opt-in. Fires FIRST in exit chain. Close reason: FAST_EXIT L1. Live ≠ Fast-Exit Counterfactual — live fires at first tick crossing threshold, table uses peak-time proxy.)`);
+            lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  (May 15 PM, opt-in. Fires FIRST in exit chain. Close reason: FAST_EXIT L1. May 18: counterfactual now consults post-exit snapshots inside window-from-entry budget, so higher-threshold cells reflect movement after live close.)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
             lines.push(`  Signal Lost Flag: ${th.signal_lost_flag_enabled !== undefined ? th.signal_lost_flag_enabled : true}  |  Security Gap: [${th.signal_lost_flag_security_min !== undefined ? th.signal_lost_flag_security_min : -0.9}%, ${th.signal_lost_flag_security_max !== undefined ? th.signal_lost_flag_security_max : -0.8}%]  |  TM Min P&L (Flagged): ${th.tick_momentum_exit_min_profit_flagged !== undefined ? th.tick_momentum_exit_min_profit_flagged : -0.10}%`);
@@ -7542,8 +7542,8 @@
                 if (_fec2 && _fec2.grid_rows && _fec2.grid_rows.length) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Fast-Exit Counterfactual (May 13)\n');
-                    lines.push('"What if we exited at +X% the moment P&L reached it within N min?"');
-                    lines.push('Conservative: uses peak_reached_at as proxy. Pool spans multiple configs; Net% leverage-invariant, $ approximate.\n');
+                    lines.push('"What if we exited at +X% the moment P&L reached it within N min of ENTRY?"');
+                    lines.push('May 18: consults post-exit snapshots inside window-from-entry budget (higher thresholds now honest even when live Fast Exit fired earlier). Pool spans multiple configs; Net% leverage-invariant, $ approximate.\n');
                     lines.push('### Grid (aggregate)');
                     lines.push(`${'Thr%'.padEnd(7)} ${'Win'.padEnd(5)} ${'#Fire'.padStart(6)} ${'%Fire'.padStart(7)} ${'WinCut'.padStart(8)} ${'LosSav'.padStart(8)} ${'GiveUp%'.padStart(10)} ${'Saved%'.padStart(9)} ${'Net%'.padStart(8)} ${'Real$'.padStart(9)} ${'CF$'.padStart(9)} ${'Δ$'.padStart(9)}   Verdict`);
                     lines.push('-'.repeat(115));

@@ -7671,9 +7671,12 @@ def _compute_fast_exit_counterfactual(orders):
       - direction_split: same grid but split LONG/SHORT to surface asymmetry
       - close_reason_breakdown: for the default cell, what close reasons would fire
 
-    Limitation (conservative): uses `peak_reached_at` as proxy for "first cross".
-    Trades that crossed threshold earlier but peaked later are missed. Real edge
-    likely larger than what this shows.
+    May 18 extension: when a trade closed early (e.g. live FAST_EXIT fired at
+    0.20%), in-trade peak is capped at that close. To honestly evaluate higher
+    thresholds (0.30%, 0.40%), we now consult post-exit snapshots
+    (`post_exit_pnl_at_{1,2,5,15,30}min`) and `post_exit_peak_pnl` — but only
+    the portion that falls inside `window_min` from ENTRY, not from close. This
+    keeps each (threshold, window) cell directly comparable.
 
     Pool caveat: spans multiple configs across the date range. Net% is leverage-
     invariant; raw $ is approximate. Use Net% for cross-batch comparison.
@@ -7692,6 +7695,21 @@ def _compute_fast_exit_counterfactual(orders):
             peak_min = (peak_at - opened).total_seconds() / 60.0
         except Exception:
             continue
+        # May 18: capture post-exit data to extend synthetic peak past live close.
+        closed_at = getattr(o, 'closed_at', None)
+        hold_min = None
+        if closed_at is not None and opened is not None:
+            try:
+                hold_min = (closed_at - opened).total_seconds() / 60.0
+            except Exception:
+                hold_min = None
+        post_exit_snaps = []  # list of (offset_min_from_close, pnl_pct)
+        for snap_min in (1, 2, 5, 15, 30):
+            val = getattr(o, f'post_exit_pnl_at_{snap_min}min', None)
+            if val is not None:
+                post_exit_snaps.append((float(snap_min), float(val)))
+        post_exit_peak_pnl = getattr(o, 'post_exit_peak_pnl', None)
+        post_exit_peak_min = getattr(o, 'post_exit_peak_minutes', None)
         direction = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or 'LONG'
         pool.append({
             'pair': o.pair,
@@ -7700,6 +7718,10 @@ def _compute_fast_exit_counterfactual(orders):
             'pnl_usd': o.pnl or 0.0,
             'peak_pct': peak,
             'peak_min': peak_min,
+            'hold_min': hold_min,
+            'post_exit_snaps': post_exit_snaps,
+            'post_exit_peak_pnl': post_exit_peak_pnl,
+            'post_exit_peak_min': post_exit_peak_min,
             'investment': o.investment or 0.0,
             'leverage': o.leverage or 1,
             'close_reason': (o.close_reason or 'UNKNOWN').split(' L')[0],
@@ -7711,9 +7733,45 @@ def _compute_fast_exit_counterfactual(orders):
 
     n_total = len(pool)
 
+    def synthetic_peak_in_window(t, window_min):
+        """Return the highest P&L observed within window_min of ENTRY,
+        consulting in-trade peak plus post-exit snapshots inside the budget.
+
+        Returns the synthetic peak %. Always includes in-trade peak if it
+        occurred within the window (which it always does — peak is between
+        open and close, so peak_min <= hold_min).
+        """
+        candidates = []
+        # In-trade peak — only counts if reached within window
+        if t['peak_min'] is not None and t['peak_min'] <= window_min:
+            candidates.append(t['peak_pct'])
+        # If trade closed before window expired, consult post-exit data
+        hold_min = t.get('hold_min')
+        if hold_min is None or hold_min >= window_min:
+            return max(candidates) if candidates else None
+        budget_remaining = window_min - hold_min
+        # post_exit_peak_pnl: post-exit window highest, with timing
+        pe_peak = t.get('post_exit_peak_pnl')
+        pe_peak_min = t.get('post_exit_peak_min')
+        if pe_peak is not None and pe_peak_min is not None and pe_peak_min <= budget_remaining:
+            candidates.append(pe_peak)
+        # Snapshots at fixed offsets — include those inside budget
+        for offset, val in t.get('post_exit_snaps') or []:
+            if offset <= budget_remaining:
+                candidates.append(val)
+        return max(candidates) if candidates else None
+
     def cell_metrics(threshold, window_min, sub_pool):
-        """Compute fired-trades metrics for a single (threshold, window) cell."""
-        fired = [t for t in sub_pool if t['peak_pct'] >= threshold and t['peak_min'] <= window_min]
+        """Compute fired-trades metrics for a single (threshold, window) cell.
+
+        May 18: uses synthetic_peak_in_window so trades that exceeded threshold
+        AFTER live close (within window from entry) are correctly counted.
+        """
+        fired = []
+        for t in sub_pool:
+            syn = synthetic_peak_in_window(t, window_min)
+            if syn is not None and syn >= threshold:
+                fired.append(t)
         winners = [t for t in fired if t['pnl_pct'] > 0]
         losers = [t for t in fired if t['pnl_pct'] <= 0]
         # Pct-based metrics: leverage-invariant
@@ -7882,7 +7940,7 @@ def _compute_fast_exit_counterfactual(orders):
             'window_min': default_win,
             'rows': breakdowns.get(default_key, []),
         },
-        'caveat': 'Conservative — uses peak_reached_at; trades crossing threshold before peak missed. Pool spans multiple configs; Net% is leverage-invariant, raw $ approximate.',
+        'caveat': 'May 18 extension — consults post-exit snapshots (post_exit_pnl_at_*min, post_exit_peak_pnl) capped at window-from-entry. Pre-May-13 trades lack post-exit data and use in-trade peak only. Net% is leverage-invariant; raw $ approximate.',
     }
 
 

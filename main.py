@@ -7538,6 +7538,7 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
     pool_saved = 0
     pool_n = 0
     pool_armed = 0
+    pool_excluded = 0  # May 18 strict-mode fix: count of pre-instrumentation trades
 
     for (reason, direction), trades in groups.items():
         n = len(trades)
@@ -7545,6 +7546,7 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
         fires_n = 0
         cut_winners = 0
         saved = 0
+        excluded_n = 0   # May 18: trades excluded due to missing post_arm_min
         actual_total_pct = 0.0
         actual_total_usd = 0.0
         cf_total_pct = 0.0
@@ -7559,32 +7561,32 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
 
             peak = o.peak_pnl
             pam = getattr(o, 'post_arm_min_pnl_pct', None)
-            # BE armed if peak crossed trigger. We have a populated pam → definitely armed.
-            # If peak ≥ trigger but pam is None (pre-instrumentation), treat as armed but
-            # unknown — fall back to actual close as proxy.
-            armed = (peak is not None and peak >= trigger) or (pam is not None)
-            if armed:
-                armed_n += 1
-                # Would BE-new fire?
-                if pam is not None:
-                    fires = pam < new_floor
+            # STRICT MODE (May 18 fix): only count trades with real post_arm_min data
+            # as armed. Pre-instrumentation trades (pam is None) get EXCLUDED rather
+            # than fallback-proxied — the close-as-proxy fallback made "Cut Winners"
+            # mathematically impossible by construction, silently corrupting the gate
+            # check. See CLAUDE.md May 18 entry "BE Floor CF strict-mode fix".
+            if pam is None:
+                # No instrumentation data → can't evaluate; carry actual to counterfactual
+                # totals so display numbers stay consistent, but don't count as armed.
+                excluded_n += 1
+                cf_total_pct += actual_pct
+                cf_total_usd += actual_usd
+                continue
+            armed = True
+            armed_n += 1
+            fires = pam < new_floor
+            if fires:
+                fires_n += 1
+                if actual_pct > new_floor + 0.001:  # actual close was meaningfully above new floor
+                    cut_winners += 1
                 else:
-                    # Pre-instrumentation: conservative — use actual close as fallback
-                    fires = actual_pct < new_floor
-                if fires:
-                    fires_n += 1
-                    if actual_pct > new_floor + 0.001:  # actual close was meaningfully above new floor
-                        cut_winners += 1
-                    else:
-                        saved += 1
-                    # Hypothetical outcome: exit at +new_floor%
-                    cf_pct = new_floor
-                    cf_usd = (new_floor / 100.0) * notional if notional > 0 else 0.0
-                    cf_total_pct += cf_pct
-                    cf_total_usd += cf_usd
-                else:
-                    cf_total_pct += actual_pct
-                    cf_total_usd += actual_usd
+                    saved += 1
+                # Hypothetical outcome: exit at +new_floor%
+                cf_pct = new_floor
+                cf_usd = (new_floor / 100.0) * notional if notional > 0 else 0.0
+                cf_total_pct += cf_pct
+                cf_total_usd += cf_usd
             else:
                 cf_total_pct += actual_pct
                 cf_total_usd += actual_usd
@@ -7607,6 +7609,7 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
             "direction": direction,
             "count": n,
             "armed": armed_n,
+            "excluded": excluded_n,           # May 18 strict-mode: no real post_arm_min data
             "be_new_fires": fires_n,
             "cut_winners": cut_winners,
             "saved": saved,
@@ -7624,6 +7627,7 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
         pool_saved += saved
         pool_n += n
         pool_armed += armed_n
+        pool_excluded += excluded_n
 
     # Sort by absolute delta (biggest impact first)
     # Match Phantom BE 0.20/0.05 sort order (direction then close_reason) for
@@ -7636,6 +7640,7 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
         "trigger": trigger,
         "pool_n": pool_n,
         "pool_armed": pool_armed,
+        "pool_excluded": pool_excluded,  # May 18 strict-mode: pre-instrumentation trades
         "pool_fires": pool_fires,
         "pool_cut_winners": pool_cut,
         "pool_saved": pool_saved,

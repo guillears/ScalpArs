@@ -6142,7 +6142,8 @@
                     const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
                     const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
                     lines.push(`## BE Floor Counterfactual: 0.05 vs 0.10 (observation-only, post-May-17)`);
-                    lines.push(`Pool: ${_s.pool_n} trades · ${_s.pool_armed} armed · ${_s.pool_fires} BE10 fires (${_s.pool_cut_winners} cut winners, ${_s.pool_saved} saved) · Actual ${fmt$(_s.pool_actual_usd).trim()} → BE10 ${fmt$(_s.pool_cf_usd).trim()} · Δ ${fmt$(_s.pool_delta_usd).trim()}\n`);
+                    const _excTxt = (_s.pool_excluded || 0) > 0 ? ` · ${_s.pool_excluded} excluded (pre-May-17 instrumentation)` : '';
+                    lines.push(`Pool: ${_s.pool_n} trades · ${_s.pool_armed} armed (real)${_excTxt} · ${_s.pool_fires} BE10 fires (${_s.pool_cut_winners} cut winners, ${_s.pool_saved} saved) · Actual ${fmt$(_s.pool_actual_usd).trim()} → BE10 ${fmt$(_s.pool_cf_usd).trim()} · Δ ${fmt$(_s.pool_delta_usd).trim()}\n`);
                     lines.push('Reason                Dir   N   Armed BE10  Cut  Saved  Actual%   Actual$    BE10%    BE10$       Δ$       Verdict');
                     lines.push('-'.repeat(135));
                     _bfcf1.rows.forEach(r => {
@@ -7472,7 +7473,8 @@
                         const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
                         const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
                         lines.push(`## BE Floor Counterfactual: 0.05 vs 0.10 (observation-only, post-May-17)`);
-                        lines.push(`Pool: ${_s2.pool_n} trades · ${_s2.pool_armed} armed · ${_s2.pool_fires} BE10 fires (${_s2.pool_cut_winners} cut winners, ${_s2.pool_saved} saved) · Actual ${fmt$(_s2.pool_actual_usd).trim()} → BE10 ${fmt$(_s2.pool_cf_usd).trim()} · Δ ${fmt$(_s2.pool_delta_usd).trim()}\n`);
+                        const _excTxt2 = (_s2.pool_excluded || 0) > 0 ? ` · ${_s2.pool_excluded} excluded (pre-May-17 instrumentation)` : '';
+                        lines.push(`Pool: ${_s2.pool_n} trades · ${_s2.pool_armed} armed (real)${_excTxt2} · ${_s2.pool_fires} BE10 fires (${_s2.pool_cut_winners} cut winners, ${_s2.pool_saved} saved) · Actual ${fmt$(_s2.pool_actual_usd).trim()} → BE10 ${fmt$(_s2.pool_cf_usd).trim()} · Δ ${fmt$(_s2.pool_delta_usd).trim()}\n`);
                         lines.push('Reason                Dir   N   Armed BE10  Cut  Saved  Actual%   Actual$    BE10%    BE10$       Δ$       Verdict');
                         lines.push('-'.repeat(135));
                         _bfcf2.rows.forEach(r => {
@@ -9455,7 +9457,8 @@
                             const ddCls = (s.pool_delta_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const actCls = (s.pool_actual_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const cfCls = (s.pool_cf_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            _bfcfPool.innerHTML = `Pool: <strong>${s.pool_n}</strong> trades · <strong>${s.pool_armed}</strong> armed · <strong>${s.pool_fires}</strong> BE10 fires (<strong class="text-red-400">${s.pool_cut_winners}</strong> cut winners · <strong class="text-emerald-400">${s.pool_saved}</strong> saved) · Actual <span class="${actCls} font-semibold">${fmt$(s.pool_actual_usd)}</span> → BE10 <span class="${cfCls} font-semibold">${fmt$(s.pool_cf_usd)}</span> · Δ <span class="${ddCls} font-semibold">${fmt$(s.pool_delta_usd)}</span>`;
+                            const _excTxt = (s.pool_excluded || 0) > 0 ? ` · <strong class="text-gray-500">${s.pool_excluded}</strong> excluded <span class="text-gray-500 text-xs">(pre-May-17 instrumentation)</span>` : '';
+                            _bfcfPool.innerHTML = `Pool: <strong>${s.pool_n}</strong> trades · <strong>${s.pool_armed}</strong> armed (real)${_excTxt} · <strong>${s.pool_fires}</strong> BE10 fires (<strong class="text-red-400">${s.pool_cut_winners}</strong> cut winners · <strong class="text-emerald-400">${s.pool_saved}</strong> saved) · Actual <span class="${actCls} font-semibold">${fmt$(s.pool_actual_usd)}</span> → BE10 <span class="${cfCls} font-semibold">${fmt$(s.pool_cf_usd)}</span> · Δ <span class="${ddCls} font-semibold">${fmt$(s.pool_delta_usd)}</span>`;
                         } else {
                             _bfcfPool.textContent = '(no post-deploy trades yet)';
                         }

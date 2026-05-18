@@ -11155,9 +11155,44 @@ locked watchlist + gate scattered across the entries above. At checkpoint
 time, apply gates mechanically — do NOT re-litigate criteria. If a gate
 needs revision, do that BEFORE seeing the fresh data, not after.
 
-Counts: **33 items** across 8 tiers. Mandatory work at checkpoint = Tiers
-1-2 (9 items) + multiplier verdict table (Tier 4, ~10 cells automated).
-Everything else is conditional or background.
+Counts: **35 items** across 9 tiers (Tier 0 added May 18 PM for active A/B
+test reverts). Mandatory work at checkpoint = Tier 0 (2 items, HIGHEST
+priority) + Tiers 1-2 (9 items) + multiplier verdict table (Tier 3, 8
+cells automated). Everything else is conditional or background.
+
+---
+
+### TIER 0 — Active A/B test reverts (2 items, HIGHEST PRIORITY)
+
+These were DISABLED on May 18 specifically to A/B test the new exit stack
+(BE 0.05 + Fast Exit + Trailing Confirmation 0). Their re-evaluation is the
+top of the list — if the exit stack proves itself, these filters either get
+re-enabled at their prior settings, get tightened based on fresh-data
+evidence, or stay off if they were redundant with the new exits.
+
+#### 0a. Global Volume Filter — currently DISABLED
+Reference: CLAUDE.md May 18 commit `ebf88e7` "disable Volume + ADX Δ filters for A/B test".
+
+Prior settings preserved (not deleted): Min L 0.95, Min S 0, Max S 1.10 + capitulation override (BTC RSI<30 AND slope<0), Lookback 48, Rescue L $100M.
+
+**Decision at next ≥100-trade checkpoint:**
+- If batch shows ≥10 LONG losses where GlobalVol < 0.95 AND those trades cluster as losers (≥3 in cell, ≥70% loser rate) → **re-enable** at Min L 0.95
+- If batch shows ≥10 SHORT losses where GlobalVol > 1.10 AND BTC was NOT in capitulation (BTC RSI ≥30 OR BTC slope ≥0) → **re-enable** Max S 1.10
+- If neither pattern surfaces with the new exit stack → **keep DISABLED** (filter was redundant with BE/Fast Exit catching the same loss profile)
+- If LONG side shows a different cliff (e.g., GlobalVol < 1.05 zone losing) → **revise threshold** based on fresh data, ship at new value
+
+#### 0b. ADX Δ × BTC ADX Cross-Filter — currently DISABLED
+Reference: same commit. Active rules preserved (not deleted):
+- LONG: ΔADX [1.0, 2.0) × BTC ADX [18, 30]
+- SHORT: ΔADX [2.0, 99) × BTC ADX [24, 99]
+
+**Decision at next ≥100-trade checkpoint:**
+- If LONG entries with ΔADX 1.0-2.0 × BTC ADX 18-30 in fresh data show ≤45% WR AND Avg P&L % ≤ -0.15% on N≥10 → **re-enable** at prior rule
+- If those entries show ≥55% WR → **keep DISABLED**, the rule was over-restrictive given new exits
+- If Watch 1 (item #8 below — broader BTC ADX 25-30 LONG loss zone) confirms → **re-enable AND extend** to include `0.0-2.0:25-30`
+- SHORT side rule was 1-sample only and largely dormant — revisit only if the LONG re-enable triggers
+
+**Note:** These TIER 0 items take precedence over TIER 1 if any conflict arises. Without re-evaluating these first, the rest of the analysis runs against an exit-stack-vs-filter-stack confound.
 
 ---
 

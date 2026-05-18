@@ -250,10 +250,10 @@ body.lt-mode header.glass + .glass * {
   transition: width 0.5s ease-out;
 }
 
-/* Main grid: feed | pair-heatmap | radar | side. Flex-grow fills height. */
+/* Main grid: feed | radar | side. Flex-grow so it fills available height. */
 #live-terminal-view .lt-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 200px 220px 230px;
+  grid-template-columns: minmax(0, 1fr) 220px 230px;
   gap: 12px;
   flex: 1 1 auto;
   min-height: 0;     /* required for inner overflow:auto on the feed */
@@ -261,7 +261,7 @@ body.lt-mode header.glass + .glass * {
 @media (max-width: 1100px) {
   #live-terminal-view .lt-main {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto auto auto;
+    grid-template-rows: 1fr auto auto;
   }
 }
 
@@ -889,137 +889,6 @@ body.lt-mode header.glass + .glass * {
   0%, 100% { r: 1.5; opacity: 0.5; }
   50%      { r: 2.5; opacity: 1; }
 }
-
-/* ─── Pair Heatmap (Theater Pass v2, May 18) ──────────────────────────── */
-#live-terminal-view .lt-pair-heatmap-panel {
-  position: relative;
-  border: 1px solid var(--lt-border);
-  background: #060906;
-  padding: 6px 6px 8px 6px;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-#live-terminal-view .lt-pair-heatmap-label {
-  font-size: 10px;
-  letter-spacing: 0.15em;
-  color: var(--lt-label);
-  text-transform: uppercase;
-  margin: 0 0 6px 2px;
-  flex: 0 0 auto;
-}
-#live-terminal-view .lt-pair-heatmap-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
-  flex: 1 1 auto;
-  align-content: start;
-  overflow-y: auto;
-  min-height: 0;
-}
-#live-terminal-view .lt-pair-heatmap-grid::-webkit-scrollbar { width: 4px; }
-#live-terminal-view .lt-pair-heatmap-grid::-webkit-scrollbar-thumb {
-  background: rgba(34, 197, 94, 0.2);
-}
-#live-terminal-view .lt-pair-cell {
-  aspect-ratio: 1 / 1;
-  background: #0a1a0a;            /* base — same as lt-pc-idle */
-  border-radius: 1px;
-  transition: background 0.5s, box-shadow 0.5s;
-  cursor: default;
-  position: relative;             /* anchor for ::after + .lt-pc-label */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-/* 5-tier palette (Theater Pass v2.1, May 18 polish) */
-#live-terminal-view .lt-pair-cell.lt-pc-idle { background: #0a1a0a; }
-#live-terminal-view .lt-pair-cell.lt-pc-low  { background: #1d3a1d; }
-#live-terminal-view .lt-pair-cell.lt-pc-mid  { background: #2d5a2d; }
-#live-terminal-view .lt-pair-cell.lt-pc-hi   { background: #3b8b3b; }
-#live-terminal-view .lt-pair-cell.lt-pc-top {
-  background: #22c55e;
-  box-shadow: 0 0 4px #22c55e;
-}
-/* Blacklist — sticky terminal state, red-outlined × marker */
-#live-terminal-view .lt-pair-cell.lt-pc-blacklist {
-  background: #0a1a0a;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  box-shadow: none;
-}
-#live-terminal-view .lt-pair-cell.lt-pc-blacklist::after {
-  content: "×";
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  color: rgba(239, 68, 68, 0.5);
-  pointer-events: none;
-}
-/* WATCH / REJECT / ENTRY overlays */
-#live-terminal-view .lt-pair-cell.lt-pc-watch {
-  background: #4ade80;
-  box-shadow: 0 0 8px #4ade80;
-  animation: lt-pc-watch-pulse 1.5s ease-in-out infinite;
-}
-#live-terminal-view .lt-pair-cell.lt-pc-reject {
-  background: #5a1818;
-  box-shadow: none;
-}
-#live-terminal-view .lt-pair-cell.lt-pc-flash {
-  animation: lt-pc-flash 1.2s ease-out;
-}
-/* Touch shimmer — fires on every event referencing the cell. GPU-composited
-   filter; 600ms, ease-out, then auto-cleared via setTimeout. */
-#live-terminal-view .lt-pair-cell.lt-shimmer {
-  animation: lt-pc-shimmer 600ms ease-out;
-}
-/* Symbol label — opacity-driven by state class. Hidden by default, shown
-   on lt-pc-hi and lt-pc-top only (per May 18 polish spec). */
-#live-terminal-view .lt-pair-cell .lt-pc-label {
-  font-size: 7px;
-  font-family: 'JetBrains Mono', 'IBM Plex Mono', Menlo, monospace;
-  color: #050505;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  opacity: 0;
-  transition: opacity 0.3s;
-  pointer-events: none;
-}
-#live-terminal-view .lt-pair-cell.lt-pc-hi  .lt-pc-label,
-#live-terminal-view .lt-pair-cell.lt-pc-top .lt-pc-label {
-  opacity: 1;
-}
-@keyframes lt-pc-watch-pulse {
-  0%, 100% { box-shadow: 0 0 4px #4ade80; }
-  50%      { box-shadow: 0 0 14px #4ade80; }
-}
-@keyframes lt-pc-flash {
-  0%   { background: #ffffff; box-shadow: 0 0 20px #ffffff; }
-  20%  { background: #d1fadf; box-shadow: 0 0 16px #ffffff; }
-  100% { background: #22c55e; box-shadow: 0 0 4px #22c55e; }
-}
-@keyframes lt-pc-shimmer {
-  0%   { filter: brightness(1.5); }
-  100% { filter: brightness(1); }
-}
-#live-terminal-view .lt-pair-heatmap-tooltip {
-  position: absolute;
-  pointer-events: none;
-  background: rgba(0, 0, 0, 0.85);
-  border: 1px solid var(--lt-border);
-  color: var(--lt-fg-bright);
-  font-size: 10px;
-  padding: 3px 6px;
-  border-radius: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
-  white-space: nowrap;
-  z-index: 12;
-}
-#live-terminal-view .lt-pair-heatmap-tooltip.lt-visible { opacity: 1; }
 
 /* ─── Ambient Flickers (Theater Pass v2, May 18) ──────────────────────── */
 #live-terminal-view .lt-flickers {

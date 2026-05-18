@@ -215,36 +215,21 @@
       return;
     }
 
-    // Heatmap and radar have DIFFERENT population rules (May 18, Option A):
-    //   - RADAR = "currently being actively watched" — skips filter-out lines.
-    //   - HEATMAP = "bot's full awareness universe" — parses filter-out lines
-    //     too, adding cells in dim 'AWARENESS' state. Real scan events later
-    //     upgrade those cells to score-based colors.
+    // Track ALL symbols mentioned in the event for the radar frequency score
+    // and top-scans list.  Skip filter-out lines (excluded / Blacklist /
+    // "filter:") so the radar reflects pairs we're actively scanning, not
+    // pairs we just filtered away.  Multi-symbol messages contribute every
+    // symbol — previously only the first match was captured.
     if (!isReplay) {
       const msg = evt.msg || '';
       const isFilterOut = /\b(excluded|Blacklist active|new-listing filter|Alpha-subtype filter)\b/i.test(msg);
-      if (isFilterOut) {
-        // FILTER-OUT path: heatmap-only awareness. Do NOT touch radar/top-scans.
-        // Discriminate the [SCAN] Blacklist active line — those symbols get
-        // the sticky lt-pc-blacklist state. 20ms stagger creates a sweep
-        // effect across simultaneously-revealed cells (May 18 polish).
-        const filterSyms = msg.match(/\b(?:\d+)?[A-Z]{2,10}USDT\b/g);
-        if (filterSyms) {
-          const isBlacklist = /\bBlacklist active\b/.test(msg);
-          const type = isBlacklist ? 'BLACKLIST' : 'AWARENESS';
-          filterSyms.forEach((sym, i) => {
-            updatePairHeatmap(sym, type, { pulseDelay: i * 20 });
-          });
-        }
-      } else {
-        // ACTIVE-SCAN path: radar + top-scans + heatmap.
+      if (!isFilterOut) {
         const allSyms = msg.match(/\b(?:\d+)?[A-Z]{2,10}USDT\b/g);
         if (allSyms && allSyms.length > 0) {
           const now = Date.now();
           for (const sym of allSyms) {
             state.radarSymbolEvents.push({ ts: now, symbol: sym });
             pushTopScan(sym);
-            updatePairHeatmap(sym, 'SCAN');   // May 18: pair heatmap
           }
           const cutoff = now - 60000;
           while (state.radarSymbolEvents.length > 0 && state.radarSymbolEvents[0].ts < cutoff) {
@@ -253,7 +238,6 @@
         } else if (evt.symbol) {
           // Fallback: at least record the parsed primary symbol
           state.radarSymbolEvents.push({ ts: Date.now(), symbol: evt.symbol });
-          updatePairHeatmap(evt.symbol, 'SCAN');
         }
       }
     }
@@ -261,14 +245,6 @@
     // category by definition mentions the rejected pair).
     if (evt.category === 'REJECT' && evt.symbol) {
       state.radarRejectFlash.set(evt.symbol, Date.now() + 1000);
-      updatePairHeatmap(evt.symbol, 'REJECT');   // May 18: pair heatmap
-    }
-    // Heatmap state-overrides for WATCH/ENTRY on the primary symbol (May 18)
-    if (evt.category === 'WATCH' && evt.symbol) {
-      updatePairHeatmap(evt.symbol, 'WATCH');
-    }
-    if (evt.category === 'ENTRY' && evt.symbol) {
-      updatePairHeatmap(evt.symbol, 'ENTRY');
     }
     // Filter funnel parsing — only [BINANCE] and [SCAN] tags carry the relevant lines
     if (evt.tag === 'BINANCE' || evt.tag === 'SCAN') {
@@ -1224,160 +1200,6 @@
         if (spans[idx]) spans[idx].textContent = _randChar();
       }
     }, 200);
-  }
-
-  // ─── Pair heatmap (Theater Pass v2, May 18) ───────────────────────────
-  // Populates organically from event stream — no pre-population.
-  // Score proxy: count of recent appearances (60s sliding window from
-  // state.radarSymbolEvents). Cells transition between states on each event.
-  const _pairCells = new Map();  // symbol -> { el, state, rejectUntil }
-  function _scoreForSymbol(sym) {
-    // Reuse radar's appearance buffer. Score = recent appearances / max.
-    const now = Date.now();
-    const cutoff = now - 60000;
-    let myCount = 0;
-    const counts = new Map();
-    for (const e of state.radarSymbolEvents) {
-      if (e.ts < cutoff) continue;
-      counts.set(e.symbol, (counts.get(e.symbol) || 0) + 1);
-      if (e.symbol === sym) myCount++;
-    }
-    let maxN = 0;
-    for (const v of counts.values()) if (v > maxN) maxN = v;
-    if (maxN === 0) return 0;
-    return Math.round((myCount / maxN) * 100);
-  }
-  // Short symbol for cell label: strip USDT suffix + leading digits, truncate >4.
-  function _shortenSym(sym) {
-    let s = sym.replace(/USDT$/, '').replace(/^\d+/, '');
-    if (s.length > 4) s = s.slice(0, 4);
-    return s || sym.slice(0, 4);
-  }
-  function _ensurePairCell(sym) {
-    if (_pairCells.has(sym)) return _pairCells.get(sym);
-    const grid = document.getElementById('lt-pair-heatmap-grid');
-    if (!grid) return null;
-    const el = document.createElement('div');
-    el.className = 'lt-pair-cell';
-    el.dataset.symbol = sym;
-    // Label always present — visible via CSS opacity on hi/top tiers only.
-    const label = document.createElement('span');
-    label.className = 'lt-pc-label';
-    label.textContent = _shortenSym(sym);
-    el.appendChild(label);
-    // Tooltip handlers
-    el.addEventListener('mouseenter', _showPairTooltip);
-    el.addEventListener('mouseleave', _hidePairTooltip);
-    grid.appendChild(el);
-    // aware       = mentioned in any event (filter-out OR real)
-    // blacklisted = sticky terminal state (from [SCAN] Blacklist active line)
-    const rec = { el, state: 'idle', rejectUntil: 0, aware: false, blacklisted: false };
-    _pairCells.set(sym, rec);
-    return rec;
-  }
-  function _classForScore(sc) {
-    if (sc > 85) return 'lt-pc-top';
-    if (sc >= 70) return 'lt-pc-hi';
-    if (sc >= 50) return 'lt-pc-mid';
-    if (sc > 0)   return 'lt-pc-low';
-    return '';
-  }
-  function _applyCellClass(rec, extra) {
-    if (!rec || !rec.el) return;
-    const sym = rec.el.dataset.symbol;
-    const score = _scoreForSymbol(sym);
-    rec.el.dataset.score = String(score);
-    let base = 'lt-pair-cell';
-    const now = Date.now();
-    if (rec.blacklisted) {
-      // Sticky terminal — never upgrades regardless of score.
-      base += ' lt-pc-blacklist';
-    } else if (rec.rejectUntil && now < rec.rejectUntil) {
-      base += ' lt-pc-reject';
-    } else {
-      const sc = _classForScore(score);
-      if (sc) {
-        base += ' ' + sc;
-      } else if (rec.aware) {
-        // Score=0 but symbol is in awareness universe → idle baseline.
-        base += ' lt-pc-idle';
-      }
-    }
-    if (extra) base += ' ' + extra;
-    rec.el.className = base;
-  }
-  // Shimmer pulse — fires on every event touch (May 18 polish).
-  // Reset cleanly via remove + reflow + setTimeout cleanup (NOT animationend).
-  function _shimmer(rec) {
-    if (!rec || !rec.el) return;
-    rec.el.classList.remove('lt-shimmer');
-    void rec.el.offsetWidth;          // force reflow so animation restarts
-    rec.el.classList.add('lt-shimmer');
-    setTimeout(() => {
-      if (rec.el) rec.el.classList.remove('lt-shimmer');
-    }, 620);
-  }
-  function updatePairHeatmap(sym, evtType, opts) {
-    if (!sym) return;
-    const rec = _ensurePairCell(sym);
-    if (!rec) return;
-    // Shimmer fires for EVERY touch — even on no-op state changes.
-    // Optional pulseDelay (ms) lets callers stagger waves of simultaneous events.
-    const delay = (opts && typeof opts.pulseDelay === 'number') ? opts.pulseDelay : 0;
-    if (delay > 0) setTimeout(() => _shimmer(rec), delay);
-    else _shimmer(rec);
-
-    if (evtType === 'BLACKLIST') {
-      // Blacklist is sticky — once set, never unset. Still gets shimmer above.
-      if (!rec.blacklisted) {
-        rec.blacklisted = true;
-        rec.aware = true;
-        _applyCellClass(rec);
-      }
-      return;
-    }
-    if (rec.blacklisted) {
-      // Blacklisted cells don't react to other event types (still shimmer though).
-      return;
-    }
-    if (evtType === 'AWARENESS') {
-      if (!rec.aware) {
-        rec.aware = true;
-        _applyCellClass(rec);
-      }
-      return;
-    }
-    // Real event paths — mark aware so score=0 doesn't drop back to bare cell.
-    rec.aware = true;
-    if (evtType === 'REJECT') {
-      rec.rejectUntil = Date.now() + 3000;
-      _applyCellClass(rec);
-      setTimeout(() => _applyCellClass(rec), 3100);
-    } else if (evtType === 'WATCH') {
-      _applyCellClass(rec, 'lt-pc-watch');
-    } else if (evtType === 'ENTRY') {
-      _applyCellClass(rec, 'lt-pc-flash');
-      setTimeout(() => _applyCellClass(rec), 1300);
-    } else {
-      // SCAN / generic — just refresh based on score
-      _applyCellClass(rec);
-    }
-  }
-  function _showPairTooltip(e) {
-    const tip = document.getElementById('lt-pair-heatmap-tooltip');
-    if (!tip) return;
-    const sym = e.target.dataset.symbol || '?';
-    const sc = e.target.dataset.score || '0';
-    tip.textContent = `${sym} · score ${sc}`;
-    const rect = e.target.getBoundingClientRect();
-    const panel = e.target.closest('.lt-pair-heatmap-panel').getBoundingClientRect();
-    tip.style.left = (rect.left - panel.left) + 'px';
-    tip.style.top  = (rect.top - panel.top - 18) + 'px';
-    tip.classList.add('lt-visible');
-  }
-  function _hidePairTooltip() {
-    const tip = document.getElementById('lt-pair-heatmap-tooltip');
-    if (tip) tip.classList.remove('lt-visible');
   }
 
   // ─── Ambient flickers (Theater Pass v2, May 18) ───────────────────────

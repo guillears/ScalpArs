@@ -122,6 +122,10 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_ema13_cross_minutes FLOAT"))
                 if 'post_exit_ema13_cross_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_ema13_cross_pnl FLOAT"))
+                if 'post_arm_min_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_arm_min_pnl_pct FLOAT"))
+                if 'post_arm_min_pnl_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_arm_min_pnl_at DATETIME"))
                 if 'first_rsi2_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN first_rsi2_pnl FLOAT"))
                 if 'first_rsi2_minutes' not in columns:

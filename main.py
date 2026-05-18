@@ -4633,6 +4633,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             rsis = [o.entry_rsi for o in data["trades"] if o.entry_rsi is not None]
             post_exit_peaks = [o.post_exit_peak_pnl for o in data["trades"] if o.post_exit_peak_pnl is not None]
             post_exit_troughs = [o.post_exit_trough_pnl for o in data["trades"] if o.post_exit_trough_pnl is not None]
+            # May 17: post-arm minimum (BE-floor counterfactual support)
+            post_arm_mins = [getattr(o, 'post_arm_min_pnl_pct', None) for o in data["trades"] if getattr(o, 'post_arm_min_pnl_pct', None) is not None]
 
             rsi2_fired = [o for o in data["trades"] if o.first_rsi2_pnl is not None]
             ema5_dists = [o.exit_price_vs_ema5_pct for o in data["trades"] if o.exit_price_vs_ema5_pct is not None]
@@ -4652,6 +4654,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "worst_trough_pnl_pct": round(worst_trough, 4),
                 "avg_post_exit_peak_pnl": round(sum(post_exit_peaks) / len(post_exit_peaks), 4) if post_exit_peaks else None,
                 "avg_post_exit_trough_pnl": round(sum(post_exit_troughs) / len(post_exit_troughs), 4) if post_exit_troughs else None,
+                "avg_post_arm_min_pct": round(sum(post_arm_mins) / len(post_arm_mins), 4) if post_arm_mins else None,
+                "post_arm_min_n": len(post_arm_mins),
                 "signal_active": sig_active,
                 "signal_inactive": sig_inactive,
                 "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
@@ -5241,6 +5245,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             rsis = [o.entry_rsi for o in group_orders if o.entry_rsi is not None]
             sig_active = sum(1 for o in group_orders if o.signal_active_at_close is True)
             sig_inactive = sum(1 for o in group_orders if o.signal_active_at_close is False)
+            # May 17: post-arm minimum P&L (BE-floor counterfactual)
+            post_arm_mins = [getattr(o, 'post_arm_min_pnl_pct', None) for o in group_orders if getattr(o, 'post_arm_min_pnl_pct', None) is not None]
             return {
                 "count": count,
                 "avg_peak_pnl": round(avg_peak, 4),
@@ -5255,7 +5261,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "avg_price_drop": round(avg_drop, 4),
                 "avg_duration": calc_avg_duration(group_orders),
                 "signal_active": sig_active,
-                "signal_inactive": sig_inactive
+                "signal_inactive": sig_inactive,
+                "avg_post_arm_min_pct": round(sum(post_arm_mins) / len(post_arm_mins), 4) if post_arm_mins else None,
+                "post_arm_min_n": len(post_arm_mins),
             }
         
         all_sl_by_conf = {}
@@ -5323,6 +5331,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             sig_inactive = sum(1 for o in group if o.signal_active_at_close is False)
             post_exit_peaks = [o.post_exit_peak_pnl for o in group if o.post_exit_peak_pnl is not None]
             post_exit_troughs = [o.post_exit_trough_pnl for o in group if o.post_exit_trough_pnl is not None]
+            # May 17: post-arm minimum (BE-floor counterfactual)
+            post_arm_mins = [getattr(o, 'post_arm_min_pnl_pct', None) for o in group if getattr(o, 'post_arm_min_pnl_pct', None) is not None]
             winning_trades_drawdown.append({
                 "close_reason": reason,
                 "count": count,
@@ -5340,7 +5350,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "signal_active": sig_active,
                 "signal_inactive": sig_inactive,
                 "avg_post_exit_peak_pnl": round(sum(post_exit_peaks) / len(post_exit_peaks), 4) if post_exit_peaks else None,
-                "avg_post_exit_trough_pnl": round(sum(post_exit_troughs) / len(post_exit_troughs), 4) if post_exit_troughs else None
+                "avg_post_exit_trough_pnl": round(sum(post_exit_troughs) / len(post_exit_troughs), 4) if post_exit_troughs else None,
+                "avg_post_arm_min_pct": round(sum(post_arm_mins) / len(post_arm_mins), 4) if post_arm_mins else None,
+                "post_arm_min_n": len(post_arm_mins),
             })
     except Exception as e:
         logger.error(f"[PERF] Error computing SL deep dive / winning drawdown: {e}\n{traceback.format_exc()}")
@@ -6382,6 +6394,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "btc_1h_slope_adx_crosstab": _compute_btc_1h_slope_adx_crosstab(orders),
         # Phantom BE 0.20/0.05 counterfactual by close reason (May 14)
         "phantom_be_aggr_by_close_reason": _compute_phantom_be_aggr_by_close_reason(orders),
+        # BE Floor Counterfactual (May 17): per close_reason × direction, compares
+        # current BE 0.20/0.05 outcome vs hypothetical BE 0.20/0.10 outcome using
+        # the post_arm_min_pnl_pct column. Reveals BE-pre-empts-trailing risk.
+        "be_floor_counterfactual": _compute_be_floor_counterfactual(orders, new_floor=0.10),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -7353,6 +7369,159 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
             'total_dollar_delta': round(total_dollar_delta, 2),
         },
     }
+
+
+def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05, trigger=0.20):
+    """BE Floor Counterfactual (May 17).
+
+    Per (close_reason, direction) bucket, compares:
+      Current: actual P&L (which reflects BE 0.20/current_floor when armed+fired)
+      Hypothetical: under BE 0.20/new_floor
+
+    Uses `post_arm_min_pnl_pct` (the minimum P&L observed after peak first crossed
+    BE trigger). For each trade:
+      - If peak < trigger: BE never armed → no change in either scenario.
+      - If post_arm_min < new_floor: trade's path crossed new_floor going down →
+        under new BE, would have fired at +new_floor%.
+      - Else: trade's path didn't reach new_floor → unchanged.
+
+    Counterfactual outcome per trade = +new_floor% if BE-new would fire, else actual close.
+
+    "Cut Winners" = trades where BE-new fires AND actual close > new_floor
+                    (BE pre-empted a higher-paying exit).
+    "Saved" = trades where BE-new fires AND actual close ≤ new_floor
+              (BE caught trade at a higher level than the actual exit).
+    """
+    rows = []
+    # Group by (close_reason, direction)
+    groups = {}
+    for o in orders:
+        reason = o.close_reason or "UNKNOWN"
+        # Bucket L4+ trailing levels into L6+ to match other tables
+        if " L" in reason:
+            parts = reason.split(" L")
+            base = parts[0]
+            try:
+                lvl = int(parts[1].replace("+", ""))
+                if lvl >= 6:
+                    reason = f"{base} L6+"
+            except ValueError:
+                pass
+        direction = o.direction or "UNKNOWN"
+        key = (reason, direction)
+        groups.setdefault(key, []).append(o)
+
+    pool_actual = 0.0
+    pool_cf = 0.0
+    pool_fires = 0
+    pool_cut = 0
+    pool_saved = 0
+    pool_n = 0
+    pool_armed = 0
+
+    for (reason, direction), trades in groups.items():
+        n = len(trades)
+        armed_n = 0
+        fires_n = 0
+        cut_winners = 0
+        saved = 0
+        actual_total_pct = 0.0
+        actual_total_usd = 0.0
+        cf_total_pct = 0.0
+        cf_total_usd = 0.0
+
+        for o in trades:
+            actual_pct = o.pnl_percentage or 0.0
+            actual_usd = o.pnl or 0.0
+            notional = o.notional_value or 0
+            actual_total_pct += actual_pct
+            actual_total_usd += actual_usd
+
+            peak = o.peak_pnl
+            pam = getattr(o, 'post_arm_min_pnl_pct', None)
+            # BE armed if peak crossed trigger. We have a populated pam → definitely armed.
+            # If peak ≥ trigger but pam is None (pre-instrumentation), treat as armed but
+            # unknown — fall back to actual close as proxy.
+            armed = (peak is not None and peak >= trigger) or (pam is not None)
+            if armed:
+                armed_n += 1
+                # Would BE-new fire?
+                if pam is not None:
+                    fires = pam < new_floor
+                else:
+                    # Pre-instrumentation: conservative — use actual close as fallback
+                    fires = actual_pct < new_floor
+                if fires:
+                    fires_n += 1
+                    if actual_pct > new_floor + 0.001:  # actual close was meaningfully above new floor
+                        cut_winners += 1
+                    else:
+                        saved += 1
+                    # Hypothetical outcome: exit at +new_floor%
+                    cf_pct = new_floor
+                    cf_usd = (new_floor / 100.0) * notional if notional > 0 else 0.0
+                    cf_total_pct += cf_pct
+                    cf_total_usd += cf_usd
+                else:
+                    cf_total_pct += actual_pct
+                    cf_total_usd += actual_usd
+            else:
+                cf_total_pct += actual_pct
+                cf_total_usd += actual_usd
+
+        delta_usd = cf_total_usd - actual_total_usd
+        # Verdict
+        if armed_n < 3:
+            verdict = "⚠ Low N"
+        elif fires_n == 0:
+            verdict = "✓ No fire"
+        elif delta_usd > 5:
+            verdict = "★ HELPING"
+        elif delta_usd < -5:
+            verdict = "⚠ HURTING"
+        else:
+            verdict = "✓ Marginal"
+
+        rows.append({
+            "reason": reason,
+            "direction": direction,
+            "count": n,
+            "armed": armed_n,
+            "be_new_fires": fires_n,
+            "cut_winners": cut_winners,
+            "saved": saved,
+            "actual_avg_pct": round(actual_total_pct / n, 4) if n > 0 else 0,
+            "actual_total_usd": round(actual_total_usd, 2),
+            "cf_avg_pct": round(cf_total_pct / n, 4) if n > 0 else 0,
+            "cf_total_usd": round(cf_total_usd, 2),
+            "delta_usd": round(delta_usd, 2),
+            "verdict": verdict,
+        })
+        pool_actual += actual_total_usd
+        pool_cf += cf_total_usd
+        pool_fires += fires_n
+        pool_cut += cut_winners
+        pool_saved += saved
+        pool_n += n
+        pool_armed += armed_n
+
+    # Sort by absolute delta (biggest impact first)
+    rows.sort(key=lambda r: -abs(r["delta_usd"]))
+
+    summary = {
+        "new_floor": new_floor,
+        "current_floor": current_floor,
+        "trigger": trigger,
+        "pool_n": pool_n,
+        "pool_armed": pool_armed,
+        "pool_fires": pool_fires,
+        "pool_cut_winners": pool_cut,
+        "pool_saved": pool_saved,
+        "pool_actual_usd": round(pool_actual, 2),
+        "pool_cf_usd": round(pool_cf, 2),
+        "pool_delta_usd": round(pool_cf - pool_actual, 2),
+    }
+    return {"rows": rows, "summary": summary}
 
 
 # Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).

@@ -298,6 +298,14 @@ class Order(Base):
     post_exit_rsi_exit_pnl = Column(Float, nullable=True)
     post_exit_rsi3_exit_minutes = Column(Float, nullable=True)
     post_exit_rsi3_exit_pnl = Column(Float, nullable=True)
+    # May 17: post-arm minimum P&L tracking for BE-floor counterfactual analysis.
+    # Tracks the minimum P&L observed from the moment peak_pnl first crosses the
+    # BE trigger (be_level1_trigger, typically 0.20%) onward, through trade close.
+    # Captures BOTH pre-global-peak dips (after BE armed) AND post-peak retraces —
+    # which is the right window for "would BE at floor X have fired" analysis.
+    # NULL if peak never reached BE trigger (trade never armed BE).
+    post_arm_min_pnl_pct = Column(Float, nullable=True)
+    post_arm_min_pnl_at = Column(DateTime, nullable=True)
     # May 16: EMA13 cross counterfactual during post-exit window.
     # Records the first moment EMA13 cross-against-direction condition would
     # have fired (strict-mode: requires EMA5/EMA8 stack flip too) after we exited.

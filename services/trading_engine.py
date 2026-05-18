@@ -2308,6 +2308,13 @@ class TradingEngine:
                 'current_tp_level': 1,
                 'peak_pnl': 0.0,
                 'trough_pnl': 0.0,
+                # May 17: post-arm-min tracking (BE-floor counterfactual support).
+                # Set to True the first time peak_pnl crosses be_level1_trigger.
+                # post_arm_min_pnl tracks the running minimum of pnl_pct from that
+                # moment until close. Captures pre-global-peak dips after BE armed.
+                'be_armed': False,
+                'post_arm_min_pnl': None,
+                'post_arm_min_at': None,
                 'be_levels_enabled': getattr(conf_config, 'be_levels_enabled', True),
                 'be_level1_trigger': conf_config.be_level1_trigger,
                 'be_level1_offset': conf_config.be_level1_offset,
@@ -2803,6 +2810,14 @@ class TradingEngine:
                             if _cache_trough is not None:
                                 if order.trough_pnl is None or _cache_trough < order.trough_pnl:
                                     order.trough_pnl = _cache_trough
+                            # May 17: persist post-arm-min for BE-floor counterfactual.
+                            # Only set if BE armed during the trade (peak crossed BE trigger).
+                            _cache_pam = _cached.get('post_arm_min_pnl')
+                            _cache_pam_at = _cached.get('post_arm_min_at')
+                            if _cache_pam is not None and _cached.get('be_armed'):
+                                if order.post_arm_min_pnl_pct is None or _cache_pam < order.post_arm_min_pnl_pct:
+                                    order.post_arm_min_pnl_pct = _cache_pam
+                                    order.post_arm_min_pnl_at = _cache_pam_at
                             break
                 except Exception as _sync_e:
                     logger.debug(f"[CACHE_SYNC_PRE_CLOSE] {order_pair}: cache sync skipped: {_sync_e}")
@@ -5613,7 +5628,22 @@ class TradingEngine:
                     if _ema5_prev3 and _ema5_prev3 > 0:
                         order_info['peak_ema5_slope_pct'] = round((_ema5_val - _ema5_prev3) / _ema5_val * 100, 4)
             order_info['peak_pnl'] = current_peak
-            
+
+            # May 17: post-arm-min tracking for BE-floor counterfactual analysis.
+            # Once peak crosses BE trigger, start tracking the minimum P&L from
+            # that moment onward (covers pre-global-peak dips AND post-peak retraces).
+            _be_trigger_post_arm = order_info.get('be_level1_trigger', 0.20)
+            if current_peak >= _be_trigger_post_arm:
+                if not order_info.get('be_armed'):
+                    order_info['be_armed'] = True
+                    order_info['post_arm_min_pnl'] = pnl_pct
+                    order_info['post_arm_min_at'] = datetime.utcnow()
+                else:
+                    _cur_min = order_info.get('post_arm_min_pnl')
+                    if _cur_min is None or pnl_pct < _cur_min:
+                        order_info['post_arm_min_pnl'] = pnl_pct
+                        order_info['post_arm_min_at'] = datetime.utcnow()
+
             current_trough = min(cached_trough_pnl, pnl_pct) if pnl_pct < 0 else cached_trough_pnl
             if pnl_pct < cached_trough_pnl and pnl_pct < 0:
                 order_info['trough_reached_at'] = datetime.utcnow()
@@ -6371,6 +6401,10 @@ class TradingEngine:
                 'current_tp_level': order.current_tp_level,
                 'peak_pnl': order.peak_pnl or 0.0,
                 'trough_pnl': order.trough_pnl or 0.0,
+                # May 17: post-arm-min tracking (resumed if already populated)
+                'be_armed': order.post_arm_min_pnl_pct is not None,
+                'post_arm_min_pnl': order.post_arm_min_pnl_pct,
+                'post_arm_min_at': order.post_arm_min_pnl_at,
                 'be_levels_enabled': getattr(conf_config, 'be_levels_enabled', True),
                 'be_level1_trigger': conf_config.be_level1_trigger,
                 'be_level1_offset': conf_config.be_level1_offset,

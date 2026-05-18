@@ -521,7 +521,7 @@
                                     <th class="px-3 py-2 font-medium text-right" title="Total Wins $ / Total Losses $ (>1 = profitable)">PF</th>
                                     <th class="px-3 py-2 font-medium text-right text-yellow-400" title="Total fees paid (entry + exit)">Fees</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Avg exit slippage (+ = worse fill, - = better fill). Only live trades.">Slip %</th>
-                                    <th class="px-3 py-2 font-medium text-right text-blue-400" title="Projected balance using Return Multiple as the per-period rate. Formula: Current Balance × Return_Multiple^days. Stays stable when bot is idle (RM doesn't decay over runtime, unlike DCR).">Projected Balance</th>
+                                    <th class="px-3 py-2 font-medium text-right text-blue-400" title="Projected balance if current Daily Compound Return continues for this period. Formula: Current Balance × (1 + DCR)^days">Projected Balance</th>
                                 </tr>
                             </thead>
                             <tbody id="period-performance-body" class="divide-y divide-white/5">
@@ -769,6 +769,7 @@
                                         <th class="px-3 py-2 font-medium text-right text-amber-400" title="Average pullback from peak price (comparable to pullback_trigger)">Avg Pullback %</th>
                                         <th class="px-3 py-2 font-medium text-right text-cyan-400" title="Post-exit: avg best hypothetical P&L if trade stayed open 45min after close">Post Peak %</th>
                                         <th class="px-3 py-2 font-medium text-right text-orange-400" title="Post-exit: avg worst hypothetical P&L if trade stayed open 45min after close">Post Trough %</th>
+                                        <th class="px-3 py-2 font-medium text-right text-amber-300" title="May 17: Avg minimum P&L observed AFTER peak first crossed BE trigger (0.20%). For BE-floor counterfactual: if &lt; 0.10, BE 0.10 would have fired; if &lt; 0.05, current BE fired. NULL pre-instrumentation.">Post-Arm Min %</th>
                                         <th class="px-3 py-2 font-medium text-right">Total P&L</th>
                                         <th class="px-3 py-2 font-medium text-center">Avg Duration</th>
                                         <th class="px-3 py-2 font-medium text-center" title="Was the entry signal still active when trade closed?">Signal</th>
@@ -779,7 +780,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="close-reason-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="21" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                    <tr><td colspan="22" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1602,6 +1603,40 @@
                             </thead>
                             <tbody id="phantom-be-aggr-body" class="divide-y divide-white/5">
                                 <tr><td colspan="12" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- BE Floor Counterfactual (May 17) — observation-only -->
+                <div class="mt-6 pt-6 border-t border-amber-900/40">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 BE Floor Counterfactual: 0.05 vs 0.10 (observation-only)</h3>
+                    <p class="text-xs text-gray-500 mb-2">
+                        For each <strong>(close_reason × direction)</strong> bucket, compares current BE 0.20/<strong>0.05</strong> outcome vs hypothetical BE 0.20/<strong>0.10</strong>. Uses <code class="text-amber-300">post_arm_min_pnl_pct</code> (min P&L observed after peak first crossed 0.20% trigger).
+                        <br/><em class="text-amber-400"><strong>BE10 Fires</strong> = trades where post-arm-min &lt; 0.10. <strong>Cut Winners</strong> = BE10 fires AND actual close &gt; 0.10 (pre-empted a higher exit). <strong>Saved</strong> = BE10 fires AND actual close ≤ 0.10. Only populated post-May-17 deploy.</em>
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="be-floor-cf-pool">(no post-deploy trades yet)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Reason</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="Trades where peak ≥ +0.20% (BE armed)">Armed</th>
+                                    <th class="text-right px-2" title="Trades where post-arm-min &lt; 0.10 (BE 0.10 would fire)">BE10 Fires</th>
+                                    <th class="text-right px-2 text-red-400" title="BE10 fires AND actual close &gt; 0.10 (pre-empted a higher exit) — losses from raising floor">Cut Winners</th>
+                                    <th class="text-right px-2 text-emerald-400" title="BE10 fires AND actual close ≤ 0.10 (BE 0.10 caught at higher level than actual)">Saved</th>
+                                    <th class="text-right px-2" title="Actual Avg% across all trades in bucket">Actual %</th>
+                                    <th class="text-right px-2" title="Actual Total $ across all trades">Actual $</th>
+                                    <th class="text-right px-2" title="Hypothetical Avg% under BE 0.10">BE10 %</th>
+                                    <th class="text-right px-2" title="Hypothetical Total $ under BE 0.10">BE10 $</th>
+                                    <th class="text-right px-2" title="BE10 $ − Actual $ (net impact of raising floor)">Δ $</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="be-floor-cf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6015,6 +6050,25 @@
                 lines.push('');
             }
 
+            // BE Floor Counterfactual: 0.05 vs 0.10 (May 17, 2026)
+            const _bfcf1 = perf.be_floor_counterfactual || {};
+            if (_bfcf1.rows && _bfcf1.rows.length) {
+                const _s = _bfcf1.summary || {};
+                if ((_s.pool_n || 0) > 0) {
+                    lines.push(`\n${hr2}`);
+                    const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
+                    const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
+                    lines.push(`## BE Floor Counterfactual: 0.05 vs 0.10 (observation-only, post-May-17)`);
+                    lines.push(`Pool: ${_s.pool_n} trades · ${_s.pool_armed} armed · ${_s.pool_fires} BE10 fires (${_s.pool_cut_winners} cut winners, ${_s.pool_saved} saved) · Actual ${fmt$(_s.pool_actual_usd).trim()} → BE10 ${fmt$(_s.pool_cf_usd).trim()} · Δ ${fmt$(_s.pool_delta_usd).trim()}\n`);
+                    lines.push('Reason                Dir   N   Armed BE10  Cut  Saved  Actual%   Actual$    BE10%    BE10$       Δ$       Verdict');
+                    lines.push('-'.repeat(135));
+                    _bfcf1.rows.forEach(r => {
+                        lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)} ${String(r.be_new_fires).padStart(4)} ${String(r.cut_winners).padStart(4)} ${String(r.saved).padStart(5)}  ${fmt(r.actual_avg_pct)} ${fmt$(r.actual_total_usd)}  ${fmt(r.cf_avg_pct)} ${fmt$(r.cf_total_usd)} ${fmt$(r.delta_usd)}  ${r.verdict}`);
+                    });
+                    lines.push('');
+                }
+            }
+
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
             if (_esp1.rows && _esp1.rows.length) {
@@ -7296,6 +7350,25 @@
                     lines.push('');
                 }
 
+                // BE Floor Counterfactual: 0.05 vs 0.10 (May 17, 2026)
+                const _bfcf2 = perf.be_floor_counterfactual || {};
+                if (_bfcf2.rows && _bfcf2.rows.length) {
+                    const _s2 = _bfcf2.summary || {};
+                    if ((_s2.pool_n || 0) > 0) {
+                        lines.push(`\n${hr2}`);
+                        const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
+                        const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
+                        lines.push(`## BE Floor Counterfactual: 0.05 vs 0.10 (observation-only, post-May-17)`);
+                        lines.push(`Pool: ${_s2.pool_n} trades · ${_s2.pool_armed} armed · ${_s2.pool_fires} BE10 fires (${_s2.pool_cut_winners} cut winners, ${_s2.pool_saved} saved) · Actual ${fmt$(_s2.pool_actual_usd).trim()} → BE10 ${fmt$(_s2.pool_cf_usd).trim()} · Δ ${fmt$(_s2.pool_delta_usd).trim()}\n`);
+                        lines.push('Reason                Dir   N   Armed BE10  Cut  Saved  Actual%   Actual$    BE10%    BE10$       Δ$       Verdict');
+                        lines.push('-'.repeat(135));
+                        _bfcf2.rows.forEach(r => {
+                            lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)} ${String(r.be_new_fires).padStart(4)} ${String(r.cut_winners).padStart(4)} ${String(r.saved).padStart(5)}  ${fmt(r.actual_avg_pct)} ${fmt$(r.actual_total_usd)}  ${fmt(r.cf_avg_pct)} ${fmt$(r.cf_total_usd)} ${fmt$(r.delta_usd)}  ${r.verdict}`);
+                        });
+                        lines.push('');
+                    }
+                }
+
                 // EMA13 Strict-Mode Performance (May 8, 2026)
                 const _esp2 = perf.ema13_strict_performance || {};
                 if (_esp2.rows && _esp2.rows.length) {
@@ -8263,18 +8336,15 @@
                 
                 // Period Performance table
                 const ppBody = document.getElementById('period-performance-body');
-                // Projected Balance: current balance × Return_Multiple^days.
-                // Uses Return Multiple as the per-period multiplier so the
-                // projection stays stable when the bot is idle (DCR decays
-                // over runtime, RM doesn't).
+                // Projected Balance: current balance × (1 + DCR)^days
                 const _ppCurrentBal = balData ? (balData.total_portfolio || ((balData.usdt_balance || 0) + (balData.usdt_in_orders || 0))) : null;
-                const _ppRM = data.return_multiple || 1;
+                const _ppDCR = (data.daily_compound_return || 0) / 100; // convert % to decimal
                 const _ppDaysMap = {'Last 6h': 0.25, 'Last 12h': 0.5, '1 Day': 1, '2 Days': 2, '3 Days': 3, '5 Days': 5, '7 Days': 7, '15 Days': 15, '30 Days': 30, 'Total': null};
                 const _ppProjected = (period) => {
-                    if (!_ppCurrentBal || _ppRM === 1) return null;
+                    if (!_ppCurrentBal || _ppDCR === 0) return null;
                     const days = _ppDaysMap[period];
                     if (days == null) return _ppCurrentBal; // "Total" row shows current balance
-                    return _ppCurrentBal * Math.pow(_ppRM, days);
+                    return _ppCurrentBal * Math.pow(1 + _ppDCR, days);
                 };
                 if (data.period_performance && data.period_performance.length > 0) {
                     ppBody.innerHTML = data.period_performance.map(r => {
@@ -8560,6 +8630,9 @@
                         const postTroughVal = stats.avg_post_exit_trough_pnl;
                         const postPeakStr = postPeakVal != null ? `<span class="${safe(postPeakVal) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${safe(postPeakVal) >= 0 ? '+' : ''}${safe(postPeakVal).toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
                         const postTroughStr = postTroughVal != null ? `<span class="${safe(postTroughVal) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-medium">${safe(postTroughVal) >= 0 ? '+' : ''}${safe(postTroughVal).toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
+                        // May 17: post-arm minimum P&L (BE-floor counterfactual)
+                        const pamVal = stats.avg_post_arm_min_pct;
+                        const pamStr = pamVal != null ? `<span class="${safe(pamVal) >= 0 ? 'text-amber-300' : 'text-rose-400'} font-medium">${safe(pamVal) >= 0 ? '+' : ''}${safe(pamVal).toFixed(4)}%</span>` : '<span class="text-gray-600">-</span>';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 ${reasonClass}">${reason}</td>
@@ -8575,6 +8648,7 @@
                                 <td class="px-3 py-2 text-right text-amber-400 font-medium">${dropVal.toFixed(4)}%</td>
                                 <td class="px-3 py-2 text-right">${postPeakStr}</td>
                                 <td class="px-3 py-2 text-right">${postTroughStr}</td>
+                                <td class="px-3 py-2 text-right">${pamStr}</td>
                                 <td class="px-3 py-2 text-right ${safe(stats.total_pnl_usd) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${formatUSD(safe(stats.total_pnl_usd))}</td>
                                 <td class="px-3 py-2 text-center text-gray-400 text-xs">${stats.avg_duration || '-'}</td>
                                 <td class="px-3 py-2 text-center text-xs">${(stats.signal_active || 0) + (stats.signal_inactive || 0) > 0 ? `<span class="text-emerald-400">${stats.signal_active || 0}</span>/<span class="text-red-400">${stats.signal_inactive || 0}</span>` : '-'}</td>
@@ -8586,7 +8660,7 @@
                         `;
                     }).join('');
                 } else {
-                    reasonBody.innerHTML = '<tr><td colspan="21" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    reasonBody.innerHTML = '<tr><td colspan="22" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
 
                 // Entry Conditions by Close Reason
@@ -9092,6 +9166,62 @@
                                 <td class="px-2 py-1.5 ${tVCls}">${tVerdict}</td>
                             </tr>`;
                             _body.innerHTML = rowsHtml + totalRow;
+                        }
+                    }
+                }
+
+                // BE Floor Counterfactual: 0.05 vs 0.10 (May 17, 2026)
+                if (data.be_floor_counterfactual) {
+                    const _bfcf = data.be_floor_counterfactual;
+                    const _bfcfBody = document.getElementById('be-floor-cf-body');
+                    const _bfcfPool = document.getElementById('be-floor-cf-pool');
+                    const s = _bfcf.summary || {};
+                    if (_bfcfPool) {
+                        if ((s.pool_n || 0) > 0) {
+                            const fmt$ = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v || 0).toFixed(2);
+                            const ddCls = (s.pool_delta_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const actCls = (s.pool_actual_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const cfCls = (s.pool_cf_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            _bfcfPool.innerHTML = `Pool: <strong>${s.pool_n}</strong> trades · <strong>${s.pool_armed}</strong> armed · <strong>${s.pool_fires}</strong> BE10 fires (<strong class="text-red-400">${s.pool_cut_winners}</strong> cut winners · <strong class="text-emerald-400">${s.pool_saved}</strong> saved) · Actual <span class="${actCls} font-semibold">${fmt$(s.pool_actual_usd)}</span> → BE10 <span class="${cfCls} font-semibold">${fmt$(s.pool_cf_usd)}</span> · Δ <span class="${ddCls} font-semibold">${fmt$(s.pool_delta_usd)}</span>`;
+                        } else {
+                            _bfcfPool.textContent = '(no post-deploy trades yet)';
+                        }
+                    }
+                    if (_bfcfBody) {
+                        if (!_bfcf.rows || !_bfcf.rows.length) {
+                            _bfcfBody.innerHTML = '<tr><td colspan="13" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
+                        } else {
+                            const fmt = (v, d=3) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+                            const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                            _bfcfBody.innerHTML = _bfcf.rows.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const actCls = r.actual_total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const cfCls = r.cf_total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const dCls = r.delta_usd > 5 ? 'text-emerald-400 font-semibold'
+                                    : r.delta_usd < -5 ? 'text-red-400 font-semibold'
+                                    : 'text-gray-400';
+                                const vCls = r.verdict.startsWith('★') ? 'text-emerald-400 font-semibold'
+                                    : r.verdict.startsWith('⚠') ? 'text-red-400 font-semibold'
+                                    : r.verdict.startsWith('✓') ? 'text-blue-400'
+                                    : 'text-gray-500';
+                                const cutCls = r.cut_winners > 0 ? 'text-red-400 font-semibold' : 'text-gray-400';
+                                const savedCls = r.saved > 0 ? 'text-emerald-400 font-semibold' : 'text-gray-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1">${r.reason}</td>
+                                    <td class="px-2 py-1 ${dirCls}">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.count}</td>
+                                    <td class="px-2 py-1 text-right">${r.armed}</td>
+                                    <td class="px-2 py-1 text-right font-semibold">${r.be_new_fires}</td>
+                                    <td class="px-2 py-1 text-right ${cutCls}">${r.cut_winners}</td>
+                                    <td class="px-2 py-1 text-right ${savedCls}">${r.saved}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.actual_avg_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${actCls}">${fmt$(r.actual_total_usd)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.cf_avg_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${cfCls}">${fmt$(r.cf_total_usd)}</td>
+                                    <td class="px-2 py-1 text-right ${dCls}">${fmt$(r.delta_usd)}</td>
+                                    <td class="px-2 py-1 ${vCls}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
                         }
                     }
                 }

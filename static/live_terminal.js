@@ -14,7 +14,7 @@
 
   const MAX_FEED_ROWS = 200;
   const MAX_HEATMAP_BARS = 60;
-  const KATAKANA_CHARS = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ";
+  const KATAKANA_CHARS = "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎ0123456789";
   const KERNEL_BOOT_LINES = [
     "[0000.000] scalpars kernel v2.4.1-prod            [OK]",
     "[0000.012] initializing event subsystem           [OK]",
@@ -196,10 +196,11 @@
     if (evt.tag === 'HEARTBEAT') {
       if (evt.hb) {
         if (evt.hb.state) {
-          // Detect regime change for banner
+          // Detect regime change for banner + glitch (May 18)
           const newRegime = evt.hb.state.regime;
           if (state.lastSeenRegime && newRegime && newRegime !== state.lastSeenRegime) {
             showRegimeBanner(state.lastSeenRegime, newRegime);
+            triggerRegimeGlitch();
           }
           if (newRegime) state.lastSeenRegime = newRegime;
           state.botState = evt.hb.state;
@@ -229,6 +230,7 @@
           for (const sym of allSyms) {
             state.radarSymbolEvents.push({ ts: now, symbol: sym });
             pushTopScan(sym);
+            updatePairHeatmap(sym, 'SCAN');   // May 18: pair heatmap
           }
           const cutoff = now - 60000;
           while (state.radarSymbolEvents.length > 0 && state.radarSymbolEvents[0].ts < cutoff) {
@@ -237,6 +239,7 @@
         } else if (evt.symbol) {
           // Fallback: at least record the parsed primary symbol
           state.radarSymbolEvents.push({ ts: Date.now(), symbol: evt.symbol });
+          updatePairHeatmap(evt.symbol, 'SCAN');
         }
       }
     }
@@ -244,6 +247,14 @@
     // category by definition mentions the rejected pair).
     if (evt.category === 'REJECT' && evt.symbol) {
       state.radarRejectFlash.set(evt.symbol, Date.now() + 1000);
+      updatePairHeatmap(evt.symbol, 'REJECT');   // May 18: pair heatmap
+    }
+    // Heatmap state-overrides for WATCH/ENTRY on the primary symbol (May 18)
+    if (evt.category === 'WATCH' && evt.symbol) {
+      updatePairHeatmap(evt.symbol, 'WATCH');
+    }
+    if (evt.category === 'ENTRY' && evt.symbol) {
+      updatePairHeatmap(evt.symbol, 'ENTRY');
     }
     // Filter funnel parsing — only [BINANCE] and [SCAN] tags carry the relevant lines
     if (evt.tag === 'BINANCE' || evt.tag === 'SCAN') {
@@ -1152,13 +1163,199 @@
     elAlertBanner.classList.remove('visible');
   }
 
-  // ─── Katakana column ───────────────────────────────────────────────────
+  // ─── Katakana rain (Theater Pass v2, May 18) ──────────────────────────
+  // Four edge containers (left/left2/right/right2), each with 2-3 streams.
+  // CSS animates fall; JS mutates one glyph per stream every 200ms.
+  const _rainStreams = [];  // refs to all stream <div>s for mutation tick
+  function _randChar() {
+    return KATAKANA_CHARS[Math.floor(Math.random() * KATAKANA_CHARS.length)];
+  }
+  function buildRainColumn(containerId, streamCount) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    el.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (let s = 0; s < streamCount; s++) {
+      const len = 16 + Math.floor(Math.random() * 9);    // 16-24 glyphs
+      const dur = 3.5 + Math.random() * 4.5;             // 3.5-8s
+      const delay = Math.random() * 5;                   // 0-5s stagger
+      const stream = document.createElement('div');
+      stream.className = 'lt-rain-stream';
+      stream.style.animationDuration = dur.toFixed(2) + 's';
+      stream.style.animationDelay = '-' + delay.toFixed(2) + 's';
+      // Build glyphs — head bright, rest normal
+      const glyphs = [];
+      glyphs.push(`<span class="lt-rain-head">${_randChar()}</span>`);
+      for (let i = 1; i < len; i++) glyphs.push(`<span>${_randChar()}</span>`);
+      stream.innerHTML = glyphs.join('<br>');
+      frag.appendChild(stream);
+      _rainStreams.push(stream);
+    }
+    el.appendChild(frag);
+  }
   function buildKatakana() {
-    if (!elKatakana) return;
-    // Single vertical column of glyphs, looping animation
-    const chars = [];
-    for (let i = 0; i < 80; i++) chars.push(KATAKANA_CHARS[Math.floor(Math.random() * KATAKANA_CHARS.length)]);
-    elKatakana.innerHTML = `<div class="lt-kk-col">${chars.join('\n')}</div>`;
+    // Build 4 edge columns. ~2-3 streams per column → 10-12 total streams.
+    buildRainColumn('lt-rain-l1', 3);
+    buildRainColumn('lt-rain-l2', 2);
+    buildRainColumn('lt-rain-r1', 3);
+    buildRainColumn('lt-rain-r2', 2);
+    // Mutation tick: replace one random glyph in each stream every 200ms.
+    // Pure textContent swap on a <span> — no layout, no reflow.
+    if (window._ltRainTick) return;  // guard against double-init
+    window._ltRainTick = setInterval(() => {
+      for (const stream of _rainStreams) {
+        const spans = stream.children;  // HTMLCollection of <span>s
+        if (!spans || spans.length === 0) continue;
+        const idx = Math.floor(Math.random() * spans.length);
+        if (spans[idx]) spans[idx].textContent = _randChar();
+      }
+    }, 200);
+  }
+
+  // ─── Pair heatmap (Theater Pass v2, May 18) ───────────────────────────
+  // Populates organically from event stream — no pre-population.
+  // Score proxy: count of recent appearances (60s sliding window from
+  // state.radarSymbolEvents). Cells transition between states on each event.
+  const _pairCells = new Map();  // symbol -> { el, state, rejectUntil }
+  function _scoreForSymbol(sym) {
+    // Reuse radar's appearance buffer. Score = recent appearances / max.
+    const now = Date.now();
+    const cutoff = now - 60000;
+    let myCount = 0;
+    const counts = new Map();
+    for (const e of state.radarSymbolEvents) {
+      if (e.ts < cutoff) continue;
+      counts.set(e.symbol, (counts.get(e.symbol) || 0) + 1);
+      if (e.symbol === sym) myCount++;
+    }
+    let maxN = 0;
+    for (const v of counts.values()) if (v > maxN) maxN = v;
+    if (maxN === 0) return 0;
+    return Math.round((myCount / maxN) * 100);
+  }
+  function _ensurePairCell(sym) {
+    if (_pairCells.has(sym)) return _pairCells.get(sym);
+    const grid = document.getElementById('lt-pair-heatmap-grid');
+    if (!grid) return null;
+    const el = document.createElement('div');
+    el.className = 'lt-pair-cell';
+    el.dataset.symbol = sym;
+    // Tooltip handlers
+    el.addEventListener('mouseenter', _showPairTooltip);
+    el.addEventListener('mouseleave', _hidePairTooltip);
+    grid.appendChild(el);
+    const rec = { el, state: 'idle', rejectUntil: 0 };
+    _pairCells.set(sym, rec);
+    return rec;
+  }
+  function _classForScore(sc) {
+    if (sc >= 70) return 'lt-pc-high';
+    if (sc >= 50) return 'lt-pc-mid';
+    if (sc > 0)   return 'lt-pc-low';
+    return '';
+  }
+  function _applyCellClass(rec, extra) {
+    if (!rec || !rec.el) return;
+    const sym = rec.el.dataset.symbol;
+    const score = _scoreForSymbol(sym);
+    rec.el.dataset.score = String(score);
+    // Reject overrides score color for 3s
+    let base = 'lt-pair-cell';
+    const now = Date.now();
+    if (rec.rejectUntil && now < rec.rejectUntil) {
+      base += ' lt-pc-reject';
+    } else {
+      const sc = _classForScore(score);
+      if (sc) base += ' ' + sc;
+    }
+    if (extra) base += ' ' + extra;
+    rec.el.className = base;
+  }
+  function updatePairHeatmap(sym, evtType) {
+    if (!sym) return;
+    const rec = _ensurePairCell(sym);
+    if (!rec) return;
+    if (evtType === 'REJECT') {
+      rec.rejectUntil = Date.now() + 3000;
+      _applyCellClass(rec);
+      setTimeout(() => _applyCellClass(rec), 3100);
+    } else if (evtType === 'WATCH') {
+      _applyCellClass(rec, 'lt-pc-watch');
+    } else if (evtType === 'ENTRY') {
+      _applyCellClass(rec, 'lt-pc-flash');
+      setTimeout(() => _applyCellClass(rec), 1300);
+    } else {
+      // SCAN / generic — just refresh based on score
+      _applyCellClass(rec);
+    }
+  }
+  function _showPairTooltip(e) {
+    const tip = document.getElementById('lt-pair-heatmap-tooltip');
+    if (!tip) return;
+    const sym = e.target.dataset.symbol || '?';
+    const sc = e.target.dataset.score || '0';
+    tip.textContent = `${sym} · score ${sc}`;
+    const rect = e.target.getBoundingClientRect();
+    const panel = e.target.closest('.lt-pair-heatmap-panel').getBoundingClientRect();
+    tip.style.left = (rect.left - panel.left) + 'px';
+    tip.style.top  = (rect.top - panel.top - 18) + 'px';
+    tip.classList.add('lt-visible');
+  }
+  function _hidePairTooltip() {
+    const tip = document.getElementById('lt-pair-heatmap-tooltip');
+    if (tip) tip.classList.remove('lt-visible');
+  }
+
+  // ─── Ambient flickers (Theater Pass v2, May 18) ───────────────────────
+  // PURE THEATER. NOT real metrics. Random-walk values for visual life.
+  const _flickerState = { net: 99.9, cpu: 15, mem: 42, rtt: 28, pkt: 0, err: 0.01, que: 2, fps: 60 };
+  function _walk(v, range, min, max) {
+    v += (Math.random() - 0.5) * range;
+    if (v < min) v = min;
+    if (v > max) v = max;
+    return v;
+  }
+  function updateFlickers() {
+    _flickerState.net = _walk(_flickerState.net, 0.15, 99.5, 100.0);
+    _flickerState.cpu = _walk(_flickerState.cpu, 1.2, 12, 18);
+    _flickerState.mem = _walk(_flickerState.mem, 0.3, 41, 44);
+    _flickerState.rtt = _walk(_flickerState.rtt, 4, 22, 40);
+    _flickerState.pkt += 5 + Math.floor(Math.random() * 20);
+    _flickerState.err = Math.random() < 0.05 ? Math.random() * 0.05 : _walk(_flickerState.err, 0.005, 0.0, 0.02);
+    _flickerState.que = Math.max(0, Math.min(6, Math.round(_walk(_flickerState.que, 2.5, 0, 6))));
+    _flickerState.fps = Math.random() < 0.05 ? 58 + Math.floor(Math.random() * 2) : 60;
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    set('lt-fl-net', _flickerState.net.toFixed(1));
+    set('lt-fl-cpu', String(Math.round(_flickerState.cpu)));
+    set('lt-fl-mem', String(Math.round(_flickerState.mem)));
+    set('lt-fl-rtt', String(Math.round(_flickerState.rtt)));
+    set('lt-fl-pkt', String(_flickerState.pkt));
+    set('lt-fl-err', _flickerState.err.toFixed(2));
+    set('lt-fl-que', String(_flickerState.que));
+    set('lt-fl-fps', String(_flickerState.fps));
+  }
+
+  // ─── Regime glitch (Theater Pass v2, May 18) ──────────────────────────
+  // Triggered alongside the regime banner. 5s throttle.
+  let _lastGlitchAt = 0;
+  function triggerRegimeGlitch() {
+    const now = Date.now();
+    if (now - _lastGlitchAt < 5000) return;
+    _lastGlitchAt = now;
+    if (!elView) return;
+    elView.classList.remove('lt-glitching');
+    void elView.offsetWidth;  // force reflow so animation replays
+    elView.classList.add('lt-glitching');
+    const sc = document.getElementById('lt-glitch-scanline');
+    if (sc) {
+      sc.classList.remove('lt-glitch-active');
+      void sc.offsetWidth;
+      sc.classList.add('lt-glitch-active');
+    }
+    setTimeout(() => {
+      if (elView) elView.classList.remove('lt-glitching');
+      if (sc) sc.classList.remove('lt-glitch-active');
+    }, 150);
   }
 
   // ─── Boot sequence ─────────────────────────────────────────────────────
@@ -1246,6 +1443,11 @@
 
     if (elRadarSvg) buildRadar();
     buildKatakana();
+    // May 18: ambient flickers — pure-theater random-walk metrics, every 1200ms
+    if (!window._ltFlickerTick) {
+      updateFlickers();  // initial paint
+      window._ltFlickerTick = setInterval(updateFlickers, 1200);
+    }
     updateConstellation();
     updateLatencyBar();
     updatePositionsPanel();

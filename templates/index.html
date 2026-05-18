@@ -85,7 +85,7 @@
     </style>
     <!-- Live Terminal — phosphor-green observability view (UI-only, additive) -->
     <!-- Cache-bust query param: bump when CSS changes meaningfully -->
-    <link rel="stylesheet" href="/static/live_terminal.css?v=7">
+    <link rel="stylesheet" href="/static/live_terminal.css?v=9">
 </head>
 <body class="text-gray-100 font-sans">
     <!-- Toast Notification -->
@@ -5024,7 +5024,13 @@
     <div id="live-terminal-view" style="display:none">
         <div class="lt-scanlines"></div>
         <div class="lt-vignette"></div>
-        <div class="lt-katakana" id="lt-katakana"></div>
+        <!-- Katakana rain — 4 edge columns (Theater Pass v2, May 18) -->
+        <div class="lt-rain lt-rain-left lt-rain-l1" id="lt-rain-l1"></div>
+        <div class="lt-rain lt-rain-left lt-rain-l2" id="lt-rain-l2"></div>
+        <div class="lt-rain lt-rain-right lt-rain-r1" id="lt-rain-r1"></div>
+        <div class="lt-rain lt-rain-right lt-rain-r2" id="lt-rain-r2"></div>
+        <!-- Glitch scanline displacement (fires on regime change) -->
+        <div class="lt-glitch-scanline" id="lt-glitch-scanline"></div>
 
         <!-- Boot sequence (plays once per tab session) -->
         <div class="lt-boot" id="lt-boot">
@@ -5068,11 +5074,29 @@
                 </span>
             </div>
 
+            <!-- Ambient flickers — pure theater (May 18, Theater Pass v2) -->
+            <div class="lt-flickers" id="lt-flickers">
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">NET</span> <span class="lt-fl-val" id="lt-fl-net">100.0</span></span>
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">CPU</span> <span class="lt-fl-val" id="lt-fl-cpu">15</span></span>
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">MEM</span> <span class="lt-fl-val" id="lt-fl-mem">42</span></span>
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">RTT</span> <span class="lt-fl-val" id="lt-fl-rtt">28</span></span>
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">PKT</span> <span class="lt-fl-val" id="lt-fl-pkt">0</span></span>
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">ERR</span> <span class="lt-fl-val" id="lt-fl-err">0.00</span></span>
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">QUE</span> <span class="lt-fl-val" id="lt-fl-que">0</span></span>
+                <span class="lt-fl-cell"><span class="lt-fl-lbl">FPS</span> <span class="lt-fl-val" id="lt-fl-fps">60</span></span>
+            </div>
+
             <!-- Main grid -->
             <div class="lt-main">
                 <div class="lt-feed" id="lt-feed">
                     <!-- Right-edge activity pulse (peripheral motion indicator) -->
                     <div class="lt-feed-pulse" id="lt-feed-pulse"></div>
+                </div>
+                <!-- Pair heatmap — populates organically from event stream (May 18) -->
+                <div class="lt-pair-heatmap-panel">
+                    <h4 class="lt-pair-heatmap-label">PAIR HEATMAP</h4>
+                    <div class="lt-pair-heatmap-grid" id="lt-pair-heatmap-grid"></div>
+                    <div class="lt-pair-heatmap-tooltip" id="lt-pair-heatmap-tooltip"></div>
                 </div>
                 <div class="lt-col-radar">
                     <div class="lt-radar">
@@ -13913,6 +13937,6 @@
     </script>
 
     <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->
-    <script src="/static/live_terminal.js?v=8"></script>
+    <script src="/static/live_terminal.js?v=9"></script>
 </body>
 </html>

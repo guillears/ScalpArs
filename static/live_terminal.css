@@ -76,32 +76,49 @@ body.lt-mode header.glass + .glass * {
   background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.6) 100%);
 }
 
-/* Katakana column on the far-left edge */
-#live-terminal-view .lt-katakana {
+/* ─── Katakana rain (Theater Pass v2, May 18) ──────────────────────────
+   Four edge columns (2 left, 2 right) with multiple staggered streams. */
+#live-terminal-view .lt-rain {
   position: absolute;
-  top: 0; left: 0;
-  width: 14px;
+  top: 0;
+  width: 28px;
   height: 100%;
   overflow: hidden;
   pointer-events: none;
-  z-index: 6;
-  opacity: 0.08;
+  z-index: 2;                  /* behind feed/panels (z=3+), above scanlines/vignette */
+  opacity: 0.55;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 11px;
-  line-height: 14px;
-  letter-spacing: 0;
-  color: var(--lt-fg-bright);
+  line-height: 13px;
   white-space: pre;
 }
-#live-terminal-view .lt-katakana .lt-kk-col {
+#live-terminal-view .lt-rain-left.lt-rain-l1  { left: 0; }
+#live-terminal-view .lt-rain-left.lt-rain-l2  { left: 30px; }
+#live-terminal-view .lt-rain-right.lt-rain-r1 { right: 0; }
+#live-terminal-view .lt-rain-right.lt-rain-r2 { right: 30px; }
+
+#live-terminal-view .lt-rain-stream {
   position: absolute;
-  top: -100%;
+  top: 0;
+  left: 0;
   width: 100%;
   text-align: center;
-  animation: lt-kk-drop 18s linear infinite;
+  color: #22c55e;
+  /* PERF FALLBACK: if paint pressure on weak hardware shows up, remove this
+     text-shadow rule (keep glow only on .lt-rain-head). One-line change. */
+  text-shadow: 0 0 4px #22c55e;
+  will-change: transform;
+  animation-name: lt-rain-drop;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
 }
-@keyframes lt-kk-drop {
-  0% { transform: translateY(0); }
-  100% { transform: translateY(200%); }
+#live-terminal-view .lt-rain-stream .lt-rain-head {
+  color: #dcfce7;
+  text-shadow: 0 0 6px #22c55e, 0 0 12px #22c55e;
+}
+@keyframes lt-rain-drop {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(120vh); }
 }
 
 /* Phosphor glow utility */
@@ -233,10 +250,10 @@ body.lt-mode header.glass + .glass * {
   transition: width 0.5s ease-out;
 }
 
-/* Main grid: feed | radar | side. Flex-grow so it fills available height. */
+/* Main grid: feed | pair-heatmap | radar | side. Flex-grow fills height. */
 #live-terminal-view .lt-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px 230px;
+  grid-template-columns: minmax(0, 1fr) 200px 220px 230px;
   gap: 12px;
   flex: 1 1 auto;
   min-height: 0;     /* required for inner overflow:auto on the feed */
@@ -244,7 +261,7 @@ body.lt-mode header.glass + .glass * {
 @media (max-width: 1100px) {
   #live-terminal-view .lt-main {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto auto;
+    grid-template-rows: 1fr auto auto auto;
   }
 }
 
@@ -871,4 +888,145 @@ body.lt-mode header.glass + .glass * {
 @keyframes lt-equity-dot-pulse {
   0%, 100% { r: 1.5; opacity: 0.5; }
   50%      { r: 2.5; opacity: 1; }
+}
+
+/* ─── Pair Heatmap (Theater Pass v2, May 18) ──────────────────────────── */
+#live-terminal-view .lt-pair-heatmap-panel {
+  position: relative;
+  border: 1px solid var(--lt-border);
+  background: #060906;
+  padding: 6px 6px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#live-terminal-view .lt-pair-heatmap-label {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  color: var(--lt-label);
+  text-transform: uppercase;
+  margin: 0 0 6px 2px;
+  flex: 0 0 auto;
+}
+#live-terminal-view .lt-pair-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  flex: 1 1 auto;
+  align-content: start;
+  overflow-y: auto;
+  min-height: 0;
+}
+#live-terminal-view .lt-pair-heatmap-grid::-webkit-scrollbar { width: 4px; }
+#live-terminal-view .lt-pair-heatmap-grid::-webkit-scrollbar-thumb {
+  background: rgba(34, 197, 94, 0.2);
+}
+#live-terminal-view .lt-pair-cell {
+  aspect-ratio: 1 / 1;
+  background: #0f1f0f;
+  border-radius: 1px;
+  transition: background 0.5s, box-shadow 0.5s;
+  cursor: default;
+}
+#live-terminal-view .lt-pair-cell.lt-pc-low { background: #1a2818; }
+#live-terminal-view .lt-pair-cell.lt-pc-mid { background: #2d5a2d; }
+#live-terminal-view .lt-pair-cell.lt-pc-high {
+  background: #22c55e;
+  box-shadow: 0 0 4px #22c55e;
+}
+#live-terminal-view .lt-pair-cell.lt-pc-watch {
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+  animation: lt-pc-pulse 1.5s ease-in-out infinite;
+}
+#live-terminal-view .lt-pair-cell.lt-pc-reject {
+  background: #5a1818;
+  box-shadow: none;
+}
+#live-terminal-view .lt-pair-cell.lt-pc-flash {
+  animation: lt-pc-flash 1.2s ease-out;
+}
+@keyframes lt-pc-pulse {
+  0%, 100% { box-shadow: 0 0 4px #4ade80; }
+  50%      { box-shadow: 0 0 14px #4ade80; }
+}
+@keyframes lt-pc-flash {
+  0%   { background: #ffffff; box-shadow: 0 0 20px #ffffff; }
+  20%  { background: #d1fadf; box-shadow: 0 0 16px #ffffff; }
+  100% { background: #22c55e; box-shadow: 0 0 4px #22c55e; }
+}
+#live-terminal-view .lt-pair-heatmap-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid var(--lt-border);
+  color: var(--lt-fg-bright);
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+  z-index: 12;
+}
+#live-terminal-view .lt-pair-heatmap-tooltip.lt-visible { opacity: 1; }
+
+/* ─── Ambient Flickers (Theater Pass v2, May 18) ──────────────────────── */
+#live-terminal-view .lt-flickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 14px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 9.5px;
+  line-height: 14px;
+  padding: 2px 4px;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.08);
+  margin-bottom: 4px;
+}
+#live-terminal-view .lt-flickers .lt-fl-cell { display: inline-flex; gap: 4px; align-items: baseline; }
+#live-terminal-view .lt-flickers .lt-fl-lbl { color: #94a3b8; }
+#live-terminal-view .lt-flickers .lt-fl-val {
+  color: #22c55e;
+  text-shadow: 0 0 3px rgba(34,197,94,0.4);
+}
+
+/* ─── Regime change glitch (Theater Pass v2, May 18) ──────────────────── */
+@keyframes lt-regime-glitch {
+  0%   { transform: none; filter: none; }
+  20%  { transform: translate(-3px, 0); }
+  40%  { transform: translate(3px, 1px); filter: hue-rotate(15deg); }
+  60%  { transform: translate(-1px, -1px); filter: hue-rotate(-15deg); }
+  80%  { transform: translate(2px, 0); }
+  100% { transform: none; filter: none; }
+}
+#live-terminal-view.lt-glitching {
+  animation: lt-regime-glitch 100ms steps(5, end);
+}
+#live-terminal-view.lt-glitching .lt-glow,
+#live-terminal-view.lt-glitching .lt-feed-row,
+#live-terminal-view.lt-glitching .lt-fl-val {
+  text-shadow: -3px 0 #ff0040, 3px 0 #00ffff, 0 0 6px rgba(34,197,94,0.6) !important;
+}
+#live-terminal-view .lt-glitch-scanline {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0;
+  background: linear-gradient(180deg,
+    transparent 48%,
+    rgba(34,197,94,0.4) 50%,
+    transparent 52%);
+  transform: translateY(0);
+}
+#live-terminal-view .lt-glitch-scanline.lt-glitch-active {
+  animation: lt-glitch-scanline-anim 100ms linear;
+}
+@keyframes lt-glitch-scanline-anim {
+  0%   { opacity: 0; transform: translateY(-30%); }
+  40%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(30%); }
 }

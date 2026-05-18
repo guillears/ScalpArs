@@ -6417,6 +6417,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # BE Floor Counterfactual (May 17): per close_reason × direction, compares
         # current BE 0.20/0.05 outcome vs hypothetical BE 0.20/0.10 outcome using
         # the post_arm_min_pnl_pct column. Reveals BE-pre-empts-trailing risk.
+        "post_arm_min_distribution": _compute_post_arm_min_distribution(orders),
         "be_floor_counterfactual": _compute_be_floor_counterfactual(orders, new_floor=0.10),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
@@ -7387,6 +7388,105 @@ def _compute_phantom_be_aggr_by_close_reason(orders):
             'actual_dollar_total': round(pool_actual_total, 2),
             'be_dollar_total': round(pool_be_total, 2),
             'total_dollar_delta': round(total_dollar_delta, 2),
+        },
+    }
+
+
+def _compute_post_arm_min_distribution(orders, trigger=0.20, current_floor=0.05, new_floor=0.10):
+    """Post-arm-min distribution by (close_reason × direction) — May 18.
+
+    Sister of _compute_be_floor_counterfactual: same row structure, different
+    columns. This table exposes WHERE post_arm_min falls (distribution buckets)
+    rather than the $ impact of shifting the floor.
+
+    Each row reports, for trades grouped by (close_reason × direction):
+      - count: total trades in this bucket within the filter window
+      - armed: # where peak >= trigger (eligible for post-arm tracking)
+      - lt_be5: armed trades with post_arm_min < current_floor (BE 0.05 fired)
+      - be5_be10: 0.05 <= post_arm_min < 0.10 (BE 0.10 fires, BE 0.05 doesn't) ★
+      - be10_trigger: 0.10 <= post_arm_min < trigger (neither fires)
+      - ge_trigger: post_arm_min >= trigger (barely retraced)
+      - avg_peak_pct / avg_min_pct / avg_close_pct: aggregates over armed set
+      - pattern: auto-text label (only set when armed >= 5)
+    """
+    by_key = {}
+    for o in orders:
+        if getattr(o, 'status', None) != 'CLOSED':
+            continue
+        reason = (o.close_reason or 'UNKNOWN')
+        direction = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or 'LONG'
+        by_key.setdefault((reason, direction), []).append(o)
+
+    rows = []
+    for (reason, direction), group in by_key.items():
+        count = len(group)
+        armed_list = [o for o in group if getattr(o, 'post_arm_min_pnl_pct', None) is not None]
+        armed = len(armed_list)
+        if armed == 0:
+            rows.append({
+                'reason': reason, 'direction': direction,
+                'count': count, 'armed': 0,
+                'lt_be5': 0, 'be5_be10': 0, 'be10_trigger': 0, 'ge_trigger': 0,
+                'avg_peak_pct': None, 'avg_min_pct': None, 'avg_close_pct': None,
+                'pattern': '',
+            })
+            continue
+        # Distribution buckets
+        lt_be5 = sum(1 for o in armed_list if o.post_arm_min_pnl_pct < current_floor)
+        be5_be10 = sum(1 for o in armed_list if current_floor <= o.post_arm_min_pnl_pct < new_floor)
+        be10_trigger = sum(1 for o in armed_list if new_floor <= o.post_arm_min_pnl_pct < trigger)
+        ge_trigger = sum(1 for o in armed_list if o.post_arm_min_pnl_pct >= trigger)
+        # Aggregates over the armed set
+        avg_peak = sum((o.peak_pnl or 0) for o in armed_list) / armed
+        avg_min = sum(o.post_arm_min_pnl_pct for o in armed_list) / armed
+        avg_close = sum((o.pnl_percentage or 0) for o in armed_list) / armed
+        # Pattern auto-label (only when armed >= 5 to avoid noise)
+        pattern = ''
+        if armed >= 5:
+            pct_lt_be5 = lt_be5 / armed
+            pct_be5_be10 = be5_be10 / armed
+            pct_safe = (be10_trigger + ge_trigger) / armed
+            if pct_lt_be5 >= 0.60:
+                pattern = '🔴 Most dipped past BE5'
+            elif pct_be5_be10 >= 0.30:
+                pattern = '🟡 BE10 would catch many'
+            elif pct_safe >= 0.70:
+                pattern = '✓ Mostly safe'
+            else:
+                pattern = 'Mixed'
+        rows.append({
+            'reason': reason, 'direction': direction,
+            'count': count, 'armed': armed,
+            'lt_be5': lt_be5, 'be5_be10': be5_be10,
+            'be10_trigger': be10_trigger, 'ge_trigger': ge_trigger,
+            'avg_peak_pct': round(avg_peak, 4),
+            'avg_min_pct': round(avg_min, 4),
+            'avg_close_pct': round(avg_close, 4),
+            'pattern': pattern,
+        })
+    # Sort matches Phantom BE / BE Floor CF
+    rows.sort(key=lambda r: (r['direction'], r['reason']))
+    # Pool summary (TOTAL ALL)
+    total_count = sum(r['count'] for r in rows)
+    total_armed = sum(r['armed'] for r in rows)
+    total_lt_be5 = sum(r['lt_be5'] for r in rows)
+    total_be5_be10 = sum(r['be5_be10'] for r in rows)
+    total_be10_trigger = sum(r['be10_trigger'] for r in rows)
+    total_ge_trigger = sum(r['ge_trigger'] for r in rows)
+    return {
+        'rows': rows,
+        'summary': {
+            'total_count': total_count,
+            'total_armed': total_armed,
+            'total_lt_be5': total_lt_be5,
+            'total_be5_be10': total_be5_be10,
+            'total_be10_trigger': total_be10_trigger,
+            'total_ge_trigger': total_ge_trigger,
+        },
+        'config': {
+            'trigger': trigger,
+            'current_floor': current_floor,
+            'new_floor': new_floor,
         },
     }
 

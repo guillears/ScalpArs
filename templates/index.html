@@ -1614,6 +1614,39 @@
                     </div>
                 </div>
 
+                <!-- Post-Arm Min Distribution (May 18) — observation-only, sister of BE Floor CF -->
+                <div class="mt-6 pt-6 border-t border-amber-900/40">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">📊 Post-Arm Min Distribution (observation-only)</h3>
+                    <p class="text-xs text-gray-500 mb-2">
+                        For each <strong>(close_reason × direction)</strong> bucket, shows the DISTRIBUTION of <code class="text-amber-300">post_arm_min_pnl_pct</code> across 4 bands. <strong>Armed</strong> = trades where peak crossed 0.20% trigger. Distribution columns sum to Armed (NOT N).
+                        <br/><em class="text-amber-400">Reads alongside BE Floor CF below: this table answers "where does the metric fall?"; BE Floor CF answers "what's the $ impact if we shift the floor?"</em>
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="post-arm-dist-pool">(no post-deploy trades yet)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left px-2 py-1">Close Reason</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2" title="Total CLOSED trades in this bucket within the filter window">N</th>
+                                    <th class="text-right px-2" title="Subset of N where peak ≥ 0.20%. Distribution columns sum to this.">Armed</th>
+                                    <th class="text-right px-2 text-red-400" title="post_arm_min < 0.05% — current BE 0.05 fired">&lt;0.05</th>
+                                    <th class="text-right px-2 text-amber-400" title="0.05 ≤ post_arm_min < 0.10% — BE 0.10 would fire, BE 0.05 doesn't (the critical zone)">0.05–0.10</th>
+                                    <th class="text-right px-2 text-gray-300" title="0.10 ≤ post_arm_min < 0.20% — neither floor fires">0.10–0.20</th>
+                                    <th class="text-right px-2 text-emerald-400" title="post_arm_min ≥ 0.20% — barely retraced after arming">≥0.20</th>
+                                    <th class="text-right px-2" title="Avg peak P&L % of armed trades">Avg Peak%</th>
+                                    <th class="text-right px-2" title="Avg post-arm-min of armed trades (sanity check)">Avg Min%</th>
+                                    <th class="text-right px-2" title="Avg actual close % of armed trades (cut-winner check)">Avg Close%</th>
+                                    <th class="text-left px-2" title="Auto-label fires only when Armed ≥ 5">Pattern</th>
+                                </tr>
+                            </thead>
+                            <tbody id="post-arm-dist-body" class="divide-y divide-white/5">
+                                <tr><td colspan="12" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- BE Floor Counterfactual (May 17) — observation-only -->
                 <div class="mt-6 pt-6 border-t border-amber-900/40">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 BE Floor Counterfactual: 0.05 vs 0.10 (observation-only)</h3>
@@ -6075,6 +6108,24 @@
                 lines.push('');
             }
 
+            // Post-Arm Min Distribution (May 18, 2026)
+            const _pad1 = perf.post_arm_min_distribution || {};
+            if (_pad1.rows && _pad1.rows.length) {
+                const _ps = _pad1.summary || {};
+                if ((_ps.total_armed || 0) > 0) {
+                    lines.push(`\n${hr2}`);
+                    const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
+                    lines.push(`## Post-Arm Min Distribution (observation-only, post-May-17)`);
+                    lines.push(`Pool: ${_ps.total_count} trades · ${_ps.total_armed} armed · Distribution: ${_ps.total_lt_be5} <0.05 · ${_ps.total_be5_be10} 0.05–0.10 · ${_ps.total_be10_trigger} 0.10–0.20 · ${_ps.total_ge_trigger} ≥0.20\n`);
+                    lines.push('Reason                Dir   N   Armed <0.05 0.05-10 0.10-20  ≥0.20  AvgPeak%   AvgMin%  AvgClose%  Pattern');
+                    lines.push('-'.repeat(125));
+                    _pad1.rows.forEach(r => {
+                        lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)} ${String(r.lt_be5).padStart(5)} ${String(r.be5_be10).padStart(7)} ${String(r.be10_trigger).padStart(7)} ${String(r.ge_trigger).padStart(6)}  ${fmt(r.avg_peak_pct)}  ${fmt(r.avg_min_pct)}  ${fmt(r.avg_close_pct)}  ${r.pattern || '-'}`);
+                    });
+                    lines.push('');
+                }
+            }
+
             // BE Floor Counterfactual: 0.05 vs 0.10 (May 17, 2026)
             const _bfcf1 = perf.be_floor_counterfactual || {};
             if (_bfcf1.rows && _bfcf1.rows.length) {
@@ -7385,6 +7436,24 @@
                         lines.push(`${r.close_reason.padEnd(24)} ${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)}  ${String(r.fired).padStart(5)}  ${fmt(r.avg_actual_pct)}  ${fmt(r.avg_phantom_pct)}  ${fmt(r.delta_pct)}  ${fmt$(r.actual_dollar_total)}  ${fmt$(r.be_dollar_total)}  ${fmt$(r.dollar_delta)}  ${r.verdict}`);
                     });
                     lines.push('');
+                }
+
+                // Post-Arm Min Distribution (May 18, 2026)
+                const _pad2 = perf.post_arm_min_distribution || {};
+                if (_pad2.rows && _pad2.rows.length) {
+                    const _ps2 = _pad2.summary || {};
+                    if ((_ps2.total_armed || 0) > 0) {
+                        lines.push(`\n${hr2}`);
+                        const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
+                        lines.push(`## Post-Arm Min Distribution (observation-only, post-May-17)`);
+                        lines.push(`Pool: ${_ps2.total_count} trades · ${_ps2.total_armed} armed · Distribution: ${_ps2.total_lt_be5} <0.05 · ${_ps2.total_be5_be10} 0.05–0.10 · ${_ps2.total_be10_trigger} 0.10–0.20 · ${_ps2.total_ge_trigger} ≥0.20\n`);
+                        lines.push('Reason                Dir   N   Armed <0.05 0.05-10 0.10-20  ≥0.20  AvgPeak%   AvgMin%  AvgClose%  Pattern');
+                        lines.push('-'.repeat(125));
+                        _pad2.rows.forEach(r => {
+                            lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)} ${String(r.lt_be5).padStart(5)} ${String(r.be5_be10).padStart(7)} ${String(r.be10_trigger).padStart(7)} ${String(r.ge_trigger).padStart(6)}  ${fmt(r.avg_peak_pct)}  ${fmt(r.avg_min_pct)}  ${fmt(r.avg_close_pct)}  ${r.pattern || '-'}`);
+                        });
+                        lines.push('');
+                    }
                 }
 
                 // BE Floor Counterfactual: 0.05 vs 0.10 (May 17, 2026)
@@ -9264,6 +9333,106 @@
                                 <td class="px-2 py-1.5 ${tVCls}">${tVerdict}</td>
                             </tr>`;
                             _body.innerHTML = rowsHtml + totalRow;
+                        }
+                    }
+                }
+
+                // Post-Arm Min Distribution (May 18, 2026)
+                if (data.post_arm_min_distribution) {
+                    const _pad = data.post_arm_min_distribution;
+                    const _padBody = document.getElementById('post-arm-dist-body');
+                    const _padPool = document.getElementById('post-arm-dist-pool');
+                    const _padS = _pad.summary || {};
+                    if (_padPool) {
+                        if ((_padS.total_armed || 0) > 0) {
+                            _padPool.innerHTML = `Pool: <strong>${_padS.total_count}</strong> trades · <strong>${_padS.total_armed}</strong> armed · Distribution: <strong class="text-red-400">${_padS.total_lt_be5}</strong> &lt;0.05 · <strong class="text-amber-400">${_padS.total_be5_be10}</strong> 0.05–0.10 · <strong class="text-gray-300">${_padS.total_be10_trigger}</strong> 0.10–0.20 · <strong class="text-emerald-400">${_padS.total_ge_trigger}</strong> ≥0.20`;
+                        } else {
+                            _padPool.textContent = '(no post-deploy trades yet)';
+                        }
+                    }
+                    if (_padBody) {
+                        if (!_pad.rows || !_pad.rows.length) {
+                            _padBody.innerHTML = '<tr><td colspan="12" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
+                        } else {
+                            const fmt = (v, d=3) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+                            // Dim low-N rows (Armed < 5) so they don't visually dominate.
+                            const _padRowHtml = _pad.rows.map(r => {
+                                const dim = r.armed < 5 ? ' opacity-50' : '';
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const lt5Cls = r.lt_be5 > 0 ? 'text-red-400 font-semibold' : 'text-gray-500';
+                                const be5_10Cls = r.be5_be10 > 0 ? 'text-amber-400 font-semibold' : 'text-gray-500';
+                                const be10tCls = r.be10_trigger > 0 ? 'text-gray-300' : 'text-gray-500';
+                                const ge20Cls = r.ge_trigger > 0 ? 'text-emerald-400' : 'text-gray-500';
+                                const closeCls = r.avg_close_pct == null ? 'text-gray-500' : (r.avg_close_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
+                                const pCls = r.pattern.startsWith('🔴') ? 'text-red-400 font-semibold'
+                                    : r.pattern.startsWith('🟡') ? 'text-amber-400 font-semibold'
+                                    : r.pattern.startsWith('✓') ? 'text-emerald-400'
+                                    : 'text-gray-500';
+                                return `<tr class="hover:bg-white/5${dim}">
+                                    <td class="px-2 py-1">${r.reason}</td>
+                                    <td class="px-2 py-1 ${dirCls}">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.count}</td>
+                                    <td class="px-2 py-1 text-right font-semibold">${r.armed}</td>
+                                    <td class="px-2 py-1 text-right ${lt5Cls}">${r.lt_be5}</td>
+                                    <td class="px-2 py-1 text-right ${be5_10Cls}">${r.be5_be10}</td>
+                                    <td class="px-2 py-1 text-right ${be10tCls}">${r.be10_trigger}</td>
+                                    <td class="px-2 py-1 text-right ${ge20Cls}">${r.ge_trigger}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.avg_peak_pct)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.avg_min_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${closeCls}">${fmt(r.avg_close_pct)}</td>
+                                    <td class="px-2 py-1 ${pCls}">${r.pattern || '-'}</td>
+                                </tr>`;
+                            }).join('');
+                            // TOTAL rows
+                            const _padAgg = (dir) => {
+                                const rs = (dir === 'BOTH') ? _pad.rows : _pad.rows.filter(r => r.direction === dir);
+                                if (!rs.length) return null;
+                                const sum = (k) => rs.reduce((a, r) => a + (r[k] || 0), 0);
+                                const armed = sum('armed');
+                                const wAvg = (k) => {
+                                    let s = 0, n = 0;
+                                    for (const r of rs) {
+                                        if (r[k] != null && r.armed) { s += r[k] * r.armed; n += r.armed; }
+                                    }
+                                    return n > 0 ? s / n : null;
+                                };
+                                return {
+                                    direction: dir,
+                                    count: sum('count'), armed,
+                                    lt_be5: sum('lt_be5'), be5_be10: sum('be5_be10'),
+                                    be10_trigger: sum('be10_trigger'), ge_trigger: sum('ge_trigger'),
+                                    avg_peak_pct: wAvg('avg_peak_pct'),
+                                    avg_min_pct: wAvg('avg_min_pct'),
+                                    avg_close_pct: wAvg('avg_close_pct'),
+                                };
+                            };
+                            const _padTotalRow = (t, label) => {
+                                if (!t) return '';
+                                const dirCls = t.direction === 'LONG' ? 'text-emerald-400 font-bold'
+                                    : t.direction === 'SHORT' ? 'text-red-400 font-bold'
+                                    : 'text-amber-300 font-bold';
+                                const closeCls = t.avg_close_pct == null ? 'text-gray-500' : (t.avg_close_pct >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold');
+                                const fmtT = (v, d=3) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+                                return `<tr class="border-t border-amber-700/40 bg-amber-900/10">
+                                    <td class="px-2 py-1 font-bold text-amber-300">${label}</td>
+                                    <td class="px-2 py-1 ${dirCls}">${t.direction}</td>
+                                    <td class="px-2 py-1 text-right font-bold">${t.count}</td>
+                                    <td class="px-2 py-1 text-right font-bold">${t.armed}</td>
+                                    <td class="px-2 py-1 text-right text-red-400 font-bold">${t.lt_be5}</td>
+                                    <td class="px-2 py-1 text-right text-amber-400 font-bold">${t.be5_be10}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300 font-bold">${t.be10_trigger}</td>
+                                    <td class="px-2 py-1 text-right text-emerald-400 font-bold">${t.ge_trigger}</td>
+                                    <td class="px-2 py-1 text-right text-gray-200 font-bold">${fmtT(t.avg_peak_pct)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-200 font-bold">${fmtT(t.avg_min_pct)}</td>
+                                    <td class="px-2 py-1 text-right ${closeCls}">${fmtT(t.avg_close_pct)}</td>
+                                    <td class="px-2 py-1 text-gray-500">-</td>
+                                </tr>`;
+                            };
+                            const _padL = _padAgg('LONG'), _padShort = _padAgg('SHORT'), _padB = _padAgg('BOTH');
+                            _padBody.innerHTML = _padRowHtml +
+                                _padTotalRow(_padL, 'TOTAL LONG') +
+                                _padTotalRow(_padShort, 'TOTAL SHORT') +
+                                _padTotalRow(_padB, 'TOTAL ALL');
                         }
                     }
                 }

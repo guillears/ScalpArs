@@ -11155,10 +11155,11 @@ locked watchlist + gate scattered across the entries above. At checkpoint
 time, apply gates mechanically — do NOT re-litigate criteria. If a gate
 needs revision, do that BEFORE seeing the fresh data, not after.
 
-Counts: **35 items** across 9 tiers (Tier 0 added May 18 PM for active A/B
-test reverts). Mandatory work at checkpoint = Tier 0 (2 items, HIGHEST
-priority) + Tiers 1-2 (9 items) + multiplier verdict table (Tier 3, 8
-cells automated). Everything else is conditional or background.
+Counts: **36 items** across 9 tiers (Tier 0 added May 18 PM for active A/B
+test reverts; WL-X added May 18 PM for two-window pattern observation).
+Mandatory work at checkpoint = Tier 0 (2 items, HIGHEST priority) +
+Tiers 1-2 (9 items) + multiplier verdict table (Tier 3, 8 cells
+automated). Everything else is conditional or background.
 
 ---
 
@@ -11364,6 +11365,60 @@ Proposed: `btc_gap_floor_short: -0.10` (block SHORTs when BTC gap > -0.10%).
 - C: strongest structural backing (S-P1 inheritance), zero prerequisite work
 - A: high-value cell but needs new dim scaffolding
 - B: weakest structural (pure 1-sample), needs new dim too
+
+#### 21b. WL-X — Extreme RngPos at regime inflection (observation-only, NEW May 18 PM)
+Reference: CLAUDE.md May 18 PM "Two-window analysis" (15L+87S + follow-up batch).
+
+This is the dominant loss driver in 8 of 8 losing trades observed in
+the May 18 19:58 batch's two failure windows (4 LONG + 4 SHORT). The
+pattern was NOT captured by any of the existing 35 items.
+
+**Pattern X-LONG:** RngPos ≥85% AND Pair EMA13-EMA50 Gap ≥+0.15%
+- Window B losers in this batch: 4 of 4 LONG losses matched
+- Window B winners: 3 of 4 also matched (so signal not yet clean) — winner-vs-loser separator: ADXΔ + EMA gap magnitude
+- All 4 losers closed via EMA13_CROSS_EXIT with peak <+0.20% (failed to arm BE)
+
+**Pattern X-SHORT:** RngPos ≤10% AND ADX Δ ≥1.0
+- Window A losers: 4 of 4 SHORT losses matched
+- Window A winners: 0 — no SHORT winners in this batch entered that zone
+- All 4 closed STOP_LOSS_WIDE with peak = 0.00% (Never Positive)
+
+**Promotion gates at next ≥100-trade checkpoint (locked NOW):**
+
+LONG side:
+- N ≥ 12 LONGs in RngPos ≥85 × PairTGap ≥+0.15% cell across fresh data
+- WR ≤ 35%
+- ≥ 60% of cell losses close via EMA13_CROSS_EXIT with peak <+0.20%
+- Adjacent cell (RngPos 70-85 × PairTGap ≥+0.15%) maintains WR ≥ 55% — confirms RngPos is the discriminator, not pair extension alone
+
+SHORT side:
+- N ≥ 12 SHORTs in RngPos ≤10 × ADXΔ ≥1.0 cell across fresh data
+- WR ≤ 30%
+- ≥ 70% of cell losses are Never Positive (peak = 0.00%)
+- Adjacent cell (RngPos 10-25 × ADXΔ ≥1.0) maintains WR ≥ 50%
+
+**If both sides promote:** ship as a SYMMETRIC filter
+`extreme_rngpos_inflection_filter`:
+- block LONG when `range_position ≥ 85 AND pair_ema13_ema50_gap ≥ 0.15`
+- block SHORT when `range_position ≤ 10 AND adx_delta ≥ 1.0`
+
+**If only one side promotes:** ship that side only. Asymmetric is fine
+per CLAUDE.md philosophy.
+
+**If neither side promotes:** the May 18 PM pattern was regime-specific
+chop noise. Drop from watchlist.
+
+**Mechanism prerequisite:** new config fields (~30 LOC). Both `range_position`
+and `pair_ema13_ema50_gap` are already captured at entry. ADX Δ already
+filterable. So the new filter is purely a 2D AND-rule over existing dims.
+
+**Implementation order:** ship X-LONG and X-SHORT in separate batches
+for clean attribution (per locked discipline).
+
+**Why this is observation-only:**
+1. Single-batch evidence (May 18 PM only)
+2. Winner-vs-loser cleanliness still partial on LONG side (3 of 4 winners also matched the X-LONG profile — needs cross-sample to confirm what separates them)
+3. CLAUDE.md anti-overfit rule: 1-sample patterns are hypotheses, not filters
 
 ---
 

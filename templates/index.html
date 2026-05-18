@@ -85,7 +85,7 @@
     </style>
     <!-- Live Terminal — phosphor-green observability view (UI-only, additive) -->
     <!-- Cache-bust query param: bump when CSS changes meaningfully -->
-    <link rel="stylesheet" href="/static/live_terminal.css?v=12">
+    <link rel="stylesheet" href="/static/live_terminal.css?v=13">
 </head>
 <body class="text-gray-100 font-sans">
     <!-- Toast Notification -->
@@ -5120,11 +5120,10 @@
                         <h4>PAIR FUNNEL</h4>
                         <div id="lt-funnel-body"></div>
                     </div>
-                    <div class="lt-side-panel">
-                        <h4>TOP SCANS</h4>
-                        <div id="lt-scans-body">
-                            <div class="lt-scan-row" style="opacity:0.4">awaiting scans…</div>
-                        </div>
+                    <!-- Neural Activity — pulsing brain visualization (May 18, replaces TOP SCANS) -->
+                    <div class="lt-side-panel lt-brain-panel">
+                        <h4>NEURAL ACTIVITY</h4>
+                        <svg id="lt-brain-svg" class="lt-brain-svg" viewBox="0 0 200 140" preserveAspectRatio="xMidYMid meet"></svg>
                     </div>
                 </div>
             </div>
@@ -13931,6 +13930,6 @@
     </script>
 
     <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->
-    <script src="/static/live_terminal.js?v=12"></script>
+    <script src="/static/live_terminal.js?v=13"></script>
 </body>
 </html>

@@ -57,8 +57,6 @@
     positions: new Map(),
     // last closed trade (most recent EXIT seen) — drives positions waiting state
     lastClosed: null,               // { symbol, pnl_pct, at }
-    // top scans — keep last ~6 scanned pairs
-    topScans: [],
     // filter funnel — last parsed values, drives funnel panel
     funnel: {
       totalBinance: null,
@@ -98,7 +96,7 @@
   // ─── DOM hooks ─────────────────────────────────────────────────────────
   let elView, elFeed, elLatencyBar, elLatencyText,
     elConstellation, elEvMin, elScanCrawlBar, elScanCrawlText, elCycleNum,
-    elRadarSvg, elPosBody, elScansBody, elHeatmap, elFooterStats, elBoot,
+    elRadarSvg, elPosBody, elBrainSvg, elHeatmap, elFooterStats, elBoot,
     elBootLines, elAlertBanner, elAlertMsg, elKatakana, elHbDot,
     elFeedPulse, elRegimeBanner, elFunnelBody, elEquityCurve,
     elHeatCompassSvg, elHcPanel, elHcFootLean, elHcFootRegime, elHcFootPressure;
@@ -229,7 +227,6 @@
           const now = Date.now();
           for (const sym of allSyms) {
             state.radarSymbolEvents.push({ ts: now, symbol: sym });
-            pushTopScan(sym);
           }
           const cutoff = now - 60000;
           while (state.radarSymbolEvents.length > 0 && state.radarSymbolEvents[0].ts < cutoff) {
@@ -256,9 +253,6 @@
     if (evt.category === 'SCAN' && evt.symbol) {
       bumpScanCrawl(evt.symbol);
     }
-    // (TOP SCANS now fed from the all-symbol extraction above —
-    // the old single-symbol SCAN/WATCH branch was getting stuck on
-    // the first match of filter-out lists.)
 
     // ENTRY — open position tracking
     if (evt.category === 'ENTRY' && evt.symbol) {
@@ -981,14 +975,89 @@
     return '█'.repeat(filled) + '░'.repeat(slots - filled);
   }
 
-  function pushTopScan(symbol) {
-    state.topScans = state.topScans.filter(s => s !== symbol);
-    state.topScans.unshift(symbol);
-    if (state.topScans.length > 6) state.topScans.length = 6;
-    if (!elScansBody) return;
-    elScansBody.innerHTML = state.topScans.map((s, i) =>
-      `<div class="lt-scan-row"><span class="lt-scan-rank">${i + 1}</span><span>${s.replace('USDT', '')}</span></div>`
-    ).join('') || '<div class="lt-scan-row" style="opacity:0.4">awaiting scans…</div>';
+  // ─── Neural Activity brain (May 18) ──────────────────────────────────
+  // 24 nodes (12 per hemisphere), ~30 links, fires every 700ms.
+  // Random node lights up → connected links pulse → at +400ms, all other
+  // endpoints flash too. Pure CSS animations; JS only toggles classes.
+  const BRAIN_NODES = [
+    // Left hemisphere (indices 0-11)
+    [55,30], [75,22], [40,45], [60,42], [80,42], [45,60],
+    [65,60], [40,80], [60,80], [80,80], [55,98], [75,98],
+    // Right hemisphere (indices 12-23)
+    [125,30], [105,22], [140,45], [120,42], [100,42], [135,60],
+    [115,60], [140,80], [120,80], [100,80], [125,98], [105,98],
+  ];
+  const BRAIN_LINKS = [
+    // Within left
+    [0,1],[0,2],[1,3],[1,4],[2,5],[3,6],[4,6],[5,7],[5,8],[6,9],[7,10],[8,10],[9,11],[8,11],
+    // Within right
+    [12,13],[12,14],[13,15],[13,16],[14,17],[15,18],[16,18],[17,19],[17,20],[18,21],[19,22],[20,22],[21,23],[20,23],
+    // Cross-hemisphere (the propagation highways)
+    [1,13],[4,16],[6,18],[9,20],
+  ];
+  // Build adjacency map once: node index → array of link indices touching it
+  const BRAIN_ADJ = (function() {
+    const adj = Array.from({ length: BRAIN_NODES.length }, () => []);
+    BRAIN_LINKS.forEach(([a, b], i) => { adj[a].push(i); adj[b].push(i); });
+    return adj;
+  })();
+  let _brainNodeEls = null;
+  let _brainLinkEls = null;
+  function buildBrain() {
+    if (!elBrainSvg) return;
+    elBrainSvg.innerHTML = '';
+    const NS = 'http://www.w3.org/2000/svg';
+    // Render links first (under nodes)
+    const linkFrag = document.createDocumentFragment();
+    for (const [a, b] of BRAIN_LINKS) {
+      const [x1, y1] = BRAIN_NODES[a];
+      const [x2, y2] = BRAIN_NODES[b];
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('class', 'bl');
+      line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+      linkFrag.appendChild(line);
+    }
+    elBrainSvg.appendChild(linkFrag);
+    // Render nodes on top
+    const nodeFrag = document.createDocumentFragment();
+    for (const [x, y] of BRAIN_NODES) {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('class', 'bn');
+      c.setAttribute('cx', x); c.setAttribute('cy', y);
+      c.setAttribute('r', 2.5);
+      nodeFrag.appendChild(c);
+    }
+    elBrainSvg.appendChild(nodeFrag);
+    _brainLinkEls = elBrainSvg.querySelectorAll('.bl');
+    _brainNodeEls = elBrainSvg.querySelectorAll('.bn');
+  }
+  function _retrigger(el, cls) {
+    // Force-reflow restart so animation replays cleanly on rapid re-fires.
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    setTimeout(() => { if (el) el.classList.remove(cls); }, 1220);
+  }
+  function fireBrain() {
+    if (!_brainNodeEls || _brainNodeEls.length === 0) return;
+    const idx = Math.floor(Math.random() * _brainNodeEls.length);
+    _retrigger(_brainNodeEls[idx], 'fr');
+    // Flash all connected links + collect "other endpoints" for propagation.
+    const others = new Set();
+    for (const linkIdx of BRAIN_ADJ[idx]) {
+      const linkEl = _brainLinkEls[linkIdx];
+      if (linkEl) _retrigger(linkEl, 'ac');
+      const [a, b] = BRAIN_LINKS[linkIdx];
+      others.add(a === idx ? b : a);
+    }
+    // Propagate to ALL other endpoints at +400ms.
+    setTimeout(() => {
+      for (const otherIdx of others) {
+        const otherEl = _brainNodeEls[otherIdx];
+        if (otherEl) _retrigger(otherEl, 'fr');
+      }
+    }, 400);
   }
 
   // Ticker removed (May 15 PM) — the empty "awaiting prices…" bar
@@ -1305,7 +1374,7 @@
     elCycleNum = document.getElementById('lt-cycle-num');
     elRadarSvg = document.getElementById('lt-radar-svg');
     elPosBody = document.getElementById('lt-positions-body');
-    elScansBody = document.getElementById('lt-scans-body');
+    elBrainSvg = document.getElementById('lt-brain-svg');
     elHeatmap = document.getElementById('lt-heatmap');
     elFooterStats = document.getElementById('lt-footer-stats');
     elBoot = document.getElementById('lt-boot');
@@ -1339,6 +1408,11 @@
 
     if (elRadarSvg) buildRadar();
     buildKatakana();
+    // May 18: Neural Activity brain — build SVG, start 700ms fire loop
+    buildBrain();
+    if (!window._ltBrainTick) {
+      window._ltBrainTick = setInterval(fireBrain, 700);
+    }
     // May 18: ambient flickers — pure-theater random-walk metrics, every 1200ms
     if (!window._ltFlickerTick) {
       updateFlickers();  // initial paint

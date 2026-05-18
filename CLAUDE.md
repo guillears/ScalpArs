@@ -11584,3 +11584,103 @@ trades, apply 1-4, ship reverts in the documented order.
 If results decisively confirm filters were redundant (combined Avg P&L ≥
 +0.05% AND Pattern C stable AND blocked-zone trades show ≥50% WR) → this
 entry is the audit trail of why we accepted multi-variable A/B for speed.
+
+## May 18, 2026 UTC-3 — Methodological lesson: proxy fallbacks corrupt gate-checks silently
+
+### The incident
+
+User asked whether to ship BE 0.05 → 0.10 based on May 18 14:22 batch data.
+The BE Floor Counterfactual table showed:
+
+  Pool: 97 trades · 80 armed · 37 BE10 fires (0 cut winners · 37 saved) · Δ +$480.91
+  All 5 locked gates appeared to PASS.
+
+User correctly pushed back: "post_arm_min tracking shipped May 17 22:34, so
+only ~9 trades have real data. The other 71 are pre-instrumentation." This
+was 100% right and I had to retract.
+
+### Root cause
+
+`_compute_be_floor_counterfactual` had a fallback for missing post_arm_min:
+
+  if pam is not None:
+      fires = pam < new_floor                # real intra-trade min
+  else:
+      fires = actual_pct < new_floor         # close-as-proxy fallback
+
+This silently broke the "Cut Winners = 0" gate by CONSTRUCTION:
+
+- A "Cut Winner" requires:    fires (pam < 0.10) AND actual_close > 0.10
+- Under the proxy fallback:   fires only triggers when actual_close < 0.10
+- These are mutually exclusive
+
+Result: pre-instrumentation trades can never produce cut winners regardless
+of what actually happened intra-trade. The gate-3 result becomes "0 cut
+winners across 35 fires" mathematically, not empirically. The locked
+CLAUDE.md gates read corrupted numbers and the decision-rule passes a
+fabricated test.
+
+### The fix (commit f9a000d)
+
+Strict mode for BE Floor CF: armed = (pam is not None) only. No proxy.
+Pre-instrumentation trades counted in new `excluded` field, shown in pool
+summary as "X excluded (pre-May-17 instrumentation)". After the fix:
+
+  Pool: 97 trades · 9 armed (real) · 88 excluded · 3 BE10 fires · Δ ~$3
+  Gate 1 (N ≥ 30 armed) now genuinely FAILS — defer to next batch.
+
+### Locked methodological rule (applies to ALL counterfactual surfaces)
+
+**When an analytical surface uses a proxy fallback for missing data, the
+table MUST either (a) clearly partition proxy rows from real-data rows,
+OR (b) exclude proxy rows entirely from headline numbers used in
+gate-checks.** Otherwise the gate-checks silently read corrupted numbers
+that are mathematically constrained, not empirically observed.
+
+Specifically check at every future deploy:
+
+1. **Does this counterfactual table have a fallback?** Grep for "fallback",
+   "proxy", "is not None" inside counterfactual builder functions in main.py.
+2. **If yes, what does the fallback set?** If it forces a value that
+   collides with one of the gate-check thresholds, the gate is corrupt.
+   Example: BE Floor CF "fires" + "Cut Winners" — close-as-proxy made cut
+   winners impossible.
+3. **Make the partition visible.** Either add an "excluded" counter to the
+   pool summary line, or render proxy rows in a distinct color, or split
+   into two tables ("real instrumentation" + "pre-instrumentation proxy").
+4. **NEVER let proxy rows count toward gates pre-committed in CLAUDE.md.**
+   The whole point of pre-committed gates is to eliminate post-hoc
+   judgment at decision time. Fallback-corrupted gates re-introduce it
+   silently.
+
+### Audit performed at the time of fix (May 18 commit f9a000d)
+
+Tables checked for the same failure mode:
+
+| Table | Has fallback? | Verdict |
+|---|---|---|
+| BE Floor Counterfactual: 0.05 vs 0.10 | YES (close-as-proxy) | ✗ FIXED in commit f9a000d |
+| Phantom BE 0.20/0.05 Counterfactual | NO (strict on phantom_be_aggr_triggered_at) | ✓ Safe |
+| Post-Arm Min Distribution | NO (only counts populated rows) | ✓ Safe |
+| Trailing Confirmation Performance | NO (only counts trades with reset events) | ✓ Safe |
+| Fast-Exit Counterfactual | Uses peak_reached_at proxy (different mechanism) | ⚠ Worth re-audit — table notes "Conservative — uses peak_reached_at as proxy" explicitly. Already documented in table header. |
+
+### Why this lesson belongs in CLAUDE.md
+
+Future-Claude will build more counterfactual tables. Without this lesson
+codified, the next instrumentation-deploy + new-table-rollout will
+re-create the same silent corruption. The "Pre-committed gates eliminate
+post-hoc judgment" discipline depends on gates reading honest numbers.
+A locked gate against a fabricated denominator is worse than no gate at
+all — it adds false confidence to a wrong decision.
+
+### Quick test future-Claude should run after shipping any counterfactual
+
+  1. Pull the table data from the most recent batch
+  2. Count: how many rows have populated source data vs fallback?
+  3. If fallback rate > 30% → DON'T trust the gate-check yet
+  4. Wait for instrumentation rate ≥ 70% (typically 1-3 batches post-deploy)
+  5. Then re-evaluate gates against the real-data-only subset
+
+This 4-step test takes 60 seconds and prevents the May 18 incident from
+repeating.

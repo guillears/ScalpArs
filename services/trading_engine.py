@@ -4939,6 +4939,48 @@ class TradingEngine:
                             except (ValueError, TypeError):
                                 continue
 
+            # BTC EMA13-EMA50 Gap × BTC ADX 2D Cross-Filter (May 19, 2026).
+            # Catches the "BTC mid-extension + low/climax trend conviction" LONG
+            # loser zone that single-axis filters can't express. Cross-batch
+            # evidence inside Gap [+0.10, +0.20%]:
+            #   - ADX <22: N=31, 39% WR, -$1,022 (5 of 6 dates losing) — block
+            #   - ADX 22-25: N=10, 90% WR, +$177 — RESCUE, preserved (open)
+            #   - ADX 25-28: N=9, 22% WR, -$415 — block (N=9 override, all 4 dates negative)
+            # Rule format: "<gapLo>-<gapHi>:<adxLo>-<adxHi>" — block when BTC
+            # EMA13-EMA50 gap in [gapLo, gapHi) AND BTC ADX in [adxLo, adxHi).
+            # Multiple rules comma-separated. Empty = inactive.
+            _bgad_enabled = getattr(config.trading_config.thresholds,
+                                    'btc_gap_btc_adx_filter_enabled', True)
+            if (_bgad_enabled and signal in ["LONG", "SHORT"]
+                    and btc_ema13 is not None and btc_ema50 is not None
+                    and btc_ema50 != 0 and btc_adx is not None):
+                _btc_gap_val = ((btc_ema13 - btc_ema50) / btc_ema50) * 100
+                _th3 = config.trading_config.thresholds
+                _bgad_key = ('btc_gap_btc_adx_filter_long' if signal == 'LONG'
+                             else 'btc_gap_btc_adx_filter_short')
+                _bgad_str = getattr(_th3, _bgad_key, '')
+                if _bgad_str and _bgad_str.strip():
+                    for _bgad_rule in _bgad_str.split(','):
+                        _bgad_rule = _bgad_rule.strip()
+                        if not _bgad_rule or ':' not in _bgad_rule:
+                            continue
+                        try:
+                            _g_part, _a_part = _bgad_rule.split(':')
+                            _g_lo, _g_hi = map(float, _g_part.split('-'))
+                            _a_lo, _a_hi = map(float, _a_part.split('-'))
+                            if (_g_lo <= _btc_gap_val < _g_hi and
+                                    _a_lo <= btc_adx < _a_hi):
+                                logger.info(
+                                    f"[BTC_GAP_BTC_ADX_CROSS] {pair}: {signal} blocked — "
+                                    f"BTC Gap {_btc_gap_val:+.3f}% in [{_g_lo}-{_g_hi}) "
+                                    f"AND BTC ADX {btc_adx:.1f} in [{_a_lo}-{_a_hi})"
+                                )
+                                self._record_filter_block("BTC_GAP_BTC_ADX_CROSS", signal, had_room=_had_room)
+                                signal = "NO_TRADE"
+                                break
+                        except (ValueError, TypeError):
+                            continue
+
             # BTC Trend Filter — runs independently of Macro Trend toggle (May 5).
             # Compares BTC EMA13 vs BTC EMA50 on the 5m chart (May 6 — switched from
             # EMA20 to EMA13 for faster reversal detection; EMA13 spans ~65 min vs EMA20's

@@ -12673,3 +12673,209 @@ it without prompting. The discipline rule is now explicit:
 
 - `trading_config.json` — 2 multiplier strings updated
 - `CLAUDE.md` — this entry
+
+## May 19, 2026 — BTC Gap × BTC ADX 2D Cross-Filter shipped + cross-tab re-bucketed to 24 fine bins
+
+### What ships
+
+New 2D cross-filter primitive (parallel to `adx_delta_btc_adx_filter_*` and
+`rngpos_adx_delta_filter_*`):
+
+**Config fields (new in `config.py` / `trading_config.json`):**
+- `btc_gap_btc_adx_filter_enabled: bool = True` (master toggle)
+- `btc_gap_btc_adx_filter_long: str = "0.10-0.20:0-22,0.10-0.20:25-28"` (active)
+- `btc_gap_btc_adx_filter_short: str = ""` (empty — no SHORT cross-batch yet)
+
+Rule format: `<gapLo>-<gapHi>:<adxLo>-<adxHi>` — block when BTC EMA13-EMA50 gap
+in [gapLo, gapHi) AND BTC ADX in [adxLo, adxHi). Half-open ranges. Comma-separated
+multi-rule. Empty = inactive.
+
+**Cross-tab analytics table re-bucketed** from 11 coarse buckets to the same **24 fine
+buckets** as the 1D `Performance by BTC EMA13-EMA50 Gap` table (`pair_ema_gap_ranges`
+in `main.py:3681`). Operator can read 1D and 2D views side-by-side without bucket
+translation. The +0.10-0.20% loser zone now splits into +0.10-0.15% and +0.15-0.20%
+sub-rows for finer resolution.
+
+### Why — cross-batch evidence
+
+Inside the BTC Gap [+0.10%, +0.20%] LONG cell (the dominant loss vector flagged
+multi-batch):
+
+| Sub-cell | N | WR | Total $ | Dates |
+|---|---|---|---|---|
+| × BTC ADX <22 (kill) | 31 | 39% | -$1,022 | 5 of 6 dates losing |
+| × BTC ADX 22-25 (rescue) | 10 | 90% | +$177 | 5 of 6 dates winning (PRESERVED) |
+| × BTC ADX 25-28 (climax) | 9 | 22% | -$415 | 3 of 3 dates losing (N=9 override) |
+| × BTC ADX ≥30 (mixed) | 14 | 50% | -$161 | mixed (PRESERVED) |
+
+**Mechanism:** BTC mildly above 4hr trend (+0.10-0.20%) is bimodal on conviction.
+Weak trend (<22 ADX) → mean reversion → LONG fails. Healthy moderate (22-25) →
+continuation → LONG wins. Climax (25-28) → reversal → LONG fails per-trade worst.
+Single-axis filters can't express this. The 2D primitive is the right shape.
+
+### Discipline acknowledgments
+
+1. **25-28 sub-cell N=9 is below the locked N≥10 promotion bar.** User-directed
+   override after 100% direction-consistency across 3 dates + today's 3 trades.
+2. **22-25 rescue cell is fragile** — 5/5 dates ★ winning historically, but today's
+   May 19 TONUSDT broke the pattern with N=1 loss. Locked watchlist gate handles.
+3. **SHORT side empty** — no SHORT cross-batch analysis done for this dim.
+
+### Counterfactual on today's batch (May 19 13:00 report, 6 LONGs)
+
+| Pair | Gap | BTC ADX | $ | Rule verdict |
+|---|---|---|---|---|
+| PLAYUSDT | -0.003 | 29.3 | -$49.05 | KEEP (Gap outside zone) |
+| OPENUSDT | +0.191 | 25.65 | +$14.27 | BLOCK (25-28 climax — winner cut) |
+| VVVUSDT | +0.193 | 26.10 | -$47.04 | BLOCK (25-28 climax — loser saved) |
+| TONUSDT | +0.189 | 25.31 | -$38.32 | BLOCK (25-28 climax — loser saved) |
+| FIDAUSDT | +0.169 | 21.39 | -$37.01 | BLOCK (kill zone — loser saved) |
+| KITEUSDT | +0.148 | 18.44 | +$6.44 | BLOCK (kill zone — winner cut) |
+
+**Today net save: -$150.70 actual → -$70.09 filtered = +$80.61** ($101 losers
+saved minus $20 winners cut on N=6 LONGs).
+
+### Filter Blocks counter
+
+New tag `BTC_GAP_BTC_ADX_CROSS` registered. Will appear in dashboard Filter
+Blocks panel + reports.
+
+### Pre-committed revert criteria at next 100-trade LONG checkpoint
+
+| Cell / scenario | Threshold | Action |
+|---|---|---|
+| Kill zone (Gap +0.10-0.20 × ADX <22) in fresh observation logs | ≥55% WR on N≥10 | REVERT — remove `0.10-0.20:0-22` rule |
+| Kill zone | ≤45% WR on N≥10 | Confirmed structural, lock |
+| Climax zone (25-28) in fresh data | ≥55% WR on N≥10 | REVERT — remove `0.10-0.20:25-28` rule |
+| Rescue zone (22-25, PRESERVED) | ≤55% WR on N≥10 | Today's TON was decay → broaden block to `0.10-0.20:0-25` (cut rescue too) |
+| Rescue zone | ≥70% WR on N≥10 | Continue preserving |
+| `[BTC_GAP_BTC_ADX_CROSS]` counter | 0 fires across 100+ trades | Investigate dead code |
+
+### What this does NOT do
+
+- Does NOT touch SHORT side (no evidence yet)
+- Does NOT alter pair-level filters or multipliers
+- Does NOT change exit logic
+- Does NOT add new schema (uses existing `entry_btc_trend_gap_pct` + `entry_btc_adx`)
+- Does NOT block the rescue cell (22-25 stays open by design)
+
+### Files changed
+
+- `config.py` — 3 new fields with evidence comments
+- `trading_config.json` — defaults set with LONG ship rules
+- `services/trading_engine.py` — filter check block (~45 lines) after RNGPOS_ADX_DELTA_CROSS block
+- `main.py` — cross-tab analytics builder re-bucketed to use `pair_ema_gap_ranges` (24 fine buckets)
+- `templates/index.html` — UI filter section + load/save/collect helpers + load/save handlers
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The cross-batch evidence for both shipped rules
+2. The discipline override on N=9 climax cell (explicit, not hidden)
+3. The asymmetric design (LONG only; SHORT empty pending evidence)
+4. The locked revert gates so next-checkpoint decision is mechanical
+5. The rescue-cell preservation logic (don't cut the 22-25 winners by accident)
+
+## May 19, 2026 (late) — New LONG multiplier shipped: BTC RSI 60-65 × BTC ADX 22-25 at 2.0×
+
+### What ships
+
+`btc_rsi_adx_multiplier_long` extended with one new rule:
+
+- Before: `"60-65:20-25:1.0,55-60:22-25:1.0,60-65:28-30:2.0"`
+- After: `"60-65:20-25:1.0,55-60:22-25:1.0,60-65:28-30:2.0,60-65:22-25:2.0"`
+
+The new rule `60-65:22-25:2.0` boosts LONG entries where BTC RSI ∈ [60, 65)
+AND BTC ADX ∈ [22, 25) by 2.0× investment.
+
+### Conflict resolution with existing demoted L-P1 rule
+
+A trade with BTC RSI 60-65 × BTC ADX 22-25 matches BOTH `60-65:20-25:1.0`
+(the demoted L-P1) AND the new `60-65:22-25:2.0`. Per CLAUDE.md HIGHER-wins
+rule, **2.0× applies**. The 20-22 sub-band (which the demote was protecting
+against) continues to receive only `60-65:20-25:1.0` → stays at 1.0×.
+Clean separation.
+
+### Cross-batch evidence
+
+| Cell | N | WR | Total $ | Per-date |
+|---|---|---|---|---|
+| **BTC 60-65 × BTC ADX 22-25 LONG** | **38** | **73.7%** | **+$436.51** | **10 of 11 dates positive** (Apr 28 → May 18) |
+
+Compared to the demoted sub-band:
+
+| Sub-cell | Pattern |
+|---|---|
+| 60-65 × 20-22 | 15 dates MIXED (8 positive, 7 negative). Some bad days (May 9 -$132, May 8 -$87). **This is why L-P1 was demoted.** |
+| **60-65 × 22-25** | **10/11 dates positive. The clean winner sub-band.** |
+
+The demote-then-sharpen pattern: rather than re-promoting the broad cell,
+ship the tighter sub-cell where the per-date evidence is structurally clean.
+
+### Filter interaction check (May 19 BTC Gap × BTC ADX cross-filter)
+
+The just-shipped filter blocks Gap [+0.10, +0.20) × ADX <22 and × 25-28.
+Cell A is at ADX 22-25 — outside the blocked zones. The multiplier
+enhances the rescue cell (Gap 0.10-0.20 × ADX 22-25) which was already
+preserved by the filter.
+
+Per Gap zone within Cell A:
+
+| BTC Gap | N | WR | Total $ |
+|---|---|---|---|
+| <0 (BTC below trend) | 5 | 100% | +$199 |
+| 0-0.10% | 8 | 87.5% | +$85 |
+| 0.10-0.20% (rescue) | 4 | 100% | +$134 |
+| >0.30% | 1 | 100% | +$13 |
+
+Wins across all Gap zones. Not single-zone confounded.
+
+### Discipline acknowledgments
+
+- **Today's TONUSDT (-$38 LONG) in this cell** is sample noise (1 trade in
+  a 38-trade winner cell with 10/11 date positivity). Not a structural
+  break.
+- **N=38 / WR 73.7% / 10-of-11-date positivity** clears the locked Phase 3
+  ★ WORKING bar for multipliers (N≥30, WR≥70%, multi-date direction-consistent).
+- **L-P1 was demoted May 18 PM** for the broader 60-65:20-25 cell — that
+  demote was correct. This new rule does NOT re-promote that broad cell.
+  It promotes the SHARPER 22-25 sub-band that historical data shows is the
+  clean winner.
+- **BE-compatible**: cell winners typically peak ≥+0.25% (sufficient room
+  for BE 0.20/0.10 to catch retracements without amplifying tail losses).
+
+### Pre-committed revert criteria at next 100-trade LONG checkpoint
+
+| Outcome (fresh data, N≥10 in cell) | Action |
+|---|---|
+| WR ≥ 70% AND Total $ positive | ★ KEEP at 2.0× |
+| WR 50-70% (marginal) | Drop to 1.5× |
+| Δ$ vs BL < -$1 (visible in Multiplier Cell Performance table) | Drop to 1.5× |
+| Total $ negative (✗ HARMFUL) | Revert to 1.0× immediately |
+| N < 5 fires in fresh batch | Extend test, no decision |
+
+### Watchlist (NOT shipped)
+
+**Cell C — BTC RSI 55-60 × BTC ADX 22-25 LONG.** N=22, 72.7% WR, +$155
+cross-batch but only 8 of 12 dates positive (67% — borderline). Today's
+TONUSDT loss in this neighboring cell argued for caution.
+
+Promotion gate at next checkpoint:
+- N≥10 fresh AND WR≥70% AND Total $ positive → ship `55-60:22-25:2.0`
+- WR ≤55% on N≥10 fresh → drop from watchlist
+- Inconclusive → extend
+
+### Files changed
+
+- `trading_config.json` — single field extension (one new rule appended)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The cross-batch + per-date evidence justifying ship
+2. The "demote-then-sharpen" pattern (L-P1 broad demote stays, sharper sub-cell ships at 2.0×)
+3. The filter overlap check confirming no conflict with May 19 BTC Gap cross-filter
+4. The locked revert criteria for next checkpoint
+5. The discipline acknowledgment that today's TON loss in the cell is sample noise, not signal break

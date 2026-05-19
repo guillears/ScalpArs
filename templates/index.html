@@ -4408,6 +4408,35 @@
                         </div>
                     </div>
                     <div class="mt-3 mb-2 px-4">
+                        <div class="flex items-center gap-3 mb-1">
+                            <span class="text-sm text-gray-300">BTC EMA13-EMA50 Gap × BTC ADX Cross-Filter <span class="text-amber-400 text-xs">(May 19)</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-btc-gap-btc-adx-filter-enabled" class="sr-only peer" checked>
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                <span class="ml-2 text-xs text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">Block entry when BTC EMA13-EMA50 gap AND BTC ADX both fall in the specified ranges. Catches the "BTC mid-extension + low/climax trend conviction" loser zone. <span class="text-amber-400">LONG default `0.10-0.20:0-22,0.10-0.20:25-28` shipped May 19 — kill zone (-$1,022 / 31t / 39% WR) + climax zone (-$415 / 9t / 22% WR). Rescue cell 22-25 preserved.</span></p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">Gap Min %</th><th class="text-left px-1">Gap Max %</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="btc-gap-btc-adx-filter-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcGapBtcAdxRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">Gap Min %</th><th class="text-left px-1">Gap Max %</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="btc-gap-btc-adx-filter-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcGapBtcAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">Market Breadth Filter</span>
                         <p class="text-xs text-gray-500 mb-1">Gate entries based on % of scanned pairs in Bull/Bear regime (independent EMA20 slope threshold)</p>
                         <div class="flex items-center gap-6 mt-1 flex-wrap">
@@ -13518,6 +13547,11 @@
                 loadRngposAdxDeltaFilter('short', config.thresholds.rngpos_adx_delta_filter_short || '');
                 const _rpadEn = document.getElementById('config-rngpos-adx-delta-filter-enabled');
                 if (_rpadEn) _rpadEn.checked = (config.thresholds.rngpos_adx_delta_filter_enabled !== false);
+                // BTC Gap × BTC ADX Cross-Filter (May 19)
+                loadBtcGapBtcAdxFilter('long', config.thresholds.btc_gap_btc_adx_filter_long || '');
+                loadBtcGapBtcAdxFilter('short', config.thresholds.btc_gap_btc_adx_filter_short || '');
+                const _bgadEn = document.getElementById('config-btc-gap-btc-adx-filter-enabled');
+                if (_bgadEn) _bgadEn.checked = (config.thresholds.btc_gap_btc_adx_filter_enabled !== false);
                 // Premium Multipliers (May 4, 2026)
                 loadMultRules('long', 'pair', config.thresholds.rsi_adx_multiplier_long || '');
                 loadMultRules('short', 'pair', config.thresholds.rsi_adx_multiplier_short || '');
@@ -13973,6 +14007,47 @@
             return rules.join(',');
         }
 
+        // BTC Gap × BTC ADX Cross-Filter helpers (May 19, 2026)
+        // Rule format: "<gapLo>-<gapHi>:<adxLo>-<adxHi>"
+        function addBtcGapBtcAdxRow(direction, gLo='', gHi='', aLo='', aHi='') {
+            const tbody = document.getElementById(`btc-gap-btc-adx-filter-${direction}-body`);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="number" step="0.01" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-g-lo" value="${gLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.01" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-g-hi" value="${gHi}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-a-lo" value="${aLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-a-hi" value="${aHi}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadBtcGapBtcAdxFilter(direction, filterStr) {
+            const tbody = document.getElementById(`btc-gap-btc-adx-filter-${direction}-body`);
+            tbody.innerHTML = '';
+            if (!filterStr || !filterStr.trim()) return;
+            for (const rule of filterStr.split(',')) {
+                const r = rule.trim();
+                if (!r || !r.includes(':')) continue;
+                const [gPart, aPart] = r.split(':');
+                const [gLo, gHi] = gPart.split('-');
+                const [aLo, aHi] = aPart.split('-');
+                addBtcGapBtcAdxRow(direction, gLo || '', gHi || '', aLo || '', aHi || '');
+            }
+        }
+        function collectBtcGapBtcAdxFilter(direction) {
+            const rows = document.querySelectorAll(`#btc-gap-btc-adx-filter-${direction}-body tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const gLo = row.querySelector('.bgad-g-lo').value.trim();
+                const gHi = row.querySelector('.bgad-g-hi').value.trim();
+                const aLo = row.querySelector('.bgad-a-lo').value.trim();
+                const aHi = row.querySelector('.bgad-a-hi').value.trim();
+                if (gLo !== '' && gHi !== '' && aLo !== '' && aHi !== '') {
+                    rules.push(`${gLo}-${gHi}:${aLo}-${aHi}`);
+                }
+            });
+            return rules.join(',');
+        }
+
         // Premium Multiplier helpers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         // Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>"
         // scope = 'pair' or 'btc'  (which body element to target)
@@ -14265,6 +14340,10 @@
                     rngpos_adx_delta_filter_long: collectRngposAdxDeltaFilter('long'),
                     rngpos_adx_delta_filter_short: collectRngposAdxDeltaFilter('short'),
                     rngpos_adx_delta_filter_enabled: ((document.getElementById('config-rngpos-adx-delta-filter-enabled') || {}).checked === true),
+                    // BTC Gap × BTC ADX Cross-Filter (May 19)
+                    btc_gap_btc_adx_filter_long: collectBtcGapBtcAdxFilter('long'),
+                    btc_gap_btc_adx_filter_short: collectBtcGapBtcAdxFilter('short'),
+                    btc_gap_btc_adx_filter_enabled: ((document.getElementById('config-btc-gap-btc-adx-filter-enabled') || {}).checked === true),
                     // Premium Multipliers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
                     rsi_adx_multiplier_long: collectMultRules('long', 'pair'),
                     rsi_adx_multiplier_short: collectMultRules('short', 'pair'),

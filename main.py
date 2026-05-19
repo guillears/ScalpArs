@@ -4329,31 +4329,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # BTC EMA13-EMA50 Gap × BTC ADX Cross-Tab (May 11 UTC-3 — see CLAUDE.md).
         # Surfaces whether BTC over-extension (gap > +0.10%) is uniformly bad across
         # BTC ADX magnitudes, or concentrated in a specific BTC ADX × gap intersection.
-        # Critical for understanding today's drill-down: 4 cell-trades all had BTC gap
-        # +0.37% — over-extended zone. Need to test if gap > +0.20% is bad universally
-        # or conditional on BTC ADX 25-30.
-        # May 12: modest cross-tab refinement (8 → 11 buckets) — split the wide
-        # ±0.20-0.50% zone where over-extension lives. Kept coarser than the
-        # single-dim tables because cross-tab cells need N ≥ 5 to be meaningful.
-        btc_gap_ranges = [
-            ("< -0.50%", -999, -0.50),
-            ("-0.50 to -0.30%", -0.50, -0.30),
-            ("-0.30 to -0.20%", -0.30, -0.20),
-            ("-0.20 to -0.10%", -0.20, -0.10),
-            ("-0.10 to 0%", -0.10, 0.0),
-            ("0 to +0.10%", 0.0, 0.10),
-            ("+0.10 to +0.20%", 0.10, 0.20),
-            ("+0.20 to +0.30%", 0.20, 0.30),
-            ("+0.30 to +0.50%", 0.30, 0.50),
-            ("+0.50 to +1.00%", 0.50, 1.00),
-            ("> +1.00%", 1.00, 999),
-        ]
+        # May 19: re-bucketed to use the same 24-bucket fine grid as the 1D BTC Gap
+        # table (pair_ema_gap_ranges) so 1D and 2D views are directly comparable.
+        # Surfaces the +0.10-0.20% loser sub-zone with finer resolution (+0.10-0.15
+        # vs +0.15-0.20) — critical for tuning the May 19 cross-filter rules.
         btc_gap_btc_adx_crosstab = []
         _btc_gap_pool = [o for o in orders
                          if getattr(o, 'entry_btc_trend_gap_pct', None) is not None
                          and getattr(o, 'entry_btc_adx', None) is not None]
         for direction in ["LONG", "SHORT"]:
-            for gr_name, gr_min, gr_max in btc_gap_ranges:
+            for gr_name, gr_min, gr_max in pair_ema_gap_ranges:
                 for ar_name, ar_min, ar_max in btc_adx_ranges_for_delta:
                     bucket = [
                         o for o in _btc_gap_pool

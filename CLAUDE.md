@@ -12587,3 +12587,89 @@ mirror-inverted.
 
 - `trading_config.json` — `rngpos_adx_delta_filter_long: "" → "90-95:0.0-0.3"`
 - `CLAUDE.md` — this entry
+
+## May 19, 2026 — 2 multiplier cells demoted 2.0× → 1.0× (✗ HARMFUL verdict applied)
+
+### Change
+- `rsi_adx_multiplier_long`: `"60-65:18-22:1.0,55-60:22-25:2.0"` → `"60-65:18-22:1.0,55-60:22-25:1.0"`
+- `score_multiplier_long`: `"4-5:2.0"` → `"4-5:1.0"`
+
+Cells preserved in config at 1.0× rather than removed — keeps them
+visible in Multiplier Cell Performance table for ongoing observation,
+and easy to re-promote if evidence shifts.
+
+### Cross-batch audit triggered this
+
+Proactive audit of all active 2.0× cells against cross-batch performance
+(670-trade pool, multi-batch):
+
+| Cell | N | WR | Total $ | Dates | Verdict |
+|---|---|---|---|---|---|
+| **PAIR_55-60_22-25 LONG** | **15** | **60%** | **-$81** | **9** | **✗ HARMFUL** |
+| BTC_60-65_28-30 LONG | 8 | 75% | +$69 | 5 | ★ keep |
+| **SCORE_4 LONG** | **67** | **57%** | **-$20** | **16** | **✗ marginal-harmful** |
+| BTC_35-40_33-36 SHORT | 10 | 100% | +$245 | 3 | ★ keep |
+| SCORE_3 SHORT | 104 | 65% | +$189 | 17 | ~ break-even (kept) |
+| SCORE_6 SHORT | 10 | 90% | +$212 | 4 | ★ keep |
+
+Both demoted cells met the CLAUDE.md May 4 Phase 3 verdict matrix
+✗ HARMFUL criterion: N≥5 + Total $ negative → revert to 1.0×.
+
+### Why this matters strategically
+
+The earlier loss-coverage analysis showed current filters + BE handle
+~78% of historical $-damage. But multipliers can RE-INTRODUCE damage
+by amplifying losses on filter-survivor trades that turn out to be
+losers. The 2.0× multiplier doubles both winners AND losers
+symmetrically — so cells that are net-negative cross-batch destroy
+edge under leverage.
+
+Specifically:
+- PAIR_55-60_22-25 LONG at 2.0× had been amplifying -$40 raw losses
+  into -$80 actual losses on 60% WR — the multiplier was extracting
+  variance, not edge.
+- SCORE_4 LONG was the May 18 PM most-defensible Score multiplier
+  candidate at activation. Cross-batch broader pool reveals it's
+  near-zero edge. At 2.0×, the variance-doubling outweighs the slim
+  positive expectancy.
+
+### Active multiplier landscape after this ship
+
+| Cell | Direction | Multiplier | Status |
+|---|---|---|---|
+| BTC_60-65_28-30 | LONG | 2.0× | ★ keep |
+| BTC_35-40_33-36 | SHORT | 2.0× | ★ keep |
+| SCORE_3 | SHORT | 2.0× | ~ keep (N=104, marginal but positive) |
+| SCORE_6 | SHORT | 2.0× | ★ keep |
+| All others | both | 1.0× | preserved in config, dormant |
+
+Only 4 cells now active at 2.0×. The Score 6 SHORT cell remains the
+highest-conviction (90% WR / +$212 / 4 dates).
+
+### Pre-committed revert criteria
+
+If demoted cells (PAIR_55-60_22-25 LONG, SCORE_4 LONG) accumulate
+≥10 fresh trades each post-demotion AND show:
+- ≥70% WR AND Total $ positive → re-promote to 1.5× (then 2.0× after
+  +50 more trades at 1.5×)
+- ≤55% WR OR Total $ negative → keep at 1.0× permanently
+
+For active cells (BTC_60-65_28-30, BTC_35-40_33-36, SCORE_3, SCORE_6):
+- ≤40% WR OR Total $ ≤ -$30 on N≥5 fresh → revert to 1.0× immediately
+- Drop to 1.5× if WR 50-70% on N≥5
+
+### Methodological lesson
+
+I should have audited multiplier cells proactively when shipping new
+filter changes today. The user called this out and I should have done
+it without prompting. The discipline rule is now explicit:
+
+> **Whenever filters are tightened or new dimensions are added,
+> immediately re-audit ALL active multiplier cells against the
+> cross-batch pool under the new filter regime. Demote any ✗ HARMFUL
+> cell per the locked verdict matrix.**
+
+### Files changed
+
+- `trading_config.json` — 2 multiplier strings updated
+- `CLAUDE.md` — this entry

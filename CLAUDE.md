@@ -11280,6 +11280,45 @@ Reference: same entry as #8.
 **Watch 2** (`0.5-1.0 × 25-30`): if N≥8 in fresh data AND WR≤45% → extend rule.
 **Watch 3** (`0.1-0.3 × 25-30`): activates only if Watch 2 also confirms; consider broader rule.
 
+#### 9c. ADX Δ × BTC ADX LONG — extend rule with `0.5-1.0:25-35` candidate (NEW May 18 late PM)
+
+Reference: CLAUDE.md May 18 late PM cross-batch audit of ADX Δ × BTC ADX
+table. Discovered while validating whether to add `0.1-0.3:18-25` (rejected).
+
+Current LONG rule: `adx_delta_btc_adx_filter_long: "1.0-2.0:18-30"`.
+Candidate extension: add `0.5-1.0:25-35` → full rule becomes
+`"1.0-2.0:18-30,0.5-1.0:25-35"`.
+
+Cross-batch evidence (379-trade LONG pool across all archived batches):
+- ADX Δ 0.5-1.0 × BTC ADX 25-30 LONG: 16 trades / 44% WR / **-$274**
+- ADX Δ 0.5-1.0 × BTC ADX 30-35 LONG: 15 trades / 40% WR / **-$368**
+- **Combined: 31 trades / 42% WR / -$642** across multiple dates
+
+For context — the adjacent winner zone NOT to touch:
+- ADX Δ 0.5-1.0 × BTC ADX 18-25 LONG: 59 trades / 56% WR / **+$227** ★ winner
+- Same ADX Δ band but lower BTC ADX zone is a structural winner; the
+  candidate rule targets only the 25-35 BTC ADX zone
+
+**Promotion gate at next ≥100-trade LONG checkpoint:**
+
+| Outcome (fresh data) | Action |
+|---|---|
+| `0.5-1.0 × 25-35` cell shows N ≥ 15 AND WR ≤ 45% AND Avg P&L % ≤ -0.10% | Ship: extend rule with `0.5-1.0:25-35` |
+| Same cell shows N ≥ 15 AND WR ≥ 55% | Drop from watchlist (regime broke) |
+| Inverse cell `0.5-1.0 × 18-25` (the winner zone) drops below 50% WR on N ≥ 15 | Re-investigate entire 0.5-1.0 band — may indicate broader regime shift |
+| N < 15 in candidate cell | Insufficient data, extend test |
+
+**Mechanism:** rule extension only — no new code. Existing
+`adx_delta_btc_adx_filter_long` parser already supports comma-separated
+multi-rule strings with `MIN-MAX` ADX range syntax (per CLAUDE.md May 5).
+
+**Note on adjacency:** the 1.0-2.0 band shows a different cliff at BTC ADX
+30:
+- 1.0-2.0 × 18-25: 31% WR / -$339 ✗ (blocked by current rule)
+- 1.0-2.0 × 25-30: 73% WR / -$48 (mixed, currently blocked — could
+  consider relaxing back to `1.0-2.0:18-25` if next batch shows 25-30
+  ≥ 70% WR on N ≥ 10)
+
 #### 9b. BTC RSI 55-60 LONG — `55-60:20-25` rule validation (NEW May 18 late PM)
 
 Reference: CLAUDE.md May 18 late PM "BTC RSI 55-60 LONG cap rollback 99-100 → 20-25".

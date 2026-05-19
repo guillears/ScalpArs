@@ -6405,6 +6405,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "be_floor_counterfactual": _compute_be_floor_counterfactual(orders, new_floor=0.10),
         # Pattern C Tracker validation (May 19, observation-only)
         "pattern_c_validation": _compute_pattern_c_validation(orders),
+        # Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
+        "regime_change_counterfactual": _compute_regime_change_counterfactual(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -7716,6 +7718,148 @@ def _compute_pattern_c_validation(orders):
                 'verdict': verdict,
             })
     return rows
+
+
+def _compute_regime_change_counterfactual(orders):
+    """Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics).
+
+    For trades where BTC macro regime flipped opposite to trade direction
+    during the hold, compares:
+      - Actual close P&L (regime change exit was DISABLED → trade rode through)
+      - Phantom P&L at the moment regime first flipped (captured in
+        phantom_regime_change_exit_pnl)
+
+    Per (direction × close_reason) and per-direction TOTAL rows.
+
+    Verdict gates (CLAUDE.md May 11 locked):
+      ★ WORKING: Δ$ > +$50, Δ% > +0.20pp, N ≥ 10 → enable regime_change_exit_enabled
+      ✓ Marginal: Δ$ $0-$50, N ≥ 5 → defer
+      ⚠ HURTING: Δ$ < 0 on N ≥ 5 → keep DISABLED (regime exits would kill recoveries)
+      ⚠ Low N: N < 5 → no decision
+
+    Pre-May-11 trades have NULL on phantom_regime_change_exit_pnl and are
+    excluded from analysis.
+    """
+    rows = []
+    by_dir_reason = {}
+    pool_n = 0
+    pool_actual_total = 0.0
+    pool_cf_total = 0.0
+    pool_actual_pct_sum = 0.0
+    pool_cf_pct_sum = 0.0
+
+    for o in orders:
+        if o.status != 'CLOSED':
+            continue
+        phantom_pnl = o.phantom_regime_change_exit_pnl
+        if phantom_pnl is None:
+            continue
+        actual_pct = o.pnl_percentage
+        if actual_pct is None:
+            continue
+
+        # Compute counterfactual $: assume same investment / notional
+        # Δ$ = (cf% - actual%) × notional / 100
+        notional = o.notional_value or (o.investment * (o.leverage or 1))
+        cf_dollars = phantom_pnl * notional / 100.0
+        actual_dollars = o.pnl or 0
+        delta_dollars = cf_dollars - actual_dollars
+        delta_pct = phantom_pnl - actual_pct
+
+        reason = o.close_reason or "UNKNOWN"
+        # Bucket trailing L4+ into L4+
+        if " L" in reason:
+            parts = reason.split(" L")
+            base = parts[0]
+            try:
+                lvl = int(parts[1].split()[0])
+                if lvl >= 4:
+                    reason = f"{base} L4+"
+            except (ValueError, IndexError):
+                pass
+
+        key = (o.direction, reason)
+        if key not in by_dir_reason:
+            by_dir_reason[key] = {
+                'direction': o.direction,
+                'reason': reason,
+                'n': 0,
+                'actual_pct_sum': 0.0,
+                'cf_pct_sum': 0.0,
+                'actual_dollars_sum': 0.0,
+                'cf_dollars_sum': 0.0,
+            }
+        b = by_dir_reason[key]
+        b['n'] += 1
+        b['actual_pct_sum'] += actual_pct
+        b['cf_pct_sum'] += phantom_pnl
+        b['actual_dollars_sum'] += actual_dollars
+        b['cf_dollars_sum'] += cf_dollars
+
+        pool_n += 1
+        pool_actual_total += actual_dollars
+        pool_cf_total += cf_dollars
+        pool_actual_pct_sum += actual_pct
+        pool_cf_pct_sum += phantom_pnl
+
+    # Build rows from buckets
+    for (direction, reason), b in sorted(by_dir_reason.items(),
+                                          key=lambda x: (-x[1]['n'], x[0])):
+        n = b['n']
+        actual_avg_pct = b['actual_pct_sum'] / n
+        cf_avg_pct = b['cf_pct_sum'] / n
+        delta_pct = cf_avg_pct - actual_avg_pct
+        delta_dollars = b['cf_dollars_sum'] - b['actual_dollars_sum']
+
+        # Verdict per locked gates
+        if n < 5:
+            verdict = '⚠ Low N'
+        elif delta_dollars < 0:
+            verdict = '⚠ HURTING — regime exit kills recoveries'
+        elif n >= 10 and delta_dollars > 50 and delta_pct > 0.20:
+            verdict = '★ WORKING — enable regime_change_exit'
+        elif delta_dollars > 0:
+            verdict = '✓ Marginal — defer'
+        else:
+            verdict = '✓ Marginal — defer'
+
+        rows.append({
+            'direction': direction,
+            'reason': reason,
+            'n': n,
+            'actual_avg_pct': round(actual_avg_pct, 3),
+            'cf_avg_pct': round(cf_avg_pct, 3),
+            'delta_pct': round(delta_pct, 3),
+            'actual_total_usd': round(b['actual_dollars_sum'], 2),
+            'cf_total_usd': round(b['cf_dollars_sum'], 2),
+            'delta_usd': round(delta_dollars, 2),
+            'verdict': verdict,
+        })
+
+    # Pool-level summary + direction-level totals
+    summary = {
+        'pool_n': pool_n,
+        'pool_actual_pct': round(pool_actual_pct_sum / pool_n, 3) if pool_n else 0,
+        'pool_cf_pct': round(pool_cf_pct_sum / pool_n, 3) if pool_n else 0,
+        'pool_delta_pct': round((pool_cf_pct_sum - pool_actual_pct_sum) / pool_n, 3) if pool_n else 0,
+        'pool_actual_usd': round(pool_actual_total, 2),
+        'pool_cf_usd': round(pool_cf_total, 2),
+        'pool_delta_usd': round(pool_cf_total - pool_actual_total, 2),
+    }
+
+    # Pool verdict
+    if pool_n < 5:
+        summary['verdict'] = '⚠ Low N — keep observing'
+    elif summary['pool_delta_usd'] < 0:
+        summary['verdict'] = '⚠ HURTING — KEEP DISABLED'
+    elif pool_n >= 10 and summary['pool_delta_usd'] > 50 and summary['pool_delta_pct'] > 0.20:
+        summary['verdict'] = '★ WORKING — ENABLE regime_change_exit'
+    elif summary['pool_delta_usd'] > 0:
+        summary['verdict'] = '✓ Marginal — defer decision'
+    else:
+        summary['verdict'] = '✓ Marginal — defer'
+
+    return {'rows': rows, 'summary': summary}
 
 
 def _compute_fast_exit_counterfactual(orders):

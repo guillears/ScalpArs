@@ -1104,6 +1104,36 @@ class TradingEngine:
     # Historical trades with cell_multiplier_source starting "STRETCH_..." retain
     # their attribution in the Multiplier Cell Performance table.
 
+    def _lookup_1d_multiplier(
+        self, value: Optional[float], rule_string: str, source_prefix: str,
+    ) -> Tuple[float, Optional[str]]:
+        """
+        Generic 1D range multiplier lookup (May 18).
+        Rule string format: "<lo>-<hi>:<multiplier>,...". Half-open range [lo, hi).
+        Returns (1.0, None) if no rule matches or input is missing.
+        Used by Score-based multipliers; reusable for future BTC ATR / 1h Slope / Gap dims.
+        """
+        if value is None or not rule_string:
+            return 1.0, None
+        for rule in rule_string.split(','):
+            rule = rule.strip()
+            if not rule:
+                continue
+            try:
+                parts = rule.split(':')
+                if len(parts) != 2:
+                    logger.warning(f"[CELL_MULT_1D] Malformed rule '{rule}' (expected 2 parts), skipping")
+                    continue
+                range_part, mult_part = parts
+                lo, hi = map(float, range_part.split('-'))
+                mult = float(mult_part)
+                if lo <= float(value) < hi:
+                    return mult, f"{source_prefix}_{range_part}"
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[CELL_MULT_1D] Failed to parse rule '{rule}': {e}, skipping")
+                continue
+        return 1.0, None
+
     async def _revalidate_entry_signal(
         self, symbol: str, pair: str, original_direction: str, original_confidence: str
     ) -> Tuple[bool, str]:
@@ -1940,10 +1970,14 @@ class TradingEngine:
         _btc_rules = getattr(_th, f'btc_rsi_adx_multiplier_{direction.lower()}', '')
         _pair_mult, _pair_src = self._lookup_rsi_adx_multiplier(entry_rsi, entry_adx, _pair_rules, 'PAIR')
         _btc_mult, _btc_src = self._lookup_rsi_adx_multiplier(entry_btc_rsi, entry_btc_adx, _btc_rules, 'BTC')
+        # Entry Quality Score multiplier (May 18, new dimension)
+        _score_rules = getattr(_th, f'score_multiplier_{direction.lower()}', '')
+        _score_val = float(entry_quality_score) if entry_quality_score is not None else None
+        _score_mult, _score_src = self._lookup_1d_multiplier(_score_val, _score_rules, 'SCORE')
         # HIGHER multiplier wins — when multiple rules match, use the strongest.
         # Hard cap (~2.0x) prevents stacking past the safety guard.
         # Stretch-based multiplier retired May 15 PM (was a third candidate).
-        _candidates = [(_pair_mult, _pair_src), (_btc_mult, _btc_src)]
+        _candidates = [(_pair_mult, _pair_src), (_btc_mult, _btc_src), (_score_mult, _score_src)]
         cell_mult, cell_src = max(_candidates, key=lambda c: c[0])
         # Hard cap clamp — non-negotiable safety guard
         if cell_mult > _hard_cap:
@@ -4904,6 +4938,48 @@ class TradingEngine:
                                     break
                             except (ValueError, TypeError):
                                 continue
+
+            # BTC EMA13-EMA50 Gap × BTC ADX 2D Cross-Filter (May 19, 2026).
+            # Catches the "BTC mid-extension + low/climax trend conviction" LONG
+            # loser zone that single-axis filters can't express. Cross-batch
+            # evidence inside Gap [+0.10, +0.20%]:
+            #   - ADX <22: N=31, 39% WR, -$1,022 (5 of 6 dates losing) — block
+            #   - ADX 22-25: N=10, 90% WR, +$177 — RESCUE, preserved (open)
+            #   - ADX 25-28: N=9, 22% WR, -$415 — block (N=9 override, all 4 dates negative)
+            # Rule format: "<gapLo>-<gapHi>:<adxLo>-<adxHi>" — block when BTC
+            # EMA13-EMA50 gap in [gapLo, gapHi) AND BTC ADX in [adxLo, adxHi).
+            # Multiple rules comma-separated. Empty = inactive.
+            _bgad_enabled = getattr(config.trading_config.thresholds,
+                                    'btc_gap_btc_adx_filter_enabled', True)
+            if (_bgad_enabled and signal in ["LONG", "SHORT"]
+                    and btc_ema13 is not None and btc_ema50 is not None
+                    and btc_ema50 != 0 and btc_adx is not None):
+                _btc_gap_val = ((btc_ema13 - btc_ema50) / btc_ema50) * 100
+                _th3 = config.trading_config.thresholds
+                _bgad_key = ('btc_gap_btc_adx_filter_long' if signal == 'LONG'
+                             else 'btc_gap_btc_adx_filter_short')
+                _bgad_str = getattr(_th3, _bgad_key, '')
+                if _bgad_str and _bgad_str.strip():
+                    for _bgad_rule in _bgad_str.split(','):
+                        _bgad_rule = _bgad_rule.strip()
+                        if not _bgad_rule or ':' not in _bgad_rule:
+                            continue
+                        try:
+                            _g_part, _a_part = _bgad_rule.split(':')
+                            _g_lo, _g_hi = map(float, _g_part.split('-'))
+                            _a_lo, _a_hi = map(float, _a_part.split('-'))
+                            if (_g_lo <= _btc_gap_val < _g_hi and
+                                    _a_lo <= btc_adx < _a_hi):
+                                logger.info(
+                                    f"[BTC_GAP_BTC_ADX_CROSS] {pair}: {signal} blocked — "
+                                    f"BTC Gap {_btc_gap_val:+.3f}% in [{_g_lo}-{_g_hi}) "
+                                    f"AND BTC ADX {btc_adx:.1f} in [{_a_lo}-{_a_hi})"
+                                )
+                                self._record_filter_block("BTC_GAP_BTC_ADX_CROSS", signal, had_room=_had_room)
+                                signal = "NO_TRADE"
+                                break
+                        except (ValueError, TypeError):
+                            continue
 
             # BTC Trend Filter — runs independently of Macro Trend toggle (May 5).
             # Compares BTC EMA13 vs BTC EMA50 on the 5m chart (May 6 — switched from

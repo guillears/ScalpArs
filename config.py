@@ -294,6 +294,18 @@ class SignalThresholds(BaseModel):
     rngpos_adx_delta_filter_short: str = ""
     # Master toggle for the RngPos × ADX Δ cross-filter. Same A/B pattern.
     rngpos_adx_delta_filter_enabled: bool = True
+    # BTC EMA13-EMA50 Gap × BTC ADX 2D Cross-Filter (May 19, 2026).
+    # Catches the "BTC mid-extension + low/climax trend conviction" LONG loser zone
+    # that single-axis filters can't express. Inside Gap [+0.10, +0.20%]:
+    #   - ADX <22 = mean-revert (-$1,022 / 31t / 39% WR, 5 of 6 dates losing)
+    #   - ADX 22-25 = healthy continuation (+$177 / 10t / 90% WR — RESCUE, preserved)
+    #   - ADX 25-28 = climax (-$415 / 9t / 22% WR — added with N=9 override)
+    # Format per rule: "<gapLo>-<gapHi>:<adxLo>-<adxHi>" (block when both ranges match).
+    # Half-open ranges [lo, hi). Multi-rule comma-separated.
+    btc_gap_btc_adx_filter_long: str = ""
+    btc_gap_btc_adx_filter_short: str = ""
+    # Master toggle. Same A/B pattern as other cross-filters.
+    btc_gap_btc_adx_filter_enabled: bool = True
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.
@@ -308,6 +320,12 @@ class SignalThresholds(BaseModel):
     btc_rsi_adx_multiplier_short: str = ""  # BTC-level multiplier rules for SHORT
     rsi_adx_multiplier_target: str = "investment"  # "investment" (multiply position size $) or "leverage"
     rsi_adx_multiplier_hard_cap: float = 2.0  # UI-configurable safety cap; engine clamps any cell to this
+    # Entry Quality Score multiplier (May 18, NEW dimension). Format: "<score_lo>-<score_hi>:<multiplier>", comma-separated.
+    # Example: "4-5:2.0" matches score=4 only (range is half-open [lo, hi)).
+    # Multi-rule: "3-4:2.0,6-7:2.0" matches score=3 OR score=6.
+    # HIGHER-wins conflict resolution same as RSI×ADX multipliers; hard cap applies.
+    score_multiplier_long: str = ""
+    score_multiplier_short: str = ""
     # Entry Quality Score block filter (May 15 PM, opt-in). Toggle + threshold.
     # When enabled, blocks entries with entry_quality_score <= block_max.
     # Threshold semantics match the table: block_max=1 → blocks Score 0 AND

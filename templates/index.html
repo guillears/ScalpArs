@@ -4408,6 +4408,35 @@
                         </div>
                     </div>
                     <div class="mt-3 mb-2 px-4">
+                        <div class="flex items-center gap-3 mb-1">
+                            <span class="text-sm text-gray-300">BTC EMA13-EMA50 Gap × BTC ADX Cross-Filter <span class="text-amber-400 text-xs">(May 19)</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-btc-gap-btc-adx-filter-enabled" class="sr-only peer" checked>
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                <span class="ml-2 text-xs text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">Block entry when BTC EMA13-EMA50 gap AND BTC ADX both fall in the specified ranges. Catches the "BTC mid-extension + low/climax trend conviction" loser zone. <span class="text-amber-400">LONG default `0.10-0.20:0-22,0.10-0.20:25-28` shipped May 19 — kill zone (-$1,022 / 31t / 39% WR) + climax zone (-$415 / 9t / 22% WR). Rescue cell 22-25 preserved.</span></p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">Gap Min %</th><th class="text-left px-1">Gap Max %</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="btc-gap-btc-adx-filter-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcGapBtcAdxRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">Gap Min %</th><th class="text-left px-1">Gap Max %</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="btc-gap-btc-adx-filter-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcGapBtcAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">Market Breadth Filter</span>
                         <p class="text-xs text-gray-500 mb-1">Gate entries based on % of scanned pairs in Bull/Bear regime (independent EMA20 slope threshold)</p>
                         <div class="flex items-center gap-6 mt-1 flex-wrap">
@@ -4538,6 +4567,26 @@
                             </div>
                         </div>
                         <p class="text-xs text-gray-500 mt-2">Defaults to 1.0× for any cell not listed. Per-cell value clamped to [0.5, hard cap]. If available balance &lt; multiplied target, trade uses all available (logged as <code>[CELL_MULT_CAPPED]</code>) — never aborts on capital alone. <span class="text-cyan-300">Pair + BTC both match? HIGHER wins.</span></p>
+                        <div class="text-xs text-amber-400/80 mb-2 mt-3">⚠ Entry Quality Score (1D, new dimension May 18) — boost trades by entry quality score</div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">Score</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <tbody id="score-mult-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addScoreMultRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add LONG rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">Score</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <tbody id="score-mult-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addScoreMultRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add SHORT rule</button>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Combined with RSI×ADX cells via HIGHER-wins; hard cap applies. Source labels in Multiplier Cell Performance table show as <code>Score N</code>.</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI Momentum Filter</span>
@@ -5984,6 +6033,7 @@
             }
 
             // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+            const _fmtSrc1 = (s) => { const m = s && s.match(/^SCORE_(\d+)-/); return m ? `Score ${m[1]}` : s; };
             const _renderMultExport = (rows, label, summary) => {
                 lines.push(`\n${hr2}`);
                 lines.push(`## Multiplier Cell Performance — ${label}\n`);
@@ -5995,7 +6045,7 @@
                         const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                         const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
                         const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
-                        lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                        lines.push(`${_fmtSrc1(r.source).padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                     }
                 }
                 if (summary && summary.multiplied_trades_n) {
@@ -7315,6 +7365,7 @@
                 }
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
+                const _fmtSrc2 = (s) => { const m = s && s.match(/^SCORE_(\d+)-/); return m ? `Score ${m[1]}` : s; };
                 const _renderMultExport2 = (rows, label, summary) => {
                     lines.push(`\n${hr2}`);
                     lines.push(`## Multiplier Cell Performance — ${label}\n`);
@@ -7326,7 +7377,7 @@
                             const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                             const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
                             const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
-                            lines.push(`${r.source.padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                            lines.push(`${_fmtSrc2(r.source).padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                         }
                     }
                     if (summary && summary.multiplied_trades_n) {
@@ -9037,6 +9088,14 @@
                 }
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier)
+                const _formatMultSource = (src) => {
+                    // SCORE_<lo>-<hi> → "Score <lo>" (range is integer-width, lo is the value)
+                    if (src && src.startsWith('SCORE_')) {
+                        const m = src.match(/^SCORE_(\d+)-/);
+                        if (m) return `Score ${m[1]}`;
+                    }
+                    return src;
+                };
                 const _renderMultRows = (rows, tbodyId) => {
                     const tb = document.getElementById(tbodyId);
                     if (!tb) return;
@@ -9067,7 +9126,7 @@
                             ? `<span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-900/40 text-amber-300 font-mono" title="Cell currently demoted in config — new trades will use ${r.current_config_multiplier.toFixed(1)}x instead of ${r.multiplier.toFixed(1)}x">↓ now ${r.current_config_multiplier.toFixed(1)}x</span>`
                             : '';
                         return `<tr class="hover:bg-white/5">
-                            <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${r.source}${demotedBadge}</td>
+                            <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${_formatMultSource(r.source)}${demotedBadge}</td>
                             <td class="px-2 py-1 text-right ${sourceColor}">${r.multiplier.toFixed(2)}x</td>
                             <td class="px-2 py-1 text-right">${r.n}</td>
                             <td class="px-2 py-1 text-right">${r.wr_pct.toFixed(1)}%</td>
@@ -13488,11 +13547,19 @@
                 loadRngposAdxDeltaFilter('short', config.thresholds.rngpos_adx_delta_filter_short || '');
                 const _rpadEn = document.getElementById('config-rngpos-adx-delta-filter-enabled');
                 if (_rpadEn) _rpadEn.checked = (config.thresholds.rngpos_adx_delta_filter_enabled !== false);
+                // BTC Gap × BTC ADX Cross-Filter (May 19)
+                loadBtcGapBtcAdxFilter('long', config.thresholds.btc_gap_btc_adx_filter_long || '');
+                loadBtcGapBtcAdxFilter('short', config.thresholds.btc_gap_btc_adx_filter_short || '');
+                const _bgadEn = document.getElementById('config-btc-gap-btc-adx-filter-enabled');
+                if (_bgadEn) _bgadEn.checked = (config.thresholds.btc_gap_btc_adx_filter_enabled !== false);
                 // Premium Multipliers (May 4, 2026)
                 loadMultRules('long', 'pair', config.thresholds.rsi_adx_multiplier_long || '');
                 loadMultRules('short', 'pair', config.thresholds.rsi_adx_multiplier_short || '');
                 loadMultRules('long', 'btc', config.thresholds.btc_rsi_adx_multiplier_long || '');
                 loadMultRules('short', 'btc', config.thresholds.btc_rsi_adx_multiplier_short || '');
+                // Score multipliers (May 18, NEW 1D dim) — table-row UI
+                loadScoreMultRules('long', config.thresholds.score_multiplier_long || '');
+                loadScoreMultRules('short', config.thresholds.score_multiplier_short || '');
                 // Stretch-based multipliers retired May 15 PM.
                 document.getElementById('config-mult-target').value = config.thresholds.rsi_adx_multiplier_target || 'investment';
                 document.getElementById('config-mult-hard-cap').value = config.thresholds.rsi_adx_multiplier_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_hard_cap : 2.0;
@@ -13940,6 +14007,47 @@
             return rules.join(',');
         }
 
+        // BTC Gap × BTC ADX Cross-Filter helpers (May 19, 2026)
+        // Rule format: "<gapLo>-<gapHi>:<adxLo>-<adxHi>"
+        function addBtcGapBtcAdxRow(direction, gLo='', gHi='', aLo='', aHi='') {
+            const tbody = document.getElementById(`btc-gap-btc-adx-filter-${direction}-body`);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="number" step="0.01" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-g-lo" value="${gLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.01" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-g-hi" value="${gHi}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-a-lo" value="${aLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs bgad-a-hi" value="${aHi}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadBtcGapBtcAdxFilter(direction, filterStr) {
+            const tbody = document.getElementById(`btc-gap-btc-adx-filter-${direction}-body`);
+            tbody.innerHTML = '';
+            if (!filterStr || !filterStr.trim()) return;
+            for (const rule of filterStr.split(',')) {
+                const r = rule.trim();
+                if (!r || !r.includes(':')) continue;
+                const [gPart, aPart] = r.split(':');
+                const [gLo, gHi] = gPart.split('-');
+                const [aLo, aHi] = aPart.split('-');
+                addBtcGapBtcAdxRow(direction, gLo || '', gHi || '', aLo || '', aHi || '');
+            }
+        }
+        function collectBtcGapBtcAdxFilter(direction) {
+            const rows = document.querySelectorAll(`#btc-gap-btc-adx-filter-${direction}-body tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const gLo = row.querySelector('.bgad-g-lo').value.trim();
+                const gHi = row.querySelector('.bgad-g-hi').value.trim();
+                const aLo = row.querySelector('.bgad-a-lo').value.trim();
+                const aHi = row.querySelector('.bgad-a-hi').value.trim();
+                if (gLo !== '' && gHi !== '' && aLo !== '' && aHi !== '') {
+                    rules.push(`${gLo}-${gHi}:${aLo}-${aHi}`);
+                }
+            });
+            return rules.join(',');
+        }
+
         // Premium Multiplier helpers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         // Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>"
         // scope = 'pair' or 'btc'  (which body element to target)
@@ -13991,6 +14099,48 @@
         }
 
         // Stretch-based Multiplier helpers removed May 15 PM (panel retired).
+
+        // Score Multiplier helpers (May 18 — 1D dim, integer score 1-6)
+        // Storage format: "<score>-<score+1>:<multiplier>" (half-open range matching engine)
+        // Display: single "Score" column showing the integer value.
+        function addScoreMultRow(direction, score='', mult='') {
+            const tbody = document.getElementById(`score-mult-${direction}-body`);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="number" step="1" min="1" max="6" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs score-mult-score" value="${score}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-14 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs font-semibold score-mult-multi" value="${mult}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadScoreMultRules(direction, rulesStr) {
+            const tbody = document.getElementById(`score-mult-${direction}-body`);
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!rulesStr || !rulesStr.trim()) return;
+            for (const rule of rulesStr.split(',')) {
+                const r = rule.trim();
+                if (!r) continue;
+                const parts = r.split(':');
+                if (parts.length !== 2) continue;
+                const [scorePart, mult] = parts;
+                const [scoreLo] = scorePart.split('-');
+                addScoreMultRow(direction, scoreLo, mult);
+            }
+        }
+        function collectScoreMultRules(direction) {
+            const rows = document.querySelectorAll(`#score-mult-${direction}-body tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const s = row.querySelector('.score-mult-score').value.trim();
+                const m = row.querySelector('.score-mult-multi').value.trim();
+                if (s && m) {
+                    const lo = parseInt(s);
+                    rules.push(`${lo}-${lo+1}:${m}`);
+                }
+            });
+            return rules.join(',');
+        }
+
 
         // Update investment unit display
         function updateInvestmentUnit() {
@@ -14190,6 +14340,10 @@
                     rngpos_adx_delta_filter_long: collectRngposAdxDeltaFilter('long'),
                     rngpos_adx_delta_filter_short: collectRngposAdxDeltaFilter('short'),
                     rngpos_adx_delta_filter_enabled: ((document.getElementById('config-rngpos-adx-delta-filter-enabled') || {}).checked === true),
+                    // BTC Gap × BTC ADX Cross-Filter (May 19)
+                    btc_gap_btc_adx_filter_long: collectBtcGapBtcAdxFilter('long'),
+                    btc_gap_btc_adx_filter_short: collectBtcGapBtcAdxFilter('short'),
+                    btc_gap_btc_adx_filter_enabled: ((document.getElementById('config-btc-gap-btc-adx-filter-enabled') || {}).checked === true),
                     // Premium Multipliers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
                     rsi_adx_multiplier_long: collectMultRules('long', 'pair'),
                     rsi_adx_multiplier_short: collectMultRules('short', 'pair'),
@@ -14197,6 +14351,8 @@
                     btc_rsi_adx_multiplier_short: collectMultRules('short', 'btc'),
                     rsi_adx_multiplier_target: document.getElementById('config-mult-target').value || 'investment',
                     rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
+                    score_multiplier_long: collectScoreMultRules('long'),
+                    score_multiplier_short: collectScoreMultRules('short'),
                     entry_quality_score_filter_enabled: (document.getElementById('config-entry-quality-score-filter-enabled') || {}).checked === true,
                     entry_quality_score_block_max: parseInt((document.getElementById('config-entry-quality-score-block-max') || {}).value) || 1,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,

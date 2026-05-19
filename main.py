@@ -2127,8 +2127,11 @@ _TIME_BLOCK_LABELS = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
 _VOL_BINS = [
     # May 12: refined 5 → 8 bins. Split "< 0.95" into three (very-low/low/edge)
     # and "> 1.25" into two (high/extreme) — both zones are where bleed lives.
+    # May 19: further split "< 0.70" into "< 0.50" and "0.50-0.70" to surface
+    # extreme-low-volume entries in finer detail (PROMUSDT NP today landed in <0.70).
     # Empty cells in the 2D cross-tab auto-drop.
-    ("< 0.70", 0.0, 0.70),
+    ("< 0.50", 0.0, 0.50),
+    ("0.50-0.70", 0.50, 0.70),
     ("0.70-0.85", 0.70, 0.85),
     ("0.85-0.95", 0.85, 0.95),
     ("0.95-1.05", 0.95, 1.05),
@@ -4326,31 +4329,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # BTC EMA13-EMA50 Gap × BTC ADX Cross-Tab (May 11 UTC-3 — see CLAUDE.md).
         # Surfaces whether BTC over-extension (gap > +0.10%) is uniformly bad across
         # BTC ADX magnitudes, or concentrated in a specific BTC ADX × gap intersection.
-        # Critical for understanding today's drill-down: 4 cell-trades all had BTC gap
-        # +0.37% — over-extended zone. Need to test if gap > +0.20% is bad universally
-        # or conditional on BTC ADX 25-30.
-        # May 12: modest cross-tab refinement (8 → 11 buckets) — split the wide
-        # ±0.20-0.50% zone where over-extension lives. Kept coarser than the
-        # single-dim tables because cross-tab cells need N ≥ 5 to be meaningful.
-        btc_gap_ranges = [
-            ("< -0.50%", -999, -0.50),
-            ("-0.50 to -0.30%", -0.50, -0.30),
-            ("-0.30 to -0.20%", -0.30, -0.20),
-            ("-0.20 to -0.10%", -0.20, -0.10),
-            ("-0.10 to 0%", -0.10, 0.0),
-            ("0 to +0.10%", 0.0, 0.10),
-            ("+0.10 to +0.20%", 0.10, 0.20),
-            ("+0.20 to +0.30%", 0.20, 0.30),
-            ("+0.30 to +0.50%", 0.30, 0.50),
-            ("+0.50 to +1.00%", 0.50, 1.00),
-            ("> +1.00%", 1.00, 999),
-        ]
+        # May 19: re-bucketed to use the same 24-bucket fine grid as the 1D BTC Gap
+        # table (pair_ema_gap_ranges) so 1D and 2D views are directly comparable.
+        # Surfaces the +0.10-0.20% loser sub-zone with finer resolution (+0.10-0.15
+        # vs +0.15-0.20) — critical for tuning the May 19 cross-filter rules.
         btc_gap_btc_adx_crosstab = []
         _btc_gap_pool = [o for o in orders
                          if getattr(o, 'entry_btc_trend_gap_pct', None) is not None
                          and getattr(o, 'entry_btc_adx', None) is not None]
         for direction in ["LONG", "SHORT"]:
-            for gr_name, gr_min, gr_max in btc_gap_ranges:
+            for gr_name, gr_min, gr_max in pair_ema_gap_ranges:
                 for ar_name, ar_min, ar_max in btc_adx_ranges_for_delta:
                     bucket = [
                         o for o in _btc_gap_pool
@@ -8056,11 +8044,12 @@ def _compute_multiplier_cell_performance(orders):
             rule = rule.strip()
             if not rule: continue
             parts = rule.split(':')
-            if prefix == 'STRETCH' and len(parts) == 2:
-                # "0.25-0.30:2.0" — stretch has no ADX
+            if prefix in ('STRETCH', 'SCORE') and len(parts) == 2:
+                # 1D rule format: "<lo>-<hi>:<multiplier>" (no second dimension)
+                # STRETCH retired May 15 PM; SCORE shipped May 18 (new dimension).
                 out[f"{prefix}_{parts[0]}"] = float(parts[1])
             elif len(parts) == 3:
-                # "60-65:18-22:2.0"
+                # 2D rule format: "<dim1_lo>-<dim1_hi>:<dim2_lo>-<dim2_hi>:<multiplier>"
                 out[f"{prefix}_{parts[0]}_{parts[1]}"] = float(parts[2])
         return out
 
@@ -8070,10 +8059,14 @@ def _compute_multiplier_cell_performance(orders):
         cur_pair_short = _parse_rules(getattr(th, 'rsi_adx_multiplier_short', ''), 'PAIR')
         cur_btc_long = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_long', ''), 'BTC')
         cur_btc_short = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_short', ''), 'BTC')
+        # SCORE-based multipliers (May 18, NEW dim) — 1D rule format "lo-hi:mult"
+        cur_score_long = _parse_rules(getattr(th, 'score_multiplier_long', ''), 'SCORE')
+        cur_score_short = _parse_rules(getattr(th, 'score_multiplier_short', ''), 'SCORE')
         # STRETCH-based multiplier retired May 15 PM. Historical STRETCH_* sources
         # in cell_multiplier_source still render in the table from past-config diffs.
     except Exception:
         cur_pair_long = cur_pair_short = cur_btc_long = cur_btc_short = {}
+        cur_score_long = cur_score_short = {}
 
     def _direction_baseline(direction):
         """Avg P&L% of NON-multiplied trades for this direction."""
@@ -8088,9 +8081,9 @@ def _compute_multiplier_cell_performance(orders):
         baseline = _direction_baseline(direction)
         # Pick the appropriate current-config map for this direction
         if direction == 'LONG':
-            current_map = {**cur_pair_long, **cur_btc_long}
+            current_map = {**cur_pair_long, **cur_btc_long, **cur_score_long}
         else:
-            current_map = {**cur_pair_short, **cur_btc_short}
+            current_map = {**cur_pair_short, **cur_btc_short, **cur_score_short}
         # Group by source (NULL = baseline 1.0×)
         groups = {}
         for o in closed:

@@ -12879,3 +12879,107 @@ To anchor:
 3. The filter overlap check confirming no conflict with May 19 BTC Gap cross-filter
 4. The locked revert criteria for next checkpoint
 5. The discipline acknowledgment that today's TON loss in the cell is sample noise, not signal break
+
+## May 19, 2026 (evening) — FAST_EXIT L2 shipped (0.40% / 5min slow-climber tier)
+
+### What ships
+
+New exit tier between existing FAST_EXIT L1 (0.20% / 2min) and trailing
+(arms at peak ≥ 0.50%). Mirrors L1 mechanism but fills the structural
+gap: "slow climbers" that build to +0.40% over 2-5 minutes then would
+die without ever reaching the trailing-arming threshold.
+
+**Config (new in `config.py` / `trading_config.json`):**
+- `fast_exit_l2_enabled: bool = True` (default ON)
+- `fast_exit_l2_threshold_pct: float = 0.40`
+- `fast_exit_l2_window_minutes: int = 5`
+
+### Mechanism
+
+Engine check in `services/trading_engine.py` realtime callback, placed
+immediately AFTER the L1 check. L1's `continue` statement means L1-fired
+trades skip L2 entirely — so L1 wins on overlap. L2 fires only when:
+
+1. L1 didn't fire (either peak never hit 0.20% in 2min, or L2 enabled
+   but L1 disabled)
+2. P&L ≥ 0.40% at current tick
+3. Elapsed time since open ≤ 5 min
+4. Trade not already closing
+
+Close reason: **`FAST_EXIT L2`** (mirrors L1/L2/L3 naming convention used
+elsewhere — trailing, BE).
+
+### Why a second tier
+
+Cross-batch evidence from the Fast-Exit Counterfactual table consistently
+showed the **0.40% / 5min** cell as the strongest non-L1 fast-exit
+threshold:
+- Earlier batches showed +$22 SHORT-only edge at this cell
+- Mechanism is clean: a trade that needs 3-4 minutes to climb to +0.40%
+  is unlikely to also reach trailing's +0.50% — it dies first via
+  EMA13_CROSS_EXIT or SL_WIDE
+- L2 captures that exit window before the trade reverses
+
+The trade population this targets is distinct from L1 (which catches
+"fast bursts that die") and from trailing (which catches "trades that
+reach 0.50% peak"). L2 fills the slow-climber gap.
+
+### Auto-coverage in existing analytics — no whitelist work needed
+
+Verified before ship:
+1. **Post-Exit Regret Deep Dive** (`main.py:5995`): no whitelist. Auto-
+   includes any close_reason with `post_exit_peak_pnl` populated.
+   `FAST_EXIT L2` will appear automatically as a row.
+2. **Post-exit running state preservation** (`services/trading_engine.py:308`):
+   uses `startswith("FAST_EXIT")` — matches L1 AND L2.
+3. **Other post-exit preservation path** (`services/trading_engine.py:3171`):
+   same `startswith("FAST_EXIT")` pattern — matches both.
+
+No manual whitelist updates were required. The Apr 17 unification
+refactor of close-reason whitelisting is paying off here.
+
+### Pre-committed validation criteria at next ~30-50 trade checkpoint
+
+| Outcome | Action |
+|---|---|
+| `FAST_EXIT L2` fires ≥ 5 times | Mechanism verified working |
+| `FAST_EXIT L2` Avg Close% ≈ +0.40% in Closing Reason Summary | Wins as designed |
+| Post-Exit Regret on `FAST_EXIT L2`: PostPeak% ≤ +0.20% above close | Exit timing correct, not leaving big tails |
+| `EMA13_CROSS_EXIT` count drops materially vs Slice A baseline | L2 is capturing trades previously dying via cross |
+| Combined Avg P&L % improves ≥ +0.05% vs Slice A baseline | Net positive ship |
+
+Revert triggers:
+- L2 fires but Post-Exit Regret shows PostPeak% ≥ +0.30% above close on N≥5 → cutting winners; raise threshold to 0.50% OR shorten window to 3min
+- Combined Avg P&L worsens > 0.05% → revert entirely (set `fast_exit_l2_enabled: false`)
+- L2 never fires across 100+ trades → window/threshold may be over-restrictive; investigate
+
+### Interaction with the May 19 BE deactivation
+
+BE was deactivated this same evening. The exit ladder for LONG/SHORT now is:
+
+1. `FAST_EXIT L1` (peak ≥0.20% in 2min) → exit at +0.20% gross
+2. **`FAST_EXIT L2` (peak ≥0.40% in 5min)** ← NEW → exit at +0.40% gross
+3. `EMA13_CROSS_EXIT L1` (price crosses EMA13 against direction)
+4. Trailing Stop (peak ≥0.50% → exit at peak - 0.25%)
+5. `STOP_LOSS_WIDE L1` at -0.80% gross
+
+With BE off, L2 provides a partial replacement for BE's rescue surface:
+trades that peak +0.30-0.50% but don't quite reach trailing now have
+L2 as a chance to lock +0.40% gross (≈ +0.34% net after fees).
+
+### Files changed
+
+- `config.py` — 3 new fields with evidence comments
+- `trading_config.json` — defaults (toggle ON, 0.40%, 5min)
+- `services/trading_engine.py` — L2 check block (~40 LOC) after L1
+- `templates/index.html` — UI row + load + save handlers + config text export line
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The 3-tier exit ladder design (L1 fast burst → L2 slow climber → trailing big move)
+2. The precedence rule (L1 wins on overlap via `continue`)
+3. The auto-coverage check that confirmed no whitelist work needed
+4. The locked revert gates for next checkpoint
+5. The interaction with BE deactivation (L2 as partial BE rescue replacement)

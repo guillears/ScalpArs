@@ -5570,6 +5570,43 @@ class TradingEngine:
                         continue  # Trade is closed; skip remaining checks for this order
 
             # ════════════════════════════════════════════════════════════════
+            # Fast Exit L2 (May 19) — "slow climber" tier between L1 and trailing.
+            # L1 catches fast bursts (peak ≥0.20% within 2min). Trailing arms at
+            # peak ≥0.50%. L2 fills the gap: trades that build to 0.40% over
+            # 2-5min then would die without ever hitting trailing's threshold.
+            # Runs only if L1 did NOT fire (the `continue` above skips L2 if
+            # L1 closed). Close reason: "FAST_EXIT L2".
+            # ════════════════════════════════════════════════════════════════
+            _fe2_enabled = getattr(config.trading_config.thresholds, 'fast_exit_l2_enabled', False)
+            if _fe2_enabled and not order_info.get('_closing_in_progress'):
+                _fe2_thr = getattr(config.trading_config.thresholds, 'fast_exit_l2_threshold_pct', 0.40)
+                _fe2_window_min = getattr(config.trading_config.thresholds, 'fast_exit_l2_window_minutes', 5)
+                _fe2_opened_at = order_info.get('opened_at')
+                if _fe2_opened_at is not None and pnl_pct >= _fe2_thr:
+                    _fe2_opened_naive = _fe2_opened_at.replace(tzinfo=None) if _fe2_opened_at.tzinfo is not None else _fe2_opened_at
+                    _fe2_elapsed_min = (datetime.utcnow() - _fe2_opened_naive).total_seconds() / 60.0
+                    if _fe2_elapsed_min <= _fe2_window_min:
+                        logger.warning(
+                            f"[REALTIME_FAST_EXIT_L2] {pair} {direction}: pnl={pnl_pct:.4f}% >= threshold={_fe2_thr}%, "
+                            f"elapsed={_fe2_elapsed_min:.2f}min <= window={_fe2_window_min}min - CLOSING NOW!"
+                        )
+                        order_info['_closing_in_progress'] = True
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    closed = await self.close_position(db, order, current_price, "FAST_EXIT L2")
+                                    if closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as e:
+                            logger.error(f"[REALTIME_FAST_EXIT_L2] Error closing {pair}: {e}")
+                        continue  # Trade is closed; skip remaining checks for this order
+
+            # ════════════════════════════════════════════════════════════════
             # Phase 1 shadow tracking (May 6) — counterfactual exit at first
             # price-vs-EMA cross against trade direction. Observation only:
             # records the moment + counterfactual close P&L if we had exited

@@ -13232,3 +13232,60 @@ entry, future-Claude reading the May 11 entry would assume the table
 already existed and might re-build it. This entry confirms the table
 is now live AND that the verdict gates are unchanged from the May 11
 locked criteria.
+
+## May 19, 2026 (late PM) — Phantom BE floor: 0.05 → 0.10 (table renamed 0.20/0.10)
+
+### Change
+
+`services/trading_engine.py` realtime callback — phantom BE arming code:
+- Trigger unchanged: peak ≥ +0.20%
+- **Floor: ≤+0.05% → ≤+0.10%**
+
+Table renamed throughout: "Phantom BE 0.20/0.05 Counterfactual" → "Phantom BE 0.20/0.10 Counterfactual"
+
+### Why
+
+Live BE design moved to 0.20/0.10 in the May 18 PM exit-stack repositioning (commit `2ca4114` set `be_level1_trigger: 0.20, be_level1_offset: 0.10`, then `4edf38e` disabled BE entirely but the design target stayed at 0.20/0.10). The phantom counterfactual at the OLD 0.05 floor was no longer measuring the live design — it was measuring a deeper floor we won't ship. User requested the floor be raised to match the live design so the counterfactual answers "what would the disabled-but-designed BE 0.20/0.10 have done?"
+
+### Mixed-provenance caveat (locked)
+
+Pre-May-19 trades captured `phantom_be_aggr_would_exit_pnl` at the ≤+0.05% retrace point. Post-May-19 trades capture at ≤+0.10%.
+
+What this means for the table:
+- **Fired count** is approximately valid across the boundary. Any trade that retraced to ≤0.05% also crossed ≤0.10% on the way — so "fired" classification is preserved (with one edge case: trades that armed pre-May-19 and were closing on the boundary).
+- **Avg phantom P&L** is mixed. Pre-May-19 fires show P&L at ≤0.05% (lower); post-May-19 fires show P&L at ≤0.10% (higher). The aggregate avg will be biased downward by old data.
+- **Δ$ vs actual** is also mixed. Old fires under-credit the BE 0.10 rescue (their captured exit was below 0.10).
+
+At next ≥30-armed-trade checkpoint, this resolves itself: by then enough fresh post-May-19 captures will exist that the table reflects accurate 0.20/0.10 behavior. Until then, treat the Fired count as reliable and the Avg/Δ as approximate.
+
+### Why not clear old data
+
+Considered nulling `phantom_be_aggr_would_exit_pnl` on all pre-May-19 trades to force re-capture under the new floor. Rejected because:
+1. Old data is semantically valid (it shows what 0.05 would have done — still useful info)
+2. Re-capture isn't possible without the trade replaying (the price path is gone)
+3. The Fired count remains accurate (the trade DID retrace past 0.10% on the way to 0.05%)
+
+Better to keep the data and document the bias than to delete it.
+
+### Pre-committed validation at next ≥30-armed-trade post-May-19 checkpoint
+
+Pool TOTAL row should show:
+- Fired count: should be approximately HIGHER than pre-May-19 (because the 0.10 floor is easier to hit than 0.05)
+- Avg phantom P&L: should be approximately HIGHER than pre-May-19 (closer to 0.10)
+- Δ$ vs actual: more rescues at smaller per-trade $ improvement than the 0.05 floor would have shown
+
+If post-May-19 fresh data (≥30 armed) shows Δ$ TOTAL ≥+$50 AND no bucket with Fired≥5 shows ⚠ HURTING → BE 0.20/0.10 is the right live design when we re-enable BE.
+
+### Files changed
+- `services/trading_engine.py` — single threshold `pnl_pct <= 0.05` → `0.10` + comment update
+- `main.py` — section comment updates + table title (3 sites)
+- `templates/index.html` — table title (5 sites: H3, helper text, JS labels, 2 text-exports), trigger/floor description update
+- `CLAUDE.md` — this entry
+
+### Why this entry exists
+
+To anchor:
+1. The threshold change (0.05 → 0.10) so future-Claude doesn't think the table label changed without behavior change
+2. The mixed-provenance caveat (pre-May-19 vs post-May-19 captures have different semantics)
+3. The decision NOT to null old data
+4. The "checkpoint will resolve the mix" expectation so we don't act on biased data prematurely

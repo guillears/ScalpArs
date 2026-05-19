@@ -6396,7 +6396,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "btc_1h_slope_performance": _compute_btc_1h_slope_performance(orders),
         "btc_5m_1h_slope_alignment_crosstab": _compute_btc_5m_1h_slope_alignment_crosstab(orders),
         "btc_1h_slope_adx_crosstab": _compute_btc_1h_slope_adx_crosstab(orders),
-        # Phantom BE 0.20/0.05 counterfactual by close reason (May 14)
+        # Phantom BE 0.20/0.10 counterfactual by close reason (May 14)
         "phantom_be_aggr_by_close_reason": _compute_phantom_be_aggr_by_close_reason(orders),
         # BE Floor Counterfactual (May 17): per close_reason × direction, compares
         # current BE 0.20/0.05 outcome vs hypothetical BE 0.20/0.10 outcome using
@@ -7243,18 +7243,21 @@ def _compute_btc_1h_slope_adx_crosstab(orders):
     return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
 
 
-# Phantom BE 0.20/0.05 counterfactual by close reason (May 14) — observation-only.
+# Phantom BE 0.20/0.10 counterfactual by close reason (May 14) — observation-only.
 # Mirrors the engine's _SHADOW_BE 'aggr' tracker. For each (close_reason, direction)
 # bucket, shows what BE at trigger +0.20% / floor +0.05% would have done.
 #
 # - Armed: trades where peak first crossed +0.20% (phantom_be_aggr_triggered_at is set)
+# - Fired: trades where price retraced to ≤+0.10% after arming (May 19 — was 0.05).
+#   Pre-May-19 captures recorded the ≤+0.05% retrace value (valid lower bound under
+#   the 0.10 floor — those trades would have fired even earlier at the higher floor).
 # - Fired: trades where, AFTER arming, price retraced to ≤+0.05% (would_exit_pnl set)
 #
 # For "fired" trades, the counterfactual replaces actual close P&L with the phantom
 # would-exit P&L (≈+0.05% by construction). $ Δ shown per bucket.
 
 def _compute_phantom_be_aggr_by_close_reason(orders):
-    # Phantom BE 0.20/0.05 tracker shipped 2026-05-14 ~19:00 UTC (commit 320b110).
+    # Phantom BE 0.20/0.10 tracker shipped 2026-05-14 ~19:00 UTC (commit 320b110).
     # Pre-deploy trades have no phantom data — including them produces misleading
     # "BE not armed" verdicts on trades the tracker never observed. Filter to
     # post-deploy trades only.
@@ -7618,7 +7621,7 @@ def _compute_be_floor_counterfactual(orders, new_floor=0.10, current_floor=0.05,
         pool_excluded += excluded_n
 
     # Sort by absolute delta (biggest impact first)
-    # Match Phantom BE 0.20/0.05 sort order (direction then close_reason) for
+    # Match Phantom BE 0.20/0.10 sort order (direction then close_reason) for
     # at-a-glance side-by-side comparison across the two BE counterfactual tables.
     rows.sort(key=lambda r: (r['direction'], r['reason']))
 

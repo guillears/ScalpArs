@@ -1581,12 +1581,12 @@
                     </div>
                 </div>
 
-                <!-- Phantom BE 0.20/0.05 Counterfactual (May 14) — observation-only -->
+                <!-- Phantom BE 0.20/0.10 Counterfactual (May 14) — observation-only -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
-                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🧪 Phantom BE 0.20/0.05 Counterfactual (observation-only)</h3>
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🧪 Phantom BE 0.20/0.10 Counterfactual (observation-only)</h3>
                     <p class="text-xs text-gray-500 mb-2">
-                        Shadow tracker for BE at trigger <strong>+0.20%</strong> / floor <strong>+0.05%</strong>. Records what BE would have done on every trade. <strong>Use to validate before shipping live BE.</strong>
-                        <br/><em class="text-fuchsia-400">Armed = peak crossed +0.20%. Fired = price retraced to ≤+0.05% after arming. <strong>Avg% columns and Δ are WHOLE-GROUP</strong> — BE-scenario uses phantom exit for fired trades + actual close for the rest. Only populated post-May-14 deploy.</em>
+                        Shadow tracker for BE at trigger <strong>+0.20%</strong> / floor <strong>+0.10%</strong>. Records what BE would have done on every trade. <strong>Use to validate before shipping live BE.</strong>
+                        <br/><em class="text-fuchsia-400">Armed = peak crossed +0.20%. Fired = price retraced to ≤+0.10% after arming. <strong>Avg% columns and Δ are WHOLE-GROUP</strong> — BE-scenario uses phantom exit for fired trades + actual close for the rest. Pre-May-19 captures used ≤+0.05% floor (deeper retrace; values are valid lower bounds for the 0.10 floor). Post-May-19 captures use ≤+0.10%.</em>
                     </p>
                     <div class="text-xs text-gray-400 mb-2" id="phantom-be-aggr-pool">(no post-deploy trades yet)</div>
                     <div class="overflow-x-auto">
@@ -6286,7 +6286,7 @@
                 });
             }
 
-            // Phantom BE 0.20/0.05 Counterfactual (May 14)
+            // Phantom BE 0.20/0.10 Counterfactual (May 14)
             const _pba1 = perf.phantom_be_aggr_by_close_reason || {};
             if (_pba1.rows && _pba1.rows.length) {
                 lines.push(`\n${hr2}`);
@@ -6294,7 +6294,7 @@
                 const _dd = _p.total_dollar_delta || 0;
                 const _pAct = _p.actual_dollar_total || 0;
                 const _pBe = _p.be_dollar_total || 0;
-                lines.push(`## Phantom BE 0.20/0.05 Counterfactual (observation-only)`);
+                lines.push(`## Phantom BE 0.20/0.10 Counterfactual (observation-only)`);
                 lines.push(`Pool: ${_p.total || 0} trades · ${_p.armed || 0} armed · ${_p.fired || 0} would have fired · Actual ${_pAct >= 0 ? '+$' : '-$'}${Math.abs(_pAct).toFixed(2)} · BE ${_pBe >= 0 ? '+$' : '-$'}${Math.abs(_pBe).toFixed(2)} · Δ ${_dd >= 0 ? '+$' : '-$'}${Math.abs(_dd).toFixed(2)}\n`);
                 lines.push('Close Reason             Dir   N    Armed  Fired  Actual%    BE%        Δ%         Actual$       BE$           Δ$            Verdict');
                 lines.push('-'.repeat(140));
@@ -7657,7 +7657,7 @@
                     });
                 }
 
-                // Phantom BE 0.20/0.05 Counterfactual (May 14)
+                // Phantom BE 0.20/0.10 Counterfactual (May 14)
                 const _pba2 = perf.phantom_be_aggr_by_close_reason || {};
                 if (_pba2.rows && _pba2.rows.length) {
                     lines.push(`\n${hr2}`);
@@ -7665,7 +7665,7 @@
                     const _dd2 = _p2.total_dollar_delta || 0;
                     const _pAct2 = _p2.actual_dollar_total || 0;
                     const _pBe2 = _p2.be_dollar_total || 0;
-                    lines.push(`## Phantom BE 0.20/0.05 Counterfactual (observation-only)`);
+                    lines.push(`## Phantom BE 0.20/0.10 Counterfactual (observation-only)`);
                     lines.push(`Pool: ${_p2.total || 0} trades · ${_p2.armed || 0} armed · ${_p2.fired || 0} would have fired · Actual ${_pAct2 >= 0 ? '+$' : '-$'}${Math.abs(_pAct2).toFixed(2)} · BE ${_pBe2 >= 0 ? '+$' : '-$'}${Math.abs(_pBe2).toFixed(2)} · Δ ${_dd2 >= 0 ? '+$' : '-$'}${Math.abs(_dd2).toFixed(2)}\n`);
                     lines.push('Close Reason             Dir   N    Armed  Fired  Actual%    BE%        Δ%         Actual$       BE$           Δ$            Verdict');
                     lines.push('-'.repeat(140));
@@ -9526,7 +9526,7 @@
                     _render1hSlopeAdx(_bx.shorts, 'btc-1h-slope-adx-short-body');
                 }
 
-                // Phantom BE 0.20/0.05 Counterfactual (May 14)
+                // Phantom BE 0.20/0.10 Counterfactual (May 14)
                 if (data.phantom_be_aggr_by_close_reason) {
                     const _pba = data.phantom_be_aggr_by_close_reason;
                     const _body = document.getElementById('phantom-be-aggr-body');

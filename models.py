@@ -94,6 +94,15 @@ class Order(Base):
     entry_btc_rsi_1h = Column(Float, nullable=True)
     # BTC 1h RSI(14) 1 candle prior (= 1h ago). With entry_btc_rsi_1h enables 1h direction.
     entry_btc_rsi_1h_prev = Column(Float, nullable=True)
+    # May 19, 2026 — Pattern C Tracker (observation-only).
+    # 4 candidate Pattern C precursor signatures captured at entry. Locked
+    # promotion gates at N≥30 per pattern. See CLAUDE.md May 19 entry.
+    # C1=capitulation chase, C2=macro counter-trend, C3=stretch exhaustion, C4=low-vol chop.
+    entry_pattern_c1_match = Column(Boolean, nullable=True)
+    entry_pattern_c2_match = Column(Boolean, nullable=True)
+    entry_pattern_c3_match = Column(Boolean, nullable=True)
+    entry_pattern_c4_match = Column(Boolean, nullable=True)
+    entry_pattern_c_any_match = Column(Boolean, nullable=True)  # OR of c1-c4
     # Volume ratios at entry (for volume filter analytics)
     entry_global_volume_ratio = Column(Float, nullable=True)
     entry_pair_volume_ratio = Column(Float, nullable=True)

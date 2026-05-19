@@ -1681,6 +1681,36 @@
                     </div>
                 </div>
 
+                <!-- Pattern C Tracker Validation (May 19, 2026 — observation-only) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 Pattern C Tracker (observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        4 Pattern C signatures × LONG/SHORT, computed at entry. Each pattern captures a
+                        distinct Never-Positive failure mode. Promotion gate: N ≥ 30 per pattern AND
+                        WR ≤ 40% AND Avg P&L % ≤ -0.20%. Until then, observation-only.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Direction</th>
+                                    <th class="px-3 py-2 font-medium">Pattern</th>
+                                    <th class="px-3 py-2 font-medium text-center">N</th>
+                                    <th class="px-3 py-2 font-medium text-center">WR</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total $</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
+                                    <th class="px-3 py-2 font-medium text-center">NP%</th>
+                                    <th class="px-3 py-2 font-medium">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-c-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Type Performance</h3>
@@ -6267,6 +6297,25 @@
                 }
             }
 
+            // Pattern C Tracker (May 19, 2026 — observation-only)
+            const _pc1 = perf.pattern_c_validation || [];
+            if (_pc1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## Pattern C Tracker (observation-only) — 4 signatures × LONG/SHORT`);
+                lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter\n`);
+                lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP%   Verdict');
+                lines.push('-'.repeat(115));
+                _pc1.forEach(r => {
+                    const wr = r.wr.toFixed(1).padStart(5) + '%';
+                    const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
+                    const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
+                    const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
+                    const np = (r.np_rate.toFixed(0) + '%').padStart(4);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}  ${r.verdict}`);
+                });
+                lines.push('');
+            }
+
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
             if (_esp1.rows && _esp1.rows.length) {
@@ -7598,6 +7647,25 @@
                         });
                         lines.push('');
                     }
+                }
+
+                // Pattern C Tracker (May 19, 2026 — observation-only)
+                const _pc2 = perf.pattern_c_validation || [];
+                if (_pc2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## Pattern C Tracker (observation-only) — 4 signatures × LONG/SHORT`);
+                    lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter\n`);
+                    lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP%   Verdict');
+                    lines.push('-'.repeat(115));
+                    _pc2.forEach(r => {
+                        const wr = r.wr.toFixed(1).padStart(5) + '%';
+                        const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
+                        const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
+                        const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
+                        const np = (r.np_rate.toFixed(0) + '%').padStart(4);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}  ${r.verdict}`);
+                    });
+                    lines.push('');
                 }
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)
@@ -9678,6 +9746,43 @@
                             };
                             const _tL = _aggDir('LONG'), _tS = _aggDir('SHORT'), _tB = _aggDir('BOTH');
                             _bfcfBody.innerHTML += _totalRow(_tL, 'TOTAL LONG') + _totalRow(_tS, 'TOTAL SHORT') + _totalRow(_tB, 'TOTAL ALL');
+                        }
+                    }
+                }
+
+                // Pattern C Tracker (May 19, 2026 — observation-only)
+                if (data.pattern_c_validation) {
+                    const _pcRows = data.pattern_c_validation || [];
+                    const _pcBody = document.getElementById('pattern-c-body');
+                    if (_pcBody) {
+                        if (!_pcRows.length) {
+                            _pcBody.innerHTML = '<tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
+                        } else {
+                            const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+                            const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                            _pcBody.innerHTML = _pcRows.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const totCls = r.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const avgCls = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const wrCls = r.wr >= 60 ? 'text-emerald-400' : r.wr <= 40 ? 'text-red-400' : 'text-amber-400';
+                                let vCls = 'text-gray-400';
+                                if (r.verdict.startsWith('⚠ PROMOTE')) vCls = 'text-red-400 font-bold';
+                                else if (r.verdict.startsWith('⚠ Warning')) vCls = 'text-amber-400';
+                                else if (r.verdict.startsWith('★')) vCls = 'text-emerald-400';
+                                const isAny = r.pattern_key === 'c_any';
+                                const rowCls = isAny ? 'bg-white/5 font-semibold' : '';
+                                return `<tr class="${rowCls}">
+                                    <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
+                                    <td class="px-3 py-1 text-center text-gray-200">${r.n}</td>
+                                    <td class="px-3 py-1 text-center ${wrCls}">${r.wr.toFixed(1)}%</td>
+                                    <td class="px-3 py-1 text-right ${avgCls}">${fmt(r.avg_pct, 3)}</td>
+                                    <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
+                                    <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
+                                    <td class="px-3 py-1 text-center text-gray-400">${r.np_rate.toFixed(0)}%</td>
+                                    <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
                         }
                     }
                 }

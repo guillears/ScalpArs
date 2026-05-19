@@ -358,6 +358,41 @@ class SignalThresholds(BaseModel):
     fast_exit_l2_enabled: bool = True
     fast_exit_l2_threshold_pct: float = 0.40
     fast_exit_l2_window_minutes: int = 5
+    # Pattern C Tracker (May 19, 2026 — observation-only, no behavior change).
+    # Captures 4 candidate Pattern C precursor signatures at entry for each
+    # direction. Pattern C = trade peaks <+0.10% (never positive). Multiple
+    # structural causes (capitulation chase, macro counter-trend, stretch
+    # exhaustion, low-vol chop) tested simultaneously. Locked promotion gates
+    # at N≥30 matches per pattern. See CLAUDE.md May 19 entry.
+    pattern_c_tracker_enabled: bool = True
+    # SHORT C1 — Capitulation chase
+    pc_short_c1_rngpos_max: float = 15.0
+    pc_short_c1_pair_gap_max: float = -0.50
+    pc_short_c1_adxd_min: float = 1.0
+    # SHORT C2 — Macro counter-trend (BTC RSI rising + BTC ADX falling + BTC Gap > -0.05)
+    pc_short_c2_btc_gap_min: float = -0.05
+    # SHORT C3 — Stretch exhaustion
+    pc_short_c3_stretch_min: float = 0.40
+    pc_short_c3_pair_adx_min: float = 30.0
+    pc_short_c3_rngpos_max: float = 15.0
+    # SHORT C4 — Low-vol chop
+    pc_short_c4_btc_atr_max: float = 0.15
+    pc_short_c4_btc_adx_max: float = 22.0
+    pc_short_c4_pair_adx_max: float = 25.0
+    # LONG C1 — Climax chase (mirror)
+    pc_long_c1_rngpos_min: float = 85.0
+    pc_long_c1_pair_gap_min: float = 0.50
+    pc_long_c1_adxd_min: float = 1.0
+    # LONG C2 — Macro counter-trend (BTC RSI falling + BTC ADX falling + BTC Gap < +0.05)
+    pc_long_c2_btc_gap_max: float = 0.05
+    # LONG C3 — Stretch exhaustion
+    pc_long_c3_stretch_min: float = 0.40
+    pc_long_c3_pair_adx_min: float = 30.0
+    pc_long_c3_rngpos_min: float = 85.0
+    # LONG C4 — Low-vol chop (same as SHORT)
+    pc_long_c4_btc_atr_max: float = 0.15
+    pc_long_c4_btc_adx_max: float = 22.0
+    pc_long_c4_pair_adx_max: float = 25.0
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
     global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)

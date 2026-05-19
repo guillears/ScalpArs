@@ -216,6 +216,17 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_1h FLOAT"))
                 if 'entry_btc_rsi_1h_prev' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_btc_rsi_1h_prev FLOAT"))
+                # May 19, 2026 — Pattern C Tracker (observation-only, 4 patterns × 2 directions)
+                if 'entry_pattern_c1_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c1_match BOOLEAN"))
+                if 'entry_pattern_c2_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c2_match BOOLEAN"))
+                if 'entry_pattern_c3_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c3_match BOOLEAN"))
+                if 'entry_pattern_c4_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c4_match BOOLEAN"))
+                if 'entry_pattern_c_any_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c_any_match BOOLEAN"))
                 if 'peak_reached_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN peak_reached_at DATETIME"))
                 if 'trough_reached_at' not in columns:

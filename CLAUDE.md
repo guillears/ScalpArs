@@ -12983,3 +12983,171 @@ To anchor:
 3. The auto-coverage check that confirmed no whitelist work needed
 4. The locked revert gates for next checkpoint
 5. The interaction with BE deactivation (L2 as partial BE rescue replacement)
+
+## May 19, 2026 (late) — Pattern C Tracker shipped (4 signatures × 2 directions, observation-only)
+
+### What ships
+
+Multi-pattern tracker capturing 4 distinct Never-Positive failure
+signatures at entry, computed for both LONG and SHORT. Pure observation
+— no filter logic. Per-trade boolean flags persisted on Order. Analytics
+table shows N/WR/Avg%/Total$/NP% per (pattern × direction).
+
+**5 new Boolean columns on Order** (`models.py`):
+- `entry_pattern_c1_match` — Capitulation chase
+- `entry_pattern_c2_match` — Macro counter-trend
+- `entry_pattern_c3_match` — Stretch exhaustion
+- `entry_pattern_c4_match` — Low-vol chop
+- `entry_pattern_c_any_match` — OR of all four
+
+**28 new config thresholds** (`config.py`), per-direction tunable so the
+asymmetric patterns can be calibrated independently. Master toggle:
+`pattern_c_tracker_enabled: bool = True`.
+
+### The 4 patterns (mirror SHORT vs LONG)
+
+| Pattern | SHORT signature | LONG signature (mirror) |
+|---|---|---|
+| C1 — Capitulation chase | RngPos ≤15 AND PairGap ≤-0.50 AND ADXΔ ≥+1.0 | RngPos ≥85 AND PairGap ≥+0.50 AND ADXΔ ≥+1.0 |
+| C2 — Macro counter-trend | BTC gap ≥-0.05% (BTC near/above trend) | BTC gap ≤+0.05% (BTC near/below trend) |
+| C3 — Stretch exhaustion | Stretch ≥0.40 AND PairADX ≥30 AND RngPos ≤15 | Stretch ≥0.40 AND PairADX ≥30 AND RngPos ≥85 |
+| C4 — Low-vol chop | BTC ATR ≤0.15 AND BTC ADX ≤22 AND PairADX ≤25 | (same — direction-symmetric mechanism) |
+
+Mechanism intuitions (all → Never Positive outcomes):
+- **C1**: chasing the very bottom of recent range as it accelerates →
+  caught in capitulation, no follow-through, immediate squeeze.
+- **C2**: shorting into BTC strength (or longing into BTC weakness) —
+  macro fights the trade from minute 1.
+- **C3**: late entry on exhausted impulse — high stretch + high ADX
+  with price already at the extreme → reversal imminent.
+- **C4**: thin tape entry — nothing's trending, no continuation fuel,
+  spread takes the P&L before direction commits.
+
+### Per-trade match logic
+
+Helper `_compute_pattern_c_match` in `services/trading_engine.py`
+(~70 LOC). Each signature is a conjunction; conditions evaluate
+`is True` (so missing data → False, not match). Returns 5-tuple
+`(c1, c2, c3, c4, c_any)` for persistence at Order construction.
+
+Wired into both Order() construction sites:
+- SIGNAL_EXPIRED path (`_save_signal_expired_order`)
+- Main open_position path
+
+### Analytics surface
+
+New table **🎯 Pattern C Tracker (observation-only)** in dashboard,
+placed between BE Floor Counterfactual and Entry Type Performance.
+
+Columns: Direction | Pattern | N | WR | Avg % | Total $ | AvgPeak% |
+NP% | Verdict
+
+Per row, automated verdict:
+- **⚠ PROMOTE** — meets filter ship gate (N ≥ 30 AND WR ≤ 40% AND
+  Avg P&L % ≤ -0.20%)
+- **⚠ Warning** — trending toward promote (N ≥ 10, WR ≤ 45%, Avg ≤ -0.15%)
+- **★ NOT predictive** — pattern matches WINNERS not losers (N ≥ 10,
+  WR ≥ 60%) → drop the candidate
+- **✓ Inconclusive** — middle ground
+- **⚠ Low N** — N < 10
+
+The ANY-match row (C1∨C2∨C3∨C4) shows aggregate coverage. NP% column
+shows the % of matched trades that were Never Positive (peak < 0.05%)
+— direct evidence of whether the pattern catches the failure mode it
+targets.
+
+Both text-export sites (clipboard copy + saved-file) updated.
+
+### Pre-committed promotion gates (locked NOW for next ≥100-trade
+checkpoint)
+
+A pattern qualifies for promotion to FILTER ship if ALL hold in fresh
+post-May-19 data:
+
+1. **N ≥ 30** matched trades (per pattern, per direction)
+2. **WR ≤ 40%**
+3. **Avg P&L % ≤ -0.20%**
+4. **NP rate ≥ 60%** (confirms pattern catches Pattern C, not Pattern B)
+5. **Direction-consistent** (LONG and SHORT both show the same pattern
+   if mechanism is symmetric — or documented theoretical asymmetry)
+6. **Implementation prerequisite**: mechanism to express the filter
+   exists (the multi-AND combinations are doable via filter primitives;
+   may need a new dedicated config field per shipped pattern)
+
+If only ONE pattern passes → ship that one alone (discipline: one new
+filter per checkpoint).
+
+If MULTIPLE pass → ship the strongest first (highest WR × N combined),
+defer others to next batch.
+
+If NONE pass → patterns C1-C4 don't structurally identify Pattern C
+trades. Drop the tracker. Try different precursor combinations.
+
+### Drop criteria (per pattern)
+
+Drop from observation if fresh data shows:
+- WR ≥ 60% on N ≥ 10 → pattern matches WINNERS, not losers → wrong signature
+- N matches ≤ 3 across 100+ trades → pattern is too narrow to be useful
+
+### Threshold tuning rule
+
+Per-pattern thresholds are config-tunable. At next checkpoint, if a
+pattern shows ⚠ Warning verdict (N ≥ 10, WR 40-45%, marginal Avg), can:
+- Tighten threshold (e.g. C1 RngPos ≤10 instead of ≤15) → smaller N
+  but cleaner cell
+- Loosen threshold (e.g. C1 RngPos ≤20) → larger N, possibly noisier
+
+**Do NOT tune thresholds mid-batch.** Apply locked gates first.
+
+### Caveats acknowledged
+
+1. **Pre-deploy trades have NULL** for all 5 columns. Tracker only
+   populates from this commit onward. Reports against historical data
+   will show no Pattern C rows.
+2. **N≥30 per pattern × 2 directions × 4 patterns** = need ~240+ matched
+   trades total across the tracker before all cells have promotion-ready
+   N. Could take 2-3 batches.
+3. **The C2 "BTC gap" precursor uses the SAME `_current_btc_trend_gap_pct`
+   global as the BTC Trend Filter.** If that filter is later re-enabled
+   or rule-extended, C2 matches will change shape accordingly. Decoupling
+   is intentional: the tracker reads the live global, so any future BTC
+   gap analytics changes automatically propagate.
+
+### Why this is the right next step
+
+CLAUDE.md May 16 PM 3-pattern failure taxonomy locked the framework: A
+(low-conviction) is caught by EQS filter; B (peak-and-retrace) is caught
+by BE; C (Never Positive / macro adverse) is currently UNCAUGHT.
+
+The May 18 PM consolidated checklist identified ~$179 of $208 BE-uncatchable
+losses concentrate in a BTC Gap (-0.10, 0%) × BTC ADX [18, 25] SHORT
+disaster cell — Pattern C territory.
+
+Single-dim filter candidates (May 16 WL-D) addressed one slice. The
+multi-pattern tracker generalizes: 4 distinct precursor signatures
+covering different Pattern C mechanisms. Validates which patterns
+actually predict NP outcomes before committing to filter syntax.
+
+### Files changed
+
+- `config.py` — 28 new fields (1 toggle + 27 thresholds)
+- `models.py` — 5 new Boolean columns on Order
+- `database.py` — 5 ALTER TABLE ADD COLUMN auto-migrate statements
+- `services/trading_engine.py` — `_compute_pattern_c_match` helper
+  (~70 LOC) + wired into 2 Order() construction sites
+- `main.py` — `_compute_pattern_c_validation` analytics builder
+  (~80 LOC) + payload entry
+- `templates/index.html` — UI section + JS renderer + 2 text-export
+  sites (~140 LOC)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The 4 pattern signatures and their mechanism intuitions
+2. The locked promotion gates (mechanical at next checkpoint)
+3. The drop criteria (pattern matches winners → wrong signature)
+4. The acknowledgment that pre-deploy data has NULL on all 5 columns
+5. The methodological link to the May 16 3-pattern failure taxonomy —
+   this is the empirical test of whether the Pattern C subdivision is
+   tractable via observable precursors

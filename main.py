@@ -6403,6 +6403,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # the post_arm_min_pnl_pct column. Reveals BE-pre-empts-trailing risk.
         "post_arm_min_distribution": _compute_post_arm_min_distribution(orders),
         "be_floor_counterfactual": _compute_be_floor_counterfactual(orders, new_floor=0.10),
+        # Pattern C Tracker validation (May 19, observation-only)
+        "pattern_c_validation": _compute_pattern_c_validation(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -7640,6 +7642,80 @@ _FAST_EXIT_THRESHOLDS = [0.20, 0.30, 0.40]   # P&L % triggers to test (May 17: s
 _FAST_EXIT_WINDOWS = [1, 2, 5]               # minutes from entry (3min dropped May 13)
 _FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
 _FAST_EXIT_FEE_PCT = 0.063                   # taker round-trip fee approx
+
+
+def _compute_pattern_c_validation(orders):
+    """Pattern C Tracker validation (May 19, 2026 — observation-only).
+
+    For each (pattern, direction) bucket, count matched trades and report
+    WR / Avg P&L % / Total $. The locked promotion gate is N≥30 per
+    pattern with WR ≤40% AND Avg P&L % ≤ -0.20% — at that point the
+    pattern becomes a filter candidate.
+
+    Patterns (mirror SHORT vs LONG):
+      C1: Capitulation chase  — extreme range pos + deep pair gap + ADX accelerating
+      C2: Macro counter-trend — BTC trend opposite trade direction
+      C3: Stretch exhaustion  — high EMA5 stretch + high pair ADX + range extreme
+      C4: Low-vol chop        — low BTC ATR + low BTC ADX + low pair ADX
+
+    Returns per-pattern rows + ANY-match row + per-direction TOTAL row.
+    """
+    patterns = ['c1', 'c2', 'c3', 'c4', 'c_any']
+    pattern_labels = {
+        'c1': 'C1 Capitulation chase',
+        'c2': 'C2 Macro counter-trend',
+        'c3': 'C3 Stretch exhaustion',
+        'c4': 'C4 Low-vol chop',
+        'c_any': 'ANY (C1∨C2∨C3∨C4)',
+    }
+    rows = []
+    for direction in ('LONG', 'SHORT'):
+        for p in patterns:
+            attr = f'entry_pattern_{p}_match'
+            matched = [o for o in orders
+                       if o.direction == direction
+                       and getattr(o, attr, None) is True
+                       and o.status == 'CLOSED']
+            n = len(matched)
+            if n == 0:
+                continue
+            wins = sum(1 for o in matched if (o.pnl or 0) > 0)
+            wr = (wins / n * 100) if n > 0 else 0
+            total_usd = sum((o.pnl or 0) for o in matched)
+            pnls = [o.pnl_percentage for o in matched if o.pnl_percentage is not None]
+            avg_pct = (sum(pnls) / len(pnls)) if pnls else 0
+            avg_peak = None
+            peaks = [o.peak_pnl for o in matched if o.peak_pnl is not None]
+            if peaks:
+                avg_peak = sum(peaks) / len(peaks)
+            np_count = sum(1 for o in matched
+                           if o.peak_pnl is not None and o.peak_pnl < 0.05)
+            np_rate = (np_count / n * 100) if n > 0 else 0
+            # Verdict per locked gate
+            if n >= 30 and wr <= 40 and avg_pct <= -0.20:
+                verdict = '⚠ PROMOTE — meets filter ship gate'
+            elif n >= 10 and wr <= 45 and avg_pct <= -0.15:
+                verdict = '⚠ Warning — trending toward promote'
+            elif n >= 10 and wr >= 60:
+                verdict = '★ Pattern NOT predictive of loss (winners)'
+            elif n < 10:
+                verdict = '⚠ Low N'
+            else:
+                verdict = '✓ Inconclusive'
+            rows.append({
+                'direction': direction,
+                'pattern': pattern_labels[p],
+                'pattern_key': p,
+                'n': n,
+                'wr': round(wr, 1),
+                'avg_pct': round(avg_pct, 3),
+                'total_usd': round(total_usd, 2),
+                'avg_peak_pct': round(avg_peak, 3) if avg_peak is not None else None,
+                'np_count': np_count,
+                'np_rate': round(np_rate, 1),
+                'verdict': verdict,
+            })
+    return rows
 
 
 def _compute_fast_exit_counterfactual(orders):

@@ -13151,3 +13151,83 @@ To anchor:
 5. The methodological link to the May 16 3-pattern failure taxonomy —
    this is the empirical test of whether the Pattern C subdivision is
    tractable via observable precursors
+
+## May 19, 2026 (late PM) — `btc_adx_min_short: 20 → 18` (user-directed override)
+
+### Change
+- `btc_adx_min_short`: **20 → 18**
+- `btc_adx_min_long`: **18 (unchanged — already at 18)**
+
+Both LONG and SHORT now at the same min floor (18) — symmetric. Re-admits
+SHORT entries with BTC ADX in [18, 20) which were blocked since May 11.
+
+### Honest framing: this is an override of locked discipline
+
+Pre-committed revert criterion from CLAUDE.md May 11 evening (which set
+the threshold to 20):
+> "If BTC ADX 18-20 SHORT (in observation logs) shows ≥55% WR on N≥10
+>  in fresh data → revert to btc_adx_min_short: 18"
+
+**This gate was NOT met when this change shipped.** No fresh
+observation-log data on BTC ADX 18-20 SHORT WR exists. The change ships
+on the hypothesis that the new exit stack (BE 0.10 floor, TP 0.50, PB
+0.25, FAST_EXIT L2, EQS filter, BTC Trend Filter, BTC Gap × BTC ADX
+filter, etc.) collectively catches the BTC ADX 18-20 loser population
+via different dimensions.
+
+This is the **5th override of locked discipline gates in 2 weeks** (after
+BTC ADX min LONG 18→15 May 6, S-P2 N<8 ship May 11, SHORT min vol N<15
+May 19, RngPos × ADX Δ LONG N<15 May 19). Discipline drift is now a
+measurable pattern.
+
+User-directed acknowledgment: trade-off accepted for symmetric LONG/SHORT
+caps and to widen Pattern C tracker C4 SHORT match window from [20, 22]
+to [18, 22].
+
+### Pre-committed revert criteria (locked NOW for next 100-trade checkpoint)
+
+Mandatory revert of `btc_adx_min_short: 18 → 20` if ANY of:
+
+1. **BTC ADX 18-20 SHORT bucket** in fresh data shows ≤35% WR on N≥10 →
+   the May 11 evidence (3 trades / 33% WR / -$140) replicates → revert
+2. **Combined SHORT Avg P&L %** worsens ≥-0.10% vs May 18 baseline on
+   N≥40 fresh SHORTs → loosening was net harmful → revert
+3. **Pattern C tracker C2 SHORT cell** shows ⚠ PROMOTE verdict (N≥30,
+   WR≤40%, Avg≤-0.20%) → macro counter-trend SHORTs are the leak; this
+   loosening makes it worse → revert
+
+If BTC ADX 18-20 SHORT bucket shows ≥55% WR on N≥10 → confirmed
+structural improvement under new exit stack, lock at 18.
+
+### Filter overlap analysis (the structural hypothesis)
+
+The argument that "current filter stack catches BTC ADX 18-20 losers via
+other dimensions" rests on:
+
+| Other filter potentially catching the loser | Coverage |
+|---|---|
+| BTC Trend Filter (blocks SHORT when EMA13 > EMA50) | Partial — catches BTC bullish/neutral regime SHORTs |
+| BTC RSI × BTC ADX cross-filter `0-30:0-30` | Limited — only RSI <30 with ADX > 30 |
+| EQS filter (block ≤1) | Partial — score 1 trades often correlate with weak ADX |
+| Global Vol filter min 0.50 / max 1.10 | Partial — catches extreme-vol SHORTs |
+| Pair-level filters | Independent of BTC ADX — no overlap |
+
+Coverage is partial across all filters. The May 11 BTC ADX 18-20 SHORT
+losers (3 trades, all losing -$140) would need to be re-evaluated to
+see which (if any) the new stack now catches. Without that analysis,
+this ship is a forward A/B test, not evidence-driven loosening.
+
+### Files changed
+- `trading_config.json` — single field change (nested under thresholds)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To honestly document the discipline override (5th in 2 weeks)
+2. To anchor the pre-committed revert gates so next-checkpoint decision
+   is mechanical
+3. To preserve the "new exit stack catches what filter used to catch"
+   hypothesis explicitly — if it proves wrong at next batch, this entry
+   is the audit trail
+4. To note the Pattern C C4 SHORT match window widening as a secondary
+   benefit (broader observation surface for the tracker)

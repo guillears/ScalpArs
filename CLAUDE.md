@@ -12527,3 +12527,63 @@ GlobalVol > 1.10           → BLOCKED unless BTC capitulation override
 - `trading_config.json` — single field change (`global_volume_threshold_short: 0.0 → 0.50`)
 - `main.py` — `_VOL_BINS` split `< 0.70` into `< 0.50` + `0.50-0.70` (same session, allows surfacing block-zone separately in reports)
 - `CLAUDE.md` — this entry
+
+## May 19, 2026 — `rngpos_adx_delta_filter_long: "90-95:0.0-0.3"` (NEW LONG rule, small-N override)
+
+### Change
+- `rngpos_adx_delta_filter_long`: `""` → **`"90-95:0.0-0.3"`**
+
+Activates the LONG-side Range Position × ADX Δ cross-filter. Blocks LONG
+entries where RngPos ∈ [90, 95] AND ADX Δ ∈ [0.0, 0.3). The SHORT-side
+rule `5-10:1.0-2.0` shipped May 18 PM is unchanged.
+
+### Why — survivor-pool analysis on RngPos × ADX Δ × BE
+
+After applying current filter stack + BE 0.20/0.10 simulation to the
+670-trade historical pool, 225 survivors remain. Cross-tab of RngPos ×
+ADX Δ revealed one ✗ cell on LONG side:
+
+| Cell | N | WR+BE | After BE $ |
+|---|---|---|---|
+| **RngPos 90-95% × ADX Δ <0.3 LONG** | **5** | **60%** | **-$140** ✗ |
+
+Adjacent cells in 90-95% RngPos are either marginal or winners
+(95-100% × <0.3 = +$81, 90-95% × 0.3-0.5 = +$17). The specific
+combination of high RngPos AND slow ADX acceleration is the failure
+mode: late-cycle top-buying entries that don't have momentum
+acceleration to follow through.
+
+### Acknowledged discipline override
+
+**N=5 is well below the locked N≥15 watchlist promotion bar.** This is
+the 6th override of the "wait for more data" discipline in 3 days.
+User-directed ship acknowledged. The rule is surgical (single cell)
+and easily revertible.
+
+Mitigation: the rule blocks only the **specific 2D combination** of
+RngPos 90-95 AND ADX Δ <0.3 — not the broader RngPos zone. Adjacent
+winners are preserved.
+
+### Pre-committed revert criteria at next ≥30 LONG-trade checkpoint
+
+| Outcome | Action |
+|---|---|
+| Cell (RngPos 90-95 × ADX Δ <0.3) in observation logs shows ≥55% WR on N≥5 fresh | REVERT — single-batch noise confirmed |
+| `[RNGPOS_ADX_DELTA_CROSS]` LONG log line never fires across 50+ LONG trades | Filter dormant — drop rule for cleanliness |
+| Adjacent winner cells (90-95 × 0.3-0.5, 95-100 × <0.3) drop to ≤55% WR on N≥10 | Investigate broader 90-100% LONG decay — may need wider block |
+
+### Asymmetric design
+
+| Direction | Rule | Block reason |
+|---|---|---|
+| LONG | `90-95:0.0-0.3` | Late top-buying + slow ADX = failed breakout |
+| SHORT | `5-10:1.0-2.0` | Capitulation bottom + sharp ADX accel = false breakdown |
+
+Both rules block "exhaustion entries with weak momentum confirmation"
+in their respective direction. Mechanism is symmetric, ranges are
+mirror-inverted.
+
+### Files changed
+
+- `trading_config.json` — `rngpos_adx_delta_filter_long: "" → "90-95:0.0-0.3"`
+- `CLAUDE.md` — this entry

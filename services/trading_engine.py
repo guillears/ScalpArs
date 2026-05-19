@@ -123,6 +123,83 @@ def _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, directi
     return True
 
 
+def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
+                             btc_rsi, btc_rsi_prev, btc_adx, btc_adx_prev,
+                             btc_gap, stretch, pair_adx, btc_atr):
+    """Pattern C Tracker (May 19, 2026 — observation-only).
+
+    Evaluates 4 candidate Pattern C precursor signatures at entry. Returns
+    (c1_match, c2_match, c3_match, c4_match, c_any_match) — all booleans
+    or None if tracker disabled.
+
+    Pattern C = trade peaks <+0.10% (never positive). Multiple structural
+    causes are tested simultaneously:
+      C1: Capitulation/Climax chase — extreme RngPos + extreme Pair Gap + fast ADXΔ
+      C2: Macro counter-trend — BTC RSI/ADX reversing against trade direction
+      C3: Stretch exhaustion — high EMA5 stretch + strong Pair ADX + extreme RngPos
+      C4: Low-vol chop — low BTC ATR + low BTC ADX + low Pair ADX (no momentum)
+
+    No behavior change. Pure capture for cross-batch validation at N≥30 per
+    pattern. See CLAUDE.md May 19 entry for promotion gates.
+    """
+    import config as _cfg
+    th = _cfg.trading_config.thresholds
+    if not getattr(th, 'pattern_c_tracker_enabled', True):
+        return (None, None, None, None, None)
+    if direction not in ('LONG', 'SHORT'):
+        return (None, None, None, None, None)
+
+    # Helper to safely evaluate AND of optional conditions
+    def _safe_and(*conds):
+        """All conds must evaluate to True. None values fail the AND (return False)."""
+        return all(c is True for c in conds)
+
+    if direction == 'SHORT':
+        c1 = _safe_and(
+            rng_pos is not None and rng_pos <= getattr(th, 'pc_short_c1_rngpos_max', 15.0),
+            pair_gap is not None and pair_gap <= getattr(th, 'pc_short_c1_pair_gap_max', -0.50),
+            adx_delta is not None and adx_delta >= getattr(th, 'pc_short_c1_adxd_min', 1.0),
+        )
+        c2 = _safe_and(
+            btc_rsi is not None and btc_rsi_prev is not None and btc_rsi > btc_rsi_prev,
+            btc_adx is not None and btc_adx_prev is not None and btc_adx < btc_adx_prev,
+            btc_gap is not None and btc_gap > getattr(th, 'pc_short_c2_btc_gap_min', -0.05),
+        )
+        c3 = _safe_and(
+            stretch is not None and stretch >= getattr(th, 'pc_short_c3_stretch_min', 0.40),
+            pair_adx is not None and pair_adx >= getattr(th, 'pc_short_c3_pair_adx_min', 30.0),
+            rng_pos is not None and rng_pos <= getattr(th, 'pc_short_c3_rngpos_max', 15.0),
+        )
+        c4 = _safe_and(
+            btc_atr is not None and btc_atr < getattr(th, 'pc_short_c4_btc_atr_max', 0.15),
+            btc_adx is not None and btc_adx < getattr(th, 'pc_short_c4_btc_adx_max', 22.0),
+            pair_adx is not None and pair_adx < getattr(th, 'pc_short_c4_pair_adx_max', 25.0),
+        )
+    else:  # LONG
+        c1 = _safe_and(
+            rng_pos is not None and rng_pos >= getattr(th, 'pc_long_c1_rngpos_min', 85.0),
+            pair_gap is not None and pair_gap >= getattr(th, 'pc_long_c1_pair_gap_min', 0.50),
+            adx_delta is not None and adx_delta >= getattr(th, 'pc_long_c1_adxd_min', 1.0),
+        )
+        c2 = _safe_and(
+            btc_rsi is not None and btc_rsi_prev is not None and btc_rsi < btc_rsi_prev,
+            btc_adx is not None and btc_adx_prev is not None and btc_adx < btc_adx_prev,
+            btc_gap is not None and btc_gap < getattr(th, 'pc_long_c2_btc_gap_max', 0.05),
+        )
+        c3 = _safe_and(
+            stretch is not None and stretch >= getattr(th, 'pc_long_c3_stretch_min', 0.40),
+            pair_adx is not None and pair_adx >= getattr(th, 'pc_long_c3_pair_adx_min', 30.0),
+            rng_pos is not None and rng_pos >= getattr(th, 'pc_long_c3_rngpos_min', 85.0),
+        )
+        c4 = _safe_and(
+            btc_atr is not None and btc_atr < getattr(th, 'pc_long_c4_btc_atr_max', 0.15),
+            btc_adx is not None and btc_adx < getattr(th, 'pc_long_c4_btc_adx_max', 22.0),
+            pair_adx is not None and pair_adx < getattr(th, 'pc_long_c4_pair_adx_max', 25.0),
+        )
+
+    return (c1, c2, c3, c4, c1 or c2 or c3 or c4)
+
+
 class TradingEngine:
     """Main trading engine that manages positions and executes trades"""
     
@@ -1332,6 +1409,20 @@ class TradingEngine:
         try:
             now = datetime.utcnow()
             opened_at = (now - timedelta(seconds=wait_seconds)) if wait_seconds is not None else now
+            _pc1, _pc2, _pc3, _pc4, _pc_any = _compute_pattern_c_match(
+                direction=direction,
+                rng_pos=entry_range_position,
+                pair_gap=entry_pair_ema20_ema50_gap_pct,
+                adx_delta=entry_adx_delta,
+                btc_rsi=entry_btc_rsi,
+                btc_rsi_prev=entry_btc_rsi_prev,
+                btc_adx=entry_btc_adx,
+                btc_adx_prev=entry_btc_adx_prev,
+                btc_gap=globals().get('_current_btc_trend_gap_pct'),
+                stretch=entry_ema5_stretch,
+                pair_adx=entry_adx,
+                btc_atr=entry_btc_atr_pct,
+            )
             order = Order(
                 pair=pair,
                 direction=direction,
@@ -1394,6 +1485,11 @@ class TradingEngine:
                 entry_dist_from_ema13_pct=entry_dist_from_ema13_pct,
                 entry_btc_dist_from_ema13_pct=entry_btc_dist_from_ema13_pct,
                 entry_btc_1h_slope=entry_btc_1h_slope,
+                entry_pattern_c1_match=_pc1,
+                entry_pattern_c2_match=_pc2,
+                entry_pattern_c3_match=_pc3,
+                entry_pattern_c4_match=_pc4,
+                entry_pattern_c_any_match=_pc_any,
             )
             db.add(order)
             await db.commit()
@@ -2166,6 +2262,21 @@ class TradingEngine:
             else:
                 entry_order_type = "TAKER"
         
+        # Pattern C tracker (May 19, 2026 — observation-only signature flags)
+        _pc1_m, _pc2_m, _pc3_m, _pc4_m, _pc_any_m = _compute_pattern_c_match(
+            direction=direction,
+            rng_pos=entry_range_position,
+            pair_gap=entry_pair_ema20_ema50_gap_pct,
+            adx_delta=entry_adx_delta,
+            btc_rsi=entry_btc_rsi,
+            btc_rsi_prev=entry_btc_rsi_prev,
+            btc_adx=entry_btc_adx,
+            btc_adx_prev=entry_btc_adx_prev,
+            btc_gap=globals().get('_current_btc_trend_gap_pct'),
+            stretch=entry_ema5_stretch,
+            pair_adx=entry_adx,
+            btc_atr=entry_btc_atr_pct,
+        )
         # Create order record
         order = Order(
             binance_order_id=binance_order_id,
@@ -2233,7 +2344,13 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Initialize dynamic TP tracking
             current_tp_level=1,
-            dynamic_tp_target=conf_config.tp_min
+            dynamic_tp_target=conf_config.tp_min,
+            # Pattern C tracker flags (May 19, observation-only)
+            entry_pattern_c1_match=_pc1_m,
+            entry_pattern_c2_match=_pc2_m,
+            entry_pattern_c3_match=_pc3_m,
+            entry_pattern_c4_match=_pc4_m,
+            entry_pattern_c_any_match=_pc_any_m,
         )
         db.add(order)
         await db.flush()  # Flush to get the order ID

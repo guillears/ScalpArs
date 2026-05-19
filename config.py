@@ -347,6 +347,17 @@ class SignalThresholds(BaseModel):
     fast_exit_enabled: bool = False
     fast_exit_threshold_pct: float = 0.20  # P&L % required to fire
     fast_exit_window_minutes: int = 2      # Time window since opened_at (inclusive)
+    # Fast Exit L2 (May 19, 2026) — "slow climber" tier between L1 and trailing.
+    # L1 catches fast bursts (peak ≥0.20% in 2min). Trailing arms at peak ≥0.50%.
+    # L2 fills the gap: trades that build to 0.40% over 2-5min then would die
+    # without ever hitting trailing's 0.50% arming threshold.
+    # Logic: L1 wins on overlap (fires first if peak hits 0.20% within 2min).
+    # L2 fires only when L1 didn't (peak crosses 0.40% in the 2-5min window).
+    # Close reason: "FAST_EXIT L2". Auto-included in Post-Exit Regret table
+    # (no whitelist) and post-exit running state preservation (startswith FAST_EXIT).
+    fast_exit_l2_enabled: bool = True
+    fast_exit_l2_threshold_pct: float = 0.40
+    fast_exit_l2_window_minutes: int = 5
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
     global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)

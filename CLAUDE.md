@@ -13151,3 +13151,84 @@ To anchor:
 5. The methodological link to the May 16 3-pattern failure taxonomy —
    this is the empirical test of whether the Pattern C subdivision is
    tractable via observable precursors
+
+## May 19, 2026 (late PM) — Phantom Regime Change Exit CF analytics shipped (analytics surface for May 11 capture)
+
+### Context
+
+CLAUDE.md May 11 entry "Phantom Regime Change Exit shadow tracking"
+shipped the CAPTURE half:
+- DB columns `phantom_regime_change_exit_triggered_at` + `_pnl`
+- Monitor loop write at first opposite-regime cycle
+- Persistence on close from `_open_orders_cache`
+
+But the **analytics surface was never built**. Data has been silently
+accumulating on closed Orders since May 11 with no way to view it. This
+commit ships the missing UI/report surface.
+
+### What ships
+
+`_compute_regime_change_counterfactual(orders)` in `main.py`. For each
+trade with non-NULL `phantom_regime_change_exit_pnl`:
+- Compute Δ% = phantom_pnl - actual_pct
+- Compute Δ$ = (phantom_pnl − actual_pct) × notional / 100
+- Bucket by (direction, close_reason) with L4+ trailing collapsed
+
+Per-row verdict per locked CLAUDE.md May 11 gates:
+| Verdict | Gate |
+|---|---|
+| ★ WORKING | N≥10, Δ$ > +$50, Δ% > +0.20pp |
+| ⚠ HURTING | Δ$ < 0 on N≥5 |
+| ✓ Marginal | Δ$ between $0-$50 |
+| ⚠ Low N | N<5 |
+
+Pool-level summary shows aggregate verdict — that's the decision driver
+for the `regime_change_exit_enabled` toggle.
+
+### UI surface
+
+New "🌀 Phantom Regime Change Exit Counterfactual (observation-only)"
+section in dashboard, placed between Pattern C Tracker and Entry Type
+Performance. Color-coded rows (★ emerald, ⚠ red, ✓ amber). Pool-summary
+line above the table.
+
+Both text-export sites (clipboard copy + saved-file) updated.
+
+### Decision at next ≥30-trade checkpoint (locked)
+
+| Pool TOTAL row outcome | Action |
+|---|---|
+| ★ WORKING (Δ$ > +$50, Δ% > +0.20pp, N≥10) | Enable `regime_change_exit_enabled: true` |
+| ⚠ HURTING (Δ$ < 0 on N≥10) | Keep DISABLED (regime exits would kill recoveries) |
+| ✓ Marginal | Defer — collect more data |
+| ⚠ Low N | Defer |
+
+### Caveats acknowledged
+
+1. **Pre-May-11 trades have NULL on `phantom_regime_change_exit_pnl`**
+   and are excluded entirely from analytics. Data accumulates from
+   May 11 onward.
+2. **Phantom captures FIRST opposite-regime moment.** If BTC regime
+   flickers (flip → flip back → flip), the phantom locks the first flip
+   and ignores subsequent ones. For chop-heavy regimes this can produce
+   noise — operator should sanity-check on the BTC chart before
+   trusting the verdict at low N.
+3. **Counterfactual is approximate.** Real-world `regime_change_exit`
+   would fire at the next monitor cycle after the flip, possibly seconds
+   later than the phantom capture. Δ$ here is the upper bound — the
+   actual exit would be slightly worse than the phantom shows.
+
+### Files changed
+
+- `main.py` — `_compute_regime_change_counterfactual` helper (~130 LOC) + payload entry
+- `templates/index.html` — UI section + JS renderer + 2 text-export sites (~140 LOC)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To document that the May 11 ship was only half-complete and to anchor
+the analytics half that finally exposes the captured data. Without this
+entry, future-Claude reading the May 11 entry would assume the table
+already existed and might re-build it. This entry confirms the table
+is now live AND that the verdict gates are unchanged from the May 11
+locked criteria.

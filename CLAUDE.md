@@ -12429,3 +12429,101 @@ Positive) failures remain unhandled.
 
 - `trading_config.json` — single field change
 - `CLAUDE.md` — this entry + watchlist item 9b in consolidated checklist
+
+## May 19, 2026 — `global_volume_threshold_short: 0.0 → 0.50` (NEW MIN-side SHORT filter)
+
+### Change
+- `global_volume_threshold_short`: 0.0 (disabled) → **0.50**
+
+Activates the SHORT-side MIN-volume gate. Blocks SHORT entries when
+GlobalVol < 0.50. The MAX-side SHORT filter (`global_volume_max_short: 1.10`
+with BTC capitulation override) is unchanged. Both sides of the SHORT
+volume filter are now active.
+
+### Why — cross-batch + today evidence
+
+**Dashboard bucket refactor (same session)**: Split `_VOL_BINS` lowest
+bucket from `< 0.70` into `< 0.50` + `0.50-0.70` to surface the extreme-
+low-volume zone in finer detail. PROMUSDT NP today (GlobalVol 0.44)
+landed in this newly-revealed zone.
+
+**SHORT performance by fine GlobalVol bucket (283 SHORT pool):**
+
+| GlobalVol | N | WR | Total $ | Verdict |
+|---|---|---|---|---|
+| < 0.50 (target) | 11 | 36% | **-$161** | ✗ structural loser (5 dates) |
+| 0.50-0.60 | 19 | **63%** | **+$124** | ★ winner zone |
+| 0.60-0.70 | 38 | 60% | -$76 | mixed |
+| 0.70-0.85 | 53 | 56.6% | -$540 | ✗ regime-dependent |
+| 0.85-0.95 | 38 | 79% | +$536 | ★ best zone |
+
+Cliff at GlobalVol = 0.50 is clean: -$161 below, +$124 immediately above.
+
+**Per-sub-batch breakdown of <0.50 SHORTs:**
+
+| Sub-batch | N | WR | Total $ |
+|---|---|---|---|
+| May 12-14 | 7 | 28.6% | -$92 ✗ |
+| May 15-16 | 4 | 50% | -$68 ✗ |
+| Today (PROMUSDT) | +1 | 0% | -$48 |
+| **Combined** | **12** | **33%** | **-$209** |
+
+3 of 3 sub-batches losing, multi-date confirmed (5 dates).
+
+### Acknowledged discipline override
+
+**N=12 is below the locked N≥15 watchlist promotion bar.** User chose to
+ship anyway based on:
+- Multi-batch direction-consistency (3 of 3 sub-windows losing)
+- Clean adjacent winner zone (0.50-0.60 ★)
+- Today's PROMUSDT loss fits the pattern exactly (GVol 0.44, NP, -$48)
+- Mechanism plausible: thin tape = squeeze risk inverse to healthy
+  selling pressure (0.85-0.95 ★)
+- Surgical filter (cuts ~2-3 trades/week historical, easily revertible)
+
+This is the 5th override of the "wait for more data" discipline in the
+past 3 days. Acknowledged. Mitigation = locked revert criteria below.
+
+### Pre-committed revert criteria at next ≥30 SHORT-trade checkpoint
+
+| Outcome | Action |
+|---|---|
+| Would-have-been-blocked SHORTs (in observation logs) show WR ≥55% on N≥10 fresh | REVERT to `global_volume_threshold_short: 0.0` |
+| Combined Avg P&L % worsens by ≥5bp/SHORT trade vs current baseline | REVERT |
+| The kept-zone 0.50-0.60 SHORT drops to ≤50% WR on N≥10 fresh | Reconsider — adjacent winner zone may have decayed; investigate before changing filter |
+| `[VOL_GATE]` log line never fires across 100+ trades | Filter dormant — investigate or revert |
+
+### What this filter catches
+
+Direct mechanism: pre-empt SHORTs in extremely-quiet-volume markets
+where direction is fragile and squeeze risk is elevated. Today's PROMUSDT
+was the canonical example: deep-oversold pair (Pair Gap -0.7%) + bearish
+macro setup + every dimension agreed SHORT → trade still failed because
+tape was too thin to sustain the move.
+
+### Asymmetric design
+
+LONG side stays at `global_volume_threshold_long: 0.70` (unchanged).
+SHORT side now at 0.50. Different thresholds reflect direction-asymmetric
+edge:
+- LONGs need *some* volume to confirm upward continuation
+- SHORTs need *less* volume but not *zero* — extreme silence is dangerous
+
+This is consistent with the May 11 CLAUDE.md asymmetric SHORT volume
+finding (high-vol SHORTs lose unless capitulation; low-vol SHORTs win
+in moderate-low range but fail at extreme-low).
+
+### Effective SHORT volume regime now
+
+```
+GlobalVol < 0.50           → BLOCKED (new MIN)
+GlobalVol [0.50, 1.10]     → ALLOWED
+GlobalVol > 1.10           → BLOCKED unless BTC capitulation override
+                              (BTC RSI < 30 AND slope < 0)
+```
+
+### Files changed
+
+- `trading_config.json` — single field change (`global_volume_threshold_short: 0.0 → 0.50`)
+- `main.py` — `_VOL_BINS` split `< 0.70` into `< 0.50` + `0.50-0.70` (same session, allows surfacing block-zone separately in reports)
+- `CLAUDE.md` — this entry

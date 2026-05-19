@@ -2127,8 +2127,11 @@ _TIME_BLOCK_LABELS = ["00-04", "04-08", "08-12", "12-16", "16-20", "20-24"]
 _VOL_BINS = [
     # May 12: refined 5 → 8 bins. Split "< 0.95" into three (very-low/low/edge)
     # and "> 1.25" into two (high/extreme) — both zones are where bleed lives.
+    # May 19: further split "< 0.70" into "< 0.50" and "0.50-0.70" to surface
+    # extreme-low-volume entries in finer detail (PROMUSDT NP today landed in <0.70).
     # Empty cells in the 2D cross-tab auto-drop.
-    ("< 0.70", 0.0, 0.70),
+    ("< 0.50", 0.0, 0.50),
+    ("0.50-0.70", 0.50, 0.70),
     ("0.70-0.85", 0.70, 0.85),
     ("0.85-0.95", 0.85, 0.95),
     ("0.95-1.05", 0.95, 1.05),

@@ -172,7 +172,7 @@
     "fast_exit_window_minutes": 2,
     "global_volume_filter_enabled": true,
     "global_volume_threshold_long": 0.70,
-    "global_volume_threshold_short": 0.0,
+    "global_volume_threshold_short": 0.50,
     "global_volume_max_short": 1.10,
     "global_volume_max_short_capitulation_rsi": 30.0,
     "global_volume_max_short_capitulation_slope": 0.0,

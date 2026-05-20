@@ -1689,11 +1689,10 @@
                         distinct Never-Positive failure mode. Promotion gate: N ≥ 30 per pattern AND
                         WR ≤ 40% AND Avg P&L % ≤ -0.20%. Until then, observation-only.
                     </p>
-                    <!-- Batch-level summary: what total Pattern C P&L would be under each TP cap.
-                         Computed from ANY rows (which aggregate C1..C8 per direction). -->
-                    <div class="text-xs bg-white/5 border border-amber-500/20 rounded px-3 py-2 mb-3 leading-relaxed" id="pattern-c-batch-summary">
-                        <span class="text-gray-500">(summary will appear once trades match)</span>
-                    </div>
+                    <!-- May 20 latest+8: removed the misleading TOTAL batch summary that
+                         aggregated LONG-ANY + SHORT-ANY (= ship ALL 9 C patterns simultaneously,
+                         which is never the operational strategy). Per-row "Batch If Shipped"
+                         column now answers the actionable question per individual pattern. -->
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -1710,12 +1709,14 @@
                                     <th class="px-3 py-2 font-medium text-right" title="What total $ would be if a fixed TP cap of +0.10% net was applied. Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/kills). Saves = losers converted to small wins. Kills = winners capped early. NP trades (peak <0.10%) are unaddressable by TP and don't fire. CLAUDE.md May 20 locked decision matrix: ship pattern-gated TP at N≥30 per direction + Δ$ ≥ +$80 + kills ≤ saves/2.">TP 0.10 → New $ (Δ, f/s/k)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="SL tightening counterfactual ALONE: cap losses at -0.50% net (no TP applied). Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/cut_winners). Saves = losers worse than -0.50% capped earlier. Cut_winners = trades whose trough crossed -0.50% but recovered to win — tighter SL would have killed them. CLAUDE.md May 20 locked decision matrix: ship SL tightening at N≥30 + Δ$ ≥ +$100 + cut_winners ≤ saves/10.">SL 0.50 → New $ (Δ, f/s/cw)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Combined TP 0.10 + SL 0.50 counterfactual — both caps applied together. Cell shows: new Total $, Δ$ vs actual, and (tp_fires / sl_fires / cut_winners). Uses peak_reached_at vs trough_reached_at to determine which cap fires first on trades that would trigger both. This is the realistic 'what if we run both exits together' projection — the best single lens for evaluating an aggressive dual-cap regime. Δ$ here is LESS than TP-alone Δ$ + SL-alone Δ$ because trades that would trigger both caps are sequenced (not double-counted).">TP 0.10 + SL 0.50 → New $ (Δ, tp_f/sl_f/cw)</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Whole-batch P&L (all closed trades, regardless of pattern match). Same value on every row — reference number for the 'Batch If Shipped' column.">Batch Actual P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="What whole-batch P&L would become if THIS row's TP+SL fix shipped ALONE (not combined with other rows). Equals Batch Actual + this row's Combined Δ$. Independent per row — reading the C4 LONG cell tells you 'if I ship for C4 LONG only, batch P&L goes from X to Y'. Each row is its own ship scenario. Do NOT sum across rows because trades can match multiple patterns (overlap not deduplicated here).">Batch If Shipped (this row only)</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Risk:Reward — average loss $ divided by average win $. Format '1 : X' where X is the loss multiple per win. <2 green (good R:R), 2-4 amber (mediocre), >4 red (terrible). Reveals if high WR is being achieved with tiny wins vs catastrophic losses — a 'trap' pattern.">R:R</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-c-body" class="divide-y divide-white/5">
-                                <tr><td colspan="14" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                                 <!-- columns: Direction, Pattern, N, WR, Avg%, Total$, AvgPeak%, NP, Loser%, TP 0.10, Combined TP+SL, SL 0.50, R:R, Verdict -->
 
                             </tbody>
@@ -1803,12 +1804,14 @@
                                     <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Never Positive count (peak < 0.05%). For a true winner cohort this should be ≈0 — high NP means the signature is unstable (catching trades that 'won' without ever going strongly positive).">NP (n / %)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Multiplier counterfactual at 2.0× (the hard-cap value in the multiplier system). Cell shows: New Total $ if cohort had been at 2.0× sizing, Δ$ (uplift vs actual), and (w/l) cohort composition. If Δ$ ≤ 0 → multiplier would hurt this cohort. CLAUDE.md Phase 3 staging: when MULTIPLIER CANDIDATE gate triggers, ship at 1.5× initially and step to 2.0× after +50 trades. This column shows the END-state effect (max multiplier in the system).">MULT 2× → New $ (Δ, w/l)</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Whole-batch P&L (all closed trades, regardless of pattern match). Same value on every row — reference number for the 'Batch If Shipped' column.">Batch Actual P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="What whole-batch P&L would become if THIS row's 2.0× multiplier shipped ALONE (not combined with other rows). Equals Batch Actual + this row's MULT 2× Δ$. Independent per row — reading the W2 LONG cell tells you 'if I ship 2.0× for W2 LONG only, batch P&L goes from X to Y'. Each row is its own ship scenario. Do NOT sum across rows because trades can match multiple patterns (overlap not deduplicated here).">Batch If Shipped (this row only)</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Risk:Reward — average loss $ divided by average win $. Format '1 : X' where X is the loss multiple per win. CRITICAL for multiplier decisions: a row showing 80% WR with 1:5 R:R is a TRAP — high WR doesn't compensate. A row with 70% WR and 1:1 R:R is real edge. <2 green, 2-4 amber, >4 red.">R:R</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-w-body" class="divide-y divide-white/5">
-                                <tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="15" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6498,20 +6501,8 @@
                 lines.push(`Loser%: precision = % of matches that closed as losers. ≥70% = filter candidate.`);
                 lines.push(`TP CF: simulates fixed TP cap (0.05% / 0.10% net). Cell shows NewTotal$ | Δ$ | (f/s/k).`);
                 lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.`);
-                // Batch summary from ANY rows
-                const _pc1Any = _pc1.filter(r => r.pattern_key === 'c_any');
-                if (_pc1Any.length) {
-                    const _fs = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                    let tA = 0, t1 = 0, tCB = 0, tSL = 0;
-                    _pc1Any.forEach(r => { tA += r.total_usd || 0; t1 += r.tp10_new_total_usd || 0; tCB += r.combined_new_total_usd || 0; tSL += r.sl50_new_total_usd || 0; });
-                    _pc1Any.forEach(r => {
-                        const d1 = (r.tp10_new_total_usd||0) - (r.total_usd||0);
-                        const dCB = (r.combined_new_total_usd||0) - (r.total_usd||0);
-                        const dSL = (r.sl50_new_total_usd||0) - (r.total_usd||0);
-                        lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)}) | SL 0.50 ${_fs(r.sl50_new_total_usd)} (Δ${_fs(dSL)}) | TP+SL ${_fs(r.combined_new_total_usd)} (Δ${_fs(dCB)})`);
-                    });
-                    lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)}) | SL 0.50 ${_fs(tSL)} (Δ${_fs(tSL-tA)}) | TP+SL ${_fs(tCB)} (Δ${_fs(tCB-tA)})`);
-                }
+                // May 20 latest+8: removed batch summation block — per-row "Batch If Shipped"
+                // column in table answers this per individual pattern (the actionable read).
                 lines.push('');
                 // Batch loser coverage (Item 2, May 20-late)
                 const _pc1Cov = perf.pattern_c_batch_coverage || {};
@@ -6522,7 +6513,7 @@
                     lines.push(`  ${d} Batch Coverage: ${v.winners}W / ${v.losers}L total · ${v.losers_in_c} of ${v.losers} losers matched (${covStr}) · ${v.losers_outside_c} OUTSIDE`);
                 });
                 lines.push('');
-                lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         SL0.50  NewTot$ | Δ$ (f/s/cw)        TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     Verdict');
+                lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         SL0.50  NewTot$ | Δ$ (f/s/cw)        TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     BatchAct  BatchShip  Verdict');
                 lines.push('-'.repeat(210));
                 _pc1.forEach(r => {
                     const wr = r.wr.toFixed(1).padStart(5) + '%';
@@ -6540,7 +6531,9 @@
                     const cbnt = ((r.combined_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_new_total_usd || 0).toFixed(2)).padStart(9);
                     const cbd = ((r.combined_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_delta_usd || 0).toFixed(2)).padStart(8);
                     const cbfsk = `(${r.combined_tp_fires||0}/${r.combined_sl_fires||0}/${r.combined_cut_winners||0})`.padEnd(12);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${r.verdict}`);
+                    const bAct = ((r.batch_actual_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_actual_total_usd || 0).toFixed(2)).padStart(9);
+                    const bShip = ((r.batch_if_shipped_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_if_shipped_usd || 0).toFixed(2)).padStart(9);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${bAct}  ${bShip}  ${r.verdict}`);
                 });
                 lines.push('');
             }
@@ -6563,7 +6556,7 @@
                     lines.push(`  ${d} Winner Coverage: ${v.winners}W / ${v.losers}L total · ${v.winners_in_w} of ${v.winners} winners matched (${covStr}) · ${v.winners_outside_w} OUTSIDE`);
                 });
                 lines.push('');
-                lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  NP (n/%)   MULT 2x  NewTot$ | Δ$ (w/l)        Verdict');
+                lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  NP (n/%)   MULT 2x  NewTot$ | Δ$ (w/l)        BatchAct  BatchShip  Verdict');
                 lines.push('-'.repeat(180));
                 _pw1.forEach(r => {
                     const wr = r.wr.toFixed(1).padStart(5) + '%';
@@ -6575,7 +6568,9 @@
                     const m20nt = ((r.mult20_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_new_total_usd || 0).toFixed(2)).padStart(9);
                     const m20d = ((r.mult20_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_delta_usd || 0).toFixed(2)).padStart(8);
                     const wl = `(${r.winner_count||0}w/${r.loser_count||0}l)`.padEnd(10);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${np}   ${m20nt} | ${m20d} ${wl}  ${r.verdict}`);
+                    const bAct = ((r.batch_actual_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_actual_total_usd || 0).toFixed(2)).padStart(9);
+                    const bShip = ((r.batch_if_shipped_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_if_shipped_usd || 0).toFixed(2)).padStart(9);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${np}   ${m20nt} | ${m20d} ${wl}  ${bAct}  ${bShip}  ${r.verdict}`);
                 });
                 lines.push('');
             }
@@ -7975,20 +7970,8 @@
                     lines.push(`Loser%: precision = % of matches that closed as losers. ≥70% = filter candidate.`);
                     lines.push(`TP CF: simulates fixed TP cap (0.10% net). TP+SL: both caps together. SL CF: SL tightening alone. Each cell: NewTotal$ | Δ$ | (counts).`);
                     lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.`);
-                    // Batch summary from ANY rows
-                    const _pc2Any = _pc2.filter(r => r.pattern_key === 'c_any');
-                    if (_pc2Any.length) {
-                        const _fs = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                        let tA = 0, t1 = 0, tCB = 0, tSL = 0;
-                        _pc2Any.forEach(r => { tA += r.total_usd || 0; t1 += r.tp10_new_total_usd || 0; tCB += r.combined_new_total_usd || 0; tSL += r.sl50_new_total_usd || 0; });
-                        _pc2Any.forEach(r => {
-                            const d1 = (r.tp10_new_total_usd||0) - (r.total_usd||0);
-                            const dCB = (r.combined_new_total_usd||0) - (r.total_usd||0);
-                            const dSL = (r.sl50_new_total_usd||0) - (r.total_usd||0);
-                            lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)}) | SL 0.50 ${_fs(r.sl50_new_total_usd)} (Δ${_fs(dSL)}) | TP+SL ${_fs(r.combined_new_total_usd)} (Δ${_fs(dCB)})`);
-                        });
-                        lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)}) | SL 0.50 ${_fs(tSL)} (Δ${_fs(tSL-tA)}) | TP+SL ${_fs(tCB)} (Δ${_fs(tCB-tA)})`);
-                    }
+                    // May 20 latest+8: removed batch summation block — per-row "Batch If Shipped"
+                    // column in table answers this per individual pattern.
                     // Batch loser coverage (Item 2)
                     const _pc2Cov = perf.pattern_c_batch_coverage || {};
                     ['LONG', 'SHORT'].forEach(d => {
@@ -7998,7 +7981,7 @@
                         lines.push(`  ${d} Batch Coverage: ${v.winners}W / ${v.losers}L total · ${v.losers_in_c} of ${v.losers} losers matched (${covStr}) · ${v.losers_outside_c} OUTSIDE`);
                     });
                     lines.push('');
-                    lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         SL0.50  NewTot$ | Δ$ (f/s/cw)        TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     Verdict');
+                    lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         SL0.50  NewTot$ | Δ$ (f/s/cw)        TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     BatchAct  BatchShip  Verdict');
                     lines.push('-'.repeat(210));
                     _pc2.forEach(r => {
                         const wr = r.wr.toFixed(1).padStart(5) + '%';
@@ -8016,7 +7999,9 @@
                         const cbnt = ((r.combined_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_new_total_usd || 0).toFixed(2)).padStart(9);
                         const cbd = ((r.combined_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_delta_usd || 0).toFixed(2)).padStart(8);
                         const cbfsk = `(${r.combined_tp_fires||0}/${r.combined_sl_fires||0}/${r.combined_cut_winners||0})`.padEnd(12);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${r.verdict}`);
+                        const bAct = ((r.batch_actual_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_actual_total_usd || 0).toFixed(2)).padStart(9);
+                        const bShip = ((r.batch_if_shipped_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_if_shipped_usd || 0).toFixed(2)).padStart(9);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${bAct}  ${bShip}  ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -8037,7 +8022,7 @@
                         lines.push(`  ${d} Winner Coverage: ${v.winners}W / ${v.losers}L total · ${v.winners_in_w} of ${v.winners} winners matched (${covStr}) · ${v.winners_outside_w} OUTSIDE`);
                     });
                     lines.push('');
-                    lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  NP (n/%)   MULT 2x  NewTot$ | Δ$ (w/l)        Verdict');
+                    lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  NP (n/%)   MULT 2x  NewTot$ | Δ$ (w/l)        BatchAct  BatchShip  Verdict');
                     lines.push('-'.repeat(180));
                     _pw2.forEach(r => {
                         const wr = r.wr.toFixed(1).padStart(5) + '%';
@@ -8049,7 +8034,9 @@
                         const m20nt = ((r.mult20_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_new_total_usd || 0).toFixed(2)).padStart(9);
                         const m20d = ((r.mult20_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_delta_usd || 0).toFixed(2)).padStart(8);
                         const wl = `(${r.winner_count||0}w/${r.loser_count||0}l)`.padEnd(10);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${np}   ${m20nt} | ${m20d} ${wl}  ${r.verdict}`);
+                        const bAct = ((r.batch_actual_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_actual_total_usd || 0).toFixed(2)).padStart(9);
+                        const bShip = ((r.batch_if_shipped_usd >= 0 ? '+$' : '-$') + Math.abs(r.batch_if_shipped_usd || 0).toFixed(2)).padStart(9);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${np}   ${m20nt} | ${m20d} ${wl}  ${bAct}  ${bShip}  ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -10193,70 +10180,11 @@
                 if (data.pattern_c_validation) {
                     const _pcRows = data.pattern_c_validation || [];
                     const _pcBody = document.getElementById('pattern-c-body');
-                    const _pcSummary = document.getElementById('pattern-c-batch-summary');
-                    // Compute batch-level Pattern C summary from ANY rows.
-                    // ANY rows (pattern_key='c_any') aggregate per-direction across all
-                    // C1..C8 patterns. Summing LONG + SHORT ANY gives the batch-wide
-                    // "Pattern C trades" total — what would total P&L look like if TP
-                    // was applied to every C-matched trade in the batch.
-                    if (_pcSummary) {
-                        const fmt$s = (v) => v == null ? '$0.00' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                        const anyRows = _pcRows.filter(r => r.pattern_key === 'c_any');
-                        if (anyRows.length) {
-                            let totActual = 0, totTP10 = 0, totCB = 0, totSL = 0;
-                            anyRows.forEach(r => {
-                                totActual += (r.total_usd || 0);
-                                totTP10 += (r.tp10_new_total_usd || 0);
-                                totCB += (r.combined_new_total_usd || 0);
-                                totSL += (r.sl50_new_total_usd || 0);
-                            });
-                            const d10 = totTP10 - totActual;
-                            const dCB = totCB - totActual;
-                            const dSL = totSL - totActual;
-                            const cls = (v) => v > 5 ? 'text-emerald-400' : v < -5 ? 'text-red-400' : 'text-gray-400';
-                            const ntCls = (v) => v >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            // Per-direction lines
-                            const dirLines = anyRows.map(r => {
-                                const d10r = (r.tp10_new_total_usd || 0) - (r.total_usd || 0);
-                                const dCBr = (r.combined_new_total_usd || 0) - (r.total_usd || 0);
-                                const dSLr = (r.sl50_new_total_usd || 0) - (r.total_usd || 0);
-                                return `<span class="text-gray-400 font-semibold">${r.direction} Pattern C:</span>
-                                    actual <span class="${ntCls(r.total_usd)}">${fmt$s(r.total_usd)}</span>
-                                    → TP 0.10 <span class="${ntCls(r.tp10_new_total_usd)}">${fmt$s(r.tp10_new_total_usd)}</span> <span class="text-xs ${cls(d10r)}">(Δ${fmt$s(d10r)})</span>
-                                    | SL 0.50 <span class="${ntCls(r.sl50_new_total_usd)}">${fmt$s(r.sl50_new_total_usd)}</span> <span class="text-xs ${cls(dSLr)}">(Δ${fmt$s(dSLr)})</span>
-                                    | TP+SL <span class="${ntCls(r.combined_new_total_usd)}">${fmt$s(r.combined_new_total_usd)}</span> <span class="text-xs ${cls(dCBr)}">(Δ${fmt$s(dCBr)})</span>`;
-                            }).join('<br>');
-                            // TOTAL line
-                            const totalLine = `<span class="text-amber-300 font-semibold">TOTAL Pattern C (LONG+SHORT):</span>
-                                actual <span class="${ntCls(totActual)} font-semibold">${fmt$s(totActual)}</span>
-                                → TP 0.10 <span class="${ntCls(totTP10)} font-semibold">${fmt$s(totTP10)}</span> <span class="${cls(d10)} font-semibold">(Δ${fmt$s(d10)})</span>
-                                | SL 0.50 <span class="${ntCls(totSL)} font-semibold">${fmt$s(totSL)}</span> <span class="${cls(dSL)} font-semibold">(Δ${fmt$s(dSL)})</span>
-                                | TP+SL <span class="${ntCls(totCB)} font-semibold">${fmt$s(totCB)}</span> <span class="${cls(dCB)} font-semibold">(Δ${fmt$s(dCB)})</span>`;
-                            // Item 2 (May 20-late): batch-level loser coverage stat
-                            // appended below the TP totals. Shows whether Pattern C is
-                            // catching most losers or missing failure modes.
-                            const cov = data.pattern_c_batch_coverage || {};
-                            const covLines = ['LONG', 'SHORT'].map(d => {
-                                const v = cov[d];
-                                if (!v || v.total === 0) return '';
-                                const covCls = v.coverage_pct == null
-                                    ? 'text-gray-400'
-                                    : v.coverage_pct >= 70 ? 'text-emerald-400'
-                                    : v.coverage_pct >= 50 ? 'text-amber-400'
-                                    : 'text-red-400';
-                                const outCls = v.losers_outside_c > 0 ? 'text-red-400 font-semibold' : 'text-emerald-400';
-                                return `<span class="text-gray-400 font-semibold">${d} Batch Coverage:</span>
-                                    <span class="text-emerald-400">${v.winners}W</span> /
-                                    <span class="text-red-400">${v.losers}L</span> total
-                                    · ${v.losers_in_c} of ${v.losers} losers matched Pattern C
-                                    (<span class="${covCls}">${v.coverage_pct == null ? '-' : v.coverage_pct.toFixed(0) + '%'}</span>)
-                                    · <span class="${outCls}">${v.losers_outside_c} OUTSIDE</span>`;
-                            }).filter(Boolean).join('<br>');
-                            _pcSummary.innerHTML = `${dirLines}<br>${totalLine}` + (covLines ? `<br><br>${covLines}` : '');
-                        } else {
-                            _pcSummary.innerHTML = '<span class="text-gray-500">(no matched trades yet)</span>';
-                        }
-                    }
+                    // May 20 latest+8: removed misleading TOTAL summation block
+                    // (LONG-ANY + SHORT-ANY counterfactuals across all C patterns at once).
+                    // Per-row "Batch If Shipped" column now answers this question per
+                    // individual pattern, which is the actionable read. Batch coverage
+                    // moved into the inline footnote below the table.
                     if (_pcBody) {
                         if (!_pcRows.length) {
                             _pcBody.innerHTML = '<tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
@@ -10321,6 +10249,8 @@
                                     <td class="px-3 py-1 text-right leading-tight">${tp10Str}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${sl50Str}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${cbStr}</td>
+                                    <td class="px-3 py-1 text-right ${(r.batch_actual_total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt$(r.batch_actual_total_usd)}</td>
+                                    <td class="px-3 py-1 text-right ${(r.batch_if_shipped_usd || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}">${fmt$(r.batch_if_shipped_usd)}<br><span class="text-xs ${(r.combined_delta_usd || 0) > 5 ? 'text-emerald-400' : (r.combined_delta_usd || 0) < -5 ? 'text-red-400' : 'text-gray-400'}">Δ${fmt$(r.combined_delta_usd)}</span></td>
                                     <td class="px-3 py-1 text-center ${(r.rr_ratio == null) ? 'text-gray-500' : r.rr_ratio < 2 ? 'text-emerald-400 font-semibold' : r.rr_ratio < 4 ? 'text-amber-400' : 'text-red-400'}">${r.rr_ratio == null ? '—' : (r.rr_ratio === 0 ? '∞' : `1 : ${r.rr_ratio.toFixed(1)}`)}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;
@@ -10448,6 +10378,8 @@
                                     <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
                                     <td class="px-3 py-1 text-center text-gray-400">${r.np_count || 0} / ${r.np_rate.toFixed(0)}%</td>
                                     <td class="px-3 py-1 text-right leading-tight">${mult20Str}</td>
+                                    <td class="px-3 py-1 text-right ${(r.batch_actual_total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${fmt$(r.batch_actual_total_usd)}</td>
+                                    <td class="px-3 py-1 text-right ${(r.batch_if_shipped_usd || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}">${fmt$(r.batch_if_shipped_usd)}<br><span class="text-xs ${(r.mult20_delta_usd || 0) > 5 ? 'text-emerald-400' : (r.mult20_delta_usd || 0) < -5 ? 'text-red-400' : 'text-gray-400'}">Δ${fmt$(r.mult20_delta_usd)}</span></td>
                                     <td class="px-3 py-1 text-center ${rrCls}">${rrStr}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;

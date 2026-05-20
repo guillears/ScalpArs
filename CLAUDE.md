@@ -15484,3 +15484,74 @@ To anchor:
 3. The "combined is the realistic dual-cap lens" rule — don't add TP 0.10 Δ$ + SL 0.50 Δ$ to estimate combined effect (it'll double-count trades that both caps apply to)
 4. The updated decision matrix (combined column drives dual-cap ship; standalone columns drive single-cap ship)
 
+
+## May 20, 2026 (latest+8) — Pattern C & Pattern W: per-row Batch P&L projection columns
+
+### What ships
+
+Two new columns added to BOTH Pattern C and Pattern W tables:
+
+| Column | Meaning |
+|---|---|
+| **Batch Actual P&L** | Total $ of every CLOSED trade in the batch (constant on every row — reference value) |
+| **Batch If Shipped (this row only)** | What batch P&L would become if THIS specific row's fix shipped alone |
+
+For Pattern C: `Batch If Shipped = Batch Actual + row's TP+SL combined Δ$`
+For Pattern W: `Batch If Shipped = Batch Actual + row's MULT 2× Δ$`
+
+The cell also displays the row's Δ$ below the new total for at-a-glance reading.
+
+### Why this replaces the static TOTAL summary line
+
+The previous batch-summary block above each table was computing
+`LONG-ANY + SHORT-ANY` (the OR-aggregate across all patterns) — mathematically
+correct but representing "ship for ALL patterns at once," which is never
+the actionable strategy. Operators ship pattern-by-pattern.
+
+The new column architecture answers the right question: **"If I ship just
+the C4 LONG fix, what does total batch P&L become?"** Read the C4 LONG
+row's Batch If Shipped cell directly.
+
+### Critical methodology rule (locked)
+
+**Do NOT sum Batch If Shipped values across rows.** Each row is its own
+single-pattern ship projection. A trade matching both C2 AND C4 would be
+double-counted if you sum C2's Δ$ + C4's Δ$ to estimate combined effect.
+
+For multi-pattern combination evaluation, the deduped union is required —
+that's why the proposed calculator widget (May 20 latest+7 conversation)
+remained the right path for combination analysis. The per-row column
+addressed here is for the **single-pattern ship** question only, which
+covers ~90% of operational decisions.
+
+### Decision matrix updates
+
+When evaluating which Pattern C row to ship:
+1. Read Batch Actual P&L (reference)
+2. Compare Batch If Shipped across all rows where verdict shows
+   ⚠ FILTER CANDIDATE or ⚠ Warning
+3. Highest Batch If Shipped value = best single-pattern ship
+4. Cross-validate with the TP/SL/Combined columns (the Δ$ counts)
+   and locked promotion gates (N≥30, etc.)
+
+Same logic for Pattern W with MULT 2× column driving the projection.
+
+### Implementation
+
+- `main.py` — added `batch_actual_total_usd` computed once at top of each
+  validation function (sum of all CLOSED orders' pnl); per-row
+  `batch_if_shipped_usd` = `batch_actual + delta`
+- `templates/index.html` — 2 new column headers per table (4 total),
+  colspans bumped (Pattern C 14→16, Pattern W 13→15), JS renderers,
+  both text-export sites updated for both tables
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The "single-pattern ship projection" methodology (per-row, no summing)
+2. The locked rule against cross-row addition (overlap risk)
+3. The reading workflow (compare Batch If Shipped across actionable rows)
+4. The distinction between per-row ship (this column) vs combination ship
+   (calculator widget — pending if needed)
+

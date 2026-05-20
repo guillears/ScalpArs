@@ -7681,6 +7681,10 @@ def _compute_pattern_c_validation(orders):
     Returns per-pattern rows + ANY-match row + per-direction TOTAL row.
     """
     patterns = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c_any']
+    # Batch P&L reference (May 20 latest+8): total $ of every closed trade in the batch
+    # regardless of pattern match. Lets per-row "Batch If Shipped" column show what the
+    # WHOLE batch P&L would become if THIS pattern's TP+SL fix were shipped alone.
+    batch_actual_total_usd = sum((o.pnl or 0) for o in orders if o.status == 'CLOSED')
     pattern_labels = {
         'c1': 'C1 Capitulation chase',
         'c2': 'C2 Macro counter-trend',
@@ -7933,6 +7937,12 @@ def _compute_pattern_c_validation(orders):
                 'sl50_fires': sl50_fires,
                 'sl50_saves': sl50_saves,
                 'sl50_cut_winners': sl50_cut,
+                # Batch P&L reference (May 20 latest+8): single-pattern ship projection.
+                # batch_actual is constant on every row (whole-batch P&L); batch_if_shipped
+                # shows what whole-batch P&L would become if this pattern's TP+SL fix
+                # shipped alone (using combined_delta as the realistic dual-cap delta).
+                'batch_actual_total_usd': round(batch_actual_total_usd, 2),
+                'batch_if_shipped_usd': round(batch_actual_total_usd + cb_delta, 2),
                 'verdict': verdict,
             })
     return rows
@@ -8064,6 +8074,10 @@ def _compute_pattern_w_validation(orders):
         'w5': 'W5 Confluence',
         'w_any': 'ANY (W1∨…∨W5)',
     }
+    # Batch P&L reference (May 20 latest+8): mirrors Pattern C — total $ of every
+    # closed trade in the batch. Per-row "Batch If Shipped" = batch_actual +
+    # mult20_delta (single-row 2.0× multiplier ship projection).
+    batch_actual_total_usd = sum((o.pnl or 0) for o in orders if o.status == 'CLOSED')
 
     # Cache match results per order (compute once)
     order_matches = {}
@@ -8173,6 +8187,11 @@ def _compute_pattern_w_validation(orders):
                 # Multiplier counterfactual (2.0×)
                 'mult20_new_total_usd': round(mult20_new_total_usd, 2),
                 'mult20_delta_usd': round(mult20_delta_usd, 2),
+                # Batch P&L reference (May 20 latest+8): single-pattern multiplier ship.
+                # batch_actual constant on every row; batch_if_shipped = what whole-batch
+                # P&L becomes if this single pattern's 2.0× multiplier shipped alone.
+                'batch_actual_total_usd': round(batch_actual_total_usd, 2),
+                'batch_if_shipped_usd': round(batch_actual_total_usd + mult20_delta_usd, 2),
                 'verdict': verdict,
             })
     return rows

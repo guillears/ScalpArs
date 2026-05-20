@@ -1710,13 +1710,12 @@
                                     <th class="px-3 py-2 font-medium text-right" title="What total $ would be if a fixed TP cap of 0.05% net was applied. Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/kills). Saves = losers converted to small wins. Kills = winners capped early. NP trades (peak <0.05%) are unaddressable by TP and don't fire. Δ$ already nets out winner-kill cost — the magnitude is in the Δ.">TP 0.05 → New $ (Δ, f/s/k)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Same as TP 0.05 but cap at +0.10% net. Higher threshold = fewer fires + fewer kills but smaller per-trade save. CLAUDE.md May 20 locked decision matrix: ship pattern-gated TP at N≥30 per direction + Δ$ ≥ +$80 + kills ≤ saves/2.">TP 0.10 → New $ (Δ, f/s/k)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="SL tightening counterfactual: cap losses at -0.50% net. Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/cut_winners). Saves = losers worse than -0.50% capped earlier. Cut_winners = trades whose trough crossed -0.50% but recovered to win — tighter SL would have killed them. CLAUDE.md May 20 locked decision matrix: ship SL tightening at N≥30 + Δ$ ≥ +$100 + cut_winners ≤ saves/10.">SL 0.50 → New $ (Δ, f/s/cw)</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Same as SL 0.50 but cap losses at -0.60% net. Less aggressive — fewer cut winners, smaller per-trade save. Use to compare two tightening levels side-by-side.">SL 0.60 → New $ (Δ, f/s/cw)</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Risk:Reward — average loss $ divided by average win $. Format '1 : X' where X is the loss multiple per win. <2 green (good R:R), 2-4 amber (mediocre), >4 red (terrible). Reveals if high WR is being achieved with tiny wins vs catastrophic losses — a 'trap' pattern.">R:R</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-c-body" class="divide-y divide-white/5">
-                                <tr><td colspan="15" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="14" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6536,12 +6535,9 @@
                     const tp05fsk = `(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})`.padEnd(12);
                     const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
                     const sl50nt = ((r.sl50_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_new_total_usd || 0).toFixed(2)).padStart(9);
-                    const sl60nt = ((r.sl60_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl60_new_total_usd || 0).toFixed(2)).padStart(9);
                     const sl50d = ((r.sl50_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_delta_usd || 0).toFixed(2)).padStart(8);
-                    const sl60d = ((r.sl60_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl60_delta_usd || 0).toFixed(2)).padStart(8);
                     const sl50fsk = `(${r.sl50_fires||0}/${r.sl50_saves||0}/${r.sl50_cut_winners||0})`.padEnd(12);
-                    const sl60fsk = `(${r.sl60_fires||0}/${r.sl60_saves||0}/${r.sl60_cut_winners||0})`.padEnd(12);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${sl60nt} | ${sl60d} ${sl60fsk}  ${r.verdict}`);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${r.verdict}`);
                 });
                 lines.push('');
             }
@@ -8014,12 +8010,9 @@
                         const tp05fsk = `(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})`.padEnd(12);
                         const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
                         const sl50nt = ((r.sl50_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_new_total_usd || 0).toFixed(2)).padStart(9);
-                        const sl60nt = ((r.sl60_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl60_new_total_usd || 0).toFixed(2)).padStart(9);
                         const sl50d = ((r.sl50_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_delta_usd || 0).toFixed(2)).padStart(8);
-                        const sl60d = ((r.sl60_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl60_delta_usd || 0).toFixed(2)).padStart(8);
                         const sl50fsk = `(${r.sl50_fires||0}/${r.sl50_saves||0}/${r.sl50_cut_winners||0})`.padEnd(12);
-                        const sl60fsk = `(${r.sl60_fires||0}/${r.sl60_saves||0}/${r.sl60_cut_winners||0})`.padEnd(12);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${sl60nt} | ${sl60d} ${sl60fsk}  ${r.verdict}`);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -10303,13 +10296,8 @@
                                 const sl50DeltaCls = (r.sl50_delta_usd || 0) > 5 ? 'text-emerald-400'
                                     : (r.sl50_delta_usd || 0) < -5 ? 'text-red-400'
                                     : 'text-gray-400';
-                                const sl60DeltaCls = (r.sl60_delta_usd || 0) > 5 ? 'text-emerald-400'
-                                    : (r.sl60_delta_usd || 0) < -5 ? 'text-red-400'
-                                    : 'text-gray-400';
                                 const sl50NewCls = (r.sl50_new_total_usd || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold';
-                                const sl60NewCls = (r.sl60_new_total_usd || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold';
                                 const sl50Str = `<span class="${sl50NewCls}">${fmt$(r.sl50_new_total_usd)}</span><br><span class="text-xs ${sl50DeltaCls}">Δ${fmt$(r.sl50_delta_usd)}</span> <span class="text-xs text-gray-500">(${r.sl50_fires||0}/${r.sl50_saves||0}/${r.sl50_cut_winners||0})</span>`;
-                                const sl60Str = `<span class="${sl60NewCls}">${fmt$(r.sl60_new_total_usd)}</span><br><span class="text-xs ${sl60DeltaCls}">Δ${fmt$(r.sl60_delta_usd)}</span> <span class="text-xs text-gray-500">(${r.sl60_fires||0}/${r.sl60_saves||0}/${r.sl60_cut_winners||0})</span>`;
                                 return `<tr class="${rowCls}">
                                     <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
                                     <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
@@ -10323,7 +10311,6 @@
                                     <td class="px-3 py-1 text-right leading-tight">${tp05Str}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${tp10Str}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${sl50Str}</td>
-                                    <td class="px-3 py-1 text-right leading-tight">${sl60Str}</td>
                                     <td class="px-3 py-1 text-center ${(r.rr_ratio == null) ? 'text-gray-500' : r.rr_ratio < 2 ? 'text-emerald-400 font-semibold' : r.rr_ratio < 4 ? 'text-amber-400' : 'text-red-400'}">${r.rr_ratio == null ? '—' : (r.rr_ratio === 0 ? '∞' : `1 : ${r.rr_ratio.toFixed(1)}`)}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;

@@ -7814,9 +7814,7 @@ def _compute_pattern_c_validation(orders):
             # Decision: ship SL tightening when cohort N≥30, SL-Δ$ ≥ +$100, AND
             # cut_winners ≤ saves/10 (low winner-kill collateral).
             sl50_actual, sl50_sim, sl50_fires, sl50_saves, sl50_cut = _sim_sl_cohort(matched, 0.50)
-            sl60_actual, sl60_sim, sl60_fires, sl60_saves, sl60_cut = _sim_sl_cohort(matched, 0.60)
             sl50_delta = sl50_sim - sl50_actual
-            sl60_delta = sl60_sim - sl60_actual
             # tp05_sim / tp10_sim ARE the new totals (sum of sim$ across cohort)
 
             # Verdict per locked gates (CLAUDE.md May 20-latest+4 — BUG FIX:
@@ -7886,11 +7884,6 @@ def _compute_pattern_c_validation(orders):
                 'sl50_fires': sl50_fires,
                 'sl50_saves': sl50_saves,
                 'sl50_cut_winners': sl50_cut,
-                'sl60_new_total_usd': round(sl60_sim, 2),
-                'sl60_delta_usd': round(sl60_delta, 2),
-                'sl60_fires': sl60_fires,
-                'sl60_saves': sl60_saves,
-                'sl60_cut_winners': sl60_cut,
                 'verdict': verdict,
             })
     return rows

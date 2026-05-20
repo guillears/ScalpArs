@@ -1770,7 +1770,7 @@
                     </div>
                 </div>
 
-                <!-- Pattern W Tracker — WINNER patterns for multiplier discovery (May 20 latest+2) -->
+                <!-- Pattern W Tracker — WINNER patterns for multiplier discovery (May 20 latest+2; latest+3 added NP, MULT 1.5×, batch coverage) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏆 Pattern W Tracker (observation-only)</h3>
                     <p class="text-xs text-gray-400 mb-3">
@@ -1779,6 +1779,11 @@
                         winner condition designed from cross-batch analysis. Promotion gate:
                         N ≥ 30 per pattern AND WR ≥ 70% AND Avg P&L % ≥ +0.20% → MULTIPLIER candidate.
                     </p>
+                    <!-- Batch-level winner coverage: how many winners get flagged by ANY W pattern.
+                         Symmetric to Pattern C's batch coverage summary. -->
+                    <div class="text-xs bg-white/5 border border-emerald-500/20 rounded px-3 py-2 mb-3 leading-relaxed" id="pattern-w-batch-summary">
+                        <span class="text-gray-500">(coverage summary will appear once trades match)</span>
+                    </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -1791,11 +1796,13 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Never Positive count (peak < 0.05%). For a true winner cohort this should be ≈0 — high NP means the signature is unstable (catching trades that 'won' without ever going strongly positive).">NP (n / %)</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Multiplier counterfactual at 2.0× (the hard-cap value in the multiplier system). Cell shows: New Total $ if cohort had been at 2.0× sizing, Δ$ (uplift vs actual), and (w/l) cohort composition. If Δ$ ≤ 0 → multiplier would hurt this cohort. CLAUDE.md Phase 3 staging: when MULTIPLIER CANDIDATE gate triggers, ship at 1.5× initially and step to 2.0× after +50 trades. This column shows the END-state effect (max multiplier in the system).">MULT 2× → New $ (Δ, w/l)</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-w-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1808,6 +1815,45 @@
                         <div class="pt-1 text-gray-500"><span class="text-gray-300 font-semibold">ANY row</span> — OR of W1-W5. Use it as aggregate "Pattern W coverage" reading. Symmetric to Pattern C ANY row.
                             <br><span class="italic">Computed at report time from existing entry features. No schema change. Definitions tunable in main.py without redeploy. When a W pattern promotes to multiplier ship, we'd add per-trade capture for that specific signature.</span>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Unmatched Winners Deep Dive (May 20 latest+3 — discovery surface for new W patterns) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🔎 Unmatched Winners Deep Dive (observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Closed winners that did NOT match any W1-W5 signature. These are winning
+                        trades our Pattern W framework is BLIND to. When ≥3 unmatched winners share
+                        a recognizable entry signature, that's the discovery signal: define a new
+                        pattern (W6, W7, ...) and add to tracker. Sorted by $ gain (largest first),
+                        capped at 20 rows.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium">Pair</th>
+                                    <th class="px-2 py-2 font-medium">Dir</th>
+                                    <th class="px-2 py-2 font-medium text-right">$ Gain</th>
+                                    <th class="px-2 py-2 font-medium text-right">Peak%</th>
+                                    <th class="px-2 py-2 font-medium text-right">Close%</th>
+                                    <th class="px-2 py-2 font-medium text-right">RSI</th>
+                                    <th class="px-2 py-2 font-medium text-right">pADX</th>
+                                    <th class="px-2 py-2 font-medium text-right">ADXΔ</th>
+                                    <th class="px-2 py-2 font-medium text-right">Stretch</th>
+                                    <th class="px-2 py-2 font-medium text-right">RngPos</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Pair EMA13-EMA50 gap %">PairTGap</th>
+                                    <th class="px-2 py-2 font-medium text-right">BTCRSI</th>
+                                    <th class="px-2 py-2 font-medium text-right">BTCADX</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="BTC ATR %">BTCATR</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="BTC EMA13-EMA50 gap %">BTCTGap</th>
+                                    <th class="px-2 py-2 font-medium">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="unmatched-winners-body" class="divide-y divide-white/5">
+                                <tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched winners — Pattern W catches them all 🎉)</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -6489,22 +6535,54 @@
                 lines.push('');
             }
 
-            // Pattern W Tracker (May 20 latest+2 — observation-only winner tracker)
+            // Pattern W Tracker (May 20 latest+2 — observation-only winner tracker;
+            // latest+3 added NP, MULT 2×, batch coverage, Unmatched Winners table)
             const _pw1 = perf.pattern_w_validation || [];
             if (_pw1.length) {
                 lines.push(`\n${hr2}`);
                 lines.push(`## Pattern W Tracker (observation-only) — 5 WINNER signatures × LONG/SHORT`);
                 lines.push(`Gate: N ≥ 30 per pattern AND WR ≥ 70% AND Avg P&L % ≥ +0.20% → MULTIPLIER candidate`);
-                lines.push(`Computed at report time from existing entry features (no schema change).\n`);
-                lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  Verdict');
-                lines.push('-'.repeat(140));
+                lines.push(`MULT 2×: Total $ if cohort had been at 2.0× sizing. Δ$ = improvement vs actual.`);
+                lines.push(`Computed at report time from existing entry features (no schema change).`);
+                // Batch winner coverage
+                const _pw1Cov = perf.pattern_w_batch_coverage || {};
+                ['LONG', 'SHORT'].forEach(d => {
+                    const v = _pw1Cov[d];
+                    if (!v || v.total === 0) return;
+                    const covStr = v.coverage_pct == null ? '-' : v.coverage_pct.toFixed(0) + '%';
+                    lines.push(`  ${d} Winner Coverage: ${v.winners}W / ${v.losers}L total · ${v.winners_in_w} of ${v.winners} winners matched (${covStr}) · ${v.winners_outside_w} OUTSIDE`);
+                });
+                lines.push('');
+                lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  NP (n/%)   MULT 2x  NewTot$ | Δ$ (w/l)        Verdict');
+                lines.push('-'.repeat(180));
                 _pw1.forEach(r => {
                     const wr = r.wr.toFixed(1).padStart(5) + '%';
                     const wp = (r.winner_precision_pct == null ? '-' : r.winner_precision_pct.toFixed(0) + '%').padStart(5);
                     const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                     const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                     const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${r.verdict}`);
+                    const np = `${r.np_count || 0}/${r.np_rate.toFixed(0)}%`.padStart(9);
+                    const m20nt = ((r.mult20_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_new_total_usd || 0).toFixed(2)).padStart(9);
+                    const m20d = ((r.mult20_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_delta_usd || 0).toFixed(2)).padStart(8);
+                    const wl = `(${r.winner_count||0}w/${r.loser_count||0}l)`.padEnd(10);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${np}   ${m20nt} | ${m20d} ${wl}  ${r.verdict}`);
+                });
+                lines.push('');
+            }
+
+            // Unmatched Winners Deep Dive (May 20 latest+3 — discovery surface for new W patterns)
+            const _uw1 = perf.pattern_w_unmatched_winners || [];
+            if (_uw1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Unmatched Winners Deep Dive (observation-only)');
+                lines.push('Closed winners NOT matching any W1-W5 signature. ≥3 sharing a signature → new W pattern candidate.\n');
+                lines.push('Pair         Dir   $Gain     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                lines.push('-'.repeat(155));
+                const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
+                const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
+                _uw1.forEach(r => {
+                    const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
+                    lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                 });
                 lines.push('');
             }
@@ -7929,22 +8007,52 @@
                     lines.push('');
                 }
 
-                // Pattern W Tracker
+                // Pattern W Tracker (May 20 latest+3 — added NP, MULT 2×, batch coverage)
                 const _pw2 = perf.pattern_w_validation || [];
                 if (_pw2.length) {
                     lines.push(`\n${hr2}`);
                     lines.push(`## Pattern W Tracker (observation-only) — 5 WINNER signatures × LONG/SHORT`);
                     lines.push(`Gate: N ≥ 30 per pattern AND WR ≥ 70% AND Avg P&L % ≥ +0.20% → MULTIPLIER candidate`);
-                    lines.push(`Computed at report time from existing entry features (no schema change).\n`);
-                    lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  Verdict');
-                    lines.push('-'.repeat(140));
+                    lines.push(`MULT 2×: Total $ if cohort had been at 2.0× sizing. Δ$ = improvement vs actual.`);
+                    lines.push(`Computed at report time from existing entry features (no schema change).`);
+                    const _pw2Cov = perf.pattern_w_batch_coverage || {};
+                    ['LONG', 'SHORT'].forEach(d => {
+                        const v = _pw2Cov[d];
+                        if (!v || v.total === 0) return;
+                        const covStr = v.coverage_pct == null ? '-' : v.coverage_pct.toFixed(0) + '%';
+                        lines.push(`  ${d} Winner Coverage: ${v.winners}W / ${v.losers}L total · ${v.winners_in_w} of ${v.winners} winners matched (${covStr}) · ${v.winners_outside_w} OUTSIDE`);
+                    });
+                    lines.push('');
+                    lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  NP (n/%)   MULT 2x  NewTot$ | Δ$ (w/l)        Verdict');
+                    lines.push('-'.repeat(180));
                     _pw2.forEach(r => {
                         const wr = r.wr.toFixed(1).padStart(5) + '%';
                         const wp = (r.winner_precision_pct == null ? '-' : r.winner_precision_pct.toFixed(0) + '%').padStart(5);
                         const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                         const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                         const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${r.verdict}`);
+                        const np = `${r.np_count || 0}/${r.np_rate.toFixed(0)}%`.padStart(9);
+                        const m20nt = ((r.mult20_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_new_total_usd || 0).toFixed(2)).padStart(9);
+                        const m20d = ((r.mult20_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.mult20_delta_usd || 0).toFixed(2)).padStart(8);
+                        const wl = `(${r.winner_count||0}w/${r.loser_count||0}l)`.padEnd(10);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${np}   ${m20nt} | ${m20d} ${wl}  ${r.verdict}`);
+                    });
+                    lines.push('');
+                }
+
+                // Unmatched Winners Deep Dive
+                const _uw2 = perf.pattern_w_unmatched_winners || [];
+                if (_uw2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Unmatched Winners Deep Dive (observation-only)');
+                    lines.push('Closed winners NOT matching any W1-W5 signature. ≥3 sharing a signature → new W pattern candidate.\n');
+                    lines.push('Pair         Dir   $Gain     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                    lines.push('-'.repeat(155));
+                    const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
+                    const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
+                    _uw2.forEach(r => {
+                        const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
+                        lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                     });
                     lines.push('');
                 }
@@ -10226,13 +10334,38 @@
                     }
                 }
 
-                // Pattern W Tracker (May 20 latest+2 — observation-only winner tracker)
+                // Pattern W Tracker (May 20 latest+2 — observation-only winner tracker;
+                // latest+3 added NP, MULT 2×, batch coverage, Unmatched Winners table)
                 if (data.pattern_w_validation !== undefined) {
                     const _pwRows = data.pattern_w_validation || [];
                     const _pwBody = document.getElementById('pattern-w-body');
+                    const _pwSummary = document.getElementById('pattern-w-batch-summary');
+                    // Batch-level coverage stat — symmetric to Pattern C's batch coverage.
+                    // Shows "X of Y winners matched any W pattern" per direction.
+                    if (_pwSummary) {
+                        const cov = data.pattern_w_batch_coverage || {};
+                        const fmt$s = (v) => v == null ? '$0.00' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        const lines = ['LONG', 'SHORT'].map(d => {
+                            const v = cov[d];
+                            if (!v || v.total === 0) return '';
+                            const covCls = v.coverage_pct == null
+                                ? 'text-gray-400'
+                                : v.coverage_pct >= 70 ? 'text-emerald-400'
+                                : v.coverage_pct >= 50 ? 'text-amber-400'
+                                : 'text-red-400';
+                            const outCls = v.winners_outside_w > 0 ? 'text-amber-400 font-semibold' : 'text-emerald-400';
+                            return `<span class="text-gray-400 font-semibold">${d} Winner Coverage:</span>
+                                <span class="text-emerald-400">${v.winners}W</span> /
+                                <span class="text-red-400">${v.losers}L</span> total
+                                · ${v.winners_in_w} of ${v.winners} winners matched Pattern W
+                                (<span class="${covCls}">${v.coverage_pct == null ? '-' : v.coverage_pct.toFixed(0) + '%'}</span>)
+                                · <span class="${outCls}">${v.winners_outside_w} OUTSIDE</span>`;
+                        }).filter(Boolean).join('<br>');
+                        _pwSummary.innerHTML = lines || '<span class="text-gray-500">(no trades yet)</span>';
+                    }
                     if (_pwBody) {
                         if (!_pwRows.length) {
-                            _pwBody.innerHTML = '<tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no matching trades yet — Pattern W evaluated from existing entry features)</td></tr>';
+                            _pwBody.innerHTML = '<tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no matching trades yet — Pattern W evaluated from existing entry features)</td></tr>';
                         } else {
                             const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
@@ -10250,6 +10383,13 @@
                                 else if (r.verdict.startsWith('✗')) vCls = 'text-red-400';
                                 const isAny = r.pattern_key === 'w_any';
                                 const rowCls = isAny ? 'bg-white/5 font-semibold' : '';
+                                // MULT 2× cell — symmetric to Pattern C's TP CF cells.
+                                // New Total $ prominently shown (color by sign), Δ$ + (w/l) breakdown small.
+                                const mult20DeltaCls = (r.mult20_delta_usd || 0) > 5 ? 'text-emerald-400'
+                                    : (r.mult20_delta_usd || 0) < -5 ? 'text-red-400'
+                                    : 'text-gray-400';
+                                const mult20NewCls = (r.mult20_new_total_usd || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold';
+                                const mult20Str = `<span class="${mult20NewCls}">${fmt$(r.mult20_new_total_usd)}</span><br><span class="text-xs ${mult20DeltaCls}">Δ${fmt$(r.mult20_delta_usd)}</span> <span class="text-xs text-gray-500">(${r.winner_count||0}w/${r.loser_count||0}l)</span>`;
                                 return `<tr class="${rowCls}">
                                     <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
                                     <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
@@ -10259,7 +10399,45 @@
                                     <td class="px-3 py-1 text-right ${avgCls}">${fmt(r.avg_pct, 3)}</td>
                                     <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
                                     <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
+                                    <td class="px-3 py-1 text-center text-gray-400">${r.np_count || 0} / ${r.np_rate.toFixed(0)}%</td>
+                                    <td class="px-3 py-1 text-right leading-tight">${mult20Str}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                }
+
+                // Unmatched Winners Deep Dive (May 20 latest+3 — discovery surface for new W patterns)
+                if (data.pattern_w_unmatched_winners !== undefined) {
+                    const _uwRows = data.pattern_w_unmatched_winners || [];
+                    const _uwBody = document.getElementById('unmatched-winners-body');
+                    if (_uwBody) {
+                        if (!_uwRows.length) {
+                            _uwBody.innerHTML = '<tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched winners — Pattern W catches them all 🎉)</td></tr>';
+                        } else {
+                            const fmtN = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d);
+                            const fmtP = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
+                            const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                            _uwBody.innerHTML = _uwRows.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                return `<tr>
+                                    <td class="px-2 py-1 text-gray-200">${r.pair}</td>
+                                    <td class="px-2 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right text-emerald-400 font-semibold">${fmt$(r.pnl)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.peak_pnl)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.pnl_percentage)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_rsi == null ? '-' : r.entry_rsi.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_adx == null ? '-' : r.entry_adx.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtN(r.entry_adx_delta, 2)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_ema5_stretch == null ? '-' : r.entry_ema5_stretch.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_range_position == null ? '-' : r.entry_range_position.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_pair_ema20_ema50_gap_pct)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_rsi == null ? '-' : r.entry_btc_rsi.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_adx == null ? '-' : r.entry_btc_adx.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_atr_pct == null ? '-' : r.entry_btc_atr_pct.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_btc_trend_gap_pct)}</td>
+                                    <td class="px-2 py-1 text-gray-500 text-xs">${r.close_reason || ''}</td>
                                 </tr>`;
                             }).join('');
                         }

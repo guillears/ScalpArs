@@ -6410,6 +6410,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pattern_c_unmatched_losers": _compute_unmatched_losers(orders, limit=20),
         # Pattern W tracker (May 20 latest+2 — observation-only, mirror of Pattern C for WINNERS)
         "pattern_w_validation": _compute_pattern_w_validation(orders),
+        # Pattern W batch coverage + unmatched-winners deep dive (May 20 latest+3)
+        "pattern_w_batch_coverage": _compute_pattern_w_batch_coverage(orders),
+        "pattern_w_unmatched_winners": _compute_unmatched_winners(orders, limit=20),
         # Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
         "regime_change_counterfactual": _compute_regime_change_counterfactual(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -7958,6 +7961,7 @@ def _compute_pattern_w_validation(orders):
             if n == 0:
                 continue
             wins = sum(1 for o in matched if (o.pnl or 0) > 0)
+            losses = n - wins
             wr = (wins / n * 100) if n > 0 else 0
             # Winner-precision: % of matches that won (the metric that matters for
             # multiplier candidates). This is just WR by another name but kept
@@ -7974,6 +7978,16 @@ def _compute_pattern_w_validation(orders):
             np_count = sum(1 for o in matched
                            if o.peak_pnl is not None and o.peak_pnl < 0.05)
             np_rate = (np_count / n * 100) if n > 0 else 0
+
+            # Multiplier counterfactual (May 20 latest+3): at 2.0×, what's the new
+            # cohort total $? Multiplier scales every trade in cohort linearly.
+            # Mirror of Pattern C's TP CF columns but with no fires/saves/kills
+            # concept — multiplier always applies to every match, just scales them.
+            # Chose 2.0× over 1.5× because 2.0× is the hard cap value already in
+            # the multiplier system — shows the maximum ship-decision scenario.
+            mult_20 = 2.0
+            mult20_new_total_usd = sum((o.pnl or 0) * mult_20 for o in matched)
+            mult20_delta_usd = mult20_new_total_usd - total_usd
 
             # Verdict per locked gate (mirror of Pattern C verdict logic for winners)
             if n >= 30 and wr >= 70 and avg_pct >= 0.20:
@@ -7994,15 +8008,110 @@ def _compute_pattern_w_validation(orders):
                 'n': n,
                 'wr': round(wr, 1),
                 'winner_count': winner_count,
+                'loser_count': losses,
                 'winner_precision_pct': round(winner_precision_pct, 1),
                 'avg_pct': round(avg_pct, 3),
                 'total_usd': round(total_usd, 2),
                 'avg_peak_pct': round(avg_peak, 3) if avg_peak is not None else None,
                 'np_count': np_count,
                 'np_rate': round(np_rate, 1),
+                # Multiplier counterfactual (2.0×)
+                'mult20_new_total_usd': round(mult20_new_total_usd, 2),
+                'mult20_delta_usd': round(mult20_delta_usd, 2),
                 'verdict': verdict,
             })
     return rows
+
+
+def _compute_pattern_w_batch_coverage(orders):
+    """Pattern W batch-level winner coverage (May 20 latest+3 — observation).
+
+    Symmetric to Pattern C batch coverage but for WINNERS.
+
+    For each direction, compute:
+      - Total CLOSED trades
+      - Winners + Losers count
+      - How many winners match ANY W1..W5 signature (covered)
+      - How many winners are OUTSIDE all W signatures (gap — discovery surface)
+      - Coverage %
+
+    Coverage answers: "Is Pattern W catching most winners, or are we missing
+    winning signatures?" If coverage drops materially below current, the
+    Unmatched Winners Deep Dive table surfaces what's outside.
+    """
+    out = {}
+    for direction in ('LONG', 'SHORT'):
+        closed = [o for o in orders if o.direction == direction and o.status == 'CLOSED']
+        winners = [o for o in closed if (o.pnl or 0) > 0]
+        losers = [o for o in closed if (o.pnl or 0) <= 0]
+
+        def has_any_w(o):
+            _, _, _, _, _, w_any = _compute_pattern_w_match(o)
+            return w_any
+
+        winners_in = [o for o in winners if has_any_w(o)]
+        winners_out = [o for o in winners if not has_any_w(o)]
+
+        coverage = (100 * len(winners_in) / max(len(winners), 1)) if winners else None
+
+        out[direction] = {
+            'total': len(closed),
+            'winners': len(winners),
+            'losers': len(losers),
+            'winners_in_w': len(winners_in),
+            'winners_outside_w': len(winners_out),
+            'coverage_pct': round(coverage, 1) if coverage is not None else None,
+        }
+    return out
+
+
+def _compute_unmatched_winners(orders, limit=20):
+    """Unmatched Winners Deep Dive (May 20 latest+3 — observation, mirror of unmatched losers).
+
+    Lists CLOSED winners that did NOT match any W1..W5 signature, with their
+    entry conditions. These are winning trades our W framework is BLIND to.
+
+    When ≥3 unmatched winners in a batch share a recognizable entry signature
+    (e.g., all in a specific RngPos×BTC ADX combination), that's the discovery
+    signal: define a new pattern (W6, W7, ...) and add to tracker.
+
+    Sorted by $ gain magnitude (largest winners first). Capped at `limit` rows.
+    """
+    rows = []
+    for o in orders:
+        if o.status != 'CLOSED':
+            continue
+        if (o.pnl or 0) <= 0:
+            continue  # losers excluded — this is the WINNERS table
+
+        # Skip if any W pattern matched
+        _, _, _, _, _, w_any = _compute_pattern_w_match(o)
+        if w_any:
+            continue
+
+        rows.append({
+            'pair': o.pair,
+            'direction': o.direction,
+            'opened_at': o.opened_at.isoformat() if o.opened_at else None,
+            'pnl': round(o.pnl or 0, 2),
+            'peak_pnl': round(o.peak_pnl, 3) if o.peak_pnl is not None else None,
+            'pnl_percentage': round(o.pnl_percentage, 3) if o.pnl_percentage is not None else None,
+            'entry_rsi': round(o.entry_rsi, 1) if o.entry_rsi is not None else None,
+            'entry_adx': round(o.entry_adx, 1) if o.entry_adx is not None else None,
+            'entry_adx_delta': round(o.entry_adx_delta, 2) if getattr(o, 'entry_adx_delta', None) is not None else None,
+            'entry_ema5_stretch': round(o.entry_ema5_stretch, 3) if o.entry_ema5_stretch is not None else None,
+            'entry_range_position': round(o.entry_range_position, 1) if getattr(o, 'entry_range_position', None) is not None else None,
+            'entry_pair_ema20_ema50_gap_pct': round(o.entry_pair_ema20_ema50_gap_pct, 3) if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None else None,
+            'entry_btc_rsi': round(o.entry_btc_rsi, 1) if o.entry_btc_rsi is not None else None,
+            'entry_btc_adx': round(o.entry_btc_adx, 1) if o.entry_btc_adx is not None else None,
+            'entry_btc_atr_pct': round(o.entry_btc_atr_pct, 3) if getattr(o, 'entry_btc_atr_pct', None) is not None else None,
+            'entry_btc_trend_gap_pct': round(o.entry_btc_trend_gap_pct, 3) if getattr(o, 'entry_btc_trend_gap_pct', None) is not None else None,
+            'close_reason': o.close_reason or '',
+        })
+
+    # Sort by $ gain (best first), then cap
+    rows.sort(key=lambda r: -r['pnl'])
+    return rows[:limit]
 
 
 def _compute_pattern_c_batch_coverage(orders):

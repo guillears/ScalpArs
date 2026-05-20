@@ -14961,3 +14961,131 @@ The framework is now SYMMETRIC AND COMPLETE:
 - Both observation-only until promotion gates trigger
 - Both with cross-batch stability requirements
 - Both with locked verdict tiers and mechanical decisioning
+
+## May 20, 2026 (latest+3 evening) — Pattern W symmetric extension: 4 enhancements
+
+Four additions to bring Pattern W to full feature parity with Pattern C:
+
+### 1. NP (n/%) column — sanity check on winner cohort stability
+
+Mirror of Pattern C's NP column. For a TRUE winner cohort, NP rate should be ≈0%
+(winners ≠ Never Positive trades). If a Pattern W row shows high NP, it means
+the signature is catching trades that "won" mathematically but never actually
+went strongly positive (peak < 0.05%). These are weak/noisy wins, not real
+winner mechanism — useful red flag.
+
+### 2. MULT 2× counterfactual column
+
+The MULTIPLIER analog of Pattern C's TP CF columns. Per (pattern × direction):
+
+```
+MULT 2× → New $ (Δ, w/l)
++$16.80
+Δ+$8.40 (5w/1l)
+```
+
+- **New Total $**: what the cohort total would be at 2.0× sizing
+- **Δ$**: uplift vs actual (positive = multiplier helps, negative = hurts)
+- **(w/l)**: winner / loser count in cohort being amplified
+
+Chose 2.0× over 1.5× because 2.0× is the hard-cap value in the multiplier
+system — shows the END-state ship decision. (CLAUDE.md Phase 3 staging: when
+MULTIPLIER CANDIDATE gate triggers, ship at 1.5× initially and step to 2.0×
+after +50 trades.)
+
+The Δ$ encodes the ship-decision instantly:
+- Green Δ$ = multiplier would help (winner-heavy cohort being amplified)
+- Red Δ$ = multiplier would hurt (loser-heavy or break-even cohort)
+- Mostly-loser cohort with positive Δ$ doesn't exist — math forbids it
+
+### 3. Batch-level winner coverage summary above table
+
+Symmetric to Pattern C's batch coverage stat. Per direction:
+
+```
+LONG Winner Coverage:  11W / 6L total · 8 of 11 winners matched Pattern W (73%) · 3 OUTSIDE
+SHORT Winner Coverage: 5W / 4L total · 4 of 5 winners matched (80%) · 1 OUTSIDE
+```
+
+Coverage threshold semantics:
+- ≥70% (emerald) → Pattern W catches most winners
+- 50-70% (amber) → some uncovered, look at Unmatched Winners
+- <50% (red) → framework missing major winner mechanisms
+
+### 4. Unmatched Winners Deep Dive table (NEW section below tracker)
+
+Symmetric to Unmatched Losers Deep Dive. Lists CLOSED winners that match NO
+W1-W5 signature, sorted by $ gain (largest first), capped at 20.
+
+Discovery mechanism for new W patterns: when ≥3 unmatched winners share a
+recognizable entry signature, that's the signal to define W6/W7/... and add
+to the tracker.
+
+### How the table now reads
+
+Pattern W tracker has full feature parity with Pattern C:
+
+| Column | Pattern C | Pattern W |
+|---|---|---|
+| N, WR, Avg %, Total $, AvgPeak% | ✓ | ✓ |
+| Loser % / Win % | Loser % | Win % |
+| NP (n/%) | ✓ | ✓ (NEW) |
+| Counterfactual | TP 0.05, TP 0.10 | MULT 2× (NEW) |
+| Verdict | ⚠ FILTER CANDIDATE / ★ Winners cohort | ★ MULTIPLIER CANDIDATE / ✗ Anti-pattern |
+| Batch summary above | TP totals + loser coverage | Winner coverage (NEW) |
+| Deep dive below | Unmatched Losers | Unmatched Winners (NEW) |
+
+The framework is now FULLY SYMMETRIC: filters and multipliers from same
+universal data, same disciplined gates, same discovery mechanism for
+missing patterns.
+
+### Locked operator workflow at next checkpoint
+
+When next batch lands, mechanically:
+
+1. **Pattern C row hits ⚠ FILTER CANDIDATE** (N≥30, Loser%≥60%, Avg≤-0.20%):
+   ship as entry block.
+2. **Pattern W row hits ★ MULTIPLIER CANDIDATE** (N≥30, Win%≥70%, Avg≥+0.20%):
+   - Check MULT 2× column → Δ$ should be substantially positive (>+$50)
+   - Check 2-3 prior batches for cross-batch stability
+   - If both confirm → build Phase 2 multiplier mechanism (pattern-gated
+     boost) and ship at 1.5× initially.
+3. **Coverage drops below 70%** (either direction): look at Unmatched
+   Losers / Unmatched Winners table. ≥3 sharing signature = new pattern
+   candidate.
+4. **Pattern overlap** (trade matches both C-filter and W-multiplier
+   candidates): FILTER beats MULTIPLIER, don't trade.
+
+### Files changed (May 20 latest+3)
+
+- `main.py`:
+  - `_compute_pattern_w_validation`: adds `np_count`, `np_rate`,
+    `loser_count`, `mult20_new_total_usd`, `mult20_delta_usd` per row
+  - NEW `_compute_pattern_w_batch_coverage(orders)` — per-direction
+    winner coverage stats (mirror of Pattern C batch coverage)
+  - NEW `_compute_unmatched_winners(orders, limit=20)` — discovery
+    surface (mirror of unmatched losers)
+  - Payload integration: 2 new top-level keys
+- `templates/index.html`:
+  - Pattern W table: 2 new column headers (NP, MULT 2× → New $)
+  - JS renderer: NP cell render + MULT 2× cell with new-total + Δ + w/l
+    breakdown
+  - NEW batch summary div above Pattern W table
+  - NEW Unmatched Winners Deep Dive section (full new table + JS render)
+  - Both text-export sites updated with all 4 additions
+- `CLAUDE.md`: this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The full symmetric feature parity between Pattern C (losers/filters)
+   and Pattern W (winners/multipliers)
+2. The MULT 2× counterfactual as the ship-decision metric (mirror of
+   TP CF for multipliers)
+3. The Unmatched Winners discovery mechanism (mirror of Unmatched Losers)
+4. The locked operator workflow now spanning both trackers
+
+Together, Pattern C + Pattern W form a complete observation + discovery +
+ship-decision framework. The next checkpoint reads BOTH tables, applies the
+locked gates per direction-pattern combo, and the framework tells you what
+to ship.

@@ -105,7 +105,9 @@ class Order(Base):
     # May 19 — extension: C5=slow climber death (weak-trend slow bleed), C6=macro over-extended same direction.
     entry_pattern_c5_match = Column(Boolean, nullable=True)
     entry_pattern_c6_match = Column(Boolean, nullable=True)
-    entry_pattern_c_any_match = Column(Boolean, nullable=True)  # OR of c1-c6 (post-May-19; was c1-c4 pre)
+    # May 20 — C7=Pair Countertrend Bounce (dead-cat LONG / failed-breakdown SHORT)
+    entry_pattern_c7_match = Column(Boolean, nullable=True)
+    entry_pattern_c_any_match = Column(Boolean, nullable=True)  # OR of c1-c7 (post-May-20; c1-c6 May-19-late; c1-c4 pre-May-19)
     # Volume ratios at entry (for volume filter analytics)
     entry_global_volume_ratio = Column(Float, nullable=True)
     entry_pair_volume_ratio = Column(Float, nullable=True)

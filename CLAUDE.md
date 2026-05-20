@@ -13857,3 +13857,139 @@ exit stack BEFORE computing the cell's $-impact.
 The cost of forgetting: filter recommendations that look great on paper,
 ship, then underperform forward because the historical "wins" were already
 being captured by other mechanisms.
+
+## May 20, 2026 — Pattern C Tracker extended with C7 — Pair Countertrend Bounce
+
+### What ships
+
+New 7th pattern in the Pattern C Tracker, both LONG + SHORT. Total now
+7 patterns × 2 directions = 14 cells. Observation-only.
+
+**C7 LONG — Dead-cat Bounce LONG:**
+- `pair_ema20_ema50_gap_pct ≤ -0.50%` (pair clearly below 4hr trend)
+- AND `entry_ema50_slope ≤ -0.05%` (pair 4hr trend declining)
+- AND `range_position ≥ 40%` (above bottom — bot longing a bounce, not catching the absolute low)
+
+**C7 SHORT mirror — Failed-Breakdown SHORT:**
+- `pair_ema20_ema50_gap_pct ≥ +0.50%` (pair clearly above 4hr trend)
+- AND `entry_ema50_slope ≥ +0.05%` (pair 4hr trend rising)
+- AND `range_position ≤ 60%` (below top — bot shorting a pullback in uptrend)
+
+### Mechanism
+
+The "dead-cat bounce" failure mode that C1-C6 don't specifically capture:
+- C1 catches CLIMAX entries WITH pair trend (over-extension, same direction)
+- C2 catches BTC moving AGAINST trade (BTC counter-trend)
+- C7 catches countertrend bounce-buying AGAINST pair trend (pair counter-trend
+  at the pair-level, distinct from C2's BTC-level mechanism)
+
+Today's EDENUSDT 2-trade canonical example matches the signature exactly:
+- Trade #4: pair_gap -1.13%, slope -0.88%, RngPos 59.7%
+- Trade #2: pair_gap -0.88%, slope -0.79%, RngPos 59.6%
+- Both Never Positive, both -$42 SL_WIDE
+- Both LONG'd into a structural pair downtrend, dead-cat-bounced
+
+### Per-pattern exit strategy hook (Phase 2, NOT shipped)
+
+If C7 promotes (N≥30, WR≤40%, NP≥60%) at next checkpoint, ship the
+proposed time-based bail exit:
+
+> If trade matches C7 (LONG or SHORT) AND peak P&L < +0.20% at +5 minutes
+> from entry → force exit at market.
+
+Mechanism: dead-cat bounces resolve within 1-3 candles (~5-15 min). If
+the bounce doesn't develop momentum by 5min, the trade is structurally
+dying — exit before it grinds to SL.
+
+This is the same time-based bail mechanism proposed for C5 (CLAUDE.md
+May 19 entry). Both patterns share the "no follow-through" failure
+profile and could potentially share one exit implementation.
+
+### Cross-batch evidence (limited — observation needed)
+
+Strict C7 LONG signature on May 4+ pool:
+- N=4 matches total (EDENUSDT 2x today + MLNUSDT 1x + VVVUSDT 1x)
+- WR 25%, Total $-125, NP rate 75% (3 of 4 never positive)
+- 3 unique pairs — but EDENUSDT today drives 2 of 4
+
+Below the N≥30 promotion gate. **Observation-only ship.** The tracker
+needs more data before any filter or exit decision.
+
+### Implementation
+
+`config.py`: 6 new threshold fields (3 LONG + 3 SHORT)
+`models.py`: 1 new Boolean column `entry_pattern_c7_match`
+`database.py`: ALTER TABLE ADD COLUMN auto-migration
+`services/trading_engine.py`:
+  - `_compute_pattern_c_match` extended (now returns 8-tuple, takes
+    `ema50_slope` param)
+  - Both Order construction call sites updated to receive 8 values
+    and pass `ema50_slope=entry_ema50_slope`
+`main.py`: `_compute_pattern_c_validation` extended to include c7 row;
+  ANY column relabeled "ANY (C1∨…∨C7)"
+`templates/index.html`: UI legend updated with C7 explanation
+  + discriminator clause + Phase 2 exit-strategy hint
+`CLAUDE.md`: this entry
+
+### Mixed-provenance caveat (locked)
+
+Trades persisted before this commit have:
+- `entry_pattern_c7_match = NULL`
+- `entry_pattern_c_any_match` = OR of c1-c6 only (or c1-c4 if pre-May-19)
+
+Going forward, c7 populates correctly and c_any includes it. At N≥30 per
+pattern (the promotion gate), the mixed-provenance bias is negligible.
+
+### Pre-committed promotion gates (locked, identical to C5/C6)
+
+A pattern qualifies for FILTER ship if ALL hold in fresh post-May-20 data:
+1. N ≥ 30 matched trades (per pattern, per direction)
+2. WR ≤ 40%
+3. Avg P&L % ≤ -0.20%
+4. NP rate ≥ 60% (confirms catches Pattern C, not Pattern B)
+5. Direction-consistent OR documented asymmetry
+
+If only ONE pattern passes → ship that one alone (one filter per checkpoint
+per locked discipline).
+If MULTIPLE pass → ship strongest first, defer others.
+If NONE pass → C7 doesn't add structural signal; drop from tracker.
+
+### Drop criteria (per pattern)
+
+- WR ≥ 60% on N ≥ 10 → matches WINNERS, wrong signature
+- N matches ≤ 3 across 100+ trades → too narrow to be useful
+
+### Why C7 fills a gap
+
+Looking at the LONG patterns:
+- C1 = climax LONG at high RngPos with positive pair_gap (over-extension same dir)
+- C2 = LONG into BTC counter-trend (BTC declining)
+- C3 = exhaustion at top of range
+- C4 = no-trend chop
+- C5 = weak-trend slow bleed
+- C6 = BTC over-extended same direction
+- **C7 = NEW: dead-cat bounce (LONG into pair counter-trend)** ← was missing
+
+The May 7 Pair Trend Filter ship was intended to address this failure mode
+but was disabled because the binary filter cut too many winners (pullback
+LONGs in mild-negative pair_gap zones). C7 is the more surgical pattern:
+captures the DEEP-negative gap + declining slope + mid-range entry combo
+specifically, leaving mild-pullback entries untouched.
+
+### Files changed
+- `config.py` — 6 new fields
+- `models.py` — 1 new Boolean column
+- `database.py` — ADD COLUMN auto-migrate
+- `services/trading_engine.py` — helper extended, both call sites updated
+- `main.py` — pattern_c_validation includes c7
+- `templates/index.html` — UI legend C7 + ANY relabel
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The C7 signature definition + mechanism rationale
+2. The Phase 2 exit-strategy hint (time-based bail, shared with C5)
+3. The mixed-provenance caveat (pre-May-20 trades have NULL on c7)
+4. The locked promotion gates
+5. The structural gap C7 fills vs the failed Pair Trend Filter approach

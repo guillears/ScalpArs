@@ -410,6 +410,15 @@ class SignalThresholds(BaseModel):
     pc_long_c6_btc_rsi_min: float = 65.0
     pc_long_c6_btc_adx_min: float = 28.0
     pc_long_c6_btc_gap_min: float = 0.15  # BTC clearly ABOVE 4hr trend
+    # C7 — Pair Countertrend Bounce (NEW May 20 — dead-cat / failed-breakdown pattern)
+    # LONG: pair deeply BELOW 4hr trend + declining slope + mid-range = dead-cat bounce LONG
+    # SHORT: pair deeply ABOVE 4hr trend + rising slope + mid-range = failed-breakdown SHORT
+    pc_long_c7_pair_gap_max: float = -0.50  # pair_ema20_ema50_gap ≤ this = deep countertrend
+    pc_long_c7_ema50_slope_max: float = -0.05  # ema50_slope ≤ this = 4hr trend declining
+    pc_long_c7_rngpos_min: float = 40.0  # RngPos ≥ this = bot longing mid-range bounce (not capitulation low)
+    pc_short_c7_pair_gap_min: float = 0.50  # pair_gap ≥ this = pair stretched above 4hr trend
+    pc_short_c7_ema50_slope_min: float = 0.05  # ema50_slope ≥ this = 4hr trend rising
+    pc_short_c7_rngpos_max: float = 60.0  # RngPos ≤ this = bot shorting mid-range pullback (not blow-off top)
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
     global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)

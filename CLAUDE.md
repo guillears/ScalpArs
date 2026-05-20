@@ -15421,3 +15421,66 @@ To anchor:
 4. The mirror relationship with TP 0.05/0.10 columns — same analytical
    primitive applied to opposite tail of P&L distribution
 
+
+## May 20, 2026 (latest+7) — Pattern C: drop TP 0.05 + add combined TP 0.10 + SL 0.50 column
+
+### What ships
+
+Pattern C table column layout updated:
+- **REMOVED**: TP 0.05 column (redundant with TP 0.10 — same mechanism, slightly looser threshold)
+- **NEW**: **TP 0.10 + SL 0.50 → New $ (Δ, tp_f/sl_f/cw)** — combined counterfactual showing both caps applied together
+
+Final 14-column layout (unchanged width):
+Direction | Pattern | N | WR | Avg % | Total $ | AvgPeak% | NP | Loser % | **TP 0.10** | **TP+SL combined** | **SL 0.50** | R:R | Verdict
+
+### How the combined counterfactual works
+
+For each trade in the cohort, BOTH caps are evaluated:
+- `tp_would_fire` = peak ≥ +0.10%
+- `sl_would_fire` = trough ≤ -0.50%
+
+Sequencing logic (uses `peak_reached_at` vs `trough_reached_at` timestamps):
+- If BOTH would fire AND peak came first → TP fires at +0.10%
+- If BOTH would fire AND trough came first → SL fires at -0.50% (counted as cut_winner if trade ended positive)
+- If only TP would fire → TP fires
+- If only SL would fire → SL fires (counted as cut_winner if trade ended positive)
+- If neither → actual P&L unchanged
+- If timestamps missing → favor TP (conservative assumption — TP exit is the safer guess since it's a winner outcome)
+
+Per cell shows: `tp_fires / sl_fires / cut_winners`.
+
+### Why this column matters
+
+The TP 0.10 column shows ONLY the upside-cap counterfactual. The SL 0.50 column shows ONLY the downside-cap counterfactual. **Neither alone reflects how a real dual-cap regime would behave.** A trade that peaks +0.30% then dips to -0.60% would:
+- TP 0.10 alone: exit at +0.10% (saved)
+- SL 0.50 alone: exit at -0.50% (capped loss)
+- Combined: depends on sequence — exit at WHICHEVER came first
+
+The combined column is the **realistic projection** of running BE 0.10 (the TP-style upside cap) + SL 0.50 (tighter SL) simultaneously. It's the lens that should drive any ship decision involving both caps.
+
+### Decision matrix updates (locked)
+
+Use the combined column as the primary decision-maker for dual-cap ships:
+
+| Combined column verdict | Action |
+|---|---|
+| N ≥ 30 AND combined Δ$ ≥ +$100 AND cut_winners ≤ tp_fires/10 | Ship both BE 0.10 + SL 0.50 (or pattern-gated) |
+| N ≥ 30 AND combined Δ$ flat (±$20) | Single-cap ship preferred — pick whichever column has the better standalone Δ$ |
+| Combined Δ$ < $0 | Don't ship either — cut_winners dominates saves |
+
+If the user is comparing "should we ship BE 0.10 + tighter SL together?" → look at combined column first. If "should we ship just one?" → compare the standalone TP 0.10 and SL 0.50 columns.
+
+### Files changed
+
+- `main.py` — new `_sim_combined_cohort` helper (~40 LOC) with timestamp-based sequencing; removed all `tp05_*` payload fields, added `combined_*` fields
+- `templates/index.html` — column header swap (TP 0.05 → Combined), JS renderer cell, batch summary block (3 totals lines: TP 0.10 / TP+SL / SL 0.50), both text-export sites updated
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The TP 0.05 removal rationale (redundant with TP 0.10 at lower-threshold version of same mechanism)
+2. The combined column's sequencing logic (peak_reached_at vs trough_reached_at)
+3. The "combined is the realistic dual-cap lens" rule — don't add TP 0.10 Δ$ + SL 0.50 Δ$ to estimate combined effect (it'll double-count trades that both caps apply to)
+4. The updated decision matrix (combined column drives dual-cap ship; standalone columns drive single-cap ship)
+

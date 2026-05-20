@@ -7718,6 +7718,53 @@ def _compute_pattern_c_validation(orders):
             sim_d += sim_pct / 100.0 * nt
         return actual_d, sim_d, fires, saves, kills
 
+    # Combined TP+SL counterfactual (May 20 latest+7): apply BOTH caps.
+    # Uses peak_reached_at vs trough_reached_at to model which fires first.
+    # If both would fire, sequence by timestamps; if no timestamps, favor TP
+    # (conservative — TP firing is the safer assumption since it's a winner).
+    # Returns (actual$, sim$, tp_fires, sl_fires, cut_winners).
+    def _sim_combined_cohort(cohort, tp, sl):
+        sim_d = 0.0
+        actual_d = 0.0
+        tp_fires = sl_fires = cut_winners = 0
+        for o in cohort:
+            nt = o.notional_value or ((o.investment or 0) * (o.leverage or 1))
+            actual_pct = o.pnl_percentage or 0
+            peak = o.peak_pnl
+            trough = o.trough_pnl
+            peak_at = getattr(o, 'peak_reached_at', None)
+            trough_at = getattr(o, 'trough_reached_at', None)
+            actual_d += actual_pct / 100.0 * nt
+            tp_would_fire = peak is not None and peak >= tp
+            sl_would_fire = trough is not None and trough <= -sl
+            if tp_would_fire and sl_would_fire:
+                # Both caps eligible — use timestamps to determine which fires first
+                if peak_at and trough_at:
+                    if peak_at <= trough_at:
+                        sim_pct = tp
+                        tp_fires += 1
+                    else:
+                        sim_pct = -sl
+                        sl_fires += 1
+                        if actual_pct > 0:
+                            cut_winners += 1
+                else:
+                    # No timestamp data — assume TP fires (favorable assumption)
+                    sim_pct = tp
+                    tp_fires += 1
+            elif tp_would_fire:
+                sim_pct = tp
+                tp_fires += 1
+            elif sl_would_fire:
+                sim_pct = -sl
+                sl_fires += 1
+                if actual_pct > 0:
+                    cut_winners += 1
+            else:
+                sim_pct = actual_pct
+            sim_d += sim_pct / 100.0 * nt
+        return actual_d, sim_d, tp_fires, sl_fires, cut_winners
+
     # SL counterfactual (May 20 latest+6): cap losses at -sl_threshold% net.
     # For each trade with actual_pct < -sl_threshold → exit at -sl_threshold.
     # Cut-winner detection: trade whose TROUGH crossed -sl_threshold but actual
@@ -7800,10 +7847,11 @@ def _compute_pattern_c_validation(orders):
             # rescued by TP — only positive-peak trades that retraced get saved.
             # CLAUDE.md May 20-late entry locks decision matrix: ship TP when
             # cohort N≥30, TP-Δ$ ≥ +$80, AND kills ≤ saves/2.
-            tp05_actual, tp05_sim, tp05_fires, tp05_saves, tp05_kills = _sim_tp_cohort(matched, 0.05)
             tp10_actual, tp10_sim, tp10_fires, tp10_saves, tp10_kills = _sim_tp_cohort(matched, 0.10)
-            tp05_delta = tp05_sim - tp05_actual
             tp10_delta = tp10_sim - tp10_actual
+            # Combined TP 0.10 + SL 0.50 counterfactual (May 20 latest+7)
+            cb_actual, cb_sim, cb_tp_fires, cb_sl_fires, cb_cut = _sim_combined_cohort(matched, 0.10, 0.50)
+            cb_delta = cb_sim - cb_actual
 
             # SL counterfactual columns (May 20 latest+6 — observation-only).
             # Shows what total $ would be if SL was tightened to -0.50% or -0.60%.
@@ -7815,7 +7863,7 @@ def _compute_pattern_c_validation(orders):
             # cut_winners ≤ saves/10 (low winner-kill collateral).
             sl50_actual, sl50_sim, sl50_fires, sl50_saves, sl50_cut = _sim_sl_cohort(matched, 0.50)
             sl50_delta = sl50_sim - sl50_actual
-            # tp05_sim / tp10_sim ARE the new totals (sum of sim$ across cohort)
+            # tp10_sim IS the new total (sum of sim$ across cohort)
 
             # Verdict per locked gates (CLAUDE.md May 20-latest+4 — BUG FIX:
             # all winner-verdicts now also require positive Avg P&L % AND positive
@@ -7868,16 +7916,17 @@ def _compute_pattern_c_validation(orders):
                 'avg_loss_usd': round(avg_loss_usd, 2),
                 'rr_ratio': round(rr_ratio, 2) if rr_ratio is not None else None,
                 # TP counterfactual columns
-                'tp05_new_total_usd': round(tp05_sim, 2),
-                'tp05_delta_usd': round(tp05_delta, 2),
-                'tp05_fires': tp05_fires,
-                'tp05_saves': tp05_saves,
-                'tp05_kills': tp05_kills,
                 'tp10_new_total_usd': round(tp10_sim, 2),
                 'tp10_delta_usd': round(tp10_delta, 2),
                 'tp10_fires': tp10_fires,
                 'tp10_saves': tp10_saves,
                 'tp10_kills': tp10_kills,
+                # Combined TP+SL counterfactual (May 20 latest+7)
+                'combined_new_total_usd': round(cb_sim, 2),
+                'combined_delta_usd': round(cb_delta, 2),
+                'combined_tp_fires': cb_tp_fires,
+                'combined_sl_fires': cb_sl_fires,
+                'combined_cut_winners': cb_cut,
                 # SL counterfactual columns (May 20 latest+6)
                 'sl50_new_total_usd': round(sl50_sim, 2),
                 'sl50_delta_usd': round(sl50_delta, 2),

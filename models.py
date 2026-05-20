@@ -102,7 +102,10 @@ class Order(Base):
     entry_pattern_c2_match = Column(Boolean, nullable=True)
     entry_pattern_c3_match = Column(Boolean, nullable=True)
     entry_pattern_c4_match = Column(Boolean, nullable=True)
-    entry_pattern_c_any_match = Column(Boolean, nullable=True)  # OR of c1-c4
+    # May 19 — extension: C5=slow climber death (weak-trend slow bleed), C6=macro over-extended same direction.
+    entry_pattern_c5_match = Column(Boolean, nullable=True)
+    entry_pattern_c6_match = Column(Boolean, nullable=True)
+    entry_pattern_c_any_match = Column(Boolean, nullable=True)  # OR of c1-c6 (post-May-19; was c1-c4 pre)
     # Volume ratios at entry (for volume filter analytics)
     entry_global_volume_ratio = Column(Float, nullable=True)
     entry_pair_volume_ratio = Column(Float, nullable=True)

@@ -125,12 +125,13 @@ def _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, directi
 
 def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
                              btc_rsi, btc_rsi_prev, btc_adx, btc_adx_prev,
-                             btc_gap, stretch, pair_adx, btc_atr):
+                             btc_gap, stretch, pair_adx, btc_atr,
+                             ema20_slope=None):
     """Pattern C Tracker (May 19, 2026 — observation-only).
 
-    Evaluates 4 candidate Pattern C precursor signatures at entry. Returns
-    (c1_match, c2_match, c3_match, c4_match, c_any_match) — all booleans
-    or None if tracker disabled.
+    Evaluates 6 candidate Pattern C precursor signatures at entry. Returns
+    (c1, c2, c3, c4, c5, c6, c_any) — all booleans or None if tracker
+    disabled.
 
     Pattern C = trade peaks <+0.10% (never positive). Multiple structural
     causes are tested simultaneously:
@@ -138,16 +139,19 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
       C2: Macro counter-trend — BTC RSI/ADX reversing against trade direction
       C3: Stretch exhaustion — high EMA5 stretch + strong Pair ADX + extreme RngPos
       C4: Low-vol chop — low BTC ATR + low BTC ADX + low Pair ADX (no momentum)
+      C5: Slow Climber Death — weak Pair ADX + low ADXΔ + flat EMA20 slope (May 19)
+      C6: Macro over-extended same direction — BTC RSI/ADX/gap all aligned WITH
+          trade direction at climactic strength (BTC about to revert) (May 19)
 
     No behavior change. Pure capture for cross-batch validation at N≥30 per
-    pattern. See CLAUDE.md May 19 entry for promotion gates.
+    pattern. See CLAUDE.md May 19 entries for promotion gates.
     """
     import config as _cfg
     th = _cfg.trading_config.thresholds
     if not getattr(th, 'pattern_c_tracker_enabled', True):
-        return (None, None, None, None, None)
+        return (None, None, None, None, None, None, None)
     if direction not in ('LONG', 'SHORT'):
-        return (None, None, None, None, None)
+        return (None, None, None, None, None, None, None)
 
     # Helper to safely evaluate AND of optional conditions
     def _safe_and(*conds):
@@ -175,6 +179,18 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
             btc_adx is not None and btc_adx < getattr(th, 'pc_short_c4_btc_adx_max', 22.0),
             pair_adx is not None and pair_adx < getattr(th, 'pc_short_c4_pair_adx_max', 25.0),
         )
+        # C5 — Slow Climber Death (SHORT mirror): weak ADX + slow accel + flat/weak slope
+        c5 = _safe_and(
+            pair_adx is not None and pair_adx <= getattr(th, 'pc_short_c5_pair_adx_max', 22.0),
+            adx_delta is not None and adx_delta <= getattr(th, 'pc_short_c5_adxd_max', 0.3),
+            ema20_slope is not None and ema20_slope >= getattr(th, 'pc_short_c5_ema20_slope_min', -0.05),
+        )
+        # C6 — Macro over-extended same direction (BTC late-bottom)
+        c6 = _safe_and(
+            btc_rsi is not None and btc_rsi <= getattr(th, 'pc_short_c6_btc_rsi_max', 35.0),
+            btc_adx is not None and btc_adx >= getattr(th, 'pc_short_c6_btc_adx_min', 28.0),
+            btc_gap is not None and btc_gap <= getattr(th, 'pc_short_c6_btc_gap_max', -0.15),
+        )
     else:  # LONG
         c1 = _safe_and(
             rng_pos is not None and rng_pos >= getattr(th, 'pc_long_c1_rngpos_min', 85.0),
@@ -196,8 +212,20 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
             btc_adx is not None and btc_adx < getattr(th, 'pc_long_c4_btc_adx_max', 22.0),
             pair_adx is not None and pair_adx < getattr(th, 'pc_long_c4_pair_adx_max', 25.0),
         )
+        # C5 — Slow Climber Death (LONG): weak ADX + slow accel + flat/weak slope
+        c5 = _safe_and(
+            pair_adx is not None and pair_adx <= getattr(th, 'pc_long_c5_pair_adx_max', 22.0),
+            adx_delta is not None and adx_delta <= getattr(th, 'pc_long_c5_adxd_max', 0.3),
+            ema20_slope is not None and ema20_slope <= getattr(th, 'pc_long_c5_ema20_slope_max', 0.05),
+        )
+        # C6 — Macro over-extended same direction (BTC late-top)
+        c6 = _safe_and(
+            btc_rsi is not None and btc_rsi >= getattr(th, 'pc_long_c6_btc_rsi_min', 65.0),
+            btc_adx is not None and btc_adx >= getattr(th, 'pc_long_c6_btc_adx_min', 28.0),
+            btc_gap is not None and btc_gap >= getattr(th, 'pc_long_c6_btc_gap_min', 0.15),
+        )
 
-    return (c1, c2, c3, c4, c1 or c2 or c3 or c4)
+    return (c1, c2, c3, c4, c5, c6, c1 or c2 or c3 or c4 or c5 or c6)
 
 
 class TradingEngine:
@@ -1409,7 +1437,7 @@ class TradingEngine:
         try:
             now = datetime.utcnow()
             opened_at = (now - timedelta(seconds=wait_seconds)) if wait_seconds is not None else now
-            _pc1, _pc2, _pc3, _pc4, _pc_any = _compute_pattern_c_match(
+            _pc1, _pc2, _pc3, _pc4, _pc5, _pc6, _pc_any = _compute_pattern_c_match(
                 direction=direction,
                 rng_pos=entry_range_position,
                 pair_gap=entry_pair_ema20_ema50_gap_pct,
@@ -1422,6 +1450,7 @@ class TradingEngine:
                 stretch=entry_ema5_stretch,
                 pair_adx=entry_adx,
                 btc_atr=entry_btc_atr_pct,
+                ema20_slope=entry_ema20_slope,
             )
             order = Order(
                 pair=pair,
@@ -1489,6 +1518,8 @@ class TradingEngine:
                 entry_pattern_c2_match=_pc2,
                 entry_pattern_c3_match=_pc3,
                 entry_pattern_c4_match=_pc4,
+                entry_pattern_c5_match=_pc5,
+                entry_pattern_c6_match=_pc6,
                 entry_pattern_c_any_match=_pc_any,
             )
             db.add(order)
@@ -2263,7 +2294,7 @@ class TradingEngine:
                 entry_order_type = "TAKER"
         
         # Pattern C tracker (May 19, 2026 — observation-only signature flags)
-        _pc1_m, _pc2_m, _pc3_m, _pc4_m, _pc_any_m = _compute_pattern_c_match(
+        _pc1_m, _pc2_m, _pc3_m, _pc4_m, _pc5_m, _pc6_m, _pc_any_m = _compute_pattern_c_match(
             direction=direction,
             rng_pos=entry_range_position,
             pair_gap=entry_pair_ema20_ema50_gap_pct,
@@ -2276,6 +2307,7 @@ class TradingEngine:
             stretch=entry_ema5_stretch,
             pair_adx=entry_adx,
             btc_atr=entry_btc_atr_pct,
+            ema20_slope=entry_ema20_slope,
         )
         # Create order record
         order = Order(
@@ -2350,6 +2382,8 @@ class TradingEngine:
             entry_pattern_c2_match=_pc2_m,
             entry_pattern_c3_match=_pc3_m,
             entry_pattern_c4_match=_pc4_m,
+            entry_pattern_c5_match=_pc5_m,
+            entry_pattern_c6_match=_pc6_m,
             entry_pattern_c_any_match=_pc_any_m,
         )
         db.add(order)

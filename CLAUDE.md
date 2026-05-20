@@ -13369,3 +13369,117 @@ To anchor:
 2. The mixed-provenance caveat (pre-May-19 vs post-May-19 captures have different semantics)
 3. The decision NOT to null old data
 4. The "checkpoint will resolve the mix" expectation so we don't act on biased data prematurely
+
+## May 19, 2026 (late PM) — Pattern C Tracker extended with C5 + C6 (LONG + SHORT, observation-only)
+
+### What ships
+
+Two new patterns added to the Pattern C Tracker, both directions.
+Total now 6 patterns × 2 directions = 12 cells.
+
+**C5 — Slow Climber Death (most common LONG failure historically):**
+- LONG: Pair ADX ≤22 AND ADX Δ ≤0.3 AND EMA20 slope ≤0.05%
+- SHORT mirror: Pair ADX ≤22 AND ADX Δ ≤0.3 AND EMA20 slope ≥-0.05%
+
+Mechanism: weak-trend zone, peaks slowly at +0.10-0.20%, no momentum
+acceleration, dies via SL or EMA13 cross. Documented as "early flameout"
+pattern in CLAUDE.md May 6 entry.
+
+Different from C4 (which needs BTC + Pair both flat) — C5 only requires
+Pair-level weakness; BTC can be trending without invalidating the
+signature.
+
+**C6 — Macro over-extended same direction:**
+- LONG: BTC RSI ≥65 AND BTC ADX ≥28 AND BTC gap ≥+0.15%
+- SHORT mirror: BTC RSI ≤35 AND BTC ADX ≥28 AND BTC gap ≤-0.15%
+
+Mechanism: BTC at climactic strength SAME direction as trade. Bot longs
+into BTC late-cycle climax (or shorts into BTC late-cycle bottom). BTC
+about to revert from over-extension and drags pair with it.
+
+Different from C2 (which catches BTC moving AGAINST trade direction) —
+C6 catches BTC moving WITH trade but at the climax point.
+
+### Per-pattern exit strategy potential (Phase 2 work, NOT shipped)
+
+The framework's value over generic filters: each pattern can have a
+distinct conditional exit strategy when promoted. Documented per
+pattern for future implementation:
+
+| Pattern | Proposed escape mechanism (Phase 2) |
+|---|---|
+| C5 Slow Climber | Time-based bail: if peak <+0.20% at +5min, exit at market |
+| C6 BTC Top/Bottom | BTC RSI rollover: exit when BTC RSI prints 2 declining candles |
+| C1 Capitulation | (TBD) — likely volume confirmation gate |
+| C3 Stretch exhaustion | (TBD) — RSI rollover |
+| C7+ TBD | Failed breakout, RSI climax — Phase 3 |
+
+These exits ship ONE pattern at a time after each pattern's locked
+promotion gates pass on fresh data (N≥30, WR≤40%, NP≥60%).
+
+### Implementation
+
+`config.py`: 12 new threshold fields (3 per pattern × 2 directions)
+`models.py`: 2 new Boolean columns (`entry_pattern_c5_match`, `_c6_match`)
+`database.py`: 2 ALTER TABLE ADD COLUMN auto-migrations
+`services/trading_engine.py`: `_compute_pattern_c_match` extended:
+  - Added `ema20_slope` parameter (needed for C5)
+  - Now returns 7-tuple (c1..c6, c_any)
+  - Both call sites updated to receive 7 values and pass ema20_slope
+`main.py`: `_compute_pattern_c_validation` extended to include c5/c6
+  rows; ANY column relabeled "ANY (C1∨…∨C6)"
+`templates/index.html`: UI legend updated with C5/C6 explanations
+  + discriminator clauses + Phase 2 exit-strategy hints
+`CLAUDE.md`: this entry
+
+### Mixed-provenance caveat (locked)
+
+Trades persisted before this commit have:
+- `entry_pattern_c5_match = NULL`
+- `entry_pattern_c6_match = NULL`
+- `entry_pattern_c_any_match = c1 OR c2 OR c3 OR c4` (old definition)
+
+Trades persisted post-commit have:
+- All 6 pattern fields populated
+- `entry_pattern_c_any_match = c1 OR c2 OR c3 OR c4 OR c5 OR c6`
+
+What this means for analytics:
+- C5 and C6 row counts are POST-DEPLOY only (cleanly fresh data)
+- ANY row counts mix old c1-c4-only ANY with new c1-c6 ANY (slight
+  undercount on old data)
+- At N≥30 per pattern, the mixed-provenance effect is negligible vs
+  signal magnitude
+
+### Pre-committed promotion gates (per CLAUDE.md May 19 Pattern C ship)
+
+A pattern qualifies for FILTER ship if ALL hold in fresh post-deploy data:
+1. N ≥ 30 matched trades (per pattern, per direction)
+2. WR ≤ 40%
+3. Avg P&L % ≤ -0.20%
+4. NP rate ≥ 60% (confirms catches Pattern C, not Pattern B)
+5. Direction-consistent (LONG and SHORT both promote OR documented asymmetry)
+
+If only ONE pattern passes → ship that one alone (one filter per checkpoint).
+If MULTIPLE pass → ship strongest first, defer others.
+If NONE pass → patterns C5/C6 don't add structural signal; drop from
+tracker. Try different precursor combinations.
+
+### Drop criteria (per pattern)
+
+- WR ≥ 60% on N ≥ 10 → pattern matches WINNERS not losers → wrong sig
+- N matches ≤ 3 across 100+ trades → too narrow to be useful
+
+### Per-pattern threshold tuning
+
+All 12 new threshold fields are config-tunable (in `thresholds`).
+At next checkpoint, if a pattern shows ⚠ Warning verdict, tightening
+or loosening per-pattern thresholds is allowed (not mid-batch).
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The C5 + C6 signature definitions and their mechanism rationale
+2. The per-pattern exit-strategy framework (the value-add over generic filters)
+3. The mixed-provenance caveat (pre-vs-post-deploy data semantics differ)
+4. The locked promotion gates (mechanical at next checkpoint)
+5. The "drop from tracker" criteria if patterns don't catch real losses

@@ -15325,3 +15325,99 @@ To anchor:
 The framework is now structurally and visually complete. Every metric
 that matters for ship decisions is on the table; R:R catches the
 last hidden trap (high WR + small wins + big losses).
+
+## May 20, 2026 (latest+6) — Pattern C: SL 0.50 + SL 0.60 counterfactual columns shipped
+
+### What ships
+
+Two new columns on the Pattern C Tracker table, symmetric to the existing
+TP 0.05 / TP 0.10 columns. For each (pattern × direction) row:
+
+- **SL 0.50 → New $ (Δ, f/s/cw)** — what total $ would be if all losers
+  worse than -0.50% were capped at -0.50%
+- **SL 0.60 → New $ (Δ, f/s/cw)** — same but cap at -0.60%
+
+Where `f/s/cw` = `fires / saves / cut_winners`:
+- **fires** = trades where the new SL would activate (trough crossed -X%)
+- **saves** = losers worse than -X% capped earlier (smaller loss magnitude)
+- **cut_winners** = trades whose trough crossed -X% but recovered to win
+  → tighter SL would have killed them. Mirror of `kills` on TP columns.
+
+### Why this exists — mirror of TP rescue logic
+
+The TP columns (May 20) answer: "what if BE fired at +0.05 / +0.10 floor?"
+They identify peak-and-retrace patterns where tighter take-profit captures
+value. The SL columns answer: "what if SL capped at -0.50 / -0.60 instead
+of -0.80?" They identify Pattern C cohorts riding to deeper losses than
+necessary.
+
+Different attack surfaces:
+- TP rescues trades that briefly went positive
+- SL shrinks magnitude on trades that never recovered
+
+Pattern C taxonomy is the right unit for evaluating SL tightening because:
+- Pattern C dominantly catches Never Positive / macro-adverse trades
+- Those trades typically ride to full -0.80% SL
+- Pattern-gated SL (tighter SL on pattern matches only) avoids the
+  winner-kill risk a global tighter SL would impose
+
+### Mechanism (cut-winner detection)
+
+Cut-winner classification uses `trough_pnl` (deepest intra-trade P&L):
+- If `actual_pct > 0 AND trough_pnl ≤ -X%` → cut_winner (tighter SL would
+  have stopped before recovery)
+- If `actual_pct < -X%` → save (capped loser)
+- Other trades unchanged
+
+For trades with NULL trough (no realtime tracking data), only the actual
+P&L comparison is used — leans conservative (counts saves but misses
+some cut-winners). This is the same trade-off as the BE Floor CF
+documented May 18 PM.
+
+### Locked decision matrix for SL tightening promotion
+
+Ship SL tightening (either globally or pattern-gated) ONLY if:
+
+1. **N ≥ 30 matched** in target cohort
+2. **SL-Δ$ ≥ +$100** (meaningful loss-magnitude reduction)
+3. **cut_winners ≤ saves / 10** (low winner-kill collateral —
+   pattern-gated tightening is much safer than global)
+4. **Cross-batch direction-consistent** (verified across 3+ batches)
+
+If pattern-gated tightening is the path: ship as conditional rule
+"if entry_pattern_cX_match AND signal == direction → use tighter SL".
+Requires ~20 LOC in `services/trading_engine.py` SL check block. Not
+shipped today — observation-only until the gates fire.
+
+If global tightening becomes the verdict (e.g., ANY row passes gates):
+ship as `signal_sl_pct: -0.80 → -0.50` config change. Lower-risk than
+pattern-gated because no new code paths.
+
+### Caveat — TROUGH column required for accuracy
+
+`trough_pnl` is populated by the realtime callback for trades opened
+after the cache-sync bug fix (May 7). Pre-May-7 trades may have stale or
+NULL trough data → counterfactual numbers on those trades are
+approximate. Reports should be read with this caveat at low N.
+
+### Files changed
+
+- `main.py` — `_sim_sl_cohort` helper (~25 lines) + integration in
+  `_compute_pattern_c_validation` + 10 new payload fields per row
+- `templates/index.html` — 2 new column headers in Pattern C table,
+  colspan bumped 13 → 15, JS renderer adds sl50Str/sl60Str cells with
+  Δ$ color logic, both text-export sites updated with sl50/sl60 fields
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The decision criteria (N≥30, Δ$≥+$100, cut_winners≤saves/10) for
+   when to ship SL tightening
+2. The pattern-gated vs global tightening distinction (pattern-gated is
+   safer collateral-wise, global is simpler operationally)
+3. The cut-winner mechanic (uses trough_pnl, not just actual_pct) so
+   future readers don't think SL counterfactual is naive close-clipping
+4. The mirror relationship with TP 0.05/0.10 columns — same analytical
+   primitive applied to opposite tail of P&L distribution
+

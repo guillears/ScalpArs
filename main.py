@@ -7718,6 +7718,36 @@ def _compute_pattern_c_validation(orders):
             sim_d += sim_pct / 100.0 * nt
         return actual_d, sim_d, fires, saves, kills
 
+    # SL counterfactual (May 20 latest+6): cap losses at -sl_threshold% net.
+    # For each trade with actual_pct < -sl_threshold → exit at -sl_threshold.
+    # Cut-winner detection: trade whose TROUGH crossed -sl_threshold but actual
+    # P&L > 0 — tighter SL would have stopped it before recovery. Mirrors the
+    # kills metric on TP counterfactual.
+    # Returns (actual$, sim$, fires, saves, cut_winners).
+    def _sim_sl_cohort(cohort, sl_threshold):
+        sim_d = 0.0
+        actual_d = 0.0
+        fires = saves = cut_winners = 0
+        for o in cohort:
+            nt = o.notional_value or ((o.investment or 0) * (o.leverage or 1))
+            actual_pct = o.pnl_percentage or 0
+            trough = o.trough_pnl
+            actual_d += actual_pct / 100.0 * nt
+            # Cut-winner: ended positive but trough touched the new SL
+            if trough is not None and trough <= -sl_threshold and actual_pct > 0:
+                cut_winners += 1
+                sim_pct = -sl_threshold
+                fires += 1
+            elif actual_pct < -sl_threshold:
+                # Loser worse than new SL → capped at new SL
+                sim_pct = -sl_threshold
+                fires += 1
+                saves += 1
+            else:
+                sim_pct = actual_pct
+            sim_d += sim_pct / 100.0 * nt
+        return actual_d, sim_d, fires, saves, cut_winners
+
     rows = []
     for direction in ('LONG', 'SHORT'):
         for p in patterns:
@@ -7774,6 +7804,19 @@ def _compute_pattern_c_validation(orders):
             tp10_actual, tp10_sim, tp10_fires, tp10_saves, tp10_kills = _sim_tp_cohort(matched, 0.10)
             tp05_delta = tp05_sim - tp05_actual
             tp10_delta = tp10_sim - tp10_actual
+
+            # SL counterfactual columns (May 20 latest+6 — observation-only).
+            # Shows what total $ would be if SL was tightened to -0.50% or -0.60%.
+            # Mirror of TP counterfactual:
+            #   fires = trades where new SL would activate
+            #   saves = losers worse than new SL that get capped earlier
+            #   cut_winners = winners whose trough crossed new SL (would have been killed pre-recovery)
+            # Decision: ship SL tightening when cohort N≥30, SL-Δ$ ≥ +$100, AND
+            # cut_winners ≤ saves/10 (low winner-kill collateral).
+            sl50_actual, sl50_sim, sl50_fires, sl50_saves, sl50_cut = _sim_sl_cohort(matched, 0.50)
+            sl60_actual, sl60_sim, sl60_fires, sl60_saves, sl60_cut = _sim_sl_cohort(matched, 0.60)
+            sl50_delta = sl50_sim - sl50_actual
+            sl60_delta = sl60_sim - sl60_actual
             # tp05_sim / tp10_sim ARE the new totals (sum of sim$ across cohort)
 
             # Verdict per locked gates (CLAUDE.md May 20-latest+4 — BUG FIX:
@@ -7837,6 +7880,17 @@ def _compute_pattern_c_validation(orders):
                 'tp10_fires': tp10_fires,
                 'tp10_saves': tp10_saves,
                 'tp10_kills': tp10_kills,
+                # SL counterfactual columns (May 20 latest+6)
+                'sl50_new_total_usd': round(sl50_sim, 2),
+                'sl50_delta_usd': round(sl50_delta, 2),
+                'sl50_fires': sl50_fires,
+                'sl50_saves': sl50_saves,
+                'sl50_cut_winners': sl50_cut,
+                'sl60_new_total_usd': round(sl60_sim, 2),
+                'sl60_delta_usd': round(sl60_delta, 2),
+                'sl60_fires': sl60_fires,
+                'sl60_saves': sl60_saves,
+                'sl60_cut_winners': sl60_cut,
                 'verdict': verdict,
             })
     return rows

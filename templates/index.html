@@ -1708,8 +1708,8 @@
                                     <th class="px-3 py-2 font-medium text-center" title="Never Positive count (peak < 0.05%) and rate among matched trades">NP (n / %)</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Loser-precision: % of matches that closed as losers (pnl ≤ 0). High loser-precision = pattern is a clean loser detector → filter candidate. Low loser-precision = pattern mostly catches winners → blocking would kill them. Promotion-bar maps WR ≤40% to loser-precision ≥60%. ★ green ≥70% (filter candidate); ⚠ amber 40-70% (mixed); red <40% (would kill winners).">Loser %</th>
                                     <th class="px-3 py-2 font-medium text-right" title="What total $ would be if a fixed TP cap of +0.10% net was applied. Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/kills). Saves = losers converted to small wins. Kills = winners capped early. NP trades (peak <0.10%) are unaddressable by TP and don't fire. CLAUDE.md May 20 locked decision matrix: ship pattern-gated TP at N≥30 per direction + Δ$ ≥ +$80 + kills ≤ saves/2.">TP 0.10 → New $ (Δ, f/s/k)</th>
-                                    <th class="px-3 py-2 font-medium text-right" title="Combined TP 0.10 + SL 0.50 counterfactual — both caps applied together. Cell shows: new Total $, Δ$ vs actual, and (tp_fires / sl_fires / cut_winners). Uses peak_reached_at vs trough_reached_at to determine which cap fires first on trades that would trigger both. This is the realistic 'what if we run both exits together' projection — the best single lens for evaluating an aggressive dual-cap regime.">TP 0.10 + SL 0.50 → New $ (Δ, tp_f/sl_f/cw)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="SL tightening counterfactual ALONE: cap losses at -0.50% net (no TP applied). Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/cut_winners). Saves = losers worse than -0.50% capped earlier. Cut_winners = trades whose trough crossed -0.50% but recovered to win — tighter SL would have killed them. CLAUDE.md May 20 locked decision matrix: ship SL tightening at N≥30 + Δ$ ≥ +$100 + cut_winners ≤ saves/10.">SL 0.50 → New $ (Δ, f/s/cw)</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Combined TP 0.10 + SL 0.50 counterfactual — both caps applied together. Cell shows: new Total $, Δ$ vs actual, and (tp_fires / sl_fires / cut_winners). Uses peak_reached_at vs trough_reached_at to determine which cap fires first on trades that would trigger both. This is the realistic 'what if we run both exits together' projection — the best single lens for evaluating an aggressive dual-cap regime. Δ$ here is LESS than TP-alone Δ$ + SL-alone Δ$ because trades that would trigger both caps are sequenced (not double-counted).">TP 0.10 + SL 0.50 → New $ (Δ, tp_f/sl_f/cw)</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Risk:Reward — average loss $ divided by average win $. Format '1 : X' where X is the loss multiple per win. <2 green (good R:R), 2-4 amber (mediocre), >4 red (terrible). Reveals if high WR is being achieved with tiny wins vs catastrophic losses — a 'trap' pattern.">R:R</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
@@ -6508,9 +6508,9 @@
                         const d1 = (r.tp10_new_total_usd||0) - (r.total_usd||0);
                         const dCB = (r.combined_new_total_usd||0) - (r.total_usd||0);
                         const dSL = (r.sl50_new_total_usd||0) - (r.total_usd||0);
-                        lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)}) | TP+SL ${_fs(r.combined_new_total_usd)} (Δ${_fs(dCB)}) | SL 0.50 ${_fs(r.sl50_new_total_usd)} (Δ${_fs(dSL)})`);
+                        lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)}) | SL 0.50 ${_fs(r.sl50_new_total_usd)} (Δ${_fs(dSL)}) | TP+SL ${_fs(r.combined_new_total_usd)} (Δ${_fs(dCB)})`);
                     });
-                    lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)}) | TP+SL ${_fs(tCB)} (Δ${_fs(tCB-tA)}) | SL 0.50 ${_fs(tSL)} (Δ${_fs(tSL-tA)})`);
+                    lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)}) | SL 0.50 ${_fs(tSL)} (Δ${_fs(tSL-tA)}) | TP+SL ${_fs(tCB)} (Δ${_fs(tCB-tA)})`);
                 }
                 lines.push('');
                 // Batch loser coverage (Item 2, May 20-late)
@@ -6522,7 +6522,7 @@
                     lines.push(`  ${d} Batch Coverage: ${v.winners}W / ${v.losers}L total · ${v.losers_in_c} of ${v.losers} losers matched (${covStr}) · ${v.losers_outside_c} OUTSIDE`);
                 });
                 lines.push('');
-                lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     SL0.50  NewTot$ | Δ$ (f/s/cw)        Verdict');
+                lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         SL0.50  NewTot$ | Δ$ (f/s/cw)        TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     Verdict');
                 lines.push('-'.repeat(210));
                 _pc1.forEach(r => {
                     const wr = r.wr.toFixed(1).padStart(5) + '%';
@@ -6534,13 +6534,13 @@
                     const tp10nt = ((r.tp10_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_new_total_usd || 0).toFixed(2)).padStart(9);
                     const tp10d = ((r.tp10_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_delta_usd || 0).toFixed(2)).padStart(8);
                     const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
-                    const cbnt = ((r.combined_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_new_total_usd || 0).toFixed(2)).padStart(9);
-                    const cbd = ((r.combined_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_delta_usd || 0).toFixed(2)).padStart(8);
-                    const cbfsk = `(${r.combined_tp_fires||0}/${r.combined_sl_fires||0}/${r.combined_cut_winners||0})`.padEnd(12);
                     const sl50nt = ((r.sl50_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_new_total_usd || 0).toFixed(2)).padStart(9);
                     const sl50d = ((r.sl50_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_delta_usd || 0).toFixed(2)).padStart(8);
                     const sl50fsk = `(${r.sl50_fires||0}/${r.sl50_saves||0}/${r.sl50_cut_winners||0})`.padEnd(12);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${r.verdict}`);
+                    const cbnt = ((r.combined_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_new_total_usd || 0).toFixed(2)).padStart(9);
+                    const cbd = ((r.combined_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_delta_usd || 0).toFixed(2)).padStart(8);
+                    const cbfsk = `(${r.combined_tp_fires||0}/${r.combined_sl_fires||0}/${r.combined_cut_winners||0})`.padEnd(12);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${r.verdict}`);
                 });
                 lines.push('');
             }
@@ -7985,9 +7985,9 @@
                             const d1 = (r.tp10_new_total_usd||0) - (r.total_usd||0);
                             const dCB = (r.combined_new_total_usd||0) - (r.total_usd||0);
                             const dSL = (r.sl50_new_total_usd||0) - (r.total_usd||0);
-                            lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)}) | TP+SL ${_fs(r.combined_new_total_usd)} (Δ${_fs(dCB)}) | SL 0.50 ${_fs(r.sl50_new_total_usd)} (Δ${_fs(dSL)})`);
+                            lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)}) | SL 0.50 ${_fs(r.sl50_new_total_usd)} (Δ${_fs(dSL)}) | TP+SL ${_fs(r.combined_new_total_usd)} (Δ${_fs(dCB)})`);
                         });
-                        lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)}) | TP+SL ${_fs(tCB)} (Δ${_fs(tCB-tA)}) | SL 0.50 ${_fs(tSL)} (Δ${_fs(tSL-tA)})`);
+                        lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)}) | SL 0.50 ${_fs(tSL)} (Δ${_fs(tSL-tA)}) | TP+SL ${_fs(tCB)} (Δ${_fs(tCB-tA)})`);
                     }
                     // Batch loser coverage (Item 2)
                     const _pc2Cov = perf.pattern_c_batch_coverage || {};
@@ -7998,7 +7998,7 @@
                         lines.push(`  ${d} Batch Coverage: ${v.winners}W / ${v.losers}L total · ${v.losers_in_c} of ${v.losers} losers matched (${covStr}) · ${v.losers_outside_c} OUTSIDE`);
                     });
                     lines.push('');
-                    lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     SL0.50  NewTot$ | Δ$ (f/s/cw)        Verdict');
+                    lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         SL0.50  NewTot$ | Δ$ (f/s/cw)        TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     Verdict');
                     lines.push('-'.repeat(210));
                     _pc2.forEach(r => {
                         const wr = r.wr.toFixed(1).padStart(5) + '%';
@@ -8010,13 +8010,13 @@
                         const tp10nt = ((r.tp10_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_new_total_usd || 0).toFixed(2)).padStart(9);
                         const tp10d = ((r.tp10_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_delta_usd || 0).toFixed(2)).padStart(8);
                         const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
-                        const cbnt = ((r.combined_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_new_total_usd || 0).toFixed(2)).padStart(9);
-                        const cbd = ((r.combined_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_delta_usd || 0).toFixed(2)).padStart(8);
-                        const cbfsk = `(${r.combined_tp_fires||0}/${r.combined_sl_fires||0}/${r.combined_cut_winners||0})`.padEnd(12);
                         const sl50nt = ((r.sl50_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_new_total_usd || 0).toFixed(2)).padStart(9);
                         const sl50d = ((r.sl50_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.sl50_delta_usd || 0).toFixed(2)).padStart(8);
                         const sl50fsk = `(${r.sl50_fires||0}/${r.sl50_saves||0}/${r.sl50_cut_winners||0})`.padEnd(12);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${r.verdict}`);
+                        const cbnt = ((r.combined_new_total_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_new_total_usd || 0).toFixed(2)).padStart(9);
+                        const cbd = ((r.combined_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.combined_delta_usd || 0).toFixed(2)).padStart(8);
+                        const cbfsk = `(${r.combined_tp_fires||0}/${r.combined_sl_fires||0}/${r.combined_cut_winners||0})`.padEnd(12);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp10nt} | ${tp10d} ${tp10fsk}  ${sl50nt} | ${sl50d} ${sl50fsk}  ${cbnt} | ${cbd} ${cbfsk}  ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -10223,15 +10223,15 @@
                                 return `<span class="text-gray-400 font-semibold">${r.direction} Pattern C:</span>
                                     actual <span class="${ntCls(r.total_usd)}">${fmt$s(r.total_usd)}</span>
                                     → TP 0.10 <span class="${ntCls(r.tp10_new_total_usd)}">${fmt$s(r.tp10_new_total_usd)}</span> <span class="text-xs ${cls(d10r)}">(Δ${fmt$s(d10r)})</span>
-                                    | TP+SL <span class="${ntCls(r.combined_new_total_usd)}">${fmt$s(r.combined_new_total_usd)}</span> <span class="text-xs ${cls(dCBr)}">(Δ${fmt$s(dCBr)})</span>
-                                    | SL 0.50 <span class="${ntCls(r.sl50_new_total_usd)}">${fmt$s(r.sl50_new_total_usd)}</span> <span class="text-xs ${cls(dSLr)}">(Δ${fmt$s(dSLr)})</span>`;
+                                    | SL 0.50 <span class="${ntCls(r.sl50_new_total_usd)}">${fmt$s(r.sl50_new_total_usd)}</span> <span class="text-xs ${cls(dSLr)}">(Δ${fmt$s(dSLr)})</span>
+                                    | TP+SL <span class="${ntCls(r.combined_new_total_usd)}">${fmt$s(r.combined_new_total_usd)}</span> <span class="text-xs ${cls(dCBr)}">(Δ${fmt$s(dCBr)})</span>`;
                             }).join('<br>');
                             // TOTAL line
                             const totalLine = `<span class="text-amber-300 font-semibold">TOTAL Pattern C (LONG+SHORT):</span>
                                 actual <span class="${ntCls(totActual)} font-semibold">${fmt$s(totActual)}</span>
                                 → TP 0.10 <span class="${ntCls(totTP10)} font-semibold">${fmt$s(totTP10)}</span> <span class="${cls(d10)} font-semibold">(Δ${fmt$s(d10)})</span>
-                                | TP+SL <span class="${ntCls(totCB)} font-semibold">${fmt$s(totCB)}</span> <span class="${cls(dCB)} font-semibold">(Δ${fmt$s(dCB)})</span>
-                                | SL 0.50 <span class="${ntCls(totSL)} font-semibold">${fmt$s(totSL)}</span> <span class="${cls(dSL)} font-semibold">(Δ${fmt$s(dSL)})</span>`;
+                                | SL 0.50 <span class="${ntCls(totSL)} font-semibold">${fmt$s(totSL)}</span> <span class="${cls(dSL)} font-semibold">(Δ${fmt$s(dSL)})</span>
+                                | TP+SL <span class="${ntCls(totCB)} font-semibold">${fmt$s(totCB)}</span> <span class="${cls(dCB)} font-semibold">(Δ${fmt$s(dCB)})</span>`;
                             // Item 2 (May 20-late): batch-level loser coverage stat
                             // appended below the TP totals. Shows whether Pattern C is
                             // catching most losers or missing failure modes.
@@ -10319,8 +10319,8 @@
                                     <td class="px-3 py-1 text-center text-gray-400">${r.np_count || 0} / ${r.np_rate.toFixed(0)}%</td>
                                     <td class="px-3 py-1 text-center ${(r.loser_precision_pct||0) >= 70 ? 'text-emerald-400 font-semibold' : (r.loser_precision_pct||0) >= 40 ? 'text-amber-400' : 'text-gray-400'}">${r.loser_precision_pct == null ? '-' : r.loser_precision_pct.toFixed(0) + '%'}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${tp10Str}</td>
-                                    <td class="px-3 py-1 text-right leading-tight">${cbStr}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${sl50Str}</td>
+                                    <td class="px-3 py-1 text-right leading-tight">${cbStr}</td>
                                     <td class="px-3 py-1 text-center ${(r.rr_ratio == null) ? 'text-gray-500' : r.rr_ratio < 2 ? 'text-emerald-400 font-semibold' : r.rr_ratio < 4 ? 'text-amber-400' : 'text-red-400'}">${r.rr_ratio == null ? '—' : (r.rr_ratio === 0 ? '∞' : `1 : ${r.rr_ratio.toFixed(1)}`)}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;

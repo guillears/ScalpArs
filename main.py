@@ -6408,6 +6408,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Pattern C batch coverage + unmatched-losers deep dive (May 20 late)
         "pattern_c_batch_coverage": _compute_pattern_c_batch_coverage(orders),
         "pattern_c_unmatched_losers": _compute_unmatched_losers(orders, limit=20),
+        # Pattern W tracker (May 20 latest+2 — observation-only, mirror of Pattern C for WINNERS)
+        "pattern_w_validation": _compute_pattern_w_validation(orders),
         # Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
         "regime_change_counterfactual": _compute_regime_change_counterfactual(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -7803,6 +7805,201 @@ def _compute_pattern_c_validation(orders):
                 'tp10_fires': tp10_fires,
                 'tp10_saves': tp10_saves,
                 'tp10_kills': tp10_kills,
+                'verdict': verdict,
+            })
+    return rows
+
+
+def _compute_pattern_w_match(o):
+    """Pattern W (winner tracker) signature matching — computed at report time.
+
+    Unlike Pattern C which stores per-trade match flags on Order, Pattern W
+    evaluates signatures from already-captured entry features. This is
+    LIGHTER than Pattern C's design (no schema, no engine touchpoints, no
+    migration). When a Pattern W signature graduates to multiplier ship, we'd
+    add per-trade capture for that specific signature at that point.
+
+    Pattern W signatures — designed FROM cross-batch winner analysis (May 20),
+    targeting the multiplier-candidate framework:
+      W1: HighConv trend continuation — strong ADX + accel + stretch
+      W2: Macro tailwind — BTC RSI in sweet spot + BTC ADX committed + gap aligned
+      W3: Energetic volatility breakout — BTC ATR high + above-avg pair vol + stretch
+      W4: Pullback entry aligned — mid-range + pair gap aligned + ADX not declining
+      W5: Confluence — multiple "sweet spot" cells all true simultaneously
+
+    Cross-batch baseline (May 20 latest+2, deduped pool May 4 → today):
+      LONG winners: 136 / 252 (54.0% baseline WR)
+      SHORT winners: 155 / 258 (60.1% baseline WR)
+      Strongest LONG: W2 mod (BTC RSI 55-65 + BTC ADX 22-30) → 71.2% / N=66 ★
+      Strongest SHORT: W4 (pullback aligned) → 71.4% / N=14 (small)
+
+    Returns (w1, w2, w3, w4, w5, w_any) booleans.
+    Direction-aware: LONG and SHORT use mirrored thresholds.
+    """
+    direction = o.direction
+    if direction not in ('LONG', 'SHORT'):
+        return (False, False, False, False, False, False)
+
+    # Safe extraction
+    rsi = o.entry_rsi
+    adx = o.entry_adx
+    adx_delta = getattr(o, 'entry_adx_delta', None)
+    stretch = o.entry_ema5_stretch
+    rng_pos = getattr(o, 'entry_range_position', None)
+    pair_gap = getattr(o, 'entry_pair_ema20_ema50_gap_pct', None)
+    btc_rsi = o.entry_btc_rsi
+    btc_adx = o.entry_btc_adx
+    btc_atr = getattr(o, 'entry_btc_atr_pct', None)
+    btc_gap = getattr(o, 'entry_btc_trend_gap_pct', None)
+    pair_vol = getattr(o, 'entry_pair_volume_ratio', None)
+
+    def _and(*conds):
+        return all(c is True for c in conds)
+
+    if direction == 'LONG':
+        w1 = _and(
+            adx is not None and adx >= 22,
+            adx_delta is not None and adx_delta >= 0.5,
+            stretch is not None and stretch >= 0.16,
+        )
+        w2 = _and(
+            btc_rsi is not None and 50 <= btc_rsi <= 65,
+            btc_adx is not None and btc_adx >= 22,
+            btc_gap is not None and btc_gap >= 0.10,
+        )
+        w3 = _and(
+            btc_atr is not None and btc_atr >= 0.20,
+            pair_vol is not None and pair_vol >= 1.20,
+            stretch is not None and stretch >= 0.20,
+        )
+        w4 = _and(
+            rng_pos is not None and 40 <= rng_pos <= 75,
+            pair_gap is not None and pair_gap >= 0.10,
+            adx_delta is not None and adx_delta >= 0,
+        )
+        w5 = _and(
+            btc_adx is not None and 22 <= btc_adx <= 30,
+            btc_rsi is not None and 55 <= btc_rsi <= 65,
+            adx is not None and 22 <= adx <= 30,
+            stretch is not None and 0.16 <= stretch <= 0.25,
+        )
+    else:  # SHORT
+        w1 = _and(
+            adx is not None and adx >= 22,
+            adx_delta is not None and adx_delta >= 0.5,
+            stretch is not None and stretch >= 0.20,
+        )
+        w2 = _and(
+            btc_rsi is not None and 30 <= btc_rsi <= 45,
+            btc_adx is not None and btc_adx >= 22,
+            btc_gap is not None and btc_gap <= -0.10,
+        )
+        w3 = _and(
+            btc_atr is not None and btc_atr >= 0.20,
+            pair_vol is not None and pair_vol >= 1.20,
+            stretch is not None and stretch >= 0.25,
+        )
+        w4 = _and(
+            rng_pos is not None and 25 <= rng_pos <= 60,
+            pair_gap is not None and pair_gap <= -0.10,
+            adx_delta is not None and adx_delta >= 0,
+        )
+        w5 = _and(
+            btc_adx is not None and 22 <= btc_adx <= 30,
+            btc_rsi is not None and 30 <= btc_rsi <= 40,
+            adx is not None and 22 <= adx <= 30,
+            stretch is not None and 0.20 <= stretch <= 0.30,
+        )
+
+    return (w1, w2, w3, w4, w5, (w1 or w2 or w3 or w4 or w5))
+
+
+def _compute_pattern_w_validation(orders):
+    """Pattern W tracker analytics (May 20 latest+2 — observation-only).
+
+    Symmetric to Pattern C but for WINNER patterns. Returns per (pattern × direction)
+    rows with the same column structure as Pattern C tracker:
+      - N, WR, AvgP&L%, Total$, AvgPeak%, NP rate
+      - Winner-precision (% of matches that won) — mirrored from Loser %
+      - Same verdict tiers as Pattern C but optimized for multiplier promotion
+
+    Locked promotion gates (CLAUDE.md May 20 latest+1):
+      ★ MULTIPLIER CANDIDATE: N≥30 AND WR≥70% AND Avg P&L%≥+0.20%
+      (Cross-batch stability check required before actual ship — see CLAUDE.md)
+    """
+    patterns = ['w1', 'w2', 'w3', 'w4', 'w5', 'w_any']
+    pattern_labels = {
+        'w1': 'W1 HighConv trend',
+        'w2': 'W2 Macro tailwind',
+        'w3': 'W3 Energetic volatility',
+        'w4': 'W4 Pullback aligned',
+        'w5': 'W5 Confluence',
+        'w_any': 'ANY (W1∨…∨W5)',
+    }
+
+    # Cache match results per order (compute once)
+    order_matches = {}
+    for o in orders:
+        if o.status == 'CLOSED' and o.direction in ('LONG', 'SHORT'):
+            w1, w2, w3, w4, w5, w_any = _compute_pattern_w_match(o)
+            order_matches[id(o)] = {
+                'w1': w1, 'w2': w2, 'w3': w3, 'w4': w4, 'w5': w5, 'w_any': w_any
+            }
+
+    rows = []
+    for direction in ('LONG', 'SHORT'):
+        for p in patterns:
+            matched = [o for o in orders
+                       if o.direction == direction
+                       and o.status == 'CLOSED'
+                       and id(o) in order_matches
+                       and order_matches[id(o)][p]]
+            n = len(matched)
+            if n == 0:
+                continue
+            wins = sum(1 for o in matched if (o.pnl or 0) > 0)
+            wr = (wins / n * 100) if n > 0 else 0
+            # Winner-precision: % of matches that won (the metric that matters for
+            # multiplier candidates). This is just WR by another name but kept
+            # explicit for parity with Pattern C's Loser %.
+            winner_count = wins
+            winner_precision_pct = (winner_count / n * 100) if n > 0 else 0
+            total_usd = sum((o.pnl or 0) for o in matched)
+            pnls = [o.pnl_percentage for o in matched if o.pnl_percentage is not None]
+            avg_pct = (sum(pnls) / len(pnls)) if pnls else 0
+            avg_peak = None
+            peaks = [o.peak_pnl for o in matched if o.peak_pnl is not None]
+            if peaks:
+                avg_peak = sum(peaks) / len(peaks)
+            np_count = sum(1 for o in matched
+                           if o.peak_pnl is not None and o.peak_pnl < 0.05)
+            np_rate = (np_count / n * 100) if n > 0 else 0
+
+            # Verdict per locked gate (mirror of Pattern C verdict logic for winners)
+            if n >= 30 and wr >= 70 and avg_pct >= 0.20:
+                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%)'
+            elif n >= 10 and wr >= 60:
+                verdict = '★ Winners cohort — wait for N≥30 to promote'
+            elif n >= 10 and wr <= 45:
+                verdict = '✗ Anti-pattern (winners cohort showing losses) — drop from tracker'
+            elif n < 10:
+                verdict = '⚠ Low N'
+            else:
+                verdict = '✓ Inconclusive'
+
+            rows.append({
+                'direction': direction,
+                'pattern': pattern_labels[p],
+                'pattern_key': p,
+                'n': n,
+                'wr': round(wr, 1),
+                'winner_count': winner_count,
+                'winner_precision_pct': round(winner_precision_pct, 1),
+                'avg_pct': round(avg_pct, 3),
+                'total_usd': round(total_usd, 2),
+                'avg_peak_pct': round(avg_peak, 3) if avg_peak is not None else None,
+                'np_count': np_count,
+                'np_rate': round(np_rate, 1),
                 'verdict': verdict,
             })
     return rows

@@ -1770,6 +1770,47 @@
                     </div>
                 </div>
 
+                <!-- Pattern W Tracker — WINNER patterns for multiplier discovery (May 20 latest+2) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏆 Pattern W Tracker (observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        5 WINNER signatures × LONG/SHORT, computed at report time from
+                        already-captured entry features. Each pattern targets a multi-dimensional
+                        winner condition designed from cross-batch analysis. Promotion gate:
+                        N ≥ 30 per pattern AND WR ≥ 70% AND Avg P&L % ≥ +0.20% → MULTIPLIER candidate.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Direction</th>
+                                    <th class="px-3 py-2 font-medium">Pattern</th>
+                                    <th class="px-3 py-2 font-medium text-center">N</th>
+                                    <th class="px-3 py-2 font-medium text-center">WR</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Winner-precision: % of matches that won. ≥70% = MULTIPLIER candidate.">Win %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total $</th>
+                                    <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
+                                    <th class="px-3 py-2 font-medium">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-w-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-3 text-xs text-gray-400 space-y-1.5">
+                        <div><span class="text-emerald-300 font-semibold">W1 HighConv trend continuation</span> — Strong pair ADX (≥22) AND ADX still accelerating (Δ≥0.5) AND meaningful stretch (LONG: ≥0.16, SHORT: ≥0.20). Captures momentum-confirmed entries where the trend has conviction AND is still strengthening. <span class="italic text-gray-500">Cross-batch baseline: LONG 45% precision (didn't pass gate). Hypothesis to validate as data grows.</span></div>
+                        <div><span class="text-emerald-300 font-semibold">W2 Macro tailwind</span> — BTC RSI in trade-direction sweet spot (LONG: 50-65, SHORT: 30-45) AND BTC ADX committed (≥22) AND BTC EMA13-EMA50 gap aligned (LONG: ≥+0.10%, SHORT: ≤-0.10%). Captures macro-aligned entries. <span class="italic text-gray-500">Cross-batch baseline: LONG 62%, SHORT 63% precision. Trending toward gate.</span></div>
+                        <div><span class="text-emerald-300 font-semibold">W3 Energetic volatility</span> — BTC ATR ≥0.20% (active regime, opposite of C4) AND pair volume ratio ≥1.20 (above-avg vol) AND stretch (LONG: ≥0.20, SHORT: ≥0.25). Captures volatility-breakout entries. <span class="italic text-gray-500">Cross-batch baseline: LONG 100% precision but tiny N=5. Strong hypothesis, needs N to confirm.</span></div>
+                        <div><span class="text-emerald-300 font-semibold">W4 Pullback aligned</span> — RngPos in mid-range (LONG: 40-75, SHORT: 25-60) AND pair gap aligned with trade direction (LONG: ≥+0.10%, SHORT: ≤-0.10%) AND ADX not declining (Δ≥0). Captures controlled pullback entries within a confirmed trend. <span class="italic text-gray-500">Cross-batch baseline: SHORT 71% precision (N=14), LONG 54%. Promising on SHORT.</span></div>
+                        <div><span class="text-emerald-300 font-semibold">W5 Confluence</span> — Multiple sweet spots simultaneously: BTC ADX 22-30 + BTC RSI 55-65 (LONG) or 30-40 (SHORT) + Pair ADX 22-30 + stretch 0.16-0.25 (LONG) or 0.20-0.30 (SHORT). Maximum-conviction multi-axis winner. <span class="italic text-gray-500">Cross-batch baseline: LONG 69% precision (N=13), SHORT 14% (anti-pattern in current data). Tightest signature — needs N to confirm.</span></div>
+                        <div class="pt-1 text-gray-500"><span class="text-gray-300 font-semibold">ANY row</span> — OR of W1-W5. Use it as aggregate "Pattern W coverage" reading. Symmetric to Pattern C ANY row.
+                            <br><span class="italic">Computed at report time from existing entry features. No schema change. Definitions tunable in main.py without redeploy. When a W pattern promotes to multiplier ship, we'd add per-trade capture for that specific signature.</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🌀 Phantom Regime Change Exit Counterfactual (observation-only)</h3>
@@ -6448,6 +6489,26 @@
                 lines.push('');
             }
 
+            // Pattern W Tracker (May 20 latest+2 — observation-only winner tracker)
+            const _pw1 = perf.pattern_w_validation || [];
+            if (_pw1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## Pattern W Tracker (observation-only) — 5 WINNER signatures × LONG/SHORT`);
+                lines.push(`Gate: N ≥ 30 per pattern AND WR ≥ 70% AND Avg P&L % ≥ +0.20% → MULTIPLIER candidate`);
+                lines.push(`Computed at report time from existing entry features (no schema change).\n`);
+                lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  Verdict');
+                lines.push('-'.repeat(140));
+                _pw1.forEach(r => {
+                    const wr = r.wr.toFixed(1).padStart(5) + '%';
+                    const wp = (r.winner_precision_pct == null ? '-' : r.winner_precision_pct.toFixed(0) + '%').padStart(5);
+                    const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
+                    const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
+                    const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${r.verdict}`);
+                });
+                lines.push('');
+            }
+
             // Unmatched Losers Deep Dive (Item 3, May 20-late — discovery surface for new patterns)
             const _ul1 = perf.pattern_c_unmatched_losers || [];
             if (_ul1.length) {
@@ -7864,6 +7925,26 @@
                         const tp05fsk = `(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})`.padEnd(12);
                         const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
                         lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${r.verdict}`);
+                    });
+                    lines.push('');
+                }
+
+                // Pattern W Tracker
+                const _pw2 = perf.pattern_w_validation || [];
+                if (_pw2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## Pattern W Tracker (observation-only) — 5 WINNER signatures × LONG/SHORT`);
+                    lines.push(`Gate: N ≥ 30 per pattern AND WR ≥ 70% AND Avg P&L % ≥ +0.20% → MULTIPLIER candidate`);
+                    lines.push(`Computed at report time from existing entry features (no schema change).\n`);
+                    lines.push('Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  Verdict');
+                    lines.push('-'.repeat(140));
+                    _pw2.forEach(r => {
+                        const wr = r.wr.toFixed(1).padStart(5) + '%';
+                        const wp = (r.winner_precision_pct == null ? '-' : r.winner_precision_pct.toFixed(0) + '%').padStart(5);
+                        const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
+                        const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
+                        const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${wp}  ${avg}  ${tot}  ${pk}  ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -10139,6 +10220,46 @@
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_atr_pct == null ? '-' : r.entry_btc_atr_pct.toFixed(3)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_btc_trend_gap_pct)}</td>
                                     <td class="px-2 py-1 text-gray-500 text-xs">${r.close_reason || ''}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                }
+
+                // Pattern W Tracker (May 20 latest+2 — observation-only winner tracker)
+                if (data.pattern_w_validation !== undefined) {
+                    const _pwRows = data.pattern_w_validation || [];
+                    const _pwBody = document.getElementById('pattern-w-body');
+                    if (_pwBody) {
+                        if (!_pwRows.length) {
+                            _pwBody.innerHTML = '<tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no matching trades yet — Pattern W evaluated from existing entry features)</td></tr>';
+                        } else {
+                            const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+                            const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                            _pwBody.innerHTML = _pwRows.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const totCls = r.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const avgCls = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const wrCls = r.wr >= 70 ? 'text-emerald-400' : r.wr >= 60 ? 'text-amber-400' : 'text-gray-400';
+                                const wpCls = (r.winner_precision_pct||0) >= 70 ? 'text-emerald-400 font-semibold'
+                                    : (r.winner_precision_pct||0) >= 50 ? 'text-amber-400'
+                                    : 'text-red-400';
+                                let vCls = 'text-gray-400';
+                                if (r.verdict.startsWith('★ MULTIPLIER')) vCls = 'text-emerald-400 font-bold';
+                                else if (r.verdict.startsWith('★')) vCls = 'text-emerald-400';
+                                else if (r.verdict.startsWith('✗')) vCls = 'text-red-400';
+                                const isAny = r.pattern_key === 'w_any';
+                                const rowCls = isAny ? 'bg-white/5 font-semibold' : '';
+                                return `<tr class="${rowCls}">
+                                    <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
+                                    <td class="px-3 py-1 text-center text-gray-200">${r.n}</td>
+                                    <td class="px-3 py-1 text-center ${wrCls}">${r.wr.toFixed(1)}%</td>
+                                    <td class="px-3 py-1 text-center ${wpCls}">${r.winner_precision_pct == null ? '-' : r.winner_precision_pct.toFixed(0) + '%'}</td>
+                                    <td class="px-3 py-1 text-right ${avgCls}">${fmt(r.avg_pct, 3)}</td>
+                                    <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
+                                    <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
+                                    <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;
                             }).join('');
                         }

@@ -14760,3 +14760,204 @@ When the next batch lands:
 3. If ★ MULTIPLIER CANDIDATE: cross-check with prior batches before acting
 4. If ⚠ FILTER CANDIDATE: apply mechanical filter-ship workflow
 5. Mechanism builds happen when gates trigger, not before
+
+## May 20, 2026 (latest+2 evening) — Pattern W shipped + Score 3 SHORT demoted
+
+### What shipped (two related changes)
+
+**1. Score 3 SHORT multiplier demoted: 2.0× → 1.0×**
+
+Per the user's observation: current 1D/2D multiplier system has consistently
+failed cross-batch (S-P1, PAIR_30-35_28-30, Score 4 LONG, BTC_55-60_22-25 all
+demoted previously). Score 3 SHORT was the last remaining "single-dim" multiplier
+at 2.0× — also demoted now. Active multipliers all use the locked May 4 verdict
+matrix going forward.
+
+**2. Pattern W tracker shipped — Approach B (analytics-only)**
+
+NEW dashboard section: "🏆 Pattern W Tracker (observation-only)".
+5 multi-dimensional WINNER signatures × LONG/SHORT, evaluated at report time
+from already-captured entry features. **No schema change, no engine touchpoints.**
+
+### Cross-batch winner analysis findings (drove Pattern W design)
+
+Pool: 510 deduped CLOSED trades (May 4 → today). Baselines:
+- LONG: 252 trades, 54.0% WR baseline
+- SHORT: 258 trades, 60.1% WR baseline
+
+**Tested 9 candidate signatures per direction.** Results:
+
+| Signature | LONG | SHORT |
+|---|---|---|
+| Strongest: **"BTC RSI 55-65 + BTC ADX 22-30"** (2D) | **71.2% / N=66 ★** | (mirror: 47% — fails) |
+| W2 Macro tailwind (3-axis) | 62% / N=37 | 63% / N=97 |
+| W4 Pullback aligned | 54% / N=37 | 71% / N=14 (small) |
+| W3 Energetic vol (3-axis) | 100% / N=5 (tiny) | (didn't fire) |
+| W5 Confluence (5-axis) | 69% / N=13 (small) | 14% / N=14 (anti) |
+
+**Two surprising findings:**
+
+1. **The cleanest LONG winner signature is 2-DIMENSIONAL** (BTC RSI × BTC ADX),
+   not multi-axis. This validates that the current `btc_rsi_adx_multiplier`
+   primitive IS the right shape — it's just that the specific CELL boundaries
+   (e.g., 60-65:20-25 demoted) decay across batches while the broader zone
+   (55-65 × 22-30) is structurally a winner zone.
+2. **SHORT winners are DIFFUSE** — no signature with N≥30 hits ≥70% precision.
+   The bot wins SHORTs across many entry profiles. Multi-axis SHORT patterns
+   probably won't promote unless we find a fundamentally different combination.
+
+### What Pattern W IS and ISN'T
+
+**IS:**
+- A symmetric framework to Pattern C — same column structure, mirrored verdict logic
+- An observation-only multi-axis winner tracker
+- A discovery mechanism for future multiplier candidates that aren't 1D cells
+- Evaluable at report time from existing data (no migration, no engine code)
+
+**ISN'T:**
+- A replacement for the current cell-multiplier system (which DOES work when
+  signatures are validated cross-batch — the demoted cells were prematurely-shipped,
+  not structurally wrong)
+- A guaranteed source of new multipliers — the cross-batch analysis shows most
+  multi-axis signatures don't reach the ≥70% precision threshold
+- Per-trade flagged (Pattern C stores match columns; Pattern W doesn't until a
+  signature actually graduates to multiplier ship)
+
+### Pattern W signatures (mirror cross-batch analysis findings)
+
+```
+W1 — HighConv trend continuation
+  LONG:  Pair ADX≥22 + ADXΔ≥0.5 + stretch≥0.16
+  SHORT: Pair ADX≥22 + ADXΔ≥0.5 + stretch≥0.20
+
+W2 — Macro tailwind
+  LONG:  BTC RSI 50-65 + BTC ADX≥22 + BTC gap≥+0.10%
+  SHORT: BTC RSI 30-45 + BTC ADX≥22 + BTC gap≤-0.10%
+
+W3 — Energetic volatility breakout
+  LONG:  BTC ATR≥0.20% + pair vol ratio≥1.20 + stretch≥0.20
+  SHORT: BTC ATR≥0.20% + pair vol ratio≥1.20 + stretch≥0.25
+
+W4 — Pullback aligned
+  LONG:  RngPos 40-75 + pair gap≥+0.10% + ADXΔ≥0
+  SHORT: RngPos 25-60 + pair gap≤-0.10% + ADXΔ≥0
+
+W5 — Confluence (max conviction)
+  LONG:  BTC ADX 22-30 + BTC RSI 55-65 + Pair ADX 22-30 + stretch 0.16-0.25
+  SHORT: BTC ADX 22-30 + BTC RSI 30-40 + Pair ADX 22-30 + stretch 0.20-0.30
+```
+
+### Locked promotion gate (MULTIPLIER CANDIDATE)
+
+Same gate as the CLAUDE.md May 20 latest+1 entry:
+- **N ≥ 30 per direction**
+- **WR ≥ 70%**
+- **Avg P&L % ≥ +0.20%**
+
+When a row hits this → ★ MULTIPLIER CANDIDATE verdict. Cross-batch stability
+check (≥3 batches consistent) before shipping actual mechanism.
+
+### Pattern overlap rule (locked, CLAUDE.md May 20 latest+1)
+
+**FILTER beats MULTIPLIER.** If a trade matches both a Pattern C (filter
+candidate) AND a Pattern W (multiplier candidate), the filter wins —
+don't take the trade.
+
+When mechanism is built later:
+```
+1. Check all Pattern C signatures. If any matches a FILTER-promoted pattern → block
+2. Otherwise: check Pattern W. If any matches a MULTIPLIER-promoted pattern → boost
+3. Otherwise: enter at base size
+```
+
+### Anti-pattern verdict (NEW)
+
+Pattern W introduces "✗ Anti-pattern" verdict — a winner-tracker signature
+that shows ≤45% WR on N≥10. This means the signature is INVERSE — it catches
+losers, not winners. The W5 SHORT signature in current data fired this verdict
+(14% WR / N=14). Anti-patterns get **dropped from the tracker**, not promoted
+to anything.
+
+### Implementation status
+
+**Phase 1 (this commit) — analytics only.** Pattern W computed at report time
+from existing entry features. Tracker table + verdict logic + cross-batch
+analysis baseline. Zero behavior change.
+
+**Phase 2 (when a W pattern promotes to MULTIPLIER ship)** — build the
+pattern-gated multiplier engine hook. Add `pattern_w_multiplier_<X>_<direction>`
+config fields. Capture matches at entry on Order rows (mirror Pattern C's
+column approach). Roughly 80-120 LOC at that point.
+
+**Won't build Phase 2 until a W pattern actually triggers the gate at N≥30.**
+This avoids over-engineering for hypothetical signatures.
+
+### Honest caveats
+
+1. **Most W signatures are HYPOTHESES, not validated patterns.** Cross-batch
+   gave only 1 strict ★ candidate (BTC RSI 55-65 + BTC ADX 22-30 LONG).
+   The other 4 LONG and 5 SHORT signatures may or may not pass at scale.
+2. **Pattern W signatures were derived FROM today's pool** — they're partially
+   in-sample. Forward expectancy may be 30-50% lower (CLAUDE.md May 18
+   in-sample bias rule).
+3. **SHORT may not produce ANY clean multiplier candidate.** Cross-batch
+   shows SHORT winners are diffuse. If next 3-4 batches confirm this,
+   SHORT-side multipliers may simply not exist beyond the existing 2D cells.
+4. **Cross-batch instability is the real risk.** If a W pattern hits ★ in one
+   batch and ⚠ Anti-pattern in the next, that's regime noise — don't ship
+   until ≥3 batches consistent.
+
+### Files changed (May 20 latest+2)
+
+- `trading_config.json` — score_multiplier_short: "3-4:2.0,6-7:2.0" → "3-4:1.0,6-7:2.0"
+- `main.py` —
+  - NEW `_compute_pattern_w_match(o)` returns 6-tuple (w1-w5 + w_any)
+  - NEW `_compute_pattern_w_validation(orders)` mirror of Pattern C analytics
+  - Payload integration: `pattern_w_validation`
+  - Note: Pattern W matches computed at report time, NO schema change
+- `templates/index.html` —
+  - NEW "🏆 Pattern W Tracker" section after Unmatched Losers Deep Dive
+  - JS renderer with verdict-tier color logic (★ MULTIPLIER bold, ✗ Anti red)
+  - Both text-export sites updated
+- `scripts/winner_signature_analysis.py` — the cross-batch validation script
+  that drove Pattern W signature definitions
+- `CLAUDE.md` — this entry
+
+### What to do at next checkpoint
+
+When the next batch lands:
+
+1. **Look at Pattern W tracker** — does any row show ★ MULTIPLIER CANDIDATE?
+   - If yes: check 2-3 prior batches for cross-batch stability → if ≥3 batches
+     consistent → ship Phase 2 mechanism for that specific pattern
+   - If no: observation continues
+2. **Check for ✗ Anti-pattern verdicts** — if W5 SHORT continues showing ≤45% WR,
+   drop W5 SHORT from tracker (regime confirmed it's not a winner signature)
+3. **Check W3 LONG** (today: 100% / N=5) — if N grows to ≥15 and precision stays
+   ≥70%, it becomes promising despite small starting N
+4. **Watch the gap with current cell multipliers** — if Pattern W consistently
+   identifies winners that the existing cell-based multipliers miss, that's
+   the signal to migrate from cells to Pattern W as the primary multiplier
+   primitive
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The Pattern W framework as the SYMMETRIC complement to Pattern C
+2. The cross-batch analysis findings (1 strict winner signature exists; multi-axis
+   signatures mostly need more N or have small-N status)
+3. The Approach B implementation choice (report-time, no schema) so future-Claude
+   doesn't redesign with full per-trade capture without need
+4. The Phase 2 build path (engine mechanism) only triggered by a real N≥30
+   MULTIPLIER CANDIDATE
+5. The honest caveat that the current cell multiplier system isn't structurally
+   wrong — it just needs cross-batch-validated cells (the bot's existing
+   2D RSI×ADX primitive IS right; the specific shipped cells were premature)
+
+The framework is now SYMMETRIC AND COMPLETE:
+- Pattern C → FILTER candidates (block at entry) + Unmatched Losers Deep Dive
+- Pattern W → MULTIPLIER candidates (boost size at entry)
+- Loser % column on Pattern C, Win % column on Pattern W
+- Both observation-only until promotion gates trigger
+- Both with cross-batch stability requirements
+- Both with locked verdict tiers and mechanical decisioning

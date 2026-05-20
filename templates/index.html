@@ -1689,6 +1689,11 @@
                         distinct Never-Positive failure mode. Promotion gate: N ≥ 30 per pattern AND
                         WR ≤ 40% AND Avg P&L % ≤ -0.20%. Until then, observation-only.
                     </p>
+                    <!-- Batch-level summary: what total Pattern C P&L would be under each TP cap.
+                         Computed from ANY rows (which aggregate C1..C8 per direction). -->
+                    <div class="text-xs bg-white/5 border border-amber-500/20 rounded px-3 py-2 mb-3 leading-relaxed" id="pattern-c-batch-summary">
+                        <span class="text-gray-500">(summary will appear once trades match)</span>
+                    </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -6357,7 +6362,21 @@
                 lines.push(`## Pattern C Tracker (observation-only) — 8 signatures × LONG/SHORT`);
                 lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter`);
                 lines.push(`TP CF: simulates fixed TP cap (0.05% / 0.10% net). Cell shows NewTotal$ | Δ$ | (f/s/k).`);
-                lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.\n`);
+                lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.`);
+                // Batch summary from ANY rows
+                const _pc1Any = _pc1.filter(r => r.pattern_key === 'c_any');
+                if (_pc1Any.length) {
+                    const _fs = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    let tA = 0, t5 = 0, t1 = 0;
+                    _pc1Any.forEach(r => { tA += r.total_usd || 0; t5 += r.tp05_new_total_usd || 0; t1 += r.tp10_new_total_usd || 0; });
+                    _pc1Any.forEach(r => {
+                        const d5 = (r.tp05_new_total_usd||0) - (r.total_usd||0);
+                        const d1 = (r.tp10_new_total_usd||0) - (r.total_usd||0);
+                        lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.05 ${_fs(r.tp05_new_total_usd)} (Δ${_fs(d5)}) | TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)})`);
+                    });
+                    lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.05 ${_fs(t5)} (Δ${_fs(t5-tA)}) | TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)})`);
+                }
+                lines.push('');
                 lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05  NewTot$ | Δ$ (f/s/k)         TP0.10  NewTot$ | Δ$ (f/s/k)         Verdict');
                 lines.push('-'.repeat(180));
                 _pc1.forEach(r => {
@@ -7736,7 +7755,21 @@
                     lines.push(`## Pattern C Tracker (observation-only) — 8 signatures × LONG/SHORT`);
                     lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter`);
                     lines.push(`TP CF: simulates fixed TP cap (0.05% / 0.10% net). Cell shows NewTotal$ | Δ$ | (f/s/k).`);
-                    lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.\n`);
+                    lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.`);
+                    // Batch summary from ANY rows
+                    const _pc2Any = _pc2.filter(r => r.pattern_key === 'c_any');
+                    if (_pc2Any.length) {
+                        const _fs = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        let tA = 0, t5 = 0, t1 = 0;
+                        _pc2Any.forEach(r => { tA += r.total_usd || 0; t5 += r.tp05_new_total_usd || 0; t1 += r.tp10_new_total_usd || 0; });
+                        _pc2Any.forEach(r => {
+                            const d5 = (r.tp05_new_total_usd||0) - (r.total_usd||0);
+                            const d1 = (r.tp10_new_total_usd||0) - (r.total_usd||0);
+                            lines.push(`  ${r.direction} Pattern C: actual ${_fs(r.total_usd)} → TP 0.05 ${_fs(r.tp05_new_total_usd)} (Δ${_fs(d5)}) | TP 0.10 ${_fs(r.tp10_new_total_usd)} (Δ${_fs(d1)})`);
+                        });
+                        lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.05 ${_fs(t5)} (Δ${_fs(t5-tA)}) | TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)})`);
+                    }
+                    lines.push('');
                     lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05  NewTot$ | Δ$ (f/s/k)         TP0.10  NewTot$ | Δ$ (f/s/k)         Verdict');
                     lines.push('-'.repeat(180));
                     _pc2.forEach(r => {
@@ -9861,6 +9894,45 @@
                 if (data.pattern_c_validation) {
                     const _pcRows = data.pattern_c_validation || [];
                     const _pcBody = document.getElementById('pattern-c-body');
+                    const _pcSummary = document.getElementById('pattern-c-batch-summary');
+                    // Compute batch-level Pattern C summary from ANY rows.
+                    // ANY rows (pattern_key='c_any') aggregate per-direction across all
+                    // C1..C8 patterns. Summing LONG + SHORT ANY gives the batch-wide
+                    // "Pattern C trades" total — what would total P&L look like if TP
+                    // was applied to every C-matched trade in the batch.
+                    if (_pcSummary) {
+                        const fmt$s = (v) => v == null ? '$0.00' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        const anyRows = _pcRows.filter(r => r.pattern_key === 'c_any');
+                        if (anyRows.length) {
+                            let totActual = 0, totTP05 = 0, totTP10 = 0;
+                            anyRows.forEach(r => {
+                                totActual += (r.total_usd || 0);
+                                totTP05 += (r.tp05_new_total_usd || 0);
+                                totTP10 += (r.tp10_new_total_usd || 0);
+                            });
+                            const d05 = totTP05 - totActual;
+                            const d10 = totTP10 - totActual;
+                            const cls = (v) => v > 5 ? 'text-emerald-400' : v < -5 ? 'text-red-400' : 'text-gray-400';
+                            const ntCls = (v) => v >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            // Per-direction lines
+                            const dirLines = anyRows.map(r => {
+                                const d05r = (r.tp05_new_total_usd || 0) - (r.total_usd || 0);
+                                const d10r = (r.tp10_new_total_usd || 0) - (r.total_usd || 0);
+                                return `<span class="text-gray-400 font-semibold">${r.direction} Pattern C:</span>
+                                    actual <span class="${ntCls(r.total_usd)}">${fmt$s(r.total_usd)}</span>
+                                    → TP 0.05 <span class="${ntCls(r.tp05_new_total_usd)}">${fmt$s(r.tp05_new_total_usd)}</span> <span class="text-xs ${cls(d05r)}">(Δ${fmt$s(d05r)})</span>
+                                    | TP 0.10 <span class="${ntCls(r.tp10_new_total_usd)}">${fmt$s(r.tp10_new_total_usd)}</span> <span class="text-xs ${cls(d10r)}">(Δ${fmt$s(d10r)})</span>`;
+                            }).join('<br>');
+                            // TOTAL line
+                            const totalLine = `<span class="text-amber-300 font-semibold">TOTAL Pattern C (LONG+SHORT):</span>
+                                actual <span class="${ntCls(totActual)} font-semibold">${fmt$s(totActual)}</span>
+                                → TP 0.05 <span class="${ntCls(totTP05)} font-semibold">${fmt$s(totTP05)}</span> <span class="${cls(d05)} font-semibold">(Δ${fmt$s(d05)})</span>
+                                | TP 0.10 <span class="${ntCls(totTP10)} font-semibold">${fmt$s(totTP10)}</span> <span class="${cls(d10)} font-semibold">(Δ${fmt$s(d10)})</span>`;
+                            _pcSummary.innerHTML = `${dirLines}<br>${totalLine}`;
+                        } else {
+                            _pcSummary.innerHTML = '<span class="text-gray-500">(no matched trades yet)</span>';
+                        }
+                    }
                     if (_pcBody) {
                         if (!_pcRows.length) {
                             _pcBody.innerHTML = '<tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';

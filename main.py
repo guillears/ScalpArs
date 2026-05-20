@@ -7662,10 +7662,15 @@ def _compute_pattern_c_validation(orders):
       C2: Macro counter-trend — BTC trend opposite trade direction
       C3: Stretch exhaustion  — high EMA5 stretch + high pair ADX + range extreme
       C4: Low-vol chop        — low BTC ATR + low BTC ADX + low pair ADX
+      C5: Slow Climber Death  — weak ADX + slow accel + flat slope (May 19)
+      C6: Macro over-extended — BTC same-direction climactic (May 19)
+      C7: Pair Countertrend Bounce — pair stretched + slope-confirmed + mid-range (May 20)
+      C8: Oversold/Overbought Chop — range extreme + sharp ADXΔ + no pair trend
+          + low BTC vol (May 20-late, hypothesis from C4 deep-dive)
 
     Returns per-pattern rows + ANY-match row + per-direction TOTAL row.
     """
-    patterns = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c_any']
+    patterns = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c_any']
     pattern_labels = {
         'c1': 'C1 Capitulation chase',
         'c2': 'C2 Macro counter-trend',
@@ -7674,7 +7679,8 @@ def _compute_pattern_c_validation(orders):
         'c5': 'C5 Slow Climber Death',
         'c6': 'C6 Macro over-extended',
         'c7': 'C7 Pair Countertrend Bounce',
-        'c_any': 'ANY (C1∨…∨C7)',
+        'c8': 'C8 Oversold/Overbought Chop',
+        'c_any': 'ANY (C1∨…∨C8)',
     }
     rows = []
     for direction in ('LONG', 'SHORT'):

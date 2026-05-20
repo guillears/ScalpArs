@@ -14150,3 +14150,115 @@ To preserve:
 If a future phantom tracker shows anomalously low capture rate, the
 diagnostic is: check the 7-step checklist; usually steps 2/3/5 are
 the culprits.
+
+## May 20, 2026 (late PM) — Pattern C C8 shipped: Oversold/Overbought Chop (observation-only)
+
+### What ships
+
+C8 added to the Pattern C tracker as the 8th signature, observation-only.
+Mirror symmetric for LONG/SHORT.
+
+**SHORT signature:** RngPos ≤ 25 AND ADXΔ ≥ 1.0 AND |pair_gap| ≤ 0.20% AND BTC ATR ≤ 0.15%
+**LONG signature:**  RngPos ≥ 75 AND ADXΔ ≥ 1.0 AND |pair_gap| ≤ 0.20% AND BTC ATR ≤ 0.15%
+
+### Mechanism hypothesis
+
+Bot enters at range extreme on RSI extreme + EMA stack cross, ADX is
+accelerating sharply (Δ ≥ 1.0), BUT the pair itself has NO clear 4hr
+trend (|gap| ≤ 0.20%) AND BTC is in low-vol regime (ATR ≤ 0.15%).
+Without macro trend support or pair-level continuation fuel, the trade
+gets squeezed (SHORT against chop bounce) or fades (LONG against chop
+fade) instead of riding momentum continuation.
+
+### Origin — derived from C4 sub-pattern analysis (May 20 deep-dive)
+
+C4 (Low-vol chop) showed 9 trades / 22% WR / -$358 in the tracker
+cohort this batch. Within C4, today's 4 SHORT losers shared a
+specific sub-signature: deep RngPos + sharp ADXΔ + mild pair gap.
+Checked the overlap — these losers did NOT match the existing C1
+(Capitulation chase) signature because C1 requires pair_gap ≤ -0.50%
+and today's losers had pair_gap only -0.10 to -0.18%.
+
+So either:
+1. C1's pair_gap threshold (-0.50) is too strict for catching
+   capitulation chases in mild downtrends → relax to -0.10
+2. There's a separate failure mode (C8) where pair has NO trend at
+   all — bot SHORTs the bottom of a sideways range in low-vol regime
+
+C8 ships as the "no clear pair trend" variant. C1 stays unchanged.
+At next ≥100-trade checkpoint, locked promotion gates decide.
+
+### Cross-batch backtest result — DIRECTIONAL WARNING
+
+Re-computed C8 (no-ATR variant) across May 4 → today pool (510 trades):
+**N=46, 61% WR (28W / 18L), -$179 Total, NP rate 2%.**
+
+This is a **winner cohort cross-batch**, not a loser cohort. Per-date
+breakdown shows mostly winning (May 10 100%, May 14 78%, May 17 100%)
+with today (May 20) as the anomaly (0% WR, -$174 on N=3 SHORTs).
+
+So C8 might:
+(a) catch real losers structurally in some future regime
+(b) be a regime-specific failure pattern visible only on certain days
+(c) be a winner cohort that I mistakenly classified as loser pattern
+    based on today's small slice
+
+Live data from this deploy forward resolves which. Cross-batch backtest
+data is FROZEN today; entry_pattern_c8_match populates from this commit.
+
+### Locked promotion gates (CLAUDE.md May 19 framework, applied to C8)
+
+C8 promotes to filter ONLY if at next ≥100-trade checkpoint:
+- N ≥ 30 per direction (LONG AND SHORT separately)
+- WR ≤ 40%
+- Avg P&L % ≤ -0.20%
+- NP rate ≥ 60%
+
+If C8 SHOWS ≥60% WR on N ≥ 20 in any direction → declare it a WINNER
+cohort and remove from tracker (it's catching good setups, not failures).
+
+If C8 falls between (40-60% WR on N≥20) → keep observing, no decision.
+
+### Mixed-provenance caveat
+
+Pre-May-20-late trades have `entry_pattern_c8_match = NULL`. The C8
+column populates only from this commit forward. ANY-match column gets
+extended to include C8 going forward, so historical ANY-match values
+remain accurate for the C1-C7 subset they were captured under.
+
+### Cross-pattern overlap acknowledgment
+
+C8 and C4 share the BTC ATR ≤ 0.15 condition. Within C4 today's
+cohort, 4 of 5 SHORT C4 trades would also have matched C8 (the same
+losers). C4 is broader (just requires low BTC ATR + low BTC ADX + low
+Pair ADX); C8 is more specific (adds sharp ADXΔ + range extreme + no
+pair trend). Both will appear in the tracker; the more-specific one
+(C8) is more actionable IF it promotes.
+
+### Files changed
+
+- `config.py` — 8 new fields (4 LONG + 4 SHORT thresholds)
+- `models.py` — `entry_pattern_c8_match: Boolean nullable`
+- `database.py` — auto-migrate ADD COLUMN
+- `services/trading_engine.py` — `_compute_pattern_c_match` returns
+  9-tuple now; both call sites unpack 9 values; both Order()
+  constructors pass `entry_pattern_c8_match`
+- `main.py` — `_compute_pattern_c_validation` adds c8 to patterns list
+  + labels; ANY row label updated to "ANY (C1∨…∨C8)"
+- `templates/index.html` — UI legend C8 description; ANY-row caption
+  updated; intro paragraph "4 signatures" → "8 signatures"
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The exact C8 signature thresholds with the asymmetric mirror logic
+2. The honest cross-batch backtest result (61% WR — winner cohort)
+   so future-Claude doesn't ship C8 prematurely from today's small
+   loser cluster
+3. The locked promotion gates so the next checkpoint decision is
+   mechanical
+4. The mixed-provenance caveat — pre-May-20-late trades have NULL on
+   the c8_match column forever
+5. The cross-pattern overlap note with C4 — they share some
+   conditions but C8 is more specific

@@ -129,8 +129,8 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
                              ema20_slope=None, ema50_slope=None):
     """Pattern C Tracker (May 19-20, 2026 — observation-only).
 
-    Evaluates 7 candidate Pattern C precursor signatures at entry. Returns
-    (c1, c2, c3, c4, c5, c6, c7, c_any) — all booleans or None if tracker
+    Evaluates 8 candidate Pattern C precursor signatures at entry. Returns
+    (c1, c2, c3, c4, c5, c6, c7, c8, c_any) — all booleans or None if tracker
     disabled.
 
     Pattern C = trade peaks <+0.10% (never positive). Multiple structural
@@ -144,6 +144,10 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
           trade direction at climactic strength (BTC about to revert) (May 19)
       C7: Pair Countertrend Bounce — pair deeply against 4hr trend + EMA50 slope
           confirming + mid-range entry (dead-cat LONG / failed-breakdown SHORT) (May 20)
+      C8: Oversold/Overbought Chop — range extreme + sharp ADXΔ + NO clear pair
+          trend (|gap|≤0.20) + low BTC vol. Bot signal fires on RSI extreme but
+          chop kills momentum continuation. (May 20-late, hypothesis from C4
+          sub-pattern analysis — observation-only)
 
     No behavior change. Pure capture for cross-batch validation at N≥30 per
     pattern. See CLAUDE.md May 19-20 entries for promotion gates.
@@ -151,9 +155,9 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
     import config as _cfg
     th = _cfg.trading_config.thresholds
     if not getattr(th, 'pattern_c_tracker_enabled', True):
-        return (None, None, None, None, None, None, None, None)
+        return (None, None, None, None, None, None, None, None, None)
     if direction not in ('LONG', 'SHORT'):
-        return (None, None, None, None, None, None, None, None)
+        return (None, None, None, None, None, None, None, None, None)
 
     # Helper to safely evaluate AND of optional conditions
     def _safe_and(*conds):
@@ -200,6 +204,15 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
             ema50_slope is not None and ema50_slope >= getattr(th, 'pc_short_c7_ema50_slope_min', 0.05),
             rng_pos is not None and rng_pos <= getattr(th, 'pc_short_c7_rngpos_max', 60.0),
         )
+        # C8 — Oversold Chop SHORT: at range bottom + sharp ADXΔ + pair has NO clear
+        # direction (|gap|≤0.20) + low BTC vol regime. Bot SHORTs deep RSI but chop
+        # kills momentum continuation, leading to squeeze instead of breakdown.
+        c8 = _safe_and(
+            rng_pos is not None and rng_pos <= getattr(th, 'pc_short_c8_rngpos_max', 25.0),
+            adx_delta is not None and adx_delta >= getattr(th, 'pc_short_c8_adx_delta_min', 1.0),
+            pair_gap is not None and abs(pair_gap) <= getattr(th, 'pc_short_c8_pair_gap_abs_max', 0.20),
+            btc_atr is not None and btc_atr <= getattr(th, 'pc_short_c8_btc_atr_max', 0.15),
+        )
     else:  # LONG
         c1 = _safe_and(
             rng_pos is not None and rng_pos >= getattr(th, 'pc_long_c1_rngpos_min', 85.0),
@@ -240,8 +253,17 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
             ema50_slope is not None and ema50_slope <= getattr(th, 'pc_long_c7_ema50_slope_max', -0.05),
             rng_pos is not None and rng_pos >= getattr(th, 'pc_long_c7_rngpos_min', 40.0),
         )
+        # C8 — Overbought Chop LONG (mirror): at range top + sharp ADXΔ + pair has NO
+        # clear direction (|gap|≤0.20) + low BTC vol regime. Bot LONGs overbought RSI
+        # but chop kills follow-through, leading to fade instead of breakout.
+        c8 = _safe_and(
+            rng_pos is not None and rng_pos >= getattr(th, 'pc_long_c8_rngpos_min', 75.0),
+            adx_delta is not None and adx_delta >= getattr(th, 'pc_long_c8_adx_delta_min', 1.0),
+            pair_gap is not None and abs(pair_gap) <= getattr(th, 'pc_long_c8_pair_gap_abs_max', 0.20),
+            btc_atr is not None and btc_atr <= getattr(th, 'pc_long_c8_btc_atr_max', 0.15),
+        )
 
-    return (c1, c2, c3, c4, c5, c6, c7, c1 or c2 or c3 or c4 or c5 or c6 or c7)
+    return (c1, c2, c3, c4, c5, c6, c7, c8, c1 or c2 or c3 or c4 or c5 or c6 or c7 or c8)
 
 
 class TradingEngine:
@@ -1453,7 +1475,7 @@ class TradingEngine:
         try:
             now = datetime.utcnow()
             opened_at = (now - timedelta(seconds=wait_seconds)) if wait_seconds is not None else now
-            _pc1, _pc2, _pc3, _pc4, _pc5, _pc6, _pc7, _pc_any = _compute_pattern_c_match(
+            _pc1, _pc2, _pc3, _pc4, _pc5, _pc6, _pc7, _pc8, _pc_any = _compute_pattern_c_match(
                 direction=direction,
                 rng_pos=entry_range_position,
                 pair_gap=entry_pair_ema20_ema50_gap_pct,
@@ -1538,6 +1560,7 @@ class TradingEngine:
                 entry_pattern_c5_match=_pc5,
                 entry_pattern_c6_match=_pc6,
                 entry_pattern_c7_match=_pc7,
+                entry_pattern_c8_match=_pc8,
                 entry_pattern_c_any_match=_pc_any,
             )
             db.add(order)
@@ -2312,7 +2335,7 @@ class TradingEngine:
                 entry_order_type = "TAKER"
         
         # Pattern C tracker (May 19, 2026 — observation-only signature flags)
-        _pc1_m, _pc2_m, _pc3_m, _pc4_m, _pc5_m, _pc6_m, _pc7_m, _pc_any_m = _compute_pattern_c_match(
+        _pc1_m, _pc2_m, _pc3_m, _pc4_m, _pc5_m, _pc6_m, _pc7_m, _pc8_m, _pc_any_m = _compute_pattern_c_match(
             direction=direction,
             rng_pos=entry_range_position,
             pair_gap=entry_pair_ema20_ema50_gap_pct,
@@ -2404,6 +2427,7 @@ class TradingEngine:
             entry_pattern_c5_match=_pc5_m,
             entry_pattern_c6_match=_pc6_m,
             entry_pattern_c7_match=_pc7_m,
+            entry_pattern_c8_match=_pc8_m,
             entry_pattern_c_any_match=_pc_any_m,
         )
         db.add(order)

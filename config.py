@@ -419,6 +419,22 @@ class SignalThresholds(BaseModel):
     pc_short_c7_pair_gap_min: float = 0.50  # pair_gap ≥ this = pair stretched above 4hr trend
     pc_short_c7_ema50_slope_min: float = 0.05  # ema50_slope ≥ this = 4hr trend rising
     pc_short_c7_rngpos_max: float = 60.0  # RngPos ≤ this = bot shorting mid-range pullback (not blow-off top)
+    # C8 — Oversold/Overbought Chop (NEW May 20 — hypothesis from C4 sub-pattern analysis)
+    # Mechanism: pair entered at range extreme with sharp ADX accel during low-BTC-vol regime
+    # where pair itself has NO clear direction (|gap|≤0.20). Bot reads RSI extreme + EMA cross,
+    # signal fires, but chop dictates the trade gets squeezed (SHORT) or fades (LONG) instead
+    # of riding continuation.
+    # Cross-batch backtest (May 20): N=46 / 61% WR cross-batch (winner cohort).
+    # Today's batch (May 20): N=3 SHORT / 0% WR / -$174 (loser cohort).
+    # Observation-only — let live data resolve whether it's a real loser pattern or regime noise.
+    pc_long_c8_rngpos_min: float = 75.0  # RngPos ≥ this = LONG at top of range
+    pc_long_c8_adx_delta_min: float = 1.0  # ADXΔ ≥ this = sharp ADX acceleration
+    pc_long_c8_pair_gap_abs_max: float = 0.20  # |pair_gap| ≤ this = pair NOT in clear trend
+    pc_long_c8_btc_atr_max: float = 0.15  # BTC ATR ≤ this = low-vol regime (chop)
+    pc_short_c8_rngpos_max: float = 25.0  # RngPos ≤ this = SHORT at bottom of range
+    pc_short_c8_adx_delta_min: float = 1.0  # ADXΔ ≥ this = sharp ADX acceleration
+    pc_short_c8_pair_gap_abs_max: float = 0.20  # |pair_gap| ≤ this = pair NOT in clear trend
+    pc_short_c8_btc_atr_max: float = 0.15  # BTC ATR ≤ this = low-vol regime (chop)
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
     global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)

@@ -14583,3 +14583,180 @@ When the next batch lands:
 5. If ≥3 unmatched losers share a signature, define C10 and add to tracker
 
 The framework is now self-discovering: it tells you when a pattern is ready to ship AND when a new pattern needs to be defined. No more ad-hoc inspection required.
+
+## May 20, 2026 (latest+1 evening) — Pattern C framework SYMMETRIC extension: MULTIPLIER CANDIDATE verdict
+
+### What changed
+
+The Pattern C tracker now identifies BOTH filter candidates AND multiplier
+candidates from the same data. The verdict column adds an explicit
+**★ MULTIPLIER CANDIDATE** tier alongside the existing **⚠ FILTER CANDIDATE**.
+
+Previously the framework only encoded "this pattern catches losers." With this
+extension, the framework also encodes "this pattern catches winners." Same
+patterns (C1-C9), same Loser % column as discriminator, two possible ship
+outcomes:
+
+| Outcome | Gate | Action |
+|---|---|---|
+| **★ MULTIPLIER CANDIDATE** | N≥30 AND WR≥70% AND Avg P&L%≥+0.20% | Ship pattern-gated size multiplier (boost trade investment) |
+| **⚠ FILTER CANDIDATE** | N≥30 AND WR≤40% AND Avg P&L%≤-0.20% | Ship pattern-gated entry block |
+| ★ Winners cohort (N too small) | N≥10 AND WR≥60% (but N<30) | Watch — wait for N≥30 |
+| ⚠ Warning trending toward FILTER | N≥10 AND WR≤45% AND Avg≤-0.15% | Watch — wait for N≥30 |
+| ⚠ Low N | N<10 | Insufficient data |
+| ✓ Inconclusive | else | No clear signal either direction |
+
+### Why this matters
+
+Mechanically, the Pattern C signatures C1-C9 are **conditional combinations of
+entry features**. They were designed to identify losers, but mathematically a
+"high Loser %" cohort and a "low Loser %" cohort are symmetric outcomes. The
+framework can now ship in EITHER direction depending on which signal the
+data shows.
+
+Today's reading shows the symmetry already partially active:
+- **C4 SHORT (80% loser-precision)** → trending to FILTER if N grows past 30
+- **C6 LONG (29% loser-precision)** → trending to MULTIPLIER if N grows past 30
+- Same column tells both stories
+
+### Honest caveat — designed-as-loser vs actual-winner
+
+C1-C9 were ALL designed to catch LOSER mechanisms. A "high WR" pattern row
+today means **the regime made the designed-loss conditions actually win** —
+that's REGIME-driven, not STRUCTURAL.
+
+For a MULTIPLIER promotion to be defensible, the pattern needs:
+1. **N ≥ 30** per direction (current gate)
+2. **WR ≥ 70%** + **Avg ≥ +0.20%** in current batch
+3. **Cross-batch stability**: ≥3 consecutive batches showing the same winner
+   profile (NOT yet enforced by the gate — operator must check manually)
+4. **Documented mechanism**: WHY this pattern wins (not just "WR was high")
+
+Without cross-batch stability, a multiplier ship would REVERT the moment
+regime changes. We had exactly this lesson with the S-P1 PREMIUM multiplier
+(5-sample structural → broke at N=3 in May 18 batch, demoted).
+
+### Pre-committed multiplier ship rule (locked NOW)
+
+When a pattern row shows **★ MULTIPLIER CANDIDATE** at next checkpoint:
+
+1. **Don't immediately ship.** Verify across batches first:
+   - Check if the same row showed ★ Winners cohort or ★ MULTIPLIER CANDIDATE
+     in the PRIOR 2-3 batches (cross-batch stability)
+2. **If 3+ batches confirm**, ship at **1.5×** initially (Phase 3 staging
+   per CLAUDE.md May 4)
+3. After +50 trades at 1.5×, if cell still ★ WORKING (per multiplier verdict
+   matrix), step up to 2.0×
+
+### Pattern overlap conflict resolution (locked)
+
+A trade can match MULTIPLE Pattern C signatures simultaneously. Today's data
+showed trades matching both C4 and C2 LONG, both C4 and C8 SHORT. With both
+filter AND multiplier candidates possible, overlap conflicts will arise.
+
+**Locked rule: FILTER beats MULTIPLIER on overlap.**
+
+Implementation logic at trade entry (when both mechanisms ship):
+```
+if trade matches any FILTER-candidate pattern:
+    block entry (don't trade)
+elif trade matches any MULTIPLIER-candidate pattern:
+    apply size multiplier
+else:
+    enter at base size
+```
+
+The conservative ordering: if even ONE pattern says "this should lose," the
+trade doesn't happen. We don't take a probabilistic chance on a multiplier
+when a filter is screaming.
+
+### Implementation status (no engine changes yet)
+
+This ship is **verdict-column refinement only.** The MULTIPLIER ship
+mechanism (pattern-gated investment boost at entry) is NOT yet built.
+Locked Phase 3 work for when the gate actually triggers:
+
+- New config: `pattern_c_multiplier_<pattern>_<direction>: float = 1.0`
+  fields (default disabled). Example: `pattern_c_multiplier_c6_long: 1.0`
+- Engine hook in `services/trading_engine.py::open_position`: after all
+  filters pass, check `entry_pattern_<X>_match` against active multipliers,
+  apply via existing `cell_multiplier` chain (HIGHER-wins on overlap with
+  other multipliers, but **FILTER candidates block before this check fires**)
+- New close reason / tracking: report as `PATTERN_C_MULT_<X>` in
+  cell_multiplier_source for analytics
+
+~40 LOC + config schema. Ship only when first MULTIPLIER CANDIDATE gate
+triggers at a real N≥30 batch.
+
+### Why NOT define a separate "Pattern W" winner tracker
+
+Considered: instead of repurposing Pattern C signatures bidirectionally,
+define explicit C-W1, C-W2 signatures targeting "this is when the bot wins."
+
+Rejected for now because:
+1. **Simpler is better at low data** — C1-C9 already exist; adding 9 more
+   patterns doubles the surface area without proportional information gain
+2. **The Loser % column is universal** — same column tells both stories
+3. **Multi-batch stability check is the real gate** — whether a pattern is
+   "designed-loser" or "naturally-winner" doesn't matter if it consistently
+   produces winners across regimes; we'd find out empirically
+
+If at some future point a STRUCTURAL winner pattern is needed (e.g., a
+specific entry condition combo that the bot historically wins big on),
+THEN define a "Pattern W" framework. Today the symmetric extension is the
+right move.
+
+### Reading the tracker going forward
+
+For each pattern × direction row:
+
+**Step 1 — Read Loser % column:**
+- ≥70% loser-precision (red) → row is heading toward FILTER ship
+- ≤30% loser-precision (green) → row is heading toward MULTIPLIER ship
+- 30-70% (amber) → mixed cohort, not actionable
+- (None / very small N) → wait
+
+**Step 2 — Read verdict:**
+- ★ MULTIPLIER CANDIDATE → check cross-batch stability before ship
+- ⚠ FILTER CANDIDATE → ship as entry block per locked promotion rule
+- ★ Winners cohort or ⚠ Warning → wait for N≥30
+- ⚠ Low N → wait
+
+**Step 3 — Pattern overlap check (operator):**
+- If multiple rows trigger for the same direction, FILTER beats MULTIPLIER
+
+### Files changed (May 20 latest+1)
+
+- `main.py` — verdict logic refactored: added ★ MULTIPLIER CANDIDATE tier;
+  renamed ⚠ PROMOTE → ⚠ FILTER CANDIDATE for clarity; tightened weak winner
+  signal language ("Winners cohort — wait for N≥30")
+- `templates/index.html` — JS color logic updated: ★ MULTIPLIER bold-emerald,
+  ⚠ FILTER bold-red, ★ Winners cohort emerald, ⚠ Warning amber. Legacy
+  "⚠ PROMOTE" verdict kept as backward-compat fallback color.
+- `CLAUDE.md` — this entry
+
+No mechanism shipped yet (Phase 3 work for when gate triggers). No config
+fields added. Pure verdict refinement.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The symmetric framework — Pattern C identifies BOTH filter and multiplier
+   candidates from the same data
+2. The locked gates — different for FILTER (loser-side) vs MULTIPLIER
+   (winner-side), both at N≥30 minimum
+3. The cross-batch stability requirement for multiplier ship (3+ batches)
+   to prevent regime-driven false promotions
+4. The pattern overlap conflict rule (FILTER beats MULTIPLIER)
+5. The implementation roadmap if MULTIPLIER gate triggers (mechanism specced
+   but not built)
+6. The honest caveat: C1-C9 were designed to catch losers, so high-WR
+   readings need cross-batch validation before being trusted as
+   structural winner patterns
+
+When the next batch lands:
+1. Open Pattern C tracker
+2. Check each row's verdict + Loser %
+3. If ★ MULTIPLIER CANDIDATE: cross-check with prior batches before acting
+4. If ⚠ FILTER CANDIDATE: apply mechanical filter-ship workflow
+5. Mechanism builds happen when gates trigger, not before

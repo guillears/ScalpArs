@@ -7754,13 +7754,27 @@ def _compute_pattern_c_validation(orders):
             tp10_delta = tp10_sim - tp10_actual
             # tp05_sim / tp10_sim ARE the new totals (sum of sim$ across cohort)
 
-            # Verdict per locked gate
-            if n >= 30 and wr <= 40 and avg_pct <= -0.20:
-                verdict = '⚠ PROMOTE — meets filter ship gate'
-            elif n >= 10 and wr <= 45 and avg_pct <= -0.15:
-                verdict = '⚠ Warning — trending toward promote'
+            # Verdict per locked gates (CLAUDE.md May 20-latest framework):
+            # The Pattern C tracker now identifies BOTH directions of ship action:
+            #   - High loser-precision + losing avg → FILTER candidate (block at entry)
+            #   - High win-precision + winning avg → MULTIPLIER candidate (boost size at entry)
+            #   - Mixed → not actionable
+            # Order matters: check MULTIPLIER first (rarest), then FILTER, then weaker
+            # signals.
+            if n >= 30 and wr >= 70 and avg_pct >= 0.20:
+                # Strict winner-cohort gate. At this N+WR+Avg we have evidence
+                # this pattern consistently identifies winning entries → boost.
+                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%)'
+            elif n >= 30 and wr <= 40 and avg_pct <= -0.20:
+                # Strict loser-cohort gate. At this N+WR+Avg we have evidence
+                # this pattern consistently identifies losing entries → block.
+                verdict = '⚠ FILTER CANDIDATE — meets loser ship gate (N≥30, WR≤40%, Avg≤-0.20%)'
             elif n >= 10 and wr >= 60:
-                verdict = '★ Pattern NOT predictive of loss (winners)'
+                # Weak winner signal. Wait for N≥30 before promoting.
+                verdict = '★ Winners cohort — wait for N≥30 to promote to MULTIPLIER'
+            elif n >= 10 and wr <= 45 and avg_pct <= -0.15:
+                # Weak loser signal. Wait for N≥30 before promoting to filter.
+                verdict = '⚠ Warning — trending toward FILTER (wait for N≥30)'
             elif n < 10:
                 verdict = '⚠ Low N'
             else:

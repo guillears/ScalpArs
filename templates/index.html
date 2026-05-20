@@ -10060,10 +10060,18 @@
                                 const totCls = r.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const avgCls = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const wrCls = r.wr >= 60 ? 'text-emerald-400' : r.wr <= 40 ? 'text-red-400' : 'text-amber-400';
+                                // Verdict color logic — order matters (more specific first):
+                                //   ★ MULTIPLIER CANDIDATE: emerald bold (strong winner signal — ship as multiplier)
+                                //   ⚠ FILTER CANDIDATE: red bold (strong loser signal — ship as entry block)
+                                //   ★ Winners cohort (N too small): emerald
+                                //   ⚠ Warning (trending filter, N too small): amber
+                                //   ⚠ Low N / ✓ Inconclusive: gray
                                 let vCls = 'text-gray-400';
-                                if (r.verdict.startsWith('⚠ PROMOTE')) vCls = 'text-red-400 font-bold';
-                                else if (r.verdict.startsWith('⚠ Warning')) vCls = 'text-amber-400';
+                                if (r.verdict.startsWith('★ MULTIPLIER')) vCls = 'text-emerald-400 font-bold';
+                                else if (r.verdict.startsWith('⚠ FILTER')) vCls = 'text-red-400 font-bold';
+                                else if (r.verdict.startsWith('⚠ PROMOTE')) vCls = 'text-red-400 font-bold';  // legacy backward-compat
                                 else if (r.verdict.startsWith('★')) vCls = 'text-emerald-400';
+                                else if (r.verdict.startsWith('⚠ Warning')) vCls = 'text-amber-400';
                                 const isAny = r.pattern_key === 'c_any';
                                 const rowCls = isAny ? 'bg-white/5 font-semibold' : '';
                                 // TP counterfactual cell colors driven by Δ$:

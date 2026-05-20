@@ -13993,3 +13993,160 @@ To preserve:
 3. The mixed-provenance caveat (pre-May-20 trades have NULL on c7)
 4. The locked promotion gates
 5. The structural gap C7 fills vs the failed Pair Trend Filter approach
+
+## May 20, 2026 — BUG FIX: Phantom Regime Change Exit cache preservation (same class as May 15 phantom_be_aggr bug)
+
+### The diagnosis
+
+Operator reported the "🌀 Phantom Regime Change Exit Counterfactual" table
+showing nearly empty. Investigation revealed only **1 of 278 closed trades**
+had `phantom_regime_change_exit_pnl` populated (0.4%).
+
+Cross-checked against the sibling regime trackers in the same data:
+- `regime_neutral_hit_at`: 110/278 (39.6%) — fires when regime goes NEUTRAL
+- `regime_opposite_at`: 9/278 (3.2%) — fires when regime goes opposite (after NEUTRAL)
+- **`phantom_regime_change_exit_triggered_at`: 1/278 (0.4%)** — should fire at least 9x
+- Other phantom trackers (phantom_be_l1, phantom_be_aggr): 35-36% capture rate ✓
+
+The phantom regime change rate is 100x lower than other phantom trackers
+and 9x lower than its sibling regime_opposite_at. Real bug.
+
+### Root cause
+
+Same class of failure as the May 15 PM `phantom_be_aggr` bug. The
+`update_orders_cache` function rebuilds the in-memory cache from DB on
+restart and periodic syncs. It has TWO failure modes:
+
+**Failure 1: Bootstrap omission (lines 6807-6816, pre-fix)**
+
+The initial cache build dict explicitly copies these fields from the
+persisted Order:
+- `phantom_be_l1_*` ✓
+- `phantom_be_l2_*` ✓
+- `phantom_be_aggr_*` ✓
+- `phantom_tick_a-g_*` ✓
+
+But **OMITTED**:
+- `phantom_regime_change_triggered`
+- `phantom_regime_change_exit_triggered_at`
+- `phantom_regime_change_exit_pnl`
+
+Result: after bot restart, any prior phantom_regime_change capture was
+lost from the cache. The Order DB column still had the value, but the
+cache rebuild forgot it. So if the trade was still open at restart, the
+capture moment was effectively wiped.
+
+**Failure 2: Preservation loop omission (lines 6897-6921, pre-fix)**
+
+The preservation loop (which copies fields from old_info → new_info on
+cache rebuild) preserves:
+- All phantom_be_* fields ✓
+- All phantom_tick_* fields ✓
+- regime_neutral_hit, regime_comeback_at, regime_opposite_at ✓
+
+But **OMITTED phantom_regime_change_***.
+
+Result: every cache rebuild (which happens periodically) silently reset
+the phantom_regime_change_triggered flag back to None. Even within a
+single trade's lifetime, capture moments could be wiped between rebuilds.
+
+This is the EXACT pattern documented in the May 15 PM bug fix entry —
+phantom_be_aggr (added May 14) was omitted from the preservation loop
+and had the same silent-wipe behavior. The fix for that one explicitly
+warned about this class of bug. phantom_regime_change_* (added May 11,
+earlier than phantom_be_aggr) was never given the same fix.
+
+**Failure 3 (compound): cached=None at capture site (line 3923, pre-fix)**
+
+The phantom regime change capture conditional was:
+```python
+if _current_btc_regime != "NEUTRAL" and not cached.get('phantom_regime_change_triggered'):
+```
+
+This `cached.get(...)` call crashes with AttributeError if `cached is None`.
+The `cached` variable can be None for trades not yet in the rebuilt cache.
+Combined with no try/except around the scan loop body, this could silently
+abort the scan cycle for that order.
+
+### The fix (May 20)
+
+Three changes in `services/trading_engine.py`:
+
+1. **Bootstrap fix** (~line 6817): added 3 phantom_regime_change_* fields
+   to the initial cache build dict, sourced from `order.phantom_regime_change_*`
+   columns. Now bot restart preserves any prior capture.
+
+2. **Preservation loop fix** (~line 6912): added a 3-key preservation block
+   matching the May 15 phantom_be_aggr pattern:
+   ```python
+   for _key in ('phantom_regime_change_triggered',
+                'phantom_regime_change_exit_triggered_at',
+                'phantom_regime_change_exit_pnl'):
+       if old_info.get(_key) is not None:
+           new_info[_key] = old_info[_key]
+   ```
+
+3. **None-guard fix** (~line 3923): added `cached is not None and` prefix
+   to the conditional. Prevents AttributeError when cached is None
+   (newly-opened trade, post-restart bootstrap window, etc.).
+
+### Expected impact
+
+Post-fix, the phantom_regime_change_exit_pnl capture rate should rise from
+0.4% to approximately match the regime_opposite_at rate (3-15% depending
+on regime volatility in the window). The Phantom Regime Change Exit CF
+table will start showing meaningful pool sizes as new trades accumulate.
+
+Historical trades with NULL values stay NULL — no backfill possible.
+The 1 INJUSDT trade that did capture (May 15) remains the only pre-fix
+data point. Going forward, fresh trades will populate properly.
+
+### Locked validation at next batch
+
+If at the next 30-trade batch:
+- Phantom capture rate ≥ 3% (matches regime_opposite floor) → fix validated
+- Capture rate still <1% → escalate, look for another bug
+- Capture rate ≥ 10% → fix validated AND high regime-volatility window;
+  cross-tab phantom Δ$ becomes meaningful for the BE-active gate decision
+
+### Methodological lesson (extends the May 18 lesson)
+
+**When adding a new phantom/counterfactual tracker, the engineering checklist
+must include:**
+
+1. ☐ Initialize the cache key in the trade-open path (line 2580)
+2. ☐ Add the key to `update_orders_cache` bootstrap dict (line 6807+)
+3. ☐ Add the key to `update_orders_cache` preservation loop (line 6897+)
+4. ☐ Persist on close in `_close_position_locked` (line 3182)
+5. ☐ Guard cached.get() calls with `cached is not None and`
+6. ☐ Verify the column exists in the Order model
+7. ☐ Add auto-migrate in database.py
+
+Steps 2-3 and 5 are the easiest to miss. The May 11 phantom_regime_change
+ship missed steps 2, 3, AND 5. The May 14 phantom_be_aggr ship missed
+step 3 (caught and fixed May 15). Now this fix closes the same gap for
+phantom_regime_change.
+
+For any FUTURE phantom tracker, this 7-step checklist should be followed
+mechanically.
+
+### Files changed
+- `services/trading_engine.py` — 3 fixes:
+  - Bootstrap fields added at update_orders_cache initial build
+  - Preservation loop added with reference to May 15 fix
+  - None-guard added on capture condition
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The diagnostic methodology (cross-check phantom rate vs sibling trackers)
+2. The three-failure-mode breakdown (bootstrap omission + preservation loop
+   omission + cached=None crash)
+3. The 7-step engineering checklist for future phantom trackers
+4. The reference to the May 15 phantom_be_aggr fix — same class of bug, 
+   ship that fix's pattern from now on as a template
+
+If a future phantom tracker shows anomalously low capture rate, the
+diagnostic is: check the 7-step checklist; usually steps 2/3/5 are
+the culprits.

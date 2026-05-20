@@ -3920,7 +3920,11 @@ class TradingEngine:
             # Capture the FIRST cycle where BTC regime flips opposite to trade direction,
             # regardless of whether the real exit is enabled. Enables counterfactual
             # evaluation of regime_change_exit_enabled before flipping it on.
-            if _current_btc_regime != "NEUTRAL" and not cached.get('phantom_regime_change_triggered'):
+            # May 20 fix: guard against cached=None (newly-opened trade not yet in cache,
+            # or post-restart before update_orders_cache runs). Previously crashed silently
+            # if regime was BULLISH/BEARISH and cached was None, contributing to the
+            # 1/278 capture rate.
+            if cached is not None and _current_btc_regime != "NEUTRAL" and not cached.get('phantom_regime_change_triggered'):
                 _phantom_regime_conflict = (
                     (order.direction == "LONG" and _current_btc_regime == "BEARISH") or
                     (order.direction == "SHORT" and _current_btc_regime == "BULLISH")
@@ -6814,6 +6818,13 @@ class TradingEngine:
                 'phantom_be_aggr_triggered': order.phantom_be_aggr_triggered_at is not None,
                 'phantom_be_aggr_triggered_at': order.phantom_be_aggr_triggered_at,
                 'phantom_be_aggr_would_exit_pnl': order.phantom_be_aggr_would_exit_pnl,
+                # May 11 — phantom regime change exit (observation-only).
+                # May 20 fix: bootstrap from persisted Order columns so bot restart preserves
+                # any prior capture. Was missing from update_orders_cache: result = 1/278 trades
+                # had the data (0.4%), should have been ~3-5% based on regime_opposite_at rate.
+                'phantom_regime_change_triggered': order.phantom_regime_change_exit_triggered_at is not None,
+                'phantom_regime_change_exit_triggered_at': order.phantom_regime_change_exit_triggered_at,
+                'phantom_regime_change_exit_pnl': order.phantom_regime_change_exit_pnl,
                 'phantom_tick_a_triggered': order.phantom_tick_a_triggered_at is not None,
                 'phantom_tick_a_triggered_at': order.phantom_tick_a_triggered_at,
                 'phantom_tick_a_pnl': order.phantom_tick_a_pnl,
@@ -6903,6 +6914,14 @@ class TradingEngine:
                             # flags to False between realtime ticks; if an exit (e.g., EMA13_CROSS) fired
                             # before the next tick could re-arm, the counterfactual recorded nothing.
                             for _key in ('phantom_be_aggr_triggered', 'phantom_be_aggr_triggered_at', 'phantom_be_aggr_would_exit_pnl'):
+                                if old_info.get(_key) is not None:
+                                    new_info[_key] = old_info[_key]
+                            # May 20 bug fix: same omission for phantom_regime_change_* (added May 11).
+                            # Cache rebuilds were silently wiping the captured regime-flip moment.
+                            # Result before fix: 1 of 278 closed trades had phantom data (0.4%),
+                            # vs 9-15 trades where regime did flip (regime_opposite_at populated).
+                            # See CLAUDE.md May 20 entry for diagnosis.
+                            for _key in ('phantom_regime_change_triggered', 'phantom_regime_change_exit_triggered_at', 'phantom_regime_change_exit_pnl'):
                                 if old_info.get(_key) is not None:
                                     new_info[_key] = old_info[_key]
                             for _lbl in ['a', 'b', 'c', 'd', 'e', 'f', 'g']:

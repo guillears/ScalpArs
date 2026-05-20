@@ -7741,6 +7741,7 @@ def _compute_pattern_c_validation(orders):
             tp10_actual, tp10_sim, tp10_fires, tp10_saves, tp10_kills = _sim_tp_cohort(matched, 0.10)
             tp05_delta = tp05_sim - tp05_actual
             tp10_delta = tp10_sim - tp10_actual
+            # tp05_sim / tp10_sim ARE the new totals (sum of sim$ across cohort)
 
             # Verdict per locked gate
             if n >= 30 and wr <= 40 and avg_pct <= -0.20:
@@ -7765,10 +7766,12 @@ def _compute_pattern_c_validation(orders):
                 'np_count': np_count,
                 'np_rate': round(np_rate, 1),
                 # TP counterfactual columns
+                'tp05_new_total_usd': round(tp05_sim, 2),
                 'tp05_delta_usd': round(tp05_delta, 2),
                 'tp05_fires': tp05_fires,
                 'tp05_saves': tp05_saves,
                 'tp05_kills': tp05_kills,
+                'tp10_new_total_usd': round(tp10_sim, 2),
                 'tp10_delta_usd': round(tp10_delta, 2),
                 'tp10_fires': tp10_fires,
                 'tp10_saves': tp10_saves,

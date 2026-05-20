@@ -1685,7 +1685,7 @@
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 Pattern C Tracker (observation-only)</h3>
                     <p class="text-xs text-gray-400 mb-3">
-                        8 Pattern C signatures × LONG/SHORT, computed at entry. Each pattern captures a
+                        9 Pattern C signatures × LONG/SHORT, computed at entry. Each pattern captures a
                         distinct Never-Positive failure mode. Promotion gate: N ≥ 30 per pattern AND
                         WR ≤ 40% AND Avg P&L % ≤ -0.20%. Until then, observation-only.
                     </p>
@@ -1706,13 +1706,14 @@
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Never Positive count (peak < 0.05%) and rate among matched trades">NP (n / %)</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Loser-precision: % of matches that closed as losers (pnl ≤ 0). High loser-precision = pattern is a clean loser detector → filter candidate. Low loser-precision = pattern mostly catches winners → blocking would kill them. Promotion-bar maps WR ≤40% to loser-precision ≥60%. ★ green ≥70% (filter candidate); ⚠ amber 40-70% (mixed); red <40% (would kill winners).">Loser %</th>
                                     <th class="px-3 py-2 font-medium text-right" title="What total $ would be if a fixed TP cap of 0.05% net was applied. Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/kills). Saves = losers converted to small wins. Kills = winners capped early. NP trades (peak <0.05%) are unaddressable by TP and don't fire. Δ$ already nets out winner-kill cost — the magnitude is in the Δ.">TP 0.05 → New $ (Δ, f/s/k)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Same as TP 0.05 but cap at +0.10% net. Higher threshold = fewer fires + fewer kills but smaller per-trade save. CLAUDE.md May 20 locked decision matrix: ship pattern-gated TP at N≥30 per direction + Δ$ ≥ +$80 + kills ≤ saves/2.">TP 0.10 → New $ (Δ, f/s/k)</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-c-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="12" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1725,7 +1726,47 @@
                         <div><span class="text-amber-300 font-semibold">C6 Macro over-extended</span> — BTC at climactic strength SAME direction as trade (LONG: BTC RSI ≥65 + ADX ≥28 + above 4hr trend ≥+0.15%; SHORT mirror). Fails because BTC is about to revert from over-extension and drags pair with it. <span class="italic text-gray-500">Different from C2: C2 catches BTC moving AGAINST trade; C6 catches BTC moving WITH trade but at the climax. Potential exit strategy: close on first BTC RSI rollover (2 declining candles).</span></div>
                         <div><span class="text-amber-300 font-semibold">C7 Pair Countertrend Bounce</span> — Pair is deeply against its own 4hr trend AND EMA50 slope confirms the trend direction AND entry is mid-range (LONG: pair_gap ≤ -0.50% + slope ≤ -0.05% + RngPos ≥ 40%; SHORT mirror: pair_gap ≥ +0.50% + slope ≥ +0.05% + RngPos ≤ 60%). Bot is buying a dead-cat bounce / shorting a failed breakdown. <span class="italic text-gray-500">Different from C1: C1 catches climax entries WITH pair trend (over-extension same direction); C7 catches countertrend bounce-buying AGAINST pair trend. Potential exit strategy: time-based bail at +5min if peak still &lt;+0.20%.</span></div>
                         <div><span class="text-amber-300 font-semibold">C8 Oversold/Overbought Chop</span> — Entry at range extreme (LONG: RngPos ≥ 75; SHORT: RngPos ≤ 25) AND sharp ADXΔ (≥ 1.0) AND pair has NO clear 4hr trend (|pair_gap| ≤ 0.20%) AND low BTC vol (BTC ATR ≤ 0.15%). Bot signal fires on RSI extreme + EMA cross, but chop dictates the trade gets squeezed (SHORT) or fades (LONG) instead of riding continuation. <span class="italic text-gray-500">Different from C1: C1 requires deep pair gap (clear trend); C8 requires NO pair trend. Different from C4: C4 catches low-Pair-ADX chop; C8 catches sharp-ADX-accel into chop. NOTE: cross-batch backtest (N=46) initially showed C8 as a 61% WR winner cohort — observation-only to resolve whether C8 is a real loser pattern or regime-specific noise. Potential exit strategy if validated: tight time-based bail.</span></div>
-                        <div class="pt-1 text-gray-500"><span class="text-gray-300 font-semibold">ANY row</span> — OR of C1-C8 (any trade matching at least one pattern). Use it as the aggregate "Pattern C coverage" reading; if ANY shows ≥60% NP rate, the precursor framework is working at the aggregate level even if individual patterns are too thin. <span class="italic">Note: trades persisted before each pattern's ship date have NULL for that column (C5/C6 added May-19-late-PM; C7 added May-20; C8 added May-20-late).</span></div>
+                        <div><span class="text-amber-300 font-semibold">C9 Low-vol Countertrend Chop</span> — C4 base (BTC ATR ≤ 0.15% + BTC ADX ≤ 22 + Pair ADX ≤ 25) PLUS MILD countertrend pair_gap (LONG: pair_gap ≤ -0.10%; SHORT: pair_gap ≥ +0.10%). Catches losses where the bot enters a pair that's BARELY going the wrong way while BTC is in chop — no follow-through, trade rides to SL. <span class="italic text-gray-500">Different from C7: C7 requires DEEP countertrend (≤ -0.50%) + slope confirmation. C9 catches the milder variant the EDEN-style failures fall into. Origin: today's C4 LONG deep-dive — EDEN losers had pair_gap -0.88 to -1.13% (countertrend) while winners had +0.66 / -0.085 (neutral). C9 is the "tight C4-LOSS" sub-pattern operationalized as a separate trackable pattern.</span></div>
+                        <div class="pt-1 text-gray-500"><span class="text-gray-300 font-semibold">ANY row</span> — OR of C1-C9 (any trade matching at least one pattern). Use it as the aggregate "Pattern C coverage" reading; if ANY shows ≥60% NP rate, the precursor framework is working at the aggregate level even if individual patterns are too thin. <span class="italic">Note: trades persisted before each pattern's ship date have NULL for that column (C5/C6 added May-19-late-PM; C7 added May-20; C8 added May-20-late; C9 added May-20-latest).</span></div>
+                    </div>
+                </div>
+
+                <!-- Unmatched Losers Deep Dive (May 20-late — discovery surface for new patterns) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">🔍 Unmatched Losers Deep Dive (observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Closed losers that did NOT match any C1-C9 signature. These are failure modes
+                        our current pattern framework is BLIND to. When ≥3 unmatched losers share a
+                        recognizable entry signature, that's the discovery signal: define a new
+                        pattern (C10, C11, ...) and add it to the tracker. Sorted by $ loss
+                        (worst first), capped at 20 rows.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium">Pair</th>
+                                    <th class="px-2 py-2 font-medium">Dir</th>
+                                    <th class="px-2 py-2 font-medium text-right">$ Loss</th>
+                                    <th class="px-2 py-2 font-medium text-right">Peak%</th>
+                                    <th class="px-2 py-2 font-medium text-right">Close%</th>
+                                    <th class="px-2 py-2 font-medium text-right">RSI</th>
+                                    <th class="px-2 py-2 font-medium text-right">pADX</th>
+                                    <th class="px-2 py-2 font-medium text-right">ADXΔ</th>
+                                    <th class="px-2 py-2 font-medium text-right">Stretch</th>
+                                    <th class="px-2 py-2 font-medium text-right">RngPos</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Pair EMA13-EMA50 gap %">PairTGap</th>
+                                    <th class="px-2 py-2 font-medium text-right">BTCRSI</th>
+                                    <th class="px-2 py-2 font-medium text-right">BTCADX</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="BTC ATR %">BTCATR</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="BTC EMA13-EMA50 gap %">BTCTGap</th>
+                                    <th class="px-2 py-2 font-medium">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="unmatched-losers-body" class="divide-y divide-white/5">
+                                <tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched losers — Pattern C catches them all 🎉)</td></tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -6359,8 +6400,9 @@
             const _pc1 = perf.pattern_c_validation || [];
             if (_pc1.length) {
                 lines.push(`\n${hr2}`);
-                lines.push(`## Pattern C Tracker (observation-only) — 8 signatures × LONG/SHORT`);
+                lines.push(`## Pattern C Tracker (observation-only) — 9 signatures × LONG/SHORT`);
                 lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter`);
+                lines.push(`Loser%: precision = % of matches that closed as losers. ≥70% = filter candidate.`);
                 lines.push(`TP CF: simulates fixed TP cap (0.05% / 0.10% net). Cell shows NewTotal$ | Δ$ | (f/s/k).`);
                 lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.`);
                 // Batch summary from ANY rows
@@ -6377,10 +6419,20 @@
                     lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.05 ${_fs(t5)} (Δ${_fs(t5-tA)}) | TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)})`);
                 }
                 lines.push('');
-                lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05  NewTot$ | Δ$ (f/s/k)         TP0.10  NewTot$ | Δ$ (f/s/k)         Verdict');
-                lines.push('-'.repeat(180));
+                // Batch loser coverage (Item 2, May 20-late)
+                const _pc1Cov = perf.pattern_c_batch_coverage || {};
+                ['LONG', 'SHORT'].forEach(d => {
+                    const v = _pc1Cov[d];
+                    if (!v || v.total === 0) return;
+                    const covStr = v.coverage_pct == null ? '-' : v.coverage_pct.toFixed(0) + '%';
+                    lines.push(`  ${d} Batch Coverage: ${v.winners}W / ${v.losers}L total · ${v.losers_in_c} of ${v.losers} losers matched (${covStr}) · ${v.losers_outside_c} OUTSIDE`);
+                });
+                lines.push('');
+                lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05  NewTot$ | Δ$ (f/s/k)         TP0.10  NewTot$ | Δ$ (f/s/k)         Verdict');
+                lines.push('-'.repeat(195));
                 _pc1.forEach(r => {
                     const wr = r.wr.toFixed(1).padStart(5) + '%';
+                    const lp = (r.loser_precision_pct == null ? '-' : r.loser_precision_pct.toFixed(0) + '%').padStart(6);
                     const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                     const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                     const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
@@ -6391,7 +6443,24 @@
                     const tp10d = ((r.tp10_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_delta_usd || 0).toFixed(2)).padStart(8);
                     const tp05fsk = `(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})`.padEnd(12);
                     const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${r.verdict}`);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${r.verdict}`);
+                });
+                lines.push('');
+            }
+
+            // Unmatched Losers Deep Dive (Item 3, May 20-late — discovery surface for new patterns)
+            const _ul1 = perf.pattern_c_unmatched_losers || [];
+            if (_ul1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Unmatched Losers Deep Dive (observation-only)');
+                lines.push('Closed losers NOT matching any C1-C9 signature. ≥3 sharing a signature → new pattern candidate.\n');
+                lines.push('Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                lines.push('-'.repeat(155));
+                const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
+                const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
+                _ul1.forEach(r => {
+                    const loss = ('-$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
+                    lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                 });
                 lines.push('');
             }
@@ -7752,8 +7821,9 @@
                 const _pc2 = perf.pattern_c_validation || [];
                 if (_pc2.length) {
                     lines.push(`\n${hr2}`);
-                    lines.push(`## Pattern C Tracker (observation-only) — 8 signatures × LONG/SHORT`);
+                    lines.push(`## Pattern C Tracker (observation-only) — 9 signatures × LONG/SHORT`);
                     lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter`);
+                    lines.push(`Loser%: precision = % of matches that closed as losers. ≥70% = filter candidate.`);
                     lines.push(`TP CF: simulates fixed TP cap (0.05% / 0.10% net). Cell shows NewTotal$ | Δ$ | (f/s/k).`);
                     lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.`);
                     // Batch summary from ANY rows
@@ -7769,11 +7839,20 @@
                         });
                         lines.push(`  TOTAL Pattern C (LONG+SHORT): actual ${_fs(tA)} → TP 0.05 ${_fs(t5)} (Δ${_fs(t5-tA)}) | TP 0.10 ${_fs(t1)} (Δ${_fs(t1-tA)})`);
                     }
+                    // Batch loser coverage (Item 2)
+                    const _pc2Cov = perf.pattern_c_batch_coverage || {};
+                    ['LONG', 'SHORT'].forEach(d => {
+                        const v = _pc2Cov[d];
+                        if (!v || v.total === 0) return;
+                        const covStr = v.coverage_pct == null ? '-' : v.coverage_pct.toFixed(0) + '%';
+                        lines.push(`  ${d} Batch Coverage: ${v.winners}W / ${v.losers}L total · ${v.losers_in_c} of ${v.losers} losers matched (${covStr}) · ${v.losers_outside_c} OUTSIDE`);
+                    });
                     lines.push('');
-                    lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05  NewTot$ | Δ$ (f/s/k)         TP0.10  NewTot$ | Δ$ (f/s/k)         Verdict');
-                    lines.push('-'.repeat(180));
+                    lines.push('Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05  NewTot$ | Δ$ (f/s/k)         TP0.10  NewTot$ | Δ$ (f/s/k)         Verdict');
+                    lines.push('-'.repeat(195));
                     _pc2.forEach(r => {
                         const wr = r.wr.toFixed(1).padStart(5) + '%';
+                        const lp = (r.loser_precision_pct == null ? '-' : r.loser_precision_pct.toFixed(0) + '%').padStart(6);
                         const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                         const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                         const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
@@ -7784,7 +7863,24 @@
                         const tp10d = ((r.tp10_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_delta_usd || 0).toFixed(2)).padStart(8);
                         const tp05fsk = `(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})`.padEnd(12);
                         const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${r.verdict}`);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${lp}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05nt} | ${tp05d} ${tp05fsk}  ${tp10nt} | ${tp10d} ${tp10fsk}  ${r.verdict}`);
+                    });
+                    lines.push('');
+                }
+
+                // Unmatched Losers Deep Dive (Item 3)
+                const _ul2 = perf.pattern_c_unmatched_losers || [];
+                if (_ul2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Unmatched Losers Deep Dive (observation-only)');
+                    lines.push('Closed losers NOT matching any C1-C9 signature. ≥3 sharing a signature → new pattern candidate.\n');
+                    lines.push('Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                    lines.push('-'.repeat(155));
+                    const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
+                    const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
+                    _ul2.forEach(r => {
+                        const loss = ('-$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
+                        lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                     });
                     lines.push('');
                 }
@@ -9928,14 +10024,34 @@
                                 actual <span class="${ntCls(totActual)} font-semibold">${fmt$s(totActual)}</span>
                                 → TP 0.05 <span class="${ntCls(totTP05)} font-semibold">${fmt$s(totTP05)}</span> <span class="${cls(d05)} font-semibold">(Δ${fmt$s(d05)})</span>
                                 | TP 0.10 <span class="${ntCls(totTP10)} font-semibold">${fmt$s(totTP10)}</span> <span class="${cls(d10)} font-semibold">(Δ${fmt$s(d10)})</span>`;
-                            _pcSummary.innerHTML = `${dirLines}<br>${totalLine}`;
+                            // Item 2 (May 20-late): batch-level loser coverage stat
+                            // appended below the TP totals. Shows whether Pattern C is
+                            // catching most losers or missing failure modes.
+                            const cov = data.pattern_c_batch_coverage || {};
+                            const covLines = ['LONG', 'SHORT'].map(d => {
+                                const v = cov[d];
+                                if (!v || v.total === 0) return '';
+                                const covCls = v.coverage_pct == null
+                                    ? 'text-gray-400'
+                                    : v.coverage_pct >= 70 ? 'text-emerald-400'
+                                    : v.coverage_pct >= 50 ? 'text-amber-400'
+                                    : 'text-red-400';
+                                const outCls = v.losers_outside_c > 0 ? 'text-red-400 font-semibold' : 'text-emerald-400';
+                                return `<span class="text-gray-400 font-semibold">${d} Batch Coverage:</span>
+                                    <span class="text-emerald-400">${v.winners}W</span> /
+                                    <span class="text-red-400">${v.losers}L</span> total
+                                    · ${v.losers_in_c} of ${v.losers} losers matched Pattern C
+                                    (<span class="${covCls}">${v.coverage_pct == null ? '-' : v.coverage_pct.toFixed(0) + '%'}</span>)
+                                    · <span class="${outCls}">${v.losers_outside_c} OUTSIDE</span>`;
+                            }).filter(Boolean).join('<br>');
+                            _pcSummary.innerHTML = `${dirLines}<br>${totalLine}` + (covLines ? `<br><br>${covLines}` : '');
                         } else {
                             _pcSummary.innerHTML = '<span class="text-gray-500">(no matched trades yet)</span>';
                         }
                     }
                     if (_pcBody) {
                         if (!_pcRows.length) {
-                            _pcBody.innerHTML = '<tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
+                            _pcBody.innerHTML = '<tr><td colspan="12" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
                         } else {
                             const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
@@ -9974,9 +10090,47 @@
                                     <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
                                     <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
                                     <td class="px-3 py-1 text-center text-gray-400">${r.np_count || 0} / ${r.np_rate.toFixed(0)}%</td>
+                                    <td class="px-3 py-1 text-center ${(r.loser_precision_pct||0) >= 70 ? 'text-emerald-400 font-semibold' : (r.loser_precision_pct||0) >= 40 ? 'text-amber-400' : 'text-gray-400'}">${r.loser_precision_pct == null ? '-' : r.loser_precision_pct.toFixed(0) + '%'}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${tp05Str}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${tp10Str}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                }
+
+                // Item 3 (May 20-late): Unmatched Losers Deep Dive — losers OUTSIDE any C pattern.
+                // When ≥3 share a recognizable signature → define new pattern (C10, C11...).
+                if (data.pattern_c_unmatched_losers !== undefined) {
+                    const _ulRows = data.pattern_c_unmatched_losers || [];
+                    const _ulBody = document.getElementById('unmatched-losers-body');
+                    if (_ulBody) {
+                        if (!_ulRows.length) {
+                            _ulBody.innerHTML = '<tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched losers — Pattern C catches them all 🎉)</td></tr>';
+                        } else {
+                            const fmtN = (v, d=2, suffix='') => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + suffix;
+                            const fmtP = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
+                            const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                            _ulBody.innerHTML = _ulRows.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                return `<tr>
+                                    <td class="px-2 py-1 text-gray-200">${r.pair}</td>
+                                    <td class="px-2 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right text-red-400 font-semibold">${fmt$(r.pnl)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.peak_pnl)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.pnl_percentage)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_rsi == null ? '-' : r.entry_rsi.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_adx == null ? '-' : r.entry_adx.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtN(r.entry_adx_delta, 2)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_ema5_stretch == null ? '-' : r.entry_ema5_stretch.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_range_position == null ? '-' : r.entry_range_position.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_pair_ema20_ema50_gap_pct)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_rsi == null ? '-' : r.entry_btc_rsi.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_adx == null ? '-' : r.entry_btc_adx.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_atr_pct == null ? '-' : r.entry_btc_atr_pct.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_btc_trend_gap_pct)}</td>
+                                    <td class="px-2 py-1 text-gray-500 text-xs">${r.close_reason || ''}</td>
                                 </tr>`;
                             }).join('');
                         }

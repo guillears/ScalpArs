@@ -435,6 +435,24 @@ class SignalThresholds(BaseModel):
     pc_short_c8_adx_delta_min: float = 1.0  # ADXΔ ≥ this = sharp ADX acceleration
     pc_short_c8_pair_gap_abs_max: float = 0.20  # |pair_gap| ≤ this = pair NOT in clear trend
     pc_short_c8_btc_atr_max: float = 0.15  # BTC ATR ≤ this = low-vol regime (chop)
+    # C9 — Low-vol Countertrend Chop (NEW May 20-late, the "tight C4-LOSS" sub-pattern)
+    # C9 = C4 base + MILD countertrend pair_gap. Catches losses where the bot
+    # enters into a pair that's slightly against its own 4hr trend WHILE BTC is
+    # in low-vol regime. Different from C7 (deep countertrend ≤ -0.50%) — C9 is
+    # the milder variant where pair is BARELY going the wrong way but chop kills
+    # follow-through.
+    # Origin: today's C4 LONG deep-dive — EDEN losers had PairTGap -0.88 to -1.13%
+    # (clearly negative) while FIDA/DASH had PairTGap +0.66/-0.085 (neutral-to-positive).
+    # C7 misses these because EDEN slopes weren't ≤ -0.05%.
+    # Observation-only. Per CLAUDE.md May 19 promotion gate (N≥30, WR≤40%, Avg≤-0.20%).
+    pc_long_c9_btc_atr_max: float = 0.15  # BTC ATR ≤ this = low-vol regime
+    pc_long_c9_btc_adx_max: float = 22.0  # BTC ADX ≤ this = no BTC trend conviction
+    pc_long_c9_pair_adx_max: float = 25.0  # Pair ADX ≤ this = no pair trend conviction
+    pc_long_c9_pair_gap_max: float = -0.10  # PairTGap ≤ this = pair countertrending vs LONG (mild)
+    pc_short_c9_btc_atr_max: float = 0.15  # BTC ATR ≤ this = low-vol regime
+    pc_short_c9_btc_adx_max: float = 22.0  # BTC ADX ≤ this = no BTC trend conviction
+    pc_short_c9_pair_adx_max: float = 25.0  # Pair ADX ≤ this = no pair trend conviction
+    pc_short_c9_pair_gap_min: float = 0.10  # PairTGap ≥ this = pair countertrending vs SHORT (mild)
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
     global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)

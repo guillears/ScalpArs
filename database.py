@@ -233,6 +233,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c7_match BOOLEAN"))
                 if 'entry_pattern_c8_match' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c8_match BOOLEAN"))
+                if 'entry_pattern_c9_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c9_match BOOLEAN"))
                 if 'entry_pattern_c_any_match' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c_any_match BOOLEAN"))
                 if 'peak_reached_at' not in columns:

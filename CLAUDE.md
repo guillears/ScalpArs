@@ -14447,3 +14447,139 @@ To anchor the next-checkpoint mechanical decision so future-Claude doesn't:
 
 When the next batch lands and N has grown, the table cells answer the
 ship/defer/revert decision directly. No re-analysis required.
+
+## May 20, 2026 (latest evening) — Pattern C tracker: 3 enhancements + C9 ship
+
+Four shipped changes today late-evening. All observation-only, no behavior change.
+
+### Enhancement 1 — Loser-precision column
+
+Added per-row column showing **% of matches that were losers**. Direct visibility for the "is this row safe to block at entry?" question.
+
+Color logic:
+- **≥70% loser-precision** → emerald: filter candidate
+- **40-70%** → amber: mixed cohort
+- **<40%** → gray: would block more winners than losers (e.g., C6 LONG at 29% — winners cohort)
+
+The locked promotion gate (WR ≤ 40%) is mathematically `loser_precision_pct ≥ 60%`. The new column shows it directly.
+
+### Enhancement 2 — Batch-level loser coverage stat
+
+Appended to the existing summary block above the table:
+
+```
+LONG Batch Coverage:  11W / 6L total · 5 of 6 losers matched (83%) · 1 OUTSIDE
+SHORT Batch Coverage: 5W / 4L total · 4 of 4 losers matched (100%) · 0 OUTSIDE
+```
+
+**Coverage threshold interpretation:**
+- ≥70% (emerald): Pattern C catches most losers, just need N to promote individual patterns
+- 50-70% (amber): noticeable gap — some failure modes uncovered
+- <50% (red): **the framework is missing major failure modes** — define new patterns
+
+If coverage drops below ~70% across multiple batches, that's the operator signal to look at the Unmatched Losers Deep Dive (#3 below) for new pattern candidates.
+
+### Enhancement 3 — Unmatched Losers Deep Dive table (NEW section)
+
+New analytics surface below the Pattern C tracker. Lists CLOSED losers that match NO C1-C9 signature, sorted by $ loss (worst first), capped at 20 rows.
+
+Columns: Pair | Dir | $ Loss | Peak% | Close% | RSI | pADX | ADXΔ | Stretch | RngPos | PairTGap | BTCRSI | BTCADX | BTCATR | BTCTGap | Reason
+
+**This is the discovery mechanism.** When ≥3 unmatched losers share a recognizable entry signature, that's the candidate to define as a new pattern (C10, C11, ...).
+
+Today's example: SAHARAUSDT LONG (-$88) was the only LONG loser outside Pattern C — RngPos 58, ADXΔ +2.15, Stretch 0.232, BTC RSI 60. Single observation, not yet a candidate for a new pattern.
+
+### Ship 4 — C9: Low-vol Countertrend Chop (NEW Pattern C signature)
+
+The "tight C4-LOSS" sub-pattern derived from today's deep dive of C4 LONG cohort (EDEN losers had PairTGap -0.88 to -1.13% while FIDA/DASH winners had +0.66 / -0.085).
+
+**Signature:**
+- LONG: BTC ATR ≤ 0.15% + BTC ADX ≤ 22 + Pair ADX ≤ 25 + PairTGap ≤ -0.10%
+- SHORT: BTC ATR ≤ 0.15% + BTC ADX ≤ 22 + Pair ADX ≤ 25 + PairTGap ≥ +0.10%
+
+**Mechanism:** bot enters into a pair barely going the wrong way while BTC is in chop regime. The mild countertrend + low-vol combination means no follow-through. Trade rides to SL.
+
+**Distinction from C7 (Pair Countertrend Bounce):**
+- C7 requires DEEP countertrend (≤ -0.50%) + EMA50 slope confirming
+- C9 catches the MILDER variant (just ≤ -0.10%) within C4 chop conditions
+- EDEN losers had pair_gap -0.88 to -1.13% but failed C7 because slope wasn't ≤ -0.05%
+- C9 catches them; C7 missed them
+
+**Test on today's data:**
+- EDEN -$42: C9 ✓ (PairTGap -0.882) — caught
+- EDEN -$42: C9 ✓ (PairTGap -1.125) — caught
+- DASH -$42: pair_gap -0.085 → C9 misses by 0.015% (THRESHOLD TENSION — see caveat below)
+- FIDA +$13: C9 ✗ (pair_gap +0.66) — correctly excluded
+
+**Threshold tension caveat:** DASH (-$42) had pair_gap -0.085%, just above the -0.10% threshold. Lowering to -0.05% would catch DASH but risks over-fitting to N=1. Locked at -0.10% with the explicit acknowledgment that 1 LONG loser today is uncaught. Cross-batch validation will tell us whether to tighten.
+
+### Pre-committed promotion gates (locked NOW for C9)
+
+Same as all Pattern C signatures (CLAUDE.md May 19 framework):
+- **N ≥ 30 per direction** in C9 cohort
+- **WR ≤ 40%** (loser-precision ≥ 60%)
+- **Avg P&L % ≤ -0.20%**
+- **NP rate ≥ 60%**
+
+If all 4 conditions hold at next ≥100-trade checkpoint → C9 promotes to entry filter (pattern-gated block).
+
+If C9 shows ≥60% WR on N ≥ 20 → it's catching winners not losers → DROP from tracker.
+
+### What today's data shows about the framework health
+
+**Loser coverage by Pattern C (post-deploy live data):**
+- LONG: 5 of 6 losers covered (83%) — ★ healthy
+- SHORT: 4 of 4 losers covered (100%) — ★ healthy
+
+→ Pattern C is currently a strong loser detector. The "missing patterns" problem is bounded — only 1 LONG loser today fell outside any signature.
+
+**Precision per pattern (today, small N):**
+- C4 SHORT: 80% loser-precision (4L/5 trades) → filter candidate
+- C4 LONG: 75% loser-precision (3L/4 trades) → close to filter-candidate
+- C6 LONG: 29% loser-precision (2L/7 trades) → ✗ blocking would kill winners
+- C7 LONG: 0% loser-precision (0L/2 trades) → ✗ winner cohort
+
+The Loser % column makes these decisions instant.
+
+### Files changed (May 20 latest)
+
+- `config.py` — 8 new C9 threshold fields (4 LONG + 4 SHORT)
+- `models.py` — `entry_pattern_c9_match` Boolean column
+- `database.py` — ALTER TABLE auto-migrate
+- `services/trading_engine.py` — `_compute_pattern_c_match` returns 10-tuple now;
+  both call sites + Order constructors include c9
+- `main.py` —
+  - `_compute_pattern_c_validation`: adds `loser_count` + `loser_precision_pct` per row;
+    extends patterns list to include C9
+  - NEW `_compute_pattern_c_batch_coverage(orders)` returns per-direction
+    {total, winners, losers, losers_in_c, losers_outside_c, coverage_pct}
+  - NEW `_compute_unmatched_losers(orders, limit=20)` returns CLOSED losers
+    that match no C1-C9 signature with their entry conditions
+  - Payload integration in `_compute_performance`
+- `templates/index.html` —
+  - Pattern C table: Loser % column header + cell render
+  - Summary block: batch coverage lines appended
+  - NEW "🔍 Unmatched Losers Deep Dive" section + table + JS renderer
+  - C9 legend description
+  - "8 signatures" → "9 signatures" intro
+  - Column count fix (11 → 12)
+  - Both text-export sites updated with all 4 enhancements
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The reading methodology — Loser % column makes the per-pattern decision instant
+2. The discovery mechanism — Unmatched Losers Deep Dive lets the framework SELF-DISCOVER missing patterns instead of relying on ad-hoc analysis
+3. The C9 ship rationale — derived directly from today's C4 LONG deep dive, captures EDEN-style failures that C7 misses
+4. The locked promotion gates for C9 — same as all C-patterns, mechanical at next checkpoint
+5. The framework maturity baseline — Pattern C now covers 83-100% of today's losers per direction. If this drops materially across batches, that's the signal to define new patterns from unmatched losers.
+
+When the next batch lands:
+1. Read the precision column to identify filter candidates (rows with ≥70% Loser%)
+2. Read the batch coverage stat to confirm Pattern C still catches most losers
+3. If a row hits the promotion gate, ship that pattern as an entry block
+4. If coverage drops below 70%, look at Unmatched Losers Deep Dive for clusters
+5. If ≥3 unmatched losers share a signature, define C10 and add to tracker
+
+The framework is now self-discovering: it tells you when a pattern is ready to ship AND when a new pattern needs to be defined. No more ad-hoc inspection required.

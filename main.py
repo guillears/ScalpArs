@@ -6405,6 +6405,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "be_floor_counterfactual": _compute_be_floor_counterfactual(orders, new_floor=0.10),
         # Pattern C Tracker validation (May 19, observation-only)
         "pattern_c_validation": _compute_pattern_c_validation(orders),
+        # Pattern C batch coverage + unmatched-losers deep dive (May 20 late)
+        "pattern_c_batch_coverage": _compute_pattern_c_batch_coverage(orders),
+        "pattern_c_unmatched_losers": _compute_unmatched_losers(orders, limit=20),
         # Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
         "regime_change_counterfactual": _compute_regime_change_counterfactual(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -7667,10 +7670,12 @@ def _compute_pattern_c_validation(orders):
       C7: Pair Countertrend Bounce — pair stretched + slope-confirmed + mid-range (May 20)
       C8: Oversold/Overbought Chop — range extreme + sharp ADXΔ + no pair trend
           + low BTC vol (May 20-late, hypothesis from C4 deep-dive)
+      C9: Low-vol Countertrend Chop — C4 base + MILD countertrend pair_gap
+          (May 20-latest, "tight C4-LOSS" sub-pattern from EDEN deep-dive)
 
     Returns per-pattern rows + ANY-match row + per-direction TOTAL row.
     """
-    patterns = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c_any']
+    patterns = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'c_any']
     pattern_labels = {
         'c1': 'C1 Capitulation chase',
         'c2': 'C2 Macro counter-trend',
@@ -7680,7 +7685,8 @@ def _compute_pattern_c_validation(orders):
         'c6': 'C6 Macro over-extended',
         'c7': 'C7 Pair Countertrend Bounce',
         'c8': 'C8 Oversold/Overbought Chop',
-        'c_any': 'ANY (C1∨…∨C8)',
+        'c9': 'C9 Low-vol Countertrend Chop',
+        'c_any': 'ANY (C1∨…∨C9)',
     }
     # Helper: simulate fixed-TP outcome on a cohort.
     # For each trade: if peak >= tp_threshold, exit at tp_threshold (net %);
@@ -7720,6 +7726,11 @@ def _compute_pattern_c_validation(orders):
                 continue
             wins = sum(1 for o in matched if (o.pnl or 0) > 0)
             wr = (wins / n * 100) if n > 0 else 0
+            # Loser-precision: % of matches that were losers.
+            # High loser_precision = pattern is a clean loser detector → filter candidate.
+            # Low loser_precision = pattern mostly catches winners → blocking would kill them.
+            loser_count = n - wins
+            loser_precision_pct = (loser_count / n * 100) if n > 0 else 0
             total_usd = sum((o.pnl or 0) for o in matched)
             pnls = [o.pnl_percentage for o in matched if o.pnl_percentage is not None]
             avg_pct = (sum(pnls) / len(pnls)) if pnls else 0
@@ -7765,6 +7776,8 @@ def _compute_pattern_c_validation(orders):
                 'avg_peak_pct': round(avg_peak, 3) if avg_peak is not None else None,
                 'np_count': np_count,
                 'np_rate': round(np_rate, 1),
+                'loser_count': loser_count,
+                'loser_precision_pct': round(loser_precision_pct, 1),
                 # TP counterfactual columns
                 'tp05_new_total_usd': round(tp05_sim, 2),
                 'tp05_delta_usd': round(tp05_delta, 2),
@@ -7779,6 +7792,104 @@ def _compute_pattern_c_validation(orders):
                 'verdict': verdict,
             })
     return rows
+
+
+def _compute_pattern_c_batch_coverage(orders):
+    """Pattern C batch-level loser coverage (May 20 late — observation).
+
+    For each direction, compute:
+      - Total CLOSED trades
+      - Winners + Losers count
+      - How many losers match ANY C1..C8 signature (covered)
+      - How many losers are OUTSIDE all C signatures (gap)
+      - Coverage %
+
+    Coverage answers the question: "Is Pattern C catching most losers, or
+    are we missing failure modes?" If coverage drops below ~70% across
+    a batch, that's the signal to define new C9/C10 signatures.
+
+    Returns {LONG: {...}, SHORT: {...}}.
+    """
+    out = {}
+    for direction in ('LONG', 'SHORT'):
+        closed = [o for o in orders if o.direction == direction and o.status == 'CLOSED']
+        winners = [o for o in closed if (o.pnl or 0) > 0]
+        losers = [o for o in closed if (o.pnl or 0) <= 0]
+
+        def has_any_c(o):
+            for k in ('c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'):
+                if getattr(o, f'entry_pattern_{k}_match', None) is True:
+                    return True
+            return False
+
+        losers_in = [o for o in losers if has_any_c(o)]
+        losers_out = [o for o in losers if not has_any_c(o)]
+
+        coverage = (100 * len(losers_in) / max(len(losers), 1)) if losers else None
+
+        out[direction] = {
+            'total': len(closed),
+            'winners': len(winners),
+            'losers': len(losers),
+            'losers_in_c': len(losers_in),
+            'losers_outside_c': len(losers_out),
+            'coverage_pct': round(coverage, 1) if coverage is not None else None,
+        }
+    return out
+
+
+def _compute_unmatched_losers(orders, limit=20):
+    """Unmatched-Losers Deep Dive (May 20 late — observation).
+
+    Lists CLOSED losers that did NOT match any C1..C8 signature, with
+    their entry conditions. These are losers our current pattern framework
+    is BLIND to.
+
+    When ≥3 unmatched losers in a batch share a recognizable entry
+    signature (e.g., all small-cap + high stretch + RngPos extreme),
+    that's the discovery signal: define a new pattern (C9, C10, ...).
+
+    Sorted by $ loss magnitude (worst first). Capped at `limit` rows.
+    """
+    rows = []
+    for o in orders:
+        if o.status != 'CLOSED':
+            continue
+        if (o.pnl or 0) > 0:
+            continue  # winners excluded
+
+        # Skip if any C pattern matched
+        has_any = False
+        for k in ('c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'):
+            if getattr(o, f'entry_pattern_{k}_match', None) is True:
+                has_any = True
+                break
+        if has_any:
+            continue
+
+        rows.append({
+            'pair': o.pair,
+            'direction': o.direction,
+            'opened_at': o.opened_at.isoformat() if o.opened_at else None,
+            'pnl': round(o.pnl or 0, 2),
+            'peak_pnl': round(o.peak_pnl, 3) if o.peak_pnl is not None else None,
+            'pnl_percentage': round(o.pnl_percentage, 3) if o.pnl_percentage is not None else None,
+            'entry_rsi': round(o.entry_rsi, 1) if o.entry_rsi is not None else None,
+            'entry_adx': round(o.entry_adx, 1) if o.entry_adx is not None else None,
+            'entry_adx_delta': round(o.entry_adx_delta, 2) if getattr(o, 'entry_adx_delta', None) is not None else None,
+            'entry_ema5_stretch': round(o.entry_ema5_stretch, 3) if o.entry_ema5_stretch is not None else None,
+            'entry_range_position': round(o.entry_range_position, 1) if getattr(o, 'entry_range_position', None) is not None else None,
+            'entry_pair_ema20_ema50_gap_pct': round(o.entry_pair_ema20_ema50_gap_pct, 3) if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None else None,
+            'entry_btc_rsi': round(o.entry_btc_rsi, 1) if o.entry_btc_rsi is not None else None,
+            'entry_btc_adx': round(o.entry_btc_adx, 1) if o.entry_btc_adx is not None else None,
+            'entry_btc_atr_pct': round(o.entry_btc_atr_pct, 3) if getattr(o, 'entry_btc_atr_pct', None) is not None else None,
+            'entry_btc_trend_gap_pct': round(o.entry_btc_trend_gap_pct, 3) if getattr(o, 'entry_btc_trend_gap_pct', None) is not None else None,
+            'close_reason': o.close_reason or '',
+        })
+
+    # Sort by $ loss magnitude (worst first), then cap
+    rows.sort(key=lambda r: r['pnl'])
+    return rows[:limit]
 
 
 def _compute_regime_change_counterfactual(orders):

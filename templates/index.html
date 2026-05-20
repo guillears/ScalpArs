@@ -1701,11 +1701,13 @@
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Never Positive count (peak < 0.05%) and rate among matched trades">NP (n / %)</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="What total $ would be if a fixed TP cap of 0.05% net was applied to this cohort: trades that peaked ≥0.05% exit at +0.05% net instead of natural close. Cell shows Δ$ vs actual + (fires/saves/kills). Saves = losers converted to small wins. Kills = winners capped early. NP trades (peak <0.05%) are unaddressable by TP and don't fire.">TP 0.05 Δ$ (f/s/k)</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Same as TP 0.05 but cap at +0.10% net. Higher threshold = fewer fires + fewer kills but smaller per-trade save. CLAUDE.md May 20 locked decision matrix: ship pattern-gated TP at N≥30 per direction + Δ$ ≥ +$80 + kills ≤ saves/2.">TP 0.10 Δ$ (f/s/k)</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-c-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6348,21 +6350,27 @@
                 }
             }
 
-            // Pattern C Tracker (May 19, 2026 — observation-only)
+            // Pattern C Tracker (May 19, 2026 — observation-only; May 20 added TP CF columns)
             const _pc1 = perf.pattern_c_validation || [];
             if (_pc1.length) {
                 lines.push(`\n${hr2}`);
-                lines.push(`## Pattern C Tracker (observation-only) — 4 signatures × LONG/SHORT`);
-                lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter\n`);
-                lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)    Verdict');
-                lines.push('-'.repeat(120));
+                lines.push(`## Pattern C Tracker (observation-only) — 8 signatures × LONG/SHORT`);
+                lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter`);
+                lines.push(`TP CF: simulates fixed TP cap (0.05% / 0.10% net). Δ$ = sim − actual. (f/s/k) = fires / saves / kills.`);
+                lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.\n`);
+                lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05 Δ$ (f/s/k)    TP0.10 Δ$ (f/s/k)    Verdict');
+                lines.push('-'.repeat(160));
                 _pc1.forEach(r => {
                     const wr = r.wr.toFixed(1).padStart(5) + '%';
                     const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                     const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                     const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
                     const np = `${r.np_count || 0}/${r.np_rate.toFixed(0)}%`.padStart(9);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${r.verdict}`);
+                    const tp05d = ((r.tp05_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp05_delta_usd || 0).toFixed(2)).padStart(8);
+                    const tp10d = ((r.tp10_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_delta_usd || 0).toFixed(2)).padStart(8);
+                    const tp05fsk = `(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})`.padEnd(12);
+                    const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05d} ${tp05fsk}   ${tp10d} ${tp10fsk}  ${r.verdict}`);
                 });
                 lines.push('');
             }
@@ -7719,21 +7727,27 @@
                     }
                 }
 
-                // Pattern C Tracker (May 19, 2026 — observation-only)
+                // Pattern C Tracker (May 19, 2026 — observation-only; May 20 added TP CF columns)
                 const _pc2 = perf.pattern_c_validation || [];
                 if (_pc2.length) {
                     lines.push(`\n${hr2}`);
-                    lines.push(`## Pattern C Tracker (observation-only) — 4 signatures × LONG/SHORT`);
-                    lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter\n`);
-                    lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)    Verdict');
-                    lines.push('-'.repeat(120));
+                    lines.push(`## Pattern C Tracker (observation-only) — 8 signatures × LONG/SHORT`);
+                    lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter`);
+                    lines.push(`TP CF: simulates fixed TP cap (0.05% / 0.10% net). Δ$ = sim − actual. (f/s/k) = fires / saves / kills.`);
+                    lines.push(`  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.\n`);
+                    lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)   TP0.05 Δ$ (f/s/k)    TP0.10 Δ$ (f/s/k)    Verdict');
+                    lines.push('-'.repeat(160));
                     _pc2.forEach(r => {
                         const wr = r.wr.toFixed(1).padStart(5) + '%';
                         const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                         const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                         const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
                         const np = `${r.np_count || 0}/${r.np_rate.toFixed(0)}%`.padStart(9);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${r.verdict}`);
+                        const tp05d = ((r.tp05_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp05_delta_usd || 0).toFixed(2)).padStart(8);
+                        const tp10d = ((r.tp10_delta_usd >= 0 ? '+$' : '-$') + Math.abs(r.tp10_delta_usd || 0).toFixed(2)).padStart(8);
+                        const tp05fsk = `(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})`.padEnd(12);
+                        const tp10fsk = `(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})`.padEnd(12);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${tp05d} ${tp05fsk}   ${tp10d} ${tp10fsk}  ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -9845,7 +9859,7 @@
                     const _pcBody = document.getElementById('pattern-c-body');
                     if (_pcBody) {
                         if (!_pcRows.length) {
-                            _pcBody.innerHTML = '<tr><td colspan="9" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
+                            _pcBody.innerHTML = '<tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
                         } else {
                             const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
@@ -9860,6 +9874,18 @@
                                 else if (r.verdict.startsWith('★')) vCls = 'text-emerald-400';
                                 const isAny = r.pattern_key === 'c_any';
                                 const rowCls = isAny ? 'bg-white/5 font-semibold' : '';
+                                // TP counterfactual cell colors:
+                                // - Green if Δ$ > $5 (helping)
+                                // - Red if Δ$ < -$5 (hurting net)
+                                // - Gray otherwise
+                                const tp05Cls = (r.tp05_delta_usd || 0) > 5 ? 'text-emerald-400'
+                                    : (r.tp05_delta_usd || 0) < -5 ? 'text-red-400'
+                                    : 'text-gray-400';
+                                const tp10Cls = (r.tp10_delta_usd || 0) > 5 ? 'text-emerald-400'
+                                    : (r.tp10_delta_usd || 0) < -5 ? 'text-red-400'
+                                    : 'text-gray-400';
+                                const tp05Str = `${fmt$(r.tp05_delta_usd)} <span class="text-xs text-gray-500">(${r.tp05_fires||0}/${r.tp05_saves||0}/${r.tp05_kills||0})</span>`;
+                                const tp10Str = `${fmt$(r.tp10_delta_usd)} <span class="text-xs text-gray-500">(${r.tp10_fires||0}/${r.tp10_saves||0}/${r.tp10_kills||0})</span>`;
                                 return `<tr class="${rowCls}">
                                     <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
                                     <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
@@ -9869,6 +9895,8 @@
                                     <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
                                     <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
                                     <td class="px-3 py-1 text-center text-gray-400">${r.np_count || 0} / ${r.np_rate.toFixed(0)}%</td>
+                                    <td class="px-3 py-1 text-right ${tp05Cls}">${tp05Str}</td>
+                                    <td class="px-3 py-1 text-right ${tp10Cls}">${tp10Str}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;
                             }).join('');

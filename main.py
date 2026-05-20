@@ -7682,6 +7682,31 @@ def _compute_pattern_c_validation(orders):
         'c8': 'C8 Oversold/Overbought Chop',
         'c_any': 'ANY (C1∨…∨C8)',
     }
+    # Helper: simulate fixed-TP outcome on a cohort.
+    # For each trade: if peak >= tp_threshold, exit at tp_threshold (net %);
+    # otherwise use actual pnl_percentage. Returns (sim_total$, fires, saves, kills).
+    # Peak_pnl is net of fees per engine convention, so tp_threshold is net %.
+    def _sim_tp_cohort(cohort, tp):
+        sim_d = 0.0
+        actual_d = 0.0
+        fires = saves = kills = 0
+        for o in cohort:
+            nt = o.notional_value or ((o.investment or 0) * (o.leverage or 1))
+            actual_pct = o.pnl_percentage or 0
+            peak = o.peak_pnl
+            actual_d += actual_pct / 100.0 * nt
+            if peak is not None and peak >= tp:
+                sim_pct = tp
+                fires += 1
+                if actual_pct <= 0:
+                    saves += 1
+                elif actual_pct > tp:
+                    kills += 1
+            else:
+                sim_pct = actual_pct
+            sim_d += sim_pct / 100.0 * nt
+        return actual_d, sim_d, fires, saves, kills
+
     rows = []
     for direction in ('LONG', 'SHORT'):
         for p in patterns:
@@ -7705,6 +7730,18 @@ def _compute_pattern_c_validation(orders):
             np_count = sum(1 for o in matched
                            if o.peak_pnl is not None and o.peak_pnl < 0.05)
             np_rate = (np_count / n * 100) if n > 0 else 0
+
+            # TP counterfactual columns (May 20 — observation-only).
+            # Shows what total $ would be if a fixed TP cap was applied to this
+            # cohort at 0.05% and 0.10%. NP trades (peak <0.05%) cannot be
+            # rescued by TP — only positive-peak trades that retraced get saved.
+            # CLAUDE.md May 20-late entry locks decision matrix: ship TP when
+            # cohort N≥30, TP-Δ$ ≥ +$80, AND kills ≤ saves/2.
+            tp05_actual, tp05_sim, tp05_fires, tp05_saves, tp05_kills = _sim_tp_cohort(matched, 0.05)
+            tp10_actual, tp10_sim, tp10_fires, tp10_saves, tp10_kills = _sim_tp_cohort(matched, 0.10)
+            tp05_delta = tp05_sim - tp05_actual
+            tp10_delta = tp10_sim - tp10_actual
+
             # Verdict per locked gate
             if n >= 30 and wr <= 40 and avg_pct <= -0.20:
                 verdict = '⚠ PROMOTE — meets filter ship gate'
@@ -7727,6 +7764,15 @@ def _compute_pattern_c_validation(orders):
                 'avg_peak_pct': round(avg_peak, 3) if avg_peak is not None else None,
                 'np_count': np_count,
                 'np_rate': round(np_rate, 1),
+                # TP counterfactual columns
+                'tp05_delta_usd': round(tp05_delta, 2),
+                'tp05_fires': tp05_fires,
+                'tp05_saves': tp05_saves,
+                'tp05_kills': tp05_kills,
+                'tp10_delta_usd': round(tp10_delta, 2),
+                'tp10_fires': tp10_fires,
+                'tp10_saves': tp10_saves,
+                'tp10_kills': tp10_kills,
                 'verdict': verdict,
             })
     return rows

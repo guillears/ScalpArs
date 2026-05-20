@@ -14262,3 +14262,188 @@ To anchor:
    the c8_match column forever
 5. The cross-pattern overlap note with C4 — they share some
    conditions but C8 is more specific
+
+## May 20, 2026 (late evening) — Pattern C Tracker: TP counterfactual columns + LOCKED next-batch decision matrix
+
+### What ships (observation-only, no behavior change)
+
+Two new columns added to the **🎯 Pattern C Tracker (observation-only)** table per
+(direction × pattern) row:
+
+| Column | Meaning |
+|---|---|
+| **TP 0.05 Δ$ (f/s/k)** | What total $ would be if a fixed TP cap of +0.05% net was applied to this cohort, minus actual. (fires/saves/kills) = trades where peak ≥ 0.05% / losers converted to small wins / winners capped early. |
+| **TP 0.10 Δ$ (f/s/k)** | Same at +0.10% net cap. Higher threshold = fewer fires + fewer kills but smaller per-trade save. |
+
+Both columns simulate: for trades with peak ≥ TP, exit at TP net%. Otherwise use
+actual close. Peak_pnl is net-of-fees per engine convention.
+
+### Why this matters
+
+Today's analysis (CLAUDE.md May 20 late PM) found that within C4 LONG and C4 SHORT
+cohorts:
+- **NP trades (peak < 0.05%) are unaddressable by TP** — they never reach the
+  threshold. Today: 2 EDEN LONGs + 1 LTC SHORT = -$166 unrecoverable.
+- **Positive-peak losers (peak 0.10-0.20% then retraced)** ARE addressable.
+  Today: DASH LONG + XRP/AAVE/FIL SHORTs = -$218 → could be ~$+33 with TP.
+- The TP intervention saves +$246 today on N=9 — but N=9 is **13-17% of the
+  locked promotion bar** (N≥30 per direction).
+
+Tracking the TP counterfactual continuously lets us validate the hypothesis
+across many regimes without shipping at low N. When N grows past the gate, we
+have rich evidence to make the decision.
+
+### Origin of this analysis
+
+User's question on the May 20 14:21 batch: "Maybe the problem is full C4 for
+LONGs, and for SHORT only C4 + (ADXΔ ≥ 1.0 OR RngPos ≤ 15)? Also evaluate
+differentiated TP for C4 — fix at 0.05, 0.08, 0.10? Or a combination?"
+
+The deep dive found:
+1. **Asymmetric C4 SHORT narrowing FAILS the locked gate.** Narrowed cohort
+   N=6 cross-batch (May 19 winners + May 20 losers — direction-inconsistent).
+   WR 50%, NP 0%. Gates fail on 3 of 4 axes.
+2. **EDEN as a pair is NOT toxic.** 4 EDEN trades today: 2 NP losers in
+   morning C4 + 2 winners (+$47) later in day when BTC vol picked up.
+   Blacklisting EDEN would cost the winners.
+3. **The structural setup signature (LONG + PairTGap <-0.50 + PairVol >$200M
+   + RngPos 40-75 + PairADX ≤22) only matches 3 trades cross-batch** — all
+   EDEN today. N=3 is way below promotion bar.
+4. **TP 0.10 LONG / TP 0.15 SHORT shows ★ STRONG in-sample** (+$132 LONG
+   cross-batch on N=16, +$238 SHORT cross-batch on N=8). But these are
+   re-computed numbers using raw fields (BTC ATR ≤ 0.15 only populated
+   post-May-15); the LIVE-FLAGGED cohort is N=9 total.
+
+### LOCKED decision matrix for next ≥100-trade checkpoint
+
+When the bot accumulates **N ≥ 30 per direction per pattern** in live-flagged
+data, apply this matrix mechanically:
+
+#### Per-pattern + per-direction (read the TP 0.05 and TP 0.10 columns)
+
+| Outcome (live data, N ≥ 30 in cohort) | Action |
+|---|---|
+| **TP 0.10 Δ$ ≥ +$80 AND kills ≤ saves/2** | ★ SHIP TP override for this pattern at +0.10% |
+| **TP 0.05 Δ$ ≥ +$80 AND TP 0.10 Δ$ < TP 0.05** | ★ SHIP at +0.05% instead (lower threshold optimal) |
+| **TP Δ$ in [+$20, +$80] either threshold AND kills ≤ saves** | ✓ Marginal — defer to 200-trade checkpoint |
+| **TP Δ$ < +$20 either threshold** | ✗ Don't ship — TP doesn't help meaningfully |
+| **kills > saves on the larger Δ$ side** | ✗ Don't ship — winner-kill cost too high |
+| **N < 30 still** | Extend test — no decision |
+
+#### Direction asymmetry rule
+
+If LONG and SHORT show **different optimal TP thresholds** (e.g., LONG best
+at 0.05, SHORT best at 0.10 or higher), ship asymmetric:
+- `pattern_c4_tp_override_long: 0.05` (or whatever)
+- `pattern_c4_tp_override_short: 0.10`
+
+Each direction's threshold decided independently from its own row.
+
+#### Multi-pattern interaction
+
+Multiple Pattern C signatures can match the same trade. If both C4 AND C8
+flag a trade and both rows show ★ SHIP at different thresholds, use the
+LOWER threshold (more aggressive TP). Documented in engine code at ship time.
+
+### NP losses are NOT addressable by this mechanism
+
+**The TP counterfactual ONLY rescues trades with peak ≥ TP threshold.**
+NP trades (peak < 0.05%) appear in the cohort but contribute zero to
+the Δ$. To address NPs we need an entry-side filter, which today's
+cross-batch evidence does not support shipping for any specific signature.
+
+This is acknowledged trade-off: at N≥30 if TP ships, residual NP losses
+remain. The bot's expected per-batch C4 loss with TP active is roughly:
+
+`E[per-batch C4 $] ≈ (NP rate × avg NP loss) + (1 − NP rate) × (some small positive from TP saves)`
+
+If today's per-batch ratios hold (~33% NP rate on C4, avg NP loss -$55,
+positive-peak saves +$40), expected C4 per-batch ≈ -$55 × 0.33 × N +
+$40 × 0.67 × N. For N=10 (typical C4 daily count): ≈ -$180 + $270 ≈ +$90
+net per batch after TP. Without TP: ≈ -$130. **TP swings C4 cohort from
+-$130/batch to +$90/batch projection.** But projection is heavy in-sample
+bias from today — real expectancy ~30-50% lower.
+
+### What the operator (and future-Claude) should do at next batch
+
+**Step 1**: Open the Pattern C Tracker table in dashboard. Look at the
+N column for each row. Find any row with N ≥ 30.
+
+**Step 2**: For that row, read the **TP 0.05 Δ$** and **TP 0.10 Δ$** columns.
+Apply the locked decision matrix above mechanically.
+
+**Step 3**: If ANY row triggers a ship, the mechanism still needs to be
+built. Pre-committed code work:
+- New config fields: `pattern_c_tp_override_long: float = 0.0`
+  and `pattern_c_tp_override_short: float = 0.0` (default 0 = disabled).
+  When > 0 AND trade matches any Pattern C signature, check current
+  P&L on each tick; if peak ≥ threshold, exit at threshold.
+- ~30-40 LOC in services/trading_engine.py (similar pattern to FAST_EXIT
+  L1/L2 but pattern-gated)
+- New close reason: `PATTERN_C_TP L1` for analytics separation
+
+**Step 4**: After ship, validate per-pattern in next 100-trade batch.
+Per-pattern verdict matrix (locked):
+- ★ WORKING: Δ$ positive on N≥5 fresh AND no specific pattern shows kills > saves
+- ✗ HARMFUL: any pattern Δ$ negative on N≥5 fresh → revert that pattern's TP
+
+### Critical rules (locked)
+
+1. **Do NOT block EDEN at next batch** unless N ≥ 6 EDEN trades show ≤25% WR.
+   Today's 4 EDEN trades are 50% WR — half are losers but half are winners.
+   The mixed result is REGIME-driven (low BTC vol triggers losers), not
+   pair-toxicity.
+2. **Do NOT ship the "structural setup filter"** (PairTGap < -0.50 +
+   large-cap + mid-range LONG) unless setup matches N ≥ 30 cross-batch
+   across ≥3 dates. Today's matches are 3 trades, all EDEN, all today.
+3. **Do NOT lower TP universally** — Pattern C TP override only fires when
+   a Pattern C signature matches. Other trades use the normal TP 0.50 +
+   trailing 0.25 chain.
+4. **Do NOT pre-commit thresholds** — let the data choose 0.05 vs 0.10
+   from the Δ$ comparison at the gate.
+
+### Anti-overfit reminder
+
+Today's analysis came from a single batch (9 live-flagged C4 trades). Three
+analyses in this session were FALSIFIED by cross-batch:
+1. C8 oversold-chop SHORT (61% WR cross-batch, not loser)
+2. C4 SHORT narrowed by ADXΔ/RngPos (50% WR pooled, regime-split)
+3. C4 ∩ PairTGap < 0 LONG (49% WR pooled, no discrimination)
+
+**The pattern that's emerging: today's batch had unusual peak distributions
+that look great in counterfactual. Cross-batch evidence is thin (N=24
+post-May-15, mostly today). Don't ship anything from today's data — let the
+new tracker columns accumulate.**
+
+### What was deliberately NOT changed
+
+- **No new behavior** in entry filtering, exits, or multipliers
+- **No EDEN blacklist** — cross-batch evidence insufficient
+- **No "structural setup" filter** — N=3 cross-batch
+- **No fixed TP for C4** — N=9 live-flagged, far below gate
+- **No C4 SHORT narrowing** — N=6, fails gates
+
+The tracker columns are the discipline lever: they make the decision
+mechanical at the proper sample size without committing prematurely.
+
+### Files changed (May 20 late evening)
+
+- `main.py`: `_compute_pattern_c_validation` adds `_sim_tp_cohort` helper +
+  4 TP fields per row (tp05_delta_usd, tp05_fires, tp05_saves, tp05_kills,
+  same for tp10)
+- `templates/index.html`: Pattern C Tracker table — 2 new column headers,
+  JS renderer with f/s/k cells, both text-export sites updated
+  (clipboard + saved file)
+- `CLAUDE.md`: this entry — locked decision matrix + critical rules
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the next-checkpoint mechanical decision so future-Claude doesn't:
+1. Ship TP from N=9 today's data (anti-overfit)
+2. Forget that NPs are unaddressable by TP
+3. Re-litigate EDEN blacklist or "structural setup" filter without
+   meeting the cross-batch evidence bar
+4. Use the TP columns for any purpose other than the locked gate at N≥30
+
+When the next batch lands and N has grown, the table cells answer the
+ship/defer/revert decision directly. No re-analysis required.

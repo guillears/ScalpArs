@@ -15198,3 +15198,130 @@ To anchor:
    candidate
 3. The methodology lock: every verdict gate must align with the dimensions
    the corresponding Phase 2 ship mechanism would use
+
+## May 20, 2026 (latest+5 evening) — Three refinements: R:R column, Loser % in W, MULT gate threshold
+
+Three related changes shipped together.
+
+### 1. R:R column added to both Pattern C and Pattern W
+
+**The diagnostic that exposes "trap" patterns** — cohorts where high WR hides catastrophic R:R.
+
+Format: `1 : X.X` where X is the loss multiple per win.
+Color: <2 green (good R:R), 2-4 amber (mediocre), >4 red (terrible).
+
+Computation per row:
+- `avg_win_$ = sum(pnl > 0) / count_winners`
+- `avg_loss_$ = |sum(pnl ≤ 0)| / count_losers`
+- `rr = avg_loss / avg_win` → display as "1 : {rr:.1f}"
+
+Edge cases:
+- No losses → R:R = "∞" (perfect cohort)
+- No wins → R:R = "—" (undefined)
+
+**Why this matters** (from user analysis of W1 SHORT row showing 80% WR / -$28):
+
+For a strategy with avg win W and avg loss L:
+```
+Breakeven WR = L / (W + L)
+```
+
+Current bot exit stack (BE 0.10 floor + SL -0.70 + occasional trailing):
+- Typical win ≈ $9 (most exits via BE_LEVEL1 at +0.10% net)
+- Typical loss ≈ $48 (STOP_LOSS_WIDE full SL)
+- R:R = 1:5.3
+- Breakeven WR needed ≈ 84% (and 80% WR still loses money)
+
+This is exactly what the table now surfaces: the R:R column flags W1 SHORT as
+red (1:5+) so the operator immediately sees the "trap" without computing
+Total $ vs WR mentally.
+
+For Pattern C rows, R:R confirms loser-cohort character: a C-row with 25% WR
++ 1:6 R:R is BAD (losses dominate). A C-row with 25% WR + 1:1 R:R might be
+recoverable via tighter SL.
+
+### 2. Loser % column added to Pattern W table
+
+Mirror of Pattern C's Loser % — shown on Pattern W for visual parity.
+Mathematically just `100 - Win%` but useful at a glance.
+
+Pattern W now shows: Win % | Loser % side by side, matching Pattern C's layout
+of Loser % | NP %. The framework symmetry is now visually complete in the UI.
+
+### 3. MULTIPLIER CANDIDATE Avg gate: 0.20% → 0.10%
+
+Original gate (May 20 latest+1): N≥30 AND WR≥70% AND Avg P&L%≥+0.20% AND Total$>0.
+
+**Problem identified by user**: with current BE 0.10/0.10 floor, the cohort
+average **can never mechanically reach +0.20%**. Math:
+- BE floor caps most wins at exactly +0.10% net
+- Even 100% WR with avg win 0.10% gives only 0.10% avg
+- Any losses pull avg below 0.10%
+- The 0.20% threshold is structurally unreachable in current exit regime
+
+**Fix**: lowered Avg threshold to **+0.10%**. The new gate is:
+```
+N≥30 AND WR≥70% AND Avg P&L%≥+0.10% AND Total$>0
+```
+
+At 0.10%, the gate is reachable for:
+- ~100% WR cohorts (avg = avg win ≈ 0.10%)
+- Cohorts with some trailing winners >+0.30% offsetting any losses
+- Real winner cohorts that have one or two big runners
+
+If we later loosen BE floor or raise trailing TP, may revisit threshold up.
+
+### Operator workflow with new R:R column
+
+When reading a Pattern W row's verdict:
+
+1. **★ MULTIPLIER CANDIDATE** + green R:R (<2) → ship-worthy
+2. **★ MULTIPLIER CANDIDATE** + amber R:R (2-4) → ship-worthy but watch R:R erosion
+3. **★ MULTIPLIER CANDIDATE** + red R:R (>4) → IMPOSSIBLE state (red R:R means
+   losses dominate $, so verdict should have been "⚠ High WR but net losing")
+4. **★ Winners cohort** + red R:R → trap pattern, multiplier would hurt
+5. **⚠ High WR but net losing** + red R:R → the new amber tier confirms it
+
+For Pattern C:
+1. **⚠ FILTER CANDIDATE** + any R:R → ship as filter (losses are losses)
+2. Red R:R on a filter candidate = catastrophic losses (full SL hits), tightening SL might help
+
+### Why we didn't drop the 0.20% threshold further (e.g., 0.08% or 0.05%)
+
+User considered 0.08% as alternative. Rejected because:
+- 0.08% is below realistic forward expectancy for a winner cohort
+- 0.10% is precisely the breakeven point for a BE-floor cohort with zero losses
+- Lower thresholds would let "barely-net-positive" cohorts pass the gate, which
+  multipliers would amplify into more variance without meaningful edge
+- 0.10% is the structurally meaningful number given current exit stack
+
+If exit stack changes (e.g., BE floor raised to 0.15) → revisit threshold up
+to 0.15% accordingly. The principle is: **MULT Avg threshold = BE floor**.
+
+### Files changed (May 20 latest+5)
+
+- `main.py`:
+  - Pattern C verdict logic: MULT gate Avg 0.20 → 0.10; new fields per row:
+    avg_win_usd, avg_loss_usd, rr_ratio
+  - Pattern W verdict logic: same MULT gate threshold change, new fields
+    same as Pattern C, added loser_precision_pct (mirror of Pattern C)
+- `templates/index.html`:
+  - Pattern C table: R:R column header + JS cell render
+  - Pattern W table: Loser % column header + R:R column header + JS cell renders
+  - Column counts bumped: Pattern C 12 → 13, Pattern W 11 → 13
+- `CLAUDE.md`: this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The R:R column as the DIAGNOSTIC that exposes high-WR/bad-R:R traps
+2. The breakeven WR formula (`L / (W+L)`) and its connection to the current
+   exit stack's actual R:R
+3. The Avg threshold change (0.20 → 0.10) and the principle linking the
+   threshold to the BE floor — if BE floor changes, threshold should follow
+4. The visual symmetry locked between Pattern C (Loser%) and Pattern W
+   (Win% | Loser%) for at-a-glance reading
+
+The framework is now structurally and visually complete. Every metric
+that matters for ship decisions is on the table; R:R catches the
+last hidden trap (high WR + small wins + big losses).

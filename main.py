@@ -7737,6 +7737,23 @@ def _compute_pattern_c_validation(orders):
             loser_count = n - wins
             loser_precision_pct = (loser_count / n * 100) if n > 0 else 0
             total_usd = sum((o.pnl or 0) for o in matched)
+            # R:R ratio (May 20 latest+5): avg loss $ / avg win $.
+            # Lower = better. <2 green, 2-4 amber, >4 red.
+            # Reveals the structural asymmetry — high WR with terrible R:R
+            # can still net negative (e.g., 80% WR with 1:5 R:R = trap).
+            win_sum = sum((o.pnl or 0) for o in matched if (o.pnl or 0) > 0)
+            loss_sum_abs = sum(abs(o.pnl or 0) for o in matched if (o.pnl or 0) <= 0)
+            avg_win_usd = (win_sum / wins) if wins > 0 else 0
+            avg_loss_usd = (loss_sum_abs / loser_count) if loser_count > 0 else 0
+            # rr_ratio = avg_loss / avg_win (1:X format — X is the multiple).
+            # If no losses, RR is "perfect" (display as "1:0").
+            # If no wins, RR is undefined (display as "—").
+            if wins == 0:
+                rr_ratio = None
+            elif loser_count == 0:
+                rr_ratio = 0.0  # pure winners — best possible R:R
+            else:
+                rr_ratio = avg_loss_usd / avg_win_usd if avg_win_usd > 0 else None
             pnls = [o.pnl_percentage for o in matched if o.pnl_percentage is not None]
             avg_pct = (sum(pnls) / len(pnls)) if pnls else 0
             avg_peak = None
@@ -7772,8 +7789,11 @@ def _compute_pattern_c_validation(orders):
             #   - High win-precision + WINNING avg + WINNING $ → MULTIPLIER candidate
             #   - Mixed or "high WR but net losing" → not actionable
             # Order matters: check the strict gates first, then weaker ones.
-            if n >= 30 and wr >= 70 and avg_pct >= 0.20 and total_usd > 0:
-                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%, Total$>0)'
+            if n >= 30 and wr >= 70 and avg_pct >= 0.10 and total_usd > 0:
+                # May 20 latest+5: lowered Avg threshold from 0.20% → 0.10%.
+                # With BE 0.10 floor the cohort avg can't mechanically reach
+                # 0.20% — even 100% WR + avg win 0.10% only gives 0.10% avg.
+                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.10%, Total$>0)'
             elif n >= 30 and wr <= 40 and avg_pct <= -0.20:
                 verdict = '⚠ FILTER CANDIDATE — meets loser ship gate (N≥30, WR≤40%, Avg≤-0.20%)'
             elif n >= 10 and wr >= 60 and avg_pct > 0 and total_usd > 0:
@@ -7803,6 +7823,9 @@ def _compute_pattern_c_validation(orders):
                 'np_rate': round(np_rate, 1),
                 'loser_count': loser_count,
                 'loser_precision_pct': round(loser_precision_pct, 1),
+                'avg_win_usd': round(avg_win_usd, 2),
+                'avg_loss_usd': round(avg_loss_usd, 2),
+                'rr_ratio': round(rr_ratio, 2) if rr_ratio is not None else None,
                 # TP counterfactual columns
                 'tp05_new_total_usd': round(tp05_sim, 2),
                 'tp05_delta_usd': round(tp05_delta, 2),
@@ -7974,7 +7997,22 @@ def _compute_pattern_w_validation(orders):
             # explicit for parity with Pattern C's Loser %.
             winner_count = wins
             winner_precision_pct = (winner_count / n * 100) if n > 0 else 0
+            # Loser % column (May 20 latest+5) added to Pattern W for symmetry
+            # with Pattern C — although mathematically just 100 - Win%, having
+            # both visible side by side helps operator at a glance.
+            loser_precision_pct = 100 - winner_precision_pct if n > 0 else 0
             total_usd = sum((o.pnl or 0) for o in matched)
+            # R:R ratio (May 20 latest+5): same logic as Pattern C
+            win_sum = sum((o.pnl or 0) for o in matched if (o.pnl or 0) > 0)
+            loss_sum_abs = sum(abs(o.pnl or 0) for o in matched if (o.pnl or 0) <= 0)
+            avg_win_usd = (win_sum / wins) if wins > 0 else 0
+            avg_loss_usd = (loss_sum_abs / losses) if losses > 0 else 0
+            if wins == 0:
+                rr_ratio = None
+            elif losses == 0:
+                rr_ratio = 0.0
+            else:
+                rr_ratio = avg_loss_usd / avg_win_usd if avg_win_usd > 0 else None
             pnls = [o.pnl_percentage for o in matched if o.pnl_percentage is not None]
             avg_pct = (sum(pnls) / len(pnls)) if pnls else 0
             avg_peak = None
@@ -7995,13 +8033,15 @@ def _compute_pattern_w_validation(orders):
             mult20_new_total_usd = sum((o.pnl or 0) * mult_20 for o in matched)
             mult20_delta_usd = mult20_new_total_usd - total_usd
 
-            # Verdict per locked gate (mirror of Pattern C verdict logic for winners,
-            # May 20 latest+4 BUG FIX: all winner verdicts require positive Avg AND
-            # positive Total $ — previously a high-WR cohort with negative $ was
-            # being labeled "★ Winners cohort" which is wrong; multipliers can't
-            # ship from net-losing cohorts).
-            if n >= 30 and wr >= 70 and avg_pct >= 0.20 and total_usd > 0:
-                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%, Total$>0)'
+            # Verdict per locked gate (May 20 latest+5: lowered Avg threshold from
+            # 0.20% to 0.10% because with BE 0.10 floor the cohort avg can never
+            # mechanically reach 0.20% — even 100% WR with avg win 0.10% would
+            # only give 0.10% avg. 0.10% is the realistic ceiling for "winner
+            # cohort makes money" given current exit stack.)
+            # May 20 latest+4 BUG FIX still holds: all winner verdicts require
+            # positive Avg AND positive Total $.
+            if n >= 30 and wr >= 70 and avg_pct >= 0.10 and total_usd > 0:
+                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.10%, Total$>0)'
             elif n >= 10 and wr >= 60 and avg_pct > 0 and total_usd > 0:
                 # Real winner signal: high WR AND making money.
                 verdict = '★ Winners cohort — wait for N≥30 to promote'
@@ -8025,6 +8065,10 @@ def _compute_pattern_w_validation(orders):
                 'winner_count': winner_count,
                 'loser_count': losses,
                 'winner_precision_pct': round(winner_precision_pct, 1),
+                'loser_precision_pct': round(loser_precision_pct, 1),
+                'avg_win_usd': round(avg_win_usd, 2),
+                'avg_loss_usd': round(avg_loss_usd, 2),
+                'rr_ratio': round(rr_ratio, 2) if rr_ratio is not None else None,
                 'avg_pct': round(avg_pct, 3),
                 'total_usd': round(total_usd, 2),
                 'avg_peak_pct': round(avg_peak, 3) if avg_peak is not None else None,

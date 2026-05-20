@@ -1709,11 +1709,12 @@
                                     <th class="px-3 py-2 font-medium text-center" title="Loser-precision: % of matches that closed as losers (pnl ≤ 0). High loser-precision = pattern is a clean loser detector → filter candidate. Low loser-precision = pattern mostly catches winners → blocking would kill them. Promotion-bar maps WR ≤40% to loser-precision ≥60%. ★ green ≥70% (filter candidate); ⚠ amber 40-70% (mixed); red <40% (would kill winners).">Loser %</th>
                                     <th class="px-3 py-2 font-medium text-right" title="What total $ would be if a fixed TP cap of 0.05% net was applied. Cell shows: new Total $, Δ$ (improvement vs actual), and (fires/saves/kills). Saves = losers converted to small wins. Kills = winners capped early. NP trades (peak <0.05%) are unaddressable by TP and don't fire. Δ$ already nets out winner-kill cost — the magnitude is in the Δ.">TP 0.05 → New $ (Δ, f/s/k)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Same as TP 0.05 but cap at +0.10% net. Higher threshold = fewer fires + fewer kills but smaller per-trade save. CLAUDE.md May 20 locked decision matrix: ship pattern-gated TP at N≥30 per direction + Δ$ ≥ +$80 + kills ≤ saves/2.">TP 0.10 → New $ (Δ, f/s/k)</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Risk:Reward — average loss $ divided by average win $. Format '1 : X' where X is the loss multiple per win. <2 green (good R:R), 2-4 amber (mediocre), >4 red (terrible). Reveals if high WR is being achieved with tiny wins vs catastrophic losses — a 'trap' pattern.">R:R</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-c-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1793,16 +1794,18 @@
                                     <th class="px-3 py-2 font-medium text-center">N</th>
                                     <th class="px-3 py-2 font-medium text-center">WR</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Winner-precision: % of matches that won. ≥70% = MULTIPLIER candidate.">Win %</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Loser-precision: % of matches that closed as losers. Symmetric with Win % (= 100 - Win %) but shown for parity with Pattern C table at-a-glance.">Loser %</th>
                                     <th class="px-3 py-2 font-medium text-right">Avg %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
                                     <th class="px-3 py-2 font-medium text-center" title="Never Positive count (peak < 0.05%). For a true winner cohort this should be ≈0 — high NP means the signature is unstable (catching trades that 'won' without ever going strongly positive).">NP (n / %)</th>
                                     <th class="px-3 py-2 font-medium text-right" title="Multiplier counterfactual at 2.0× (the hard-cap value in the multiplier system). Cell shows: New Total $ if cohort had been at 2.0× sizing, Δ$ (uplift vs actual), and (w/l) cohort composition. If Δ$ ≤ 0 → multiplier would hurt this cohort. CLAUDE.md Phase 3 staging: when MULTIPLIER CANDIDATE gate triggers, ship at 1.5× initially and step to 2.0× after +50 trades. This column shows the END-state effect (max multiplier in the system).">MULT 2× → New $ (Δ, w/l)</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Risk:Reward — average loss $ divided by average win $. Format '1 : X' where X is the loss multiple per win. CRITICAL for multiplier decisions: a row showing 80% WR with 1:5 R:R is a TRAP — high WR doesn't compensate. A row with 70% WR and 1:1 R:R is real edge. <2 green, 2-4 amber, >4 red.">R:R</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="pattern-w-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
+                                <tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -10240,7 +10243,7 @@
                     }
                     if (_pcBody) {
                         if (!_pcRows.length) {
-                            _pcBody.innerHTML = '<tr><td colspan="12" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
+                            _pcBody.innerHTML = '<tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no matched trades yet — column populated from this deploy onward)</td></tr>';
                         } else {
                             const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
@@ -10292,6 +10295,7 @@
                                     <td class="px-3 py-1 text-center ${(r.loser_precision_pct||0) >= 70 ? 'text-emerald-400 font-semibold' : (r.loser_precision_pct||0) >= 40 ? 'text-amber-400' : 'text-gray-400'}">${r.loser_precision_pct == null ? '-' : r.loser_precision_pct.toFixed(0) + '%'}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${tp05Str}</td>
                                     <td class="px-3 py-1 text-right leading-tight">${tp10Str}</td>
+                                    <td class="px-3 py-1 text-center ${(r.rr_ratio == null) ? 'text-gray-500' : r.rr_ratio < 2 ? 'text-emerald-400 font-semibold' : r.rr_ratio < 4 ? 'text-amber-400' : 'text-red-400'}">${r.rr_ratio == null ? '—' : (r.rr_ratio === 0 ? '∞' : `1 : ${r.rr_ratio.toFixed(1)}`)}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;
                             }).join('');
@@ -10367,7 +10371,7 @@
                     }
                     if (_pwBody) {
                         if (!_pwRows.length) {
-                            _pwBody.innerHTML = '<tr><td colspan="11" class="px-3 py-2 text-center text-gray-500">(no matching trades yet — Pattern W evaluated from existing entry features)</td></tr>';
+                            _pwBody.innerHTML = '<tr><td colspan="13" class="px-3 py-2 text-center text-gray-500">(no matching trades yet — Pattern W evaluated from existing entry features)</td></tr>';
                         } else {
                             const fmt = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
@@ -10394,17 +10398,31 @@
                                     : 'text-gray-400';
                                 const mult20NewCls = (r.mult20_new_total_usd || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold';
                                 const mult20Str = `<span class="${mult20NewCls}">${fmt$(r.mult20_new_total_usd)}</span><br><span class="text-xs ${mult20DeltaCls}">Δ${fmt$(r.mult20_delta_usd)}</span> <span class="text-xs text-gray-500">(${r.winner_count||0}w/${r.loser_count||0}l)</span>`;
+                                // Loser % is just inverse of Win % — shown for parity with Pattern C
+                                const lpCls = (r.loser_precision_pct||0) >= 70 ? 'text-red-400 font-semibold'
+                                    : (r.loser_precision_pct||0) >= 40 ? 'text-amber-400'
+                                    : 'text-gray-400';
+                                // R:R cell: < 2 green (good), 2-4 amber, > 4 red (terrible)
+                                const rrCls = (r.rr_ratio == null) ? 'text-gray-500'
+                                    : r.rr_ratio < 2 ? 'text-emerald-400 font-semibold'
+                                    : r.rr_ratio < 4 ? 'text-amber-400'
+                                    : 'text-red-400';
+                                const rrStr = r.rr_ratio == null ? '—'
+                                    : r.rr_ratio === 0 ? '∞'
+                                    : `1 : ${r.rr_ratio.toFixed(1)}`;
                                 return `<tr class="${rowCls}">
                                     <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
                                     <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
                                     <td class="px-3 py-1 text-center text-gray-200">${r.n}</td>
                                     <td class="px-3 py-1 text-center ${wrCls}">${r.wr.toFixed(1)}%</td>
                                     <td class="px-3 py-1 text-center ${wpCls}">${r.winner_precision_pct == null ? '-' : r.winner_precision_pct.toFixed(0) + '%'}</td>
+                                    <td class="px-3 py-1 text-center ${lpCls}">${r.loser_precision_pct == null ? '-' : r.loser_precision_pct.toFixed(0) + '%'}</td>
                                     <td class="px-3 py-1 text-right ${avgCls}">${fmt(r.avg_pct, 3)}</td>
                                     <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
                                     <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
                                     <td class="px-3 py-1 text-center text-gray-400">${r.np_count || 0} / ${r.np_rate.toFixed(0)}%</td>
                                     <td class="px-3 py-1 text-right leading-tight">${mult20Str}</td>
+                                    <td class="px-3 py-1 text-center ${rrCls}">${rrStr}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;
                             }).join('');

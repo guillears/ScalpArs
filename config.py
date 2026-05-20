@@ -393,6 +393,23 @@ class SignalThresholds(BaseModel):
     pc_long_c4_btc_atr_max: float = 0.15
     pc_long_c4_btc_adx_max: float = 22.0
     pc_long_c4_pair_adx_max: float = 25.0
+    # C5 — Slow Climber Death (weak-trend slow bleed; common LONG failure)
+    # SHORT mirror: weak-trend slow bleed up (slope ≥ -0.05% = flat or weakly bearish)
+    pc_short_c5_pair_adx_max: float = 22.0
+    pc_short_c5_adxd_max: float = 0.3
+    pc_short_c5_ema20_slope_min: float = -0.05  # slope ≥ this = flat/weak (SHORT slow death zone)
+    pc_long_c5_pair_adx_max: float = 22.0
+    pc_long_c5_adxd_max: float = 0.3
+    pc_long_c5_ema20_slope_max: float = 0.05  # slope ≤ this = flat/weak (LONG slow death zone)
+    # C6 — Macro over-extended same direction (BTC about to climax, drags pair)
+    # LONG: BTC RSI high + ADX strong + above 4hr trend = late BTC top
+    # SHORT: BTC RSI low + ADX strong + below 4hr trend = late BTC bottom
+    pc_short_c6_btc_rsi_max: float = 35.0
+    pc_short_c6_btc_adx_min: float = 28.0
+    pc_short_c6_btc_gap_max: float = -0.15  # BTC clearly BELOW 4hr trend
+    pc_long_c6_btc_rsi_min: float = 65.0
+    pc_long_c6_btc_adx_min: float = 28.0
+    pc_long_c6_btc_gap_min: float = 0.15  # BTC clearly ABOVE 4hr trend
     global_volume_filter_enabled: bool = False  # Gate trades when top-N aggregate volume is below average
     global_volume_threshold_long: float = 1.05  # MIN global volume ratio to allow LONGs (block if vol < this)
     global_volume_threshold_short: float = 1.05  # MIN global volume ratio to allow SHORTs (block if vol < this)

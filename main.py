@@ -7665,13 +7665,15 @@ def _compute_pattern_c_validation(orders):
 
     Returns per-pattern rows + ANY-match row + per-direction TOTAL row.
     """
-    patterns = ['c1', 'c2', 'c3', 'c4', 'c_any']
+    patterns = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c_any']
     pattern_labels = {
         'c1': 'C1 Capitulation chase',
         'c2': 'C2 Macro counter-trend',
         'c3': 'C3 Stretch exhaustion',
         'c4': 'C4 Low-vol chop',
-        'c_any': 'ANY (C1∨C2∨C3∨C4)',
+        'c5': 'C5 Slow Climber Death',
+        'c6': 'C6 Macro over-extended',
+        'c_any': 'ANY (C1∨…∨C6)',
     }
     rows = []
     for direction in ('LONG', 'SHORT'):

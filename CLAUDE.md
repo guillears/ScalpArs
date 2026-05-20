@@ -13741,3 +13741,119 @@ To anchor:
 3. The sequencing rationale (BE first, SL second — they work together)
 4. The locked revert gates so next-checkpoint decision is mechanical
 5. The path to further tightening (-0.65%) if -0.70% validates
+
+## May 20, 2026 — METHODOLOGY LESSON: counterfactual analysis must respect the active exit stack
+
+### The lesson
+
+**When evaluating a NEW filter (or any cell-level analysis) under a CHANGED
+exit stack, the historical $-counterfactual MUST account for the new exit
+mechanisms. Otherwise you systematically overstate the filter's value by
+counting trades as full losses when the new exit stack would have rescued
+them.**
+
+This is the same class of bug as the May 18 BE Floor CF proxy-fallback issue:
+analysis tools have to respect the mechanism stack they're operating under.
+
+### Today's example (the lesson came from real analysis)
+
+Earlier in the May 20 session, ran a "pair gap zone" counterfactual on the
+LONG pool to find a surgical cut for over-extension. Initial analysis showed:
+
+- gap > +0.50% LONG: 47 trades, 47% WR, **-$856 net** ("save by cutting")
+- gap > +0.20% LONG: 94 trades, 50% WR, **-$1,676 net** ("save by cutting")
+
+User correctly pushed back: those numbers don't account for BE 0.20/0.10
+which had just been activated. Re-running with BE-active simulation:
+
+- gap > +0.50% LONG: same 47 trades, but now **64% WR**, -$714 effective
+  → real save = $714, not $856 (17% overstated)
+- gap > +0.20% LONG: same 94 trades, but now **65% WR**, -$1,315 effective
+  → real save = $1,315, not $1,676 (22% overstated)
+
+Why: BE catches the bouncing trades (peak ≥+0.20% then retraces to ≤+0.10%)
+at +0.10% exit. Without simulating BE in the counterfactual, those trades
+showed as full -0.70% / -0.80% losses. With BE simulated, they exit at +$5-6
+each. The "cut value" of the proposed filter drops materially.
+
+### The right methodology
+
+When running a counterfactual on historical pool under a recently-changed
+exit stack:
+
+1. **For each candidate cell/filter**, before computing $-impact, run each
+   trade through the CURRENT exit stack simulation:
+   - Would BE 0.20/0.10 fire? (peak ≥0.20% AND post_arm_min ≤+0.10%) → exit at +$0.10
+   - Would tighter SL fire? (trough ≤ new_sl AND not BE-protected) → exit at new_sl
+   - Would FAST_EXIT L1/L2 fire? (peak ≥ threshold within window) → exit at threshold
+   - Would EMA13 cross fire earlier? (if it does in post-exit tracker, use that)
+   - Otherwise: actual outcome stands
+
+2. **Use the EFFECTIVE P&L** (post-simulation) as the cell's outcome, NOT the
+   actual historical P&L. The actual historical P&L reflects the OLD exit
+   stack and is no longer the right baseline.
+
+3. **Compute filter savings as: sum(effective P&L of cut zone) — assuming
+   the cut zone trades simply don't happen.** Not as: sum(actual P&L of
+   cut zone), which inflates the savings on rescuable trades.
+
+### When this matters most
+
+This lesson applies whenever:
+- A new exit mechanism just activated (BE, FAST_EXIT, regime exit, etc.)
+- A pre-existing exit threshold just changed (SL tightened, BE floor raised, etc.)
+- A new entry filter just activated (might shift the trade population)
+
+In ALL these cases, the historical pool's recorded P&L reflects the OLD
+mechanism. Any counterfactual on the OLD-P&L numbers will mis-attribute
+saves and overstate filter value.
+
+### Concrete check for any future filter-design analysis
+
+Before recommending a filter ship:
+
+1. ☐ Is the exit stack the SAME as during the historical pool? If yes,
+   actual P&L is the right baseline. If no, simulate the current stack.
+2. ☐ Per-pair concentration check (already standard per CLAUDE.md May 12)
+3. ☐ Direction-symmetric check (LONG and SHORT consistency)
+4. ☐ N≥30 per cell per CLAUDE.md locked promotion bars
+5. ☐ ☑ **NEW: Mechanism-aware counterfactual** — re-run cell $-impact under
+     current exit stack (BE-active, current SL value, etc.) before final ship
+
+### The proxy-fallback parallel (CLAUDE.md May 18)
+
+This lesson is structurally analogous to the May 18 BE Floor CF bug:
+- May 18: proxy fallback corrupted gate-checks silently when instrumentation
+  data was missing
+- May 20: missing exit-stack simulation corrupted $-counterfactuals silently
+  when the historical pool ran under a different mechanism set
+
+In both cases, the analysis tool produced internally-consistent numbers that
+were operationally wrong because the tool didn't model the current operating
+environment correctly. Both are silent-corruption failures — no error fired,
+just wrong outputs.
+
+### Locked rule for future analyses (this section)
+
+**Any cross-batch $-counterfactual that compares "do X vs don't do X" must
+simulate the CURRENT exit stack (BE 0.20/0.10 + SL -0.70% + FAST_EXIT L1/L2
++ EMA13 strict + Pattern C trackers) on the historical pool before
+computing $-impact.** The historical P&L column reflects the historical
+exit stack and is no longer the right baseline once any exit mechanism has
+changed.
+
+If the BE/SL/FAST_EXIT/RSI Handoff/etc. configuration changes in the future,
+this rule still applies — simulate the new stack against pre-change pool
+data.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve the methodological pattern as a permanent rule, not just a
+session-specific correction. Future-Claude (or future-User) running any
+filter-design or SL-tightening or multiplier-promotion analysis on
+historical data needs to apply this rule mechanically — model the current
+exit stack BEFORE computing the cell's $-impact.
+
+The cost of forgetting: filter recommendations that look great on paper,
+ship, then underperform forward because the historical "wins" were already
+being captured by other mechanisms.

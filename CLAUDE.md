@@ -15089,3 +15089,112 @@ Together, Pattern C + Pattern W form a complete observation + discovery +
 ship-decision framework. The next checkpoint reads BOTH tables, applies the
 locked gates per direction-pattern combo, and the framework tells you what
 to ship.
+
+## May 20, 2026 (latest+4 evening) — BUG FIX: verdict logic — "★ Winners cohort" required only WR, ignored P&L sign
+
+### Bug spotted by user (caught by visual review of dashboard)
+
+After shipping Pattern W's full feature parity, user noticed the dashboard
+showing verdicts that contradicted the actual numbers:
+
+| Row | WR | Avg % | Total $ | Verdict shown (WRONG) | Reality |
+|---|---|---|---|---|---|
+| Pattern C ANY LONG | 61.5% | -0.13% | **-$82.02** | ★ Winners cohort — wait for N≥30 to promote to MULTIPLIER | **Net LOSING** |
+| Pattern W W1 SHORT | 80% | +0.008% | **-$28.02** | ★ Winners cohort — wait for N≥30 to promote | Net losing |
+| Pattern W ANY SHORT | 81.8% | +0.017% | **-$15.26** | ★ Winners cohort — wait for N≥30 to promote | Net losing |
+
+### Root cause
+
+Both Pattern C and Pattern W "★ Winners cohort" verdict gates checked
+**only WR ≥ 60%**, ignoring Avg P&L % and Total $:
+
+```python
+elif n >= 10 and wr >= 60:
+    verdict = '★ Winners cohort — wait for N≥30 to promote'
+```
+
+A cohort with high WR but tiny wins (+$2 each) plus a few large losses
+(-$50 each) is net-losing — but labeled "Winners cohort." If promoted to
+multiplier, the multiplier would AMPLIFY the net loss. That's structurally wrong.
+
+### Fix applied
+
+All winner-side verdicts now require **Avg P&L % > 0 AND Total $ > 0**:
+
+```python
+# Strict multiplier gate (unchanged): N≥30 + WR≥70% + Avg≥+0.20%
+if n >= 30 and wr >= 70 and avg_pct >= 0.20 and total_usd > 0:
+    verdict = '★ MULTIPLIER CANDIDATE — meets ship gate (..., Total$>0)'
+
+# Weak winner signal (FIXED): high WR AND making money
+elif n >= 10 and wr >= 60 and avg_pct > 0 and total_usd > 0:
+    verdict = '★ Winners cohort — wait for N≥30 to promote'
+
+# NEW verdict tier: high WR but net losing
+elif n >= 10 and wr >= 60 and (avg_pct <= 0 or total_usd <= 0):
+    verdict = '⚠ High WR but net losing — wins too small or losses dominate (NOT MULTIPLIER candidate)'
+```
+
+The new **"⚠ High WR but net losing"** verdict explicitly flags the bug
+scenario. Color: amber bold (warning, not a candidate either direction).
+
+### Impact on today's data
+
+Same dashboard row, post-fix:
+
+| Row | WR | Total $ | Verdict (FIXED) |
+|---|---|---|---|
+| Pattern C ANY LONG | 61.5% | -$82.02 | ⚠ High WR but net losing — NOT MULTIPLIER candidate |
+| Pattern W W1 SHORT | 80% | -$28.02 | ⚠ High WR but net losing — NOT MULTIPLIER candidate |
+| Pattern W ANY SHORT | 81.8% | -$15.26 | ⚠ High WR but net losing — NOT MULTIPLIER candidate |
+
+These rows are now correctly labeled. Multiplier promotion path requires
+EXPLICITLY: N≥30 + WR≥70% + Avg≥+0.20% + Total$>0. The "Winners cohort"
+weaker signal also requires positive Avg + Total.
+
+### Why this matters
+
+A multiplier shipped from a "high WR but net losing" cohort would
+AMPLIFY the loss. The math: at 2.0× the new total $ becomes 2× the
+original — so a -$28 cohort becomes -$56 (visible directly in the new
+MULT 2× column added earlier this session). User's intuition was correct
+on first glance — the verdict claim was incompatible with the New Total $
+the MULT 2× column was showing.
+
+The fix aligns the verdict with the math. From now forward:
+- Green verdict (★) requires green money (Avg + Total positive)
+- Red verdict (⚠ FILTER) requires red money (Avg + Total negative on filter gate)
+- Mismatches get the new amber "⚠ High WR but net losing" verdict
+
+### Lesson — verdict gates must align with shipping math
+
+Going forward, when adding new verdict tiers, the CHECK must include the
+same dimensions the SHIP MECHANISM uses:
+- Multiplier ships scale $ linearly → verdict must check Total $ direction
+- Filter ships block trades → verdict checks WR and Avg as proxies for "would
+  the cohort have been net negative if entered"
+
+Pattern: every verdict gate corresponds to a Phase 2 mechanism. The gate must
+include all dimensions the mechanism would use to compute its effect.
+
+### Files changed (May 20 latest+4)
+
+- `main.py`:
+  - Pattern C verdict logic: tightened MULTIPLIER and "★ Winners cohort"
+    gates with `total_usd > 0`; added new "⚠ High WR but net losing" tier
+  - Pattern W verdict logic: same fixes mirrored
+- `templates/index.html`:
+  - Both Pattern C and Pattern W JS renderers: added amber color for the
+    new "⚠ High WR" verdict
+- `CLAUDE.md`: this entry (bug fix + methodology lock)
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The bug pattern (verdict checked only WR, ignored $) so future-Claude
+   doesn't reintroduce
+2. The new amber tier as a structural recognition of "high WR but net
+   losing" as a real cohort state that's NEITHER a filter NOR multiplier
+   candidate
+3. The methodology lock: every verdict gate must align with the dimensions
+   the corresponding Phase 2 ship mechanism would use

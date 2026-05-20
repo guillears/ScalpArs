@@ -7759,26 +7759,32 @@ def _compute_pattern_c_validation(orders):
             tp10_delta = tp10_sim - tp10_actual
             # tp05_sim / tp10_sim ARE the new totals (sum of sim$ across cohort)
 
-            # Verdict per locked gates (CLAUDE.md May 20-latest framework):
-            # The Pattern C tracker now identifies BOTH directions of ship action:
-            #   - High loser-precision + losing avg → FILTER candidate (block at entry)
-            #   - High win-precision + winning avg → MULTIPLIER candidate (boost size at entry)
-            #   - Mixed → not actionable
-            # Order matters: check MULTIPLIER first (rarest), then FILTER, then weaker
-            # signals.
-            if n >= 30 and wr >= 70 and avg_pct >= 0.20:
-                # Strict winner-cohort gate. At this N+WR+Avg we have evidence
-                # this pattern consistently identifies winning entries → boost.
-                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%)'
+            # Verdict per locked gates (CLAUDE.md May 20-latest+4 — BUG FIX:
+            # all winner-verdicts now also require positive Avg P&L % AND positive
+            # Total $. Previously a cohort with high WR but tiny wins and a few
+            # big losses (e.g., 80% WR / +0.008% / -$28) was being labeled
+            # "★ Winners cohort" — wrong because a multiplier on that would
+            # amplify the net loss. Multipliers can't ship from cohorts that
+            # lose money in absolute terms, regardless of how many trades won.
+            #
+            # The Pattern C tracker identifies BOTH directions of ship action:
+            #   - High loser-precision + losing avg → FILTER candidate
+            #   - High win-precision + WINNING avg + WINNING $ → MULTIPLIER candidate
+            #   - Mixed or "high WR but net losing" → not actionable
+            # Order matters: check the strict gates first, then weaker ones.
+            if n >= 30 and wr >= 70 and avg_pct >= 0.20 and total_usd > 0:
+                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%, Total$>0)'
             elif n >= 30 and wr <= 40 and avg_pct <= -0.20:
-                # Strict loser-cohort gate. At this N+WR+Avg we have evidence
-                # this pattern consistently identifies losing entries → block.
                 verdict = '⚠ FILTER CANDIDATE — meets loser ship gate (N≥30, WR≤40%, Avg≤-0.20%)'
-            elif n >= 10 and wr >= 60:
-                # Weak winner signal. Wait for N≥30 before promoting.
+            elif n >= 10 and wr >= 60 and avg_pct > 0 and total_usd > 0:
+                # Weak winner signal — high WR AND making money. Wait for N≥30.
                 verdict = '★ Winners cohort — wait for N≥30 to promote to MULTIPLIER'
+            elif n >= 10 and wr >= 60 and (avg_pct <= 0 or total_usd <= 0):
+                # NEW verdict (May 20 latest+4): high WR but net losing.
+                # Wins are too small or a few large losses dominate.
+                # NOT a multiplier candidate — a multiplier would amplify the bleed.
+                verdict = '⚠ High WR but net losing — wins too small or losses dominate (NOT MULTIPLIER candidate)'
             elif n >= 10 and wr <= 45 and avg_pct <= -0.15:
-                # Weak loser signal. Wait for N≥30 before promoting to filter.
                 verdict = '⚠ Warning — trending toward FILTER (wait for N≥30)'
             elif n < 10:
                 verdict = '⚠ Low N'
@@ -7989,11 +7995,20 @@ def _compute_pattern_w_validation(orders):
             mult20_new_total_usd = sum((o.pnl or 0) * mult_20 for o in matched)
             mult20_delta_usd = mult20_new_total_usd - total_usd
 
-            # Verdict per locked gate (mirror of Pattern C verdict logic for winners)
-            if n >= 30 and wr >= 70 and avg_pct >= 0.20:
-                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%)'
-            elif n >= 10 and wr >= 60:
+            # Verdict per locked gate (mirror of Pattern C verdict logic for winners,
+            # May 20 latest+4 BUG FIX: all winner verdicts require positive Avg AND
+            # positive Total $ — previously a high-WR cohort with negative $ was
+            # being labeled "★ Winners cohort" which is wrong; multipliers can't
+            # ship from net-losing cohorts).
+            if n >= 30 and wr >= 70 and avg_pct >= 0.20 and total_usd > 0:
+                verdict = '★ MULTIPLIER CANDIDATE — meets winner ship gate (N≥30, WR≥70%, Avg≥+0.20%, Total$>0)'
+            elif n >= 10 and wr >= 60 and avg_pct > 0 and total_usd > 0:
+                # Real winner signal: high WR AND making money.
                 verdict = '★ Winners cohort — wait for N≥30 to promote'
+            elif n >= 10 and wr >= 60 and (avg_pct <= 0 or total_usd <= 0):
+                # NEW: high WR but net-losing cohort. Wins are tiny or losses
+                # dominate. NOT a multiplier candidate.
+                verdict = '⚠ High WR but net losing — wins too small or losses dominate (NOT MULTIPLIER candidate)'
             elif n >= 10 and wr <= 45:
                 verdict = '✗ Anti-pattern (winners cohort showing losses) — drop from tracker'
             elif n < 10:

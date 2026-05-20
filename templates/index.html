@@ -1700,7 +1700,7 @@
                                     <th class="px-3 py-2 font-medium text-right">Avg %</th>
                                     <th class="px-3 py-2 font-medium text-right">Total $</th>
                                     <th class="px-3 py-2 font-medium text-right">AvgPeak%</th>
-                                    <th class="px-3 py-2 font-medium text-center">NP%</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Never Positive count (peak < 0.05%) and rate among matched trades">NP (n / %)</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
@@ -6352,15 +6352,15 @@
                 lines.push(`\n${hr2}`);
                 lines.push(`## Pattern C Tracker (observation-only) — 4 signatures × LONG/SHORT`);
                 lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter\n`);
-                lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP%   Verdict');
-                lines.push('-'.repeat(115));
+                lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)    Verdict');
+                lines.push('-'.repeat(120));
                 _pc1.forEach(r => {
                     const wr = r.wr.toFixed(1).padStart(5) + '%';
                     const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                     const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                     const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
-                    const np = (r.np_rate.toFixed(0) + '%').padStart(4);
-                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}  ${r.verdict}`);
+                    const np = `${r.np_count || 0}/${r.np_rate.toFixed(0)}%`.padStart(9);
+                    lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${r.verdict}`);
                 });
                 lines.push('');
             }
@@ -7723,15 +7723,15 @@
                     lines.push(`\n${hr2}`);
                     lines.push(`## Pattern C Tracker (observation-only) — 4 signatures × LONG/SHORT`);
                     lines.push(`Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter\n`);
-                    lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP%   Verdict');
-                    lines.push('-'.repeat(115));
+                    lines.push('Dir    Pattern                       N    WR     Avg%     Total$    AvgPeak%  NP (n/%)    Verdict');
+                    lines.push('-'.repeat(120));
                     _pc2.forEach(r => {
                         const wr = r.wr.toFixed(1).padStart(5) + '%';
                         const avg = ((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(8);
                         const tot = ((r.total_usd >= 0 ? '+$' : '-$') + Math.abs(r.total_usd).toFixed(2)).padStart(9);
                         const pk = r.avg_peak_pct == null ? '   -    ' : ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%').padStart(8);
-                        const np = (r.np_rate.toFixed(0) + '%').padStart(4);
-                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}  ${r.verdict}`);
+                        const np = `${r.np_count || 0}/${r.np_rate.toFixed(0)}%`.padStart(9);
+                        lines.push(`${r.direction.padEnd(6)} ${r.pattern.padEnd(28)} ${String(r.n).padStart(4)}  ${wr}  ${avg}  ${tot}  ${pk}  ${np}   ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -9866,7 +9866,7 @@
                                     <td class="px-3 py-1 text-right ${avgCls}">${fmt(r.avg_pct, 3)}</td>
                                     <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
                                     <td class="px-3 py-1 text-right text-gray-400">${r.avg_peak_pct == null ? '-' : fmt(r.avg_peak_pct, 3)}</td>
-                                    <td class="px-3 py-1 text-center text-gray-400">${r.np_rate.toFixed(0)}%</td>
+                                    <td class="px-3 py-1 text-center text-gray-400">${r.np_count || 0} / ${r.np_rate.toFixed(0)}%</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;
                             }).join('');

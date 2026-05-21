@@ -1,5 +1,42 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 21, 2026 (very late evening) — Full rollback of all 4 BTC RSI × BTC ADX loosenings
+
+### What was reverted
+
+`btc_rsi_adx_filter_long`: `"70-100:35,65-70:28,60-65:0-35,55-60:18-25,55-60:30-35"` → **`"70-100:35,65-70:30,60-65:0-30,55-60:20-25"`**
+
+Reverts all 4 loosenings shipped May 21 late evening:
+1. `55-60:18-25` → `55-60:20-25` (close 18-20 sub-cell)
+2. `65-70:28` → `65-70:30` (restore 30 threshold)
+3. `60-65:0-35` → `60-65:0-30` (close 30-35 sub-cell)
+4. Removed `55-60:30-35` (close non-contiguous winner zone)
+
+ADX Δ × BTC ADX filter master toggle stays `false` (separate A/B from May 18).
+
+### Why full rollback
+
+First 4 closed trades post-loosening: 0W/4L, -$244 total.
+- PENGUUSDT LONG -$83 (2.0× multi): admitted by loosening #3, hit BTC_60-65_28-30 multiplier
+- USELESSUSDT LONG -$84 (2.0× multi): admitted by loosening #3, hit BTC_60-65_28-30 multiplier
+- PLAYUSDT LONG -$40, PLAYUSDT SHORT -$37: in always-allowed zones (not implicated)
+
+Only #3 directly triggered losses on this slice, but user opted for full rollback rather than surgical #3-only. Rationale: cells #1/#2/#4 were 1-batch shipped on the same in-batch hypothesis ("new exit stack weakens old loser evidence"). After #3 immediately produced 2 catastrophic losers, the broader hypothesis lost credibility.
+
+### Locked rule
+
+**NEVER ship more than 1 BTC RSI × BTC ADX cross-filter rule change per checkpoint.** Cross-batch evidence supporting any individual rule change is rarely strong enough to justify the attribution noise of stacking multiple changes. If 5 cells look loosenable, ship them ONE at a time across 5 batches.
+
+### What stays unchanged
+
+- All Pattern Cell Ship rules (16 rules including UNMATCHED, W6 LONG+SHORT, etc.)
+- 3.0× effective leverage on BTC_60-65_22-25 LONG (cell not implicated)
+- ADX Δ × BTC ADX filter disabled (A/B continues)
+
+### Files changed
+- `trading_config.json` — single field reverted to pre-loosening state
+- `CLAUDE.md` — this entry
+
 ## May 14, 2026 (evening) — BTC 1h Slope Analytics watchlist (locked validation gates, NO filters shipped)
 
 ### Context

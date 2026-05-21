@@ -18910,3 +18910,83 @@ If at next checkpoint both cells stay net-negative → reverts are
 automatic. If they prove positive → cross-batch evidence under new
 exits is permanently weaker and future filter decisions should
 incorporate this calibration.
+
+## May 21, 2026 (late evening) — BTC RSI × BTC ADX: 2 more surgical openings (30-35 ADX in 55-60 and 60-65 RSI bands)
+
+### Change
+`btc_rsi_adx_filter_long`:
+- `60-65:0-30` → **`60-65:0-35`** (extends MAX from 30 to 35, opens 30-35 cell)
+- Added **`55-60:30-35`** as second rule for the 55-60 RSI band (opens non-contiguous 30-35 winner zone alongside existing 18-25 window)
+
+Final rule string: `"70-100:35,65-70:28,60-65:0-35,55-60:18-25,55-60:30-35"`
+
+### Why these cells specifically
+
+**55-60 × 30-35 — over-blocked WINNER zone:**
+- May 18 PM cross-batch evidence (collected under OLD exits): 17 trades / 59% WR / **+$158** (5 dates positive)
+- Cell was unintentionally blocked when `55-60:99-100` full-block was rolled back to contiguous `55-60:20-25` then to `55-60:18-25`
+- Non-contiguous winning zone could only be re-opened by adding a second rule
+- Under new exits, the case strengthens (any rare loss is capped at -$28)
+
+**60-65 × 30-35 — thin block evidence:**
+- May 11 ship entry: cell was N=2 / +$1 (essentially flat) — too thin to justify a permanent block
+- Original block was collateral of a broader rule, not specifically targeting this cell
+- Under new exit stack, asymmetry favors letting it through and measuring
+
+### Pattern W / multiplier interaction check
+
+Confirmed neither new cell hits an active multiplier cell:
+- BTC_60-65_22-25 (3.0× eff) fires at BTC ADX 22-25 — outside new openings
+- BTC_60-65_28-30 (2.0×) fires at BTC ADX 28-30 — already inside previously-allowed 0-30 window
+- W6 LONG (2.0×) requires BTC ADX [22, 26) — doesn't overlap new openings
+- W2/W4 LONG demoted to 1.0× — even if they fire, no amplification
+
+**Net: new cells trade at 1.0× base sizing.** Pure entry-window expansion, not size amplification. Safest possible loosening.
+
+### Pre-committed revert criteria (LOCKED for next ≥30-trade LONG checkpoint)
+
+| Cell | Keep | Revert |
+|---|---|---|
+| 55-60 × 30-35 | N≥5 fresh AND Total $ ≥ +$15 | Total $ ≤ -$15 on N≥5 |
+| 60-65 × 30-35 | N≥5 fresh AND Total $ ≥ +$15 | Total $ ≤ -$15 on N≥5 |
+
+If both revert, the rule goes back to current state (`70-100:35,65-70:28,60-65:0-30,55-60:18-25`).
+
+### Cells DELIBERATELY still blocked (correctly evidence-backed)
+
+- **55-60 × 25-30**: -$398 cross-batch (strong) — new exits would shrink but not reverse
+- **60-65 × ≥35**: 22% WR / -$227 (climax) — structural
+- **65-70 × <25**: cross-batch loser pattern, still valid
+- **≥70 × <35**: strongest evidence in dataset (24 trades / 22% WR / -$343, multi-sample, climax-buying mechanism). Even with new exits capping per-loss damage, 22% WR can't be made net positive by exits.
+
+### Final LONG entry surface (post-ship)
+
+| RSI \ ADX | <18 | 18-20 | 20-25 | 25-30 | 30-35 | ≥35 |
+|---|---|---|---|---|---|---|
+| 40-50 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 50-55 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 55-60 | 🚫 | ✅ | ✅ | 🚫 | ✅ | 🚫 |
+| 60-65 | ✅ | ✅ | ✅ | ✅ | ✅ | 🚫 |
+| 65-70 | 🚫 | 🚫 | 🚫 | 🚫* | ✅ | ✅ |
+| ≥70 | 🚫 | 🚫 | 🚫 | 🚫 | 🚫 | ✅ |
+
+*65-70 × 25-30 shows blocked in UI but engine allows ADX 28-29 due to threshold lowering to 28.
+
+### Total tonight's loosening summary
+
+1. `adx_delta_btc_adx_filter_enabled`: true → false (A/B test)
+2. `btc_rsi_adx_filter_long` 55-60: 20-25 → 18-25
+3. `btc_rsi_adx_filter_long` 65-70: 30 → 28
+4. `btc_rsi_adx_filter_long` 60-65: 0-30 → 0-35
+5. `btc_rsi_adx_filter_long` 55-60: added 30-35 second rule
+
+Five loosenings in one evening. Attribution noise at next checkpoint is real but manageable via the Filter Blocks panel per-rule counts and the Pattern Cell Ship Performance table.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The two new cells' opening rationale (winner zone re-admit + thin-evidence rollback)
+2. The Pattern W non-interaction (new cells at 1.0× base, no amplification)
+3. The locked per-cell revert gates so next checkpoint is mechanical
+4. The cells DELIBERATELY kept blocked (the ≥70 × <35 climax zone is the discipline anchor)
+5. The total 5-loosening tally for attribution-context at next checkpoint

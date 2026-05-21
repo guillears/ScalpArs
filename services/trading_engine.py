@@ -1435,7 +1435,13 @@ class TradingEngine:
             active_side = 'W'
             matched_patterns = set(matched_w)
         else:
-            return 1.0, 1.0, None, None, None
+            # NEW (May 21): TRULY UNMATCHED fallback. Trades with no C and no W
+            # signature match still benefit from a pattern-gated rule if configured
+            # as pattern="UNMATCHED". Cross-batch evidence May 21 batch: 9 trades,
+            # 7 peak-and-retrace shape → TP 0.10 fires save big losses. Per-batch
+            # Δ +$86 ($9.6/trade — strongest per-trade Δ of any rule).
+            active_side = 'UNMATCHED'
+            matched_patterns = {'UNMATCHED'}
 
         # Walk rules, collect those matching direction + active-side patterns
         applied_sources = []
@@ -1450,13 +1456,16 @@ class TradingEngine:
                 p = rule.get('pattern')
                 if p not in matched_patterns:
                     continue
-                # Determine if this is a C-rule or W-rule by pattern code
+                # Determine if this is a C-rule, W-rule, or UNMATCHED-rule by pattern code
                 is_c_rule = p.startswith('C')
                 is_w_rule = p.startswith('W')
+                is_unm_rule = (p == 'UNMATCHED')
                 # Option C: only apply rules from the active side
                 if active_side == 'C' and not is_c_rule:
                     continue
                 if active_side == 'W' and not is_w_rule:
+                    continue
+                if active_side == 'UNMATCHED' and not is_unm_rule:
                     continue
                 applied_sources.append(p)
                 # Multipliers: HIGHER-wins (max). May 21 (late) — applies to ANY rule

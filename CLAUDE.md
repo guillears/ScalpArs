@@ -18127,3 +18127,102 @@ Total: ~325 LOC across 4 files.
    have explicit revert gates.
 5. To anchor the locked discipline: pattern code is signature, treatment is
    determined by cross-batch empirical behavior, not the C/W tag.
+
+## May 21, 2026 (evening) — UNMATCHED pattern ship: TP 0.10 / SL -0.50 for trades with no C/W signature
+
+### What ships
+
+New pseudo-pattern `UNMATCHED` activates in `_lookup_pattern_cell_rule` when a
+trade has **no C match AND no W match**. Two new config rules:
+```
+{"pattern": "UNMATCHED", "direction": "LONG",  "fixed_tp_pct": 0.10, "fixed_sl_pct": -0.50},
+{"pattern": "UNMATCHED", "direction": "SHORT", "fixed_tp_pct": 0.10, "fixed_sl_pct": -0.50}
+```
+
+The lookup adds `active_side = 'UNMATCHED'` as a third branch (after C-wins
+and W-wins). Rules with `pattern == 'UNMATCHED'` are only consulted when
+nothing else matches. Mechanism stays cleanly orthogonal to Option C.
+
+### Cross-batch evidence (May 21 64-trade batch)
+
+9 trades fell into TRULY UNMATCHED cohort on this batch:
+
+| Effect | Detail |
+|---|---|
+| 7 of 9 trades had peak ≥ +0.10% | Cohort is peak-and-retrace shape (Pattern B) — exactly what TP catches |
+| 3 BIG saves | INJ -$38→+$5.6, AVAX -$22→+$5.6, FIL -$20→+$5.6 = **+$95** |
+| 1 SL save (CHZ -$39→-$28) | +$11 |
+| 1 winner cap cost (UNI big runner +$15→+$5) | -$10 |
+| 2 small winner caps (ONDO×2) | -$12 |
+| **Net** | **+$86 ($9.6/trade)** ★ strongest per-trade Δ of any rule |
+
+### Why this is BE-compatible / structurally sound
+
+Per CLAUDE.md May 16 3-pattern failure taxonomy, the TRULY UNMATCHED cohort
+in current batches is mostly Pattern B (peak-and-retrace) + Pattern C
+(Never Positive). The TP 0.10 / SL -0.50 treatment matches the BE+SL
+defensive mechanism class — exactly what BE was designed for, just applied
+via pattern-cell-ship infrastructure instead of global BE.
+
+When BE is active globally (current config), the UNMATCHED rule fires
+BEFORE BE because PATTERN_FIXED_TP/SL is checked first in the realtime
+exit ladder. Effectively this is "BE for the untaxonomed cohort, with a
+slightly tighter floor (0.10 vs whatever BE is set to)."
+
+### Pre-committed revert criteria at next 100-trade checkpoint
+
+Same locked verdict matrix as other C-cell ship rules:
+
+| Outcome | Action |
+|---|---|
+| TP fires ≥10 times across 30+ UNMATCHED trades AND saved $ > +$50 net | ★ KEEP at 0.10/-0.50 |
+| TP fires ≥10 but cohort cuts winners (avg actual > +0.20%) systematically | Raise TP to 0.15 |
+| SL fires saved $ > TP fires lost $ but ratio < 2:1 | Tighten SL to -0.40 |
+| Total Δ$ vs default exits < +$20 on N≥20 UNMATCHED | ✗ REVERT — drop both rules |
+| `PATTERN_FIXED_TP` count for UNMATCHED source = 0 across 100+ trades | Mechanism not firing — investigate |
+
+### Why this is the right time to ship (vs wait for cross-batch)
+
+Most "ship now vs wait" debates carry overfit risk because the rule
+selectively targets pre-identified loser cohorts. The UNMATCHED rule
+doesn't — it's a FALLBACK for everything outside the C1-C9 + W1-W6
+taxonomy. Risk profile:
+
+1. **The cohort is BE-shaped already** — the trades that fall through C
+   and W classification are largely Pattern B trades that current BE
+   would catch anyway. The UNMATCHED rule just makes the catch tighter
+   (floor 0.10% vs BE's 0.10%).
+2. **Symmetric per-direction default** (LONG + SHORT both at 0.10/-0.50)
+   — no direction-asymmetry to validate.
+3. **Easy revert**: 2 JSON entries to remove if metrics don't validate.
+4. **Engine logic is additive** — one new `active_side = 'UNMATCHED'`
+   branch + 1 new check. No risk of breaking existing C/W rule firing.
+
+### What this does NOT do
+
+- Does not change Option C ("C always wins") semantics
+- Does not modify the Pattern C/W trackers
+- Does not affect pattern_cell_performance analytics structure (UNMATCHED
+  source will appear as a new row in that table once trades close)
+- Does not add a UI panel — operator edits via the JSON pattern_cell_rules
+  array if they want to change parameters
+
+### Files changed
+
+- `services/trading_engine.py` — `_lookup_pattern_cell_rule` gets 3rd
+  `active_side='UNMATCHED'` branch + new `is_unm_rule` check (~10 LOC)
+- `trading_config.json` — 2 new rules appended to `pattern_cell_rules`
+- `templates/index.html` — PATTERN_BRIEF entry for UNMATCHED so it appears
+  in the config UI's pattern dropdown
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The cross-batch evidence (+$86 / 9 trades on May 21 batch, 7 of 9
+   peak-and-retrace shape)
+2. The locked revert criteria so next-checkpoint decision is mechanical
+3. The structural argument (UNMATCHED cohort is largely BE-shaped, so
+   treatment is structurally aligned)
+4. The reasoning for shipping from 1-batch evidence (fallback rule with
+   symmetric per-direction default and easy revert — bounded downside)

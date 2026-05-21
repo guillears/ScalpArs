@@ -18341,3 +18341,121 @@ To preserve:
    being a winner-signature that catches losers is fine as a tracker
    row, but it CANNOT carry a multiplier — it should carry a filter
    or fixed-exit treatment if anything.
+
+## May 21, 2026 (evening) — Per-Rule Contribution baseline (64-trade batch May 20-21)
+
+### Anchor for next-batch comparison
+
+This batch was opened BEFORE Phase 1 engine ship populated `pattern_cell_source`,
+so all 64 trades show `⏳ No trades yet` in the live Pattern Cell Ship Performance
+table. The contribution analysis below is the **post-hoc simulation** of all 15
+active rules applied to this batch.
+
+When the next batch lands with REAL `pattern_cell_source` populated, compare
+per-rule numbers against this baseline mechanically. Discrepancies > 30% on
+per-rule Δ$ are signal — either regime drift or in-sample bias being exposed.
+
+### Batch context (May 20 → May 21 UTC-3, 64 trades)
+
+| Metric | Value |
+|---|---|
+| Actual P&L | **-$436.51** |
+| Simulated with 15 active rules | **+$98.48** |
+| Total Δ | **+$534.99** |
+| LONG split | 31 trades, -$238 actual → -$13 sim |
+| SHORT split | 33 trades, -$198 actual → +$111 sim |
+
+### Per-rule contribution table (BASELINE for next-batch comparison)
+
+| Rule | Fires | Mechanism | Δ$ Contribution | % of total Δ | Verdict |
+|---|---:|---|---:|---:|---|
+| **C4 TP+SL combined (LONG+SHORT)** | 11 | 6 TP + 5 SL | **+$316.5** | 59% | ★★★ Dominant rescue |
+| **C1 SHORT 2× mult** | 9 | Doubling winners | **+$110** | 21% | ★★ Working |
+| **UNMATCHED TP+SL (LONG+SHORT)** | 9 | 7 TP + 2 SL | **+$86** | 16% | ★ NEW — strongest per-trade Δ ($9.6/trade) |
+| **C8 TP+SL combined** | 5 | 5 small TP fires | +$18 | 3% | ★ Working |
+| **W1 SHORT 2× mult** | 3-4 | Doubling SHORT winners | +$29 | 5% | ★ Working |
+| **W2/W6 SHORT 2× mult (mixed combos)** | 4 | Doubling winners | +$30 | 6% | ★ Working |
+| **W2 LONG 2× mult** | 4 | Doubling LONG losses | **-$48** | -9% | ⚠ HEADWIND (1-batch) |
+| **W4 LONG 2× mult** | 2 | Doubling LONG losses | **-$16** | -3% | ⚠ HEADWIND (1-batch) |
+| W1 LONG fixed exits | 1 | Mostly inert | -$17 | -3% | ⚠ Single loss |
+| C4+C8, C1+W, etc. (combo overlaps) | ~6 | Misc | minor | <2% | Mixed |
+
+### By cohort (post-hoc applied)
+
+| Cohort | N | Actual $ | Simulated $ | Δ$ | Notes |
+|---|---:|---:|---:|---:|---|
+| C cohort (any C → C-side rules) | 41 | -$315 | +$129 | **+$444** | C4 doing 70% of work |
+| W cohort (W match, no C) | 14 | -$18 | -$13 | +$4 | Mostly neutral, W2/W4 LONG drags offset by W1/W2 SHORT |
+| TRULY UNMATCHED (no C, no W) | 9 | -$103 | -$17 | **+$86** | NEW rule, immediate positive |
+| Sum | 64 | -$436 | +$98 | **+$535** | |
+
+### Conflict resolution validation
+
+Option C ("C always wins") locked: cross-checked against alternatives on this batch:
+
+| Conflict policy | Sim P&L | Δ vs actual |
+|---|---|---|
+| **C wins (active)** | **+$98** | **+$535** ★ |
+| W wins (test) | -$70 | +$366 |
+| Independent (apply both) | -$41 | +$395 |
+
+C wins beat W wins by +$83 on this batch. The 3 trades that match BOTH C4
+AND a W pattern (the "Both crossed" cohort) are the LOSERS rescued by C4's
+fixed exits. Under W-wins those 3 trades would have been given 2× mult →
+losses doubled. Validated.
+
+### Per-rule revert/keep criteria at next checkpoint
+
+Apply mechanically to fresh-batch numbers from the live `🎲 Pattern Cell Ship Performance`
+table:
+
+| Rule | Keep if | Demote/revert if |
+|---|---|---|
+| C4 TP+SL | TP+SL fires ≥5 across 30+ matches AND Δ$ ≥ +$50 | Cut-winners > saves/3 OR Δ$ < +$20 |
+| C8 TP+SL | TP fires ≥3 with Avg≈+0.10% net | TP firing on trades that would have run to +0.30%+ |
+| C1 SHORT 2× | WR ≥ 70% AND Δ$ positive on N≥5 | WR ≤ 40% OR any single Δ$ vs BL < -$30 |
+| W1 SHORT 2× | WR ≥ 70% on N≥5 | WR ≤ 40% OR Δ$ vs BL negative |
+| **W2 LONG 2× ⚠** | **Fresh WR ≥ 60% OR Δ$ positive** | **Two batches in a row of negative Δ$ → demote to 1.0×** |
+| **W4 LONG 2× ⚠** | **Same as W2 LONG** | **Same — currently 1-batch evidence headwind** |
+| W2/W4/W6 SHORT 2× | WR ≥ 65% AND Δ$ ≥ +$20 across batch | Δ$ vs BL negative on N≥5 |
+| W1 LONG fixed exits | TP fires ≥ 3 with reasonable Δ$ | TP cutting real winners (post-exit peak ≥ +0.30%) on N≥3 |
+| W6 LONG/SHORT 2× | Cross-batch validated (was 100% WR on N=14+25) | Significant regime change |
+| **UNMATCHED TP+SL ⭐** | **TP fires ≥10 across 30+ trades AND Δ$ ≥ +$50** | **TP+SL Cut-Winners count > Saved/3 OR Δ$ < +$20 on N≥10** |
+
+### What this tells us about cross-rule overlap
+
+The 3-pattern split (C-side / W-side / UNMATCHED) cleanly partitions trades.
+Under Option C conflict resolution, every trade gets exactly ONE rule path:
+
+- 41 trades fall into C path (whichever C pattern matched, plus possibly W
+  ignored under Option C)
+- 14 trades fall into W path (no C match, just W mults)
+- 9 trades fall into UNMATCHED path (no C, no W)
+
+No trade gets double-counted. The +$535 = sum of all three cohort Δ.
+
+### When to act on next-batch results
+
+After next ≥50 trades close, pull the Pattern Cell Ship Performance table.
+For each row with N≥5:
+
+1. **★ WORKING (Δ$ ≥ +$20 vs BL OR fixed-exit Δ ≥ +$30 net)**: keep current
+2. **✓ Marginal (Δ$ ±$10)**: hold, observe one more batch
+3. **⚠ DRAG (Δ$ -$20 to -$1)**: drop multiplier to 1.5× or investigate fixed-exit threshold
+4. **✗ HARMFUL (Δ$ < -$20 with N≥5)**: revert to 1.0× / drop rule entirely
+
+For **multiplier vs Pattern Calculator-visible "would-have-been"**: if the
+calculator shows the same rule at 2.0× would have lost N≥5 trades cross-batch,
+the engine's live result will likely match. Don't override the verdict.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve a clean baseline of per-rule contributions BEFORE engine-driven
+data arrives. When the next batch's `🎲 Pattern Cell Ship Performance` table
+populates with real numbers, the analyst (or future-Claude) compares per-row
+against this table mechanically:
+
+- Δ$ within ±30% of baseline → rule firing as expected
+- Δ$ <70% of baseline → in-sample bias was high, real edge weaker
+- Δ$ >130% of baseline → unexpected upside, validate before celebrating
+- Δ$ flips sign → regime drift, investigate

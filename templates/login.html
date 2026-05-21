@@ -166,6 +166,13 @@
             document.getElementById('eye-closed').classList.toggle('hidden', isHidden);
         }
 
+        // JARVIS welcome trigger — flag in sessionStorage, played by dashboard on next load.
+        // Form submit counts as user interaction → browser autoplay policy is satisfied
+        // when the dashboard plays audio shortly after.
+        form.addEventListener('submit', function() {
+            try { sessionStorage.setItem('jarvis_play_welcome', '1'); } catch(e) {}
+        });
+
         const params = new URLSearchParams(window.location.search);
         if (params.get('error') === '1') {
             errorBox.classList.remove('hidden');

@@ -16138,5 +16138,146 @@
 
     <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->
     <script src="/static/live_terminal.js?v=13"></script>
+<!-- ============================================================
+     JARVIS WELCOME — plays once on dashboard load after login.
+     Triggered by sessionStorage flag set in login.html form submit.
+     Mute toggle in localStorage. All audio is procedurally generated
+     (Web Audio API) — zero asset files, zero external dependencies.
+     ============================================================ -->
+<button id="jarvis-mute-btn"
+        title="Mute JARVIS welcome"
+        style="position:fixed;bottom:18px;right:18px;z-index:9999;
+               background:rgba(20,30,60,0.75);color:#00d4ff;
+               border:1px solid #00d4ff88;border-radius:50%;
+               width:38px;height:38px;font-size:18px;cursor:pointer;
+               box-shadow:0 0 10px rgba(0,212,255,0.3);
+               transition:all 0.2s;">🔊</button>
+<script>
+(function() {
+  'use strict';
+  const MUTE_KEY = 'jarvis_muted';
+  const FLAG_KEY = 'jarvis_play_welcome';
+  const muteBtn = document.getElementById('jarvis-mute-btn');
+
+  function isMuted() { try { return localStorage.getItem(MUTE_KEY) === '1'; } catch(e) { return false; } }
+  function setMuted(v) {
+    try { localStorage.setItem(MUTE_KEY, v ? '1' : '0'); } catch(e) {}
+    muteBtn.textContent = v ? '🔇' : '🔊';
+    muteBtn.title = v ? 'JARVIS welcome muted (click to unmute)' : 'Mute JARVIS welcome';
+  }
+  setMuted(isMuted());
+  muteBtn.addEventListener('click', () => setMuted(!isMuted()));
+
+  // Bail if not a fresh post-login load
+  let shouldPlay = false;
+  try {
+    shouldPlay = sessionStorage.getItem(FLAG_KEY) === '1';
+    if (shouldPlay) sessionStorage.removeItem(FLAG_KEY);
+  } catch(e) {}
+  if (!shouldPlay || isMuted()) return;
+
+  // ---- Sci-Fi Startup Sweep (8 seconds, vol 0.4) ----
+  function playSciFiStartup(ctx, masterGain, duration) {
+    // Rising sawtooth sweep with band-passing
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(80, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + duration * 0.6);
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + duration);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1200;
+    filter.Q.value = 8;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, ctx.currentTime);
+    env.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.4);
+    env.gain.setValueAtTime(0.5, ctx.currentTime + duration - 0.5);
+    env.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.connect(filter); filter.connect(env); env.connect(masterGain);
+    osc.start(); osc.stop(ctx.currentTime + duration + 0.2);
+    // Shimmer overtone
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, ctx.currentTime);
+    osc2.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + duration);
+    const env2 = ctx.createGain(); env2.gain.value = 0.1;
+    osc2.connect(env2); env2.connect(masterGain);
+    osc2.start(); osc2.stop(ctx.currentTime + duration + 0.2);
+  }
+
+  function getDanielVoice() {
+    const vs = speechSynthesis.getVoices();
+    return vs.find(v => /Daniel/i.test(v.name) && /en-GB/i.test(v.lang))
+        || vs.find(v => /Daniel/i.test(v.name))
+        || vs.find(v => /en-GB/i.test(v.lang))
+        || null;
+  }
+
+  function speak() {
+    const u = new SpeechSynthesisUtterance(
+      "Welcome back, Willy.... Systems are ready.... Markets are waiting.... Let's Go!"
+    );
+    const v = getDanielVoice();
+    if (v) u.voice = v;
+    u.rate = 1.0;
+    u.pitch = 1.0;
+    u.volume = 1.0;
+    speechSynthesis.speak(u);
+  }
+
+  function run() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { speak(); return; }
+      const ctx = new AC();
+      if (ctx.state === 'suspended') {
+        // Autoplay blocked — try resuming; if it fails, fall back to voice-only on next click
+        ctx.resume().catch(() => {});
+      }
+      const masterGain = ctx.createGain();
+      masterGain.gain.value = 0.4;
+      masterGain.connect(ctx.destination);
+
+      const BG_DURATION = 8;     // seconds
+      const VOICE_DELAY = 3000;  // ms
+      const FADE_OUT = 5;        // seconds (after voice finishes)
+
+      // Start BG immediately
+      playSciFiStartup(ctx, masterGain, BG_DURATION);
+
+      // Voice at +3s — duck BG to 60% during voice
+      setTimeout(() => {
+        try {
+          masterGain.gain.linearRampToValueAtTime(0.24, ctx.currentTime + 0.2);
+        } catch(e) {}
+        speak();
+      }, VOICE_DELAY);
+
+      // Fade BG out after voice (phrase ~6s, so start fade at +9s)
+      setTimeout(() => {
+        try {
+          masterGain.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_OUT);
+        } catch(e) {}
+      }, VOICE_DELAY + 6000);
+    } catch(e) {
+      // Any error → fall back to voice-only
+      try { speak(); } catch(_) {}
+    }
+  }
+
+  // Voices may not be loaded yet — wait briefly
+  if (speechSynthesis.getVoices().length > 0) {
+    setTimeout(run, 200);
+  } else {
+    speechSynthesis.onvoiceschanged = function once() {
+      speechSynthesis.onvoiceschanged = null;
+      setTimeout(run, 100);
+    };
+    // Safety fallback: run anyway after 1s even if voices didn't load
+    setTimeout(() => { if (speechSynthesis.speaking) return; run(); }, 1000);
+  }
+})();
+</script>
+
 </body>
 </html>

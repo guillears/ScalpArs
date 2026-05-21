@@ -16116,3 +16116,56 @@ Removal procedure unchanged (still 5 fenced blocks, ~5 minutes). The
 new W controls live inside the existing widget HTML fence; new JS
 logic lives inside the existing IIFE fence.
 
+
+## May 20, 2026 (latest+17) — Pattern Calculator: remove fee adjustment from multiplier math (align with Pattern W table)
+
+### The bug
+
+Pattern Calculator was subtracting extra fees from the multiplier-doubled
+position (≈$0.06 per $100 of extra notional, summing to ~$52 across 8
+W2-LONG trades at high notional). The Pattern W table does pure linear
+`pnl × multiplier` scaling, no fee adjustment.
+
+Operator selected W2 LONG only + 2.0× multiplier in calculator:
+- Pattern W table row says: MULT 2× Δ = +$23.74 (= total_pnl × 2 - total_pnl)
+- Calculator showed: W effect = -$28.18
+
+Discrepancy: $51.92 — exactly the sum of (notional × 0.063%) extra-fee
+subtraction across the 8 trades.
+
+### Fix
+
+Removed FEE_PCT adjustment from calculator's `newDollar` and `mult_extra`.
+Multiplier math is now pure linear scaling: `(newPct/100) × notional × mult`.
+Matches Pattern W table semantics.
+
+### What this means in practice
+
+The calculator now slightly OVER-projects multiplier benefit by ignoring
+the real-world cost of paying doubled taker fees on doubled positions.
+For a $10K notional trade, real cost is ~$6 extra fees per 2× multiplied
+trade. Across a batch with 10 multiplied trades, that's ~$60 of optimistic
+bias in "Batch If Shipped" numbers.
+
+Acceptable trade-off because:
+1. Pattern W table (the canonical ship surface) doesn't include fees
+2. UI consistency > 1% precision improvement
+3. Operator can mentally subtract ~$0.06 per $100 of extra notional
+   if precision matters at ship time
+
+### Caps math is unchanged
+
+The cap-only case (no multiplier) doesn't have a fee issue because caps
+just change exit price, not position size. The `cap_effect` formula
+unchanged: `(newPct - actualPct)/100 × notional`.
+
+### Why this entry exists in CLAUDE.md
+
+To document:
+1. Calculator now matches Pattern W table semantics exactly
+2. The ~0.06%-per-trade fee bias is acknowledged but accepted for UI consistency
+3. If a future user notices "calculator over-projects by ~1%", the rationale lives here
+
+All edits inside existing PATTERN CALCULATOR fenced blocks. Removal
+procedure unchanged.
+

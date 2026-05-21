@@ -15505,10 +15505,15 @@
                     const wMultActive = matchesW && sel.wMultEnabled;
                     const mult = (cMultActive || wMultActive) ? sel.wMult : 1.0;
 
-                    // New $ = (new_pct / 100) * notional * multiplier - fees
-                    const FEE_PCT = 0.063;  // taker roundtrip approx
-                    const feesAdjust = (mult - 1.0) * (t.notional * FEE_PCT / 100);
-                    const newDollar = (newPct / 100) * t.notional * mult - feesAdjust;
+                    // New $ = (new_pct / 100) * notional * multiplier
+                    // May 20 latest+17: removed fee adjustment from multiplier math to match
+                    // the Pattern W table's linear scaling (pnl × mult). Pattern W table is
+                    // the canonical ship-decision surface; calculator must align with it.
+                    // Real-world doubled position DOES pay doubled taker fees (~0.063% per
+                    // roundtrip per notional unit), but that's a small refinement we omit
+                    // here for UI consistency. Operator should mentally subtract ~$0.06 per
+                    // $100 of extra notional if precision matters at ship time.
+                    const newDollar = (newPct / 100) * t.notional * mult;
 
                     newTotal += newDollar;
 
@@ -15529,8 +15534,10 @@
                     // negative (e.g., SL-fired trades at -0.50% × 2 = bigger loss). That's
                     // correct semantics — multiplier doubles whatever the new exit is.
                     const cap_effect = matchesC ? ((newPct - t.pnl_pct) / 100) * t.notional : 0;
+                    // May 20 latest+17: removed fee adjust to match Pattern W table's
+                    // linear pnl × mult scaling. See newDollar comment above.
                     const mult_extra = (mult > 1.0)
-                        ? ((newPct / 100) * t.notional * (mult - 1.0) - ((mult - 1.0) * (t.notional * FEE_PCT / 100)))
+                        ? ((newPct / 100) * t.notional * (mult - 1.0))
                         : 0;
 
                     // Cap effect → attribute to the tracker that owned the caps (capSource)

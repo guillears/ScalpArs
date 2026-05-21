@@ -15836,3 +15836,81 @@ To anchor:
 
 If calculator ever gets removed, this entry deletes with the others.
 
+
+## May 20, 2026 (latest+13) — Pattern Calculator: mult effect computed on OG transaction (decomposition fix)
+
+### The math problem
+
+Prior decomposition (latest+11/+12) computed `via 2.0× mult` as:
+```
+mult_extra = (newPct / 100) × notional × (mult - 1)
+```
+…meaning the multiplier was applied to the CAPPED exit (newPct). This was
+mechanically correct but operationally misleading: SL-capped trades with
+newPct = -0.50% showed NEGATIVE mult contribution because multiplying a
+small capped loss by 2× makes a slightly bigger loss. The operator's
+question "what does the multiplier do?" couldn't be cleanly answered.
+
+### The correct decomposition
+
+Sum-equivalent rewrite that separates concerns intuitively:
+
+```
+cap_effect       = ((newPct - actualPct) / 100) × notional      ← unchanged
+mult_on_og       = (actualPct / 100) × notional × (mult - 1) - extra_fees
+                   "what multiplier ALONE would do on OG trade"
+synergy          = ((newPct - actualPct) / 100) × notional × (mult - 1)
+                   "extra gain from sizing UP the cap-rescued exit"
+```
+
+Verified algebraically: `cap + mult_on_og + synergy = newDollar - actualDollar`
+where `newDollar = (newPct/100) × notional × mult - extra_fees`.
+
+### What the operator now sees
+
+```
+C effect (total — caps + mult on OG):  +$181.99
+  ↳ via TP fires (at 1×):              +$268.91
+  ↳ via SL fires (at 1×):               +$50.77
+  ↳ via 2.0× mult on OG:               -$137.69  ← what multiplier alone
+                                                     would do to the cohort's
+                                                     actual P&L (losers grow)
+W effect (mult on OG):                    $0.00
+Overlap (cap × mult synergy):          +$319.68  ← bonus from caps rescuing
+                                                     exit AND multiplier sizing up
+```
+
+This decomposition tells the diagnostic story correctly:
+- "Multiplier alone is hurtful here (cohort is net-losing, mult amplifies the loss)"
+- "BUT the caps rescue most of those losses ($319 worth at 1× sizing)"
+- "AND the multiplier sizes up the rescued exits for an additional $319 synergy"
+- "Net: combined ship turns this cohort from -$X actual to +$Y projected"
+
+### Why the old decomposition was wrong (semantically, not algebraically)
+
+The math was right — the sum equaled the correct total. But the
+attribution conveyed "multiplier amplifies the capped exit." That's not
+how you mentally reason about ship decisions. You want to know:
+(a) what would the cap alone do
+(b) what would the multiplier alone do
+(c) what's the bonus from running both together
+
+The new decomposition answers exactly those three questions independently.
+
+### Files changed
+
+- `templates/index.html` — calculator simulate() function attribution
+  block + render() decomposition labels and tooltips
+- `CLAUDE.md` — this entry
+
+All edits inside existing PATTERN CALCULATOR fenced blocks. Removal
+procedure unchanged.
+
+### Why this entry exists in CLAUDE.md
+
+To document the decomposition fix and the semantic difference between
+"multiplier on capped exit" (wrong-for-diagnosis) vs "multiplier on OG
+transaction" (correct-for-diagnosis). Future-Claude reading the calculator
+code will see this explanation in the inline comments and this entry as
+the authoritative reference.
+

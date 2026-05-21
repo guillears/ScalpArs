@@ -17745,3 +17745,127 @@ revert criteria for individual patterns documented elsewhere in CLAUDE.md):
 4. To preserve the pre-committed validation + revert criteria.
 5. To document the explicit decision to LEAVE OUT Unmatched cells until a
    proper pattern signature for them exists (C10 or W6 candidate).
+
+## May 21, 2026 (late evening) — Pattern Cell Ship Rules Phase 2 (UI + reporting) SHIPPED
+
+### What ships
+
+The operator-facing surface for the Phase 1 engine. Four UI deliverables + new
+analytics table + text-export integration.
+
+### 1. New config panel: 🎲 Pattern Cell Ship Rules
+
+Located right below the 💰 Premium Multipliers (RSI × ADX cells) panel.
+Per-rule table with columns:
+
+| Pattern (dropdown) | Direction | Inv Mult | Lev Mult | Fixed TP% | Fixed SL% | × (remove) |
+
+- Pattern dropdown lists all 14 patterns (C1-C9 + W1-W5) with brief
+  descriptions (e.g., "C4 Low-vol chop", "W1 HighConv trend")
+- Direction dropdown (LONG / SHORT)
+- Inv Mult / Lev Mult: default 1.0× each
+- Fixed TP% / Fixed SL%: blank = no override (uses default exit ladder)
+- "+ Add rule" button appends empty row
+
+JSON serialization matches the `pattern_cell_rules` config schema exactly.
+Empty TP / SL fields omitted from saved JSON (preserves Optional[] semantics).
+
+### 2. Brief pattern descriptions everywhere
+
+A central `PATTERN_BRIEF` const in templates/index.html maps pattern code →
+brief description. Used by:
+- Pattern dropdown options in new config panel
+- New Pattern Cell Ship Performance table (Source column shows
+  "C4 Low-vol chop" instead of bare "C4")
+- Text-export tables
+
+The existing Pattern C / Pattern W tracker rows already had labels via the
+`pattern_labels` map in main.py (`'c4': 'C4 Low-vol chop'` etc.) — those
+labels mirror the new constant.
+
+### 3. Fuchsia N column on Pattern C / Pattern W tracker rows
+
+When an active `pattern_cell_rules` entry exists for a tracker row's
+(pattern, direction), the N column is colored `text-fuchsia-400 font-semibold`
+with a tooltip "Active Pattern Cell Ship rule for {pattern} {direction}".
+
+No new columns added — purely visual indicator. Lookup via
+`window.PATTERN_CELL_ACTIVE` (populated by `loadPatternCellRules` at config
+load time).
+
+### 4. New analytics table: 🎲 Pattern Cell Ship Performance
+
+Located right after 💰 Multiplier Cell Performance. Distinct table because:
+- Source labels are pattern codes (C4/W1/W2+W4 combos), not RSI×ADX coordinates
+- Has Fix TP% / Fix SL% columns that RSI×ADX table doesn't
+- Has TP fires / SL fires count columns
+- Verdict logic handles both sizing cells (multiplier-based) AND pure-exit
+  cells (mult=1.0× with fixed TP/SL)
+
+Columns (16 total):
+| Pattern (with brief) | Dir | Inv | Lev | Eff | Fix TP% | Fix SL% | N | TP fires | SL fires | WR% | Avg P&L% | Total$ | PF | Δ$ vs BL | Verdict |
+
+Verdict logic:
+- Sized cells (effective mult ≠ 1.0): standard ★ WORKING / ✓ Marginal / ⚠ DRAG / ✗ HARMFUL by Δ$ vs BL
+- Pure-exit cells (mult = 1.0, has fixed TP/SL): ★ EXITS WORKING (Total $ > 0)
+  / ✓ Marginal (close to break-even) / ⚠ Exits not firing (large loss but
+  fixed exits didn't fire ≥ 50%)
+- Low N (< 5): ⚠ Low N
+- Configured but no trades yet: ⏳ No trades yet (informational row)
+
+Summary line at bottom shows:
+- Sized cells: trades, uplift $ vs simulated baseline
+- Pure-exit cells: trades, total $
+
+Empty state: "No Pattern Cell rules configured yet" until first trade
+or first config save.
+
+### 5. Text export integration
+
+Both export sites (clipboard + saved-file) include the new table under
+heading `## Pattern Cell Ship Performance`. Same 16 columns as UI table,
+width-padded for monospace alignment. Summary line included.
+
+### Engineering scope (Phase 2)
+
+| File | Change | LOC |
+|---|---|---|
+| `main.py` | `_compute_pattern_cell_performance` helper (~210 lines) + payload entry (1 line) + empty-state fallbacks (2 sites) | ~215 |
+| `templates/index.html` | Config panel UI + JS handlers (load/collect/add) + Pattern C/W tracker fuchsia N integration + new performance UI table + JS renderer + 2 text-export blocks | ~280 |
+| `CLAUDE.md` | This entry | ~140 |
+
+Total Phase 2: ~635 LOC across 3 files.
+
+### Combined Phase 1 + Phase 2 totals
+
+- Phase 1 (engine): ~510 LOC, 6 files
+- Phase 2 (UI + reporting): ~635 LOC, 3 files
+- **Combined: ~1,145 LOC across 8 unique files**
+
+### How operator uses it
+
+1. Open config panel — see 9 pre-populated rules (C4/C8/Unm.L proxy via patterns
+   + W1/W2/W4 multiplier cells). Edit/add/remove as desired.
+2. After save, the Pattern C and W tracker rows show fuchsia N for active rules.
+3. At next batch: 🎲 Pattern Cell Ship Performance table shows per-cell verdicts
+   (sized cells vs pure-exit cells distinguished).
+4. Trades automatically appear in Post-Exit Regret Deep Dive under
+   `PATTERN_FIXED_TP L1` / `PATTERN_FIXED_SL L1` close_reasons (whitelist
+   already added in Phase 1).
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the Phase 2 deliverables and their integration points with
+   Phase 1 engine code (loadPatternCellRules ↔ pattern_cell_rules JSON ↔
+   _lookup_pattern_cell_rule helper).
+2. To anchor the brief description convention (PATTERN_BRIEF const →
+   used in 3 places).
+3. To preserve the verdict logic split for sized cells vs pure-exit cells
+   (it's a non-obvious decision: pure-exit cells have effective_mult = 1.0
+   so Δ$ vs BL is structurally zero; verdict must use total $ outcome
+   directly).
+4. To document the table location strategy (NEW separate table rather than
+   extending 💰 Multiplier Cell Performance) and why (different column set,
+   different verdict logic).
+5. To preserve the empty-state and ⏳ informational row decisions (configured
+   cells appear in table even before they've traded — operator visibility).

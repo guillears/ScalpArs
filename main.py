@@ -1660,6 +1660,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
+            "pattern_cell_performance": {"rules": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2880,6 +2881,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
+            "pattern_cell_performance": {"rules": [], "summary": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -6372,6 +6374,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "atr_bucket_performance": _compute_atr_bucket_performance(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
+        # Pattern Cell Ship Performance (May 21, NEW — pattern-based rules per CLAUDE.md May 21 ship)
+        "pattern_cell_performance": _compute_pattern_cell_performance(orders),
         # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
         "ema13_strict_performance": _compute_ema13_strict_performance(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
@@ -9195,6 +9199,236 @@ def _compute_multiplier_cell_performance(orders):
         'summary': {'longs': _uplift(longs), 'shorts': _uplift(shorts)},
     }
 
+
+def _compute_pattern_cell_performance(orders):
+    """Pattern Cell Ship Performance (May 21 Phase 2) — sister to Multiplier Cell
+    Performance but for the NEW pattern-based shipping mechanism.
+
+    Groups closed trades by pattern_cell_source (e.g., "C4", "W2+W4") and computes
+    per-cell verdicts. Distinct from Multiplier Cell Performance because:
+      - Source is a pattern label (C4/C8/W1/W2/W4) not a RSI×ADX coordinate
+      - Pattern C cells can have fixed_tp/fixed_sl overrides (active exit-side effect
+        even when inv_mult / lev_mult = 1.0×)
+      - Verdict considers both sizing AND exit effects
+
+    Returns dict with 'rules' (list of per-cell rows) and 'summary' (aggregate uplift).
+    """
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    if not closed:
+        return {'rules': [], 'summary': {}}
+
+    # Pull current config rules so we can flag demoted cells AND surface configured
+    # TP/SL even when a cell hasn't traded yet (informational).
+    try:
+        cfg_rules = getattr(config.trading_config.thresholds, 'pattern_cell_rules', []) or []
+    except Exception:
+        cfg_rules = []
+
+    # Brief description map mirrors the UI labels — keep in sync if patterns added.
+    PATTERN_BRIEF = {
+        'C1': 'Capitulation chase', 'C2': 'Macro counter-trend', 'C3': 'Stretch exhaustion',
+        'C4': 'Low-vol chop', 'C5': 'Slow Climber Death', 'C6': 'Macro over-extended same dir',
+        'C7': 'Pair Countertrend Bounce', 'C8': 'Oversold/Overbought Chop',
+        'C9': 'Low-vol Countertrend Chop',
+        'W1': 'HighConv trend', 'W2': 'Macro tailwind', 'W3': 'Energetic vol breakout',
+        'W4': 'Pullback aligned', 'W5': 'Confluence',
+    }
+
+    # Build rule-lookup keyed by (pattern, direction). Pattern Cell rules apply at
+    # entry time, but a trade may carry multiple matched patterns in its source
+    # label (e.g., "C4+C8"). For attribution we surface ALL trades matching by
+    # exact source string as one row, AND also synthesize "no shipped trade yet"
+    # rows for cells configured but not yet triggered.
+    rule_index = {}
+    for r in cfg_rules:
+        try:
+            p = r.get('pattern', '')
+            d = r.get('direction', '')
+            if not p or not d:
+                continue
+            rule_index[(p, d)] = r
+        except Exception:
+            continue
+
+    # Compute direction baseline = avg P&L% on non-multiplied non-pattern trades.
+    def _direction_baseline(direction):
+        base = [o for o in closed if o.direction == direction
+                and (o.cell_multiplier or 1.0) == 1.0
+                and (getattr(o, 'pattern_cell_source', None) is None)
+                and o.pnl_percentage is not None]
+        if not base:
+            return None
+        return sum(o.pnl_percentage for o in base) / len(base)
+
+    bl_long = _direction_baseline('LONG')
+    bl_short = _direction_baseline('SHORT')
+
+    # Group closed trades by (direction, pattern_cell_source)
+    groups = {}
+    for o in closed:
+        src = getattr(o, 'pattern_cell_source', None)
+        if not src:
+            continue
+        key = (o.direction, src)
+        groups.setdefault(key, []).append(o)
+
+    rows = []
+    for (direction, src), os_ in groups.items():
+        n = len(os_)
+        wins = [o for o in os_ if (o.pnl or 0) > 0]
+        losses = [o for o in os_ if (o.pnl or 0) <= 0]
+        wr = 100.0 * len(wins) / n if n else 0.0
+        avg_pct = sum((o.pnl_percentage or 0) for o in os_) / n if n else 0
+        total_d = sum((o.pnl or 0) for o in os_)
+        expect_d = total_d / n if n else 0
+        win_d = sum((o.pnl or 0) for o in wins)
+        loss_d = abs(sum((o.pnl or 0) for o in losses))
+        pf = (win_d / loss_d) if loss_d > 0 else (float('inf') if win_d > 0 else 0)
+        capped = sum(1 for o in os_ if getattr(o, 'cell_multiplier_capped', False))
+
+        # Aggregate inv/lev/effective mult — use mode (most common value) across
+        # the cohort (config can change mid-batch; we report what trades actually used)
+        inv_mults = [o.cell_multiplier for o in os_ if o.cell_multiplier is not None]
+        lev_mults = [getattr(o, 'cell_lev_multiplier', None) or 1.0 for o in os_]
+        avg_inv = sum(inv_mults) / max(len(inv_mults), 1)
+        avg_lev = sum(lev_mults) / max(len(lev_mults), 1)
+        avg_eff = avg_inv * avg_lev
+
+        # Fixed TP/SL — surface from any trade in the group (consistent if rule unchanged)
+        fixed_tp = next((getattr(o, 'pattern_fixed_tp_pct', None) for o in os_ if getattr(o, 'pattern_fixed_tp_pct', None) is not None), None)
+        fixed_sl = next((getattr(o, 'pattern_fixed_sl_pct', None) for o in os_ if getattr(o, 'pattern_fixed_sl_pct', None) is not None), None)
+
+        # Count close_reasons for diagnostic (how often did fixed TP/SL fire?)
+        n_fixed_tp = sum(1 for o in os_ if o.close_reason and 'PATTERN_FIXED_TP' in o.close_reason)
+        n_fixed_sl = sum(1 for o in os_ if o.close_reason and 'PATTERN_FIXED_SL' in o.close_reason)
+
+        # Δ$ vs baseline = total_$ × (1 - 1/effective_mult). For pure-fixed-exit
+        # cells (eff=1.0×) this is zero — they're shipped via exits, not sizing.
+        # The exit-side effect on $ is implicit in total_d itself (already capped).
+        if avg_eff == 1.0:
+            delta_dollars = 0.0
+        else:
+            delta_dollars = total_d * (1.0 - 1.0 / avg_eff)
+
+        # Brief description — derived from src label. For single-pattern (e.g. "W1")
+        # use the brief directly; for combo (e.g., "C4+C8") build comma list.
+        parts = src.split('+')
+        brief_parts = [PATTERN_BRIEF.get(p, p) for p in parts]
+        brief = ', '.join(brief_parts)
+
+        # Verdict — for sized cells use Phase 3 matrix; for pure-exit cells use simpler logic
+        if n < 5:
+            verdict = '⚠ Low N'
+        elif avg_eff > 1.0:
+            # Sizing cell — standard verdict
+            if total_d < 0:
+                verdict = '✗ HARMFUL'
+            elif wr >= 70 and delta_dollars > 1.0:
+                verdict = '★ WORKING'
+            elif delta_dollars > 1.0:
+                verdict = '✓ Marginal'
+            elif delta_dollars < -1.0:
+                verdict = '⚠ DRAG'
+            else:
+                verdict = '✓ Marginal'
+        else:
+            # Pure exit cell (C-rule with fixed TP/SL, mult=1.0)
+            # Verdict based on fixed exits firing + total $ outcome
+            if total_d > 0:
+                verdict = '★ EXITS WORKING'
+            elif total_d > -10:
+                verdict = '✓ Marginal (exits)'
+            elif n_fixed_tp + n_fixed_sl >= n * 0.5:
+                # At least half the cohort hit fixed TP or SL
+                verdict = '✓ Exits firing'
+            else:
+                verdict = '⚠ Exits not firing'
+
+        # Per-direction baseline for context
+        baseline = bl_long if direction == 'LONG' else bl_short
+
+        rows.append({
+            'source': src,
+            'brief': brief,
+            'direction': direction,
+            'inv_multiplier': round(avg_inv, 2),
+            'lev_multiplier': round(avg_lev, 2),
+            'effective_multiplier': round(avg_eff, 2),
+            'fixed_tp_pct': fixed_tp,
+            'fixed_sl_pct': fixed_sl,
+            'n': n,
+            'wr_pct': round(wr, 1),
+            'avg_pnl_pct': round(avg_pct, 4),
+            'total_dollars': round(total_d, 2),
+            'expect_per_trade': round(expect_d, 3),
+            'profit_factor': round(pf, 2) if pf != float('inf') else 999.99,
+            'baseline_avg_pct': round(baseline, 4) if baseline is not None else None,
+            'delta_vs_baseline_dollars': round(delta_dollars, 2),
+            'capped_count': capped,
+            'n_fixed_tp_fires': n_fixed_tp,
+            'n_fixed_sl_fires': n_fixed_sl,
+            'verdict': verdict,
+        })
+
+    # Synthesize rows for configured cells that haven't traded yet — informational
+    # (operator can see all configured rules + their settings even at zero N).
+    traded_sources = {r['source'] for r in rows}
+    for (p, d), rule in rule_index.items():
+        # A configured single-pattern cell may map to a multi-pattern source label
+        # if the trade matched multiple patterns. Skip if the EXACT pattern label
+        # (no combos) has been traded.
+        if p in traded_sources:
+            continue
+        # Check if a combo with this pattern exists
+        if any(p in s.split('+') for s in traded_sources):
+            continue
+        inv = float(rule.get('inv_mult', 1.0) or 1.0)
+        lev = float(rule.get('lev_mult', 1.0) or 1.0)
+        rows.append({
+            'source': p,
+            'brief': PATTERN_BRIEF.get(p, p),
+            'direction': d,
+            'inv_multiplier': round(inv, 2),
+            'lev_multiplier': round(lev, 2),
+            'effective_multiplier': round(inv * lev, 2),
+            'fixed_tp_pct': rule.get('fixed_tp_pct'),
+            'fixed_sl_pct': rule.get('fixed_sl_pct'),
+            'n': 0,
+            'wr_pct': 0.0,
+            'avg_pnl_pct': 0.0,
+            'total_dollars': 0.0,
+            'expect_per_trade': 0.0,
+            'profit_factor': 0,
+            'baseline_avg_pct': None,
+            'delta_vs_baseline_dollars': 0.0,
+            'capped_count': 0,
+            'n_fixed_tp_fires': 0,
+            'n_fixed_sl_fires': 0,
+            'verdict': '⏳ No trades yet',
+        })
+
+    # Sort: by direction, then by N desc, then by source
+    rows.sort(key=lambda r: (r['direction'], -r['n'], r['source']))
+
+    # Summary uplift across all cells
+    def _eff_for_row(r):
+        return r.get('effective_multiplier') or 1.0
+    boosted = [r for r in rows if r['n'] > 0 and _eff_for_row(r) != 1.0]
+    actual_total = sum(r['total_dollars'] for r in boosted)
+    sim_baseline = sum(r['total_dollars'] / _eff_for_row(r) for r in boosted if _eff_for_row(r))
+    fixed_cells = [r for r in rows if r['n'] > 0 and _eff_for_row(r) == 1.0 and (r['fixed_tp_pct'] is not None or r['fixed_sl_pct'] is not None)]
+    fixed_total = sum(r['total_dollars'] for r in fixed_cells)
+    fixed_n = sum(r['n'] for r in fixed_cells)
+    summary = {
+        'boosted_trades_n': sum(r['n'] for r in boosted),
+        'boosted_actual_dollars': round(actual_total, 2),
+        'boosted_baseline_dollars': round(sim_baseline, 2),
+        'boosted_uplift_dollars': round(actual_total - sim_baseline, 2),
+        'fixed_exit_trades_n': fixed_n,
+        'fixed_exit_total_dollars': round(fixed_total, 2),
+    }
+
+    return {'rules': rows, 'summary': summary}
 
 
 # ----- Investor Portfolio -----

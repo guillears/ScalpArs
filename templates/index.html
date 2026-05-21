@@ -956,6 +956,46 @@
                     <div id="mult-cell-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- Pattern Cell Ship Performance (May 21, NEW — per CLAUDE.md May 21 ship Phase 2) -->
+                <div class="mt-6 pt-6 border-t border-fuchsia-900/40">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🎲 Pattern Cell Ship Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        Per-cell breakdown of Pattern Cell Ship rule impact. Source label = matched patterns
+                        (e.g., "C4", "C4+C8", "W1"). <span class="text-cyan-300">Sized cells</span> use ★ WORKING / ⚠ DRAG / ✗ HARMFUL
+                        verdict from Δ$ vs baseline (Multiplier Cell rules). <span class="text-cyan-300">Pure-exit cells</span> (mult=1.0×
+                        with fixed TP/SL) use ★ EXITS WORKING / ⚠ Exits not firing verdict from total $ outcome.
+                        Cells configured but not yet traded show as ⏳ informational rows.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Pattern</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2" title="Investment-side multiplier">Inv</th>
+                                    <th class="text-right px-2" title="Leverage-side multiplier">Lev</th>
+                                    <th class="text-right px-2" title="Effective = Inv × Lev">Eff</th>
+                                    <th class="text-right px-2" title="Fixed TP override (C-rule). Empty = no override.">Fix TP%</th>
+                                    <th class="text-right px-2" title="Fixed SL override (C-rule). Empty = no override.">Fix SL%</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="PATTERN_FIXED_TP L1 fires">TP fires</th>
+                                    <th class="text-right px-2" title="PATTERN_FIXED_SL L1 fires">SL fires</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Avg P&amp;L%</th>
+                                    <th class="text-right px-2">Total$</th>
+                                    <th class="text-right px-2">PF</th>
+                                    <th class="text-right px-2" title="$ impact of multiplier vs baseline (1× effective). Zero for pure-exit cells.">Δ$ vs BL</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-cell-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="16" class="py-3 text-center text-gray-500">No pattern-cell trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="pattern-cell-perf-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+
                 <!-- EMA13 Strict-Mode Performance (May 8, 2026 — tracks ema13_cross_requires_stack_flip toggle) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🛡️ EMA13 Strict-Mode Performance</h3>
@@ -4904,6 +4944,36 @@
                         </div>
                         <p class="text-xs text-gray-500 mt-2">Defaults to 1.0× for any cell not listed. Per-cell value clamped to [0.5, hard cap]. If available balance &lt; multiplied target, trade uses all available (logged as <code>[CELL_MULT_CAPPED]</code>) — never aborts on capital alone. <span class="text-cyan-300">Pair + BTC both match? HIGHER wins.</span></p>
                     </div>
+
+                    <!-- Pattern Cell Ship Rules (May 21, Phase 2 UI) — per-pattern multipliers + fixed exits -->
+                    <div class="mt-4 p-4 bg-fuchsia-900/10 border border-fuchsia-500/30 rounded">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-fuchsia-300 font-semibold">🎲 Pattern Cell Ship Rules</span>
+                            <span class="text-xs text-gray-500">Bind specific Pattern C / W cohorts to multipliers + fixed exits</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mb-3">
+                            Each rule applies to trades matching that (pattern, direction).
+                            <span class="text-cyan-300">Option C conflict</span>: C presence blocks W multipliers; W presence blocks C fixed exits.
+                            <span class="text-cyan-300">Pattern wins</span> over RSI×ADX cells when both fire.
+                            Empty Fixed TP / SL = no override (uses default exit ladder). Hard caps reuse RSI×ADX caps above.
+                        </p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead><tr class="text-gray-500">
+                                    <th class="text-left px-1">Pattern</th>
+                                    <th class="text-left px-1">Direction</th>
+                                    <th class="text-left px-1" title="Investment multiplier — applied at entry to position size.">Inv Mult</th>
+                                    <th class="text-left px-1" title="Leverage multiplier — applied at entry to leverage factor.">Lev Mult</th>
+                                    <th class="text-left px-1" title="Trade exits at this pnl% via PATTERN_FIXED_TP L1. Leave blank to use default exit ladder.">Fixed TP%</th>
+                                    <th class="text-left px-1" title="Trade exits at this pnl% (negative) via PATTERN_FIXED_SL L1. Leave blank to use default SL.">Fixed SL%</th>
+                                    <th></th>
+                                </tr></thead>
+                                <tbody id="pattern-cell-rules-body"></tbody>
+                            </table>
+                        </div>
+                        <button type="button" onclick="addPatternCellRow()" class="mt-2 text-xs text-fuchsia-400 hover:text-fuchsia-300">+ Add rule</button>
+                    </div>
+
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">RSI Momentum Filter</span>
                         <div class="flex items-center gap-6 mt-1">
@@ -6374,6 +6444,26 @@
             const _mcp1 = perf.multiplier_cell_performance || {};
             _renderMultExport(_mcp1.longs, 'LONGs', (_mcp1.summary || {}).longs);
             _renderMultExport(_mcp1.shorts, 'SHORTs', (_mcp1.summary || {}).shorts);
+
+            // Pattern Cell Ship Performance (May 21 Phase 2)
+            const _pcp1 = perf.pattern_cell_performance || {};
+            const _pcpRows1 = _pcp1.rules || [];
+            if (_pcpRows1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## Pattern Cell Ship Performance\n`);
+                lines.push(`${'Pattern'.padEnd(8)} ${'Brief'.padEnd(34)} ${'Dir'.padEnd(6)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'FixTP'.padEnd(8)} ${'FixSL'.padEnd(8)} ${'N'.padEnd(5)} ${'tpFr'.padEnd(5)} ${'slFr'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'PF'.padEnd(6)} ${'Δ$ vs BL'.padEnd(10)} ${'Verdict'}`);
+                for (const r of _pcpRows1) {
+                    const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                    const dvbStr = (r.n === 0 || (r.effective_multiplier || 1.0) === 1.0) ? '—' : (r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2);
+                    const ftpStr = r.fixed_tp_pct == null ? '—' : ((r.fixed_tp_pct >= 0 ? '+' : '') + r.fixed_tp_pct.toFixed(2) + '%');
+                    const fslStr = r.fixed_sl_pct == null ? '—' : (r.fixed_sl_pct.toFixed(2) + '%');
+                    lines.push(`${(r.source || '').padEnd(8)} ${(r.brief || '').slice(0,34).padEnd(34)} ${(r.direction || '').padEnd(6)} ${((r.inv_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.lev_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.effective_multiplier || 1.0).toFixed(2)+'x').padEnd(7)} ${ftpStr.padEnd(8)} ${fslStr.padEnd(8)} ${String(r.n || 0).padEnd(5)} ${String(r.n_fixed_tp_fires || 0).padEnd(5)} ${String(r.n_fixed_sl_fires || 0).padEnd(5)} ${(r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—').padEnd(7)} ${(r.n > 0 ? ((r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%') : '—').padEnd(10)} ${(r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—').padEnd(11)} ${(r.n > 0 ? pfStr : '—').padEnd(6)} ${dvbStr.padEnd(10)} ${r.verdict || ''}`);
+                }
+                if (_pcp1.summary) {
+                    const s = _pcp1.summary;
+                    lines.push(`\nSized cells: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)} | Pure-exit cells: ${s.fixed_exit_trades_n || 0} trades, total ${(s.fixed_exit_total_dollars >= 0 ? '+$' : '-$') + Math.abs(s.fixed_exit_total_dollars).toFixed(2)}`);
+                }
+            }
 
             // Entry Extension / Late Entry Risk (May 13 PM)
             const _ext1 = perf.ema13_extension_performance || {};
@@ -7846,6 +7936,26 @@
                 const _mcp2 = perf.multiplier_cell_performance || {};
                 _renderMultExport2(_mcp2.longs, 'LONGs', (_mcp2.summary || {}).longs);
                 _renderMultExport2(_mcp2.shorts, 'SHORTs', (_mcp2.summary || {}).shorts);
+
+                // Pattern Cell Ship Performance (May 21 Phase 2) — mirror of clipboard export above
+                const _pcp2 = perf.pattern_cell_performance || {};
+                const _pcpRows2 = _pcp2.rules || [];
+                if (_pcpRows2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## Pattern Cell Ship Performance\n`);
+                    lines.push(`${'Pattern'.padEnd(8)} ${'Brief'.padEnd(34)} ${'Dir'.padEnd(6)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'FixTP'.padEnd(8)} ${'FixSL'.padEnd(8)} ${'N'.padEnd(5)} ${'tpFr'.padEnd(5)} ${'slFr'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'PF'.padEnd(6)} ${'Δ$ vs BL'.padEnd(10)} ${'Verdict'}`);
+                    for (const r of _pcpRows2) {
+                        const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                        const dvbStr = (r.n === 0 || (r.effective_multiplier || 1.0) === 1.0) ? '—' : (r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2);
+                        const ftpStr = r.fixed_tp_pct == null ? '—' : ((r.fixed_tp_pct >= 0 ? '+' : '') + r.fixed_tp_pct.toFixed(2) + '%');
+                        const fslStr = r.fixed_sl_pct == null ? '—' : (r.fixed_sl_pct.toFixed(2) + '%');
+                        lines.push(`${(r.source || '').padEnd(8)} ${(r.brief || '').slice(0,34).padEnd(34)} ${(r.direction || '').padEnd(6)} ${((r.inv_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.lev_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.effective_multiplier || 1.0).toFixed(2)+'x').padEnd(7)} ${ftpStr.padEnd(8)} ${fslStr.padEnd(8)} ${String(r.n || 0).padEnd(5)} ${String(r.n_fixed_tp_fires || 0).padEnd(5)} ${String(r.n_fixed_sl_fires || 0).padEnd(5)} ${(r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—').padEnd(7)} ${(r.n > 0 ? ((r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%') : '—').padEnd(10)} ${(r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—').padEnd(11)} ${(r.n > 0 ? pfStr : '—').padEnd(6)} ${dvbStr.padEnd(10)} ${r.verdict || ''}`);
+                    }
+                    if (_pcp2.summary) {
+                        const s = _pcp2.summary;
+                        lines.push(`\nSized cells: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)} | Pure-exit cells: ${s.fixed_exit_trades_n || 0} trades, total ${(s.fixed_exit_total_dollars >= 0 ? '+$' : '-$') + Math.abs(s.fixed_exit_total_dollars).toFixed(2)}`);
+                    }
+                }
 
                 // Entry Extension / Late Entry Risk (May 13 PM)
                 const _ext2 = perf.ema13_extension_performance || {};
@@ -9756,6 +9866,70 @@
                     }
                 }
 
+                // Pattern Cell Ship Performance (May 21 Phase 2 — sister to Multiplier Cell Performance)
+                if (data.pattern_cell_performance) {
+                    const pcp = data.pattern_cell_performance;
+                    const tb = document.getElementById('pattern-cell-perf-body');
+                    const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    const fmtPct = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
+                    const rules = pcp.rules || [];
+                    if (tb) {
+                        if (!rules.length) {
+                            tb.innerHTML = '<tr><td colspan="16" class="py-3 text-center text-gray-500">No Pattern Cell rules configured yet — see config panel above</td></tr>';
+                        } else {
+                            tb.innerHTML = rules.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const totalCls = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const avgCls = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const dvbCls = r.delta_vs_baseline_dollars > 0 ? 'text-emerald-400'
+                                    : r.delta_vs_baseline_dollars < 0 ? 'text-red-400'
+                                    : 'text-gray-500';
+                                const verdictColor =
+                                    r.verdict.includes('★') ? 'text-emerald-400 font-semibold'
+                                    : r.verdict.includes('✗') ? 'text-red-500'
+                                    : r.verdict.includes('DRAG') ? 'text-red-400'
+                                    : r.verdict.includes('⚠ Exits not') ? 'text-amber-400'
+                                    : r.verdict.includes('⏳') ? 'text-gray-400 italic'
+                                    : r.verdict.includes('✓') ? 'text-blue-400'
+                                    : r.verdict.includes('Low N') ? 'text-amber-400'
+                                    : 'text-gray-500';
+                                const _multTier = (v) => v >= 2.5 ? 'text-red-400' : v >= 1.5 ? 'text-amber-300' : v === 1.0 ? 'text-gray-500' : 'text-gray-400';
+                                const invColor = _multTier(r.inv_multiplier || 1.0);
+                                const levColor = _multTier(r.lev_multiplier || 1.0);
+                                const effColor = _multTier(r.effective_multiplier || 1.0);
+                                const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                                // Source displays with brief: "C4 Low-vol chop" or "C4+C8 Low-vol chop, Oversold/Overbought Chop"
+                                const sourceLabel = `<span class="text-fuchsia-300 font-mono font-semibold">${r.source}</span> <span class="text-gray-500 text-xs">${r.brief || ''}</span>`;
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1">${sourceLabel}</td>
+                                    <td class="px-2 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right ${invColor}">${(r.inv_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${levColor}">${(r.lev_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${effColor} font-semibold">${(r.effective_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right text-amber-300">${r.fixed_tp_pct == null ? '—' : (r.fixed_tp_pct >= 0 ? '+' : '') + r.fixed_tp_pct.toFixed(2) + '%'}</td>
+                                    <td class="px-2 py-1 text-right text-amber-300">${r.fixed_sl_pct == null ? '—' : r.fixed_sl_pct.toFixed(2) + '%'}</td>
+                                    <td class="px-2 py-1 text-right ${r.n === 0 ? 'text-gray-500' : 'text-gray-200'}">${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${r.n_fixed_tp_fires > 0 ? 'text-amber-300' : 'text-gray-500'}">${r.n_fixed_tp_fires || 0}</td>
+                                    <td class="px-2 py-1 text-right ${r.n_fixed_sl_fires > 0 ? 'text-amber-300' : 'text-gray-500'}">${r.n_fixed_sl_fires || 0}</td>
+                                    <td class="px-2 py-1 text-right">${r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${avgCls}">${r.n > 0 ? (r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${totalCls}">${r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—'}</td>
+                                    <td class="px-2 py-1 text-right">${r.n > 0 ? pfStr : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${dvbCls}">${r.n === 0 || r.effective_multiplier === 1.0 ? '—' : fmt$(r.delta_vs_baseline_dollars)}</td>
+                                    <td class="px-2 py-1 ${verdictColor} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                    const pcSum = document.getElementById('pattern-cell-perf-summary');
+                    if (pcSum && pcp.summary) {
+                        const s = pcp.summary;
+                        const upCls = (s.boosted_uplift_dollars || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const fxCls = (s.fixed_exit_total_dollars || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        pcSum.innerHTML = `Sized cells: ${s.boosted_trades_n || 0} trades, actual ${fmt$(s.boosted_actual_dollars)}, simulated baseline ${fmt$(s.boosted_baseline_dollars)}, uplift <span class="font-semibold ${upCls}">${fmt$(s.boosted_uplift_dollars)}</span> &nbsp;|&nbsp; Pure-exit cells: ${s.fixed_exit_trades_n || 0} trades, total <span class="font-semibold ${fxCls}">${fmt$(s.fixed_exit_total_dollars)}</span>`;
+                    }
+                }
+
                 // Entry Extension / Late Entry Risk (May 13 PM)
                 const _renderExtSingleDim = (rows, bodyId) => {
                     const el = document.getElementById(bodyId);
@@ -10318,10 +10492,17 @@
                                     : 'text-gray-400';
                                 const sl50NewCls = (r.sl50_new_total_usd || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold';
                                 const sl50Str = `<span class="${sl50NewCls}">${fmt$(r.sl50_new_total_usd)}</span><br><span class="text-xs ${sl50DeltaCls}">Δ${fmt$(r.sl50_delta_usd)}</span> <span class="text-xs text-gray-500">(${r.sl50_fires||0}/${r.sl50_saves||0}/${r.sl50_cut_winners||0})</span>`;
+                                // May 21 Phase 2: fuchsia N coloring when an active
+                                // Pattern Cell Ship rule exists for this (pattern, direction).
+                                // Lookup against PATTERN_CELL_ACTIVE (populated by loadPatternCellRules).
+                                const _patternCode = (r.pattern_key || '').toUpperCase();
+                                const _hasShipRule = (window.PATTERN_CELL_ACTIVE && window.PATTERN_CELL_ACTIVE[`${_patternCode}_${r.direction}`]) === true;
+                                const nCls = _hasShipRule ? 'text-fuchsia-400 font-semibold' : 'text-gray-200';
+                                const nTitle = _hasShipRule ? `title="Active Pattern Cell Ship rule for ${_patternCode} ${r.direction}"` : '';
                                 return `<tr class="${rowCls}">
                                     <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
                                     <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
-                                    <td class="px-3 py-1 text-center text-gray-200">${r.n}</td>
+                                    <td class="px-3 py-1 text-center ${nCls}" ${nTitle}>${r.n}</td>
                                     <td class="px-3 py-1 text-center ${wrCls}">${r.wr.toFixed(1)}%</td>
                                     <td class="px-3 py-1 text-right ${avgCls}">${fmt(r.avg_pct, 3)}</td>
                                     <td class="px-3 py-1 text-right ${totCls}">${fmt$(r.total_usd)}</td>
@@ -10448,10 +10629,15 @@
                                 const rrStr = r.rr_ratio == null ? '—'
                                     : r.rr_ratio === 0 ? '∞'
                                     : `1 : ${r.rr_ratio.toFixed(1)}`;
+                                // May 21 Phase 2: fuchsia N coloring when an active Pattern Cell Ship rule exists.
+                                const _pwPatternCode = (r.pattern_key || '').toUpperCase();
+                                const _pwHasShipRule = (window.PATTERN_CELL_ACTIVE && window.PATTERN_CELL_ACTIVE[`${_pwPatternCode}_${r.direction}`]) === true;
+                                const _pwNCls = _pwHasShipRule ? 'text-fuchsia-400 font-semibold' : 'text-gray-200';
+                                const _pwNTitle = _pwHasShipRule ? `title="Active Pattern Cell Ship rule for ${_pwPatternCode} ${r.direction}"` : '';
                                 return `<tr class="${rowCls}">
                                     <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
                                     <td class="px-3 py-1 text-gray-200">${r.pattern}</td>
-                                    <td class="px-3 py-1 text-center text-gray-200">${r.n}</td>
+                                    <td class="px-3 py-1 text-center ${_pwNCls}" ${_pwNTitle}>${r.n}</td>
                                     <td class="px-3 py-1 text-center ${wrCls}">${r.wr.toFixed(1)}%</td>
                                     <td class="px-3 py-1 text-center ${wpCls}">${r.winner_precision_pct == null ? '-' : r.winner_precision_pct.toFixed(0) + '%'}</td>
                                     <td class="px-3 py-1 text-center ${lpCls}">${r.loser_precision_pct == null ? '-' : r.loser_precision_pct.toFixed(0) + '%'}</td>
@@ -14474,6 +14660,10 @@
                 if (_levCapEl) _levCapEl.value = config.thresholds.rsi_adx_multiplier_lev_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_lev_hard_cap : 2.0;
                 // Refresh column highlight to match the loaded target mode.
                 if (typeof _refreshMultColumnHighlight === 'function') _refreshMultColumnHighlight();
+                // Pattern Cell Ship Rules (May 21 Phase 2)
+                if (typeof loadPatternCellRules === 'function') {
+                    loadPatternCellRules(config.thresholds.pattern_cell_rules || []);
+                }
                 const _qsEnabledEl = document.getElementById('config-entry-quality-score-filter-enabled');
                 if (_qsEnabledEl) _qsEnabledEl.checked = config.thresholds.entry_quality_score_filter_enabled === true;
                 const _qsBlockMaxEl = document.getElementById('config-entry-quality-score-block-max');
@@ -15053,6 +15243,96 @@
         // removal entry. The Score block FILTER (entry_quality_score_filter) is
         // a separate entry-blocking mechanism and remains intact.
 
+        // Pattern Cell Ship Rules (May 21 Phase 2) — JSON-array per-pattern rules
+        // with optional multipliers + fixed TP/SL exits.
+        // Brief descriptions used in pattern dropdown labels + tracker rows.
+        const PATTERN_BRIEF = {
+            'C1': 'Capitulation chase',
+            'C2': 'Macro counter-trend',
+            'C3': 'Stretch exhaustion',
+            'C4': 'Low-vol chop',
+            'C5': 'Slow Climber Death',
+            'C6': 'Macro over-extended same dir',
+            'C7': 'Pair Countertrend Bounce',
+            'C8': 'Oversold/Overbought Chop',
+            'C9': 'Low-vol Countertrend Chop',
+            'W1': 'HighConv trend',
+            'W2': 'Macro tailwind',
+            'W3': 'Energetic vol breakout',
+            'W4': 'Pullback aligned',
+            'W5': 'Confluence',
+        };
+        window.PATTERN_BRIEF = PATTERN_BRIEF;
+
+        // Tracks active rules per (pattern, direction) — populated by loadPatternCellRules.
+        // Read by Pattern C/W tracker renderers to apply fuchsia N coloring.
+        window.PATTERN_CELL_ACTIVE = {};  // { 'C4_LONG': true, ... }
+
+        function addPatternCellRow(pattern='', direction='LONG', invMult='1.0', levMult='1.0', fixedTp='', fixedSl='') {
+            const tbody = document.getElementById('pattern-cell-rules-body');
+            if (!tbody) return;
+            const tr = document.createElement('tr');
+            const patternOptions = Object.entries(PATTERN_BRIEF).map(([code, brief]) => {
+                const sel = code === pattern ? 'selected' : '';
+                return `<option value="${code}" ${sel}>${code} ${brief}</option>`;
+            }).join('');
+            tr.innerHTML = `
+                <td class="px-1 py-1">
+                    <select class="bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs pcell-pattern">
+                        <option value="">— select —</option>
+                        ${patternOptions}
+                    </select>
+                </td>
+                <td class="px-1 py-1">
+                    <select class="bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs pcell-dir">
+                        <option value="LONG" ${direction==='LONG'?'selected':''}>LONG</option>
+                        <option value="SHORT" ${direction==='SHORT'?'selected':''}>SHORT</option>
+                    </select>
+                </td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-16 bg-white/5 border border-fuchsia-500/40 rounded px-1 py-0.5 text-fuchsia-300 text-center text-xs font-semibold pcell-inv" value="${invMult}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-16 bg-white/5 border border-fuchsia-500/40 rounded px-1 py-0.5 text-fuchsia-300 text-center text-xs font-semibold pcell-lev" value="${levMult}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.05" class="w-16 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs pcell-tp" placeholder="0.10" value="${fixedTp}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.05" class="w-16 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs pcell-sl" placeholder="-0.50" value="${fixedSl}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadPatternCellRules(rules) {
+            const tbody = document.getElementById('pattern-cell-rules-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            window.PATTERN_CELL_ACTIVE = {};
+            if (!Array.isArray(rules)) return;
+            for (const r of rules) {
+                const p = r.pattern || '';
+                const d = r.direction || 'LONG';
+                const inv = (r.inv_mult != null ? r.inv_mult : 1.0);
+                const lev = (r.lev_mult != null ? r.lev_mult : 1.0);
+                const tp = (r.fixed_tp_pct != null ? r.fixed_tp_pct : '');
+                const sl = (r.fixed_sl_pct != null ? r.fixed_sl_pct : '');
+                addPatternCellRow(p, d, String(inv), String(lev), String(tp), String(sl));
+                // Track active rules for tracker N-column coloring
+                if (p) window.PATTERN_CELL_ACTIVE[`${p}_${d}`] = true;
+            }
+        }
+        function collectPatternCellRules() {
+            const rows = document.querySelectorAll('#pattern-cell-rules-body tr');
+            const rules = [];
+            rows.forEach(row => {
+                const p = row.querySelector('.pcell-pattern').value.trim();
+                const d = row.querySelector('.pcell-dir').value.trim();
+                if (!p || !d) return;
+                const inv = parseFloat(row.querySelector('.pcell-inv').value) || 1.0;
+                const lev = parseFloat(row.querySelector('.pcell-lev').value) || 1.0;
+                const tpStr = row.querySelector('.pcell-tp').value.trim();
+                const slStr = row.querySelector('.pcell-sl').value.trim();
+                const rule = { pattern: p, direction: d, inv_mult: inv, lev_mult: lev };
+                if (tpStr !== '') rule.fixed_tp_pct = parseFloat(tpStr);
+                if (slStr !== '') rule.fixed_sl_pct = parseFloat(slStr);
+                rules.push(rule);
+            });
+            return rules;
+        }
+
 
         // Update investment unit display
         function updateInvestmentUnit() {
@@ -15264,6 +15544,7 @@
                     rsi_adx_multiplier_target: document.getElementById('config-mult-target').value || 'investment',
                     rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
                     rsi_adx_multiplier_lev_hard_cap: safeFloat(document.getElementById('config-mult-lev-hard-cap').value) || 2.0,
+                    pattern_cell_rules: (typeof collectPatternCellRules === 'function') ? collectPatternCellRules() : [],
                     entry_quality_score_filter_enabled: (document.getElementById('config-entry-quality-score-filter-enabled') || {}).checked === true,
                     entry_quality_score_block_max: parseInt((document.getElementById('config-entry-quality-score-block-max') || {}).value) || 1,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,

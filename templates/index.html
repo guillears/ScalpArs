@@ -1879,8 +1879,9 @@
                 <section id="pcalc-section" class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-violet-300 mb-2">🧮 Pattern Calculator (combined Pattern C + Pattern W simulator)</h3>
                     <p class="text-xs text-gray-400 mb-3">
-                        Select any combination of Pattern C signatures and Pattern W signatures. BOTH trackers now have independent
-                        caps (None / TP / SL / TP+SL) and multiplier (2.0×) controls — pick any subset on either side.
+                        Select any combination of Pattern C signatures and Pattern W signatures (plus pseudo-cohorts <span class="text-amber-200 italic">Unm. L</span> /
+                        <span class="text-emerald-200 italic">Unm. W</span> for losers/winners that fall through the existing taxonomy).
+                        BOTH trackers have independent caps (None / TP / SL / TP+SL) and multiplier (2.0×) controls — pick any subset on either side.
                         <strong>When caps + multiplier are both active: caps are applied first to compute the new exit, then the multiplier sizes up the new (capped) exit.</strong>
                         Multiplier is single-application: a trade matching both a selected C (mult on) AND a selected W (mult on) still gets only ONE 2.0× (no stacking).
                         Cap conflict: if a trade matches both a selected C (caps active) AND a selected W (caps active), Pattern C's caps take priority.
@@ -15385,12 +15386,24 @@
                     label.innerHTML = `<input type="checkbox" data-pcalc-c="${p}" class="pcalc-c-pat"> ${p.toUpperCase()}`;
                     cList.appendChild(label);
                 });
+                // Unmatched Losers pseudo-checkbox (May 20 latest+18)
+                const ulLabel = document.createElement('label');
+                ulLabel.className = 'flex items-center gap-1';
+                ulLabel.title = 'Unmatched Losers — losing trades (pnl ≤ 0) that match NO Pattern C signature. Lets you simulate "what if we shipped a fix for trades falling through the existing C taxonomy."';
+                ulLabel.innerHTML = `<input type="checkbox" id="pcalc-c-unmatched" class="pcalc-c-unmatched"> <span class="text-amber-200 italic">Unm. L</span>`;
+                cList.appendChild(ulLabel);
                 W_PATTERNS.forEach(p => {
                     const label = document.createElement('label');
                     label.className = 'flex items-center gap-1';
                     label.innerHTML = `<input type="checkbox" data-pcalc-w="${p}" class="pcalc-w-pat"> ${p.toUpperCase()}`;
                     wList.appendChild(label);
                 });
+                // Unmatched Winners pseudo-checkbox (May 20 latest+18)
+                const uwLabel = document.createElement('label');
+                uwLabel.className = 'flex items-center gap-1';
+                uwLabel.title = 'Unmatched Winners — winning trades (pnl > 0) that match NO Pattern W signature. Lets you simulate "what if we shipped a 2× multiplier for winners falling through the existing W taxonomy."';
+                uwLabel.innerHTML = `<input type="checkbox" id="pcalc-w-unmatched" class="pcalc-w-unmatched"> <span class="text-emerald-200 italic">Unm. W</span>`;
+                wList.appendChild(uwLabel);
             }
 
             function getSelections() {
@@ -15406,11 +15419,13 @@
                     .map(el => el.dataset.pcalcW);
                 const cAction = document.querySelector('input[name="pcalc-c-action"]:checked')?.value || 'combined';
                 const cMult = document.getElementById('pcalc-c-mult')?.checked || false;
-                // May 20 latest+16: Pattern W gets symmetric caps + mult controls.
                 const wAction = document.querySelector('input[name="pcalc-w-action"]:checked')?.value || 'none';
                 const wMultEnabled = document.getElementById('pcalc-w-mult')?.checked || false;
-                const wMult = 2.0;  // hard-cap value (locked)
-                return { cDirs, wDirs, cPats, wPats, cAction, cMult, wAction, wMultEnabled, wMult };
+                const wMult = 2.0;
+                // May 20 latest+18: pseudo-pattern flags for unmatched cohorts.
+                const cUnmatched = document.getElementById('pcalc-c-unmatched')?.checked || false;
+                const wUnmatched = document.getElementById('pcalc-w-unmatched')?.checked || false;
+                return { cDirs, wDirs, cPats, wPats, cAction, cMult, wAction, wMultEnabled, wMult, cUnmatched, wUnmatched };
             }
 
             function simulate() {
@@ -15443,11 +15458,18 @@
                 trades.forEach(t => {
                     const actualDollar = t.pnl || 0;
                     // Does this trade match any SELECTED C pattern + direction?
-                    const matchesC = sel.cDirs.has(t.direction) &&
-                        sel.cPats.some(p => t[p] === true);
+                    // May 20 latest+18: also match if "Unm. L" checkbox is on AND trade
+                    // is an unmatched loser (pnl ≤ 0 AND matches no Pattern C signature).
+                    const matchesC = sel.cDirs.has(t.direction) && (
+                        sel.cPats.some(p => t[p] === true) ||
+                        (sel.cUnmatched && t.unmatched_loser === true)
+                    );
                     // Does this trade match any SELECTED W pattern + direction?
-                    const matchesW = sel.wDirs.has(t.direction) &&
-                        sel.wPats.some(p => t[p] === true);
+                    // Same unmatched-cohort logic for W side.
+                    const matchesW = sel.wDirs.has(t.direction) && (
+                        sel.wPats.some(p => t[p] === true) ||
+                        (sel.wUnmatched && t.unmatched_winner === true)
+                    );
 
                     if (matchesC && matchesW) nBoth++;
                     else if (matchesC) nMatchedC++;
@@ -15582,8 +15604,8 @@
                 const out = document.getElementById('pcalc-output');
                 if (!out) return;
                 const sel = getSelections();
-                if (sel.cPats.length === 0 && sel.wPats.length === 0) {
-                    out.innerHTML = '<div class="text-gray-400 text-xs italic">(select at least one Pattern C or Pattern W signature to see projection)</div>';
+                if (sel.cPats.length === 0 && sel.wPats.length === 0 && !sel.cUnmatched && !sel.wUnmatched) {
+                    out.innerHTML = '<div class="text-gray-400 text-xs italic">(select at least one Pattern C / W signature or unmatched cohort to see projection)</div>';
                     return;
                 }
                 const result = simulate();
@@ -15606,8 +15628,11 @@
                     : capPart ? capPart
                     : multPart ? multPart
                     : 'no operation';
-                const cSummary = sel.cPats.length === 0 ? '<span class="text-gray-500">(no C patterns selected)</span>'
-                    : `${sel.cPats.map(p => p.toUpperCase()).join(', ')} <span class="text-gray-500">(${cActionLabel})</span>`;
+                // Compose C selection summary, including Unm. L if active (May 20 latest+18)
+                const cPatLabels = [...sel.cPats.map(p => p.toUpperCase())];
+                if (sel.cUnmatched) cPatLabels.push('Unm. L');
+                const cSummary = cPatLabels.length === 0 ? '<span class="text-gray-500">(no C patterns / unmatched selected)</span>'
+                    : `${cPatLabels.join(', ')} <span class="text-gray-500">(${cActionLabel})</span>`;
                 // Pattern W summary — mirrors C composition logic (May 20 latest+16)
                 const wCapPart = sel.wAction === 'none' ? null
                     : sel.wAction === 'tp' ? 'TP 0.10'
@@ -15618,8 +15643,10 @@
                     : wCapPart ? wCapPart
                     : wMultPart ? wMultPart
                     : 'no operation';
-                const wSummary = sel.wPats.length === 0 ? '<span class="text-gray-500">(no W patterns selected)</span>'
-                    : `${sel.wPats.map(p => p.toUpperCase()).join(', ')} <span class="text-gray-500">(${wActionLabel})</span>`;
+                const wPatLabels = [...sel.wPats.map(p => p.toUpperCase())];
+                if (sel.wUnmatched) wPatLabels.push('Unm. W');
+                const wSummary = wPatLabels.length === 0 ? '<span class="text-gray-500">(no W patterns / unmatched selected)</span>'
+                    : `${wPatLabels.join(', ')} <span class="text-gray-500">(${wActionLabel})</span>`;
 
                 out.innerHTML = `
                     <div class="text-xs space-y-1.5">

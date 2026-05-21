@@ -16169,3 +16169,79 @@ To document:
 All edits inside existing PATTERN CALCULATOR fenced blocks. Removal
 procedure unchanged.
 
+
+## May 20, 2026 (latest+18) — Pattern Calculator: Unmatched Losers / Unmatched Winners pseudo-cohorts
+
+### What ships
+
+Two new pseudo-pattern checkboxes added to the calculator panels:
+
+**Pattern C side:** `Unm. L` (Unmatched Losers) — losing trades (pnl ≤ 0)
+that match NO Pattern C signature (c1..c9 all false).
+
+**Pattern W side:** `Unm. W` (Unmatched Winners) — winning trades
+(pnl > 0) that match NO Pattern W signature (w1..w5 all false).
+
+### Why this matters
+
+Without these cohorts, the operator could only simulate ships against
+existing patterns. But the most actionable diagnostic question is often
+**"what if I shipped a fix for the trades my framework is BLIND to?"**
+The Unmatched Losers Deep Dive table on the dashboard already exposes
+these trades for inspection — now the calculator can simulate
+applying caps/multiplier to them.
+
+### Use cases unlocked
+
+1. **"What if I cap losses on every loser that escapes Pattern C?"**
+   Select `Unm. L` + Caps = SL 0.50 only → see the rescued $ across
+   all unmatched losers without needing to define C10/C11 first.
+
+2. **"Could I size up every winner that escapes Pattern W?"**
+   Select `Unm. W` + 2.0× multiplier → see the upside on winners
+   the W taxonomy misses.
+
+3. **"What's the floor if my framework is exhaustive?"** — Select
+   ALL C patterns + Unm. L + caps + Select all W patterns + Unm. W +
+   multiplier. The "matched NEITHER" cohort SHRINKS to literally
+   "winners-not-in-W + losers-not-in-C" (which equals just NEITHER
+   in both senses, near-zero). The Batch If Shipped becomes the
+   theoretical ceiling of pure pattern-based ship strategy.
+
+### Implementation
+
+- `main.py` `_compute_pattern_calculator_data`: 2 new per-trade flags
+  (`unmatched_loser`, `unmatched_winner`) computed as `(pnl ≤ 0 AND
+  no c1..c9 match)` and `(pnl > 0 AND no w1..w5 match)` respectively
+- `templates/index.html` calculator widget:
+  - `buildPatternCheckboxes` appends Unm. L checkbox after C9 (amber
+    italic styling to distinguish from C1..C9), Unm. W after W5
+    (emerald italic)
+  - `getSelections` reads `cUnmatched`, `wUnmatched` flags
+  - `simulate` extends matchesC / matchesW: `matchesC = (any cPat matches)
+    OR (cUnmatched AND trade.unmatched_loser)`. Same for W.
+  - Summary labels include "Unm. L" / "Unm. W" when selected
+  - Empty-selection guard updated to allow projection if ANY of the
+    4 selection types is active
+
+### What this does NOT do
+
+- Doesn't run cross-batch validation on the unmatched cohort.
+  Calculator is current-batch only (per the original design).
+- Doesn't define new patterns — it just lets you ship-test against
+  the trades not yet classified.
+- Doesn't change which patterns C1..C9 / W1..W5 catch.
+
+### Why this entry exists in CLAUDE.md
+
+To document:
+1. The unmatched-cohort definition (strict: no c1..c9 match for losers,
+   no w1..w5 for winners)
+2. Use cases the pseudo-cohorts enable (especially the "theoretical
+   ceiling" via selecting all patterns + both unmatched flags)
+3. The pseudo-cohort flags are computed once per trade in the backend
+   payload — selection is purely client-side filtering
+
+All edits inside existing PATTERN CALCULATOR fenced blocks. Removal
+procedure unchanged (still 5 fenced blocks, ~5 minutes).
+

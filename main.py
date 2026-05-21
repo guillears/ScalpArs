@@ -8440,6 +8440,15 @@ def _compute_pattern_calculator_data(orders):
         # Pattern W: computed on-the-fly (no schema)
         w1, w2, w3, w4, w5, _ = _compute_pattern_w_match(o)
         w_flags = {'w1': w1, 'w2': w2, 'w3': w3, 'w4': w4, 'w5': w5}
+        # May 20 latest+18: pseudo-pattern flags for unmatched cohorts.
+        # is_unmatched_loser = trade is a loser AND matches no C pattern
+        # is_unmatched_winner = trade is a winner AND matches no W pattern
+        # Lets operator simulate "what if we shipped a fix for unmatched trades"
+        # without first defining a new C/W signature.
+        c_any_match = any(c_flags.values())
+        w_any_match = any(w_flags.values())
+        is_unmatched_loser = (pnl <= 0) and not c_any_match
+        is_unmatched_winner = (pnl > 0) and not w_any_match
         # Notional fallback chain (matches existing simulator convention)
         notional = o.notional_value or ((o.investment or 0) * (o.leverage or 1)) or 0
         # Timestamps for combined TP+SL sequencing (peak vs trough first)
@@ -8456,6 +8465,8 @@ def _compute_pattern_calculator_data(orders):
             'trough_at': trough_at,
             **c_flags,
             **w_flags,
+            'unmatched_loser': is_unmatched_loser,
+            'unmatched_winner': is_unmatched_winner,
         })
     return {
         'trades': trades,

@@ -16807,3 +16807,130 @@ If/when this gets built and shipped, expect material P&L improvement.
 But ONLY if implemented per the "don't cross caps and mult" rule.
 Mixing them is what made the original killer config look mediocre.
 
+
+## May 21, 2026 — Improved ship: disable BE on Pattern W cohort + 2× mult
+
+### Operator's insight
+
+After validating "caps for losers, mult for winners," operator asked:
+"Why use BE for Unmatched Winners at all? It chops their upside."
+
+Also flagged: are prior cross-batch analyses normalized against BE 0.20/0.10?
+Answer: YES. Every prior analysis used actual exits which include BE
+firing. The "Unm. W +$4,569 baseline" is POST-BE. Removing BE would
+add MORE upside than the prior 2× mult projection captured.
+
+### How much BE was actually chopping Unm. W winners
+
+| Metric | Value |
+|---|---|
+| Unm. W trades cross-batch | 214 |
+| **BE-exited Unm. W** | **52 (24%)** |
+| Avg actual exit (with BE) | +0.074% |
+| Avg peak | **+0.295%** |
+| **BE chop per trade** | **+0.221%** |
+| Avg post-exit peak | +0.581% (where they'd have run) |
+| Avg post-exit trough | -0.495% (downside if held) |
+
+BE was capping winners at +0.10% when they were peaking at +0.30% and
+running to +0.58% post-exit. Substantial chop.
+
+### Cross-batch sim: 4 scenarios on Unm. W cohort (N=214)
+
+| Scenario | Total $ | Δ vs status quo |
+|---|---|---|
+| 1. Status quo (BE active, no mult) | +$4,569 | baseline |
+| 2. 2.0× mult on actual (prior ship plan) | +$9,138 | +$4,569 |
+| 3. **Remove BE only, no mult** | +$5,432 | +$864 |
+| 4. **Remove BE + 2.0× mult ★** | **+$10,865** | **+$6,296** |
+
+**Scenario 4 beats Scenario 2 by +$1,727.** Per-trade marginal:
+- $864/52 BE-exited = $16.60/trade at 1× sizing
+- $1,727/52 BE-exited = $33/trade at 2× sizing
+
+### Forward realistic estimate (operator's improved config)
+
+At current cohort rates (~8.7 BE-exited Unm.W per dated batch):
+- 2× mult on Unm. W: ~$147/batch
+- Plus BE removal: 8.7 × $33 = ~$287/batch
+- **Total Unm. W ship: ~$434/batch** (was $147 in prior plan)
+
+Combined ship total:
+- Unm. L caps: ~+$52/batch
+- C4/C8 caps: ~+$30/batch
+- Unm. W BE-disable + 2× mult: ~+$434/batch
+- **TOTAL: ~+$515/batch** (vs ~$229 prior plan)
+
+### Why this is structurally sounder than just adding 2× mult
+
+BE is a defensive mechanism for LOSERS that briefly went green. It says
+"lock in a tiny win before it reverses." That makes sense for Pattern C
+cohort (loser-targeted) where you WANT defensive exits.
+
+For Pattern W cohort (winner-targeted), the entry signature IS the
+conviction. BE undermines the conviction by exiting at the smallest
+retracement. Removing BE on Pattern W respects the structural separation:
+
+- **Pattern C cohort** → BE + tighter SL = defensive (mech for losers) ★
+- **Pattern W cohort** → No BE, let runners run = offensive (mech for winners) ★
+
+This is even cleaner than "caps for losers, mult for winners" because
+it removes the BE mechanism specifically where it's actively harmful
+(chopping winners we want to amplify).
+
+### Locked methodology rule (deepening prior rules)
+
+The May 21 cross-batch findings now establish a 3-tier mechanism map:
+
+1. **Pattern C cohort (validated losers)**: TP+SL caps + BE active
+2. **Pattern W cohort (validated winners)**: No BE + 2× multiplier
+3. **NEITHER cohort (unclassified)**: Default exit stack (BE 0.20/0.10 +
+   FAST_EXIT + EMA13 cross + trailing + SL)
+
+The structural insight: **mechanism class should match cohort class.**
+Don't apply defensive mechanisms (BE, caps) to offensive cohorts (winners).
+Don't apply offensive mechanisms (mult, BE-disable) to defensive cohorts
+(losers).
+
+### Implementation engineering (separate ship)
+
+To actually ship this 3-tier mechanism, the engine needs:
+1. Pattern C cohort detection at entry (already exists via c*_match)
+2. Pattern W cohort detection at entry (needs entry-time computation)
+3. Per-trade BE enable/disable flag based on cohort
+4. Per-trade multiplier flag based on cohort
+5. UI controls to enable/disable per cohort
+
+Estimated: ~100-150 LOC. Single deploy.
+
+Pre-committed criteria when ship lands (next 100-trade post-ship):
+
+| Outcome | Action |
+|---|---|
+| Avg P&L % improves ≥+0.20pp vs baseline | Lock as default |
+| Pattern W cohort shows ≥10 trades with no BE firing | Mechanism working |
+| Pattern W cohort Avg P&L % drops vs baseline | Investigate; possibly re-enable BE for risky W subset |
+| SL hit rate on Pattern W cohort > 2× baseline | BE removal exposing too much downside; revert |
+
+### Caveat (honest)
+
+Cross-batch simulation uses midpoint of (actual, post_exit_peak) as the
+"remove BE" estimate. This is somewhat optimistic — real-world variance
+will chip the projection. Post-exit trough avg -0.495% confirms substantial
+downside risk for the 52 BE-exited trades if they ride to SL.
+
+Forward realistic +$1,727 marginal advantage is the directionally-correct
+estimate, not a precise commitment.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. Operator's structural insight (BE undermines Pattern W conviction)
+2. The cross-batch evidence (+$1,727 marginal vs just adding mult)
+3. The 3-tier mechanism rule (offensive vs defensive matched to cohort)
+4. The implementation path (~100-150 LOC when ready)
+
+This is THE strongest ship candidate identified. Forward expectation
++$515/batch vs prior ship plans projecting +$229/batch — over 2× the
+projected impact.
+

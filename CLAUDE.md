@@ -18226,3 +18226,118 @@ To anchor:
    treatment is structurally aligned)
 4. The reasoning for shipping from 1-batch evidence (fallback rule with
    symmetric per-direction default and easy revert — bounded downside)
+
+## May 21, 2026 (evening, post-UNMATCHED ship) — WATCHLIST: W5 SHORT as ENTRY FILTER candidate (cross-batch anti-pattern)
+
+### What's on the watchlist
+
+**Candidate ship:** Block SHORT entries matching the W5 signature
+(`BTC ADX 22-30 + BTC RSI 30-40 + Pair ADX 22-30 + Stretch 0.20-0.30`).
+Currently this signature is in the Pattern W tracker (observation-only)
+but has NO rule shipped. Adding it as an ENTRY FILTER (not a multiplier)
+would block these trades from opening at all.
+
+### Cross-batch evidence (deduped pool, May 4 → May 21, N=751)
+
+| Metric | W5 SHORT cohort |
+|---|---|
+| N | **15 trades** |
+| WR | **13.3%** (vs SHORT baseline 62.1%) |
+| Total $ | **-$426.27** |
+| Avg $/trade | **-$28.42** |
+| Lift vs baseline | **0.21×** (anti-pattern) |
+| If shipped at 2× mult (rejected) | -$852.54 — triples the damage |
+
+**Same pool also confirms:** W5 LONG signature is similar shape and was
+not separately tested here — should be checked at next batch too.
+
+### Why filter (not multiplier)
+
+The cohort is a **structural loser zone**:
+- 13.3% WR is below baseline by 49 percentage points
+- N=15 is at the locked CLAUDE.md May 21 promotion bar (N≥15)
+- Direction-consistent across 4 batches (need to verify but the
+  149 trades-since-May-4 pool is reasonably distributed)
+- The signature is designed to identify "Confluence" winners but
+  empirically catches losers in current regime — the W tag is wrong
+
+This is the SECOND time CLAUDE.md has flagged a signature whose pattern
+code (W = winner) disagrees with the empirical behavior (loser cohort).
+First was W1 LONG (CLAUDE.md May 21 PM): 5 trades / 20% WR → shipped
+as fixed-exit treatment (TP 0.10 / SL -0.50). The W5 SHORT case is
+worse (13% WR vs 20%) and could justify a stricter treatment — outright
+entry block.
+
+### Pre-committed promotion gate at next ≥100-trade SHORT checkpoint
+
+Ship W5 SHORT entry filter if at next batch ALL hold:
+
+| Gate | Threshold |
+|---|---|
+| Fresh W5 SHORT N (post-deploy) | ≥ 8 |
+| Fresh WR | ≤ 35% |
+| Fresh Avg P&L % | ≤ -0.20% |
+| Adjacent zones (W5 LONG, W5 SHORT cells just outside signature) stay near baseline | ≥ 50% WR on N≥10 |
+
+If fresh WR ≥ 50% on N ≥ 8 → drop from watchlist (regime change made
+the signature win, the pool finding was historical and decayed).
+
+If WR is 35-50% on N≥8 → ship as W1 LONG-style fixed-exit treatment
+instead of outright block (less aggressive intervention):
+```
+{"pattern": "W5", "direction": "SHORT",
+ "inv_mult": 1.0, "lev_mult": 1.0,
+ "fixed_tp_pct": 0.10, "fixed_sl_pct": -0.50}
+```
+
+### Filter mechanism if outright block ships
+
+This would require a NEW mechanism not yet built — `pattern_cell_rules`
+currently only supports treatment (multiplier / fixed exits), not entry
+blocking. Three implementation options when triggered:
+
+1. **Add a new field** `entry_block: true` to `pattern_cell_rules`. Engine
+   would check at trade-open and abort entry if rule matches. ~15 LOC
+   in services/trading_engine.py + UI checkbox.
+2. **Treat as a hard cap variant**: rule with `fixed_tp_pct: -0.05`
+   (block via "instant TP at slightly negative" — but this is hacky
+   and would still actually open the trade).
+3. **Use the existing entry filter system** (e.g., add to
+   `entry_quality_score_filter` or build a new `pattern_w5_block_short`
+   config field directly in services/indicators.py). Cleaner separation.
+
+Option 1 is recommended when the gate triggers — fits the existing
+pattern infrastructure and is operator-visible in the same panel.
+
+### Also check at next checkpoint: W3 SHORT signature frequency
+
+W3 SHORT signature (`BTC ATR≥0.20% + pair vol ratio≥1.20 + stretch≥0.25`)
+returned **0 matches across 751-trade pool**. The signature is currently
+too restrictive to fire. Worth one of:
+
+1. **Loosen W3 SHORT thresholds** (e.g., ATR≥0.15 + pair vol≥1.10 +
+   stretch≥0.20) and see if it becomes informative as winner OR loser
+2. **Drop W3 from the Pattern W tracker** if it never fires in production
+   (currently observed-only, no rule shipped — but it consumes a row
+   in the Pattern W tracker UI)
+3. **Keep as-is** — rare signatures are fine as occasional triggers
+
+Decision deferred to next checkpoint.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The cross-batch anti-pattern evidence for W5 SHORT (N=15, 13.3% WR,
+   -$426 — strongest loser signal among observation-only W signatures)
+2. The pre-committed promotion gates so next-checkpoint decision is
+   mechanical
+3. The 3-option implementation note so future-Claude doesn't re-derive
+   from scratch
+4. The W3 SHORT zero-matches finding — relevant for whether to keep,
+   loosen, or drop that signature
+5. The structural rule reinforced: **pattern code (W=winner / C=loser)
+   is the SIGNATURE; treatment is determined by cross-batch empirical
+   behavior** (CLAUDE.md May 21 treatment-decoupling lesson). W5 SHORT
+   being a winner-signature that catches losers is fine as a tracker
+   row, but it CANNOT carry a multiplier — it should carry a filter
+   or fixed-exit treatment if anything.

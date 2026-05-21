@@ -18623,3 +18623,107 @@ the operator reads the next ≥30-trade Multiplier Cell Performance table:
 
 This becomes the locked answer to "should we add lev to X cell?" Future
 discussions reference these gates, not re-derive them.
+
+## May 21, 2026 (evening, pre-batch-reset) — LEV stacking SHIPPED: BTC_60-65_22-25 LONG to 2.0×inv + 1.5×lev (3.0× effective)
+
+### Change
+
+- `btc_rsi_adx_multiplier_long`: rule `60-65:22-25:2.0` extended to 4-part **`60-65:22-25:2.0:1.5`**
+- `rsi_adx_multiplier_target`: **`investment` → `both`** (required for lev_mult to fire)
+
+All other rules unchanged (3-part default = lev_mult 1.0, inert under "both"
+mode). All Pattern Cell Ship rules unchanged (their explicit lev_mult: 1.0
+stays inert).
+
+### Honest framing — this is a discipline override
+
+CLAUDE.md May 21 lev-stacking watchlist explicitly required:
+- Fresh N ≥ 10 in cell
+- Fresh WR ≥ 75%
+- Fresh Avg P&L % ≥ +0.15%
+- Δ$ vs BL ≥ +$30
+- BE-compatibility check
+
+**None of these gates are met** — the fresh batch hasn't started yet. The
+cell has ZERO local data under the live Phase 1 engine path. Ship is based
+ENTIRELY on the May 19 cross-batch evidence:
+
+- 38 trades / 73.7% WR / +$436 total / 10 of 11 dates positive
+
+This is the strongest single-cell cross-batch evidence in the entire dataset.
+User-directed ship before fresh batch begins, accepting the asymmetric risk
+profile documented in the May 21 watchlist discussion.
+
+### S-P1 precedent acknowledged
+
+CLAUDE.md May 18 demote of S-P1 SHORT (BTC_25-30_20-25): 5-sample structural
+at 75% pool WR → broke to 33% / -$381 in next batch at 2.0× invest. Same
+evidence profile shape. If BTC_60-65_22-25 follows the same trajectory at
+3.0× effective (instead of 2.0×), the damage scales 1.5× — potentially
+~-$570 vs the S-P1 -$381 reference point.
+
+User-acknowledged this risk and shipped anyway. Locked tight revert criteria below.
+
+### Pre-committed revert criteria (LOCKED — stricter than standard verdict matrix)
+
+| Outcome at next ≥30-trade LONG checkpoint | Action |
+|---|---|
+| Fresh N ≥ 5 AND WR ≥ 70% AND Total $ positive at 3× effective | ★ KEEP — validated |
+| Fresh N ≥ 5 AND WR 55-70% | ⚠ DROP LEV → revert to 2.0× inv only (3-part `60-65:22-25:2.0`) |
+| Fresh N ≥ 5 AND WR ≤ 55% | ✗ REVERT BOTH — drop lev AND demote inv to 1.5× |
+| Fresh N ≥ 3 with any single ✗ HARMFUL Δ$ ≤ -$50 on a leveraged trade | IMMEDIATE drop lev — don't wait for full N |
+| Fresh N < 3 | Defer (insufficient data) |
+
+The standard verdict gate for keep is 70% WR. Here it's relaxed to 70% because
+we're rewarding fast validation given strong historical priors. The DROP/REVERT
+gates are TIGHTER than standard (WR 55% trigger vs standard 50%) to reflect
+the asymmetric risk of 3.0× sizing.
+
+### Effective notional ceiling
+
+At 2.0 inv × 1.5 lev = 3.0× base, well under both hard caps
+(`rsi_adx_multiplier_hard_cap` 2.0 and `rsi_adx_multiplier_lev_hard_cap` 2.0
+→ max theoretical 4.0×). No hard-cap clamping. SL at -0.7% means liquidation
+distance is wide; no liquidation risk increase vs 2.0× alone.
+
+### Other cells unchanged
+
+The target mode flip to "both" affects only cells with explicit 4-part rules.
+All other RSI×ADX cells in `*_multiplier_*` strings are 3-part (defaulting to
+lev=1.0). Under "both" mode, effective = inv × 1.0 = inv unchanged. Same for
+all Pattern Cell Ship rules which have explicit `lev_mult: 1.0`.
+
+Final live multiplier landscape:
+- **BTC_60-65_22-25 LONG**: 2.0× inv × 1.5× lev = **3.0× effective** ★ NEW
+- All other 2.0× invest cells: 2.0× inv × 1.0× lev = 2.0× effective (unchanged)
+- 1.0× cells: unchanged
+- Fixed-exit cells (C4, C8, W1 LONG, UNMATCHED): unchanged
+
+### What to watch in first ~10 fires
+
+1. Cell hits via observed in `Multiplier Cell Performance — LONGs` table with
+   source `BTC_60-65_22-25` and `Eff` column showing `3.00×` ✓
+2. Verify TP fires / SL fires distribution looks similar to cross-batch
+   profile (73.7% wins at 1×) — if WR drops below 60% on first 5 fires,
+   revert lev immediately
+3. Track first BIG winner ($60+ at 3× notional) and first BIG loser
+   (~$80 at -0.7% SL × 3×) — these are the magnitude markers
+
+### Files changed
+
+- `trading_config.json` — 2 fields (`btc_rsi_adx_multiplier_long`,
+  `rsi_adx_multiplier_target`)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To document the discipline override transparently. The May 21 watchlist
+explicitly required fresh-batch validation BEFORE lev stacking. This ship
+violates that locked criterion based on strongest-cross-batch-evidence
+argument. The TIGHTENED revert criteria above (WR 70% to keep, drop at 55%,
+immediate revert on any -$50 leveraged loser) compensate for the missing
+fresh-data validation.
+
+If this ship works → cross-batch evidence ALONE can validate lev stacking
+when strong enough. If it fails → the May 21 locked discipline was right
+and we re-anchor to it for all future similar decisions.

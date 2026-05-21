@@ -6413,6 +6413,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Pattern W batch coverage + unmatched-winners deep dive (May 20 latest+3)
         "pattern_w_batch_coverage": _compute_pattern_w_batch_coverage(orders),
         "pattern_w_unmatched_winners": _compute_unmatched_winners(orders, limit=20),
+        # ====== PATTERN CALCULATOR START — May 20, 2026 ======
+        # Removal: delete the next line + the _compute_pattern_calculator_data
+        # function definition (fenced with same START/END markers).
+        "pattern_calculator_data": _compute_pattern_calculator_data(orders),
+        # ====== PATTERN CALCULATOR END ======
         # Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
         "regime_change_counterfactual": _compute_regime_change_counterfactual(orders),
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -8384,6 +8389,82 @@ def _compute_unmatched_losers(orders, limit=20):
     # Sort by $ loss magnitude (worst first), then cap
     rows.sort(key=lambda r: r['pnl'])
     return rows[:limit]
+
+
+# ====== PATTERN CALCULATOR START — May 20, 2026 ======
+# Self-contained per-trade data export for client-side simulation in the
+# Pattern Calculator widget. Lets the operator pick any combination of
+# Pattern C / Pattern W signatures and simulate the combined ship effect
+# on whole-batch P&L with proper deduplication.
+#
+# Architecture: pure additive payload — no schema changes, no engine
+# touchpoints, no shared helpers. Pattern C uses stored Order columns
+# (entry_pattern_c1_match..c9_match); Pattern W is computed on-the-fly
+# via _compute_pattern_w_match() (the same helper Pattern W validation
+# uses — read-only, no side effects).
+#
+# To remove this feature:
+#   1. Delete this function (between START/END markers)
+#   2. Delete the "pattern_calculator_data" key from _compute_performance
+#      payload (1 line, also fenced)
+#   3. Delete the widget HTML + JS in templates/index.html (also fenced)
+#   4. Delete the CLAUDE.md ship entry (May 20 latest+9 calculator entry)
+# Total removal: ~5 minutes, single commit, zero impact on other features.
+def _compute_pattern_calculator_data(orders):
+    """Per-trade data for client-side Pattern C/W combination simulation.
+
+    Returns a dict with:
+      - trades: list of per-trade records with pattern flags + sim fields
+      - meta: batch-level reference (total_actual_usd, n_closed)
+
+    Each trade record contains the minimum data needed for client-side
+    simulation: P&L %, notional, peak/trough, peak_at/trough_at, direction,
+    and pattern match flags (c1..c9, w1..w5).
+
+    Client-side widget applies user-selected operations (TP/SL/Combined
+    caps for selected C patterns × selected multiplier for selected W
+    patterns) and computes whole-batch P&L impact with overlap correctly
+    handled.
+    """
+    closed = [o for o in orders if o.status == 'CLOSED']
+    trades = []
+    total_actual_usd = 0.0
+    for o in closed:
+        if o.direction not in ('LONG', 'SHORT'):
+            continue
+        pnl = o.pnl or 0
+        total_actual_usd += pnl
+        # Pattern C: stored per-trade match flags
+        c_flags = {f'c{i}': bool(getattr(o, f'entry_pattern_c{i}_match', False))
+                   for i in range(1, 10)}
+        # Pattern W: computed on-the-fly (no schema)
+        w1, w2, w3, w4, w5, _ = _compute_pattern_w_match(o)
+        w_flags = {'w1': w1, 'w2': w2, 'w3': w3, 'w4': w4, 'w5': w5}
+        # Notional fallback chain (matches existing simulator convention)
+        notional = o.notional_value or ((o.investment or 0) * (o.leverage or 1)) or 0
+        # Timestamps for combined TP+SL sequencing (peak vs trough first)
+        peak_at = o.peak_reached_at.isoformat() if o.peak_reached_at else None
+        trough_at = o.trough_reached_at.isoformat() if o.trough_reached_at else None
+        trades.append({
+            'direction': o.direction,
+            'pnl': round(pnl, 4),
+            'pnl_pct': round(o.pnl_percentage or 0, 4),
+            'notional': round(notional, 2),
+            'peak': round(o.peak_pnl, 4) if o.peak_pnl is not None else None,
+            'trough': round(o.trough_pnl, 4) if o.trough_pnl is not None else None,
+            'peak_at': peak_at,
+            'trough_at': trough_at,
+            **c_flags,
+            **w_flags,
+        })
+    return {
+        'trades': trades,
+        'meta': {
+            'total_actual_usd': round(total_actual_usd, 2),
+            'n_closed': len(trades),
+        }
+    }
+# ====== PATTERN CALCULATOR END ======
 
 
 def _compute_regime_change_counterfactual(orders):

@@ -1866,6 +1866,69 @@
                     </div>
                 </div>
 
+                <!-- ====== PATTERN CALCULATOR START — May 20, 2026 ====== -->
+                <!-- Self-contained widget. Removal procedure:
+                       1. Delete this entire <section> block (between START/END markers)
+                       2. Delete the renderPatternCalculator(data) call in the perf-render handler
+                          (1 line, also fenced)
+                       3. Delete the renderPatternCalculator function definition (also fenced)
+                       4. main.py: delete _compute_pattern_calculator_data function + payload key
+                          (both fenced with same START/END markers)
+                       5. Delete the CLAUDE.md ship entry (May 20 latest+9)
+                     Total removal: ~5 minutes, single commit. -->
+                <section id="pcalc-section" class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-violet-300 mb-2">🧮 Pattern Calculator (combined Pattern C + Pattern W simulator)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Select any combination of Pattern C signatures (apply exit caps) and Pattern W signatures (apply 2.0× multiplier).
+                        Calculator simulates the combined effect on whole-batch P&L with overlap correctly handled — trades matching
+                        both selected C and W patterns get BOTH operations applied (orthogonal: caps change exit P&L%, multiplier scales position).
+                        Trades matching multiple selected patterns within the same tracker are deduplicated (counted once).
+                    </p>
+
+                    <!-- Selection panel: Pattern C side -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+                        <div class="bg-white/5 border border-amber-500/30 rounded p-3">
+                            <div class="text-xs font-semibold text-amber-300 mb-2">Pattern C — apply exit caps</div>
+                            <div class="flex flex-wrap gap-2 mb-2 text-xs">
+                                <label class="flex items-center gap-1"><input type="checkbox" id="pcalc-c-long" checked class="pcalc-c-dir"> LONG</label>
+                                <label class="flex items-center gap-1"><input type="checkbox" id="pcalc-c-short" checked class="pcalc-c-dir"> SHORT</label>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5 mb-2 text-xs">
+                                <!-- Pattern C checkboxes generated dynamically -->
+                                <span id="pcalc-c-pattern-list" class="contents"></span>
+                            </div>
+                            <div class="flex items-center gap-3 text-xs">
+                                <span class="text-gray-400">Apply:</span>
+                                <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="tp" class="pcalc-c-action"> TP 0.10 only</label>
+                                <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="sl" class="pcalc-c-action"> SL 0.50 only</label>
+                                <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="combined" checked class="pcalc-c-action"> TP + SL combined</label>
+                            </div>
+                        </div>
+
+                        <div class="bg-white/5 border border-emerald-500/30 rounded p-3">
+                            <div class="text-xs font-semibold text-emerald-300 mb-2">Pattern W — apply multiplier</div>
+                            <div class="flex flex-wrap gap-2 mb-2 text-xs">
+                                <label class="flex items-center gap-1"><input type="checkbox" id="pcalc-w-long" checked class="pcalc-w-dir"> LONG</label>
+                                <label class="flex items-center gap-1"><input type="checkbox" id="pcalc-w-short" checked class="pcalc-w-dir"> SHORT</label>
+                            </div>
+                            <div class="flex flex-wrap gap-1.5 mb-2 text-xs">
+                                <span id="pcalc-w-pattern-list" class="contents"></span>
+                            </div>
+                            <div class="flex items-center gap-3 text-xs">
+                                <span class="text-gray-400">Multiplier:</span>
+                                <label class="flex items-center gap-1"><input type="radio" name="pcalc-w-mult" value="1.5" class="pcalc-w-mult"> 1.5×</label>
+                                <label class="flex items-center gap-1"><input type="radio" name="pcalc-w-mult" value="2.0" checked class="pcalc-w-mult"> 2.0×</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Output panel -->
+                    <div id="pcalc-output" class="bg-white/5 border border-violet-500/40 rounded p-4 text-sm">
+                        <div class="text-gray-400 text-xs italic">(select patterns above to see projection)</div>
+                    </div>
+                </section>
+                <!-- ====== PATTERN CALCULATOR END ====== -->
+
                 <!-- Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🌀 Phantom Regime Change Exit Counterfactual (observation-only)</h3>
@@ -10480,6 +10543,11 @@
                     }
                 }
 
+                // ====== PATTERN CALCULATOR START — May 20, 2026 ======
+                // Removal: delete this 1 line.
+                if (typeof renderPatternCalculator === 'function') renderPatternCalculator(data);
+                // ====== PATTERN CALCULATOR END ======
+
                 // EMA13 Strict-Mode Performance (May 8, 2026)
                 if (data.ema13_strict_performance) {
                     const _esp = data.ema13_strict_performance;
@@ -15278,6 +15346,237 @@
         }
 
         // (Backtest engine removed)
+
+        // ====== PATTERN CALCULATOR START — May 20, 2026 ======
+        // Self-contained Pattern C + Pattern W combination simulator. Pure
+        // client-side: reads data.pattern_calculator_data, applies user-selected
+        // operations, renders projection in #pcalc-output.
+        //
+        // Removal: delete everything between START and END markers in this
+        // <script> block. Single function definition. No globals leaked
+        // (everything inside the IIFE except the global renderPatternCalculator
+        // entrypoint which the perf-handler calls).
+        (function() {
+            const C_PATTERNS = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'];
+            const W_PATTERNS = ['w1', 'w2', 'w3', 'w4', 'w5'];
+            let _cachedData = null;
+
+            function buildPatternCheckboxes() {
+                const cList = document.getElementById('pcalc-c-pattern-list');
+                const wList = document.getElementById('pcalc-w-pattern-list');
+                if (!cList || !wList || cList.children.length > 0) return;
+                C_PATTERNS.forEach(p => {
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center gap-1';
+                    label.innerHTML = `<input type="checkbox" data-pcalc-c="${p}" class="pcalc-c-pat"> ${p.toUpperCase()}`;
+                    cList.appendChild(label);
+                });
+                W_PATTERNS.forEach(p => {
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center gap-1';
+                    label.innerHTML = `<input type="checkbox" data-pcalc-w="${p}" class="pcalc-w-pat"> ${p.toUpperCase()}`;
+                    wList.appendChild(label);
+                });
+            }
+
+            function getSelections() {
+                const cDirs = new Set();
+                if (document.getElementById('pcalc-c-long')?.checked) cDirs.add('LONG');
+                if (document.getElementById('pcalc-c-short')?.checked) cDirs.add('SHORT');
+                const wDirs = new Set();
+                if (document.getElementById('pcalc-w-long')?.checked) wDirs.add('LONG');
+                if (document.getElementById('pcalc-w-short')?.checked) wDirs.add('SHORT');
+                const cPats = Array.from(document.querySelectorAll('.pcalc-c-pat:checked'))
+                    .map(el => el.dataset.pcalcC);
+                const wPats = Array.from(document.querySelectorAll('.pcalc-w-pat:checked'))
+                    .map(el => el.dataset.pcalcW);
+                const cAction = document.querySelector('input[name="pcalc-c-action"]:checked')?.value || 'combined';
+                const wMult = parseFloat(document.querySelector('input[name="pcalc-w-mult"]:checked')?.value || '2.0');
+                return { cDirs, wDirs, cPats, wPats, cAction, wMult };
+            }
+
+            function simulate() {
+                if (!_cachedData || !_cachedData.trades) return null;
+                const sel = getSelections();
+                const TP = 0.10;
+                const SL = 0.50;
+                const trades = _cachedData.trades;
+                const actualTotal = _cachedData.meta.total_actual_usd || 0;
+
+                let nMatchedC = 0, nMatchedW = 0, nBoth = 0, nNeither = 0;
+                let newTotal = 0;
+                let cContribution = 0;  // $ change from applying C caps
+                let wContribution = 0;  // $ change from multiplier (above baseline)
+                let overlapContribution = 0;  // extra $ from trades getting BOTH
+
+                trades.forEach(t => {
+                    const actualDollar = t.pnl || 0;
+                    // Does this trade match any SELECTED C pattern + direction?
+                    const matchesC = sel.cDirs.has(t.direction) &&
+                        sel.cPats.some(p => t[p] === true);
+                    // Does this trade match any SELECTED W pattern + direction?
+                    const matchesW = sel.wDirs.has(t.direction) &&
+                        sel.wPats.some(p => t[p] === true);
+
+                    if (matchesC && matchesW) nBoth++;
+                    else if (matchesC) nMatchedC++;
+                    else if (matchesW) nMatchedW++;
+                    else nNeither++;
+
+                    // Step 1: compute new exit pct (apply C caps if matched)
+                    let newPct = t.pnl_pct;
+                    if (matchesC) {
+                        const peak = t.peak;
+                        const trough = t.trough;
+                        const tpFire = peak != null && peak >= TP;
+                        const slFire = trough != null && trough <= -SL;
+                        if (sel.cAction === 'tp') {
+                            if (tpFire) newPct = TP;
+                        } else if (sel.cAction === 'sl') {
+                            if (slFire) newPct = -SL;
+                        } else { // combined
+                            if (tpFire && slFire) {
+                                // Sequence by timestamp; default to TP if missing
+                                const pAt = t.peak_at ? new Date(t.peak_at).getTime() : null;
+                                const tAt = t.trough_at ? new Date(t.trough_at).getTime() : null;
+                                if (pAt != null && tAt != null) {
+                                    newPct = (pAt <= tAt) ? TP : -SL;
+                                } else {
+                                    newPct = TP;
+                                }
+                            } else if (tpFire) {
+                                newPct = TP;
+                            } else if (slFire) {
+                                newPct = -SL;
+                            }
+                        }
+                    }
+
+                    // Step 2: compute multiplier (apply W if matched)
+                    const mult = matchesW ? sel.wMult : 1.0;
+
+                    // New $ = (new_pct / 100) * notional * multiplier - fees
+                    const FEE_PCT = 0.063;  // taker roundtrip approx
+                    const feesAdjust = (mult - 1.0) * (t.notional * FEE_PCT / 100);
+                    const newDollar = (newPct / 100) * t.notional * mult - feesAdjust;
+
+                    newTotal += newDollar;
+
+                    // Decompose effects for breakdown
+                    const baselineMultiplied = (t.pnl_pct / 100) * t.notional * mult - feesAdjust;
+                    const baselineNoMult = (t.pnl_pct / 100) * t.notional;  // = actualDollar approximately
+
+                    if (matchesC && matchesW) {
+                        // Trade got both treatments
+                        const cEffect = ((newPct - t.pnl_pct) / 100) * t.notional;  // exit cap effect at 1x
+                        const wEffect = baselineMultiplied - baselineNoMult;  // multiplier effect at original exit
+                        cContribution += cEffect;
+                        wContribution += wEffect;
+                        // Overlap = total improvement - (c alone) - (w alone)
+                        const standaloneC = ((newPct - t.pnl_pct) / 100) * t.notional;
+                        const standaloneW = wEffect;
+                        overlapContribution += (newDollar - actualDollar) - standaloneC - standaloneW;
+                    } else if (matchesC) {
+                        cContribution += (newDollar - actualDollar);
+                    } else if (matchesW) {
+                        wContribution += (newDollar - actualDollar);
+                    }
+                });
+
+                return {
+                    actualTotal,
+                    newTotal,
+                    delta: newTotal - actualTotal,
+                    nTotal: trades.length,
+                    nMatchedC, nMatchedW, nBoth, nNeither,
+                    cContribution, wContribution, overlapContribution,
+                };
+            }
+
+            function render() {
+                const out = document.getElementById('pcalc-output');
+                if (!out) return;
+                const sel = getSelections();
+                if (sel.cPats.length === 0 && sel.wPats.length === 0) {
+                    out.innerHTML = '<div class="text-gray-400 text-xs italic">(select at least one Pattern C or Pattern W signature to see projection)</div>';
+                    return;
+                }
+                const result = simulate();
+                if (!result) {
+                    out.innerHTML = '<div class="text-gray-400 text-xs italic">(no trade data available)</div>';
+                    return;
+                }
+                const fmt$ = (v) => v == null ? '$0.00' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                const cls = (v) => v > 5 ? 'text-emerald-400 font-semibold'
+                    : v < -5 ? 'text-red-400 font-semibold' : 'text-gray-400';
+                const ntCls = (v) => v >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold';
+
+                const cActionLabel = sel.cAction === 'tp' ? 'TP 0.10 only'
+                    : sel.cAction === 'sl' ? 'SL 0.50 only'
+                    : 'TP + SL combined';
+                const cSummary = sel.cPats.length === 0 ? '<span class="text-gray-500">(no C patterns selected)</span>'
+                    : `${sel.cPats.map(p => p.toUpperCase()).join(', ')} <span class="text-gray-500">(${cActionLabel})</span>`;
+                const wSummary = sel.wPats.length === 0 ? '<span class="text-gray-500">(no W patterns selected)</span>'
+                    : `${sel.wPats.map(p => p.toUpperCase()).join(', ')} <span class="text-gray-500">(${sel.wMult.toFixed(1)}× multiplier)</span>`;
+
+                out.innerHTML = `
+                    <div class="text-xs space-y-1.5">
+                        <div><span class="text-amber-300 font-semibold">Pattern C selected:</span> ${cSummary}</div>
+                        <div><span class="text-emerald-300 font-semibold">Pattern W selected:</span> ${wSummary}</div>
+                    </div>
+                    <hr class="my-3 border-white/10">
+                    <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <div class="text-xs text-gray-400 mb-1">Trade breakdown (N=${result.nTotal})</div>
+                            <div class="text-xs space-y-0.5">
+                                <div>matched <span class="text-amber-300 font-semibold">C only</span>: <span class="font-mono">${result.nMatchedC}</span> <span class="text-gray-500">(exit caps applied)</span></div>
+                                <div>matched <span class="text-emerald-300 font-semibold">W only</span>: <span class="font-mono">${result.nMatchedW}</span> <span class="text-gray-500">(${sel.wMult.toFixed(1)}× applied)</span></div>
+                                <div>matched <span class="text-violet-300 font-semibold">BOTH C and W</span>: <span class="font-mono">${result.nBoth}</span> <span class="text-gray-500">(both treatments)</span></div>
+                                <div>matched <span class="text-gray-400 font-semibold">NEITHER</span>: <span class="font-mono">${result.nNeither}</span> <span class="text-gray-500">(unchanged)</span></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-400 mb-1">Effect decomposition</div>
+                            <div class="text-xs space-y-0.5">
+                                <div>C effect (exit caps): <span class="${cls(result.cContribution)} font-mono">${fmt$(result.cContribution)}</span></div>
+                                <div>W effect (multiplier): <span class="${cls(result.wContribution)} font-mono">${fmt$(result.wContribution)}</span></div>
+                                <div>Overlap (BOTH applied): <span class="${cls(result.overlapContribution)} font-mono">${fmt$(result.overlapContribution)}</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white/5 border border-violet-500/30 rounded p-3 mt-2">
+                        <div class="flex items-baseline justify-between flex-wrap gap-3">
+                            <div>
+                                <span class="text-gray-400 text-xs">Batch Actual P&L:</span>
+                                <span class="${ntCls(result.actualTotal)} ml-1">${fmt$(result.actualTotal)}</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-400 text-xs">Batch If Shipped:</span>
+                                <span class="${ntCls(result.newTotal)} text-base ml-1">${fmt$(result.newTotal)}</span>
+                            </div>
+                            <div>
+                                <span class="text-gray-400 text-xs">Δ:</span>
+                                <span class="${cls(result.delta)} text-base ml-1">${fmt$(result.delta)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Public entrypoint — called by perf handler with the full data payload.
+            window.renderPatternCalculator = function(data) {
+                if (!data || !data.pattern_calculator_data) return;
+                _cachedData = data.pattern_calculator_data;
+                buildPatternCheckboxes();
+                // Wire up change handlers once
+                if (!window._pcalcWired) {
+                    document.getElementById('pcalc-section')?.addEventListener('change', render);
+                    window._pcalcWired = true;
+                }
+                render();
+            };
+        })();
+        // ====== PATTERN CALCULATOR END ======
     </script>
 
     <!-- Live Terminal — UI-only observability layer (additive, no trading impact) -->

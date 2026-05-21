@@ -15555,3 +15555,114 @@ To anchor:
 4. The distinction between per-row ship (this column) vs combination ship
    (calculator widget — pending if needed)
 
+
+## May 20, 2026 (latest+9) — Pattern Calculator widget (combined C + W simulator)
+
+### What ships
+
+Interactive widget below the Unmatched Winners table letting the operator
+select any combination of Pattern C signatures (apply exit caps) AND any
+combination of Pattern W signatures (apply 2.0× or 1.5× multiplier),
+then see the projected whole-batch P&L impact with overlap correctly
+handled.
+
+### Why this exists — handles cross-tracker combinations
+
+The per-row "Batch If Shipped" column (May 20 latest+8) answered the
+single-pattern ship question. The calculator extends that to:
+- Multi-pattern within Pattern C (with deduplication on overlap)
+- Multi-pattern within Pattern W (with deduplication)
+- Cross-tracker C + W simultaneously (orthogonal operations, both applied
+  to trades matching both)
+
+Key insight: **Pattern C and Pattern W operate on ORTHOGONAL dimensions**
+of the same trade. Pattern C ship changes exit P&L %; Pattern W ship
+scales position size. Both can be true on the same trade simultaneously
+without double-counting — the math is `(new_exit_pct / 100) × notional
+× multiplier`.
+
+### Architecture — designed for clean removal
+
+All calculator code is fenced with `PATTERN CALCULATOR START / END`
+markers. Five fenced blocks total:
+
+| Location | What | Lines |
+|---|---|---|
+| `main.py` (function) | `_compute_pattern_calculator_data()` | ~60 |
+| `main.py` (payload key) | `"pattern_calculator_data": ...` | 1 |
+| `templates/index.html` (section HTML) | Widget UI | ~60 |
+| `templates/index.html` (bridge call) | `renderPatternCalculator(data)` | 1 |
+| `templates/index.html` (function JS) | IIFE with simulation logic | ~180 |
+
+### Removal procedure
+
+Grep `PATTERN CALCULATOR START` to find all 5 fenced blocks. Delete each
+block (everything between START and END markers). That's it. Total: ~5
+minutes, single commit, zero impact on any other dashboard feature.
+
+Discipline rules followed during implementation:
+- No schema changes (uses existing per-trade Order fields)
+- No engine touches (services/trading_engine.py untouched)
+- No modifications to existing tables or validation functions
+- No shared helpers — calculator does its own peak/trough/timestamp
+  handling client-side rather than refactoring `_sim_combined_cohort`
+- All CSS classes prefixed `pcalc-` to avoid collisions
+- All JS encapsulated in an IIFE; only `window.renderPatternCalculator`
+  exposed globally (single integration surface)
+
+### How operator uses it
+
+1. Select Pattern C checkboxes (any combination of C1-C9) + LONG/SHORT
+   direction toggles + action (TP only / SL only / TP+SL combined)
+2. Select Pattern W checkboxes (any combination of W1-W5) + LONG/SHORT
+   + multiplier (1.5× or 2.0×)
+3. Calculator runs simulation on-the-fly (pure client-side, no API call):
+   - Pattern C selected → trades matching any of those patterns get
+     exit caps applied to the new P&L%
+   - Pattern W selected → trades matching any of those patterns get
+     multiplier applied to position size
+   - Trades matching BOTH a selected C and a selected W get BOTH
+     treatments (orthogonal, no double-count)
+4. Output panel shows:
+   - Trade breakdown: matched C only / W only / BOTH / NEITHER
+   - Effect decomposition: C contribution, W contribution, overlap
+   - Headline: Batch Actual P&L vs Batch If Shipped + Δ
+
+### What the calculator does NOT do (operator should ask Claude for these)
+
+- Filter changes (block entries entirely — Pattern C/W are observations,
+  not filters)
+- Stacked exit changes (RSI handoff, BE floor, FAST_EXIT changes layered
+  with patterns)
+- Multiplier cell changes (RSI×ADX cells, EMA5 stretch cells, score
+  multipliers — different sizing system from Pattern W)
+- Cross-batch validation (per locked methodology, every ship requires
+  cross-batch confirmation — calculator is current batch only)
+
+For any of these, run CSV-based analysis against the deduped pool.
+
+### Pre-commit removal test performed
+
+Before committing, mentally walked through removal:
+- Delete 5 fenced blocks
+- Run `python3 -c "import ast; ast.parse(open('main.py').read())"` → OK
+- Dashboard renders identically to pre-calculator state (only the new
+  section is gone)
+- Zero impact on Pattern C table, Pattern W table, or any other surface
+- Verified.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The orthogonality principle (C changes exit, W changes size — both
+   compose cleanly on same trade)
+2. The 5-fence removal procedure (single grep, 5 deletions, ~5 minutes)
+3. The discipline rules that kept removal cheap (no schema, no engine
+   touches, no shared helpers, prefixed namespacing)
+4. The boundary of what the calculator DOESN'T do — for those queries,
+   ask Claude to run CSV-based deep analysis
+
+If the calculator proves not useful operationally after a few weeks of
+real use, remove it cleanly via the 5-block deletion. No technical debt
+left behind.
+

@@ -9253,10 +9253,31 @@ def _compute_pattern_4cohort_coverage(orders):
         return s
 
     def _w_flags(o):
+        # DB flags (only populated for trades opened after Phase 1 engine ship,
+        # CLAUDE.md May 21 late evening). For older trades, fall back to
+        # post-hoc computation via _compute_pattern_w_match so the cohort
+        # bucketing stays correct across the entire historical window.
         s = set()
-        for i in range(1, 7):
-            if getattr(o, f'entry_pattern_w{i}_match', None) is True:
-                s.add(f'W{i}')
+        any_populated = any(
+            getattr(o, f'entry_pattern_w{i}_match', None) is True
+            for i in range(1, 7)
+        )
+        if any_populated:
+            for i in range(1, 7):
+                if getattr(o, f'entry_pattern_w{i}_match', None) is True:
+                    s.add(f'W{i}')
+        else:
+            # post-hoc fallback: compute from raw entry features
+            try:
+                w1, w2, w3, w4, w5, w6, _ = _compute_pattern_w_match(o)
+                if w1: s.add('W1')
+                if w2: s.add('W2')
+                if w3: s.add('W3')
+                if w4: s.add('W4')
+                if w5: s.add('W5')
+                if w6: s.add('W6')
+            except Exception:
+                pass
         return s
 
     cohorts = {'both': [], 'c_only': [], 'w_only': [], 'truly_unmatched': []}

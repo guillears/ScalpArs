@@ -18018,3 +18018,112 @@ Naming them (W6) converts hidden alpha into bookable cells.
 5. To explicitly NOT ship a C10 (unmatched-loser pattern) — that decision
    needs to be preserved so future-Claude doesn't re-attempt it without
    first capturing NEW dimensions (orderbook depth, funding, time-of-day, etc.).
+
+## May 21, 2026 (very late evening) — 4-Cohort Coverage table + treatment-type de-coupling
+
+### Framing fix: "Unmatched" was misleading
+
+The original `Unm. L` (loser with no C match) / `Unm. W` (winner with no W match)
+classification in the Pattern Calculator widget conflated TRULY unmatched trades
+with crossed trades. Cross-batch crossover analysis (198-trade post-May-15 pool)
+showed:
+
+| Original "cohort" | Truth |
+|---|---|
+| Unmatched Losers (28) | 14 also matched a W pattern (50%) — they're in the BOTH cohort, not unmatched |
+| Unmatched Winners (38) | 24 also matched a C pattern (63%) — they're in the BOTH cohort, not unmatched |
+
+The proper 4-cohort split (per CLOSED trade, by C-match × W-match):
+
+| Cohort | Cross-batch N | % | WR | Total $ | Avg $/tr |
+|---|---:|---:|---:|---:|---:|
+| Both C and W | 53 | 26.8% | 77% | +$64 | +$1.21 |
+| C only | 44 | 22.2% | 55% | **-$790** | **-$17.95** ★ worst |
+| W only | 73 | 36.9% | **81%** | **+$194** | **+$2.66** ★ best |
+| TRULY UNMATCHED | 28 | 14.1% | 50% | -$442 | -$15.80 |
+
+### New analytics surface: 🧬 4-Cohort Pattern Coverage table
+
+Added to dashboard above the Pattern C Tracker section. Shows the 4-cohort
+split for any time-window-filtered orders set with:
+- N, % of batch
+- W / L / WR%
+- Total $, Avg $/tr
+- LONG sub-cohort (N + W/L + Total $)
+- SHORT sub-cohort (same)
+
+Backend: `main.py::_compute_pattern_4cohort_coverage(orders)` — ~90 LOC pure
+read-from-existing-Order-columns (no schema changes).
+
+UI: new `<table id="pattern-4cohort-body">` section + JS renderer.
+Both text-export sites updated with `## 4-Cohort Pattern Coverage` section.
+
+### Treatment-type de-coupling — Pattern code is signature, treatment is independent
+
+Concurrent insight that emerged from cross-batch crossover analysis:
+
+| Pattern | Cross-batch | Treatment in cross-batch | What we shipped |
+|---|---|---|---|
+| C1 SHORT | 27 trades, **78% WR**, +$20.51 | Loser-shape sig WINNING | **2.0× multiplier** |
+| W1 LONG | 5 trades, **20% WR**, -$22/tr | Winner-shape sig LOSING | **Fixed TP 0.10 + SL -0.50** |
+
+**The pattern CODE (C/W) is the entry-time SIGNATURE. The TREATMENT (multiplier
+vs. fixed exits) should match empirical behavior, not the signature tag.**
+
+This required an engine fix to `_lookup_pattern_cell_rule` — removed the
+`if is_c_rule:` gate on fixed_tp_pct / fixed_sl_pct collection. Any rule
+(C or W) can now carry any treatment field (inv_mult, lev_mult, fixed_tp_pct,
+fixed_sl_pct). Option C conflict resolution (C-presence-blocks-W) still applies
+at the side level — but WITHIN the active side, rules carry whatever fields
+they're configured with.
+
+### Two new Pattern Cell Ship rules
+
+| Pattern | Direction | Treatment | Cross-batch basis |
+|---|---|---|---|
+| **C1 SHORT** | SHORT | 2.0× investment multiplier | 27 trades / 78% WR / +$20.51 — loser sig is winning |
+| **W1 LONG** | LONG | Fixed TP 0.10% + Fixed SL -0.50% | 5 trades / 20% WR / -$22/tr — winner sig is losing |
+
+**Now 13 active Pattern Cell Ship rules total**:
+- C-rule patterns with fixed exits: C4 L/S, C8 L/S, **W1 L** (treatment-decoupled)
+- W-rule patterns with multipliers: W1 SHORT, W2 L/S, W4 L/S, W6 L/S, **C1 SHORT** (treatment-decoupled)
+
+### Locked re-evaluation criteria
+
+At next ≥30-trade post-deploy checkpoint:
+
+**C1 SHORT multiplier:**
+- ★ WORKING: ≥70% WR AND Total $ positive on N≥5 → keep at 2.0×
+- ✗ HARMFUL: Total $ negative on N≥5 → revert to 1.0×
+- If WR drops below 60% on N≥10 → revert even if not yet HARMFUL (cross-batch was 78%)
+
+**W1 LONG fixed exits:**
+- ★ EXITS WORKING: TP fires ≥3 times AND Total $ improves vs hypothetical default-exits → keep
+- ✗ Exits not firing: <3 fires across 30+ matching trades → drop the fixed exits (not catching the pattern)
+- If W1 LONG cohort flips to ≥60% WR on N≥10 → revert (regime change made the signature work again)
+
+### Engineering scope
+
+| File | Change | LOC |
+|---|---|---|
+| `services/trading_engine.py` | Remove `if is_c_rule:` gate + update docstring | ~12 |
+| `trading_config.json` | 2 new rules | ~3 |
+| `main.py` | New `_compute_pattern_4cohort_coverage` helper + payload entry + 2 empty-fallback sites | ~100 |
+| `templates/index.html` | New UI table section + JS renderer + 2 text-export sections | ~110 |
+| `CLAUDE.md` | This entry | ~100 |
+
+Total: ~325 LOC across 4 files.
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the framing correction (Unm.L / Unm.W are NOT the right cohorts;
+   the 4-way split is). All future analytical surfaces should distinguish
+   "crossed" from "truly unmatched."
+2. To document the treatment-decoupling decision so future-Claude doesn't
+   re-add the `if is_c_rule:` gate "for consistency."
+3. To preserve the cross-batch evidence for the 2 new rules (C1 SHORT 2.0×
+   from 78% WR / N=27; W1 LONG fixed exits from 20% WR / N=5).
+4. To lock the re-evaluation criteria at next checkpoint — both new rules
+   have explicit revert gates.
+5. To anchor the locked discipline: pattern code is signature, treatment is
+   determined by cross-batch empirical behavior, not the C/W tag.

@@ -1661,6 +1661,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
+            "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2882,6 +2883,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "entry_conditions_by_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
+            "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -6376,6 +6378,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
         # Pattern Cell Ship Performance (May 21, NEW — pattern-based rules per CLAUDE.md May 21 ship)
         "pattern_cell_performance": _compute_pattern_cell_performance(orders),
+        # 4-Cohort Pattern Coverage (May 21 late — split Unm.L/Unm.W into Both/C-only/W-only/Truly)
+        "pattern_4cohort_coverage": _compute_pattern_4cohort_coverage(orders),
         # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
         "ema13_strict_performance": _compute_ema13_strict_performance(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
@@ -9211,6 +9215,103 @@ def _compute_multiplier_cell_performance(orders):
         'longs': longs,
         'shorts': shorts,
         'summary': {'longs': _uplift(longs), 'shorts': _uplift(shorts)},
+    }
+
+
+def _compute_pattern_4cohort_coverage(orders):
+    """4-Cohort Pattern Coverage (May 21 late ship per CLAUDE.md).
+
+    Bucket every CLOSED trade by C-match × W-match into 4 cohorts:
+      1. BOTH (matches at least one C AND at least one W) — crossed cohort
+      2. C only (matches at least one C but no W) — pure loser-shape signature
+      3. W only (matches at least one W but no C) — pure winner-shape signature
+      4. TRULY UNMATCHED (matches NO C and NO W) — outside the entire taxonomy
+
+    The framing fix: the original "Unmatched Loser" / "Unmatched Winner"
+    classification (loser without C, winner without W) conflated TRULY
+    unmatched trades with crossed trades. The crossover analysis (cross-batch
+    pool) showed:
+      - 50% of Unm.L cross-batch ALSO match a W pattern → they're "Both"
+      - 63% of Unm.W cross-batch ALSO match a C pattern → they're "Both"
+
+    This table separates those concerns cleanly. The TRULY UNMATCHED cohort
+    is the genuine residual outside the C1-C9 + W1-W6 taxonomy.
+
+    Returns dict with 'cohorts' (list of 4 cohort rows) + 'total' summary.
+    Each cohort row includes N, W, L, WR%, Total $, Avg $/tr, and
+    direction split.
+    """
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    if not closed:
+        return {'cohorts': [], 'total': {}}
+
+    def _c_flags(o):
+        s = set()
+        for i in range(1, 10):
+            if getattr(o, f'entry_pattern_c{i}_match', None) is True:
+                s.add(f'C{i}')
+        return s
+
+    def _w_flags(o):
+        s = set()
+        for i in range(1, 7):
+            if getattr(o, f'entry_pattern_w{i}_match', None) is True:
+                s.add(f'W{i}')
+        return s
+
+    cohorts = {'both': [], 'c_only': [], 'w_only': [], 'truly_unmatched': []}
+    for o in closed:
+        cm = _c_flags(o)
+        wm = _w_flags(o)
+        if cm and wm:
+            cohorts['both'].append(o)
+        elif cm:
+            cohorts['c_only'].append(o)
+        elif wm:
+            cohorts['w_only'].append(o)
+        else:
+            cohorts['truly_unmatched'].append(o)
+
+    def stat(cohort):
+        n = len(cohort)
+        if n == 0:
+            return {'n': 0, 'w': 0, 'l': 0, 'wr_pct': 0.0, 'total_dollars': 0.0,
+                    'avg_dollars_per_trade': 0.0, 'pct_of_batch': 0.0,
+                    'long_n': 0, 'long_w': 0, 'long_total': 0.0,
+                    'short_n': 0, 'short_w': 0, 'short_total': 0.0}
+        w = sum(1 for o in cohort if (o.pnl or 0) > 0)
+        tot = sum((o.pnl or 0) for o in cohort)
+        long_sub = [o for o in cohort if o.direction == 'LONG']
+        short_sub = [o for o in cohort if o.direction == 'SHORT']
+        return {
+            'n': n,
+            'w': w,
+            'l': n - w,
+            'wr_pct': round(100*w/n, 1),
+            'total_dollars': round(tot, 2),
+            'avg_dollars_per_trade': round(tot/n, 2),
+            'pct_of_batch': round(100*n/len(closed), 1),
+            'long_n': len(long_sub),
+            'long_w': sum(1 for o in long_sub if (o.pnl or 0) > 0),
+            'long_total': round(sum((o.pnl or 0) for o in long_sub), 2),
+            'short_n': len(short_sub),
+            'short_w': sum(1 for o in short_sub if (o.pnl or 0) > 0),
+            'short_total': round(sum((o.pnl or 0) for o in short_sub), 2),
+        }
+
+    return {
+        'cohorts': [
+            {'key': 'both', 'label': 'Both C and W match (crossed)', **stat(cohorts['both'])},
+            {'key': 'c_only', 'label': 'C only (no W match)', **stat(cohorts['c_only'])},
+            {'key': 'w_only', 'label': 'W only (no C match)', **stat(cohorts['w_only'])},
+            {'key': 'truly_unmatched', 'label': 'TRULY UNMATCHED (no C, no W)', **stat(cohorts['truly_unmatched'])},
+        ],
+        'total': {
+            'n': len(closed),
+            'w': sum(1 for o in closed if (o.pnl or 0) > 0),
+            'l': sum(1 for o in closed if (o.pnl or 0) <= 0),
+            'total_dollars': round(sum((o.pnl or 0) for o in closed), 2),
+        },
     }
 
 

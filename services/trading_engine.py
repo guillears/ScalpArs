@@ -1403,16 +1403,20 @@ class TradingEngine:
 
         Walks pattern_cell_rules config, collects rules matching this trade's
         direction + matched C/W patterns, applies Option C conflict resolution:
-          - If ANY C-pattern matches → C-side rules apply (fixed TP/SL aggregated);
-            W-side multiplier rules are BLOCKED ("C presence blocks W treatment")
-          - Else if ANY W-pattern matches → W-side multiplier rules apply
+          - If ANY C-pattern matches → C-side rules apply;
+            W-side rules are BLOCKED ("C presence blocks W")
+          - Else if ANY W-pattern matches → W-side rules apply
           - Else no rule fires → returns (1.0, 1.0, None, None, None)
 
+        Within the active side, ANY rule can carry ANY treatment (May 21 late ship —
+        de-coupled rule pattern code from treatment type). Example: a C-rule can carry
+        an inv_mult > 1.0 (e.g., C1 SHORT @ 2.0× because cross-batch shows 78% WR);
+        a W-rule can carry fixed_tp_pct + fixed_sl_pct (e.g., W1 LONG with caps because
+        cross-batch shows 20% WR). Pattern code is the SIGNATURE; treatment is in fields.
+
         For multiple matching rules within the active side:
-          - inv_mult / lev_mult: HIGHER-wins (max — not multiplied) for consistency
-            with RSI×ADX multiplier behavior
+          - inv_mult / lev_mult: HIGHER-wins (max — not multiplied)
           - fixed_tp_pct / fixed_sl_pct: most aggressive (lowest TP, tightest SL)
-            among matched C-rules
 
         Returns (inv_mult, lev_mult, source_label, fixed_tp_pct, fixed_sl_pct)
         where source_label is comma-joined matched patterns (e.g., "C4+C8" or "W1+W2").
@@ -1455,27 +1459,35 @@ class TradingEngine:
                 if active_side == 'W' and not is_w_rule:
                     continue
                 applied_sources.append(p)
-                # Multipliers: HIGHER-wins (max)
+                # Multipliers: HIGHER-wins (max). May 21 (late) — applies to ANY rule
+                # (C or W) that configured an inv_mult / lev_mult > 1.0. This removes
+                # the prior C-vs-W tag → treatment-type binding so cross-batch
+                # evidence can drive treatment choice independent of pattern name.
+                # Example: C1 SHORT (loser sig) earned a 2× multiplier because
+                # cross-batch shows 78% WR / +$20.51 across N=27. Pattern code is
+                # SIGNATURE; treatment is determined by the rule's fields.
                 r_inv = float(rule.get('inv_mult', 1.0) or 1.0)
                 r_lev = float(rule.get('lev_mult', 1.0) or 1.0)
                 if r_inv > applied_inv:
                     applied_inv = r_inv
                 if r_lev > applied_lev:
                     applied_lev = r_lev
-                # Fixed exits (C-rules only): most aggressive
-                if is_c_rule:
-                    r_tp = rule.get('fixed_tp_pct')
-                    r_sl = rule.get('fixed_sl_pct')
-                    if r_tp is not None:
-                        r_tp = float(r_tp)
-                        # Lowest fixed_tp wins (catches at smaller peak — more aggressive)
-                        if applied_tp is None or r_tp < applied_tp:
-                            applied_tp = r_tp
-                    if r_sl is not None:
-                        r_sl = float(r_sl)
-                        # Closest to 0 wins (tightest SL — more aggressive)
-                        if applied_sl is None or r_sl > applied_sl:
-                            applied_sl = r_sl
+                # Fixed exits: most aggressive. Same de-coupling — any rule can carry
+                # fixed_tp_pct / fixed_sl_pct. Example: W1 LONG (winner sig) carries
+                # fixed exits because cross-batch shows 20% WR / -$22/tr — the
+                # signature misfires as loser in current regime, so capping makes sense.
+                r_tp = rule.get('fixed_tp_pct')
+                r_sl = rule.get('fixed_sl_pct')
+                if r_tp is not None:
+                    r_tp = float(r_tp)
+                    # Lowest fixed_tp wins (catches at smaller peak — more aggressive)
+                    if applied_tp is None or r_tp < applied_tp:
+                        applied_tp = r_tp
+                if r_sl is not None:
+                    r_sl = float(r_sl)
+                    # Closest to 0 wins (tightest SL — more aggressive)
+                    if applied_sl is None or r_sl > applied_sl:
+                        applied_sl = r_sl
             except (KeyError, TypeError, ValueError) as e:
                 logger.warning(f"[PATTERN_CELL] Malformed rule {rule}: {e}, skipping")
                 continue

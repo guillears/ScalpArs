@@ -1725,6 +1725,40 @@
                     </div>
                 </div>
 
+                <!-- 4-Cohort Pattern Coverage (May 21 late) — proper split of Unm.L/Unm.W -->
+                <div class="mt-6 pt-6 border-t border-cyan-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">🧬 4-Cohort Pattern Coverage</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Every CLOSED trade buckets into one of 4 cohorts based on C and W pattern matches.
+                        Framing fix per cross-batch crossover analysis: the original "Unmatched Loser /
+                        Winner" classification conflated TRULY unmatched trades with the "Both" cohort
+                        (50% of unm.L cross-batch ALSO matched W; 63% of unm.W ALSO matched C). This
+                        table separates them cleanly. The <span class="text-cyan-300">TRULY UNMATCHED</span>
+                        cohort is the genuine residual outside the C1-C9 + W1-W6 taxonomy.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Cohort</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">% batch</th>
+                                    <th class="text-right px-2">W</th>
+                                    <th class="text-right px-2">L</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Total $</th>
+                                    <th class="text-right px-2">Avg $/tr</th>
+                                    <th class="text-right px-2" title="LONG sub-cohort: N (W/L) Total $">LONG</th>
+                                    <th class="text-right px-2" title="SHORT sub-cohort: N (W/L) Total $">SHORT</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-4cohort-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="py-3 text-center text-gray-500">No trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Pattern C Tracker Validation (May 19, 2026 — observation-only) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 Pattern C Tracker (observation-only)</h3>
@@ -6445,6 +6479,24 @@
             _renderMultExport(_mcp1.longs, 'LONGs', (_mcp1.summary || {}).longs);
             _renderMultExport(_mcp1.shorts, 'SHORTs', (_mcp1.summary || {}).shorts);
 
+            // 4-Cohort Pattern Coverage (May 21 late ship)
+            const _4c1 = perf.pattern_4cohort_coverage || {};
+            const _4c1Rows = _4c1.cohorts || [];
+            if (_4c1Rows.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## 4-Cohort Pattern Coverage\n`);
+                lines.push(`${'Cohort'.padEnd(34)} ${'N'.padEnd(5)} ${'%batch'.padEnd(8)} ${'W'.padEnd(4)} ${'L'.padEnd(4)} ${'WR%'.padEnd(7)} ${'Total $'.padEnd(11)} ${'Avg $/tr'.padEnd(11)} ${'LONG'.padEnd(22)} ${'SHORT'}`);
+                for (const c of _4c1Rows) {
+                    const fmt$ = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    const longStr = `${c.long_n}(${c.long_w}/${c.long_n - c.long_w}) ${fmt$(c.long_total)}`;
+                    const shortStr = `${c.short_n}(${c.short_w}/${c.short_n - c.short_w}) ${fmt$(c.short_total)}`;
+                    lines.push(`${c.label.padEnd(34)} ${String(c.n).padEnd(5)} ${(c.pct_of_batch.toFixed(1) + '%').padEnd(8)} ${String(c.w).padEnd(4)} ${String(c.l).padEnd(4)} ${(c.wr_pct.toFixed(1)+'%').padEnd(7)} ${fmt$(c.total_dollars).padEnd(11)} ${fmt$(c.avg_dollars_per_trade).padEnd(11)} ${longStr.padEnd(22)} ${shortStr}`);
+                }
+                if (_4c1.total) {
+                    lines.push(`Batch total: ${_4c1.total.n} trades, ${_4c1.total.w}W/${_4c1.total.l}L, ${(_4c1.total.total_dollars >= 0 ? '+$' : '-$') + Math.abs(_4c1.total.total_dollars).toFixed(2)}`);
+                }
+            }
+
             // Pattern Cell Ship Performance (May 21 Phase 2)
             const _pcp1 = perf.pattern_cell_performance || {};
             const _pcpRows1 = _pcp1.rules || [];
@@ -7936,6 +7988,24 @@
                 const _mcp2 = perf.multiplier_cell_performance || {};
                 _renderMultExport2(_mcp2.longs, 'LONGs', (_mcp2.summary || {}).longs);
                 _renderMultExport2(_mcp2.shorts, 'SHORTs', (_mcp2.summary || {}).shorts);
+
+                // 4-Cohort Pattern Coverage (May 21 late) — saved-file export
+                const _4c2 = perf.pattern_4cohort_coverage || {};
+                const _4c2Rows = _4c2.cohorts || [];
+                if (_4c2Rows.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## 4-Cohort Pattern Coverage\n`);
+                    lines.push(`${'Cohort'.padEnd(34)} ${'N'.padEnd(5)} ${'%batch'.padEnd(8)} ${'W'.padEnd(4)} ${'L'.padEnd(4)} ${'WR%'.padEnd(7)} ${'Total $'.padEnd(11)} ${'Avg $/tr'.padEnd(11)} ${'LONG'.padEnd(22)} ${'SHORT'}`);
+                    for (const c of _4c2Rows) {
+                        const fmt$ = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        const longStr = `${c.long_n}(${c.long_w}/${c.long_n - c.long_w}) ${fmt$(c.long_total)}`;
+                        const shortStr = `${c.short_n}(${c.short_w}/${c.short_n - c.short_w}) ${fmt$(c.short_total)}`;
+                        lines.push(`${c.label.padEnd(34)} ${String(c.n).padEnd(5)} ${(c.pct_of_batch.toFixed(1) + '%').padEnd(8)} ${String(c.w).padEnd(4)} ${String(c.l).padEnd(4)} ${(c.wr_pct.toFixed(1)+'%').padEnd(7)} ${fmt$(c.total_dollars).padEnd(11)} ${fmt$(c.avg_dollars_per_trade).padEnd(11)} ${longStr.padEnd(22)} ${shortStr}`);
+                    }
+                    if (_4c2.total) {
+                        lines.push(`Batch total: ${_4c2.total.n} trades, ${_4c2.total.w}W/${_4c2.total.l}L, ${(_4c2.total.total_dollars >= 0 ? '+$' : '-$') + Math.abs(_4c2.total.total_dollars).toFixed(2)}`);
+                    }
+                }
 
                 // Pattern Cell Ship Performance (May 21 Phase 2) — mirror of clipboard export above
                 const _pcp2 = perf.pattern_cell_performance || {};
@@ -10433,6 +10503,43 @@
                 }
 
                 // Pattern C Tracker (May 19, 2026 — observation-only)
+                // 4-Cohort Pattern Coverage (May 21 late ship)
+                if (data.pattern_4cohort_coverage) {
+                    const _4c = data.pattern_4cohort_coverage;
+                    const _4cBody = document.getElementById('pattern-4cohort-body');
+                    const _4cohorts = _4c.cohorts || [];
+                    if (_4cBody && _4cohorts.length) {
+                        const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        _4cBody.innerHTML = _4cohorts.map(c => {
+                            // Color label by cohort type
+                            let labelCls = 'text-gray-200';
+                            if (c.key === 'both') labelCls = 'text-emerald-300';
+                            else if (c.key === 'c_only') labelCls = 'text-amber-300';
+                            else if (c.key === 'w_only') labelCls = 'text-green-300';
+                            else if (c.key === 'truly_unmatched') labelCls = 'text-fuchsia-300 font-semibold';
+                            const totCls = c.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const avgCls = c.avg_dollars_per_trade >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const wrCls = c.wr_pct >= 70 ? 'text-emerald-400' : c.wr_pct <= 50 ? 'text-red-400' : 'text-amber-400';
+                            const longTotCls = c.long_total >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const shortTotCls = c.short_total >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1 ${labelCls}">${c.label}</td>
+                                <td class="px-2 py-1 text-right text-gray-200">${c.n}</td>
+                                <td class="px-2 py-1 text-right text-gray-400">${c.pct_of_batch.toFixed(1)}%</td>
+                                <td class="px-2 py-1 text-right text-emerald-400">${c.w}</td>
+                                <td class="px-2 py-1 text-right text-red-400">${c.l}</td>
+                                <td class="px-2 py-1 text-right ${wrCls}">${c.wr_pct.toFixed(1)}%</td>
+                                <td class="px-2 py-1 text-right ${totCls} font-semibold">${fmt$(c.total_dollars)}</td>
+                                <td class="px-2 py-1 text-right ${avgCls}">${fmt$(c.avg_dollars_per_trade)}</td>
+                                <td class="px-2 py-1 text-right text-xs"><span class="text-sky-300">${c.long_n}</span> <span class="text-gray-500">(${c.long_w}/${c.long_n - c.long_w})</span> <span class="${longTotCls}">${fmt$(c.long_total)}</span></td>
+                                <td class="px-2 py-1 text-right text-xs"><span class="text-rose-300">${c.short_n}</span> <span class="text-gray-500">(${c.short_w}/${c.short_n - c.short_w})</span> <span class="${shortTotCls}">${fmt$(c.short_total)}</span></td>
+                            </tr>`;
+                        }).join('');
+                    } else if (_4cBody) {
+                        _4cBody.innerHTML = '<tr><td colspan="10" class="py-3 text-center text-gray-500">No trades yet</td></tr>';
+                    }
+                }
+
                 if (data.pattern_c_validation) {
                     const _pcRows = data.pattern_c_validation || [];
                     const _pcBody = document.getElementById('pattern-c-body');

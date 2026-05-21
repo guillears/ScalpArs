@@ -15981,3 +15981,71 @@ term, the answer is: with mult-on-newPct, no synergy term is needed for
 the decomposition to sum correctly. The "Overlap" label remains in the UI
 for layout stability but always shows $0.00.
 
+
+## May 20, 2026 (latest+15) — Pattern Calculator: sub-split mult-extra by cap-fire type (diagnostic)
+
+### Why this exists
+
+Latest+14 reverted the mult decomposition to "apply on new exit (capped)".
+That's correct semantics for live trading (multiplier sets position size
+at entry, then exit is whatever caps + trade outcome produce). But the
+single "via 2.0× mult on new exit" line was masking an important
+diagnostic: **WHICH cap-fire type is driving the mult contribution.**
+
+Operator analyzed the May 20 23:14 batch and observed "via 2.0× mult on
+new exit: -$137.68" — confusing because the cap-rescued cohort looks
+profitable at 1×. CSV audit revealed:
+- 11 TP fires × newPct=+0.10%: mult adds +$30 (helpful)
+- 4 SL fires × newPct=-0.50%: mult adds -$167 (harmful)
+- Net: -$137
+
+The SL fires alone drag the multiplier benefit into the red — even
+though caps SAVED loss vs actual, the multiplier amplifies the
+still-large -0.50% loss into a much bigger dollar loss.
+
+### What ships
+
+Three sub-lines indented under "via 2.0× mult on new exit":
+
+```
+↳ via 2.0× mult on new exit:  -$137.68
+   ↳ on TP-fired trades:        +$30.01   (small wins doubled — helpful)
+   ↳ on SL-fired trades:       -$167.70   (SL losses doubled — harmful)
+   ↳ on no-fire trades:           $0.00   (cap conditions never met)
+```
+
+Each sub-bucket accumulates `mult_extra = (newPct/100) × notional ×
+(mult-1) - fees` only for trades matching that cap-fire status.
+
+### What the operator learns
+
+Three diagnostic patterns:
+1. **mult-on-TP positive, mult-on-SL deeply negative** → cohort is not a
+   multiplier candidate at this SL level. Options: tighten SL, improve
+   entry filter, or ship caps alone.
+2. **mult-on-TP positive, mult-on-SL small** → SL fires are rare or
+   already tight. Cohort is multiplier-friendly.
+3. **mult-on-no-fire dominates negatively** → cap conditions never
+   trigger on the bad trades. Need looser caps (lower TP threshold or
+   tighter SL) or a different exit strategy entirely.
+
+### Implementation
+
+All edits inside existing PATTERN CALCULATOR fenced JS block — no new
+files, no new fences. Tracking accumulators added to simulate(),
+sub-buckets included in returned result, three indented sub-lines
+added to render() output.
+
+### Why this entry exists in CLAUDE.md
+
+To document that:
+1. The "mult on new exit" can be misleading without cap-fire context
+2. The diagnostic value is in the sub-split (TP fires vs SL fires)
+3. When `on SL-fired trades` dominates the negative, the cohort isn't
+   a multiplier candidate at current SL level — operator should fix
+   the upstream signal (SL tightening, entry filter) before testing
+   multiplier ships
+
+This sub-split is the most actionable lens for ship-vs-not decisions
+involving caps + multiplier together.
+

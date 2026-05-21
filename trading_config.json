@@ -10,7 +10,7 @@
   "maker_exit_timeout_seconds": 10,
   "maker_exit_offset_ticks": 1,
   "paper_trading": true,
-  "paper_balance": 1500.0,
+  "paper_balance": 2000,
   "bnb_swap_enabled": true,
   "bnb_check_interval_hours": 6,
   "bnb_runway_hours": 24,

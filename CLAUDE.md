@@ -15666,3 +15666,51 @@ If the calculator proves not useful operationally after a few weeks of
 real use, remove it cleanly via the 5-block deletion. No technical debt
 left behind.
 
+
+## May 20, 2026 (latest+10) — Pattern Calculator: drop 1.5× option, add 2.0× multiplier mode to Pattern C
+
+### Two changes to the calculator widget
+
+**1. Removed Pattern W 1.5× option.** Multiplier is now locked at 2.0× (the
+hard-cap value in the multiplier system). UI shows a static "2.0×" label
+instead of a radio button. The 1.5× option was historically only used as
+a Phase-3 staging step when stepping cells down from demotion — never a
+ship target. Showing it as a primary choice in a what-if calculator was
+confusing.
+
+**2. Added 4th Pattern C action: "2.0× multiplier".** Pattern C cohorts
+that turn out to be net winners (the ★ MULTIPLIER CANDIDATE verdict
+tier on the Pattern C table exists precisely for this) deserve a 2× test
+option, not just exit caps. New radio option alongside TP / SL / TP+SL.
+
+### Mechanics — when Pattern C uses mult mode
+
+- Matched-C trades skip exit caps entirely
+- They get 2.0× multiplier instead (same logic as Pattern W matches)
+- If a trade matches BOTH a selected C pattern (in mult mode) AND a
+  selected W pattern → only ONE multiplier applies (no stacking). The
+  effect is attributed to the C contribution in the decomposition since
+  the operator explicitly chose mult mode there.
+
+### Use cases this unlocks
+
+| Question | How to ask the calculator |
+|---|---|
+| "Is C7 SHORT secretly a multiplier candidate?" | Select C7 + SHORT only + 2.0× mult action |
+| "What if C2 LONG winners cohort got 2× sizing?" | Select C2 + LONG only + 2.0× mult action |
+| "Compare exit-cap ship vs multiplier ship on same C cohort" | Toggle between "TP+SL combined" and "2.0× multiplier" on the same selection |
+| "Stack a C-mult ship with a W-mult ship" | Select C patterns in mult mode + W patterns; both contribute, no double-mult on overlap |
+
+### Why this entry exists in CLAUDE.md
+
+To document the orthogonality break introduced by mult mode on Pattern C:
+- Original calculator design: Pattern C → exit caps, Pattern W → multiplier (orthogonal, both apply on overlap)
+- New mult mode on Pattern C → multiplier (same dimension as W, no stacking on overlap)
+
+The simulation logic correctly handles this — only one 2.0× per trade
+when both trackers want multiplier on the same trade. Effect decomposition
+attributes the gain to C in that case (operator's explicit choice).
+
+Still removable in 5 minutes per the latest+9 procedure — these were
+edits inside the existing fenced blocks, not new touchpoints.
+

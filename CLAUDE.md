@@ -15769,3 +15769,70 @@ If the calculator gets removed, this entry can be deleted together
 with the latest+9 / +10 entries — they all live within the same
 fenced architecture.
 
+
+## May 20, 2026 (latest+12) — Pattern Calculator: caps + multiplier are independent on Pattern C
+
+### Problem with prior design
+
+Pattern C action selector was a 4-way radio (mutually exclusive): TP only,
+SL only, TP+SL combined, 2.0× multiplier. Operator could NOT select both
+"TP+SL combined" AND "2.0× multiplier" simultaneously — but that's exactly
+the test you'd want for a Pattern C cohort that's both a ★ MULTIPLIER
+CANDIDATE (winners cohort) AND has exit-capping value on its loser tail.
+
+### New design
+
+Split into two independent controls:
+
+**Caps (radio, mutually exclusive):**
+- None
+- TP 0.10 only
+- SL 0.50 only
+- TP + SL combined (default)
+
+**Multiplier (checkbox, independent):**
+- ☐ Also apply 2.0× multiplier
+
+8 combinations possible. Default (TP+SL caps, mult OFF) matches previous
+default behavior — no regression.
+
+### Math when both fire on matched-C trade
+
+```
+new_pct = apply_caps(trade)  # cap effect at 1× sizing
+mult = 2.0 if any_mult_active else 1.0
+new_dollar = (new_pct / 100) × notional × mult - fees
+```
+
+Effect decomposition tracks contributions separately:
+- `via TP fires`: cap effect at 1× from trades where TP fired
+- `via SL fires`: cap effect at 1× from trades where SL fired
+- `via 2.0× mult`: extra-from-sizing for matched-C trades when mult is on
+- `Overlap (BOTH applied)`: cap×mult interaction term — the additional
+  gain from multiplying a cap-rescued exit beyond what either alone would
+  yield. Captures the compound benefit of "rescue the bad exit AND
+  size up the rescued result".
+
+### No-stacking rule (preserved)
+
+If a single trade matches BOTH a selected C pattern (with C mult ON) AND
+a selected W pattern → only ONE 2.0× applies (max one multiplier per
+trade). Attributed to C since the operator explicitly enabled C mult.
+Prevents double-multiplication math errors.
+
+### Backward compatibility
+
+Old single-radio "mult" mode is effectively "caps=None + mult=ON". Old
+"combined" mode is "caps=TP+SL combined + mult=OFF" (still the default).
+All previously valid selections remain expressible.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The independence between caps and multiplier on Pattern C
+2. The 8-combination space (4 cap modes × 2 mult states) and its defaults
+3. The Overlap line semantics (cap×mult interaction term, not simple sum)
+4. The no-stacking-with-W rule (preserved across this refactor)
+
+If calculator ever gets removed, this entry deletes with the others.
+

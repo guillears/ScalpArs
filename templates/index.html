@@ -1879,11 +1879,11 @@
                 <section id="pcalc-section" class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-violet-300 mb-2">🧮 Pattern Calculator (combined Pattern C + Pattern W simulator)</h3>
                     <p class="text-xs text-gray-400 mb-3">
-                        Select any combination of Pattern C signatures (apply exit caps OR 2.0× multiplier — useful for testing
-                        Pattern C cohorts that turned out to be net winners) and Pattern W signatures (apply 2.0× multiplier).
-                        Calculator simulates the combined effect on whole-batch P&L with overlap correctly handled — trades matching
-                        both selected C (in caps mode) and W patterns get BOTH operations applied (orthogonal: caps change exit P&L%, multiplier scales position).
-                        When C is in 2.0× mode, no stacking occurs (single multiplier per trade regardless of how many trackers match).
+                        Select any combination of Pattern C signatures (apply exit caps AND/OR 2.0× multiplier — caps and multiplier
+                        are independent controls so you can run BOTH on the same cohort) and Pattern W signatures (apply 2.0× multiplier).
+                        Calculator simulates the combined effect on whole-batch P&L with overlap correctly handled. Caps change exit P&L%;
+                        multiplier scales position. A matched-C trade can receive caps only, multiplier only, BOTH, or neither — operator's choice.
+                        Multiplier is single-application: a trade matching both a selected C (mult enabled) AND a selected W still gets only ONE 2.0× (no stacking).
                         Trades matching multiple selected patterns within the same tracker are deduplicated (counted once).
                     </p>
 
@@ -1899,12 +1899,16 @@
                                 <!-- Pattern C checkboxes generated dynamically -->
                                 <span id="pcalc-c-pattern-list" class="contents"></span>
                             </div>
-                            <div class="flex items-center gap-3 text-xs flex-wrap">
-                                <span class="text-gray-400">Apply:</span>
+                            <div class="flex items-center gap-3 text-xs flex-wrap mb-1.5">
+                                <span class="text-gray-400">Caps:</span>
+                                <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="none" class="pcalc-c-action"> None</label>
                                 <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="tp" class="pcalc-c-action"> TP 0.10 only</label>
                                 <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="sl" class="pcalc-c-action"> SL 0.50 only</label>
                                 <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="combined" checked class="pcalc-c-action"> TP + SL combined</label>
-                                <label class="flex items-center gap-1"><input type="radio" name="pcalc-c-action" value="mult" class="pcalc-c-action"> 2.0× multiplier</label>
+                            </div>
+                            <div class="flex items-center gap-3 text-xs">
+                                <span class="text-gray-400">Multiplier:</span>
+                                <label class="flex items-center gap-1"><input type="checkbox" id="pcalc-c-mult" class="pcalc-c-mult"> Also apply 2.0× multiplier</label>
                             </div>
                         </div>
 
@@ -15393,10 +15397,12 @@
                 const wPats = Array.from(document.querySelectorAll('.pcalc-w-pat:checked'))
                     .map(el => el.dataset.pcalcW);
                 const cAction = document.querySelector('input[name="pcalc-c-action"]:checked')?.value || 'combined';
-                // Pattern W multiplier is locked at 2.0× (May 20 latest+10 — removed 1.5× option).
-                // 1.5× was previously a Phase-3 staging step from cell demotion, not a target.
+                // May 20 latest+12: caps mode and multiplier are now independent controls.
+                // cAction = none | tp | sl | combined ; cMult = boolean (apply 2.0×)
+                const cMult = document.getElementById('pcalc-c-mult')?.checked || false;
+                // Pattern W multiplier is locked at 2.0× (May 20 latest+10).
                 const wMult = 2.0;
-                return { cDirs, wDirs, cPats, wPats, cAction, wMult };
+                return { cDirs, wDirs, cPats, wPats, cAction, cMult, wMult };
             }
 
             function simulate() {
@@ -15435,15 +15441,13 @@
                     else if (matchesW) nMatchedW++;
                     else { nNeither++; neitherPnl += actualDollar; }
 
-                    // Step 1: compute new exit pct (apply C caps if matched AND C action is a cap)
-                    // May 20 latest+10: when cAction === 'mult', matched-C trades skip exit
-                    // caps and are treated as multiplier candidates instead.
-                    // May 20 latest+11: track WHICH cap fired so we can attribute the
-                    // contribution to via-TP vs via-SL.
+                    // Step 1: compute new exit pct (apply C caps if matched AND cAction != 'none')
+                    // May 20 latest+12: caps and multiplier are now independent. A matched-C
+                    // trade can receive caps, multiplier, BOTH, or neither.
                     let newPct = t.pnl_pct;
                     let firedTp = false;
                     let firedSl = false;
-                    if (matchesC && sel.cAction !== 'mult') {
+                    if (matchesC && sel.cAction !== 'none') {
                         const peak = t.peak;
                         const trough = t.trough;
                         const tpFire = peak != null && peak >= TP;
@@ -15454,7 +15458,6 @@
                             if (slFire) { newPct = -SL; firedSl = true; }
                         } else { // combined
                             if (tpFire && slFire) {
-                                // Sequence by timestamp; default to TP if missing
                                 const pAt = t.peak_at ? new Date(t.peak_at).getTime() : null;
                                 const tAt = t.trough_at ? new Date(t.trough_at).getTime() : null;
                                 if (pAt != null && tAt != null) {
@@ -15471,9 +15474,10 @@
                         }
                     }
 
-                    // Step 2: compute multiplier. Either tracker triggering multiplier
-                    // mode on this trade → 2.0×. No stacking (max one multiplier per trade).
-                    const cMultActive = matchesC && sel.cAction === 'mult';
+                    // Step 2: compute multiplier. Either tracker's mult flag triggers 2.0×.
+                    // No stacking (max one multiplier per trade — both flags on a single trade
+                    // still result in only one 2.0×).
+                    const cMultActive = matchesC && sel.cMult;
                     const wMultActive = matchesW;
                     const mult = (cMultActive || wMultActive) ? sel.wMult : 1.0;
 
@@ -15488,35 +15492,53 @@
                     const baselineMultiplied = (t.pnl_pct / 100) * t.notional * mult - feesAdjust;
                     const baselineNoMult = (t.pnl_pct / 100) * t.notional;  // = actualDollar approximately
 
-                    // Effect decomposition with cap-by-cap attribution (May 20 latest+11).
-                    // Each matched-C contribution routes to via-TP, via-SL, or via-Mult.
+                    // Effect decomposition (May 20 latest+12 — caps + mult are independent on C).
+                    // A matched-C trade can contribute to via-TP / via-SL (cap-driven) AND
+                    // via-Mult (multiplier-driven) on the same trade. The decomposition
+                    // separates these into intrinsic effects:
+                    //   cap_effect_$ = ((newPct - actualPct) / 100) × notional  (at 1× sizing)
+                    //   mult_effect_$ = (newPct / 100) × notional × (mult - 1)  (extra from sizing)
+                    //   total trade improvement = cap_effect + mult_effect (for matched-C)
+                    const cap_effect = ((newPct - t.pnl_pct) / 100) * t.notional;
+                    const mult_extra_dollars = (newPct / 100) * t.notional * (mult - 1.0) - ((mult - 1.0) * (t.notional * FEE_PCT / 100));
+
                     if (matchesC && matchesW) {
-                        if (sel.cAction === 'mult') {
-                            // Both matched, both want multiplier — single 2.0× applied.
-                            // Attribute the multiplier effect to C (operator explicitly chose mult mode).
-                            cViaMult += (newDollar - actualDollar);
-                        } else {
-                            // Trade gets BOTH treatments: C exit cap + W multiplier
-                            const cEffect = ((newPct - t.pnl_pct) / 100) * t.notional;  // exit cap effect at 1x
-                            const wEffect = baselineMultiplied - baselineNoMult;
-                            if (firedTp) cViaTp += cEffect;
-                            else if (firedSl) cViaSl += cEffect;
-                            wContribution += wEffect;
-                            // Overlap = total improvement - (c alone) - (w alone)
-                            const standaloneC = cEffect;
-                            const standaloneW = wEffect;
-                            overlapContribution += (newDollar - actualDollar) - standaloneC - standaloneW;
+                        // Both matched. C may contribute caps + (its mult) + W contributes
+                        // its mult (but if both want mult, only one 2.0× applies → no W mult
+                        // contribution in that case to avoid double-attribution).
+                        if (firedTp) cViaTp += cap_effect;
+                        else if (firedSl) cViaSl += cap_effect;
+                        if (cMultActive) {
+                            // C explicitly requested mult — attribute mult effect to C
+                            cViaMult += mult_extra_dollars;
+                        } else if (wMultActive) {
+                            // Only W wanted mult — attribute to W
+                            wContribution += mult_extra_dollars;
+                        }
+                        // Overlap line: only meaningful when caps fire AND a multiplier was applied.
+                        // In that case, the multiplier scales the cap-rescued value beyond what
+                        // either alone would do. Decomposed effects above already account for
+                        // standalone contributions, so overlap captures the cap×mult interaction.
+                        if ((firedTp || firedSl) && mult > 1.0) {
+                            const standaloneCapAt1x = cap_effect;
+                            const standaloneMultAtOriginal = (t.pnl_pct / 100) * t.notional * (mult - 1.0) - ((mult - 1.0) * (t.notional * FEE_PCT / 100));
+                            const combinedImprovement = newDollar - actualDollar;
+                            overlapContribution += combinedImprovement - standaloneCapAt1x - standaloneMultAtOriginal;
                         }
                     } else if (matchesC) {
-                        if (sel.cAction === 'mult') {
-                            cViaMult += (newDollar - actualDollar);
-                        } else if (firedTp) {
-                            cViaTp += (newDollar - actualDollar);
-                        } else if (firedSl) {
-                            cViaSl += (newDollar - actualDollar);
+                        // C only
+                        if (firedTp) cViaTp += cap_effect;
+                        else if (firedSl) cViaSl += cap_effect;
+                        if (cMultActive) cViaMult += mult_extra_dollars;
+                        // Cap×mult interaction within C only
+                        if ((firedTp || firedSl) && cMultActive) {
+                            const standaloneCapAt1x = cap_effect;
+                            const standaloneMultAtOriginal = (t.pnl_pct / 100) * t.notional * (mult - 1.0) - ((mult - 1.0) * (t.notional * FEE_PCT / 100));
+                            const combinedImprovement = newDollar - actualDollar;
+                            overlapContribution += combinedImprovement - standaloneCapAt1x - standaloneMultAtOriginal;
                         }
-                        // (no cap fired → no contribution; trade unchanged)
                     } else if (matchesW) {
+                        // W only
                         wContribution += (newDollar - actualDollar);
                     }
                 });
@@ -15552,10 +15574,16 @@
                     : v < -5 ? 'text-red-400 font-semibold' : 'text-gray-400';
                 const ntCls = (v) => v >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold';
 
-                const cActionLabel = sel.cAction === 'tp' ? 'TP 0.10 only'
-                    : sel.cAction === 'sl' ? 'SL 0.50 only'
-                    : sel.cAction === 'mult' ? '2.0× multiplier'
+                // Compose label from cap mode + multiplier flag (May 20 latest+12)
+                const capPart = sel.cAction === 'none' ? null
+                    : sel.cAction === 'tp' ? 'TP 0.10'
+                    : sel.cAction === 'sl' ? 'SL 0.50'
                     : 'TP + SL combined';
+                const multPart = sel.cMult ? '2.0× multiplier' : null;
+                const cActionLabel = capPart && multPart ? `${capPart} + ${multPart}`
+                    : capPart ? capPart
+                    : multPart ? multPart
+                    : 'no operation';
                 const cSummary = sel.cPats.length === 0 ? '<span class="text-gray-500">(no C patterns selected)</span>'
                     : `${sel.cPats.map(p => p.toUpperCase()).join(', ')} <span class="text-gray-500">(${cActionLabel})</span>`;
                 const wSummary = sel.wPats.length === 0 ? '<span class="text-gray-500">(no W patterns selected)</span>'
@@ -15571,7 +15599,7 @@
                         <div>
                             <div class="text-xs text-gray-400 mb-1">Trade breakdown (N=${result.nTotal})</div>
                             <div class="text-xs space-y-0.5">
-                                <div>matched <span class="text-amber-300 font-semibold">C only</span>: <span class="font-mono">${result.nMatchedC}</span> <span class="text-gray-500">(${sel.cAction === 'mult' ? '2.0× applied' : 'exit caps applied'})</span></div>
+                                <div>matched <span class="text-amber-300 font-semibold">C only</span>: <span class="font-mono">${result.nMatchedC}</span> <span class="text-gray-500">(${cActionLabel})</span></div>
                                 <div>matched <span class="text-emerald-300 font-semibold">W only</span>: <span class="font-mono">${result.nMatchedW}</span> <span class="text-gray-500">(${sel.wMult.toFixed(1)}× applied)</span></div>
                                 <div>matched <span class="text-violet-300 font-semibold">BOTH C and W</span>: <span class="font-mono">${result.nBoth}</span> <span class="text-gray-500">(both treatments)</span></div>
                                 <div>matched <span class="text-gray-400 font-semibold">NEITHER</span>: <span class="font-mono">${result.nNeither}</span> <span class="text-gray-500">(unchanged · baseline P&L <span class="${result.neitherPnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono">${fmt$(result.neitherPnl)}</span>)</span></div>
@@ -15580,7 +15608,7 @@
                         <div>
                             <div class="text-xs text-gray-400 mb-1">Effect decomposition</div>
                             <div class="text-xs space-y-0.5">
-                                <div>C effect (total): <span class="${cls(result.cContributionTotal)} font-mono font-semibold">${fmt$(result.cContributionTotal)}</span></div>
+                                <div>C effect (total — caps + mult): <span class="${cls(result.cContributionTotal)} font-mono font-semibold">${fmt$(result.cContributionTotal)}</span></div>
                                 <div class="pl-3">↳ via TP fires: <span class="${cls(result.cViaTp)} font-mono">${fmt$(result.cViaTp)}</span></div>
                                 <div class="pl-3">↳ via SL fires: <span class="${cls(result.cViaSl)} font-mono">${fmt$(result.cViaSl)}</span></div>
                                 <div class="pl-3">↳ via 2.0× mult: <span class="${cls(result.cViaMult)} font-mono">${fmt$(result.cViaMult)}</span></div>

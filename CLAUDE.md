@@ -16049,3 +16049,70 @@ To document that:
 This sub-split is the most actionable lens for ship-vs-not decisions
 involving caps + multiplier together.
 
+
+## May 20, 2026 (latest+16) — Pattern Calculator: Pattern W gets symmetric caps + mult controls
+
+### What ships
+
+Pattern W panel now mirrors Pattern C's control structure:
+- **Caps (radio)**: None / TP 0.10 only / SL 0.50 only / TP + SL combined (default: None)
+- **Multiplier (checkbox)**: ☑ Apply 2.0× multiplier (default: ON — preserves prior behavior)
+
+Operator can test caps on W cohorts (e.g., "tighter SL on a high-WR W
+cohort to improve R:R while keeping wins running") and toggle the
+multiplier off if testing caps-only scenarios.
+
+### Conflict resolution rule
+
+When a trade matches both a selected C pattern (with caps active) AND a
+selected W pattern (with caps active), **Pattern C's caps take priority**.
+W's caps only apply on W-only matches (or when matched-both but C has
+caps=None).
+
+Rationale: Pattern C is the loser-targeted tracker — the operator's
+explicit choice of C caps is usually the authoritative signal. W caps
+on the same trade would be redundant (since the trade already gets C's
+exit-cap treatment).
+
+### Multiplier rules unchanged
+
+Multiplier remains single-application (max one 2.0× per trade across
+both trackers). Attribution: C wins if cMult on (operator's explicit
+choice); else W (must be on if mult applied).
+
+### Attribution to display lines
+
+- Cap effect from C → cViaTp / cViaSl (C's bucket, with via-fire sub-split)
+- Cap effect from W → wContribution (W's single line for now; no sub-split)
+- Mult effect on matched-C with cMult → cViaMult (with on-TP/SL/no-fire sub-split)
+- Mult effect on matched-W with wMultEnabled → wContribution
+
+W's effect aggregation kept single-line for now to manage UI density.
+If operator needs sub-split on W side (via-TP / via-SL / via-mult)
+similar to C, that's a future addition.
+
+### Default behavior preserved
+
+Default settings: C caps=Combined+mult off, W caps=None+mult ON. Same
+behavior as prior shipping — no regression on existing usage. Operators
+exploring W caps need to explicitly select them.
+
+### Implementation
+
+All edits inside existing PATTERN CALCULATOR fenced JS block. UI panel
+added 2 radio rows + 1 checkbox + label tweaks. simulate() extended to
+read wAction and wMultEnabled. attribution logic split caps by
+capSource ('C' or 'W'). Total: ~20 LOC.
+
+### Why this entry exists in CLAUDE.md
+
+To document:
+1. Pattern W now has full caps + mult controls
+2. Conflict resolution rule (C caps win over W caps on overlap)
+3. W's attribution stays as a single line (no sub-split yet) for UI density
+4. Defaults preserve prior shipping behavior
+
+Removal procedure unchanged (still 5 fenced blocks, ~5 minutes). The
+new W controls live inside the existing widget HTML fence; new JS
+logic lives inside the existing IIFE fence.
+

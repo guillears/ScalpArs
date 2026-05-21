@@ -16225,7 +16225,14 @@
     speechSynthesis.speak(u);
   }
 
+  // Single-run guard: prevents duplicate fires from the multiple voice-loading
+  // paths racing each other (onvoiceschanged + safety fallback).
+  let hasRun = false;
   function run() {
+    if (hasRun) return;
+    hasRun = true;
+    // Cancel any queued utterances from prior calls just in case
+    try { speechSynthesis.cancel(); } catch(e) {}
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) { speak(); return; }
@@ -16265,7 +16272,8 @@
     }
   }
 
-  // Voices may not be loaded yet — wait briefly
+  // Voices may not be loaded yet — wait briefly. Both paths converge on run()
+  // which is guarded against double-execution by the hasRun flag above.
   if (speechSynthesis.getVoices().length > 0) {
     setTimeout(run, 200);
   } else {
@@ -16273,8 +16281,10 @@
       speechSynthesis.onvoiceschanged = null;
       setTimeout(run, 100);
     };
-    // Safety fallback: run anyway after 1s even if voices didn't load
-    setTimeout(() => { if (speechSynthesis.speaking) return; run(); }, 1000);
+    // Safety fallback: if voices never load, fire anyway after 1s.
+    // The hasRun guard ensures this only takes effect if onvoiceschanged
+    // didn't fire first.
+    setTimeout(run, 1000);
   }
 })();
 </script>

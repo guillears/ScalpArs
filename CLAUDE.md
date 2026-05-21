@@ -18815,3 +18815,98 @@ May 18 evening was the first; reverted; Volume re-enabled, ADX Δ tightened).
 The May 11 ship was based on solid cross-batch but the regime has changed
 materially since (new exit stack). The right question is "does this filter
 still earn its keep" — to be answered by data, not assumption.
+
+## May 21, 2026 (evening) — BTC RSI × BTC ADX Cross-Filter: loosened 2 cells (new-exit-stack A/B)
+
+### Change
+`btc_rsi_adx_filter_long`:
+- `55-60:20-25` → **`55-60:18-25`** (opens 18-20 ADX sub-cell)
+- `65-70:30` → **`65-70:28`** (ensures 30-35 opens unambiguously, also opens 28-30 sub-cell)
+
+Net effect on LONG entry surface:
+- BTC RSI 55-60: was allowed ONLY at ADX 20-25; now allowed at ADX 18-25
+- BTC RSI 65-70: was allowed at ADX ≥30; now allowed at ADX ≥28
+
+### Honest framing — same logic as ADX Δ A/B test
+
+Cross-batch evidence behind both blocked cells was collected under the OLD
+exit stack (no BE 0.10 floor, no UNMATCHED TP+SL rule, no FAST_EXIT L2).
+Under the new exit stack:
+
+| Cell | Old-stack cross-batch | New-stack expected loss profile |
+|---|---|---|
+| 55-60 × 18-20 LONG | 16 trades / 31% WR / -$238 (May 18 PM) | BE catches peak-and-retrace at $0; UNMATCHED TP+SL caps NP at -0.50. Estimated loss profile ~50-60% smaller. |
+| 65-70 × 25-30 LONG | 13 trades / 62% WR / -$194 (May 11 PM, asymmetric R:R) | Same caps mechanism applies. Losers' magnitude bounded. |
+
+This is the same discipline override that justified the ADX Δ × BTC ADX
+filter disable earlier tonight. Both rest on: "the cross-batch evidence
+was real under old exits; new exits structurally limit per-loss damage;
+re-test under live conditions."
+
+### Specific situational trigger
+
+The May 21 14:35 BTC chart showed a clean breakout-from-consolidation
+that the bot missed. BTC consolidated 11:00-13:30, then exploded 13:45+
+from 77,200 → 77,935 (+0.95% in 50 min). During early breakout, BTC RSI
+was likely 55-65 and BTC ADX <20 (still recovering from consolidation
+crush). The 55-60 × 18-20 cell was likely blocking this exact entry.
+
+Loosening the 18-20 cell admits this breakout pattern. Risk: also admits
+the documented drift-pattern losers from the May 18 cross-batch. The
+new exit stack is the hedge.
+
+### Pre-committed revert criteria (LOCKED for next ≥30-trade LONG checkpoint)
+
+| Outcome on fresh data in the re-opened cells | Action |
+|---|---|
+| BTC RSI 55-60 × ADX 18-20 LONG: N≥5 trades AND combined Total $ ≥ +$30 | ★ KEEP at 18-25 |
+| Same cell: N≥5 AND Total $ ≤ -$30 (loser pattern survived new exits) | ✗ REVERT to 20-25 only |
+| BTC RSI 65-70 × ADX 28-35 LONG: N≥5 AND Total $ ≥ +$30 | ★ KEEP at 28 threshold |
+| Same cell: N≥5 AND Total $ ≤ -$30 | ✗ REVERT to 30 threshold |
+| Mixed / inconclusive (Total $ -$30 to +$30) | Extend test 1 more batch |
+| N < 5 in cell | Defer — insufficient data |
+
+If both cells go bad → full revert to "55-60:20-25,65-70:30" pre-flex
+state. Other rules in the cross-filter unchanged.
+
+### Filter A/B test stack now
+
+Three filter changes shipped tonight, all on the same hypothesis (new
+exits make old loser-zone evidence weaker):
+
+1. ✓ `adx_delta_btc_adx_filter_enabled`: true → false (master toggle off)
+2. ✓ `btc_rsi_adx_filter_long`: 55-60 widened 20-25 → 18-25
+3. ✓ `btc_rsi_adx_filter_long`: 65-70 lowered 30 → 28
+
+At next checkpoint, the analysis must DISAMBIGUATE which loosening
+contributed what. The Filter Blocks panel shows live block counts per
+filter — compare across pre-loosening baseline (today's panel) vs
+post-loosening to estimate per-filter impact.
+
+### Risk acknowledgment
+
+THREE simultaneous loosenings = attribution noise. If next batch shows
+losses, can't immediately identify which loosening to revert. Standard
+discipline says one at a time; today shipped all three based on:
+- Common underlying hypothesis (new exits weaken old evidence)
+- Locked per-rule revert gates so reverts can fire mechanically
+- Live data will eventually reveal per-cell performance via the
+  Multiplier Cell Performance + Filter Blocks tables
+
+### Files changed
+- `trading_config.json` — single field update with 2 rule changes
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The exact pre-flex and post-flex rule strings
+2. The hypothesis (new exit stack weakens old cross-batch loser evidence)
+3. Locked revert gates so next-checkpoint decision is mechanical
+4. The triple-A/B-test attribution risk acknowledgment
+5. The specific situational trigger (May 21 14:35 missed breakout)
+
+If at next checkpoint both cells stay net-negative → reverts are
+automatic. If they prove positive → cross-batch evidence under new
+exits is permanently weaker and future filter decisions should
+incorporate this calibration.

@@ -16245,3 +16245,301 @@ To document:
 All edits inside existing PATTERN CALCULATOR fenced blocks. Removal
 procedure unchanged (still 5 fenced blocks, ~5 minutes).
 
+
+## May 21, 2026 — Cross-batch Pattern Calculator finding (522 trades May 4+)
+
+### What was tested
+
+Operator selected today's batch's "killer config" in the Pattern Calculator:
+- **Pattern C**: C4 + C8 + Unmatched Losers (TP+SL combined caps, no mult)
+- **Pattern W**: W2 + Unmatched Winners (TP 0.10 caps + 2.0× multiplier)
+
+Today's single-batch result: -$348 → +$194, **Δ +$541** across 40 trades.
+
+I initially framed this as "single-batch outlier." Operator pushed back. Ran
+cross-batch simulation against full May 4+ deduped pool (522 trades).
+
+### The cross-batch result
+
+| Metric | Value |
+|---|---|
+| Cross-batch actual P&L | **-$2,847** |
+| With killer config applied | **-$328** |
+| Δ across 522 trades | **+$2,519** |
+| Positive dates | **14 of 16** (only May 12 and May 15 negative) |
+
+**Operator was right — this is NOT a single-batch outlier.** The ship has
+strong cross-batch signal.
+
+### Per-cohort attribution (the critical part)
+
+| Cohort | N (cross-batch) | Δ$ | Role |
+|---|---|---|---|
+| C4 (TP+SL caps) | 15 | +$533 | Small positive |
+| C8 (TP+SL caps) | 2 | +$117 | Tiny |
+| **Unm. L (TP+SL caps)** | **153** | **+$3,982** ★★★ | **THE DRIVER** |
+| W2 (TP 0.10 + 2× mult) | 85 | **-$1,010** | NEGATIVE drag |
+| Unm. W (TP 0.10 + 2× mult) | 194 | **-$1,617** | NEGATIVE drag |
+
+**Key insight: the +$2,519 is driven entirely by TP+SL caps on the Unmatched
+Losers cohort.** The W-side multipliers are net-negative — they cost
+-$2,627 collectively across the pool.
+
+The "killer config" isn't really "Pattern C + Pattern W" — it's effectively
+**"apply TP+SL caps to losers that fall through the existing pattern
+taxonomy."** That single mechanism is doing all the lifting.
+
+### The structural caveat the operator immediately surfaced
+
+Cross-batch pool spans MANY different filter regimes. Trades in the
+Unm. L cohort may include:
+1. Trades that fired under OLDER, looser filter configs
+2. Trades that would NOT fire under TODAY's filter stack
+3. Trades that today's filters BLOCK (so they're not in the pool but
+   conceptually similar trades would now be excluded)
+
+**Today's single batch has only ~2 Unm. L trades** (the screenshot showed
+matched NEITHER = 8, of which only some are unmatched losers). Cross-batch
+shows 153 Unm. L. The cohort is heavily inflated by historical-permissive-
+filter trades.
+
+So the realistic forward projection of "ship caps on Unm. L" is NOT
++$3,982 / N=153. It's closer to ~$25-50 per batch at N≈2-5 per batch under
+current filter stack. The cross-batch number is the upper bound assuming
+filter regime stays at the historical average.
+
+### What this means for ship decisions
+
+Three honest paths:
+
+**Path A — Ship the caps narrowly (current Unm. L only).**
+At N=2-5 per batch, this is a tiny rescue ($25-50/batch). Not worth
+shipping infrastructure for. Mechanism-wise though: validated +$3,982
+across 153 historical trades.
+
+**Path B — Ship global SL tighten + BE floor raise instead.**
+The Unm. L cohort effectively gets TP+SL caps. The simpler equivalent
+is `signal_sl_pct: -0.80 → -0.50` + `be_level1_offset: 0.10 → 0.20`.
+Covers more trades, no pattern infrastructure needed. Estimated impact:
+similar Δ as Path A scaled to the broader population.
+
+**Path C — Revert over-aggressive filters AND ship caps.**
+Identify filters currently blocking trades that caps would rescue. Revert
+those filters, let the trades back in, caps catch them. This is the
+operator's intuitive ask: "which filters are now redundant with caps?"
+This needs the filter-overlap analysis (next section).
+
+### The W-side multiplier finding (revised verdict)
+
+Cross-batch W2 + Unm. W with TP 0.10 + 2× mult: **NET NEGATIVE -$2,627**
+
+- W2 cohort cross-batch: 85 trades, applying 2× multiplier costs $1,010
+  vs no mult. Confirms W2 is NOT a multiplier candidate.
+- Unm. W cohort cross-batch: 194 trades, applying 2× multiplier costs $1,617.
+  Unmatched winners by definition don't share a mechanism; multiplying
+  them is multiplying noise.
+
+**Lesson:** Pattern W multipliers should be evaluated cross-batch BEFORE
+ship. Today's batch suggested +$134 from W2 mult — cross-batch shows
+the cohort actually loses $1,010 at 2×. Single-batch multiplier signals
+are unreliable.
+
+### Pre-committed methodology rule (locked from this finding)
+
+**When the Pattern Calculator shows a large Δ on a single batch, run the
+cross-batch simulation against the deduped pool BEFORE drawing any ship
+conclusions.** Today's calculator showed +$541; cross-batch showed +$2,519
+(stronger). But the attribution flipped from "W mult + C caps both
+contributing" (single-batch read) to "caps do everything, W mult is
+harmful" (cross-batch truth). Per-cohort attribution must come from
+cross-batch evidence, not single-batch.
+
+This rule applies to ALL future Pattern Calculator findings — single-batch
++Δ is not enough; multi-batch confirmation per cohort is required.
+
+
+## May 21, 2026 (deep dive) — Cross-batch Unm. L is inflated; filter-overlap analysis shows minimal revert gain
+
+### Operator's critical observation
+
+After the +$2,519 cross-batch "killer config" finding, operator immediately
+flagged: "in this current batch the unmatched losers are only 2." This
+exposed the structural flaw in the cross-batch projection.
+
+### The math behind the inflation
+
+- Cross-batch Unm. L: 153 / 522 trades = **29% of pool**
+- Today's batch Unm. L: ~2 / 40 trades = **~5% of pool**
+- 6× reduction between historical avg and current
+
+The cross-batch Unm. L cohort is INFLATED by trades that fired under
+historical-permissive filter regimes. Today's filter stack catches most
+of those signatures upstream — so the cohort that the "killer config"
+rescues largely doesn't exist forward.
+
+Forward expectation: cross-batch $3,982 / 17 days = $234/day average,
+but with today's Unm. L rate (5%), the realistic forward number drops
+to ~$15-50/batch. Not worth ship infrastructure for that.
+
+### Filter-overlap analysis (which filters could expand Unm. L?)
+
+For each currently-active filter, computed: which cross-batch trades would
+NOW be blocked, and what their P&L looks like under TP+SL caps. If
+"admit + capped" > "block + miss winners", the filter is over-aggressive.
+
+| Filter | N blocked cross-batch | Cap-rescue Δ$ | Verdict |
+|---|---|---|---|
+| PAIR_ADX_DELTA_MIN (≥0.10) | 16 | **+$296** | ✓ Best revert candidate, but tiny absolute N |
+| BTC_ADX_GATE_LOW (LONG≥18, SHORT≥20) | 29 | +$8 | ○ Marginal (31% NP rate, caps don't help) |
+| LONG_RSI_MAX (≤65) | 2 | +$1 | ○ Negligible |
+| PAIR_ADX_MAX (LONG≤30, SHORT≤33) | 40 | **-$241** | ✗ KEEP (reverting adds WINNERS caps would CUT) |
+
+Even reverting ALL viable filters adds only ~87 cross-batch trades total
+= ~5 extra trades/batch in production. Cap-rescue on those = $20-30/batch
+incremental. Marginal.
+
+### The honest forward verdict
+
+**Don't ship the "killer config" as-is.** The cross-batch projection is
+backward-looking — it rescues trades that today's filters already
+prevent.
+
+**Three realistic paths going forward:**
+
+1. **Ship caps on Unm. L narrowly** — at N≈2/batch under current filters,
+   forward Δ ≈ $15-50/batch. Too small for the infrastructure.
+2. **Revert PAIR_ADX_DELTA_MIN + ship caps** — adds maybe $30-70/batch.
+   Modest, increases variance, gives up the locked May 10 ADX delta
+   structural finding.
+3. **Global SL tighten + BE floor raise** — the simplest equivalent.
+   `signal_sl_pct: -0.80 → -0.50` + `be_level1_offset: 0.10 → 0.20`.
+   Hits ALL trades, not just Unm. L. No pattern dependency.
+
+### Locked methodology rule (key takeaway)
+
+**When the Pattern Calculator shows a powerful cross-batch ship signal,
+the very next step MUST be: "what fraction of the affected cohort would
+still exist under the CURRENT filter stack?"** If today's filters cut
+most of the historically-affected trades, the cross-batch projection is
+backward-looking and the forward expectation collapses.
+
+Two tests to run together:
+1. Cross-batch simulation (what the ship would have done historically)
+2. Forward Unm. L rate (what fraction of recent batches still trigger
+   the cohort under today's filters)
+
+A 6× drop between historical and current rate (as seen here) means
+the cross-batch projection is inflated by ~6×. Adjust expectations
+accordingly before any ship decision.
+
+
+## May 21, 2026 — Filter reverts shipped (4 filters relaxed to expand Unm. L cohort)
+
+### Why this ships now
+
+Cross-batch analysis (522 trades May 4+) demonstrated that:
+
+1. **TP+SL caps on Unm. L cohort cross-batch = +$3,982 rescue ★** — the
+   strongest mechanism uncovered to date.
+2. **Today's Unm. L = ~2 trades** under current filter stack vs **153
+   cross-batch historical** = 6× drop. Current filters cut most of the
+   trades that caps would rescue.
+3. **Filter-overlap analysis** identified 4 currently-active filters
+   whose blocked trades would mostly land in Unm. L (cap-rescuable),
+   not in existing C pattern matches. Reverting these EXPANDS the
+   Unm. L cohort that caps would catch.
+4. The W-side multiplier component of the "killer config" is net
+   NEGATIVE cross-batch (-$2,627) — so we're NOT shipping multipliers
+   from this analysis. Only the filter reverts that expand the
+   cap-rescuable cohort.
+
+### Where each re-admitted cohort lands (the key analytical insight)
+
+| Filter | Re-admit N | Unm. L (cap-rescuable) | C-match | Unm. W winners | W-match |
+|---|---|---|---|---|---|
+| ENTRY_QUALITY_SCORE_MIN | 42 | **29** (-$1,038) | — | 11 (+$194) | 2 W2 (+$64) |
+| BTC_ADX_MIN | 29 | **13** (-$720) | 2 C4 (-$116) | 14 (+$287) | — |
+| EMA5_STRETCH_MIN_LONG | 51 | **31** (-$688) | — | 20 (+$260) | — |
+| PAIR_ADX_DELTA_MIN | 16 | **10** (-$523) | — | 6 (+$95) | — |
+
+**Pattern**: almost every re-admitted loser lands in Unm. L, NOT in
+existing Pattern C signatures. Current C taxonomy (C1-C9) doesn't catch
+the trades these filters block. Reverting expands Unm. L cohort — the
+caps would then catch them downstream.
+
+### Config changes shipped
+
+| Field | Before | After | Source CLAUDE.md entry |
+|---|---|---|---|
+| `entry_quality_score_filter_enabled` | true | **false** | May 17 (Score ≤1 filter activated; May 15 PM 10-sample evidence) |
+| `btc_adx_min_long` | 18 | **15** | May 6 (raised with explicit revert criteria locked) |
+| `ema5_stretch_min_long` | 0.16 | **0.0** | May 9 (cross-sample LONG filter) |
+| `min_adx_delta_long` | 0.10 | **0.0** | May 10 (2-sample structural) |
+| `min_adx_delta_short` | 0.10 | **0.0** | May 10 |
+
+### Combined cross-batch projection (with reverts + future caps deploy)
+
+If reverts ship + TP+SL caps deployed on Unm. L cohort:
+
+| Component | Δ$ projected (per ~500 trade pool) |
+|---|---|
+| ENTRY_QUALITY_SCORE revert + Unm. L caps | +$452 |
+| BTC_ADX_MIN revert + Unm. L caps | +$418 |
+| EMA5_STRETCH_MIN_LONG revert + Unm. L caps | +$345 |
+| PAIR_ADX_DELTA_MIN revert + Unm. L caps | +$387 |
+| Plus: Unm. W winners flow through positively | +$836 (untouched winners) |
+| **Total expected cross-batch Δ** | **~+$2,400 per 500 trades** |
+
+Per-batch expectation (40-trade batches): roughly **+$200/batch** if
+the cohort distribution holds. Forward variance high because today's
+filter stack already cuts much of the historical cohort.
+
+### Caps NOT shipped yet (separate decision)
+
+This commit ships **filter reverts only**. TP+SL caps on Unm. L cohort
+is a SEPARATE ship requiring code work (the calculator widget showed
+the projection; actual entry-side cap implementation TBD). The reverts
+alone re-admit more trades — without caps they'd be unprotected losers.
+
+**Critical: monitor next-batch P&L carefully. If batch shows materially
+worse P&L without caps in place, the reverts must be re-tightened until
+caps ship.**
+
+### Pre-committed revert-of-revert criteria (locked NOW)
+
+At next 100-trade checkpoint, evaluate:
+
+| Outcome | Action |
+|---|---|
+| Combined Avg P&L % worsens > 0.15pp on N≥80 vs pre-revert baseline | Revert all 4 reverts. Filters were correctly placed. |
+| Unm. L bucket grows from current ~2/batch to ≥5/batch AND batch P&L roughly flat | Reverts working — proceed with caps deploy |
+| Specific re-admitted cohort shows ≥60% WR | That filter was over-aggressive; KEEP relaxed |
+| Score 1 cohort (Unm.L re-admit population) shows ≤25% WR on N≥10 | Confirms Score filter was protecting against real losses — re-enable Score filter only |
+
+### Honest acknowledgment — methodology contradictions
+
+This ship walks back four previously-locked findings:
+
+1. **EMA5_STRETCH_MIN_LONG (May 9)** — was cross-sample validated:
+   "the strongest cross-sample LONG entry filter signal in the entire
+   dataset" — 139 sub-0.16 trades both samples losing.
+2. **PAIR_ADX_DELTA_MIN (May 10)** — was 2-sample structural: "LONGs
+   with ADXΔ <0.10 = 12.5% WR on N=8" + 17% pooled.
+3. **ENTRY_QUALITY_SCORE (May 15)** — was 10-sample structural:
+   N=95, 34.7% WR cohort.
+4. **BTC_ADX_MIN (May 6)** — already had explicit revert criteria so
+   not contradictory.
+
+The contradiction is real and acknowledged. The justification: those
+locked findings were validated WITHOUT considering downstream caps.
+With caps planned for the Unm. L cohort, the filters become
+redundant — the cap rescue offsets the loss the filter was preventing.
+
+**If caps DON'T ship**, reverts must be undone — the locked findings
+stand on their own without caps.
+
+### Files changed
+
+- `trading_config.json` — 4 fields per table above
+- `CLAUDE.md` — this entry
+

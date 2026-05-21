@@ -17066,3 +17066,143 @@ To correct the prior over-optimistic ship projections:
 4. The actual ship is closer to "global SL tighten + TP cap + 2× mult
    on non-W cohort" than pattern-cohort-specific machinery
 
+
+## May 21, 2026 — Pattern Calculator: locked working configuration (Δ +$650.53 on 42-trade batch)
+
+### The configuration
+
+User-selected Pattern Calculator setup that produced the strongest in-sample Δ on the
+current 42-trade batch. Anchored here as the reference configuration for the next
+forward simulation / ship discussion.
+
+**Pattern C side (apply exit caps):**
+- Directions: LONG + SHORT (both)
+- Selected patterns: **C4, C8, Unm. L**
+- Caps: **TP 0.10 + SL 0.50 combined**
+- Multiplier: NOT applied on C side
+
+**Pattern W side (apply multiplier):**
+- Directions: LONG + SHORT (both)
+- Selected patterns: **W2, W4, Unm. W**
+- Caps: None
+- Multiplier: **2.0× applied**
+
+### Batch results (N=42)
+
+| Metric | Value |
+|---|---|
+| Batch Actual P&L | **-$336.42** |
+| Batch If Shipped | **+$314.11** |
+| **Δ** | **+$650.53** |
+
+### Trade breakdown
+
+- matched **C only**: 14 trades (TP + SL combined applied)
+- matched **W only**: 19 trades (2.0× multiplier applied)
+- matched **BOTH** C and W: 4 trades (both treatments applied — caps first, then mult on capped exit)
+- matched **NEITHER**: 5 trades (unchanged, baseline P&L −$11.79)
+
+### Effect decomposition
+
+| Source | Δ |
+|---|---|
+| **C effect total** (caps + mult on new exit) | **+$447.45** |
+| └ via TP fires (at 1×) | +$396.68 |
+| └ via SL fires (at 1×) | +$50.77 |
+| └ via 2.0× mult on new exit | +$0.00 (C side mult off) |
+| **W effect** (mult on new exit) | **+$203.08** |
+| Overlap (unused in this decomp) | +$0.00 |
+
+### Key observations
+
+1. **TP-fire dominance on C side**: +$396.68 of the +$447.45 C effect (88%) comes from
+   the TP 0.10 cap firing on trades that peaked into the cap zone. SL fires contribute
+   +$50.77 — protection against tail losses on cohort trades that never recovered.
+
+2. **W effect is meaningful but smaller**: +$203.08 from 2.0× on 19 W-matched trades.
+   Average per-trade lift ≈ +$10.69 — consistent with W cohort being net-positive
+   even at 1× baseline. Adding **W4** to the prior {W2, Unm. W} selection captured
+   3 additional winners and lifted W effect by +$17.67 vs the W2-only config.
+
+3. **C side mult deliberately OFF**: The configuration applies caps (defensive) without
+   multiplier on C side. C-cohort trades are losers by definition (C signatures
+   target loss patterns) — multiplying them would amplify losses through the cap floor.
+   The "caps for losers, mult for winners, don't cross them" rule documented earlier
+   in CLAUDE.md is respected here.
+
+4. **5 NEITHER trades = -$11.79 baseline**: 12% of trades fall outside both trackers
+   and contribute mild negative baseline. They're the residual exposure neither
+   mechanism touches. Adding W4 shrank the NEITHER bucket from 8 → 5 (W4 picked
+   up 3 trades that were previously unmatched).
+
+### Pattern selections — why these specifically
+
+- **C4, C8**: per the May 20 Pattern C analytics, these are the patterns with strongest
+  loser signatures and meaningful N in current batches. Other C-patterns (C1, C2, C3,
+  C5, C6, C7, C9) were either too thin in this batch or low-signal here.
+- **Unm. L**: catches losers that don't match any C1-C9 signature — the residual loser
+  cohort. Critical because the Pattern C taxonomy is incomplete and Unm. L picks up
+  the "we haven't named this failure mode yet" trades.
+- **W2, W4, Unm. W**: per the Pattern W analytics, these are the strongest winner
+  cohorts with sufficient N in this batch. W4 added in iteration after the
+  initial W2-only config — captured 3 additional W-matched trades and bumped Δ
+  from +$632.86 to +$650.53. Unm. W on the W side mirrors Unm. L on the C side —
+  catches winners outside the documented W1-W5 signatures. **W1, W3, W5 were
+  deliberately left OFF**: either too thin in this batch or low-signal here.
+
+### Cap thresholds — TP 0.10 + SL 0.50 combined
+
+- **TP 0.10**: any C-matched trade that peaks ≥ +0.10% (after entry) and then retraces
+  exits at +0.10% instead of running into deeper SL territory. Aggressive — captures
+  the smallest positive flicker for the loser cohort.
+- **SL 0.50**: any C-matched trade that troughs to -0.50% exits at -0.50% rather than
+  riding to -0.90% main SL. Cuts tail losses roughly in half on the loser cohort.
+- **Combined**: both caps active simultaneously. Whichever fires first wins (peak first
+  = TP fires; trough first = SL fires).
+
+### IMPORTANT caveats
+
+1. **Single-batch in-sample finding.** N=42 is one window. Cross-batch validation
+   required before any forward ship. CLAUDE.md anti-overfit discipline applies.
+2. **Retrospective cohort classification.** Unm. L and Unm. W are defined post-hoc by
+   trade outcome. Forward you can't classify a trade as "Unmatched Winner" at entry
+   — it's only known after close. **Forward ship requires a classifiable proxy for
+   these cohorts at entry time** (the corrected-forward-picture issue documented in
+   the May 21 commit 9420696 entry above).
+3. **Decomposition shows C-side mult contributed $0** — that's expected (C side mult
+   was OFF in this config). If user later activates C side mult, the line populates.
+4. **Δ +$650.53 is the batch's headline number** — but it's against a -$336.42
+   baseline. Net If Shipped is +$314.11. The Δ measures lift, not absolute P&L.
+   Forward expectation should haircut by 30-50% for in-sample → out-of-sample bias.
+
+### Forward ship gates (locked at next 100+ trade checkpoint)
+
+Before shipping this configuration in any form to production:
+
+1. **Cross-batch validation on the deduped pool**: configuration must show Δ ≥ +$200
+   per 50-trade equivalent batch across ≥ 3 independent sub-batches
+2. **Forward-classifiable cohort substitute**: since Unm. L / Unm. W can't be
+   computed at entry, either (a) ship using only C4, C8, W2, W4 (no Unm.) with
+   smaller expected lift, or (b) build entry-time precursors for Unm. cohorts and
+   validate they match the post-hoc classifications ≥ 70% of the time
+3. **Engineering scope**: TP/SL cap mechanism requires per-trade entry tagging
+   (which patterns matched at entry) + dynamic exit-threshold lookup based on
+   tags. ~80-120 LOC in `services/trading_engine.py` + DB persistence
+4. **Multiplier mechanism**: already exists for fixed cells (RSI×ADX); needs
+   extension to pattern-based cells. Existing W2 multiplier hooks can be reused
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the EXACT calculator selections that produced the +$650.53 Δ result so:
+1. Future-Claude can reproduce the simulation by re-loading the same selections
+2. Cross-batch validation at next checkpoint uses this exact configuration as the
+   target spec, not a re-derived approximation
+3. The trade-breakdown / effect-decomposition numbers serve as the in-sample
+   baseline to compare future batches against (does next batch's Δ trend the
+   same direction with this config? if not, the configuration is regime-specific)
+4. The "C side mult OFF + W side mult ON" asymmetry is preserved (it's the
+   structural rule: caps for losers, mult for winners, don't cross them)
+
+If at next checkpoint a different configuration shows higher Δ, this entry remains
+as the reference for what was true on May 21 — don't overwrite, append the new
+finding alongside.

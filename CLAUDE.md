@@ -1,5 +1,43 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 21, 2026 (very late evening) — LONG ema_gap_threshold_long: 0.06 → 0.04 (mark for review)
+
+### Change
+`ema_gap_threshold_long`: 0.06 → **0.04**. SHORT side unchanged at 0.08.
+
+### Rationale
+
+Apr 13 117-trade cross-batch identified:
+- 0.02-0.04% LONG = **best zone** (83% WR, +$3.12, N=6 — small sample)
+- 0.04-0.08% LONG = "loss zone" (N=32)
+
+Current 0.06 cut the BOTTOM half of the loss zone (0.04-0.06) but also blocked the small-sample sweet spot (0.02-0.04). Lowering to 0.04 re-admits the historically-best zone for fresh testing under the current exit stack.
+
+### Honest framing
+
+This is **exploratory** — Apr 13 N=6 sweet-spot evidence is thin. The 0.04-0.06 zone we're re-admitting was the FIRST HALF of the Apr 13 "loss zone." Could go either way:
+- Best case: Apr 13 sweet zone replicates → bot enters more weak-momentum-but-real LONG signals that current exit stack catches
+- Worst case: 0.04-0.06 stays a loser zone, but new BE 0.10 + tighter SL -0.70% cap the per-trade damage
+
+User explicitly marked this as **observation-only / for review** rather than locked ship discipline.
+
+### Locked review criteria at next ≥30-LONG-trade checkpoint
+
+| Outcome on 0.04-0.06% gap LONG bucket (fresh data) | Action |
+|---|---|
+| N ≥ 10 AND WR ≤ 35% AND Avg P&L % ≤ -0.20% | ✗ REVERT to 0.06 (loss zone replicated) |
+| N ≥ 10 AND WR ≥ 55% AND Total $ positive | ★ KEEP at 0.04 (sweet zone validated) |
+| N ≥ 10 AND mixed (WR 35-55%) | Hold one more batch |
+| N < 10 | Defer |
+
+Additionally — check the 0.02-0.04% bucket if any trades land there:
+- ≥ 60% WR on N ≥ 5 → confirms Apr 13 sweet spot, consider lowering further to 0.02
+- ≤ 40% WR on N ≥ 5 → sweet spot didn't survive, stay at 0.04
+
+### Files changed
+- `trading_config.json` — single field
+- `CLAUDE.md` — this entry
+
 ## May 21, 2026 (very late evening, post-rollback) — C1 SHORT lev-stacked to 3.0× effective
 
 ### Change

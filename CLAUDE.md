@@ -15914,3 +15914,70 @@ transaction" (correct-for-diagnosis). Future-Claude reading the calculator
 code will see this explanation in the inline comments and this entry as
 the authoritative reference.
 
+
+## May 20, 2026 (latest+14) — Pattern Calculator: REVERT latest+13 decomposition (mult applies to new exit, not OG)
+
+### What was wrong with latest+13
+
+I misinterpreted the operator's feedback. Latest+13 changed the decomposition
+to apply multiplier to the OG (original) transaction, with a separate
+synergy line for cap × mult interaction. Operator's actual intent (clarified
+in follow-up): **multiplier should apply to the new (capped) exit, sequenced
+as caps-first-then-multiplier.**
+
+The operator's words: *"i want the 2x to apply to the new configuration im
+applying above! the new tp and new sl"*
+
+### Reverted decomposition (now in production)
+
+Simple 2-term split, no overlap term:
+
+```
+cap_effect    = ((newPct - actualPct) / 100) × notional
+                ↳ cap rescue at 1× sizing
+mult_extra    = (newPct / 100) × notional × (mult - 1) - extra_fees
+                ↳ sizing effect on the NEW (capped) exit
+```
+
+Sum equals `newDollar - actualDollar` exactly. No overlap synergy term
+because the sequencing is "apply caps first, then size up the result" —
+no separate interaction to attribute.
+
+### Caveat the operator accepted
+
+`mult_extra` can be negative when the new capped exit is itself negative.
+Example: SL-fired trade has newPct = -0.50%. Multiplier of 2.0× on a -0.50%
+exit = -1.00% — a bigger loss. The mult_extra contribution per trade is
+`(-0.50/100) × notional × 1.0 = -0.005 × notional`. Across a cohort with
+SL fires + unfired losers, mult_extra can sum to a meaningful negative.
+
+That's correct semantics: the multiplier doubles whatever the new exit
+ends up being. If the operator's choice of caps doesn't fully rescue the
+cohort to net-positive, then multiplying the still-negative result
+amplifies the remaining loss. That's the diagnostic info — it tells the
+operator that "this cohort needs better caps before multiplier helps."
+
+### Visual labels updated
+
+- "↳ via TP fires (at 1×)" — unchanged
+- "↳ via SL fires (at 1×)" — unchanged
+- "↳ via 2.0× mult on new exit" — was "on OG"
+- "W effect (mult on new exit)" — was "(mult on OG)"
+- "Overlap (unused in this decomp)" — was "(cap × mult synergy)"; kept as
+  $0.00 placeholder for layout stability
+
+### Why this entry exists in CLAUDE.md
+
+To document that latest+13's decomposition was operationally wrong (despite
+being mathematically valid) and that latest+14 reverts to the original
+"mult on new exit" semantics. The user clarified that "apply caps then
+multiply the result" matches their mental model of how the ship would
+actually work in live trading — position size set at entry (via
+multiplier), then exit P&L% determined by caps. Multiplier × capped-exit
+is the right composition.
+
+If a future review wonders why the calculator doesn't show a synergy
+term, the answer is: with mult-on-newPct, no synergy term is needed for
+the decomposition to sum correctly. The "Overlap" label remains in the UI
+for layout stability but always shows $0.00.
+

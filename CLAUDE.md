@@ -18515,3 +18515,111 @@ Updated active multiplier landscape:
 ### Files changed
 - `trading_config.json` — 2 fields
 - `CLAUDE.md` — this entry
+
+## May 21, 2026 (evening) — WATCHLIST: Stack 1.5× Leverage on validated 2.0× Investment cells
+
+### The proposal (user-directed, May 21)
+
+For any 2.0× investment multiplier cell that PROVES ITS EDGE in the fresh
+batch (next ≥30-trade slice), additionally activate **1.5× leverage
+multiplier** — bringing those high-conviction cells to:
+
+- **Effective notional = 2.0 (invest) × 1.5 (leverage) = 3.0× base position**
+- Realized via "Both (Invest + Lev)" apply mode (already implemented per
+  CLAUDE.md May 21 latest+12)
+
+### Why this is locked as watchlist (not shipped)
+
+Currently 9 cells run at 2.0× invest / 1.0× lev. None have N≥5 fresh fires
+yet (Phase 1 engine ship was the same day). Until cells DEMONSTRATE edge
+under the new engine path, layering leverage compounds variance on
+unvalidated configurations.
+
+The cross-batch evidence supporting each 2.0× invest cell was strong enough
+to ship at 2.0×. Adding 1.5× leverage on top is a SECOND escalation step
+that needs ITS OWN evidence.
+
+### Locked promotion gates (per cell × direction)
+
+A cell qualifies for 1.5× leverage stacking on top of existing 2.0× invest
+ONLY if at next ≥30-trade checkpoint ALL hold:
+
+| Gate | Threshold |
+|---|---|
+| Fresh N in cell | ≥ 10 |
+| Fresh WR | ≥ 75% (stricter than the 70% promotion gate — leverage compounds variance) |
+| Fresh Avg P&L % | ≥ +0.15% |
+| Δ$ vs BL (from Multiplier Cell Performance) | ≥ +$30 |
+| BE-compatibility | ≥ 60% of cell's losses peak ≥+0.20% (BE catches Pattern B), so amplified losses are bounded by BE floor |
+| **No 1-batch outliers** | If cell's strong performance is driven by 1-2 trades, defer |
+
+If ALL gates pass → ship the cell at **invest 2.0× + lev 1.5×** via the
+existing "Both" target dropdown in the UI. Engine math: `effective_notional
+= base × 2.0 × 1.5 = 3.0× base`.
+
+### Pre-committed safety considerations
+
+1. **Hard caps stay at 2.0× each.** The "Both" mode applies `effective =
+   inv × lev` per CLAUDE.md May 21 latest+12 design. If inv_hard_cap=2.0 and
+   lev_hard_cap=2.0, the maximum theoretical effective is 4.0×. We're using
+   3.0× (under both caps).
+
+2. **Liquidation distance stays unchanged.** At 3.0× effective notional with
+   SL at -0.7%, liquidation buffer is still wide. No additional liquidation
+   risk vs 2.0× invest alone (leverage just changes capital efficiency, not
+   stop distance).
+
+3. **Don't promote inv and lev simultaneously on a new cell.** Per CLAUDE.md
+   May 21 latest+12 locked discipline: validate inv at 2.0× FIRST, then add
+   lev later in a separate batch. This means cells that haven't yet shown
+   edge at 2.0× invest (everything just shipped Phase 1) can't get lev
+   layered until they accumulate ≥10 fresh trades at 2.0× invest first.
+
+4. **Per-cell decision, not portfolio-wide.** Each cell evaluates
+   independently. Even if all 9 invest cells qualify, ship lev ONE cell at
+   a time (per locked CLAUDE.md discipline: one change per checkpoint
+   means one cell at a time).
+
+### Expected first-eligible candidates at next checkpoint
+
+Based on cross-batch evidence strength documented in CLAUDE.md, these cells
+have the strongest case for being first in line if they hit the gates:
+
+| Cell | Pre-existing cross-batch | First-eligible? |
+|---|---|---|
+| **W6 LONG** | 14 trades / 100% WR / +$298 (May 21 latest+) | ✓ Strongest cross-batch backing |
+| **W6 SHORT** | 25 trades / 100% WR / +$313 | ✓ Strongest cross-batch backing |
+| C1 SHORT | 27 cross-batch / 78% WR / +$0.76/tr | ✓ Decent backing |
+| W1 SHORT | rejected for 2× earlier today but stayed at 2× in config | ⚠ Watch carefully — was REJECTED cross-batch |
+| BTC_60-65_22-25 LONG | 38 trades / 73.7% WR (May 19) | ✓ Strong cross-batch |
+| BTC_60-65_28-30 LONG | 1-sample mostly | ⚠ Defer |
+
+W6 LONG and W6 SHORT are the most likely first-ship candidates because
+their cross-batch evidence is the strongest. If at next checkpoint they
+show N≥10 with ≥75% WR and the math holds, ship W6 first.
+
+### Pre-committed revert criteria
+
+If at the batch AFTER lev-stacking ships, ANY cell shows:
+- WR drops below 65% on the lev-stacked subset
+- Δ$ vs BL goes negative on N≥10
+- Drawdown on the leveraged subset exceeds 2x the non-leveraged baseline
+
+→ Revert lev back to 1.0×. Keep invest at 2.0×.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve the locked promotion gates BEFORE the fresh batch lands. When
+the operator reads the next ≥30-trade Multiplier Cell Performance table:
+
+1. Identify cells with N≥10 AND WR≥75% AND Avg P&L %≥+0.15% AND Δ$≥+$30
+2. For each qualifying cell, verify BE-compatibility check
+3. Cross-check: was the strong performance regime-driven (1-2 outlier
+   trades) or structural?
+4. If all checks pass → ship via UI "Both" toggle on that cell's row, set
+   lev_mult to 1.5
+5. One cell at a time. Wait one more batch before stacking lev on the
+   next candidate.
+
+This becomes the locked answer to "should we add lev to X cell?" Future
+discussions reference these gates, not re-derive them.

@@ -15517,10 +15517,6 @@
 
                     newTotal += newDollar;
 
-                    // Decompose effects for breakdown
-                    const baselineMultiplied = (t.pnl_pct / 100) * t.notional * mult - feesAdjust;
-                    const baselineNoMult = (t.pnl_pct / 100) * t.notional;  // = actualDollar approximately
-
                     // Effect decomposition (May 20 latest+14 — REVERTED from latest+13:
                     // mult applies to the NEW capped exit, not OG. Operator's intent:
                     // "apply caps first, then multiply the resulting (capped) configuration

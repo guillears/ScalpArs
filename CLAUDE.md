@@ -16617,3 +16617,86 @@ Caps deploy requires code work in trading_engine.py exit logic to
 apply TP+SL caps on Unm. L cohort at entry. Estimated ~50 LOC.
 Not shipped tonight — separate decision.
 
+
+## May 21, 2026 — Unmatched Winners (Unm. W) cohort: cross-batch finding
+
+### What we missed in the original "killer config" framing
+
+The earlier killer-config analysis lumped W2 + Unm. W together with TP+SL+mult.
+Net W-side was -$2,627 cross-batch. I framed this as "W mult is harmful."
+
+**That was wrong.** The negative came from the TP cap, not the multiplier.
+Decomposing the Unm. W cohort cleanly:
+
+| Operation on Unm. W | Total $ | Δ vs baseline (+$4,569) |
+|---|---|---|
+| Passive (no ship) | +$4,569 | baseline |
+| **Pure 2.0× mult, NO caps** | **+$9,138** | **+$4,569** ★★★ |
+| TP 0.10 caps alone | +$1,531 | -$3,037 ✗ |
+| TP 0.10 + 2.0× mult | +$3,062 | -$1,507 ✗ |
+| SL 0.50 + 2.0× mult | +$3,947 | -$622 ✗ |
+
+### The structural rule (locked methodology)
+
+**Caps are for losers (Pattern C). Multipliers are for winners (Pattern W).
+DON'T CROSS THEM.** Caps on W cohort destroy winners that would have run.
+Multipliers on C cohort amplify losses.
+
+When using the Pattern Calculator:
+- C-side: caps make sense (None / TP / SL / TP+SL), multiplier is risky
+- W-side: multiplier makes sense, caps DESTROY value
+
+### Unm. W cohort profile (why pure 2× works)
+
+214 trades cross-batch, baseline +$4,569 winners, avg $21/trade. Distribution
+of actual exits:
+- ~50% exit ABOVE +0.20% (real runners)
+- ~30% exit between +0.10-0.20%
+- ~20% exit below +0.10% (small wins)
+
+Pure 2× doubles all of these uniformly. No cap kills the runners.
+
+### Forward expectation
+
+Cross-batch Unm. W frequency: 13.4 per dated batch (214 / 16 dates).
+Today's Unm. W rate: ~7 per 40-trade batch = 17.5% (vs 41% cross-batch).
+
+Same filter-cut issue as Unm. L — current filters cut some upstream.
+But under current rate:
+- ~7 Unm. W per 40-trade batch × $21/trade rescue = **~+$147/batch**
+
+This is a real ship candidate, smaller than Unm. L caps but additive.
+
+### Combined ship potential (corrected)
+
+If we ship:
+- TP+SL caps on Unm. L cohort (current ship pending)
+- Pure 2× multiplier on Unm. W cohort (no caps)
+
+Cross-batch projection: +$3,982 + $4,569 = **+$8,551** vs the earlier
+killer-config projection of +$2,519. The difference is dropping the
+toxic TP cap on the W cohort.
+
+### What this changes operationally
+
+**Pattern Calculator user guidance:**
+- For Pattern W trials: leave Caps = None (default); enable Multiplier only
+- For Pattern C trials: caps make sense; multiplier is the dangerous experiment
+- Combining caps + mult on the SAME cohort almost always fails for W
+
+**For ship decisions:**
+- Future ship: "raise BE floor + tighten SL globally" handles the C-side cap need
+- Future ship: "2× multiplier on Unmatched Winners" is the W-side equivalent
+- Both ships are SEPARATE — they target different trade populations
+
+### Why the original analysis missed this
+
+I evaluated W2 cohort with TP 0.10 + 2× and reported "W mult is harmful
+cross-batch." This conflated the cap effect (clearly harmful) with the
+mult effect (clearly helpful). The TP cap was doing all the damage.
+
+**Lesson for future cross-batch analyses:** when decomposing a multi-
+operation ship, run each operation INDEPENDENTLY against the cohort
+before concluding the operation is harmful. The interaction between
+operations can mask the per-operation truth.
+

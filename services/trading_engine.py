@@ -1425,87 +1425,82 @@ class TradingEngine:
         if not rules:
             return 1.0, 1.0, None, None, None
 
-        # Determine which side fires (Option C)
+        # Determine candidate sides in priority order (Option C — see May 21 bug fix below).
+        # "C presence blocks W" was the original intent, but ONLY when a C rule actually
+        # fires. If a trade matches a C signature with NO configured C rule for that
+        # direction, the bot should fall through to W (then UNMATCHED) — otherwise W
+        # rules are silently blocked by an unconfigured C match.
+        #
+        # Concrete failure case that drove the fix: FILUSDT LONG (id=8, May 21):
+        # matched C1 LONG AND W2 LONG. No C1 LONG rule was configured. Old logic set
+        # active_side='C', walked rules, found nothing, returned None. The W2 rule
+        # (which IS configured) never got a chance. Result: trade missed its multiplier.
+        #
+        # Fix: try sides in priority [C → W → UNMATCHED], return first match.
         matched_c = [k for k, v in c_flags.items() if v is True]
         matched_w = [k for k, v in w_flags.items() if v is True]
+        sides_to_try: List[Tuple[str, set]] = []
         if matched_c:
-            active_side = 'C'
-            matched_patterns = set(matched_c)
-        elif matched_w:
-            active_side = 'W'
-            matched_patterns = set(matched_w)
-        else:
-            # NEW (May 21): TRULY UNMATCHED fallback. Trades with no C and no W
-            # signature match still benefit from a pattern-gated rule if configured
-            # as pattern="UNMATCHED". Cross-batch evidence May 21 batch: 9 trades,
-            # 7 peak-and-retrace shape → TP 0.10 fires save big losses. Per-batch
-            # Δ +$86 ($9.6/trade — strongest per-trade Δ of any rule).
-            active_side = 'UNMATCHED'
-            matched_patterns = {'UNMATCHED'}
+            sides_to_try.append(('C', set(matched_c)))
+        if matched_w:
+            sides_to_try.append(('W', set(matched_w)))
+        sides_to_try.append(('UNMATCHED', {'UNMATCHED'}))
 
-        # Walk rules, collect those matching direction + active-side patterns
-        applied_sources = []
-        applied_inv = 1.0
-        applied_lev = 1.0
-        applied_tp = None  # lowest (most aggressive) wins on C-side
-        applied_sl = None  # highest (most aggressive, i.e., closest to 0) wins on C-side
-        for rule in rules:
-            try:
-                if rule.get('direction') != direction:
+        def _walk_side(active_side: str, matched_patterns: set):
+            """Walk rules for one active side. Returns (applied_inv, applied_lev,
+            applied_sources, applied_tp, applied_sl)."""
+            applied_sources = []
+            applied_inv = 1.0
+            applied_lev = 1.0
+            applied_tp = None
+            applied_sl = None
+            for rule in rules:
+                try:
+                    if rule.get('direction') != direction:
+                        continue
+                    p = rule.get('pattern')
+                    if p not in matched_patterns:
+                        continue
+                    is_c_rule = p.startswith('C')
+                    is_w_rule = p.startswith('W')
+                    is_unm_rule = (p == 'UNMATCHED')
+                    if active_side == 'C' and not is_c_rule:
+                        continue
+                    if active_side == 'W' and not is_w_rule:
+                        continue
+                    if active_side == 'UNMATCHED' and not is_unm_rule:
+                        continue
+                    applied_sources.append(p)
+                    r_inv = float(rule.get('inv_mult', 1.0) or 1.0)
+                    r_lev = float(rule.get('lev_mult', 1.0) or 1.0)
+                    if r_inv > applied_inv:
+                        applied_inv = r_inv
+                    if r_lev > applied_lev:
+                        applied_lev = r_lev
+                    r_tp = rule.get('fixed_tp_pct')
+                    r_sl = rule.get('fixed_sl_pct')
+                    if r_tp is not None:
+                        r_tp = float(r_tp)
+                        if applied_tp is None or r_tp < applied_tp:
+                            applied_tp = r_tp
+                    if r_sl is not None:
+                        r_sl = float(r_sl)
+                        if applied_sl is None or r_sl > applied_sl:
+                            applied_sl = r_sl
+                except (KeyError, TypeError, ValueError) as e:
+                    logger.warning(f"[PATTERN_CELL] Malformed rule {rule}: {e}, skipping")
                     continue
-                p = rule.get('pattern')
-                if p not in matched_patterns:
-                    continue
-                # Determine if this is a C-rule, W-rule, or UNMATCHED-rule by pattern code
-                is_c_rule = p.startswith('C')
-                is_w_rule = p.startswith('W')
-                is_unm_rule = (p == 'UNMATCHED')
-                # Option C: only apply rules from the active side
-                if active_side == 'C' and not is_c_rule:
-                    continue
-                if active_side == 'W' and not is_w_rule:
-                    continue
-                if active_side == 'UNMATCHED' and not is_unm_rule:
-                    continue
-                applied_sources.append(p)
-                # Multipliers: HIGHER-wins (max). May 21 (late) — applies to ANY rule
-                # (C or W) that configured an inv_mult / lev_mult > 1.0. This removes
-                # the prior C-vs-W tag → treatment-type binding so cross-batch
-                # evidence can drive treatment choice independent of pattern name.
-                # Example: C1 SHORT (loser sig) earned a 2× multiplier because
-                # cross-batch shows 78% WR / +$20.51 across N=27. Pattern code is
-                # SIGNATURE; treatment is determined by the rule's fields.
-                r_inv = float(rule.get('inv_mult', 1.0) or 1.0)
-                r_lev = float(rule.get('lev_mult', 1.0) or 1.0)
-                if r_inv > applied_inv:
-                    applied_inv = r_inv
-                if r_lev > applied_lev:
-                    applied_lev = r_lev
-                # Fixed exits: most aggressive. Same de-coupling — any rule can carry
-                # fixed_tp_pct / fixed_sl_pct. Example: W1 LONG (winner sig) carries
-                # fixed exits because cross-batch shows 20% WR / -$22/tr — the
-                # signature misfires as loser in current regime, so capping makes sense.
-                r_tp = rule.get('fixed_tp_pct')
-                r_sl = rule.get('fixed_sl_pct')
-                if r_tp is not None:
-                    r_tp = float(r_tp)
-                    # Lowest fixed_tp wins (catches at smaller peak — more aggressive)
-                    if applied_tp is None or r_tp < applied_tp:
-                        applied_tp = r_tp
-                if r_sl is not None:
-                    r_sl = float(r_sl)
-                    # Closest to 0 wins (tightest SL — more aggressive)
-                    if applied_sl is None or r_sl > applied_sl:
-                        applied_sl = r_sl
-            except (KeyError, TypeError, ValueError) as e:
-                logger.warning(f"[PATTERN_CELL] Malformed rule {rule}: {e}, skipping")
-                continue
+            return applied_inv, applied_lev, applied_sources, applied_tp, applied_sl
 
-        if not applied_sources:
-            return 1.0, 1.0, None, None, None
+        for active_side, matched_patterns in sides_to_try:
+            applied_inv, applied_lev, applied_sources, applied_tp, applied_sl = _walk_side(
+                active_side, matched_patterns
+            )
+            if applied_sources:
+                source_label = '+'.join(sorted(applied_sources))
+                return applied_inv, applied_lev, source_label, applied_tp, applied_sl
 
-        source_label = '+'.join(sorted(applied_sources))
-        return applied_inv, applied_lev, source_label, applied_tp, applied_sl
+        return 1.0, 1.0, None, None, None
 
     async def _revalidate_entry_signal(
         self, symbol: str, pair: str, original_direction: str, original_confidence: str

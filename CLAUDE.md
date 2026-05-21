@@ -1,5 +1,61 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 21, 2026 (very late evening) — BUG FIX: `_lookup_pattern_cell_rule` Option C fall-through
+
+### Bug
+
+User reported FILUSDT LONG (id=8, May 21 21:19) had no Pattern Cell color or tooltip on the dashboard. CSV inspection showed:
+- `entry_pattern_c1_match: True` (matched Capitulation chase signature)
+- `entry_pattern_w2_match: True` (matched Macro tailwind signature)
+- `pattern_cell_source: NULL` (no rule fired)
+- W2 LONG rule WAS configured (1.0× — observation-only) but never got to fire
+
+Same issue affected TONUSDT id=10 (C1+W2 match, also empty).
+
+### Root cause
+
+Original Option C ("C presence blocks W") was implemented as: if any C pattern matched, set `active_side='C'` and only walk C-side rules. If no C rule fires, return None.
+
+This blocked W rules even when no C rule was configured for that direction. Concrete example:
+- FILUSDT matched C1 LONG (no rule configured) AND W2 LONG (rule configured)
+- Engine set active_side='C', walked rules, found no C1 LONG rule → returned None
+- W2 rule never had a chance to apply
+
+### Structural reason this happened
+
+CLAUDE.md May 21 treatment-decoupling explicitly decoupled pattern code from treatment type ("pattern code is the SIGNATURE; treatment is in fields"). C1 SHORT was shipped as a 2× multiplier (winner treatment) despite being a "loser sig." This means the C/W tag no longer carries treatment semantics — the original "C blocks W" justification (C=defensive caps, W=offensive multipliers) no longer holds.
+
+The correct semantic: **"C presence blocks W" should only apply IF a C rule actually fires.** If no C rule is configured for the matched pattern+direction, fall through to W rules.
+
+### Fix
+
+Restructured `_lookup_pattern_cell_rule` (services/trading_engine.py:1399+):
+- Build priority queue of sides to try: `[C if matched_c, W if matched_w, UNMATCHED]`
+- Walk rules for each side in order via new `_walk_side` inner helper
+- Return first non-empty result (HIGHER-wins for mults, most-aggressive for caps — unchanged)
+- If no side matches anything, return `(1.0, 1.0, None, None, None)`
+
+### What changed for trade behavior
+
+Trades that match a C signature WITHOUT a configured C-side rule for their direction will now fall through to W treatment (or UNMATCHED if no W either). This is a structural improvement, not a regression — these trades were previously getting no Pattern Cell treatment at all when they should have been getting W or UNMATCHED treatment.
+
+Concrete impact on currently-configured rules:
+- C1 LONG (matched, no rule) → falls through to W → if W matched, W rule applies; else UNMATCHED rule applies
+- C1 SHORT (matched, has rule at 2×1.5× lev) → C rule applies (unchanged)
+- C2/C3/C5/C6/C7/C9 LONG/SHORT (matched, no rule for any direction) → falls through (unchanged behavior would have returned None, now falls through properly)
+- C4/C8 LONG/SHORT (matched, rule applies) → C rule applies (unchanged)
+
+### Pre-committed validation
+
+At next ≥30-trade checkpoint, verify:
+- Trades with `entry_pattern_c1-9_match=True` AND `entry_pattern_w1-6_match=True` AND no configured C rule for the matched-C pattern's direction → `pattern_cell_source` should now be populated (W rule firing, or UNMATCHED)
+- No regression: trades that were correctly matching C4/C8/UNMATCHED before still get C-side TP+SL caps
+- C1 SHORT trades still get 2×1.5× lev treatment (unchanged)
+
+### Files changed
+- `services/trading_engine.py` — `_lookup_pattern_cell_rule` refactored with priority queue + `_walk_side` helper
+- `CLAUDE.md` — this entry
+
 ## May 21, 2026 (very late evening) — LONG ema_gap_threshold_long: 0.06 → 0.04 (mark for review)
 
 ### Change

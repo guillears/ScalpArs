@@ -15714,3 +15714,58 @@ attributes the gain to C in that case (operator's explicit choice).
 Still removable in 5 minutes per the latest+9 procedure — these were
 edits inside the existing fenced blocks, not new touchpoints.
 
+
+## May 20, 2026 (latest+11) — Pattern Calculator: C effect breakdown by cap + NEITHER baseline P&L
+
+### Two diagnostic refinements
+
+**1. C effect split into via-TP / via-SL / via-2.0×-mult sub-lines.**
+When TP+SL combined mode is selected, the previous lumped "C effect" hid
+the cap-by-cap attribution. Operator couldn't tell whether the gain came
+from rescuing peak-and-retrace failures (TP) or from cutting deep losers
+short (SL). The new breakdown:
+
+```
+C effect (total):  +$319.68
+  ↳ via TP fires:  +$245.12   (rescued peak-and-retrace failures)
+  ↳ via SL fires:   +$74.56   (capped deeper losers earlier)
+  ↳ via 2.0× mult:    $0.00   (only populates if C action is mult mode)
+```
+
+In single-mode (tp only / sl only / mult only), only one sub-line is
+non-zero. Always showing all three keeps the layout stable and makes
+the active mechanism obvious.
+
+**2. NEITHER cohort baseline P&L surfaced inline.**
+The "matched NEITHER" count now includes the cohort's actual P&L:
+
+```
+matched NEITHER: 21 (unchanged · baseline P&L -$83.45)
+```
+
+Useful for sanity-checking: the unchanged trades' P&L IS the floor of
+"Batch If Shipped" because no ship affects those trades. If NEITHER
+cohort P&L is large-negative, the ship strategy hits a hard ceiling
+even if it perfectly rescues all matched trades. If NEITHER is large-
+positive, those are the "we don't need to touch them" trades — but if
+they're collectively winning a lot, it also means the broader strategy
+has edge outside the pattern framework.
+
+### Implementation
+
+All edits inside the existing PATTERN CALCULATOR fenced JS block. No
+new files, no new fences. Removal procedure unchanged (still 5 blocks,
+~5 minutes).
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The cap-split attribution math (which cap fired determines which
+   sub-line the contribution accumulates into)
+2. The NEITHER cohort interpretation (it's the ceiling/floor of any
+   ship strategy that operates only via Pattern C/W)
+
+If the calculator gets removed, this entry can be deleted together
+with the latest+9 / +10 entries — they all live within the same
+fenced architecture.
+

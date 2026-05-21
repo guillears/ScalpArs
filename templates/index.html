@@ -15409,9 +15409,17 @@
 
                 let nMatchedC = 0, nMatchedW = 0, nBoth = 0, nNeither = 0;
                 let newTotal = 0;
-                let cContribution = 0;  // $ change from applying C caps
-                let wContribution = 0;  // $ change from multiplier (above baseline)
+                // C contribution split (May 20 latest+11): break down by cap that fired.
+                //   c_via_tp_$ — gains from TP cap firing
+                //   c_via_sl_$ — gains from SL cap firing
+                //   c_via_mult_$ — gains from 2.0× multiplier (when C action is 'mult')
+                // Total C effect = sum of all three.
+                let cViaTp = 0;
+                let cViaSl = 0;
+                let cViaMult = 0;
+                let wContribution = 0;  // $ change from W multiplier (above baseline)
                 let overlapContribution = 0;  // extra $ from trades getting BOTH
+                let neitherPnl = 0;  // baseline P&L of unchanged trades (informational)
 
                 trades.forEach(t => {
                     const actualDollar = t.pnl || 0;
@@ -15425,35 +15433,40 @@
                     if (matchesC && matchesW) nBoth++;
                     else if (matchesC) nMatchedC++;
                     else if (matchesW) nMatchedW++;
-                    else nNeither++;
+                    else { nNeither++; neitherPnl += actualDollar; }
 
                     // Step 1: compute new exit pct (apply C caps if matched AND C action is a cap)
                     // May 20 latest+10: when cAction === 'mult', matched-C trades skip exit
                     // caps and are treated as multiplier candidates instead.
+                    // May 20 latest+11: track WHICH cap fired so we can attribute the
+                    // contribution to via-TP vs via-SL.
                     let newPct = t.pnl_pct;
+                    let firedTp = false;
+                    let firedSl = false;
                     if (matchesC && sel.cAction !== 'mult') {
                         const peak = t.peak;
                         const trough = t.trough;
                         const tpFire = peak != null && peak >= TP;
                         const slFire = trough != null && trough <= -SL;
                         if (sel.cAction === 'tp') {
-                            if (tpFire) newPct = TP;
+                            if (tpFire) { newPct = TP; firedTp = true; }
                         } else if (sel.cAction === 'sl') {
-                            if (slFire) newPct = -SL;
+                            if (slFire) { newPct = -SL; firedSl = true; }
                         } else { // combined
                             if (tpFire && slFire) {
                                 // Sequence by timestamp; default to TP if missing
                                 const pAt = t.peak_at ? new Date(t.peak_at).getTime() : null;
                                 const tAt = t.trough_at ? new Date(t.trough_at).getTime() : null;
                                 if (pAt != null && tAt != null) {
-                                    newPct = (pAt <= tAt) ? TP : -SL;
+                                    if (pAt <= tAt) { newPct = TP; firedTp = true; }
+                                    else { newPct = -SL; firedSl = true; }
                                 } else {
-                                    newPct = TP;
+                                    newPct = TP; firedTp = true;
                                 }
                             } else if (tpFire) {
-                                newPct = TP;
+                                newPct = TP; firedTp = true;
                             } else if (slFire) {
-                                newPct = -SL;
+                                newPct = -SL; firedSl = true;
                             }
                         }
                     }
@@ -15475,30 +15488,34 @@
                     const baselineMultiplied = (t.pnl_pct / 100) * t.notional * mult - feesAdjust;
                     const baselineNoMult = (t.pnl_pct / 100) * t.notional;  // = actualDollar approximately
 
-                    // Effect decomposition. When cAction='mult' AND matched-C → C contribution
-                    // is multiplier-driven (not cap-driven). Overlap handling: when both
-                    // matched and C is in mult mode, only ONE multiplier applies (no stacking),
-                    // so all the gain goes to whichever tracker the operator selected first
-                    // (we attribute to C since it ran the explicit mult mode).
+                    // Effect decomposition with cap-by-cap attribution (May 20 latest+11).
+                    // Each matched-C contribution routes to via-TP, via-SL, or via-Mult.
                     if (matchesC && matchesW) {
                         if (sel.cAction === 'mult') {
                             // Both matched, both want multiplier — single 2.0× applied.
                             // Attribute the multiplier effect to C (operator explicitly chose mult mode).
-                            cContribution += (newDollar - actualDollar);
-                            // Overlap absorbed into c contribution (no double-count, no W effect)
+                            cViaMult += (newDollar - actualDollar);
                         } else {
                             // Trade gets BOTH treatments: C exit cap + W multiplier
                             const cEffect = ((newPct - t.pnl_pct) / 100) * t.notional;  // exit cap effect at 1x
-                            const wEffect = baselineMultiplied - baselineNoMult;  // multiplier effect at original exit
-                            cContribution += cEffect;
+                            const wEffect = baselineMultiplied - baselineNoMult;
+                            if (firedTp) cViaTp += cEffect;
+                            else if (firedSl) cViaSl += cEffect;
                             wContribution += wEffect;
                             // Overlap = total improvement - (c alone) - (w alone)
-                            const standaloneC = ((newPct - t.pnl_pct) / 100) * t.notional;
+                            const standaloneC = cEffect;
                             const standaloneW = wEffect;
                             overlapContribution += (newDollar - actualDollar) - standaloneC - standaloneW;
                         }
                     } else if (matchesC) {
-                        cContribution += (newDollar - actualDollar);
+                        if (sel.cAction === 'mult') {
+                            cViaMult += (newDollar - actualDollar);
+                        } else if (firedTp) {
+                            cViaTp += (newDollar - actualDollar);
+                        } else if (firedSl) {
+                            cViaSl += (newDollar - actualDollar);
+                        }
+                        // (no cap fired → no contribution; trade unchanged)
                     } else if (matchesW) {
                         wContribution += (newDollar - actualDollar);
                     }
@@ -15510,7 +15527,10 @@
                     delta: newTotal - actualTotal,
                     nTotal: trades.length,
                     nMatchedC, nMatchedW, nBoth, nNeither,
-                    cContribution, wContribution, overlapContribution,
+                    cViaTp, cViaSl, cViaMult,
+                    cContributionTotal: cViaTp + cViaSl + cViaMult,
+                    wContribution, overlapContribution,
+                    neitherPnl,
                 };
             }
 
@@ -15554,14 +15574,17 @@
                                 <div>matched <span class="text-amber-300 font-semibold">C only</span>: <span class="font-mono">${result.nMatchedC}</span> <span class="text-gray-500">(${sel.cAction === 'mult' ? '2.0× applied' : 'exit caps applied'})</span></div>
                                 <div>matched <span class="text-emerald-300 font-semibold">W only</span>: <span class="font-mono">${result.nMatchedW}</span> <span class="text-gray-500">(${sel.wMult.toFixed(1)}× applied)</span></div>
                                 <div>matched <span class="text-violet-300 font-semibold">BOTH C and W</span>: <span class="font-mono">${result.nBoth}</span> <span class="text-gray-500">(both treatments)</span></div>
-                                <div>matched <span class="text-gray-400 font-semibold">NEITHER</span>: <span class="font-mono">${result.nNeither}</span> <span class="text-gray-500">(unchanged)</span></div>
+                                <div>matched <span class="text-gray-400 font-semibold">NEITHER</span>: <span class="font-mono">${result.nNeither}</span> <span class="text-gray-500">(unchanged · baseline P&L <span class="${result.neitherPnl >= 0 ? 'text-emerald-400' : 'text-red-400'} font-mono">${fmt$(result.neitherPnl)}</span>)</span></div>
                             </div>
                         </div>
                         <div>
                             <div class="text-xs text-gray-400 mb-1">Effect decomposition</div>
                             <div class="text-xs space-y-0.5">
-                                <div>C effect (${sel.cAction === 'mult' ? '2.0× multiplier' : 'exit caps'}): <span class="${cls(result.cContribution)} font-mono">${fmt$(result.cContribution)}</span></div>
-                                <div>W effect (multiplier): <span class="${cls(result.wContribution)} font-mono">${fmt$(result.wContribution)}</span></div>
+                                <div>C effect (total): <span class="${cls(result.cContributionTotal)} font-mono font-semibold">${fmt$(result.cContributionTotal)}</span></div>
+                                <div class="pl-3">↳ via TP fires: <span class="${cls(result.cViaTp)} font-mono">${fmt$(result.cViaTp)}</span></div>
+                                <div class="pl-3">↳ via SL fires: <span class="${cls(result.cViaSl)} font-mono">${fmt$(result.cViaSl)}</span></div>
+                                <div class="pl-3">↳ via 2.0× mult: <span class="${cls(result.cViaMult)} font-mono">${fmt$(result.cViaMult)}</span></div>
+                                <div class="pt-1">W effect (multiplier): <span class="${cls(result.wContribution)} font-mono">${fmt$(result.wContribution)}</span></div>
                                 <div>Overlap (BOTH applied): <span class="${cls(result.overlapContribution)} font-mono">${fmt$(result.overlapContribution)}</span></div>
                             </div>
                         </div>

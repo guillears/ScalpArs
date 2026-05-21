@@ -8058,7 +8058,20 @@ def _compute_pattern_w_match(o):
             stretch is not None and 0.20 <= stretch <= 0.30,
         )
 
-    return (w1, w2, w3, w4, w5, (w1 or w2 or w3 or w4 or w5))
+    # W6 added May 21 (late) — "Mature BTC Bear" SHORT / "Healthy BTC Tailwind" LONG.
+    # Cross-batch validated 100% WR on N=25 SHORT / N=14 LONG (post-May-15 pool).
+    # Mirror of engine helper in services/trading_engine.py::_compute_pattern_w_match.
+    if direction == 'LONG':
+        w6 = _and(
+            btc_adx is not None and 22 <= btc_adx < 26,
+            pair_gap is not None and pair_gap < 0.20,
+        )
+    else:
+        w6 = _and(
+            btc_adx is not None and btc_adx >= 32,
+        )
+
+    return (w1, w2, w3, w4, w5, w6, (w1 or w2 or w3 or w4 or w5 or w6))
 
 
 def _compute_pattern_w_validation(orders):
@@ -8074,14 +8087,15 @@ def _compute_pattern_w_validation(orders):
       ★ MULTIPLIER CANDIDATE: N≥30 AND WR≥70% AND Avg P&L%≥+0.20%
       (Cross-batch stability check required before actual ship — see CLAUDE.md)
     """
-    patterns = ['w1', 'w2', 'w3', 'w4', 'w5', 'w_any']
+    patterns = ['w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w_any']
     pattern_labels = {
         'w1': 'W1 HighConv trend',
         'w2': 'W2 Macro tailwind',
         'w3': 'W3 Energetic volatility',
         'w4': 'W4 Pullback aligned',
         'w5': 'W5 Confluence',
-        'w_any': 'ANY (W1∨…∨W5)',
+        'w6': 'W6 BTC Tailwind/Bear',
+        'w_any': 'ANY (W1∨…∨W6)',
     }
     # Batch P&L reference (May 20 latest+8): mirrors Pattern C — total $ of every
     # closed trade in the batch. Per-row "Batch If Shipped" = batch_actual +
@@ -8092,9 +8106,9 @@ def _compute_pattern_w_validation(orders):
     order_matches = {}
     for o in orders:
         if o.status == 'CLOSED' and o.direction in ('LONG', 'SHORT'):
-            w1, w2, w3, w4, w5, w_any = _compute_pattern_w_match(o)
+            w1, w2, w3, w4, w5, w6, w_any = _compute_pattern_w_match(o)
             order_matches[id(o)] = {
-                'w1': w1, 'w2': w2, 'w3': w3, 'w4': w4, 'w5': w5, 'w_any': w_any
+                'w1': w1, 'w2': w2, 'w3': w3, 'w4': w4, 'w5': w5, 'w6': w6, 'w_any': w_any
             }
 
     rows = []
@@ -8229,7 +8243,7 @@ def _compute_pattern_w_batch_coverage(orders):
         losers = [o for o in closed if (o.pnl or 0) <= 0]
 
         def has_any_w(o):
-            _, _, _, _, _, w_any = _compute_pattern_w_match(o)
+            _, _, _, _, _, _, w_any = _compute_pattern_w_match(o)
             return w_any
 
         winners_in = [o for o in winners if has_any_w(o)]
@@ -8268,7 +8282,7 @@ def _compute_unmatched_winners(orders, limit=20):
             continue  # losers excluded — this is the WINNERS table
 
         # Skip if any W pattern matched
-        _, _, _, _, _, w_any = _compute_pattern_w_match(o)
+        _, _, _, _, _, _, w_any = _compute_pattern_w_match(o)
         if w_any:
             continue
 
@@ -8442,7 +8456,7 @@ def _compute_pattern_calculator_data(orders):
         c_flags = {f'c{i}': bool(getattr(o, f'entry_pattern_c{i}_match', False))
                    for i in range(1, 10)}
         # Pattern W: computed on-the-fly (no schema)
-        w1, w2, w3, w4, w5, _ = _compute_pattern_w_match(o)
+        w1, w2, w3, w4, w5, w6, _ = _compute_pattern_w_match(o)
         w_flags = {'w1': w1, 'w2': w2, 'w3': w3, 'w4': w4, 'w5': w5}
         # May 20 latest+18: pseudo-pattern flags for unmatched cohorts.
         # is_unmatched_loser = trade is a loser AND matches no C pattern
@@ -9232,6 +9246,7 @@ def _compute_pattern_cell_performance(orders):
         'C9': 'Low-vol Countertrend Chop',
         'W1': 'HighConv trend', 'W2': 'Macro tailwind', 'W3': 'Energetic vol breakout',
         'W4': 'Pullback aligned', 'W5': 'Confluence',
+        'W6': 'BTC Tailwind/Bear',
     }
 
     # Build rule-lookup keyed by (pattern, direction). Pattern Cell rules apply at

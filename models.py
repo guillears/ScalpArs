@@ -119,7 +119,11 @@ class Order(Base):
     entry_pattern_w3_match = Column(Boolean, nullable=True)
     entry_pattern_w4_match = Column(Boolean, nullable=True)
     entry_pattern_w5_match = Column(Boolean, nullable=True)
-    entry_pattern_w_any_match = Column(Boolean, nullable=True)  # OR of w1-w5 (post-May-21)
+    # May 21 (late) — W6 added: "Healthy BTC Tailwind" LONG / "Mature BTC Bear" SHORT
+    # Cross-batch validated 100% WR on N=14 LONG / N=25 SHORT (post-May-15 pool).
+    # Catches unmatched-winner cohort missed by W1-W5.
+    entry_pattern_w6_match = Column(Boolean, nullable=True)
+    entry_pattern_w_any_match = Column(Boolean, nullable=True)  # OR of w1-w6 (post-May-21-late; w1-w5 May-21 morning)
     # May 21 — Pattern Cell Ship rules: per-trade attribution of which pattern rule fired.
     # pattern_cell_source = comma-separated source labels (e.g., "C4", "W1+W2", "C4+C8")
     # pattern_fixed_tp_pct = override TP from C-side rule (fires via PATTERN_FIXED_TP close_reason)

@@ -248,6 +248,9 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w4_match BOOLEAN"))
                 if 'entry_pattern_w5_match' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w5_match BOOLEAN"))
+                if 'entry_pattern_w6_match' not in columns:
+                    # May 21 (late) — W6 added: BTC ADX 22-26 + Pair Gap ≤+0.20% (LONG) / BTC ADX ≥32 (SHORT)
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w6_match BOOLEAN"))
                 if 'entry_pattern_w_any_match' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w_any_match BOOLEAN"))
                 # May 21: Pattern Cell Ship rule per-trade attribution + override exits.

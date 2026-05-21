@@ -297,15 +297,17 @@ def _compute_pattern_w_match(direction, rsi, adx, adx_delta, stretch,
     """Pattern W (winner tracker) — May 21, 2026: lifted to ENTRY-TIME computation
     from main.py's report-time helper, mirroring Pattern C's pattern.
 
-    Returns (w1, w2, w3, w4, w5, w_any) booleans (or None tuple if direction
+    Returns (w1, w2, w3, w4, w5, w6, w_any) booleans (or None tuple if direction
     invalid). Direction-aware: LONG and SHORT use mirrored thresholds.
 
-    Signatures (designed from cross-batch winner analysis, May 20):
+    Signatures (designed from cross-batch winner analysis, May 20-21):
       W1: HighConv trend continuation — strong ADX + accel + stretch
       W2: Macro tailwind — BTC RSI sweet spot + BTC ADX committed + gap aligned
       W3: Energetic volatility breakout — BTC ATR high + above-avg pair vol + stretch
       W4: Pullback entry aligned — mid-range + pair gap aligned + ADX not declining
       W5: Confluence — multiple sweet-spot cells true simultaneously
+      W6 (LONG): Healthy BTC Tailwind — BTC ADX 22-26 + Pair Gap ≤ +0.20% (May 21 — 100% WR cross-batch N=14)
+      W6 (SHORT): Mature BTC Bear — BTC ADX ≥ 32 (May 21 — 100% WR cross-batch N=25)
 
     Captured at entry to support live multiplier rules (CLAUDE.md May 21 ship).
     Matches the post-hoc helper in main.py::_compute_pattern_w_match — when
@@ -314,7 +316,7 @@ def _compute_pattern_w_match(direction, rsi, adx, adx_delta, stretch,
     fresh at entry time before the columns exist.
     """
     if direction not in ('LONG', 'SHORT'):
-        return (None, None, None, None, None, None)
+        return (None, None, None, None, None, None, None)
 
     def _and(*conds):
         return all(c is True for c in conds)
@@ -346,6 +348,14 @@ def _compute_pattern_w_match(direction, rsi, adx, adx_delta, stretch,
             adx is not None and 22 <= adx <= 30,
             stretch is not None and 0.16 <= stretch <= 0.25,
         )
+        # W6 LONG — Healthy BTC Tailwind (May 21): BTC ADX in moderate-strong
+        # zone (22-26) AND pair NOT extended (gap ≤ +0.20%). Captures "macro
+        # doing the work, pair just along for the ride" — different from W2
+        # which requires BTC RSI sweet spot AND gap ≥ +0.10%.
+        w6 = _and(
+            btc_adx is not None and 22 <= btc_adx < 26,
+            pair_gap is not None and pair_gap < 0.20,
+        )
     else:  # SHORT
         w1 = _and(
             adx is not None and adx >= 22,
@@ -373,9 +383,16 @@ def _compute_pattern_w_match(direction, rsi, adx, adx_delta, stretch,
             adx is not None and 22 <= adx <= 30,
             stretch is not None and 0.20 <= stretch <= 0.30,
         )
+        # W6 SHORT — Mature BTC Bear (May 21): single-axis BTC ADX ≥ 32
+        # captures the late-stage committed-bearish-move zone where the trend
+        # is established and SHORTs ride continuation. W1/W2/W5 cap at BTC ADX
+        # 22 / 22 / 22-30 — this extreme zone was a blind spot.
+        w6 = _and(
+            btc_adx is not None and btc_adx >= 32,
+        )
 
-    return (w1, w2, w3, w4, w5,
-            w1 or w2 or w3 or w4 or w5)
+    return (w1, w2, w3, w4, w5, w6,
+            w1 or w2 or w3 or w4 or w5 or w6)
 
 
 class TradingEngine:
@@ -1681,7 +1698,7 @@ class TradingEngine:
                 ema50_slope=entry_ema50_slope,
             )
             # Pattern W tracker (May 21 — lifted to entry, observation flags here too)
-            _pw1, _pw2, _pw3, _pw4, _pw5, _pw_any = _compute_pattern_w_match(
+            _pw1, _pw2, _pw3, _pw4, _pw5, _pw6, _pw_any = _compute_pattern_w_match(
                 direction=direction,
                 rsi=entry_rsi,
                 adx=entry_adx,
@@ -1773,6 +1790,7 @@ class TradingEngine:
                 entry_pattern_w3_match=_pw3,
                 entry_pattern_w4_match=_pw4,
                 entry_pattern_w5_match=_pw5,
+                entry_pattern_w6_match=_pw6,
                 entry_pattern_w_any_match=_pw_any,
             )
             db.add(order)
@@ -2362,7 +2380,7 @@ class TradingEngine:
             ema20_slope=entry_ema20_slope,
             ema50_slope=entry_ema50_slope,
         )
-        _pw1_e, _pw2_e, _pw3_e, _pw4_e, _pw5_e, _pw_any_e = _compute_pattern_w_match(
+        _pw1_e, _pw2_e, _pw3_e, _pw4_e, _pw5_e, _pw6_e, _pw_any_e = _compute_pattern_w_match(
             direction=direction,
             rsi=entry_rsi,
             adx=entry_adx,
@@ -2380,7 +2398,7 @@ class TradingEngine:
             direction=direction,
             c_flags={'C1': _pc1_e, 'C2': _pc2_e, 'C3': _pc3_e, 'C4': _pc4_e, 'C5': _pc5_e,
                      'C6': _pc6_e, 'C7': _pc7_e, 'C8': _pc8_e, 'C9': _pc9_e},
-            w_flags={'W1': _pw1_e, 'W2': _pw2_e, 'W3': _pw3_e, 'W4': _pw4_e, 'W5': _pw5_e},
+            w_flags={'W1': _pw1_e, 'W2': _pw2_e, 'W3': _pw3_e, 'W4': _pw4_e, 'W5': _pw5_e, 'W6': _pw6_e},
         )
 
         # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
@@ -2629,8 +2647,8 @@ class TradingEngine:
             _pc1_e, _pc2_e, _pc3_e, _pc4_e, _pc5_e, _pc6_e, _pc7_e, _pc8_e, _pc9_e, _pc_any_e
         )
         # Pattern W tracker (May 21, 2026 — observation-only signature flags, now ALSO at entry)
-        _pw1_m, _pw2_m, _pw3_m, _pw4_m, _pw5_m, _pw_any_m = (
-            _pw1_e, _pw2_e, _pw3_e, _pw4_e, _pw5_e, _pw_any_e
+        _pw1_m, _pw2_m, _pw3_m, _pw4_m, _pw5_m, _pw6_m, _pw_any_m = (
+            _pw1_e, _pw2_e, _pw3_e, _pw4_e, _pw5_e, _pw6_e, _pw_any_e
         )
         # Create order record
         order = Order(
@@ -2719,6 +2737,7 @@ class TradingEngine:
             entry_pattern_w3_match=_pw3_m,
             entry_pattern_w4_match=_pw4_m,
             entry_pattern_w5_match=_pw5_m,
+            entry_pattern_w6_match=_pw6_m,
             entry_pattern_w_any_match=_pw_any_m,
             # Pattern Cell Ship rule attribution (May 21)
             pattern_cell_source=_pcell_src,

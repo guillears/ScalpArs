@@ -176,7 +176,9 @@
             {"pattern": "W2", "direction": "LONG",  "inv_mult": 2.0, "lev_mult": 1.0},
             {"pattern": "W2", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0},
             {"pattern": "W4", "direction": "LONG",  "inv_mult": 2.0, "lev_mult": 1.0},
-            {"pattern": "W4", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0}
+            {"pattern": "W4", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0},
+            {"pattern": "W6", "direction": "LONG",  "inv_mult": 2.0, "lev_mult": 1.0},
+            {"pattern": "W6", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0}
         ],
         "entry_quality_score_filter_enabled": false,
         "entry_quality_score_block_max": 1,

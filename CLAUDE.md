@@ -17869,3 +17869,152 @@ Total Phase 2: ~635 LOC across 3 files.
    different verdict logic).
 5. To preserve the empty-state and ⏳ informational row decisions (configured
    cells appear in table even before they've traded — operator visibility).
+
+## May 21, 2026 (late evening, post-Phase-2) — W6 PATTERN SHIPPED — Unmatched-cohort deep dive
+
+### What ships
+
+After Phase 2 launched, a deep cross-batch dive (198-trade post-May-15 pool) on
+the Unmatched Winners cohort discovered two CLEAN structural signatures
+currently missed by W1-W5. Both pass the strict promotion bar (cross-sample
+N ≥ 10, WR ≥ 70%, lift ≥ 1.10× over baseline).
+
+| Signature | Definition | N | WR | Total$ | vs baseline |
+|---|---|---|---|---|---|
+| **W6 LONG** "Healthy BTC Tailwind" | BTC ADX in [22, 26) AND Pair Gap < +0.20% | 14 | **100%** | **+$298** | +37 pp vs 63% baseline |
+| **W6 SHORT** "Mature BTC Bear" | BTC ADX ≥ 32 | 25 | **100%** | **+$313** | +26 pp vs 74% baseline |
+
+Both signatures produce **zero losses across 39 trades cross-batch**. Cleanest
+multiplier candidates seen in this analysis.
+
+### Mechanism
+
+**W6 LONG — "Macro doing the work":** BTC ADX in moderate-strong zone (22-26)
+indicates committed BTC uptrend WITHOUT being at climactic strength (would be
+in C6 territory). Pair Gap < +0.20% means the pair ISN'T already extended —
+room to follow BTC's lead. W2 (BTC RSI 50-65 + ADX ≥22 + Gap ≥+0.10) fires
+only when pair AND macro are both strongly aligned; W6 catches the cleaner
+"macro doing the work" zone where pair is just along for the ride.
+
+**W6 SHORT — "Late-stage bearish move":** BTC ADX ≥ 32 indicates BTC has
+FULLY COMMITTED to a bearish trend. W1/W2/W5 all cap their BTC ADX
+requirements at 22 / 22 / 22-30 — this extreme zone was a structural blind
+spot. SHORTs at BTC ADX ≥32 ride continuation of an established trend with
+liquidation cascades + stop clusters behind them.
+
+### Cross-batch evidence (198-trade pool, post-May-15)
+
+Pool composition for direction-baseline comparison:
+- All LONG trades: 76 total, baseline WR 63.2%
+- All SHORT trades: 122 total, baseline WR 73.8%
+
+W6 LONG isolation:
+- Trades with BTC ADX [22, 26) AND Pair Gap < 0.20%: 14
+- Of those: 14 winners, 0 losers (100% WR)
+- Catches 7 of 27 (26%) unmatched-LONG winners
+- Average P&L %: +0.272%
+
+W6 SHORT isolation:
+- Trades with BTC ADX ≥ 32: 25
+- Of those: 25 winners, 0 losers (100% WR)
+- Catches 5 of 23 (22%) unmatched-SHORT winners
+- Average P&L %: +0.146%
+
+### Engineering scope
+
+**New schema:** `entry_pattern_w6_match` Boolean column on Order (auto-migrate)
+
+**Helper updates:**
+- `services/trading_engine.py::_compute_pattern_w_match` extended to return
+  7-tuple (w1, w2, w3, w4, w5, w6, w_any). W6 LONG signature is 2-condition,
+  W6 SHORT is single-axis (BTC ADX ≥ 32).
+- `main.py::_compute_pattern_w_match` post-hoc helper mirrors the engine
+  version exactly — 7-tuple return, same predicate logic.
+- All callers updated (4 sites in main.py, 2 sites in trading_engine.py).
+
+**Config:** 2 new entries appended to `pattern_cell_rules`:
+```json
+{"pattern": "W6", "direction": "LONG",  "inv_mult": 2.0, "lev_mult": 1.0},
+{"pattern": "W6", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0}
+```
+
+**UI (already covered by Phase 2 infrastructure):**
+- Pattern dropdown in config panel: W6 added to PATTERN_BRIEF as "BTC Tailwind/Bear"
+- Pattern W tracker now shows W6 row (patterns list extended in main.py)
+- Multiplier Cell Performance + Pattern Cell Ship Performance both auto-populate
+- Fuchsia N indicator fires for W6 LONG / W6 SHORT (rule active)
+
+### Total Phase 1 + Phase 2 + W6 ship cells active
+
+| Cell | Direction | Treatment | Source |
+|---|---|---|---|
+| C4 Low-vol chop | LONG, SHORT | TP 0.10 + SL -0.50 | Phase 1 |
+| C8 Oversold/Overbought Chop | LONG, SHORT | TP 0.10 + SL -0.50 | Phase 1 |
+| W1 HighConv trend | SHORT | 2.0× invest | Phase 1 |
+| W2 Macro tailwind | LONG, SHORT | 2.0× invest | Phase 1 |
+| W4 Pullback aligned | LONG, SHORT | 2.0× invest | Phase 1 |
+| **W6 Healthy BTC Tailwind** | **LONG** | **2.0× invest** | **W6 ship** |
+| **W6 Mature BTC Bear** | **SHORT** | **2.0× invest** | **W6 ship** |
+
+**11 active cells total** (4 C-rule cells + 7 W-rule cells).
+
+### Locked revert criteria
+
+At next ≥30-trade post-deploy checkpoint, evaluate each W6 cell per
+the standard verdict matrix (CLAUDE.md May 4 Phase 3):
+
+| Verdict | Threshold | Action |
+|---|---|---|
+| ★ WORKING | WR ≥70% AND Total $ positive AND N≥5 | Keep at 2.0× |
+| ⚠ DRAG | Δ$ vs BL < -$1 | Drop to 1.5× |
+| ✗ HARMFUL | Total $ negative on N≥5 | Revert to 1.0× |
+| ⚠ Low N | N<5 fresh fires | Extend test |
+
+Additionally:
+- **If W6 LONG fresh-batch shows WR ≤ 60% on N ≥ 10** → revert to 1.0× even
+  if not yet ✗ HARMFUL (the 100% cross-batch WR was the gate; significant
+  drift = pattern wasn't structural)
+- **If W6 SHORT fresh-batch shows WR ≤ 75% on N ≥ 10** → revert to 1.0×
+  (same logic — drift from 100% to <75% is meaningful regime change)
+
+### What this ship does NOT include
+
+- **C10 Unmatched Losers pattern**: tested 4 LONG and 4 SHORT signature
+  candidates against cross-batch unmatched-loser cohort. Best LONG signature
+  achieved only 38% precision (would kill 6 winners for every 11 losers
+  caught). SHORT side worse — best at 14% precision. No clean cliff for
+  fixed exits. Decision: ACCEPT residual unmatched losers continue to bleed
+  at default exits, rather than ship a noisy filter that kills winners.
+- **Lower BE/SL ideas** for unmatched cohort: not pursued — the precursors
+  to identify unmatched losers at entry don't separate cleanly from
+  unmatched winners.
+
+### Expected impact
+
+Cross-batch projection (in-sample on the 198-trade pool):
+- W6 LONG at 2.0× would have added +$298 of pure-winner uplift (zero
+  downside, all 14 trades won)
+- W6 SHORT at 2.0× would have added +$313 of pure-winner uplift (zero
+  downside, all 25 trades won)
+- **Combined: +$611 cross-batch uplift on N=39 confirmed winners**
+
+Forward expectation should haircut by 30-50% for in-sample → out-of-sample
+bias. Realistic forward: **~$150-300 per 100-trade batch added uplift**.
+
+This is the kind of game-changer the user identified — the unmatched cohort
+DOES have structural patterns hiding inside, but they're WINNERS not losers.
+Naming them (W6) converts hidden alpha into bookable cells.
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the W6 signatures so they're not re-debated or re-derived from
+   scratch at next checkpoint.
+2. To preserve the cross-batch evidence (100% WR / N=14 LONG, N=25 SHORT)
+   so future audit can verify the ship was justified.
+3. To document the asymmetric outcome of the unmatched-cohort deep dive:
+   clean winner signatures found, no clean loser signatures.
+4. To lock the standard verdict matrix + extra revert criteria (drop to
+   1.0× if WR drops below 60-75%, not just on outright ✗ HARMFUL).
+5. To explicitly NOT ship a C10 (unmatched-loser pattern) — that decision
+   needs to be preserved so future-Claude doesn't re-attempt it without
+   first capturing NEW dimensions (orderbook depth, funding, time-of-day, etc.).

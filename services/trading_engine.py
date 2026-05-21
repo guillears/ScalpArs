@@ -1147,18 +1147,22 @@ class TradingEngine:
     
     def calculate_position_size(
         self, available_balance: float, confidence: str, total_portfolio: float = None,
-        cell_multiplier: float = 1.0, multiplier_target: str = "investment",
+        cell_multiplier: float = 1.0, cell_lev_multiplier: float = 1.0,
+        multiplier_target: str = "investment",
     ) -> Tuple[float, float, bool]:
         """
         Calculate position size and leverage based on config.
 
-        Premium Multiplier (May 4, 2026 — per CLAUDE.md May 3 design):
-        - cell_multiplier (1.0 = no boost) is applied AFTER confidence-level multiplier
-          and BEFORE the tradeable cap.  When the cap kicks in, the trade still
-          proceeds at the available amount — capital cap is the natural ceiling
-          (no abort).
-        - multiplier_target = "investment" multiplies position size $;
-          "leverage" multiplies the leverage factor.
+        Premium Multiplier (May 4, 2026 — per CLAUDE.md May 3 design; extended May 21):
+        - cell_multiplier (1.0 = no boost) is the INVESTMENT-side multiplier.
+        - cell_lev_multiplier (1.0 = no boost) is the LEVERAGE-side multiplier (May 21).
+        - Each is applied AFTER confidence-level multiplier and BEFORE the tradeable cap.
+        - When investment cap kicks in, the trade still proceeds at the available amount —
+          capital cap is the natural ceiling (no abort).
+        - multiplier_target =
+            "investment" → only cell_multiplier applies (cell_lev_multiplier treated as 1.0)
+            "leverage"   → only cell_lev_multiplier applies (cell_multiplier treated as 1.0)
+            "both"       → BOTH apply (compounding — effective notional ≈ inv_mult × lev_mult × base)
 
         Returns:
             Tuple of (investment_amount, leverage, capped_by_balance)
@@ -1198,10 +1202,12 @@ class TradingEngine:
         conf_multiplier = getattr(conf_level, 'investment_multiplier', 1.0)
         investment = investment * conf_multiplier
 
-        # === Premium Multiplier: investment-target path ===
+        # === Premium Multiplier: investment-side path (active in "investment" or "both") ===
         # Track desired-vs-actual to surface capital-cap fallback to the caller.
         capped_by_balance = False
-        if multiplier_target == "investment" and cell_multiplier and cell_multiplier != 1.0:
+        apply_inv = multiplier_target in ("investment", "both")
+        apply_lev = multiplier_target in ("leverage", "both")
+        if apply_inv and cell_multiplier and cell_multiplier != 1.0:
             target_investment = investment * cell_multiplier
             if target_investment > tradeable + 0.01:
                 capped_by_balance = True
@@ -1224,51 +1230,57 @@ class TradingEngine:
         # Get leverage from config
         leverage = conf_level.leverage
 
-        # === Premium Multiplier: leverage-target path ===
-        if multiplier_target == "leverage" and cell_multiplier and cell_multiplier != 1.0:
-            leverage = max(1, int(round(leverage * cell_multiplier)))
+        # === Premium Multiplier: leverage-side path (active in "leverage" or "both") ===
+        if apply_lev and cell_lev_multiplier and cell_lev_multiplier != 1.0:
+            leverage = max(1, int(round(leverage * cell_lev_multiplier)))
 
         return investment, leverage, capped_by_balance
 
     def _lookup_rsi_adx_multiplier(
         self, rsi_val: Optional[float], adx_val: Optional[float],
         rule_string: str, source_prefix: str,
-    ) -> Tuple[float, Optional[str]]:
+    ) -> Tuple[float, float, Optional[str]]:
         """
-        Premium Multiplier (May 4, 2026) — parse RSI×ADX multiplier rule string
-        and return (multiplier, source_label) if any rule matches the trade's RSI/ADX.
+        Premium Multiplier (May 4, 2026 → extended May 21) — parse RSI×ADX multiplier rule
+        and return (invest_multiplier, leverage_multiplier, source_label).
 
-        Rule string format: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>,..."
-        Example: "55-60:22-25:2.0,60-65:18-22:1.5"
+        Rule string format (May 21+ extended, 4-part):
+          "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<invest_mult>:<lev_mult>,..."
+        Backward-compat (May 4 → May 20, 3-part):
+          "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<invest_mult>,..."
+          → leverage_multiplier defaults to 1.0 (lev side inert under old configs)
+
         Both ranges are half-open [min, max).
-        Returns (1.0, None) if no rule matches or inputs are missing.
+        Returns (1.0, 1.0, None) if no rule matches or inputs are missing.
         Malformed rules are silently skipped (logged at WARNING level).
 
         source_prefix is "PAIR" or "BTC" — embedded in the returned source_label
         so the tracking table can attribute which rule fired (e.g., "PAIR_55-60_22-25").
         """
         if rsi_val is None or adx_val is None or not rule_string:
-            return 1.0, None
+            return 1.0, 1.0, None
         for rule in rule_string.split(','):
             rule = rule.strip()
             if not rule:
                 continue
             try:
                 parts = rule.split(':')
-                if len(parts) != 3:
-                    logger.warning(f"[CELL_MULT] Malformed rule '{rule}' (expected 3 parts), skipping")
+                if len(parts) not in (3, 4):
+                    logger.warning(f"[CELL_MULT] Malformed rule '{rule}' (expected 3 or 4 parts), skipping")
                     continue
-                rsi_part, adx_part, mult_part = parts
+                rsi_part = parts[0]
+                adx_part = parts[1]
+                inv_mult = float(parts[2])
+                lev_mult = float(parts[3]) if len(parts) == 4 else 1.0
                 rsi_min, rsi_max = map(float, rsi_part.split('-'))
                 adx_min, adx_max = map(float, adx_part.split('-'))
-                mult = float(mult_part)
                 if rsi_min <= rsi_val < rsi_max and adx_min <= adx_val < adx_max:
                     label = f"{source_prefix}_{rsi_part}_{adx_part}"
-                    return mult, label
+                    return inv_mult, lev_mult, label
             except (ValueError, TypeError) as e:
                 logger.warning(f"[CELL_MULT] Failed to parse rule '{rule}': {e}, skipping")
                 continue
-        return 1.0, None
+        return 1.0, 1.0, None
 
     # _lookup_stretch_multiplier removed May 15 PM — stretch-based multiplier
     # source retired (no longer surfaced in UI / no rule strings active in JSON).
@@ -2132,34 +2144,62 @@ class TradingEngine:
         # all available; capped_by_balance flag tells us so we can log + persist.
         _th = config.trading_config.thresholds
         _mult_target = getattr(_th, 'rsi_adx_multiplier_target', 'investment')
-        _hard_cap = getattr(_th, 'rsi_adx_multiplier_hard_cap', 2.0)
+        _inv_cap = getattr(_th, 'rsi_adx_multiplier_hard_cap', 2.0)
+        _lev_cap = getattr(_th, 'rsi_adx_multiplier_lev_hard_cap', 2.0)
         _pair_rules = getattr(_th, f'rsi_adx_multiplier_{direction.lower()}', '')
         _btc_rules = getattr(_th, f'btc_rsi_adx_multiplier_{direction.lower()}', '')
-        _pair_mult, _pair_src = self._lookup_rsi_adx_multiplier(entry_rsi, entry_adx, _pair_rules, 'PAIR')
-        _btc_mult, _btc_src = self._lookup_rsi_adx_multiplier(entry_btc_rsi, entry_btc_adx, _btc_rules, 'BTC')
-        # HIGHER multiplier wins — when multiple rules match, use the strongest.
-        # Hard cap (~2.0x) prevents stacking past the safety guard.
+        _pair_inv, _pair_lev, _pair_src = self._lookup_rsi_adx_multiplier(entry_rsi, entry_adx, _pair_rules, 'PAIR')
+        _btc_inv, _btc_lev, _btc_src = self._lookup_rsi_adx_multiplier(entry_btc_rsi, entry_btc_adx, _btc_rules, 'BTC')
+
+        # Conflict resolution (May 21 — extended for "both" mode):
+        # When pair-level AND BTC-level cells both match, the HIGHER candidate wins.
+        # "Higher" is measured by the metric that ACTUALLY affects the position under
+        # current target mode:
+        #   "investment" → compare inv_mult alone (lev ignored)
+        #   "leverage"   → compare lev_mult alone
+        #   "both"       → compare effective notional product (inv × lev)
+        # This way the winning cell is the one producing the largest actual position
+        # effect under the current mode, not an abstract sum.
         # Stretch-based multiplier retired May 15 PM (was a candidate).
         # Score-based multiplier retired May 21 (cross-batch no-edge / decay).
-        _candidates = [(_pair_mult, _pair_src), (_btc_mult, _btc_src)]
-        cell_mult, cell_src = max(_candidates, key=lambda c: c[0])
-        # Hard cap clamp — non-negotiable safety guard
-        if cell_mult > _hard_cap:
-            logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested {cell_mult}x, hard-capped to {_hard_cap}x")
-            cell_mult = _hard_cap
+        def _score_candidate(inv, lev):
+            if _mult_target == "leverage":
+                return lev
+            if _mult_target == "both":
+                return inv * lev
+            return inv  # "investment" mode (default)
+
+        _candidates = [
+            (_pair_inv, _pair_lev, _pair_src),
+            (_btc_inv, _btc_lev, _btc_src),
+        ]
+        _winner = max(_candidates, key=lambda c: _score_candidate(c[0], c[1]))
+        cell_mult, cell_lev_mult, cell_src = _winner
+
+        # Hard cap clamps — applied independently to each side.
+        # In "both" mode, max effective notional = inv_cap × lev_cap (operator
+        # accepts compounding for high-conviction setups; documented in CLAUDE.md).
+        if cell_mult > _inv_cap:
+            logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
+            cell_mult = _inv_cap
+        if cell_lev_mult > _lev_cap:
+            logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
+            cell_lev_mult = _lev_cap
         cell_mult = max(0.5, cell_mult)  # safety floor
+        cell_lev_mult = max(0.5, cell_lev_mult)
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
-            cell_multiplier=cell_mult, multiplier_target=_mult_target,
+            cell_multiplier=cell_mult, cell_lev_multiplier=cell_lev_mult,
+            multiplier_target=_mult_target,
         )
         if cell_capped:
             logger.info(
-                f"[CELL_MULT_CAPPED] {pair} {direction}: target multiplier {cell_mult}x via {cell_src} "
+                f"[CELL_MULT_CAPPED] {pair} {direction}: target multiplier inv={cell_mult}x lev={cell_lev_mult}x via {cell_src} "
                 f"({_mult_target} target), capped by available balance — proceeded at ${investment:.2f}"
             )
-        if cell_mult != 1.0 and not cell_capped:
-            logger.info(f"[CELL_MULT] {pair} {direction}: applied {cell_mult}x via {cell_src} ({_mult_target} target)")
+        if (cell_mult != 1.0 or cell_lev_mult != 1.0) and not cell_capped:
+            logger.info(f"[CELL_MULT] {pair} {direction}: applied inv={cell_mult}x lev={cell_lev_mult}x via {cell_src} ({_mult_target} target)")
         logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x")
         
         if investment <= 0:
@@ -2405,8 +2445,10 @@ class TradingEngine:
             high_price_since_entry=actual_price if direction == "LONG" else None,
             low_price_since_entry=actual_price if direction == "SHORT" else None,
             is_paper=self.is_paper_mode,
-            # Premium Multiplier (May 4, 2026) — track which RSI×ADX cell rule fired
+            # Premium Multiplier (May 4, 2026 → extended May 21) — track which RSI×ADX cell rule fired.
+            # cell_multiplier = INVESTMENT-side multiplier; cell_lev_multiplier = LEVERAGE-side (May 21).
             cell_multiplier=cell_mult,
+            cell_lev_multiplier=cell_lev_mult,
             cell_multiplier_source=cell_src,
             cell_multiplier_capped=cell_capped,
             # Initialize dynamic TP tracking

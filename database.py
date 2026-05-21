@@ -315,6 +315,9 @@ async def init_db():
                 # cell_multiplier_capped flags trades where balance forced sub-target investment.
                 if 'cell_multiplier' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier FLOAT NOT NULL DEFAULT 1.0"))
+                if 'cell_lev_multiplier' not in columns:
+                    # May 21: leverage-side multiplier — added when "both" apply mode shipped.
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN cell_lev_multiplier FLOAT NOT NULL DEFAULT 1.0"))
                 if 'cell_multiplier_source' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN cell_multiplier_source VARCHAR(40)"))
                 if 'cell_multiplier_capped' not in columns:

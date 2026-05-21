@@ -264,13 +264,18 @@ class Order(Base):
     protective_tp_order_id = Column(String(50), nullable=True)
 
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3 design).
-    # cell_multiplier = the multiplier ACTUALLY applied to this trade after hard-cap clamping.
+    # cell_multiplier = the INVESTMENT multiplier ACTUALLY applied to this trade after hard-cap clamping.
+    # cell_lev_multiplier = the LEVERAGE multiplier ACTUALLY applied (May 21 — added when "both" mode shipped).
+    #   In "investment" mode: only cell_multiplier affects sizing (cell_lev_multiplier stored as 1.0).
+    #   In "leverage" mode:   only cell_lev_multiplier affects sizing (cell_multiplier stored as 1.0).
+    #   In "both" mode:       BOTH apply; effective notional = investment × cell_multiplier × leverage × cell_lev_multiplier.
     # cell_multiplier_source = which rule fired, format "PAIR_<RSI>_<ADX>" or "BTC_<RSI>_<ADX>",
     #   or NULL if no rule matched (default 1.0×).  When both pair- and BTC-level rules match,
     #   the HIGHER multiplier wins (per design); source identifies which rule was the winner.
     # cell_multiplier_capped = True if available balance forced sub-target investment
     #   (multiplier wanted X but only Y available; trade still proceeds at Y).
     cell_multiplier = Column(Float, nullable=False, default=1.0)
+    cell_lev_multiplier = Column(Float, nullable=False, default=1.0)
     cell_multiplier_source = Column(String(40), nullable=True)
     cell_multiplier_capped = Column(Boolean, nullable=False, default=False)
 

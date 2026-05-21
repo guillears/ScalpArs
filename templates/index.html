@@ -4845,21 +4845,27 @@
                                 <select id="config-mult-target" class="ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs">
                                     <option value="investment">Investment Size</option>
                                     <option value="leverage">Leverage</option>
+                                    <option value="both">Both (Invest + Lev)</option>
                                 </select>
                             </label>
                             <label class="flex items-center text-sm text-gray-400">
-                                Hard cap (max):
+                                Inv hard cap:
                                 <input type="number" step="0.1" min="1.0" max="5.0" id="config-mult-hard-cap" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="2.0">
                                 <span class="ml-1 text-gray-500">x</span>
                             </label>
-                            <span class="text-xs text-gray-500">When pair- AND BTC-level cells both match, the HIGHER multiplier wins (not multiplied).</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                Lev hard cap:
+                                <input type="number" step="0.1" min="1.0" max="5.0" id="config-mult-lev-hard-cap" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center text-xs" value="2.0">
+                                <span class="ml-1 text-gray-500">x</span>
+                            </label>
+                            <span class="text-xs text-gray-500">When pair- AND BTC-level cells both match, the HIGHER multiplier wins (not multiplied). In <span class="text-cyan-300">"Both"</span> mode, effective notional ≈ inv × lev.</span>
                         </div>
                         <div class="text-xs text-amber-400/80 mb-2">⚠ PAIR-level (Pair RSI &times; Pair ADX)</div>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
                             <div>
                                 <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1 mult-inv-col">Invest Multi</th><th class="text-left px-1 mult-lev-col">Lev Multi</th><th></th></tr></thead>
                                     <tbody id="rsi-adx-mult-long-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addMultRow('long','pair')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add LONG rule</button>
@@ -4867,7 +4873,7 @@
                             <div>
                                 <span class="text-xs text-red-400 font-medium">SHORT rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1 mult-inv-col">Invest Multi</th><th class="text-left px-1 mult-lev-col">Lev Multi</th><th></th></tr></thead>
                                     <tbody id="rsi-adx-mult-short-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addMultRow('short','pair')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add SHORT rule</button>
@@ -4878,7 +4884,7 @@
                             <div>
                                 <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1 mult-inv-col">Invest Multi</th><th class="text-left px-1 mult-lev-col">Lev Multi</th><th></th></tr></thead>
                                     <tbody id="btc-rsi-adx-mult-long-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addMultRow('long','btc')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add LONG rule</button>
@@ -4886,7 +4892,7 @@
                             <div>
                                 <span class="text-xs text-red-400 font-medium">SHORT rules</span>
                                 <table class="w-full text-xs mt-1">
-                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1">Multi</th><th></th></tr></thead>
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">RSI Min</th><th class="text-left px-1">RSI Max</th><th class="text-left px-1">ADX Min</th><th class="text-left px-1">ADX Max</th><th class="text-left px-1 mult-inv-col">Invest Multi</th><th class="text-left px-1 mult-lev-col">Lev Multi</th><th></th></tr></thead>
                                     <tbody id="btc-rsi-adx-mult-short-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addMultRow('short','btc')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add SHORT rule</button>
@@ -14446,6 +14452,10 @@
                 // Stretch-based multipliers retired May 15 PM.
                 document.getElementById('config-mult-target').value = config.thresholds.rsi_adx_multiplier_target || 'investment';
                 document.getElementById('config-mult-hard-cap').value = config.thresholds.rsi_adx_multiplier_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_hard_cap : 2.0;
+                const _levCapEl = document.getElementById('config-mult-lev-hard-cap');
+                if (_levCapEl) _levCapEl.value = config.thresholds.rsi_adx_multiplier_lev_hard_cap !== undefined ? config.thresholds.rsi_adx_multiplier_lev_hard_cap : 2.0;
+                // Refresh column highlight to match the loaded target mode.
+                if (typeof _refreshMultColumnHighlight === 'function') _refreshMultColumnHighlight();
                 const _qsEnabledEl = document.getElementById('config-entry-quality-score-filter-enabled');
                 if (_qsEnabledEl) _qsEnabledEl.checked = config.thresholds.entry_quality_score_filter_enabled === true;
                 const _qsBlockMaxEl = document.getElementById('config-entry-quality-score-block-max');
@@ -14939,13 +14949,17 @@
         }
 
         // Premium Multiplier helpers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
-        // Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>"
+        // May 21 extended: each cell now has Invest Multi + Lev Multi columns. Storage format
+        // backward-compatible:
+        //   Old (3 parts): "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<invest_mult>"
+        //                  → lev_mult defaults to 1.0 on load
+        //   New (4 parts): "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<invest_mult>:<lev_mult>"
         // scope = 'pair' or 'btc'  (which body element to target)
         function _multBodyId(direction, scope) {
             return scope === 'btc' ? `btc-rsi-adx-mult-${direction}-body` : `rsi-adx-mult-${direction}-body`;
         }
         function _multClassPrefix(scope) { return scope === 'btc' ? 'btc-mult' : 'pair-mult'; }
-        function addMultRow(direction, scope, rsiMin='', rsiMax='', adxMin='', adxMax='', mult='') {
+        function addMultRow(direction, scope, rsiMin='', rsiMax='', adxMin='', adxMax='', mult='', levMult='1.0') {
             const tbody = document.getElementById(_multBodyId(direction, scope));
             const cls = _multClassPrefix(scope);
             const tr = document.createElement('tr');
@@ -14954,7 +14968,8 @@
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs ${cls}-rsi-max" value="${rsiMax}"></td>
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs ${cls}-adx-min" value="${adxMin}"></td>
                 <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs ${cls}-adx-max" value="${adxMax}"></td>
-                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-14 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs font-semibold ${cls}-multi" value="${mult}"></td>
+                <td class="px-1 py-1 mult-inv-col"><input type="number" step="0.1" min="0.5" max="5" class="w-14 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs font-semibold ${cls}-multi" value="${mult}"></td>
+                <td class="px-1 py-1 mult-lev-col"><input type="number" step="0.1" min="0.5" max="5" class="w-14 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs font-semibold ${cls}-lev-multi" value="${levMult}"></td>
                 <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
             tbody.appendChild(tr);
         }
@@ -14966,11 +14981,13 @@
                 const r = rule.trim();
                 if (!r) continue;
                 const parts = r.split(':');
-                if (parts.length !== 3) continue;
-                const [rsiPart, adxPart, mult] = parts;
+                // Backward-compat: 3-part rules → lev=1.0; 4-part rules → use both.
+                if (parts.length !== 3 && parts.length !== 4) continue;
+                const rsiPart = parts[0], adxPart = parts[1], mult = parts[2];
+                const levMult = parts.length === 4 ? parts[3] : '1.0';
                 const [rsiMin, rsiMax] = rsiPart.split('-');
                 const [adxMin, adxMax] = adxPart.split('-');
-                addMultRow(direction, scope, rsiMin, rsiMax, adxMin, adxMax, mult);
+                addMultRow(direction, scope, rsiMin, rsiMax, adxMin, adxMax, mult, levMult);
             }
         }
         function collectMultRules(direction, scope) {
@@ -14983,10 +15000,33 @@
                 const aMin = row.querySelector(`.${cls}-adx-min`).value.trim();
                 const aMax = row.querySelector(`.${cls}-adx-max`).value.trim();
                 const m = row.querySelector(`.${cls}-multi`).value.trim();
-                if (rMin && rMax && aMin && aMax && m) rules.push(`${rMin}-${rMax}:${aMin}-${aMax}:${m}`);
+                const lm = (row.querySelector(`.${cls}-lev-multi`)?.value || '1.0').trim() || '1.0';
+                if (rMin && rMax && aMin && aMax && m) {
+                    // Always serialize as 4-part. lev=1.0 trades inert under "investment" mode.
+                    rules.push(`${rMin}-${rMax}:${aMin}-${aMax}:${m}:${lm}`);
+                }
             });
             return rules.join(',');
         }
+
+        // Visual: grey out the column not in use under current target mode.
+        // Doesn't disable input — fields stay editable so operator can preconfigure
+        // both columns and flip the mode dropdown when ready.
+        function _refreshMultColumnHighlight() {
+            const mode = document.getElementById('config-mult-target')?.value || 'investment';
+            const invCols = document.querySelectorAll('.mult-inv-col');
+            const levCols = document.querySelectorAll('.mult-lev-col');
+            invCols.forEach(el => {
+                el.style.opacity = (mode === 'leverage') ? '0.40' : '1.0';
+            });
+            levCols.forEach(el => {
+                el.style.opacity = (mode === 'investment') ? '0.40' : '1.0';
+            });
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            const sel = document.getElementById('config-mult-target');
+            if (sel) sel.addEventListener('change', _refreshMultColumnHighlight);
+        });
 
         // Stretch-based Multiplier helpers removed May 15 PM (panel retired).
 
@@ -15205,6 +15245,7 @@
                     btc_rsi_adx_multiplier_short: collectMultRules('short', 'btc'),
                     rsi_adx_multiplier_target: document.getElementById('config-mult-target').value || 'investment',
                     rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
+                    rsi_adx_multiplier_lev_hard_cap: safeFloat(document.getElementById('config-mult-lev-hard-cap').value) || 2.0,
                     entry_quality_score_filter_enabled: (document.getElementById('config-entry-quality-score-filter-enabled') || {}).checked === true,
                     entry_quality_score_block_max: parseInt((document.getElementById('config-entry-quality-score-block-max') || {}).value) || 1,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,

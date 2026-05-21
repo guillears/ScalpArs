@@ -9027,7 +9027,15 @@ def _compute_multiplier_cell_performance(orders):
                 # STRETCH retired May 15 PM; SCORE shipped May 18 (new dimension).
                 out[f"{prefix}_{parts[0]}"] = float(parts[1])
             elif len(parts) == 3:
-                # 2D rule format: "<dim1_lo>-<dim1_hi>:<dim2_lo>-<dim2_hi>:<multiplier>"
+                # 2D rule format (legacy 3-part): "<dim1_lo>-<dim1_hi>:<dim2_lo>-<dim2_hi>:<invest_mult>"
+                # → leverage_mult implicit 1.0 under old configs.
+                out[f"{prefix}_{parts[0]}_{parts[1]}"] = float(parts[2])
+            elif len(parts) == 4:
+                # 2D rule format (May 21 extended): adds leverage_mult as 4th field.
+                # For current-config diff we still key on the invest_mult value (the
+                # historical-cell-perf table compares against past trades which only
+                # stored cell_multiplier=invest side pre-May-21). Leverage side is
+                # tracked separately via cell_lev_multiplier on the Order row.
                 out[f"{prefix}_{parts[0]}_{parts[1]}"] = float(parts[2])
         return out
 

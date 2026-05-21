@@ -318,8 +318,15 @@ class SignalThresholds(BaseModel):
     rsi_adx_multiplier_short: str = ""  # Pair-level RSI x ADX multiplier rules for SHORT
     btc_rsi_adx_multiplier_long: str = ""  # BTC-level BTC RSI x BTC ADX multiplier rules for LONG
     btc_rsi_adx_multiplier_short: str = ""  # BTC-level multiplier rules for SHORT
-    rsi_adx_multiplier_target: str = "investment"  # "investment" (multiply position size $) or "leverage"
-    rsi_adx_multiplier_hard_cap: float = 2.0  # UI-configurable safety cap; engine clamps any cell to this
+    # Apply mode (May 21 — extended): "investment" | "leverage" | "both".
+    #   "investment": only the invest_mult column is applied; lev_mult column is stored but inert.
+    #   "leverage":   only the lev_mult column is applied; invest_mult column is stored but inert.
+    #   "both":       BOTH columns apply (compounding) — effective notional = investment × invest_mult × leverage × lev_mult.
+    rsi_adx_multiplier_target: str = "investment"
+    # Two independent hard caps (May 21). Each multiplier is clamped to its own cap regardless of UI input.
+    # In "both" mode, max effective notional = invest_cap × lev_cap. Default cap_inv=2.0 reproduces pre-change behavior.
+    rsi_adx_multiplier_hard_cap: float = 2.0  # Investment-side hard cap (was the single cap pre-May-21)
+    rsi_adx_multiplier_lev_hard_cap: float = 2.0  # Leverage-side hard cap (NEW May 21)
     # Entry Quality Score multiplier (May 18 → REMOVED May 21): the Score-based 1D
     # multiplier dimension was retired after cross-batch evidence showed cells
     # decaying or showing no edge over baseline. See CLAUDE.md May 21 removal entry.

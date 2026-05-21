@@ -166,6 +166,7 @@
         "trailing_pullback_confirmation_seconds": 0,
         "rsi_adx_multiplier_target": "investment",
         "rsi_adx_multiplier_hard_cap": 2.0,
+        "rsi_adx_multiplier_lev_hard_cap": 2.0,
         "entry_quality_score_filter_enabled": false,
         "entry_quality_score_block_max": 1,
         "fast_exit_enabled": true,

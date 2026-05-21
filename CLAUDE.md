@@ -17405,3 +17405,167 @@ Until all 3 hold, the Score multiplier dimension stays retired.
    back Score multipliers" proposal has a mechanical evidence bar to meet
 4. To document that the SCORE block FILTER is intentionally separate and
    was NOT removed (different mechanism class)
+
+## May 21, 2026 (late PM) — Premium Multiplier: "Both (Invest + Lev)" mode shipped
+
+### What ships
+
+The RSI×ADX premium multiplier mechanism now supports an independent **Leverage
+multiplier column** alongside the existing **Investment multiplier column**. A new
+**"Both"** apply mode multiplies both simultaneously (compounding effect).
+
+### UI changes
+
+| Element | Before | After |
+|---|---|---|
+| "Apply multiplier to" dropdown | Investment Size, Leverage | + **Both (Invest + Lev)** |
+| Hard cap (single field) | "Hard cap (max)" — 2.0× | Split into **Inv hard cap** + **Lev hard cap** — both default 2.0× |
+| Multiplier table columns | RSI Min/Max, ADX Min/Max, **Multi** | RSI Min/Max, ADX Min/Max, **Invest Multi**, **Lev Multi** |
+| Visual feedback | n/a | Active column highlighted at 100% opacity; inactive column dimmed to 40% (based on mode dropdown) — operator can still edit the dimmed column to preconfigure |
+
+### Behavior under each mode
+
+| Mode | Investment side | Leverage side | Effective notional |
+|---|---|---|---|
+| `investment` (default) | inv_mult applies | lev_mult inert (stored at 1.0) | base × inv_mult |
+| `leverage` | inv_mult inert (stored at 1.0) | lev_mult applies | base × lev_mult |
+| `both` (NEW) | inv_mult applies | lev_mult applies | base × inv_mult × lev_mult |
+
+Per-cell stored values are preserved when switching modes — switching back restores
+the same configuration.
+
+### Storage format (backward-compatible)
+
+Config rule strings extended from 3 parts to 4:
+
+| Format | Example | Interpretation |
+|---|---|---|
+| 3-part (May 4 → May 20) | `"60-65:18-22:2.0"` | invest_mult=2.0, lev_mult=1.0 (auto-defaulted) |
+| 4-part (May 21+) | `"60-65:18-22:2.0:1.5"` | invest_mult=2.0, lev_mult=1.5 |
+
+The `_lookup_rsi_adx_multiplier` parser accepts both forms. All existing
+configs continue to work unchanged (lev side stays inert until you flip mode
+or enter a non-1.0 value).
+
+### HIGHER-wins conflict resolution under "both" mode
+
+When pair-level AND BTC-level cells both match, the engine picks the candidate
+producing the largest position effect under the current mode:
+
+| Mode | Comparison metric |
+|---|---|
+| `investment` | invest_mult (max) |
+| `leverage` | lev_mult (max) |
+| `both` | effective notional product = invest_mult × lev_mult (max) |
+
+This way the "winning" cell is always the one that produces the largest actual
+position effect, not an abstract sum or arbitrary product.
+
+### Hard cap semantics (Option C from the design discussion)
+
+Two **independent** UI-configurable caps:
+- `rsi_adx_multiplier_hard_cap` — investment-side cap (default 2.0×)
+- `rsi_adx_multiplier_lev_hard_cap` — leverage-side cap (default 2.0×, NEW May 21)
+
+Each cap clamps its respective multiplier independently. In "both" mode, max
+effective notional = inv_cap × lev_cap. Operator accepts this compounding effect
+for high-conviction setups (the explicit "we will do this after super high
+conviction volume" use case).
+
+### Engineering scope
+
+| File | Change | LOC |
+|---|---|---|
+| `config.py` | Added `rsi_adx_multiplier_lev_hard_cap` field + comments on target enum | ~10 |
+| `trading_config.json` | New default `"rsi_adx_multiplier_lev_hard_cap": 2.0` | 1 |
+| `models.py` | Added `cell_lev_multiplier` column (Float, default 1.0) on Order | 1 |
+| `database.py` | ALTER TABLE ADD COLUMN auto-migrate for `cell_lev_multiplier` | 3 |
+| `services/trading_engine.py` | `_lookup_rsi_adx_multiplier` returns `(inv, lev, src)` 3-tuple; conflict resolution by `_score_candidate`; `calculate_position_size` takes both multipliers + handles "both" mode; Order constructor stores both | ~60 |
+| `templates/index.html` | UI dropdown option + 2nd hard cap input + Lev Multi column in all 4 multiplier tables + grey-out highlight JS + load/save handlers | ~50 |
+| `main.py` | `_parse_rules` accepts 4-part rule format (invest_mult keyed for diff against historical cell_multiplier values) | ~7 |
+
+Total: ~130 LOC across 7 files. Strictly additive: pre-May-21 configs and
+trades continue to work unchanged.
+
+### Pre/post comparison
+
+Pre-May-21 trade with `cell_multiplier=2.0, cell_multiplier_source='PAIR_60-65_22-25'`
+under "investment" mode:
+- Investment was multiplied by 2.0
+- Leverage was unchanged
+
+After May 21, an equivalent trade would store:
+- `cell_multiplier=2.0` (invest side, unchanged)
+- `cell_lev_multiplier=1.0` (new column, default — inert under "investment" mode)
+
+A future high-conviction trade under "both" mode with `cell_multiplier=2.0,
+cell_lev_multiplier=1.5` would have:
+- Investment × 2.0
+- Leverage × 1.5
+- Effective notional = 3.0× base
+
+### Operational guidance
+
+The user explicitly noted: **"we will do this after super high conviction
+volume"**. The implementation supports the workflow:
+
+1. Configure desired `Lev Multi` values per cell in the UI (defaults to 1.0)
+2. Keep apply mode = "investment" while validating the cells
+3. Once cells are validated as ★ WORKING (per locked May 4 verdict matrix),
+   flip mode to "both" — the lev column activates immediately
+
+Reverting is one dropdown flip — no config rewrites.
+
+### Risk acknowledgments
+
+- **No backward-compat data loss.** Pre-May-21 closed trades have
+  `cell_lev_multiplier=NULL` in legacy DBs; auto-migrate sets default 1.0;
+  no analytics are affected.
+- **Hard cap compounding under "both" mode** is intentional. Operator accepts
+  that 2.0 × 2.0 = 4× notional is possible. If safer cap is needed later, the
+  two UI fields can be reduced to e.g. 1.5× each (max 2.25×).
+- **No new ship rules yet.** All currently-shipped cells remain at lev_mult=1.0
+  by default. The new column starts dormant.
+- **HIGHER-wins still applies.** Compounding pair + BTC mults is NOT possible
+  (would require explicit code change). Only single-cell compounding (inv × lev)
+  is supported.
+
+### Pre-committed activation criteria
+
+Before flipping any cell's `Lev Multi` from 1.0 to anything else, the cell
+should have ★ WORKING verdict on cross-batch evidence at its current invest_mult
+value. This protects against double-counting in-sample bias when both columns
+are tuned at once.
+
+Specifically: a cell should NOT simultaneously be promoted on inv_mult AND
+lev_mult in the same checkpoint. Promote one dimension first, validate at
+N≥10 fresh trades, then consider the second.
+
+### What this entry does NOT enable
+
+- Score-based multipliers (retired entry above) — still gone.
+- Stretch-based multipliers (retired May 15) — still gone.
+- Pattern W / Pattern C multipliers at the engine level — Pattern Calculator
+  is still a SIMULATOR only; live engine doesn't have pattern-tagging at entry
+  for the multiplier system.
+
+### Files changed
+
+- `config.py` — `rsi_adx_multiplier_lev_hard_cap` field + comments
+- `trading_config.json` — default 2.0 for new cap
+- `models.py` — Order.cell_lev_multiplier column (Float, default 1.0)
+- `database.py` — auto-migrate ADD COLUMN
+- `services/trading_engine.py` — signature + conflict resolution + sizing logic
+- `templates/index.html` — UI dropdown + 2nd cap + Lev Multi column + grey-out highlight
+- `main.py` — _parse_rules 4-part backward-compat
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the 3-mode design and the "both" mode's compounding semantics
+2. To preserve the storage format change (3-part vs 4-part) for future analyses
+   of legacy rule strings
+3. To anchor the locked activation criteria (don't promote inv + lev simultaneously)
+4. To document the Option C cap design (two independent caps, accept inv×lev
+   compounding) so future-Claude doesn't propose combined-cap refactors without
+   re-reading the rationale

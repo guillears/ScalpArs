@@ -18459,3 +18459,59 @@ against this table mechanically:
 - Δ$ <70% of baseline → in-sample bias was high, real edge weaker
 - Δ$ >130% of baseline → unexpected upside, validate before celebrating
 - Δ$ flips sign → regime drift, investigate
+
+## May 21, 2026 (evening) — W2 LONG + W4 LONG multipliers demoted 2.0× → 1.0× (SHORT-only)
+
+### Change
+- `pattern_cell_rules` `W2 LONG`: inv_mult 2.0 → **1.0**
+- `pattern_cell_rules` `W4 LONG`: inv_mult 2.0 → **1.0**
+
+W2 SHORT and W4 SHORT stay at 2.0× (unchanged).
+
+### Rationale (1-batch evidence, user-directed)
+
+Per the May 21 per-rule contribution baseline:
+
+| Cell | This batch | Δ$ |
+|---|---|---|
+| W2 LONG 2× | 4 trades, -$48 actual → -$95 sim under 2× | **-$48** (amplifies losses) |
+| W4 LONG 2× | 2 trades, -$16 → -$32 sim | **-$16** (amplifies losses) |
+| W2 SHORT 2× | working positively | (kept) |
+| W4 SHORT 2× | working positively | (kept) |
+
+Combined LONG-side headwind on this batch: **-$64**.
+
+User-directed demote acknowledging this is 1-batch evidence (the CLAUDE.md May
+21 W6 ship had cross-batch evidence supporting W2 LONG at 2× with N=100 / 64%
+WR baseline). The trade-off: accept the small projected miss on future W2/W4
+LONG winners in exchange for capping loss amplification on this batch's
+demonstrated pattern.
+
+### Locked re-promotion criterion
+
+If at next 100-trade LONG checkpoint:
+- W2 LONG would have shown ≥ 70% WR on N≥10 AND Total $ positive at 1× sizing
+- W4 LONG same gate
+- AND cross-batch evidence confirms
+
+→ Re-promote to 2.0×. Standard Phase 3 staging may apply (1.5× first, then 2.0×
+after +50 trades).
+
+### Implication for next-batch baseline
+
+Post-demote, the per-rule contribution baseline shifts. Updated expectation:
+- Removed -$64 W2/W4 LONG drag → ~+$599 batch Δ would be the new projection
+  on this same data
+- But the cells are now permanently inert on LONG side until re-promote, so
+  forward expectation also loses the wins those cells would have caught on
+  W LONG winners (estimated marginal)
+
+Updated active multiplier landscape:
+- LONG side 2.0× cells: BTC_60-65_28-30, PAIR_55-60_22-25 (now demoted to 1.0×),
+  BTC_60-65_22-25, **W6 LONG** (kept — cross-batch validated)
+- SHORT side 2.0× cells: **C1 SHORT, W1 SHORT, W2 SHORT, W4 SHORT, W6 SHORT**,
+  BTC_25-30_20-25 (S-P1, demoted to 1.0× per May 18), BTC_35-40_33-36 (kept)
+
+### Files changed
+- `trading_config.json` — 2 fields
+- `CLAUDE.md` — this entry

@@ -16934,3 +16934,135 @@ This is THE strongest ship candidate identified. Forward expectation
 +$515/batch vs prior ship plans projecting +$229/batch — over 2× the
 projected impact.
 
+
+## May 21, 2026 (revised) — CORRECTED forward ship picture (caps DO matter on non-W cohort)
+
+### The error I made in prior analyses
+
+I tested "2× mult on Unm. W" using the RETROSPECTIVE Unm. W cohort
+(winners that didn't match W signature). Cross-batch result: +$4,569
+from pure 2× mult — looks great.
+
+**But forward, you can't classify Unm. W at entry.** You can only know
+"this trade doesn't match W2 signature." That cohort INCLUDES future
+winners (Unm. W, 215 trades) AND future losers (173 trades).
+
+Operator's TP 0.20 cap intuition exposed this: the cap doesn't make
+sense on pure winners (just chops upside), but it DOES make sense on
+a mixed cohort because the caps limit loser amplification.
+
+### Forward simulation on the proper cohort (215W + 173L = 388 trades)
+
+Status quo (no ship): -$2,648
+
+| Scenario | Total $ | Δ vs status quo |
+|---|---|---|
+| **Pure 2× mult (NO caps) — prior plan** | **-$5,297** | **-$2,649** ✗ DOUBLES losers |
+| TP 0.20 + 2× mult (no SL) | -$3,887 | -$1,238 |
+| TP 0.30 + 2× mult (no SL) | -$3,968 | -$1,319 |
+| **SL 0.50 only + 2× mult** | **-$1,310** | **+$1,339** ★ |
+| **TP 0.20 + SL 0.50 + 2× mult** | **-$801** | **+$1,848** ★★ |
+| **TP 0.30 + SL 0.50 + 2× mult ★★★** | **-$365** | **+$2,283** BEST |
+
+### Key insights from this corrected analysis
+
+1. **Pure 2× mult on forward cohort is a disaster.** -$2,649 because it
+   amplifies the 173 losers as much as the 215 winners. Prior projections
+   ignored this.
+
+2. **SL cap is the bigger lever than TP cap.** Going from status quo to
+   SL 0.50 + 2× alone gives +$1,339. Adding TP on top gives marginal
+   improvement.
+
+3. **TP 0.30 dominates TP 0.20.** Higher cap allows winners to run more
+   while still catching some losses. TP 0.30 + SL 0.50 + 2× = +$2,283
+   vs TP 0.20 + SL 0.50 + 2× = +$1,848.
+
+4. **My prior "+$515/batch" estimate was inflated.** It used the
+   retrospective Unm. W projection (+$4,569 ÷ 16 batches = $286/batch
+   from W side). Forward, that drops to ~$143/batch with the corrected
+   cohort and required caps. Total combined ship now estimated at
+   ~$240/batch (vs $515 prior — major correction).
+
+### The corrected 3-tier mechanism rule
+
+| Cohort | Mechanism | Why |
+|---|---|---|
+| Pattern C cohort (validated losers) | TP+SL caps, no mult | Defensive — caps rescue, mult would amplify losses |
+| Pattern W cohort (validated winners) | Pure 2× mult, no caps | Offensive — caps would chop runners |
+| **NEITHER (mixed at entry)** | **TP 0.30 + SL 0.50 + 2× mult** | **Mixed cohort needs both caps + mult** |
+
+The NEITHER case is the most operationally important because forward,
+you can't ALWAYS classify trades as Pattern W at entry — many trades
+will fall into the NEITHER bucket.
+
+### Why operator's TP cap intuition was right
+
+The operator's TP 0.20 idea applied to "Unm. W with mult" exposed that:
+1. The CAP is needed on the forward cohort (which includes losers)
+2. Just applying 2× without caps amplifies losses to catastrophic levels
+
+The operator's framing was "0.40% guarantee per trade" (upside framing),
+but the cap's actual value is DOWNSIDE protection on the mixed cohort.
+The SL cap is even more important than the TP cap.
+
+### Updated forward total ship projection
+
+| Component | Forward Δ/batch |
+|---|---|
+| Pattern C caps (Unm. L + C4/C8) | ~+$80 |
+| NEITHER cohort: TP 0.30 + SL 0.50 + 2× mult | ~+$143 |
+| Pattern W (W2): pure 2× (small N, safe) | ~+$15 |
+| **Combined ship total** | **~+$240/batch** |
+
+This is the realistic forward expectation. Less than prior projections
+but built on the correct cohort (not retrospective).
+
+### Locked methodology rule (updated from this finding)
+
+**When designing a forward ship, use the ENTRY-TIME classifiable cohort,
+not the OUTCOME-classified cohort.** Unm. W is defined by being a winner
+(outcome) AND not matching W (entry). For forward design, only the W-match
+test exists at entry. The forward cohort is "not-W-match" which includes
+both future winners and future losers.
+
+Caps on this mixed cohort are NECESSARY — without them, mult amplifies
+the losers as much as the winners and net P&L drops.
+
+### Implementation reality
+
+The corrected ship is essentially:
+- Globally tighten SL: -0.80% → -0.50%
+- Globally raise BE floor / add TP cap: +0.10% → +0.30%
+- Apply 2× multiplier to trades NOT matching Pattern W at entry
+
+This is much closer to "globally adjust exit thresholds + selectively
+multiply" than to the pattern-cohort-specific machinery I described
+earlier. Simpler to implement, less infrastructure needed.
+
+Engineering estimate: ~50-80 LOC (vs prior ~100-150 LOC estimate for the
+full pattern-cohort mechanism). Mostly config changes + a single
+multiplier rule based on W-signature match.
+
+### Pre-committed validation criteria (locked)
+
+When this ship lands, evaluate at next 100-trade post-ship:
+
+| Outcome | Action |
+|---|---|
+| Combined Avg P&L % improves ≥+0.10pp vs baseline | Keep |
+| Loss magnitude on SL-exited trades drops materially | SL cap working |
+| Multiplier-applied trades show ≥55% WR | Mult-on-non-W-match validated |
+| Forward cohort Avg P&L worsens | Revert SL cap first, then mult |
+
+### Why this CLAUDE.md entry exists
+
+To correct the prior over-optimistic ship projections:
+1. The "+$515/batch combined ship" projection was inflated by using
+   retrospective Unm. W cohort
+2. Operator's TP cap intuition pointed at the real problem
+3. The CORRECTED projection is ~$240/batch — still positive but
+   structurally different from prior planning
+4. The actual ship is closer to "global SL tighten + TP cap + 2× mult
+   on non-W cohort" than pattern-cohort-specific machinery
+

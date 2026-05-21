@@ -1,5 +1,36 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 21, 2026 (very late evening, post-rollback) — C1 SHORT lev-stacked to 3.0× effective
+
+### Change
+
+Pattern cell rule `C1 SHORT`: `inv_mult 2.0 / lev_mult 1.0` → **`inv_mult 2.0 / lev_mult 1.5`** = **3.0× effective notional**.
+
+Target mode already `"both"` from earlier BTC_60-65_22-25 LONG lev-stack ship — lev_mult fires immediately.
+
+### Evidence
+
+C1 SHORT cross-batch (per CLAUDE.md May 21 treatment-decoupling entry): 27 trades / 78% WR / +$20.51 / +$0.76 per trade. Strong winner cohort despite being "loser-shape" signature (C-tag).
+
+### Discipline acknowledgment
+
+This is the **second 3.0× effective cell** on the bot (after BTC_60-65_22-25 LONG). Same locked watchlist criteria from CLAUDE.md May 21 lev-stacking entry applied with user override — fresh-batch validation gates not yet met (cell has zero live fires under Phase 1 engine path). Ship rests on cross-batch evidence alone.
+
+### Pre-committed revert criteria (LOCKED — stricter than standard)
+
+At next ≥10-trade C1 SHORT checkpoint:
+
+| Outcome | Action |
+|---|---|
+| N≥5 AND WR ≥ 70% AND Total $ positive at 3× effective | ★ KEEP |
+| N≥5 AND WR 55-70% | ⚠ DROP LEV → revert to 2.0× inv only |
+| N≥5 AND WR ≤ 55% | ✗ REVERT BOTH — drop lev AND demote inv to 1.0× |
+| N≥3 with any single ✗ HARMFUL Δ$ ≤ -$60 on a leveraged trade | IMMEDIATE drop lev |
+
+### Files changed
+- `trading_config.json` — single pattern_cell_rules entry updated
+- `CLAUDE.md` — this entry
+
 ## May 21, 2026 (very late evening) — Full rollback of all 4 BTC RSI × BTC ADX loosenings
 
 ### What was reverted

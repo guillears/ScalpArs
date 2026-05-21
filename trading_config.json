@@ -254,7 +254,7 @@
         "pattern": "C1",
         "direction": "SHORT",
         "inv_mult": 2.0,
-        "lev_mult": 1.0
+        "lev_mult": 1.5
       },
       {
         "pattern": "UNMATCHED",

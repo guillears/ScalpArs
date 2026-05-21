@@ -17206,3 +17206,92 @@ To anchor the EXACT calculator selections that produced the +$650.53 Δ result s
 If at next checkpoint a different configuration shows higher Δ, this entry remains
 as the reference for what was true on May 21 — don't overwrite, append the new
 finding alongside.
+
+## May 21, 2026 (late PM) — REJECTED: SHORT W1 HighConv trend at 2.0× multiplier (cross-batch falsified)
+
+### Proposed rule
+
+Operator proposed adding **Pattern W1 (HighConv trend: ADX≥22 + ADXΔ≥0.5 + stretch≥0.20) SHORT
+at 2.0× multiplier** as a permanent shipping rule, based on today's 19-trade batch showing
+84.2% WR and +$44.82.
+
+### Cross-batch validation — falsified
+
+Ran `scripts/winner_signature_analysis.py` on the 548-trade deduped pool (May 4 → May 21):
+
+| Metric | Value |
+|---|---|
+| N | **148** |
+| Winners / Losers | 90 / 58 |
+| **Precision (WR)** | **60.8%** |
+| **SHORT baseline WR (pool)** | **61.3%** |
+| **Lift vs baseline** | **0.99×** ← no edge |
+| Recall | 52.0% |
+| Verdict | ⚠ DRAG / no measurable edge |
+
+**Today's 84% WR was a regime-specific outlier**, not a structural signal. Across 148
+cross-batch trades, SHORT W1's WR precision (60.8%) is BELOW the SHORT baseline (61.3%).
+The cell has no measurable edge over un-filtered SHORT entries.
+
+### Comparison to other SHORT W-pattern candidates (same cross-batch pool)
+
+| Signature | N | WR | Lift | Verdict |
+|---|---:|---:|---:|---|
+| W1 HighConv trend (proposed) | 148 | 60.8% | 0.99× | **no edge — rejected** |
+| W2 Macro tailwind | 100 | 64.0% | 1.04× | marginal |
+| W4 Pullback aligned | 14 | 71.4% | 1.16× | ✓ promising but N too low |
+| W5 Confluence | 14 | 14.3% | 0.23× | ✗ failed |
+| Pair gap neg + BTC gap neg | 197 | 63.5% | 1.03× | marginal |
+| Stretch 0.20-0.30 alone | 95 | 57.9% | 0.94× | no edge |
+
+**No SHORT W-pattern across 548 cross-batch trades clears the locked ★ WORKING promotion gate**
+(WR ≥70% on N≥15+ with lift ≥1.10).
+
+### Decision
+
+**NOT shipped.** The cross-batch evidence directly contradicts the in-batch outlier.
+Per CLAUDE.md May 11 PM methodology and May 16 Score 6 SHORT discipline note,
+single-batch multiplier activations consistently underperform when fresh data
+arrives. The S-P1 demote (May 18) is the canonical example of this failure mode:
+5-sample structural at 75% pool WR → broke to 33% / -$381 at 2.0×.
+
+### Methodological rule reinforced
+
+**Rule (locked NOW for all future multiplier ship discussions):**
+
+> Before shipping ANY pattern-based multiplier (or any multiplier from a single
+> batch's analytics surface), run the cross-batch signature analysis on the
+> deduped pool (`scripts/winner_signature_analysis.py` or equivalent). If
+> precision is within ±2pp of baseline WR for that direction, the cell has
+> NO MEASURABLE EDGE at scale — do not ship at any multiplier value, regardless
+> of how clean the single-batch numbers look.
+
+This rule applies even when the operator explicitly requests a ship. The
+30 seconds to run the validation script is the smallest possible cost relative
+to the multi-week drag from shipping a no-edge cell at 2.0×.
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the rejection so future-Claude doesn't re-propose SHORT W1 multiplier
+   when a future batch shows another in-batch outlier
+2. To anchor the methodology (cross-batch precision vs baseline = the ship/no-ship gate)
+3. To preserve the falsification evidence (148 trades / 60.8% / 0.99× lift) as the
+   reference point — only a SUBSTANTIAL future shift in cross-batch precision
+   (e.g., ≥70% on N≥30 fresh) should re-open this ship discussion
+4. To reinforce the lesson from the S-P1 demote chain: single-batch winning ≠
+   structural winning. Multipliers amplify variance regardless of edge — without
+   edge, variance is the only thing being amplified
+
+### Pre-committed re-open criteria
+
+Re-evaluate shipping SHORT W1 2.0× ONLY IF:
+
+1. Next 50+ SHORT W1 trades (across multiple batches) show ≥70% WR AND ≥1.10× lift
+   over baseline AND combined Total $ positive
+2. AND the pattern holds across at least 2 distinct BTC regime types (e.g., BULLISH
+   chop + BEARISH trending)
+3. AND the win-vs-loss profile within the cohort is BE-compatible (≥60% of losses
+   peak ≥+0.20% before failure — per CLAUDE.md May 16 BE-compatibility rule)
+
+Until all 3 hold, this entry is the locked answer to "should we ship SHORT W1
+multiplier?" — answer is no.

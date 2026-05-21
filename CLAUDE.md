@@ -18727,3 +18727,91 @@ fresh-data validation.
 If this ship works → cross-batch evidence ALONE can validate lev stacking
 when strong enough. If it fails → the May 21 locked discipline was right
 and we re-anchor to it for all future similar decisions.
+
+## May 21, 2026 (evening, pre-batch-reset) — ADX Δ × BTC ADX Cross-Filter DISABLED (A/B test under new exit stack)
+
+### Change
+- `adx_delta_btc_adx_filter_enabled`: **true → false**
+
+Rules preserved (not deleted) — master toggle off:
+- LONG rule: `1.0-2.0:18-30` (block ΔADX 1.0-2.0 × BTC ADX 18-30)
+- SHORT rule: `2.0-99:24-99` (block ΔADX ≥2.0 × BTC ADX ≥24)
+
+### Why disable now (A/B test rationale)
+
+The filter shipped May 11 PM based on cross-batch evidence under the OLD
+exit stack (no BE caps, no UNMATCHED rule, no Pattern Cell Ship fixed exits).
+The numbers at ship time:
+
+- LONG ΔADX 1.0-2.0 × BTC ADX 18-25: **31 trades / 39% WR / -$267** at OLD exits
+
+Under the NEW exit stack now live:
+- 60-70% of those losers peaked ≥+0.20% → BE 0.10 catches them at ~$0
+- Pattern C matches → C4/C8 fixed exits cap at -0.50%
+- UNMATCHED matches → fixed exits cap at -0.50% (new today)
+
+Post-recalculation: ~5-10 LONGs blocked per batch worth ~-$60 in savings,
+but also cutting ~5 winners × +$15 = -$75 lost upside. **Net effect now is
+approximately zero or slight drag.**
+
+The master toggle was built exactly for this A/B scenario (CLAUDE.md May 18
+"Volume + ADX Δ filters disable for A/B test" — same playbook).
+
+### Pre-committed re-evaluation gates (LOCKED for next checkpoint)
+
+After ≥30 fresh trades close (or ≥10 trades that would have been in the
+filter's target zone), apply mechanically:
+
+| Outcome on would-have-been-blocked trades | Action |
+|---|---|
+| N ≥ 10 in target zone AND WR ≥ 55% | **KEEP DISABLED** — filter was over-restrictive given new exits |
+| N ≥ 10 in target zone AND WR ≤ 40% | **RE-ENABLE** — filter still catches real losers exits can't reach |
+| N ≥ 10 AND WR 40-55% (mixed) | **Keep DISABLED** — lean on caps, extend test 1 more batch |
+| N < 10 in target zone | **Defer** — insufficient fresh data |
+
+The target zone analyzer must check entry indicators at trade open:
+- LONG: ΔADX in [1.0, 2.0) AND BTC ADX in [18, 30)
+- SHORT: ΔADX ≥ 2.0 AND BTC ADX ≥ 24
+
+These trades will now ENTER (no longer blocked) and we measure their outcome
+under the live exit stack.
+
+### Volume Filter — KEEPING AS-IS
+
+Cross-checked: Global Volume Filter (Min L 0.7, Min S 0.5, Max S 1.1, with
+capitulation override + $50M LONG pair-vol rescue) was evaluated for similar
+loosening and **kept as-is**.
+
+Rationale: Volume filter is a **macro regime gate** (BTC + ETH composite
+vol), not a pattern-level loser detector. Trades blocked by low vol are
+structurally different — they tend to drift sideways and fade rather than
+producing peak-and-retrace patterns that BE/caps catch. Capitulation
+override and pair-vol rescue clauses already make it smart.
+
+Don't loosen filters that protect against different failure modes than
+what your exits handle.
+
+### Expected fresh-batch impact
+
+- Trade rate: ~+5-10% more LONG entries (the previously-blocked ones)
+- WR: should drop slightly (admitted trades likely below-average)
+- Avg P&L %: ~neutral if new exits do their job
+- Multiplier Cell Performance: more LONG cells will fire, possibly more
+  "no rule" trades (BTC_60-65_22-25 at 3× will fire if pattern hits)
+
+### Files changed
+- `trading_config.json` — single field flip
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor the A/B test methodology and locked re-evaluation gates. If the
+checkpoint shows ≤40% WR on filter-zone trades, the filter was structural;
+re-enable. If ≥55%, it was over-restrictive; keep off. The gates are
+mechanical — no re-litigation at decision time.
+
+Cross-reference: this is the THIRD filter A/B test (Volume + ADX Δ pair on
+May 18 evening was the first; reverted; Volume re-enabled, ADX Δ tightened).
+The May 11 ship was based on solid cross-batch but the regime has changed
+materially since (new exit stack). The right question is "does this filter
+still earn its keep" — to be answered by data, not assumption.

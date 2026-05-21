@@ -152,7 +152,7 @@
         "btc_rsi_adx_filter_short": "30-35:30,35-40:20-30,45-50:25,0-30:0-30",
         "adx_delta_btc_adx_filter_long": "1.0-2.0:18-30",
         "adx_delta_btc_adx_filter_short": "2.0-99:24-99",
-        "adx_delta_btc_adx_filter_enabled": true,
+        "adx_delta_btc_adx_filter_enabled": false,
         "rngpos_adx_delta_filter_long": "90-95:0.0-0.3",
         "rngpos_adx_delta_filter_short": "5-10:1.0-2.0",
         "rngpos_adx_delta_filter_enabled": true,

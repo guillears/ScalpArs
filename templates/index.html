@@ -15438,6 +15438,11 @@
 
                 let nMatchedC = 0, nMatchedW = 0, nBoth = 0, nNeither = 0;
                 let newTotal = 0;
+                // May 21: per-direction split for the summary line (LONG / SHORT / TOTAL).
+                // Track both actual P&L (from t.pnl) and new P&L (after caps + mult)
+                // per direction so the bottom card can break out by side.
+                let actualLong = 0, actualShort = 0;
+                let newLong = 0, newShort = 0;
                 // C contribution split (May 20 latest+11): break down by cap that fired.
                 //   c_via_tp_$ — gains from TP cap firing
                 //   c_via_sl_$ — gains from SL cap firing
@@ -15538,6 +15543,14 @@
                     const newDollar = (newPct / 100) * t.notional * mult;
 
                     newTotal += newDollar;
+                    // Per-direction accumulators for the summary card.
+                    if (t.direction === 'LONG') {
+                        actualLong += actualDollar;
+                        newLong += newDollar;
+                    } else if (t.direction === 'SHORT') {
+                        actualShort += actualDollar;
+                        newShort += newDollar;
+                    }
 
                     // Effect decomposition (May 20 latest+14 — REVERTED from latest+13:
                     // mult applies to the NEW capped exit, not OG. Operator's intent:
@@ -15597,6 +15610,10 @@
                     cContributionTotal: cViaTp + cViaSl + cViaMult,
                     wContribution, overlapContribution,
                     neitherPnl,
+                    // May 21: per-direction split for summary card
+                    actualLong, actualShort, newLong, newShort,
+                    deltaLong: newLong - actualLong,
+                    deltaShort: newShort - actualShort,
                 };
             }
 
@@ -15680,20 +15697,36 @@
                         </div>
                     </div>
                     <div class="bg-white/5 border border-violet-500/30 rounded p-3 mt-2">
-                        <div class="flex items-baseline justify-between flex-wrap gap-3">
-                            <div>
-                                <span class="text-gray-400 text-xs">Batch Actual P&L:</span>
-                                <span class="${ntCls(result.actualTotal)} ml-1">${fmt$(result.actualTotal)}</span>
-                            </div>
-                            <div>
-                                <span class="text-gray-400 text-xs">Batch If Shipped:</span>
-                                <span class="${ntCls(result.newTotal)} text-base ml-1">${fmt$(result.newTotal)}</span>
-                            </div>
-                            <div>
-                                <span class="text-gray-400 text-xs">Δ:</span>
-                                <span class="${cls(result.delta)} text-base ml-1">${fmt$(result.delta)}</span>
-                            </div>
-                        </div>
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-xs border-b border-white/10">
+                                    <th class="text-left py-1 font-normal">Direction</th>
+                                    <th class="text-right py-1 font-normal">Batch Actual P&L</th>
+                                    <th class="text-right py-1 font-normal">Batch If Shipped</th>
+                                    <th class="text-right py-1 font-normal">Δ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="py-1 text-sky-300">LONG</td>
+                                    <td class="text-right ${ntCls(result.actualLong)} font-mono">${fmt$(result.actualLong)}</td>
+                                    <td class="text-right ${ntCls(result.newLong)} font-mono">${fmt$(result.newLong)}</td>
+                                    <td class="text-right ${cls(result.deltaLong)} font-mono">${fmt$(result.deltaLong)}</td>
+                                </tr>
+                                <tr>
+                                    <td class="py-1 text-rose-300">SHORT</td>
+                                    <td class="text-right ${ntCls(result.actualShort)} font-mono">${fmt$(result.actualShort)}</td>
+                                    <td class="text-right ${ntCls(result.newShort)} font-mono">${fmt$(result.newShort)}</td>
+                                    <td class="text-right ${cls(result.deltaShort)} font-mono">${fmt$(result.deltaShort)}</td>
+                                </tr>
+                                <tr class="border-t border-white/10">
+                                    <td class="py-1 text-violet-300 font-semibold">TOTAL</td>
+                                    <td class="text-right ${ntCls(result.actualTotal)} font-mono font-semibold">${fmt$(result.actualTotal)}</td>
+                                    <td class="text-right ${ntCls(result.newTotal)} font-mono font-semibold text-base">${fmt$(result.newTotal)}</td>
+                                    <td class="text-right ${cls(result.delta)} font-mono font-semibold text-base">${fmt$(result.delta)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 `;
             }

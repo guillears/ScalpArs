@@ -9037,14 +9037,13 @@ def _compute_multiplier_cell_performance(orders):
         cur_pair_short = _parse_rules(getattr(th, 'rsi_adx_multiplier_short', ''), 'PAIR')
         cur_btc_long = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_long', ''), 'BTC')
         cur_btc_short = _parse_rules(getattr(th, 'btc_rsi_adx_multiplier_short', ''), 'BTC')
-        # SCORE-based multipliers (May 18, NEW dim) — 1D rule format "lo-hi:mult"
-        cur_score_long = _parse_rules(getattr(th, 'score_multiplier_long', ''), 'SCORE')
-        cur_score_short = _parse_rules(getattr(th, 'score_multiplier_short', ''), 'SCORE')
-        # STRETCH-based multiplier retired May 15 PM. Historical STRETCH_* sources
-        # in cell_multiplier_source still render in the table from past-config diffs.
+        # SCORE-based multipliers retired May 21 (see CLAUDE.md removal entry).
+        # STRETCH-based multiplier retired May 15 PM. Historical SCORE_* / STRETCH_*
+        # sources in cell_multiplier_source still render in the Multiplier Cell
+        # Performance table from past-config diffs — they show with no "current
+        # config" map (i.e., as historical-only rows).
     except Exception:
         cur_pair_long = cur_pair_short = cur_btc_long = cur_btc_short = {}
-        cur_score_long = cur_score_short = {}
 
     def _direction_baseline(direction):
         """Avg P&L% of NON-multiplied trades for this direction."""
@@ -9059,9 +9058,9 @@ def _compute_multiplier_cell_performance(orders):
         baseline = _direction_baseline(direction)
         # Pick the appropriate current-config map for this direction
         if direction == 'LONG':
-            current_map = {**cur_pair_long, **cur_btc_long, **cur_score_long}
+            current_map = {**cur_pair_long, **cur_btc_long}
         else:
-            current_map = {**cur_pair_short, **cur_btc_short, **cur_score_short}
+            current_map = {**cur_pair_short, **cur_btc_short}
         # Group by source (NULL = baseline 1.0×)
         groups = {}
         for o in closed:

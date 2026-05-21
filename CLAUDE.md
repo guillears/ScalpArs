@@ -17295,3 +17295,113 @@ Re-evaluate shipping SHORT W1 2.0× ONLY IF:
 
 Until all 3 hold, this entry is the locked answer to "should we ship SHORT W1
 multiplier?" — answer is no.
+
+## May 21, 2026 (late PM) — Score-based multiplier dimension REMOVED entirely
+
+### What was removed
+
+The Entry Quality Score multiplier (1D dimension shipped May 18 PM) was retired
+in full: config fields, engine logic, generic 1D helper, UI section, JS handlers,
+and ConfigUpdate payload entries. ~95 LOC deleted across 4 files.
+
+**Files touched:**
+- `config.py`: removed `score_multiplier_long/short` fields (replaced with
+  removal comment pointing back here)
+- `trading_config.json`: removed both rule strings
+- `services/trading_engine.py`: removed score lookup block in `open_position`
+  (~5 LOC) and the orphaned `_lookup_1d_multiplier` helper (~30 LOC, sole caller
+  was the score block)
+- `templates/index.html`: removed entire "Entry Quality Score (1D)" UI panel,
+  load/collect handlers, save payload (~70 LOC)
+- `main.py`: removed `cur_score_long/short` from multiplier cell performance
+  current-config diff (so SCORE_* sources still render historically but no
+  longer show as "current config" markers)
+
+### Why removed (cumulative evidence chain)
+
+The Score multiplier dimension was shipped May 18 PM with 3 active cells
+(LONG Score=4 at 2.0×, SHORT Score=3 at 2.0×, SHORT Score=6 at 2.0×) on a mix
+of 1-sample and 16-date cross-batch evidence. Over the following ~3 days:
+
+1. **May 19 morning** — SCORE_4 LONG demoted 2.0× → 1.0× (N=67 / 57% WR /
+   −$20 → ✗ marginal-harmful per locked verdict matrix)
+2. **May 19 PM** — Score 3 SHORT separately reviewed; SCORE_3 SHORT preserved
+   at 1.0× (kept in config for observation; near-break-even at 65% WR / +$189)
+3. **May 21 PM** — SHORT W1 multiplier ship proposal triggered a fresh cross-
+   batch winner-signature scan (548-trade deduped pool). Result revealed
+   that NO pattern-based multiplier candidate cleanly clears the locked
+   ★ WORKING bar (WR ≥70% on N≥15+ with lift ≥1.10).
+4. **Same review** — Score 6 SHORT was the only remaining active 2.0× cell
+   on the Score dimension (N=10 / 90% WR / +$212 at ship time). Crystal-ball
+   reading: same risk profile as the cells already demoted. User opted to
+   retire the entire dimension rather than wait for it to fail in production.
+
+### The locked methodology rule that justified removal
+
+Same rule that rejected SHORT W1 multiplier earlier today (above entry):
+
+> Before shipping ANY pattern-based or score-based multiplier, run cross-batch
+> signature analysis on the deduped pool. If precision is within ±2pp of
+> baseline WR for that direction, the cell has NO MEASURABLE EDGE at scale —
+> do not ship at any multiplier value.
+
+Applied to the Score dimension: every active Score cell either decayed (Score 4
+LONG, Score 3 SHORT) or rested on small N (Score 6 SHORT at N=10). The dimension
+as a whole never produced a cell that cleared the strict promotion bar on
+cross-batch evidence. **Removing the mechanism is cleaner than waiting for each
+cell to fail individually.**
+
+### What stays unaffected
+
+The **Entry Quality Score block FILTER** (`entry_quality_score_filter_enabled`)
+is a separate mechanism — it BLOCKS entries with Score ≤ N, rather than
+sizing them. That mechanism stayed because:
+- Block filters and multipliers are structurally different (block = binary
+  rejection; multiplier = position sizing). They have different evidence bars.
+- The block filter is currently DISABLED anyway pending the BE A/B test
+  (CLAUDE.md May 17 PM Entry Quality Score filter disabled entry).
+- Score data itself is still computed at entry — just no longer drives
+  position sizing.
+
+The **RSI×ADX pair-level and BTC-level multipliers** stayed because:
+- Both have multi-batch evidence and currently-active ★ WORKING cells
+  (PAIR_60-65_22-25 at 2.0×, BTC_60-65_28-30 at 2.0×, etc.)
+- HIGHER-wins conflict resolution preserved across the remaining 2 dims
+- Hard cap mechanism unaffected
+
+### Historical multiplier source labels still appear in reports
+
+`Multiplier Cell Performance` table renders any closed trade where
+`cell_multiplier_source` was populated. Trades closed before May 21 that
+matched the SCORE_4-5 / SCORE_3-4 / SCORE_6-7 cells still show those source
+labels in the table — they're historical rows showing what the multiplier
+WAS at trade open. The "current config" diff just won't highlight them as
+active anymore (because the config no longer references them).
+
+This is intentional. Historical reports remain readable and the audit trail
+of what shipped when is preserved in CLAUDE.md + this table together.
+
+### Locked re-introduction criteria
+
+To re-introduce a Score-based multiplier in any form:
+
+1. Cross-batch evidence on a Score-based cell must show ≥70% WR on N≥30+
+   AND ≥1.15× lift over baseline WR (stricter than the original ship
+   criteria because the dimension already proved fragile)
+2. AND multi-date direction-consistency (≥4 distinct dates with the cell
+   winning in $)
+3. AND BE-compatibility check passes (≥60% of cell losses peak ≥+0.20%)
+
+Until all 3 hold, the Score multiplier dimension stays retired.
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the full removal scope (~95 LOC across 4 files) so future-Claude
+   doesn't try to re-wire a dimension thinking it was just disabled
+2. To preserve the rationale chain — Score multiplier wasn't a single-cell
+   failure, it was a *dimension-level discipline cleanup* after each cell
+   either decayed or rested on thin N
+3. To anchor the locked re-introduction criteria so any future "let's bring
+   back Score multipliers" proposal has a mechanical evidence bar to meet
+4. To document that the SCORE block FILTER is intentionally separate and
+   was NOT removed (different mechanism class)

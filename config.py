@@ -320,12 +320,11 @@ class SignalThresholds(BaseModel):
     btc_rsi_adx_multiplier_short: str = ""  # BTC-level multiplier rules for SHORT
     rsi_adx_multiplier_target: str = "investment"  # "investment" (multiply position size $) or "leverage"
     rsi_adx_multiplier_hard_cap: float = 2.0  # UI-configurable safety cap; engine clamps any cell to this
-    # Entry Quality Score multiplier (May 18, NEW dimension). Format: "<score_lo>-<score_hi>:<multiplier>", comma-separated.
-    # Example: "4-5:2.0" matches score=4 only (range is half-open [lo, hi)).
-    # Multi-rule: "3-4:2.0,6-7:2.0" matches score=3 OR score=6.
-    # HIGHER-wins conflict resolution same as RSI×ADX multipliers; hard cap applies.
-    score_multiplier_long: str = ""
-    score_multiplier_short: str = ""
+    # Entry Quality Score multiplier (May 18 → REMOVED May 21): the Score-based 1D
+    # multiplier dimension was retired after cross-batch evidence showed cells
+    # decaying or showing no edge over baseline. See CLAUDE.md May 21 removal entry.
+    # The Score block filter below (entry_quality_score_filter_enabled) is unaffected
+    # — that's the entry-blocking mechanism, separate from the position-sizing one.
     # Entry Quality Score block filter (May 15 PM, opt-in). Toggle + threshold.
     # When enabled, blocks entries with entry_quality_score <= block_max.
     # Threshold semantics match the table: block_max=1 → blocks Score 0 AND

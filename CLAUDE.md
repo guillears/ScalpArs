@@ -16543,3 +16543,77 @@ stand on their own without caps.
 - `trading_config.json` — 4 fields per table above
 - `CLAUDE.md` — this entry
 
+
+## May 21, 2026 (02:31 UTC) — Pre-revert baseline snapshot LOCKED
+
+### Why this snapshot exists
+
+Operator chose NOT to reset the bot after filter reverts shipped. New
+filters take effect on the NEXT entry; existing closed trades stay
+under the pre-revert config. This snapshot anchors the comparison
+point so tomorrow's analysis can cleanly distinguish "pre-revert
+trades" from "post-revert trades."
+
+### Pre-revert state (CLOSED trades, snapshot at 02:31 UTC)
+
+| Metric | Value |
+|---|---|
+| Total CLOSED | **40 trades** |
+| Batch P&L | **-$348.00** |
+| WR | **65.0%** (26W / 14L) |
+| LONG | N=21, WR 66.7%, -$130.72 |
+| SHORT | N=19, WR 63.2%, -$217.28 |
+| Date range | May 20 → May 21 |
+
+### Cutoff line for tomorrow's analysis
+
+Last 5 trades pre-revert (any trades closed AFTER `2026-05-21T01:36:34
+UTC` should be partition-separated as "post-revert"):
+
+```
+2026-05-20T23:05:20  CHZUSDT     SHORT +$4.96   (+0.089%) BREAKEVEN_EXIT_L1
+2026-05-21T00:45:01  PROMPTUSDT  LONG  +$12.35  (+0.224%) FAST_EXIT L1
+2026-05-21T00:46:26  NEARUSDT    LONG  +$2.99   (+0.054%) BREAKEVEN_EXIT_L1
+2026-05-21T01:15:23  CHZUSDT     LONG  +$6.11   (+0.109%) BREAKEVEN_EXIT_L1
+2026-05-21T01:36:34  INJUSDT     LONG  -$31.48  (-0.557%) EMA13_CROSS_EXIT L1
+```
+
+**Partition cutoff for next checkpoint**: `opened_at > 2026-05-21T01:36:34Z`
+(or any trade opened after the filter-revert deploy timestamp, whichever
+is later).
+
+### What to measure at next checkpoint
+
+1. **New Unm. L rate** — should increase from ~5% (today) toward
+   historical-average 29% if reverts admit cap-rescuable losers.
+   Specifically watch:
+   - Trades that enter at low ADX delta (was blocked, now admitted)
+   - Trades that enter at BTC ADX 15-17 LONG (was blocked, now admitted)
+   - Trades that enter with Stretch <0.16 LONG (was blocked, now admitted)
+   - Trades with Quality Score 1 (was blocked, now admitted)
+2. **WR / Avg P&L %** — compare pre/post partitions
+3. **Loss density** — are the re-admitted losers as bad as cross-batch
+   predicted? Or worse?
+4. **Pattern C coverage** — does the broader entry surface still hit
+   mostly C4 + Unm. L, or did some trades shift into other C patterns?
+
+### Pre-committed verdict at next 50+ post-revert trade checkpoint
+
+| Outcome | Action |
+|---|---|
+| Post-revert Avg P&L % within ±0.10pp of pre-revert (-$348/40 = -0.87% Avg) | Reverts neutral — keep, wait for caps |
+| Post-revert Avg P&L % worsens >0.15pp | **Undo all 4 reverts immediately** |
+| Post-revert Unm. L rate ≥ 15% (vs 5% pre) | Reverts admitting target cohort — proceed with caps deploy |
+| Specific revert shows >55% WR on re-admitted cohort | Keep that revert; reapply others if they fail |
+
+### Caps NOT shipped — known operational risk
+
+Reverts re-admit losing trades WITHOUT cap protection. Pre-revert
+those losers were blocked; now they ride to current SL (-0.80%) or
+EMA13_CROSS. If WR holds at ~65% but Avg P&L worsens (re-admitted
+losers cost more than they save in winners), reverts must be undone.
+
+Caps deploy requires code work in trading_engine.py exit logic to
+apply TP+SL caps on Unm. L cohort at entry. Estimated ~50 LOC.
+Not shipped tonight — separate decision.
+

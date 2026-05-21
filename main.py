@@ -9069,14 +9069,20 @@ def _compute_multiplier_cell_performance(orders):
             current_map = {**cur_pair_long, **cur_btc_long}
         else:
             current_map = {**cur_pair_short, **cur_btc_short}
-        # Group by source (NULL = baseline 1.0×)
+        # Group by source (NULL = baseline 1.0×).
+        # May 21: also track cell_lev_multiplier alongside cell_multiplier (invest side).
+        # Effective multiplier (used for Δ$ math) = inv × lev.
+        # Legacy trades pre-May-21 have cell_lev_multiplier=1.0 (default).
         groups = {}
         for o in closed:
             if o.direction != direction:
                 continue
-            mult = o.cell_multiplier if o.cell_multiplier is not None else 1.0
+            inv_mult = o.cell_multiplier if o.cell_multiplier is not None else 1.0
+            lev_mult = getattr(o, 'cell_lev_multiplier', None)
+            if lev_mult is None:
+                lev_mult = 1.0
             src = o.cell_multiplier_source or '[Default 1.0x]'
-            groups.setdefault(src, {'multi': mult, 'orders': []})['orders'].append(o)
+            groups.setdefault(src, {'inv_multi': inv_mult, 'lev_multi': lev_mult, 'orders': []})['orders'].append(o)
 
         rows = []
         for src, data in groups.items():
@@ -9096,18 +9102,24 @@ def _compute_multiplier_cell_performance(orders):
             capped = sum(1 for o in os_ if getattr(o, 'cell_multiplier_capped', False))
 
             is_default = (src == '[Default 1.0x]')
-            mult = data['multi']
+            inv_mult = data['inv_multi']
+            lev_mult = data['lev_multi']
+            # May 21: effective multiplier for Δ$ math = inv × lev.
+            # In "investment" mode, lev=1.0 so effective = inv (no change vs pre-May-21).
+            # In "leverage" mode, inv=1.0 so effective = lev.
+            # In "both" mode, effective = inv × lev (compounding).
+            effective_mult = inv_mult * lev_mult
             # Δ$ vs Baseline (May 4 redesign per user feedback): dollar impact of the
-            # multiplier vs same trades at baseline (1.0× multiplier).  Formula:
-            #   delta_dollars = total_$ × (1 − 1/multiplier)
+            # multiplier vs same trades at baseline (1.0× effective multiplier).  Formula:
+            #   delta_dollars = total_$ × (1 − 1/effective_multiplier)
             # This isolates the multiplier's $-contribution.  Independent of confidence-
             # level leverage — both actual and counterfactual use the same leverage.
             # Positive Δ$ = multiplier extracted positive boost.  Negative Δ$ = multiplier
             # amplified losses.
-            if is_default or mult == 1.0:
+            if is_default or effective_mult == 1.0:
                 delta_dollars = 0.0
             else:
-                delta_dollars = total_d * (1.0 - 1.0 / mult)
+                delta_dollars = total_d * (1.0 - 1.0 / effective_mult)
 
             if is_default:
                 verdict = '(baseline reference)'
@@ -9123,12 +9135,19 @@ def _compute_multiplier_cell_performance(orders):
                 else:
                     verdict = '⚠ DRAG'
 
-            # May 13: current-config multiplier (for demotion flag)
+            # May 13: current-config multiplier (for demotion flag) — keyed on
+            # invest-side value (matches the historical cell_multiplier column).
             current_mult = current_map.get(src) if not is_default else None
-            is_demoted = (current_mult is not None and current_mult < mult)
+            is_demoted = (current_mult is not None and current_mult < inv_mult)
             rows.append({
                 'source': src,
-                'multiplier': round(mult, 2),
+                # Backward-compat: 'multiplier' field still present (= inv side) so older
+                # UI/exports don't break.  New 'inv_multiplier' / 'lev_multiplier' / 'effective_multiplier'
+                # added May 21 — use these in updated table renderers.
+                'multiplier': round(inv_mult, 2),
+                'inv_multiplier': round(inv_mult, 2),
+                'lev_multiplier': round(lev_mult, 2),
+                'effective_multiplier': round(effective_mult, 2),
                 'current_config_multiplier': round(current_mult, 2) if current_mult is not None else None,
                 'is_demoted': is_demoted,
                 'n': n,
@@ -9142,8 +9161,8 @@ def _compute_multiplier_cell_performance(orders):
                 'capped_count': capped,
                 'verdict': verdict,
             })
-        # Sort: rules first (by multiplier desc), default last
-        rows.sort(key=lambda r: (r['source'] == '[Default 1.0x]', -r['multiplier']))
+        # Sort: rules first (by effective_multiplier desc), default last
+        rows.sort(key=lambda r: (r['source'] == '[Default 1.0x]', -r['effective_multiplier']))
         return rows
 
     longs = _bucket_for_direction('LONG')
@@ -9153,12 +9172,16 @@ def _compute_multiplier_cell_performance(orders):
     # rename "1x" → "baseline" terminology to avoid confusion with leverage
     # (multiplier is independent of confidence-level leverage).
     def _uplift(rows):
-        boosted = [r for r in rows if r['source'] != '[Default 1.0x]' and r['multiplier'] != 1.0]
+        # May 21: a row is "boosted" if its EFFECTIVE multiplier (inv × lev) ≠ 1.0.
+        # This correctly captures "both" mode rows where inv=1 but lev=2 (or vice versa).
+        def _eff(r):
+            return r.get('effective_multiplier') or r.get('multiplier') or 1.0
+        boosted = [r for r in rows if r['source'] != '[Default 1.0x]' and _eff(r) != 1.0]
         actual_total = sum(r['total_dollars'] for r in boosted)
-        # Counterfactual at baseline (multi=1.0) = total / multiplier (linear scaling).
+        # Counterfactual at baseline (effective_mult=1.0) = total / effective_mult (linear scaling).
         # "Baseline" here means "what the same trades would have made if cell multiplier
-        # was 1.0", regardless of confidence-level leverage.
-        sim_baseline = sum(r['total_dollars'] / r['multiplier'] for r in boosted if r['multiplier'])
+        # was 1.0 on both sides", regardless of confidence-level leverage.
+        sim_baseline = sum(r['total_dollars'] / _eff(r) for r in boosted if _eff(r))
         return {
             'multiplied_trades_n': sum(r['n'] for r in boosted),
             'actual_total_dollars': round(actual_total, 2),

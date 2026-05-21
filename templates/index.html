@@ -900,14 +900,16 @@
                 <!-- Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) -->
                 <div class="mt-6 pt-6 border-t border-amber-900/40">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">💰 Multiplier Cell Performance</h3>
-                    <p class="text-xs text-gray-500 mb-3">Per-cell breakdown of Premium Multiplier impact. Verdict ★ WORKING means cell beats baseline; ✗ HARMFUL = cell broke under leverage, revert.</p>
+                    <p class="text-xs text-gray-500 mb-3">Per-cell breakdown of Premium Multiplier impact. <span class="text-cyan-300">Inv</span> = investment side, <span class="text-cyan-300">Lev</span> = leverage side, <span class="text-cyan-300">Eff</span> = effective = Inv × Lev (drives Δ$ math). Verdict ★ WORKING means cell beats baseline; ✗ HARMFUL = cell broke under leverage, revert.</p>
                     <div class="text-xs text-emerald-400 mb-1">LONG cells</div>
                     <div class="overflow-x-auto mb-4">
                         <table class="w-full text-xs">
                             <thead class="text-gray-400 uppercase">
                                 <tr>
                                     <th class="text-left py-1 px-2">Source</th>
-                                    <th class="text-right px-2">Multi</th>
+                                    <th class="text-right px-2" title="Investment-side multiplier (cell_multiplier). Active in 'investment' or 'both' mode.">Inv</th>
+                                    <th class="text-right px-2" title="Leverage-side multiplier (cell_lev_multiplier). Active in 'leverage' or 'both' mode. Pre-May-21 trades = 1.0.">Lev</th>
+                                    <th class="text-right px-2" title="Effective multiplier = Inv × Lev. Used for Δ$ math.">Eff</th>
                                     <th class="text-right px-2">N</th>
                                     <th class="text-right px-2">WR%</th>
                                     <th class="text-right px-2">Avg P&amp;L%</th>
@@ -915,13 +917,13 @@
                                     <th class="text-right px-2">Expect$/tr</th>
                                     <th class="text-right px-2">PF</th>
                                     <th class="text-right px-2">BL Avg%</th>
-                                    <th class="text-right px-2" title="Dollar impact of multiplier vs same trades at baseline (1.0× multiplier). Positive = multiplier extracted boost. Negative = multiplier amplified losses.">Δ$ vs BL</th>
+                                    <th class="text-right px-2" title="Dollar impact of multiplier vs same trades at baseline (1.0× effective). Positive = multiplier extracted boost. Negative = multiplier amplified losses.">Δ$ vs BL</th>
                                     <th class="text-right px-2">Capped</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="mult-cell-perf-long-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>
+                                <tr><td colspan="14" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -931,7 +933,9 @@
                             <thead class="text-gray-400 uppercase">
                                 <tr>
                                     <th class="text-left py-1 px-2">Source</th>
-                                    <th class="text-right px-2">Multi</th>
+                                    <th class="text-right px-2" title="Investment-side multiplier (cell_multiplier). Active in 'investment' or 'both' mode.">Inv</th>
+                                    <th class="text-right px-2" title="Leverage-side multiplier (cell_lev_multiplier). Active in 'leverage' or 'both' mode. Pre-May-21 trades = 1.0.">Lev</th>
+                                    <th class="text-right px-2" title="Effective multiplier = Inv × Lev. Used for Δ$ math.">Eff</th>
                                     <th class="text-right px-2">N</th>
                                     <th class="text-right px-2">WR%</th>
                                     <th class="text-right px-2">Avg P&amp;L%</th>
@@ -939,13 +943,13 @@
                                     <th class="text-right px-2">Expect$/tr</th>
                                     <th class="text-right px-2">PF</th>
                                     <th class="text-right px-2">BL Avg%</th>
-                                    <th class="text-right px-2" title="Dollar impact of multiplier vs same trades at baseline (1.0× multiplier). Positive = multiplier extracted boost. Negative = multiplier amplified losses.">Δ$ vs BL</th>
+                                    <th class="text-right px-2" title="Dollar impact of multiplier vs same trades at baseline (1.0× effective). Positive = multiplier extracted boost. Negative = multiplier amplified losses.">Δ$ vs BL</th>
                                     <th class="text-right px-2">Capped</th>
                                     <th class="text-left px-2">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="mult-cell-perf-short-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>
+                                <tr><td colspan="14" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6349,7 +6353,7 @@
             const _renderMultExport = (rows, label, summary) => {
                 lines.push(`\n${hr2}`);
                 lines.push(`## Multiplier Cell Performance — ${label}\n`);
-                lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ$ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
+                lines.push(`${'Source'.padEnd(28)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ$ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
                 if (!rows || !rows.length) {
                     lines.push('  (no multiplied trades yet)');
                 } else {
@@ -6357,7 +6361,10 @@
                         const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                         const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
                         const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
-                        lines.push(`${_fmtSrc1(r.source).padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                        const inv = r.inv_multiplier != null ? r.inv_multiplier : r.multiplier;
+                        const lev = r.lev_multiplier != null ? r.lev_multiplier : 1.0;
+                        const eff = r.effective_multiplier != null ? r.effective_multiplier : inv;
+                        lines.push(`${_fmtSrc1(r.source).padEnd(28)} ${(inv.toFixed(2)+'x').padEnd(6)} ${(lev.toFixed(2)+'x').padEnd(6)} ${(eff.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                     }
                 }
                 if (summary && summary.multiplied_trades_n) {
@@ -7818,7 +7825,7 @@
                 const _renderMultExport2 = (rows, label, summary) => {
                     lines.push(`\n${hr2}`);
                     lines.push(`## Multiplier Cell Performance — ${label}\n`);
-                    lines.push(`${'Source'.padEnd(28)} ${'Multi'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ$ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
+                    lines.push(`${'Source'.padEnd(28)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(11)} ${'Expect$'.padEnd(10)} ${'PF'.padEnd(7)} ${'BL Avg%'.padEnd(10)} ${'Δ$ vs BL'.padEnd(10)} ${'Capped'.padEnd(7)} ${'Verdict'}`);
                     if (!rows || !rows.length) {
                         lines.push('  (no multiplied trades yet)');
                     } else {
@@ -7826,7 +7833,10 @@
                             const pfStr = (r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2));
                             const blStr = r.baseline_avg_pct != null ? r.baseline_avg_pct.toFixed(3) + '%' : '-';
                             const dvbStr = (r.source === '[Default 1.0x]') ? '-' : ((r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2));
-                            lines.push(`${_fmtSrc2(r.source).padEnd(28)} ${(r.multiplier.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
+                            const inv = r.inv_multiplier != null ? r.inv_multiplier : r.multiplier;
+                            const lev = r.lev_multiplier != null ? r.lev_multiplier : 1.0;
+                            const eff = r.effective_multiplier != null ? r.effective_multiplier : inv;
+                            lines.push(`${_fmtSrc2(r.source).padEnd(28)} ${(inv.toFixed(2)+'x').padEnd(6)} ${(lev.toFixed(2)+'x').padEnd(6)} ${(eff.toFixed(2)+'x').padEnd(7)} ${String(r.n).padEnd(5)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padEnd(10)} ${('$'+r.total_dollars.toFixed(2)).padEnd(11)} ${('$'+r.expect_per_trade.toFixed(3)).padEnd(10)} ${pfStr.padEnd(7)} ${blStr.padEnd(10)} ${dvbStr.padEnd(10)} ${String(r.capped_count||0).padEnd(7)} ${r.verdict}`);
                         }
                     }
                     if (summary && summary.multiplied_trades_n) {
@@ -9682,7 +9692,7 @@
                     const tb = document.getElementById(tbodyId);
                     if (!tb) return;
                     if (!rows || !rows.length) {
-                        tb.innerHTML = '<tr><td colspan="12" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>';
+                        tb.innerHTML = '<tr><td colspan="14" class="py-3 text-center text-gray-500">No multiplied trades yet</td></tr>';
                         return;
                     }
                     tb.innerHTML = rows.map(r => {
@@ -9697,19 +9707,27 @@
                         const totalClass = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const avgClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const dvbClass = r.delta_vs_baseline_dollars > 0 ? 'text-emerald-400' : (r.delta_vs_baseline_dollars < 0 ? 'text-red-400' : 'text-gray-500');
-                        const sourceColor = (
-                            isDefault ? 'text-gray-400' :
-                            r.multiplier >= 2.5 ? 'text-red-400' :
-                            r.multiplier >= 1.5 ? 'text-amber-300' :
-                            'text-gray-300');
+                        // May 21: color the inv / lev / eff columns separately so the operator
+                        // can see at a glance whether boost came from the invest side, lev side,
+                        // or both. Color tier based on effective multiplier (= inv × lev).
+                        const inv = r.inv_multiplier != null ? r.inv_multiplier : r.multiplier;
+                        const lev = r.lev_multiplier != null ? r.lev_multiplier : 1.0;
+                        const eff = r.effective_multiplier != null ? r.effective_multiplier : inv;
+                        const _multTier = (v) => v >= 2.5 ? 'text-red-400' : v >= 1.5 ? 'text-amber-300' : 'text-gray-400';
+                        const sourceColor = isDefault ? 'text-gray-400' : _multTier(eff);
+                        const invColor = isDefault ? 'text-gray-500' : (inv === 1.0 ? 'text-gray-500' : _multTier(inv));
+                        const levColor = isDefault ? 'text-gray-500' : (lev === 1.0 ? 'text-gray-500' : _multTier(lev));
+                        const effColor = isDefault ? 'text-gray-500' : _multTier(eff);
                         const pfStr = r.profit_factor === 999.99 ? '∞' : r.profit_factor.toFixed(2);
                         // May 13: demotion badge — current config multiplier differs from historical row
                         const demotedBadge = r.is_demoted
-                            ? `<span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-900/40 text-amber-300 font-mono" title="Cell currently demoted in config — new trades will use ${r.current_config_multiplier.toFixed(1)}x instead of ${r.multiplier.toFixed(1)}x">↓ now ${r.current_config_multiplier.toFixed(1)}x</span>`
+                            ? `<span class="ml-2 px-1.5 py-0.5 text-[10px] rounded bg-amber-900/40 text-amber-300 font-mono" title="Cell currently demoted in config — new trades will use ${r.current_config_multiplier.toFixed(1)}x invest instead of ${inv.toFixed(1)}x">↓ now ${r.current_config_multiplier.toFixed(1)}x</span>`
                             : '';
                         return `<tr class="hover:bg-white/5">
                             <td class="px-2 py-1 ${sourceColor} font-mono text-xs">${_formatMultSource(r.source)}${demotedBadge}</td>
-                            <td class="px-2 py-1 text-right ${sourceColor}">${r.multiplier.toFixed(2)}x</td>
+                            <td class="px-2 py-1 text-right ${invColor}">${inv.toFixed(2)}x</td>
+                            <td class="px-2 py-1 text-right ${levColor}">${lev.toFixed(2)}x</td>
+                            <td class="px-2 py-1 text-right ${effColor} font-semibold">${eff.toFixed(2)}x</td>
                             <td class="px-2 py-1 text-right">${r.n}</td>
                             <td class="px-2 py-1 text-right">${r.wr_pct.toFixed(1)}%</td>
                             <td class="px-2 py-1 text-right ${avgClass}">${(r.avg_pnl_pct >= 0 ? '+' : '')}${r.avg_pnl_pct.toFixed(3)}%</td>

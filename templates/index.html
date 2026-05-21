@@ -14127,7 +14127,23 @@
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
-                            <td class="px-4 py-3 text-right ${(o.cell_multiplier && o.cell_multiplier > 1.0) ? 'text-violet-400 font-semibold' : ''}">${formatUSD(o.notional_value)}</td>
+                            <td class="px-4 py-3 text-right ${(() => {
+                                const hasMult = (o.cell_multiplier && o.cell_multiplier > 1.0) || (o.cell_lev_multiplier && o.cell_lev_multiplier > 1.0);
+                                const hasProt = o.pattern_fixed_tp_pct != null || o.pattern_fixed_sl_pct != null;
+                                if (hasMult && hasProt) return 'text-violet-400 font-semibold italic';
+                                if (hasMult) return 'text-violet-400 font-semibold';
+                                if (hasProt) return 'text-amber-400 font-semibold';
+                                return '';
+                            })()}" title="${(() => {
+                                const parts = [];
+                                if (o.cell_multiplier && o.cell_multiplier > 1.0) parts.push(`Inv ${o.cell_multiplier.toFixed(2)}×`);
+                                if (o.cell_lev_multiplier && o.cell_lev_multiplier > 1.0) parts.push(`Lev ${o.cell_lev_multiplier.toFixed(2)}×`);
+                                if (o.cell_multiplier_source) parts.push(`Mult: ${o.cell_multiplier_source}`);
+                                if (o.pattern_cell_source) parts.push(`Pattern: ${o.pattern_cell_source}`);
+                                if (o.pattern_fixed_tp_pct != null) parts.push(`TP ${o.pattern_fixed_tp_pct >= 0 ? '+' : ''}${o.pattern_fixed_tp_pct}%`);
+                                if (o.pattern_fixed_sl_pct != null) parts.push(`SL ${o.pattern_fixed_sl_pct}%`);
+                                return parts.join(' · ');
+                            })()}">${formatUSD(o.notional_value)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right ${pnlClass} font-medium">${formatUSD(o.pnl)} (${o.pnl_percentage.toFixed(2)}%)</td>
@@ -14213,7 +14229,23 @@
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-center">${exotBadge}</td>
-                            <td class="px-4 py-3 text-right ${(o.cell_multiplier && o.cell_multiplier > 1.0) ? 'text-violet-400 font-semibold' : ''}">${formatUSD(o.investment)}</td>
+                            <td class="px-4 py-3 text-right ${(() => {
+                                const hasMult = (o.cell_multiplier && o.cell_multiplier > 1.0) || (o.cell_lev_multiplier && o.cell_lev_multiplier > 1.0);
+                                const hasProt = o.pattern_fixed_tp_pct != null || o.pattern_fixed_sl_pct != null;
+                                if (hasMult && hasProt) return 'text-violet-400 font-semibold italic';
+                                if (hasMult) return 'text-violet-400 font-semibold';
+                                if (hasProt) return 'text-amber-400 font-semibold';
+                                return '';
+                            })()}" title="${(() => {
+                                const parts = [];
+                                if (o.cell_multiplier && o.cell_multiplier > 1.0) parts.push(`Inv ${o.cell_multiplier.toFixed(2)}×`);
+                                if (o.cell_lev_multiplier && o.cell_lev_multiplier > 1.0) parts.push(`Lev ${o.cell_lev_multiplier.toFixed(2)}×`);
+                                if (o.cell_multiplier_source) parts.push(`Mult: ${o.cell_multiplier_source}`);
+                                if (o.pattern_cell_source) parts.push(`Pattern: ${o.pattern_cell_source}`);
+                                if (o.pattern_fixed_tp_pct != null) parts.push(`TP ${o.pattern_fixed_tp_pct >= 0 ? '+' : ''}${o.pattern_fixed_tp_pct}%`);
+                                if (o.pattern_fixed_sl_pct != null) parts.push(`SL ${o.pattern_fixed_sl_pct}%`);
+                                return parts.join(' · ');
+                            })()}">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.entry_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.exit_price)}</td>

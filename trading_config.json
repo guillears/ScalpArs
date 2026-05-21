@@ -167,6 +167,17 @@
         "rsi_adx_multiplier_target": "investment",
         "rsi_adx_multiplier_hard_cap": 2.0,
         "rsi_adx_multiplier_lev_hard_cap": 2.0,
+        "pattern_cell_rules": [
+            {"pattern": "C4", "direction": "LONG",  "inv_mult": 1.0, "lev_mult": 1.0, "fixed_tp_pct": 0.10, "fixed_sl_pct": -0.50},
+            {"pattern": "C4", "direction": "SHORT", "inv_mult": 1.0, "lev_mult": 1.0, "fixed_tp_pct": 0.10, "fixed_sl_pct": -0.50},
+            {"pattern": "C8", "direction": "LONG",  "inv_mult": 1.0, "lev_mult": 1.0, "fixed_tp_pct": 0.10, "fixed_sl_pct": -0.50},
+            {"pattern": "C8", "direction": "SHORT", "inv_mult": 1.0, "lev_mult": 1.0, "fixed_tp_pct": 0.10, "fixed_sl_pct": -0.50},
+            {"pattern": "W1", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0},
+            {"pattern": "W2", "direction": "LONG",  "inv_mult": 2.0, "lev_mult": 1.0},
+            {"pattern": "W2", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0},
+            {"pattern": "W4", "direction": "LONG",  "inv_mult": 2.0, "lev_mult": 1.0},
+            {"pattern": "W4", "direction": "SHORT", "inv_mult": 2.0, "lev_mult": 1.0}
+        ],
         "entry_quality_score_filter_enabled": false,
         "entry_quality_score_block_max": 1,
         "fast_exit_enabled": true,

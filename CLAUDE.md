@@ -17569,3 +17569,179 @@ N≥10 fresh trades, then consider the second.
 4. To document the Option C cap design (two independent caps, accept inv×lev
    compounding) so future-Claude doesn't propose combined-cap refactors without
    re-reading the rationale
+
+## May 21, 2026 (late evening) — Pattern Cell Ship Rules: Phase 1 (engine backend) SHIPPED
+
+### What ships (live engine + 9 active cells)
+
+New mechanism that ships pattern-based rules at trade open time. Each rule binds a
+specific (pattern, direction) cohort to one or more treatments: investment
+multiplier, leverage multiplier, fixed TP%, fixed SL%. Conflict resolution
+(Option C from May 21 design): C-presence blocks W multipliers; W-presence
+blocks C fixed exits.
+
+### Initial ship cells
+
+| Pattern | Brief | Direction | Inv Mult | Lev Mult | Fixed TP% | Fixed SL% |
+|---|---|---|---|---|---|---|
+| **C4** | Low-vol chop | LONG | 1.0 | 1.0 | 0.10 | -0.50 |
+| **C4** | Low-vol chop | SHORT | 1.0 | 1.0 | 0.10 | -0.50 |
+| **C8** | Oversold/Overbought Chop | LONG | 1.0 | 1.0 | 0.10 | -0.50 |
+| **C8** | Oversold/Overbought Chop | SHORT | 1.0 | 1.0 | 0.10 | -0.50 |
+| **W1** | HighConv trend | SHORT | 2.0 | 1.0 | — | — |
+| **W2** | Macro tailwind | LONG | 2.0 | 1.0 | — | — |
+| **W2** | Macro tailwind | SHORT | 2.0 | 1.0 | — | — |
+| **W4** | Pullback aligned | LONG | 2.0 | 1.0 | — | — |
+| **W4** | Pullback aligned | SHORT | 2.0 | 1.0 | — | — |
+
+**Unmatched cells deliberately NOT shipped** — forward "no-C-match" or
+"no-W-match" rules are conceptually fuzzy (post-hoc cohort doesn't map cleanly
+to entry-time classifier). Next step: pull a report to identify what the
+unmatched losers look like, define a new pattern signature (C10/W6) that
+captures them at entry, then ship as a proper pattern.
+
+### Forward Unmatched / conflict semantics (Option C)
+
+For trades matching BOTH a C-pattern AND a W-pattern in initial-ship rules,
+**C-side wins** (fixed exits applied, W multiplier blocked). CSV analysis of
+the May 21 64-trade batch showed 7 such conflict trades — Option C correctly
+avoids doubling the −$33 / −$82 SHORT losers (AAVE / LTC) under W1
+multiplier.
+
+### Mechanism
+
+**At entry (services/trading_engine.py::open_position):**
+1. Compute Pattern C matches (existing `_compute_pattern_c_match` helper).
+2. Compute Pattern W matches (NEW: `_compute_pattern_w_match` helper, lifted
+   from main.py's post-hoc version into trading_engine.py for entry-time use).
+3. Look up `pattern_cell_rules` config via NEW `_lookup_pattern_cell_rule`
+   helper — applies Option C conflict resolution, returns
+   (inv_mult, lev_mult, source_label, fixed_tp_pct, fixed_sl_pct).
+4. **Pattern rule wins over RSI×ADX cells** — if pattern rule fires with
+   inv_mult ≠ 1 or lev_mult ≠ 1, it overrides the RSI×ADX HIGHER-wins
+   resolution. Logged as `[PATTERN_CELL]`.
+5. Persist `pattern_cell_source`, `pattern_fixed_tp_pct`, `pattern_fixed_sl_pct`
+   on Order. Also persist `entry_pattern_w1_match` … `_w5_match` flags for
+   consistency with existing `entry_pattern_c1-9_match` columns.
+
+**At realtime exit check (services/trading_engine.py realtime callback):**
+- New exit fired BEFORE Fast Exit (highest priority after Emergency SL):
+  - `pnl_pct >= pattern_fixed_tp_pct` → close as `PATTERN_FIXED_TP L1`
+  - `pnl_pct <= pattern_fixed_sl_pct` → close as `PATTERN_FIXED_SL L1`
+- Trades without a pattern rule fall through to default exit ladder unchanged.
+
+### Close-reason granularity decision
+
+**2 generic close_reasons** (not per-pattern):
+- `PATTERN_FIXED_TP L1`
+- `PATTERN_FIXED_SL L1`
+
+Per-pattern attribution lives in `pattern_cell_source` column ("C4", "C4+C8",
+etc.). Queries can filter by it for finer breakdown. Decision: simpler, less
+Post-Exit Regret whitelist maintenance, same diagnostic capability via column
+filter. Per-pattern (4+ close_reasons) can be added later if cross-batch
+analytics show it would help.
+
+### Post-Exit Regret whitelist additions
+
+Two whitelists updated to include `PATTERN_FIXED_TP` and `PATTERN_FIXED_SL`:
+1. `_register_post_exit_tracking` (live, line ~3663) — fires when trade closes,
+   registers it for post-exit monitoring.
+2. `_recover_post_exit_tracking` (recovery, line ~573) — resumes tracking on
+   bot restart for trades whose post-exit window hasn't expired.
+
+Without these, Pattern Cell Ship rule trades wouldn't appear in the Post-Exit
+Regret Deep Dive table. Now they auto-populate as rows once trades close.
+
+### Schema additions
+
+**Order (models.py + database.py auto-migrate):**
+- 6 new Boolean columns: `entry_pattern_w1_match` … `entry_pattern_w5_match`
+  + `entry_pattern_w_any_match`
+- 3 new ship attribution columns: `pattern_cell_source` (String 60),
+  `pattern_fixed_tp_pct` (Float), `pattern_fixed_sl_pct` (Float)
+
+**Config (config.py):**
+- New field `pattern_cell_rules: List` (default `[]`) — JSON array of rule dicts
+
+### Hard caps reuse existing RSI×ADX caps
+
+Pattern cell multipliers go through `calculate_position_size` with the same
+`cell_multiplier` / `cell_lev_multiplier` mechanism as RSI×ADX cells. Hard
+caps (`rsi_adx_multiplier_hard_cap`, `rsi_adx_multiplier_lev_hard_cap` —
+default 2.0× each) apply uniformly. No new caps needed.
+
+### Operator interaction with Pattern C/W trackers
+
+Pattern C/W observation-only trackers (existing UI tables) continue to track
+patterns at entry. The new Pattern Cell Ship rules read from the same
+underlying signature matches AND apply trade-level effects. So a trade can
+match C4 (showing in Pattern C tracker row C4) AND trigger the C4 ship rule
+(fixed TP/SL applied at close) simultaneously. Same signature, different
+purposes.
+
+### Engineering scope summary
+
+| File | Change | LOC |
+|---|---|---|
+| `services/trading_engine.py` | `_compute_pattern_w_match` helper + `_lookup_pattern_cell_rule` helper + entry-time rule lookup + new realtime exit check + cache population + recovery cache + 2 whitelist additions + Order constructor wiring (2 sites) | ~280 |
+| `models.py` | 9 new columns | ~12 |
+| `database.py` | 9 ADD COLUMN auto-migrations | ~14 |
+| `config.py` | `pattern_cell_rules: List` field | ~12 |
+| `trading_config.json` | 9-cell initial ship array | ~15 |
+| `CLAUDE.md` | This entry | ~180 |
+
+Total Phase 1: ~510 LOC across 6 files.
+
+### What's NOT shipped in Phase 1 (deferred to Phase 2)
+
+- UI config panel for editing `pattern_cell_rules` (operator must edit JSON
+  directly until then)
+- Brief pattern descriptions added to UI tracker labels
+- Fuchsia N indicator in Pattern C/W tracker rows when active rule exists
+- New 🎲 Pattern Cell Ship Performance analytics table
+- Text export integrations for the new table
+
+These are deferred to Phase 2 by design — Phase 1 establishes that the
+mechanism fires correctly in the engine before adding the operator surface.
+
+### Validation at next batch checkpoint
+
+After ~30 trades land under the new mechanism, evaluate:
+
+1. **Are PATTERN_FIXED_TP / PATTERN_FIXED_SL close_reasons appearing?**
+   Check Closing Reason Summary. If zero → either no C4/C8 entries fired
+   (regime mismatch) or the rule isn't being applied (bug).
+2. **Are 2× W1/W2/W4 cells boosting position size correctly?**
+   Check Multiplier Cell Performance table — should see pattern-sourced
+   entries (e.g., source label "W1", "W2+W4") at 2.0×.
+3. **Does Pattern C/W tracker N for the active patterns match the count of
+   trades stamped with that pattern source?** Sanity check that signatures
+   are computing identically at entry vs report time.
+4. **Post-Exit Regret rows for PATTERN_FIXED_TP / PATTERN_FIXED_SL**:
+   should appear once trades close with non-NULL `post_exit_peak_pnl`.
+
+### Pre-committed revert criteria
+
+Per-cell verdicts at next ≥30-trade checkpoint (in addition to the broader
+revert criteria for individual patterns documented elsewhere in CLAUDE.md):
+
+| Cell type | Verdict gate | Action |
+|---|---|---|
+| C4/C8 fixed exits | If TP fires ≥ 10 times AND avg close = +0.10% (locked) AND Total $ from those trades > +$30 net | Confirm working, keep |
+| C4/C8 fixed exits | If SL fires ≥ 10 times AND avg close = -0.50% AND saved $ > +$50 vs −0.90 baseline | Confirm working, keep |
+| W1/W2/W4 multipliers | Standard Phase 3 verdict matrix (★ WORKING ≥70% WR + positive $ on N≥5) | Standard |
+| Any cell | If pattern signature itself drifts (cell decays to ≤40% WR) | Demote inv_mult to 1.0× OR remove fixed exits, retain pattern observation |
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the locked Phase 1 scope: 9 active cells, 2 generic close_reasons,
+   Option C conflict resolution, pattern-priority-over-RSI×ADX rule.
+2. To preserve the architectural decisions (separate helper for Pattern W at
+   entry; reuse existing hard caps; same cache infrastructure as RSI×ADX
+   multipliers; post-exit tracking whitelist additions).
+3. To anchor the Phase 2 deferred work (UI panel, brief descriptions, fuchsia
+   N indicator, new perf table) so it's not re-litigated.
+4. To preserve the pre-committed validation + revert criteria.
+5. To document the explicit decision to LEAVE OUT Unmatched cells until a
+   proper pattern signature for them exists (C10 or W6 candidate).

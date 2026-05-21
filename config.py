@@ -3,7 +3,7 @@ SCALPARS Trading Platform - Configuration
 """
 from pydantic_settings import BaseSettings
 from pydantic import BaseModel
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from enum import Enum
 import json
 import os
@@ -327,6 +327,19 @@ class SignalThresholds(BaseModel):
     # In "both" mode, max effective notional = invest_cap × lev_cap. Default cap_inv=2.0 reproduces pre-change behavior.
     rsi_adx_multiplier_hard_cap: float = 2.0  # Investment-side hard cap (was the single cap pre-May-21)
     rsi_adx_multiplier_lev_hard_cap: float = 2.0  # Leverage-side hard cap (NEW May 21)
+    # Pattern Cell Ship Rules (May 21, NEW dimension) — per-pattern multipliers + fixed exits.
+    # JSON list of objects with fields:
+    #   pattern: "C4" | "C8" | "W1" | "W2" | "W4" | etc.
+    #   direction: "LONG" | "SHORT"
+    #   inv_mult: float (default 1.0)            — investment multiplier
+    #   lev_mult: float (default 1.0)            — leverage multiplier
+    #   fixed_tp_pct: Optional[float]            — pnl% above which trade exits via PATTERN_FIXED_TP
+    #   fixed_sl_pct: Optional[float]            — pnl% below which trade exits via PATTERN_FIXED_SL (negative value)
+    # Conflict resolution at engine: a trade matching ANY C pattern blocks all W-side
+    # multiplier rules ("C presence blocks W treatment" — Option C from CLAUDE.md May 21
+    # design discussion). Forward Unmatched cells NOT in initial ship (will be added
+    # as proper pattern signatures once cross-batch identifies their structural shape).
+    pattern_cell_rules: List = []
     # Entry Quality Score multiplier (May 18 → REMOVED May 21): the Score-based 1D
     # multiplier dimension was retired after cross-batch evidence showed cells
     # decaying or showing no edge over baseline. See CLAUDE.md May 21 removal entry.

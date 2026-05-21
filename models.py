@@ -112,6 +112,21 @@ class Order(Base):
     # May 20 (latest) — C9=Low-vol Countertrend Chop (C4 base + mild countertrend pair_gap)
     entry_pattern_c9_match = Column(Boolean, nullable=True)
     entry_pattern_c_any_match = Column(Boolean, nullable=True)  # OR of c1-c9 (post-May-20-latest; c1-c8 May-20-late; c1-c7 May-20; c1-c6 May-19-late; c1-c4 pre-May-19)
+    # May 21 — Pattern W computed at entry (lifted from main.py post-hoc helper to support live multiplier ship).
+    # W1=HighConv trend, W2=Macro tailwind, W3=Energetic vol breakout, W4=Pullback aligned, W5=Confluence.
+    entry_pattern_w1_match = Column(Boolean, nullable=True)
+    entry_pattern_w2_match = Column(Boolean, nullable=True)
+    entry_pattern_w3_match = Column(Boolean, nullable=True)
+    entry_pattern_w4_match = Column(Boolean, nullable=True)
+    entry_pattern_w5_match = Column(Boolean, nullable=True)
+    entry_pattern_w_any_match = Column(Boolean, nullable=True)  # OR of w1-w5 (post-May-21)
+    # May 21 — Pattern Cell Ship rules: per-trade attribution of which pattern rule fired.
+    # pattern_cell_source = comma-separated source labels (e.g., "C4", "W1+W2", "C4+C8")
+    # pattern_fixed_tp_pct = override TP from C-side rule (fires via PATTERN_FIXED_TP close_reason)
+    # pattern_fixed_sl_pct = override SL from C-side rule (fires via PATTERN_FIXED_SL close_reason)
+    pattern_cell_source = Column(String(60), nullable=True)
+    pattern_fixed_tp_pct = Column(Float, nullable=True)
+    pattern_fixed_sl_pct = Column(Float, nullable=True)
     # Volume ratios at entry (for volume filter analytics)
     entry_global_volume_ratio = Column(Float, nullable=True)
     entry_pair_volume_ratio = Column(Float, nullable=True)

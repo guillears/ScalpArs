@@ -291,6 +291,93 @@ def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
             c1 or c2 or c3 or c4 or c5 or c6 or c7 or c8 or c9)
 
 
+def _compute_pattern_w_match(direction, rsi, adx, adx_delta, stretch,
+                              rng_pos, pair_gap, btc_rsi, btc_adx,
+                              btc_atr, btc_gap, pair_vol_ratio):
+    """Pattern W (winner tracker) — May 21, 2026: lifted to ENTRY-TIME computation
+    from main.py's report-time helper, mirroring Pattern C's pattern.
+
+    Returns (w1, w2, w3, w4, w5, w_any) booleans (or None tuple if direction
+    invalid). Direction-aware: LONG and SHORT use mirrored thresholds.
+
+    Signatures (designed from cross-batch winner analysis, May 20):
+      W1: HighConv trend continuation — strong ADX + accel + stretch
+      W2: Macro tailwind — BTC RSI sweet spot + BTC ADX committed + gap aligned
+      W3: Energetic volatility breakout — BTC ATR high + above-avg pair vol + stretch
+      W4: Pullback entry aligned — mid-range + pair gap aligned + ADX not declining
+      W5: Confluence — multiple sweet-spot cells true simultaneously
+
+    Captured at entry to support live multiplier rules (CLAUDE.md May 21 ship).
+    Matches the post-hoc helper in main.py::_compute_pattern_w_match — when
+    both fire they MUST produce identical results for the same trade. The
+    main.py version reads from the persisted columns; this version computes
+    fresh at entry time before the columns exist.
+    """
+    if direction not in ('LONG', 'SHORT'):
+        return (None, None, None, None, None, None)
+
+    def _and(*conds):
+        return all(c is True for c in conds)
+
+    if direction == 'LONG':
+        w1 = _and(
+            adx is not None and adx >= 22,
+            adx_delta is not None and adx_delta >= 0.5,
+            stretch is not None and stretch >= 0.16,
+        )
+        w2 = _and(
+            btc_rsi is not None and 50 <= btc_rsi <= 65,
+            btc_adx is not None and btc_adx >= 22,
+            btc_gap is not None and btc_gap >= 0.10,
+        )
+        w3 = _and(
+            btc_atr is not None and btc_atr >= 0.20,
+            pair_vol_ratio is not None and pair_vol_ratio >= 1.20,
+            stretch is not None and stretch >= 0.20,
+        )
+        w4 = _and(
+            rng_pos is not None and 40 <= rng_pos <= 75,
+            pair_gap is not None and pair_gap >= 0.10,
+            adx_delta is not None and adx_delta >= 0,
+        )
+        w5 = _and(
+            btc_adx is not None and 22 <= btc_adx <= 30,
+            btc_rsi is not None and 55 <= btc_rsi <= 65,
+            adx is not None and 22 <= adx <= 30,
+            stretch is not None and 0.16 <= stretch <= 0.25,
+        )
+    else:  # SHORT
+        w1 = _and(
+            adx is not None and adx >= 22,
+            adx_delta is not None and adx_delta >= 0.5,
+            stretch is not None and stretch >= 0.20,
+        )
+        w2 = _and(
+            btc_rsi is not None and 30 <= btc_rsi <= 45,
+            btc_adx is not None and btc_adx >= 22,
+            btc_gap is not None and btc_gap <= -0.10,
+        )
+        w3 = _and(
+            btc_atr is not None and btc_atr >= 0.20,
+            pair_vol_ratio is not None and pair_vol_ratio >= 1.20,
+            stretch is not None and stretch >= 0.25,
+        )
+        w4 = _and(
+            rng_pos is not None and 25 <= rng_pos <= 60,
+            pair_gap is not None and pair_gap <= -0.10,
+            adx_delta is not None and adx_delta >= 0,
+        )
+        w5 = _and(
+            btc_adx is not None and 22 <= btc_adx <= 30,
+            btc_rsi is not None and 30 <= btc_rsi <= 40,
+            adx is not None and 22 <= adx <= 30,
+            stretch is not None and 0.20 <= stretch <= 0.30,
+        )
+
+    return (w1, w2, w3, w4, w5,
+            w1 or w2 or w3 or w4 or w5)
+
+
 class TradingEngine:
     """Main trading engine that manages positions and executes trades"""
     
@@ -475,6 +562,10 @@ class TradingEngine:
             # whitelist (line ~3171) already had these; recovery had drifted.
             # May 19: same drift caught for FAST_EXIT. Live whitelist (line ~3171)
             # had FAST_EXIT; this recovery path didn't. Added now to align.
+            # May 21: added PATTERN_FIXED_TP/SL to recovery whitelist (matches live
+            # whitelist at ~line 3663). Without this, Pattern Cell Ship rule trades
+            # that close + span a bot restart wouldn't get post_exit_peak_pnl
+            # tracked → silently missing from Post-Exit Regret Deep Dive.
             if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or
                     _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or
                     _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or
@@ -483,7 +574,8 @@ class TradingEngine:
                     _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or
                     _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or
                     _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or
-                    _reason_base.startswith("FAST_EXIT")):
+                    _reason_base.startswith("FAST_EXIT") or
+                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
                 continue
 
             closed_utc = order.closed_at if order.closed_at.tzinfo else order.closed_at.replace(tzinfo=None)
@@ -1287,6 +1379,96 @@ class TradingEngine:
     # Historical trades with cell_multiplier_source starting "STRETCH_..." retain
     # their attribution in the Multiplier Cell Performance table.
 
+    def _lookup_pattern_cell_rule(
+        self, direction: str, c_flags: dict, w_flags: dict,
+    ) -> Tuple[float, float, Optional[str], Optional[float], Optional[float]]:
+        """Pattern Cell Ship Rules — May 21, NEW dimension per CLAUDE.md May 21 ship plan.
+
+        Walks pattern_cell_rules config, collects rules matching this trade's
+        direction + matched C/W patterns, applies Option C conflict resolution:
+          - If ANY C-pattern matches → C-side rules apply (fixed TP/SL aggregated);
+            W-side multiplier rules are BLOCKED ("C presence blocks W treatment")
+          - Else if ANY W-pattern matches → W-side multiplier rules apply
+          - Else no rule fires → returns (1.0, 1.0, None, None, None)
+
+        For multiple matching rules within the active side:
+          - inv_mult / lev_mult: HIGHER-wins (max — not multiplied) for consistency
+            with RSI×ADX multiplier behavior
+          - fixed_tp_pct / fixed_sl_pct: most aggressive (lowest TP, tightest SL)
+            among matched C-rules
+
+        Returns (inv_mult, lev_mult, source_label, fixed_tp_pct, fixed_sl_pct)
+        where source_label is comma-joined matched patterns (e.g., "C4+C8" or "W1+W2").
+        """
+        rules = getattr(config.trading_config.thresholds, 'pattern_cell_rules', []) or []
+        if not rules:
+            return 1.0, 1.0, None, None, None
+
+        # Determine which side fires (Option C)
+        matched_c = [k for k, v in c_flags.items() if v is True]
+        matched_w = [k for k, v in w_flags.items() if v is True]
+        if matched_c:
+            active_side = 'C'
+            matched_patterns = set(matched_c)
+        elif matched_w:
+            active_side = 'W'
+            matched_patterns = set(matched_w)
+        else:
+            return 1.0, 1.0, None, None, None
+
+        # Walk rules, collect those matching direction + active-side patterns
+        applied_sources = []
+        applied_inv = 1.0
+        applied_lev = 1.0
+        applied_tp = None  # lowest (most aggressive) wins on C-side
+        applied_sl = None  # highest (most aggressive, i.e., closest to 0) wins on C-side
+        for rule in rules:
+            try:
+                if rule.get('direction') != direction:
+                    continue
+                p = rule.get('pattern')
+                if p not in matched_patterns:
+                    continue
+                # Determine if this is a C-rule or W-rule by pattern code
+                is_c_rule = p.startswith('C')
+                is_w_rule = p.startswith('W')
+                # Option C: only apply rules from the active side
+                if active_side == 'C' and not is_c_rule:
+                    continue
+                if active_side == 'W' and not is_w_rule:
+                    continue
+                applied_sources.append(p)
+                # Multipliers: HIGHER-wins (max)
+                r_inv = float(rule.get('inv_mult', 1.0) or 1.0)
+                r_lev = float(rule.get('lev_mult', 1.0) or 1.0)
+                if r_inv > applied_inv:
+                    applied_inv = r_inv
+                if r_lev > applied_lev:
+                    applied_lev = r_lev
+                # Fixed exits (C-rules only): most aggressive
+                if is_c_rule:
+                    r_tp = rule.get('fixed_tp_pct')
+                    r_sl = rule.get('fixed_sl_pct')
+                    if r_tp is not None:
+                        r_tp = float(r_tp)
+                        # Lowest fixed_tp wins (catches at smaller peak — more aggressive)
+                        if applied_tp is None or r_tp < applied_tp:
+                            applied_tp = r_tp
+                    if r_sl is not None:
+                        r_sl = float(r_sl)
+                        # Closest to 0 wins (tightest SL — more aggressive)
+                        if applied_sl is None or r_sl > applied_sl:
+                            applied_sl = r_sl
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning(f"[PATTERN_CELL] Malformed rule {rule}: {e}, skipping")
+                continue
+
+        if not applied_sources:
+            return 1.0, 1.0, None, None, None
+
+        source_label = '+'.join(sorted(applied_sources))
+        return applied_inv, applied_lev, source_label, applied_tp, applied_sl
+
     async def _revalidate_entry_signal(
         self, symbol: str, pair: str, original_direction: str, original_confidence: str
     ) -> Tuple[bool, str]:
@@ -1498,6 +1680,21 @@ class TradingEngine:
                 ema20_slope=entry_ema20_slope,
                 ema50_slope=entry_ema50_slope,
             )
+            # Pattern W tracker (May 21 — lifted to entry, observation flags here too)
+            _pw1, _pw2, _pw3, _pw4, _pw5, _pw_any = _compute_pattern_w_match(
+                direction=direction,
+                rsi=entry_rsi,
+                adx=entry_adx,
+                adx_delta=entry_adx_delta,
+                stretch=entry_ema5_stretch,
+                rng_pos=entry_range_position,
+                pair_gap=entry_pair_ema20_ema50_gap_pct,
+                btc_rsi=entry_btc_rsi,
+                btc_adx=entry_btc_adx,
+                btc_atr=entry_btc_atr_pct,
+                btc_gap=globals().get('_current_btc_trend_gap_pct'),
+                pair_vol_ratio=None,  # not captured in scope here; pair_vol_ratio is local to live entry only
+            )
             order = Order(
                 pair=pair,
                 direction=direction,
@@ -1570,6 +1767,13 @@ class TradingEngine:
                 entry_pattern_c8_match=_pc8,
                 entry_pattern_c9_match=_pc9,
                 entry_pattern_c_any_match=_pc_any,
+                # Pattern W (May 21 — lifted to entry)
+                entry_pattern_w1_match=_pw1,
+                entry_pattern_w2_match=_pw2,
+                entry_pattern_w3_match=_pw3,
+                entry_pattern_w4_match=_pw4,
+                entry_pattern_w5_match=_pw5,
+                entry_pattern_w_any_match=_pw_any,
             )
             db.add(order)
             await db.commit()
@@ -2135,6 +2339,50 @@ class TradingEngine:
         )
         total_portfolio = available + (open_margin_result.scalar() or 0)
 
+        # === Pattern Cell Ship Rules (May 21, NEW dimension) ===
+        # Compute Pattern C + Pattern W matches at entry, look up active rules from
+        # pattern_cell_rules config, apply Option C conflict resolution (C presence
+        # blocks W multipliers). C-rules contribute fixed TP/SL; W-rules contribute
+        # multiplier. Pattern rules take PRIORITY over RSI×ADX multipliers below
+        # (when both fire on a single trade, pattern wins — Pattern is more specific).
+        _btc_gap_for_pc = globals().get('_current_btc_trend_gap_pct')
+        _pc1_e, _pc2_e, _pc3_e, _pc4_e, _pc5_e, _pc6_e, _pc7_e, _pc8_e, _pc9_e, _pc_any_e = _compute_pattern_c_match(
+            direction=direction,
+            rng_pos=entry_range_position,
+            pair_gap=entry_pair_ema20_ema50_gap_pct,
+            adx_delta=entry_adx_delta,
+            btc_rsi=entry_btc_rsi,
+            btc_rsi_prev=entry_btc_rsi_prev,
+            btc_adx=entry_btc_adx,
+            btc_adx_prev=entry_btc_adx_prev,
+            btc_gap=_btc_gap_for_pc,
+            stretch=entry_ema5_stretch,
+            pair_adx=entry_adx,
+            btc_atr=entry_btc_atr_pct,
+            ema20_slope=entry_ema20_slope,
+            ema50_slope=entry_ema50_slope,
+        )
+        _pw1_e, _pw2_e, _pw3_e, _pw4_e, _pw5_e, _pw_any_e = _compute_pattern_w_match(
+            direction=direction,
+            rsi=entry_rsi,
+            adx=entry_adx,
+            adx_delta=entry_adx_delta,
+            stretch=entry_ema5_stretch,
+            rng_pos=entry_range_position,
+            pair_gap=entry_pair_ema20_ema50_gap_pct,
+            btc_rsi=entry_btc_rsi,
+            btc_adx=entry_btc_adx,
+            btc_atr=entry_btc_atr_pct,
+            btc_gap=_btc_gap_for_pc,
+            pair_vol_ratio=entry_pair_volume_ratio,
+        )
+        _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl = self._lookup_pattern_cell_rule(
+            direction=direction,
+            c_flags={'C1': _pc1_e, 'C2': _pc2_e, 'C3': _pc3_e, 'C4': _pc4_e, 'C5': _pc5_e,
+                     'C6': _pc6_e, 'C7': _pc7_e, 'C8': _pc8_e, 'C9': _pc9_e},
+            w_flags={'W1': _pw1_e, 'W2': _pw2_e, 'W3': _pw3_e, 'W4': _pw4_e, 'W5': _pw5_e},
+        )
+
         # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
         # Look up cell multiplier from BOTH pair-level (Pair RSI × Pair ADX) and BTC-level
         # (BTC RSI × BTC ADX) rule strings.  When both match, take HIGHER (max) — not multiply
@@ -2169,12 +2417,19 @@ class TradingEngine:
                 return inv * lev
             return inv  # "investment" mode (default)
 
-        _candidates = [
-            (_pair_inv, _pair_lev, _pair_src),
-            (_btc_inv, _btc_lev, _btc_src),
-        ]
-        _winner = max(_candidates, key=lambda c: _score_candidate(c[0], c[1]))
-        cell_mult, cell_lev_mult, cell_src = _winner
+        # Pattern Cell rule takes PRIORITY over RSI×ADX (May 21 — Pattern is more specific).
+        # If a pattern rule fires, use its multipliers directly. Otherwise fall back to
+        # HIGHER-wins between pair + BTC RSI×ADX cells.
+        if _pcell_src is not None and (_pcell_inv != 1.0 or _pcell_lev != 1.0):
+            cell_mult, cell_lev_mult, cell_src = _pcell_inv, _pcell_lev, _pcell_src
+            logger.info(f"[PATTERN_CELL] {pair} {direction}: rule fired ({_pcell_src}) inv={_pcell_inv}x lev={_pcell_lev}x — overrides RSI×ADX")
+        else:
+            _candidates = [
+                (_pair_inv, _pair_lev, _pair_src),
+                (_btc_inv, _btc_lev, _btc_src),
+            ]
+            _winner = max(_candidates, key=lambda c: _score_candidate(c[0], c[1]))
+            cell_mult, cell_lev_mult, cell_src = _winner
 
         # Hard cap clamps — applied independently to each side.
         # In "both" mode, max effective notional = inv_cap × lev_cap (operator
@@ -2368,21 +2623,14 @@ class TradingEngine:
                 entry_order_type = "TAKER"
         
         # Pattern C tracker (May 19, 2026 — observation-only signature flags)
-        _pc1_m, _pc2_m, _pc3_m, _pc4_m, _pc5_m, _pc6_m, _pc7_m, _pc8_m, _pc9_m, _pc_any_m = _compute_pattern_c_match(
-            direction=direction,
-            rng_pos=entry_range_position,
-            pair_gap=entry_pair_ema20_ema50_gap_pct,
-            adx_delta=entry_adx_delta,
-            btc_rsi=entry_btc_rsi,
-            btc_rsi_prev=entry_btc_rsi_prev,
-            btc_adx=entry_btc_adx,
-            btc_adx_prev=entry_btc_adx_prev,
-            btc_gap=globals().get('_current_btc_trend_gap_pct'),
-            stretch=entry_ema5_stretch,
-            pair_adx=entry_adx,
-            btc_atr=entry_btc_atr_pct,
-            ema20_slope=entry_ema20_slope,
-            ema50_slope=entry_ema50_slope,
+        # Reuse the values already computed above for Pattern Cell rule lookup
+        # (deduplicating the helper call; same inputs would produce identical values).
+        _pc1_m, _pc2_m, _pc3_m, _pc4_m, _pc5_m, _pc6_m, _pc7_m, _pc8_m, _pc9_m, _pc_any_m = (
+            _pc1_e, _pc2_e, _pc3_e, _pc4_e, _pc5_e, _pc6_e, _pc7_e, _pc8_e, _pc9_e, _pc_any_e
+        )
+        # Pattern W tracker (May 21, 2026 — observation-only signature flags, now ALSO at entry)
+        _pw1_m, _pw2_m, _pw3_m, _pw4_m, _pw5_m, _pw_any_m = (
+            _pw1_e, _pw2_e, _pw3_e, _pw4_e, _pw5_e, _pw_any_e
         )
         # Create order record
         order = Order(
@@ -2465,6 +2713,17 @@ class TradingEngine:
             entry_pattern_c8_match=_pc8_m,
             entry_pattern_c9_match=_pc9_m,
             entry_pattern_c_any_match=_pc_any_m,
+            # Pattern W tracker flags (May 21 — lifted to entry for live multiplier ship)
+            entry_pattern_w1_match=_pw1_m,
+            entry_pattern_w2_match=_pw2_m,
+            entry_pattern_w3_match=_pw3_m,
+            entry_pattern_w4_match=_pw4_m,
+            entry_pattern_w5_match=_pw5_m,
+            entry_pattern_w_any_match=_pw_any_m,
+            # Pattern Cell Ship rule attribution (May 21)
+            pattern_cell_source=_pcell_src,
+            pattern_fixed_tp_pct=_pcell_fixed_tp,
+            pattern_fixed_sl_pct=_pcell_fixed_sl,
         )
         db.add(order)
         await db.flush()  # Flush to get the order ID
@@ -2668,6 +2927,10 @@ class TradingEngine:
                 'regime_comeback_pnl': None,
                 'regime_opposite_at': None,
                 'regime_opposite_pnl': None,
+                # Pattern Cell Ship rule overrides (May 21)
+                'pattern_cell_source': _pcell_src,
+                'pattern_fixed_tp_pct': _pcell_fixed_tp,
+                'pattern_fixed_sl_pct': _pcell_fixed_sl,
             }
             if pair not in _open_orders_cache:
                 _open_orders_cache[pair] = []
@@ -3402,7 +3665,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -5771,6 +6034,48 @@ class TradingEngine:
             pnl_pct = (pnl / entry_notional) * 100
 
             # ════════════════════════════════════════════════════════════════
+            # Pattern Fixed TP/SL (May 21, Pattern Cell Ship rules) — fires
+            # BEFORE Fast Exit because TP at e.g. +0.10% needs to lock before
+            # Fast Exit's higher threshold could engage. Only applies when the
+            # trade was opened with a C-side pattern rule that set fixed_tp_pct
+            # or fixed_sl_pct (stored in cache as 'pattern_fixed_tp_pct' /
+            # 'pattern_fixed_sl_pct'). Trades without a pattern rule fall
+            # through to standard exits.
+            # ════════════════════════════════════════════════════════════════
+            _ptn_tp = order_info.get('pattern_fixed_tp_pct')
+            _ptn_sl = order_info.get('pattern_fixed_sl_pct')
+            if (_ptn_tp is not None or _ptn_sl is not None) and not order_info.get('_closing_in_progress'):
+                _ptn_close_reason = None
+                if _ptn_tp is not None and pnl_pct >= float(_ptn_tp):
+                    _ptn_close_reason = "PATTERN_FIXED_TP L1"
+                    logger.warning(
+                        f"[PATTERN_FIXED_TP] {pair} {direction}: pnl={pnl_pct:.4f}% >= rule_tp={_ptn_tp}% "
+                        f"(source={order_info.get('pattern_cell_source')}) — CLOSING NOW!"
+                    )
+                elif _ptn_sl is not None and pnl_pct <= float(_ptn_sl):
+                    _ptn_close_reason = "PATTERN_FIXED_SL L1"
+                    logger.warning(
+                        f"[PATTERN_FIXED_SL] {pair} {direction}: pnl={pnl_pct:.4f}% <= rule_sl={_ptn_sl}% "
+                        f"(source={order_info.get('pattern_cell_source')}) — CLOSING NOW!"
+                    )
+                if _ptn_close_reason is not None:
+                    order_info['_closing_in_progress'] = True
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                            )
+                            order = result.scalar_one_or_none()
+                            if order:
+                                closed = await self.close_position(db, order, current_price, _ptn_close_reason)
+                                if closed:
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                    except Exception as e:
+                        logger.error(f"[PATTERN_FIXED_EXIT] Error closing {pair}: {e}")
+                    continue  # Trade closed; skip remaining checks
+
+            # ════════════════════════════════════════════════════════════════
             # Fast Exit (May 15 PM, opt-in) — quick-profit lock for trades
             # that hit a threshold within a small window after entry. Fires
             # FIRST in the exit-check chain so it wins against EMA13_CROSS /
@@ -6913,8 +7218,13 @@ class TradingEngine:
                 'regime_comeback_pnl': order.regime_comeback_pnl,
                 'regime_opposite_at': order.regime_opposite_at,
                 'regime_opposite_pnl': order.regime_opposite_pnl,
+                # Pattern Cell Ship rule overrides (May 21) — restored from DB on recovery.
+                # Trades opened pre-May-21 have these NULL → fall through to default exit ladder.
+                'pattern_cell_source': getattr(order, 'pattern_cell_source', None),
+                'pattern_fixed_tp_pct': getattr(order, 'pattern_fixed_tp_pct', None),
+                'pattern_fixed_sl_pct': getattr(order, 'pattern_fixed_sl_pct', None),
             }
-            
+
             if order.pair not in new_cache:
                 new_cache[order.pair] = []
             new_cache[order.pair].append(order_info)

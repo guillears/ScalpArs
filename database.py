@@ -237,6 +237,26 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c9_match BOOLEAN"))
                 if 'entry_pattern_c_any_match' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_c_any_match BOOLEAN"))
+                # May 21: Pattern W computed at entry (lifted from main.py post-hoc helper).
+                if 'entry_pattern_w1_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w1_match BOOLEAN"))
+                if 'entry_pattern_w2_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w2_match BOOLEAN"))
+                if 'entry_pattern_w3_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w3_match BOOLEAN"))
+                if 'entry_pattern_w4_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w4_match BOOLEAN"))
+                if 'entry_pattern_w5_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w5_match BOOLEAN"))
+                if 'entry_pattern_w_any_match' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_pattern_w_any_match BOOLEAN"))
+                # May 21: Pattern Cell Ship rule per-trade attribution + override exits.
+                if 'pattern_cell_source' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN pattern_cell_source VARCHAR(60)"))
+                if 'pattern_fixed_tp_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN pattern_fixed_tp_pct FLOAT"))
+                if 'pattern_fixed_sl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN pattern_fixed_sl_pct FLOAT"))
                 if 'peak_reached_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN peak_reached_at DATETIME"))
                 if 'trough_reached_at' not in columns:

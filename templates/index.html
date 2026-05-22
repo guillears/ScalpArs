@@ -4002,6 +4002,17 @@
                             <p class="text-xs text-gray-500 mt-1">ATR-normalized pullback floor: <code>effective_pullback = max(fixed_pullback, entry_atr_pct × multiplier)</code>. Volatile pairs (high ATR) get wider pullback proportional to their normal candle noise. 0.50 = "half a candle of noise". Set to 0 to disable.</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">SL ATR Multiplier <span class="text-xs text-amber-400">(May 22)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    ATR ×
+                                    <input type="number" step="0.1" min="0" max="3.0" id="config-sl-atr-multiplier" class="w-20 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.5">
+                                </label>
+                                <span id="config-sl-atr-preview" class="text-xs text-gray-500"></span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">ATR-normalized SL widening: <code>effective_sl = min(base_sl, -(entry_atr_pct × multiplier))</code>. Only WIDENS — low-ATR pairs keep base SL. <span class="text-amber-400">Cross-batch (May 22): 19% of STOP_LOSS_WIDE trades had post-peak ≥+0.60% recovery; heavy-regret ATR avg 1.16% (LONG) / 0.63% (SHORT) vs right-exits 0.63% / 0.50%. Projected save ~$700-1000 cross-batch.</span> Skipped under BE. 0 = disable.</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Early-Arm Trailing (Phase 2) <span class="text-xs text-violet-400">(May 8)</span></label>
                             <div class="flex items-center gap-4 flex-wrap">
                                 <label class="flex items-center text-sm text-gray-400">
@@ -15003,6 +15014,29 @@
                     _updateAtrPreview();
                 }
 
+                // May 22: SL ATR multiplier
+                const _slAtrInput = document.getElementById('config-sl-atr-multiplier');
+                if (_slAtrInput) {
+                    _slAtrInput.value = config.thresholds.sl_atr_multiplier !== undefined ? config.thresholds.sl_atr_multiplier : 1.5;
+                    const _updateSlAtrPreview = () => {
+                        const mult = parseFloat(_slAtrInput.value) || 0;
+                        const preview = document.getElementById('config-sl-atr-preview');
+                        if (preview) {
+                            if (mult <= 0) {
+                                preview.textContent = 'Disabled — uses base SL only';
+                            } else {
+                                const ex_low = (0.30 * mult).toFixed(2);
+                                const ex_mid = (0.60 * mult).toFixed(2);
+                                const ex_high = (1.20 * mult).toFixed(2);
+                                preview.textContent = `SL widen: ATR 0.30%→-${ex_low}% | ATR 0.60%→-${ex_mid}% | ATR 1.20%→-${ex_high}% (base -0.70% if wider)`;
+                            }
+                        }
+                    };
+                    _slAtrInput.removeEventListener('input', _updateSlAtrPreview);
+                    _slAtrInput.addEventListener('input', _updateSlAtrPreview);
+                    _updateSlAtrPreview();
+                }
+
                 // May 8 Phase 2: Early-arm trailing zone
                 const _earlyArmThrInput = document.getElementById('config-trailing-early-arm-threshold');
                 const _earlyArmPbInput = document.getElementById('config-trailing-early-arm-pullback');
@@ -15891,6 +15925,7 @@
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,
                     pullback_widening_per_level: safeFloat(document.getElementById('config-pullback-widening').value),
                     trailing_atr_multiplier: safeFloat(document.getElementById('config-trailing-atr-multiplier')?.value || 0.50),
+                    sl_atr_multiplier: safeFloat(document.getElementById('config-sl-atr-multiplier')?.value || 1.5),
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

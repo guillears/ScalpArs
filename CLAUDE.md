@@ -1,159 +1,197 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
 # ============================================================================
-# ANALYSIS METHODOLOGY — locked playbook for CSV-batch analysis (May 22, 2026)
+# ANALYSIS METHODOLOGY — Quant Analyst Playbook (May 22, 2026)
 # ============================================================================
 #
-# When the operator drops a fresh batch CSV, Claude MUST follow this 10-step
-# playbook BEFORE answering whatever question was asked. The playbook produces
-# a structured audit; the operator's question is then answered using that
-# audit as context. This prevents "I asked X but Claude missed a tripped gate
-# Y because Y wasn't in the question" failures.
+# CORE PRINCIPLE — what Claude's differential value actually is:
 #
-# Sized for the typical batch analysis. If the operator's question is narrow
-# (e.g., "check XLMUSDT specifically"), the operator can opt out by saying
-# "skip the methodology playbook" — otherwise Claude runs it by default.
+# The dashboard already shows N, WR, $, gate verdicts, table cells, filter
+# counts, pattern trackers. If Claude's analysis output is "table X shows
+# N=Y, ★ WORKING per locked verdict matrix" — Claude is functioning as a
+# worse dashboard. The operator can read tables.
 #
-# ----------------------------------------------------------------------------
-# THE 10-STEP PLAYBOOK
-# ----------------------------------------------------------------------------
+# Claude's DIFFERENTIAL value is the reasoning the dashboard CANNOT do:
 #
-# STEP 1 — Batch header
-#   N closed, LONG/SHORT split, total $, Avg P&L %, runtime, date range.
-#   Compare against trailing 5-batch baseline if archived data available.
-#   Flag if Combined Avg P&L deviates ≥0.10pp from baseline.
+#   1. PATTERN INTERLOCK — connecting findings across cross-tabs
+#      (e.g., "BTC RSI 60-65 WR drop + Pattern C rate jump + BTC ATR drop =
+#       likely regime-shift hypothesis, not cell decay")
 #
-# STEP 2 — Locked gate sweep (HIGHEST PRIORITY — never skip)
-#   Walk the locked criteria documented in CLAUDE.md entries. Output one of
-#   TRIPPED / APPROACHING (within 20% of threshold) / STABLE per item.
-#   Required minimum sweep (this list is the SHIP-DECISION load-bearing list):
+#   2. COUNTER-NARRATIVE RESOLUTION — when two tables suggest opposite
+#      actions, identify which is the real signal and why
+#      (e.g., "Pattern Cell Ship ★ WORKING vs Pattern C tracker NP rate
+#       50% in same cohort — caps mask the structural NP problem")
 #
-#     a. May 5 stop-rule: Combined Avg P&L %
-#        ≥+0.10% → genuine edge → advance phase
-#        +0.05 to +0.10% → keep, observe
-#        -0.05 to +0.05% → marginal → flag
-#        <-0.05% on N≥80 → structural pivot review
-#     b. May 4 Phase 3 multiplier verdict matrix — per active mult cell with N≥5:
-#        ★ WORKING: WR ≥70% AND Total $ positive
-#        ⚠ DRAG: Δ$ vs BL < -$1
-#        ✗ HARMFUL: Total $ negative → propose revert
-#     c. May 21 lev-stack revert criteria — any 3× effective cell with:
-#        Single trade Δ$ vs BL ≤ -$50 on a leveraged trade → IMMEDIATE drop lev
-#        N≥3 WR ≤55% → drop lev
-#        N≥5 WR ≤55% → revert both inv + lev
-#     d. Pattern Cell Ship rules (May 21): per-cell verdict per CLAUDE.md.
-#     e. Per-rule pre-committed revert criteria from any CLAUDE.md "Pre-committed
-#        revert criteria" or "Locked revert criteria" section. There are roughly
-#        40-50 of these scattered through the file — Claude is expected to
-#        recall and check the ones relevant to currently-active config.
+#   3. CAUSAL MECHANISM HYPOTHESIS — when a cell loses, ask WHY not just THAT
+#      (e.g., "S-P1 SHORTs lost today. Compare losing vs winning samples on
+#       all captured dimensions. Find: losing batch had ATR <0.10, winning
+#       had 0.10-0.15. Hypothesis: cell needs ATR floor. Test against pool.")
 #
-#   For each TRIPPED entry, propose a config diff. Do NOT auto-apply.
+#   4. REGIME-DRIFT RECOGNITION — distinguish noise from monotonic trend
+#      (e.g., "Cell WR over last 5 batches: 73%, 70%, 50%, 33%, 31% —
+#       monotonic down, not noise. Ask what changed in the regime, not
+#       just whether to revert.")
 #
-# STEP 3 — Filter health audit
-#   For each active entry filter:
-#     - Count blocks this batch (Filter Blocks counter or simulated re-apply)
-#     - Flag if 0 blocks across last 100 trades → DEAD CODE, investigate or retire
-#     - Compute "saved $ counterfactual": for each blocked trade, what would
-#       have happened. Use as Δ$ value of the filter.
+#   5. PRE-MORTEM REASONING — before proposing a ship, explicitly state
+#      what would have to be true for it to fail
+#      (e.g., "Tighter SL fails if (a) winners' worst-trough deepens in
+#       next regime, (b) per-pair concentration on saves reveals 2-3 pairs
+#       — suggesting pair blacklist instead, (c) trailing-runner trades
+#       hit new SL before peak. Check each before shipping.")
 #
-# STEP 4 — Multiplier cell verdicts
-#   Apply May 4 verdict matrix to each cell with N≥5 this batch. Output:
-#   ★ WORKING / ✓ Marginal / ⚠ DRAG / ✗ HARMFUL / ⚠ Low N per cell.
-#   Cross-reference with Multiplier Cell Performance table from dashboard.
+#   6. LOCKED-CRITERION CHALLENGE — when a gate fires, ask whether the
+#      gate itself was right, not just whether to execute the gate
+#      (e.g., "Lev-stack revert gate fired on N=1 trade. But trade was
+#       regime-edge case. Recommend documenting override rationale,
+#       proposing tighter gate criteria — not blind auto-revert.")
 #
-# STEP 5 — Pattern C/W gate check (NEVER skip)
-#   For each pattern C1-C9 + W1-W6 + UNMATCHED:
-#     - Output N this batch + cumulative N from dedupe pool
-#     - Apply locked promotion gates:
-#       ⚠ FILTER CANDIDATE: N ≥ 30, WR ≤ 40%, Avg P&L % ≤ -0.20%, NP ≥ 60%
-#       ★ MULTIPLIER CANDIDATE: N ≥ 30, WR ≥ 70%, Avg P&L % ≥ +0.10%, Total $ > 0
-#       ⚠ High WR but net losing: WR ≥ 60% AND (Avg ≤ 0 OR Total $ ≤ 0)
-#     - For pattern signatures where N just crossed 30, FLAG explicitly so the
-#       operator can decide whether to ship gate-triggered action.
+#   7. UNNAMED-SIGNATURE DISCOVERY — patterns that aren't yet C1-C9 / W1-W6
+#      (e.g., "Today's NPs share BTC RSI 60-62 + BTC ADX 19-21 + Global
+#       Vol >0.95. Not in current pattern taxonomy. Candidate C10 for
+#       observation. Cross-check against last 3 batches before naming.")
 #
-# STEP 6 — 3-pattern failure taxonomy attribution (May 16)
-#   Per losing trade, classify as:
-#     A: low-conviction (Score ≤ 1)
-#     B: peak-and-retrace (peak ≥ +0.20%, then died)
-#     C: Never Positive (peak < 0.05% — macro adverse / never-momentum)
-#   Output: counts + $ totals per pattern. Flag if Pattern C rate jumps
-#   ≥10pp vs trailing baseline (CLAUDE.md's "Pattern C is the dominant
-#   unaddressed leak" rule).
+#   8. SECOND-ORDER EFFECTS — when shipping X, what does it do to Y
+#      (e.g., "Tightening BTC RSI 60-65 cross-filter cuts entries that
+#       Multiplier Cell BTC_60-65_22-25 would have boosted. Cell's
+#       effective sample size will shrink. Verdict reliability degrades.")
 #
-# STEP 7 — Cross-batch slice comparison
-#   Last 50 closed trades vs prior 50 closed trades, per-bucket WR:
-#     BTC RSI bands, BTC ADX bands, BTC ATR bands, Pair Stretch, RngPos, Pair Gap
-#   Flag any bucket where last-50 WR drops ≥15pp vs prior-50 on N≥10.
-#   These are regime-shift early warnings.
+# WHEN ANALYZING A BATCH, AT LEAST 60% OF THE RESPONSE BODY SHOULD BE
+# REASONING ALONG THESE 8 AXES, not table-reading.
 #
-# STEP 8 — Unmatched cohort signature scan
-#   For each losing trade NOT matching any C1-C9 pattern:
-#     Dump entry signature (RSI, ADX, gap, stretch, RngPos, BTC indicators,
-#     volume, ATR, post-arm-min, peak, etc.)
-#   If ≥3 trades share 3+ dimension matches (e.g., same BTC RSI band + same
-#   BTC ADX band + same Global Vol bucket), FLAG as candidate for new C10/C11
-#   signature. Don't ship — propose to operator as observation candidate.
-#
-# STEP 9 — Counterfactual sweep (ONLY when operator requests)
-#   NOT run on every batch. When asked, simulate alternative configs:
-#     - Filter survivor: what if filter X disabled
-#     - Exit alternatives: BE floor 0.05 vs 0.10 vs 0.15, SL -0.50 vs -0.70, TP 0.30 vs 0.50
-#     - Multiplier sensitivity: per cell, $ outcome at 1.0× / 1.5× / 2.0× / 2.5×
-#   Apply 30-50% in-sample bias haircut to projected Δ$. State the haircut explicitly.
-#
-# STEP 10 — Output format
-#   Single structured response with sections 1-8 always populated, section 9
-#   optional. End with explicit list:
-#     • TRIPPED criteria → proposed config diffs (Step 2)
-#     • APPROACHING criteria → watchlist
-#     • Novel observations (operator should investigate)
-#     • Multiplier cell verdicts requiring action (Step 4)
-#     • Pattern gate triggers (Step 5)
+# Table-reading output (gate verdicts, block counts, etc.) goes into a
+# CONCISE STRUCTURED HEADER at the top — 5-10 lines. Then the rest of the
+# response is the differential analyst work.
 #
 # ----------------------------------------------------------------------------
-# LOCKED ANTI-PATTERN RULES (apply to ALL analyses, not just CSV reviews)
+# WORKFLOW WHEN OPERATOR DROPS A CSV
 # ----------------------------------------------------------------------------
 #
-# 1. NEVER claim cross-batch evidence without citing N from the dedupe pool.
-#    Use scripts/build_unified_pool.py or reports/dedupe_pool.csv.
+# Phase A — Compact header (5-10 lines, machine-style)
 #
-# 2. NEVER ship a multiplier from 1-sample evidence regardless of how clean
-#    the in-batch numbers look. CLAUDE.md May 11 + May 16 + May 18 lessons.
-#    Exception: cross-batch ≥5-sample structural backing AND BE-compatibility
-#    check passes (≥60% of cell losses are Pattern B).
+#   Build a structured summary that the dashboard would produce automatically:
+#   - Batch: N, LONG/SHORT, $ totals, Avg P&L %, runtime
+#   - Locked gates: count of TRIPPED / APPROACHING / STABLE
+#   - Active multiplier cell verdicts: counts of ★ / ⚠ / ✗ / Low-N
+#   - Pattern gate triggers: any ⚠ FILTER CANDIDATE or ★ MULTIPLIER CANDIDATE
+#   - Filter health: any DEAD CODE flags (0 blocks in 100+ trades)
 #
-# 3. NEVER apply +cross-batch counterfactual without modeling the CURRENT
-#    exit stack. CLAUDE.md May 20 lesson — historical P&L reflects historical
-#    exits, not current. Run trades through current BE/SL/FAST_EXIT before
-#    computing $ impact.
+#   Format compactly. Don't narrate — these are facts the operator already
+#   sees on the dashboard. Header serves as anchor for the analysis below.
 #
-# 4. NEVER pool raw trades across config changes. Per-config sub-samples only,
-#    Avg P&L % for cross-sample comparison (leverage-invariant).
+# Phase B — Quant analysis (THIS IS THE WORK — typically 60-80% of response)
 #
-# 5. NEVER lower a locked promotion gate at decision time. If a gate fails
-#    by a hair, the answer is "no ship." Pre-committed numbers stand.
+#   Pick the 2-4 most interesting threads from the batch and reason through
+#   them along the 8 axes above. Each thread should have:
 #
-# 6. ALWAYS apply in-sample bias haircut (30-50%) when projecting a Δ$ from
-#    a counterfactual on the same batch the rule was derived from. State the
-#    haircut explicitly.
+#     - The observation (what makes this thread interesting — e.g., a cell
+#       that just turned harmful, a pattern signature emerging, a regime
+#       shift indicator)
+#     - The hypothesis space (2-3 candidate explanations)
+#     - The disambiguator (specific data to check that distinguishes the
+#       hypotheses)
+#     - The recommended action (ship / observe / investigate / override gate)
+#     - The pre-mortem (what would have to be true for the action to fail)
 #
-# 7. ALWAYS distinguish "matched cohort" (post-hoc, by outcome) from
-#    "classifiable at entry" (the only thing forward filters can use).
-#    Unm. L / Unm. W are post-hoc — forward you only know "no W match",
-#    which includes future winners AND future losers.
+#   The threads should reflect what a quant ACTUALLY cares about — not a
+#   complete coverage of every table. Pick the 2-4 most signal-dense.
 #
-# 8. ALWAYS check per-pair concentration before shipping a dimensional
-#    filter. If the cell's loss is 60%+ driven by 1-2 pairs, ship a pair
-#    blacklist instead of a dimensional filter (CLAUDE.md May 12 lesson).
+# Phase C — Action proposal (concise, end of response)
 #
-# 9. CAPS FOR LOSERS, MULT FOR WINNERS, DON'T CROSS THEM. CLAUDE.md May 20.
-#    Pattern C cohort → TP/SL caps (defensive). Pattern W cohort → multiplier
-#    (offensive). Mixing destroys edge mechanically.
+#   List concrete actions:
+#     • Locked gates tripped → which proposed diffs (ship now or override)
+#     • Approaching gates → watchlist (next-batch validation)
+#     • Novel observations to investigate (with the specific question to answer)
+#     • Cross-batch validation needed (e.g., "pull last 5 BTC ATR <0.10 SHORT
+#       samples to check whether killer cell is structural")
 #
-# 10. PATTERN CODE IS THE SIGNATURE, TREATMENT IS DETERMINED BY EMPIRICAL
-#     BEHAVIOR. C-tagged cells can carry W treatment if cross-batch shows
-#     winning behavior (e.g., C1 SHORT at 2.0×); W-tagged cells can carry
-#     C treatment if losing (e.g., W1 LONG at fixed TP/SL). CLAUDE.md May 21.
+#   This is action-oriented, NOT descriptive. "Ship X" or "wait, investigate Y."
+#
+# ----------------------------------------------------------------------------
+# LOCKED ANTI-PATTERNS FOR THE ANALYSIS ITSELF
+# ----------------------------------------------------------------------------
+#
+# A1. DON'T NARRATE TABLES. If the dashboard already shows it, don't repeat
+#     it. Reference it by name and reason ABOUT it. "C4 LONG ★ EXITS WORKING
+#     per the Pattern Cell Ship table — but..." not "C4 LONG had N=7 trades
+#     with 4 TP fires and 2 SL fires and..."
+#
+# A2. DON'T STOP AT VERDICTS. A ★ WORKING or ✗ HARMFUL verdict is the START
+#     of analysis, not the end. Ask why. Compare against prior batches. Check
+#     for confounders.
+#
+# A3. ALWAYS CONNECT 2+ TABLES. Single-table observations are dashboard work.
+#     "BTC RSI cross-tab + Pattern C tracker + Volume crosstab all show X" is
+#     analyst work.
+#
+# A4. ALWAYS PROVIDE A DISAMBIGUATOR. When you propose a hypothesis, name
+#     the specific data check that would distinguish it from alternatives.
+#     "Could be regime drift OR cell decay — disambiguate by checking BTC
+#     ATR distribution across last 5 batches."
+#
+# A5. ALWAYS RUN PRE-MORTEM. Before proposing a ship, explicitly say what
+#     would have to be true for it to backfire. If you can't think of one,
+#     you haven't thought hard enough.
+#
+# A6. CHALLENGE LOCKED CRITERIA WHEN APPROPRIATE. Locked gates are
+#     pre-committed for discipline, but they're not infallible. When a gate
+#     trips on edge-case evidence (single-trade ✗ HARMFUL, N=1 sample,
+#     etc.), the right answer may be "override + tighten criterion" not
+#     "blind execute."
+#
+# A7. SURFACE 2-4 THREADS, NOT 10. Complete coverage of every table dilutes
+#     the signal. Pick the highest-signal threads. Operator can ask about
+#     other threads if curious.
+#
+# A8. DISTINGUISH "CHECK A GATE" FROM "DO QUANT WORK." Step 2 of the old
+#     methodology (locked gate sweep) is automation work — produce the
+#     header counts but don't expand each one into prose. Save prose budget
+#     for the threads where reasoning matters.
+#
+# ----------------------------------------------------------------------------
+# LOCKED DISCIPLINE RULES (apply to ALL analysis, not just CSV reviews)
+# ----------------------------------------------------------------------------
+#
+# D1. NEVER claim cross-batch evidence without citing N from the dedupe pool.
+#     Use scripts/build_unified_pool.py or reports/dedupe_pool.csv.
+#
+# D2. NEVER ship a multiplier from 1-sample evidence regardless of how clean
+#     the in-batch numbers look. CLAUDE.md May 11 + May 16 + May 18 lessons.
+#     Exception: cross-batch ≥5-sample structural backing AND BE-compatibility
+#     check passes (≥60% of cell losses are Pattern B).
+#
+# D3. NEVER apply a cross-batch counterfactual without modeling the CURRENT
+#     exit stack. CLAUDE.md May 20 lesson — historical P&L reflects historical
+#     exits, not current. Run trades through current BE/SL/FAST_EXIT before
+#     computing $ impact.
+#
+# D4. NEVER pool raw trades across config changes. Per-config sub-samples only,
+#     Avg P&L % for cross-sample comparison (leverage-invariant).
+#
+# D5. NEVER lower a locked promotion gate at decision time. If a gate fails
+#     by a hair, the answer is "no ship." Pre-committed numbers stand.
+#     (Exception: A6 — challenging the gate itself, separately.)
+#
+# D6. ALWAYS apply in-sample bias haircut (30-50%) when projecting a Δ$ from
+#     a counterfactual on the same batch the rule was derived from. State the
+#     haircut explicitly.
+#
+# D7. ALWAYS distinguish "matched cohort" (post-hoc, by outcome) from
+#     "classifiable at entry" (the only thing forward filters can use).
+#     Unm. L / Unm. W are post-hoc — forward you only know "no W match",
+#     which includes future winners AND future losers.
+#
+# D8. ALWAYS check per-pair concentration before shipping a dimensional
+#     filter. If the cell's loss is 60%+ driven by 1-2 pairs, ship a pair
+#     blacklist instead of a dimensional filter (CLAUDE.md May 12 lesson).
+#
+# D9. CAPS FOR LOSERS, MULT FOR WINNERS, DON'T CROSS THEM. CLAUDE.md May 20.
+#     Pattern C cohort → TP/SL caps (defensive). Pattern W cohort → multiplier
+#     (offensive). Mixing destroys edge mechanically.
+#
+# D10. PATTERN CODE IS THE SIGNATURE, TREATMENT IS DETERMINED BY EMPIRICAL
+#      BEHAVIOR. C-tagged cells can carry W treatment if cross-batch shows
+#      winning behavior (e.g., C1 SHORT at 2.0×); W-tagged cells can carry
+#      C treatment if losing (e.g., W1 LONG at fixed TP/SL). CLAUDE.md May 21.
 #
 # ----------------------------------------------------------------------------
 # DISCIPLINE OVERRIDES — known exceptions, document each
@@ -173,22 +211,21 @@
 # matters: 1-2 per month is fine; 6+ in 2 weeks is a discipline-drift signal.
 #
 # ----------------------------------------------------------------------------
-# WHEN TO BREAK THE PLAYBOOK
+# WHEN TO SKIP THIS PLAYBOOK
 # ----------------------------------------------------------------------------
 #
-# Skip the playbook when:
+# Skip when:
 #   - Operator says "skip methodology" or asks a narrow lookup
 #   - Operator asks a methodology / architecture question (not a data analysis)
 #   - Bug fix or code work (no batch data involved)
 #
-# Always run the playbook when:
+# Always run when:
 #   - Operator pastes a CSV
 #   - Operator asks "what's interesting" / "deep dive" / "what should we change"
 #   - Operator asks "is X working" about an active cell or filter
 #
 # ----------------------------------------------------------------------------
 # END OF METHODOLOGY SECTION
-# ----------------------------------------------------------------------------
 
 ## May 22, 2026 — BTC ATR × BTC ADX 2D Cross-Filter shipped (SHORT-only `0.0-0.10:30-999`)
 

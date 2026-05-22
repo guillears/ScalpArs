@@ -286,6 +286,40 @@
 #      winning behavior (e.g., C1 SHORT at 2.0×); W-tagged cells can carry
 #      C treatment if losing (e.g., W1 LONG at fixed TP/SL). CLAUDE.md May 21.
 #
+# D11. MANDATORY UI CHECKLIST FOR EVERY NEW CONFIG FIELD OR TOGGLE.
+#
+#      Repeatedly missed in May 22 sessions (entry_dist_from_ema13_min_long,
+#      sl_atr_multiplier — both shipped engine-only without UI controls, then
+#      caught by the operator post-deploy). This was an unforced error pattern.
+#
+#      ANY commit that introduces a new field in config.py OR trading_config.json
+#      MUST include all 5 of the following in the same PR. NO EXCEPTIONS:
+#
+#        ✅ 1. config.py — field with default value + evidence comment
+#        ✅ 2. trading_config.json — explicit value
+#        ✅ 3. Engine wiring — services/trading_engine.py and/or services/indicators.py
+#        ✅ 4. UI input — HTML form input in templates/index.html
+#             • Numeric: <input type="number" ...> with step + min + max
+#             • Toggle: <input type="checkbox" ...> with peer styling
+#             • String rule: <textarea> or table-based rule builder
+#             • Live preview span (optional but preferred for thresholds)
+#        ✅ 5. UI load + save handlers
+#             • Load: read config.thresholds.{field} → set input.value
+#             • Save: include {field}: safeFloat(input.value) in payload
+#
+#      VERIFICATION BEFORE PUSH:
+#      Run grep across templates/index.html for the new field's input ID.
+#      If grep returns 0 matches → UI is missing, do not push.
+#
+#      EXCEPTION: rule strings (e.g. btc_rsi_adx_filter_*) that ship with the
+#      full add/remove-row UI mechanism already exist — those use the
+#      pattern-builder UI. Standalone numeric/toggle fields ALWAYS need direct
+#      inputs.
+#
+#      If a field is intentionally operator-edits-JSON-only (rare), state that
+#      explicitly in the CLAUDE.md ship entry with rationale. Otherwise the
+#      default is "ship with UI input."
+#
 # ----------------------------------------------------------------------------
 # DISCIPLINE OVERRIDES — known exceptions, document each
 # ----------------------------------------------------------------------------

@@ -5260,6 +5260,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             sig_inactive = sum(1 for o in group_orders if o.signal_active_at_close is False)
             # May 17: post-arm minimum P&L (BE-floor counterfactual)
             post_arm_mins = [getattr(o, 'post_arm_min_pnl_pct', None) for o in group_orders if getattr(o, 'post_arm_min_pnl_pct', None) is not None]
+            # May 22: ATR aggregation for sl_atr_multiplier diagnostic.
+            atrs_sl = [o.entry_atr_pct for o in group_orders if o.entry_atr_pct is not None and o.entry_atr_pct > 0]
+            avg_atr_sl = sum(atrs_sl) / len(atrs_sl) if atrs_sl else None
+            atr_sl_15x_sl = -(avg_atr_sl * 1.5) if avg_atr_sl is not None else None
             return {
                 "count": count,
                 "avg_peak_pnl": round(avg_peak, 4),
@@ -5277,6 +5281,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "signal_inactive": sig_inactive,
                 "avg_post_arm_min_pct": round(sum(post_arm_mins) / len(post_arm_mins), 4) if post_arm_mins else None,
                 "post_arm_min_n": len(post_arm_mins),
+                "avg_atr_pct": round(avg_atr_sl, 4) if avg_atr_sl is not None else None,
+                "atr_sl_15x": round(atr_sl_15x_sl, 4) if atr_sl_15x_sl is not None else None,
             }
         
         all_sl_by_conf = {}
@@ -6064,6 +6070,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 ema5_slopes_pe = [o.exit_ema5_slope_pct for o in group if o.exit_ema5_slope_pct is not None]
                 ema5_crossed_pe = sum(1 for o in group if o.exit_ema5_crossed is True)
 
+                # May 22: ATR aggregation for sl_atr_multiplier diagnostic.
+                # AvgATR% shows volatility character of the bucket.
+                # ATR-SL@1.5× shows what wider SL would have been; compare against AvgClose
+                # to gauge whether ATR widening would have rescued the trade.
+                atrs_pe = [o.entry_atr_pct for o in group if o.entry_atr_pct is not None and o.entry_atr_pct > 0]
+                avg_atr_pe = sum(atrs_pe) / len(atrs_pe) if atrs_pe else None
+                atr_sl_widened_pe = -(avg_atr_pe * 1.5) if avg_atr_pe is not None else None
+
                 no_regain = [o for o in group if o.post_exit_signal_regained_minutes is None]
                 nr_count = len(no_regain)
                 nr_rec_neg020 = sum(1 for o in no_regain if (o.post_exit_peak_pnl or 0) >= -0.20) if nr_count else 0
@@ -6109,6 +6123,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_exit_ema5_dist": round(sum(ema5_dists_pe) / len(ema5_dists_pe), 4) if ema5_dists_pe else None,
                     "avg_exit_ema5_slope": round(sum(ema5_slopes_pe) / len(ema5_slopes_pe), 4) if ema5_slopes_pe else None,
                     "exit_ema5_crossed_pct": round(ema5_crossed_pe / count * 100, 1) if count > 0 else None,
+                    "avg_atr_pct": round(avg_atr_pe, 4) if avg_atr_pe is not None else None,
+                    "atr_sl_15x": round(atr_sl_widened_pe, 4) if atr_sl_widened_pe is not None else None,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")

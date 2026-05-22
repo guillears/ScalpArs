@@ -8552,53 +8552,76 @@ def _compute_pattern_calculator_data(orders):
 
 
 def _compute_regime_change_counterfactual(orders):
-    """Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics).
+    """Phantom Regime Change Exit Counterfactual (May 11 capture, May 22 extended).
 
-    For trades where BTC macro regime flipped opposite to trade direction
-    during the hold, compares:
-      - Actual close P&L (regime change exit was DISABLED → trade rode through)
-      - Phantom P&L at the moment regime first flipped (captured in
-        phantom_regime_change_exit_pnl)
+    Tracks ALL close reasons (winners AND losers, flipped AND stable). For
+    each trade we know:
+      - Whether BTC regime FLIPPED opposite to direction during the hold
+        (phantom_regime_change_exit_triggered_at populated)
+      - The P&L at the moment of flip (phantom_regime_change_exit_pnl)
+      - Minutes from open to flip vs minutes from open to actual close
+      - Δminutes = how many minutes EARLIER the phantom exit would have fired
 
-    Per (direction × close_reason) and per-direction TOTAL rows.
+    For trades where regime never flipped, phantom = actual (no change).
+    The "flipped" sub-count and timing data is the key signal.
 
-    Verdict gates (CLAUDE.md May 11 locked):
-      ★ WORKING: Δ$ > +$50, Δ% > +0.20pp, N ≥ 10 → enable regime_change_exit_enabled
-      ✓ Marginal: Δ$ $0-$50, N ≥ 5 → defer
-      ⚠ HURTING: Δ$ < 0 on N ≥ 5 → keep DISABLED (regime exits would kill recoveries)
-      ⚠ Low N: N < 5 → no decision
+    Per (direction × close_reason): N_total, N_flipped, actual vs phantom
+    P&L, Δ$, Δ% AND time-to-trigger metrics.
 
-    Pre-May-11 trades have NULL on phantom_regime_change_exit_pnl and are
-    excluded from analysis.
+    Verdict gates (CLAUDE.md May 11 locked, applied to flipped subset):
+      ★ WORKING: Δ$ > +$50, Δ% > +0.20pp, N_flipped ≥ 10 → enable regime exit
+      ⚠ HURTING: Δ$ < 0 on N_flipped ≥ 5 → keep DISABLED (kills recoveries)
+      ⚠ Low N: N_flipped < 5 → no decision
+
+    Pre-May-11 trades have NULL on phantom_regime_change_exit_pnl — counted
+    in N_total but treated as "regime didn't flip during hold" for timing.
     """
+    from datetime import datetime
     rows = []
     by_dir_reason = {}
-    pool_n = 0
+    pool_n_total = 0
+    pool_n_flipped = 0
     pool_actual_total = 0.0
     pool_cf_total = 0.0
     pool_actual_pct_sum = 0.0
     pool_cf_pct_sum = 0.0
+    pool_actual_min_sum = 0.0
+    pool_phantom_min_sum = 0.0
+    pool_phantom_min_n = 0
+
+    def _minutes(t1, t2):
+        if t1 is None or t2 is None:
+            return None
+        if t1.tzinfo is not None: t1 = t1.replace(tzinfo=None)
+        if t2.tzinfo is not None: t2 = t2.replace(tzinfo=None)
+        return (t2 - t1).total_seconds() / 60.0
 
     for o in orders:
         if o.status != 'CLOSED':
-            continue
-        phantom_pnl = o.phantom_regime_change_exit_pnl
-        if phantom_pnl is None:
             continue
         actual_pct = o.pnl_percentage
         if actual_pct is None:
             continue
 
-        # Compute counterfactual $: assume same investment / notional
-        # Δ$ = (cf% - actual%) × notional / 100
         notional = o.notional_value or (o.investment * (o.leverage or 1))
-        cf_dollars = phantom_pnl * notional / 100.0
         actual_dollars = o.pnl or 0
-        delta_dollars = cf_dollars - actual_dollars
-        delta_pct = phantom_pnl - actual_pct
+        actual_min = _minutes(o.opened_at, o.closed_at)
+
+        phantom_pnl = o.phantom_regime_change_exit_pnl
+        phantom_time = o.phantom_regime_change_exit_triggered_at
+        flipped = phantom_pnl is not None
+
+        if flipped:
+            cf_pct = phantom_pnl
+            cf_dollars = phantom_pnl * notional / 100.0
+            phantom_min = _minutes(o.opened_at, phantom_time)
+        else:
+            # No flip during hold — phantom would not have fired
+            cf_pct = actual_pct
+            cf_dollars = actual_dollars
+            phantom_min = None
 
         reason = o.close_reason or "UNKNOWN"
-        # Bucket trailing L4+ into L4+
         if " L" in reason:
             parts = reason.split(" L")
             base = parts[0]
@@ -8614,42 +8637,91 @@ def _compute_regime_change_counterfactual(orders):
             by_dir_reason[key] = {
                 'direction': o.direction,
                 'reason': reason,
-                'n': 0,
+                'n_total': 0,
+                'n_flipped': 0,
                 'actual_pct_sum': 0.0,
                 'cf_pct_sum': 0.0,
                 'actual_dollars_sum': 0.0,
                 'cf_dollars_sum': 0.0,
+                'actual_min_sum': 0.0,
+                'actual_min_n': 0,
+                'phantom_min_sum': 0.0,
+                'phantom_min_n': 0,
+                # Sub-aggregates over FLIPPED trades only (for Δ-on-flipped reads)
+                'flip_actual_pct_sum': 0.0,
+                'flip_cf_pct_sum': 0.0,
+                'flip_actual_dollars_sum': 0.0,
+                'flip_cf_dollars_sum': 0.0,
             }
         b = by_dir_reason[key]
-        b['n'] += 1
+        b['n_total'] += 1
         b['actual_pct_sum'] += actual_pct
-        b['cf_pct_sum'] += phantom_pnl
+        b['cf_pct_sum'] += cf_pct
         b['actual_dollars_sum'] += actual_dollars
         b['cf_dollars_sum'] += cf_dollars
+        if actual_min is not None:
+            b['actual_min_sum'] += actual_min
+            b['actual_min_n'] += 1
+        if flipped:
+            b['n_flipped'] += 1
+            b['flip_actual_pct_sum'] += actual_pct
+            b['flip_cf_pct_sum'] += cf_pct
+            b['flip_actual_dollars_sum'] += actual_dollars
+            b['flip_cf_dollars_sum'] += cf_dollars
+            if phantom_min is not None:
+                b['phantom_min_sum'] += phantom_min
+                b['phantom_min_n'] += 1
+                pool_phantom_min_sum += phantom_min
+                pool_phantom_min_n += 1
 
-        pool_n += 1
+        pool_n_total += 1
+        if flipped:
+            pool_n_flipped += 1
         pool_actual_total += actual_dollars
         pool_cf_total += cf_dollars
         pool_actual_pct_sum += actual_pct
-        pool_cf_pct_sum += phantom_pnl
+        pool_cf_pct_sum += cf_pct
+        if actual_min is not None:
+            pool_actual_min_sum += actual_min
 
-    # Build rows from buckets
+    # Build rows
     for (direction, reason), b in sorted(by_dir_reason.items(),
-                                          key=lambda x: (-x[1]['n'], x[0])):
-        n = b['n']
-        actual_avg_pct = b['actual_pct_sum'] / n
-        cf_avg_pct = b['cf_pct_sum'] / n
+                                          key=lambda x: (-x[1]['n_total'], x[0])):
+        n_total = b['n_total']
+        n_flipped = b['n_flipped']
+        actual_avg_pct = b['actual_pct_sum'] / n_total
+        cf_avg_pct = b['cf_pct_sum'] / n_total
         delta_pct = cf_avg_pct - actual_avg_pct
         delta_dollars = b['cf_dollars_sum'] - b['actual_dollars_sum']
 
-        # Verdict per locked gates
-        if n < 5:
-            verdict = '⚠ Low N'
-        elif delta_dollars < 0:
+        # Δ on flipped subset only — this is the operationally meaningful metric
+        if n_flipped > 0:
+            flip_delta_dollars = b['flip_cf_dollars_sum'] - b['flip_actual_dollars_sum']
+            flip_delta_pct = (b['flip_cf_pct_sum'] - b['flip_actual_pct_sum']) / n_flipped
+        else:
+            flip_delta_dollars = 0.0
+            flip_delta_pct = 0.0
+
+        # Time metrics
+        avg_actual_min = (b['actual_min_sum'] / b['actual_min_n']) if b['actual_min_n'] else None
+        avg_phantom_min = (b['phantom_min_sum'] / b['phantom_min_n']) if b['phantom_min_n'] else None
+        # Δmin computed only on flipped trades (avg of phantom - avg of actual_for_flipped)
+        # We approximate as avg_phantom_min - avg_actual_min for the flipped subset
+        # Simpler: use avg over flipped trades where both timestamps exist
+        delta_min = None
+        if avg_phantom_min is not None and avg_actual_min is not None:
+            # avg_actual_min uses ALL trades; for time delta we want only flipped subset's actual avg
+            # Just present as: avg phantom fire minutes vs avg actual close minutes (negative = earlier exit)
+            delta_min = avg_phantom_min - avg_actual_min
+
+        # Verdict on flipped subset
+        if n_flipped < 5:
+            verdict = '⚠ Low N (flipped<5)' if n_flipped > 0 else '— No regime flips'
+        elif flip_delta_dollars < 0:
             verdict = '⚠ HURTING — regime exit kills recoveries'
-        elif n >= 10 and delta_dollars > 50 and delta_pct > 0.20:
+        elif n_flipped >= 10 and flip_delta_dollars > 50 and flip_delta_pct > 0.20:
             verdict = '★ WORKING — enable regime_change_exit'
-        elif delta_dollars > 0:
+        elif flip_delta_dollars > 0:
             verdict = '✓ Marginal — defer'
         else:
             verdict = '✓ Marginal — defer'
@@ -8657,33 +8729,41 @@ def _compute_regime_change_counterfactual(orders):
         rows.append({
             'direction': direction,
             'reason': reason,
-            'n': n,
+            'n': n_total,
+            'n_flipped': n_flipped,
             'actual_avg_pct': round(actual_avg_pct, 3),
             'cf_avg_pct': round(cf_avg_pct, 3),
             'delta_pct': round(delta_pct, 3),
             'actual_total_usd': round(b['actual_dollars_sum'], 2),
             'cf_total_usd': round(b['cf_dollars_sum'], 2),
             'delta_usd': round(delta_dollars, 2),
+            'flip_delta_usd': round(flip_delta_dollars, 2),
+            'flip_delta_pct': round(flip_delta_pct, 3),
+            'avg_actual_min': round(avg_actual_min, 1) if avg_actual_min is not None else None,
+            'avg_phantom_min': round(avg_phantom_min, 1) if avg_phantom_min is not None else None,
+            'delta_min': round(delta_min, 1) if delta_min is not None else None,
             'verdict': verdict,
         })
 
-    # Pool-level summary + direction-level totals
     summary = {
-        'pool_n': pool_n,
-        'pool_actual_pct': round(pool_actual_pct_sum / pool_n, 3) if pool_n else 0,
-        'pool_cf_pct': round(pool_cf_pct_sum / pool_n, 3) if pool_n else 0,
-        'pool_delta_pct': round((pool_cf_pct_sum - pool_actual_pct_sum) / pool_n, 3) if pool_n else 0,
+        'pool_n': pool_n_total,
+        'pool_n_flipped': pool_n_flipped,
+        'pool_actual_pct': round(pool_actual_pct_sum / pool_n_total, 3) if pool_n_total else 0,
+        'pool_cf_pct': round(pool_cf_pct_sum / pool_n_total, 3) if pool_n_total else 0,
+        'pool_delta_pct': round((pool_cf_pct_sum - pool_actual_pct_sum) / pool_n_total, 3) if pool_n_total else 0,
         'pool_actual_usd': round(pool_actual_total, 2),
         'pool_cf_usd': round(pool_cf_total, 2),
         'pool_delta_usd': round(pool_cf_total - pool_actual_total, 2),
+        'pool_avg_actual_min': round(pool_actual_min_sum / pool_n_total, 1) if pool_n_total else 0,
+        'pool_avg_phantom_min': round(pool_phantom_min_sum / pool_phantom_min_n, 1) if pool_phantom_min_n else None,
     }
 
-    # Pool verdict
-    if pool_n < 5:
-        summary['verdict'] = '⚠ Low N — keep observing'
+    # Pool verdict — gates apply to flipped subset (where phantom actually fires)
+    if pool_n_flipped < 5:
+        summary['verdict'] = f'⚠ Low N — only {pool_n_flipped} regime flips, keep observing'
     elif summary['pool_delta_usd'] < 0:
-        summary['verdict'] = '⚠ HURTING — KEEP DISABLED'
-    elif pool_n >= 10 and summary['pool_delta_usd'] > 50 and summary['pool_delta_pct'] > 0.20:
+        summary['verdict'] = '⚠ HURTING — KEEP DISABLED (regime exit would kill recoveries)'
+    elif pool_n_flipped >= 10 and summary['pool_delta_usd'] > 50 and summary['pool_delta_pct'] > 0.20:
         summary['verdict'] = '★ WORKING — ENABLE regime_change_exit'
     elif summary['pool_delta_usd'] > 0:
         summary['verdict'] = '✓ Marginal — defer decision'

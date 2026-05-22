@@ -2064,11 +2064,13 @@
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🌀 Phantom Regime Change Exit Counterfactual (observation-only)</h3>
                     <p class="text-xs text-gray-400 mb-3">
-                        For trades where BTC macro regime flipped opposite to trade direction during the hold,
-                        compares actual close P&L (regime change exit DISABLED — trade rode through) vs phantom
-                        P&L at the moment regime first flipped. Answers: "would enabling
-                        <code class="text-amber-300">regime_change_exit_enabled: true</code> have helped or hurt?"
-                        Pre-May-11 trades excluded (no phantom data).
+                        Tracks ALL close reasons (winners + losers). For each (direction × close_reason):
+                        N = total trades, <span class="text-amber-300">Flip</span> = subset where BTC regime
+                        flipped opposite during hold (phantom would have fired). For winners: confirms phantom
+                        WOULDN'T trigger (or by how much earlier). For losers: shows what we'd have captured.
+                        <span class="text-amber-300">AvgActMin</span> = avg minutes to actual close.
+                        <span class="text-amber-300">AvgPhMin</span> = avg minutes to phantom flip.
+                        <span class="text-amber-300">Δmin</span> = phantom - actual (negative = exit earlier).
                     </p>
                     <div class="text-xs text-gray-400 mb-2" id="regime-cf-pool">(no post-deploy trades yet)</div>
                     <div class="overflow-x-auto">
@@ -2077,18 +2079,22 @@
                                 <tr class="text-gray-400 text-left border-b border-white/10">
                                     <th class="px-3 py-2 font-medium">Close Reason</th>
                                     <th class="px-3 py-2 font-medium">Dir</th>
-                                    <th class="px-3 py-2 font-medium text-center">N</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Total trades in bucket">N</th>
+                                    <th class="px-3 py-2 font-medium text-center" title="Subset where regime flipped during hold (phantom would have fired)">Flip</th>
                                     <th class="px-3 py-2 font-medium text-right">Actual %</th>
                                     <th class="px-3 py-2 font-medium text-right">Actual $</th>
                                     <th class="px-3 py-2 font-medium text-right">Phantom %</th>
                                     <th class="px-3 py-2 font-medium text-right">Phantom $</th>
                                     <th class="px-3 py-2 font-medium text-right">Δ%</th>
                                     <th class="px-3 py-2 font-medium text-right">Δ$</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg minutes from entry to actual close">AvgActMin</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Avg minutes from entry to regime flip (phantom would have fired)">AvgPhMin</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="phantom - actual (negative = phantom would have exited earlier)">Δmin</th>
                                     <th class="px-3 py-2 font-medium">Verdict</th>
                                 </tr>
                             </thead>
                             <tbody id="regime-cf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-2 text-center text-gray-500">(no data yet — phantom column populated from May 11 onward)</td></tr>
+                                <tr><td colspan="14" class="px-3 py-2 text-center text-gray-500">(no trades yet)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6909,7 +6915,7 @@
                 lines.push('');
             }
 
-            // Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
+            // Phantom Regime Change Exit Counterfactual (May 22: all close reasons + timing)
             const _rcf1 = perf.regime_change_counterfactual || {};
             if (_rcf1.rows && _rcf1.rows.length) {
                 const _s = _rcf1.summary || {};
@@ -6917,12 +6923,14 @@
                     lines.push(`\n${hr2}`);
                     const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
                     const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
-                    lines.push(`## Phantom Regime Change Exit Counterfactual (observation-only, post-May-11)`);
-                    lines.push(`Pool: ${_s.pool_n} trades · Actual ${fmt$(_s.pool_actual_usd).trim()} → Phantom ${fmt$(_s.pool_cf_usd).trim()} · Δ ${fmt$(_s.pool_delta_usd).trim()} · ${_s.verdict || ''}\n`);
-                    lines.push('Reason                Dir   N   Actual%   Actual$   Phantom%  Phantom$    Δ%        Δ$       Verdict');
-                    lines.push('-'.repeat(120));
+                    const fmtMin = (v) => v == null ? '   -  ' : (v.toFixed(1) + 'm').padStart(7);
+                    const fmtDMin = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(1) + 'm').padStart(7);
+                    lines.push(`## Phantom Regime Change Exit Counterfactual (observation-only)`);
+                    lines.push(`Pool: ${_s.pool_n} trades · ${_s.pool_n_flipped || 0} flipped · Actual ${fmt$(_s.pool_actual_usd).trim()} → Phantom ${fmt$(_s.pool_cf_usd).trim()} · Δ ${fmt$(_s.pool_delta_usd).trim()}${_s.pool_avg_phantom_min != null ? ' · AvgPhMin ' + _s.pool_avg_phantom_min.toFixed(1) : ''} · ${_s.verdict || ''}\n`);
+                    lines.push('Reason                Dir   N  Flip  Actual%   Actual$   Phantom%  Phantom$    Δ%        Δ$    AvgActMin AvgPhMin   Δmin   Verdict');
+                    lines.push('-'.repeat(155));
                     _rcf1.rows.forEach(r => {
-                        lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.n).padStart(3)}  ${fmt(r.actual_avg_pct)} ${fmt$(r.actual_total_usd)}  ${fmt(r.cf_avg_pct)} ${fmt$(r.cf_total_usd)} ${fmt(r.delta_pct)} ${fmt$(r.delta_usd)}  ${r.verdict}`);
+                        lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.n).padStart(3)} ${String(r.n_flipped).padStart(4)}  ${fmt(r.actual_avg_pct)} ${fmt$(r.actual_total_usd)}  ${fmt(r.cf_avg_pct)} ${fmt$(r.cf_total_usd)} ${fmt(r.delta_pct)} ${fmt$(r.delta_usd)} ${fmtMin(r.avg_actual_min)} ${fmtMin(r.avg_phantom_min)} ${fmtDMin(r.delta_min)}  ${r.verdict}`);
                     });
                     lines.push('');
                 }
@@ -8416,7 +8424,7 @@
                     lines.push('');
                 }
 
-                // Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
+                // Phantom Regime Change Exit Counterfactual (May 22: all close reasons + timing)
                 const _rcf2 = perf.regime_change_counterfactual || {};
                 if (_rcf2.rows && _rcf2.rows.length) {
                     const _s2 = _rcf2.summary || {};
@@ -8424,12 +8432,14 @@
                         lines.push(`\n${hr2}`);
                         const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
                         const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
-                        lines.push(`## Phantom Regime Change Exit Counterfactual (observation-only, post-May-11)`);
-                        lines.push(`Pool: ${_s2.pool_n} trades · Actual ${fmt$(_s2.pool_actual_usd).trim()} → Phantom ${fmt$(_s2.pool_cf_usd).trim()} · Δ ${fmt$(_s2.pool_delta_usd).trim()} · ${_s2.verdict || ''}\n`);
-                        lines.push('Reason                Dir   N   Actual%   Actual$   Phantom%  Phantom$    Δ%        Δ$       Verdict');
-                        lines.push('-'.repeat(120));
+                        const fmtMin = (v) => v == null ? '   -  ' : (v.toFixed(1) + 'm').padStart(7);
+                        const fmtDMin = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(1) + 'm').padStart(7);
+                        lines.push(`## Phantom Regime Change Exit Counterfactual (observation-only)`);
+                        lines.push(`Pool: ${_s2.pool_n} trades · ${_s2.pool_n_flipped || 0} flipped · Actual ${fmt$(_s2.pool_actual_usd).trim()} → Phantom ${fmt$(_s2.pool_cf_usd).trim()} · Δ ${fmt$(_s2.pool_delta_usd).trim()}${_s2.pool_avg_phantom_min != null ? ' · AvgPhMin ' + _s2.pool_avg_phantom_min.toFixed(1) : ''} · ${_s2.verdict || ''}\n`);
+                        lines.push('Reason                Dir   N  Flip  Actual%   Actual$   Phantom%  Phantom$    Δ%        Δ$    AvgActMin AvgPhMin   Δmin   Verdict');
+                        lines.push('-'.repeat(155));
                         _rcf2.rows.forEach(r => {
-                            lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.n).padStart(3)}  ${fmt(r.actual_avg_pct)} ${fmt$(r.actual_total_usd)}  ${fmt(r.cf_avg_pct)} ${fmt$(r.cf_total_usd)} ${fmt(r.delta_pct)} ${fmt$(r.delta_usd)}  ${r.verdict}`);
+                            lines.push(`${r.reason.padEnd(22)}${r.direction.padEnd(5)} ${String(r.n).padStart(3)} ${String(r.n_flipped).padStart(4)}  ${fmt(r.actual_avg_pct)} ${fmt$(r.actual_total_usd)}  ${fmt(r.cf_avg_pct)} ${fmt$(r.cf_total_usd)} ${fmt(r.delta_pct)} ${fmt$(r.delta_usd)} ${fmtMin(r.avg_actual_min)} ${fmtMin(r.avg_phantom_min)} ${fmtDMin(r.delta_min)}  ${r.verdict}`);
                         });
                         lines.push('');
                     }
@@ -10932,17 +10942,21 @@
                             let vCls = 'text-gray-400';
                             if (s.verdict && s.verdict.startsWith('★')) vCls = 'text-emerald-400 font-bold';
                             else if (s.verdict && s.verdict.startsWith('⚠ HURTING')) vCls = 'text-red-400 font-bold';
-                            _rcfPool.innerHTML = `Pool: <strong>${s.pool_n}</strong> trades · Actual <span class="${actCls} font-semibold">${fmt$(s.pool_actual_usd)}</span> → Phantom <span class="${cfCls} font-semibold">${fmt$(s.pool_cf_usd)}</span> · Δ <span class="${ddCls} font-semibold">${fmt$(s.pool_delta_usd)}</span> · <span class="${vCls}">${s.verdict || ''}</span>`;
+                            const flipTxt = (s.pool_n_flipped || 0) > 0 ? ` · ${s.pool_n_flipped} flipped` : ' · 0 flipped';
+                            const phMinTxt = s.pool_avg_phantom_min != null ? ` · AvgPhMin ${s.pool_avg_phantom_min.toFixed(1)}` : '';
+                            _rcfPool.innerHTML = `Pool: <strong>${s.pool_n}</strong> trades${flipTxt} · Actual <span class="${actCls} font-semibold">${fmt$(s.pool_actual_usd)}</span> → Phantom <span class="${cfCls} font-semibold">${fmt$(s.pool_cf_usd)}</span> · Δ <span class="${ddCls} font-semibold">${fmt$(s.pool_delta_usd)}</span>${phMinTxt} · <span class="${vCls}">${s.verdict || ''}</span>`;
                         } else {
-                            _rcfPool.textContent = '(no post-May-11 trades yet — phantom column NULL)';
+                            _rcfPool.textContent = '(no trades yet)';
                         }
                     }
                     if (_rcfBody) {
                         if (!_rcf.rows || !_rcf.rows.length) {
-                            _rcfBody.innerHTML = '<tr><td colspan="10" class="px-3 py-2 text-center text-gray-500">(no trades had BTC regime flip during hold yet)</td></tr>';
+                            _rcfBody.innerHTML = '<tr><td colspan="14" class="px-3 py-2 text-center text-gray-500">(no trades yet)</td></tr>';
                         } else {
                             const fmt = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
                             const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                            const fmtMin = (v) => v == null ? '-' : v.toFixed(1) + 'm';
+                            const fmtDMin = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(1) + 'm';
                             _rcfBody.innerHTML = _rcf.rows.map(r => {
                                 const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
                                 const actCls = r.actual_total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
@@ -10950,6 +10964,11 @@
                                 const dCls = r.delta_usd > 5 ? 'text-emerald-400 font-semibold'
                                     : r.delta_usd < -5 ? 'text-red-400 font-semibold'
                                     : 'text-gray-400';
+                                // Δmin negative = phantom would fire earlier (good for losers, bad for winners)
+                                const dminCls = r.delta_min == null ? 'text-gray-400'
+                                    : r.delta_min < -1 ? 'text-amber-400 font-semibold'
+                                    : 'text-gray-400';
+                                const flipCls = r.n_flipped > 0 ? 'text-amber-300 font-semibold' : 'text-gray-500';
                                 let vCls = 'text-gray-400';
                                 if (r.verdict.startsWith('★')) vCls = 'text-emerald-400 font-bold';
                                 else if (r.verdict.startsWith('⚠ HURTING')) vCls = 'text-red-400 font-bold';
@@ -10958,12 +10977,16 @@
                                     <td class="px-3 py-1 text-gray-200">${r.reason}</td>
                                     <td class="px-3 py-1 ${dirCls} font-semibold">${r.direction}</td>
                                     <td class="px-3 py-1 text-center text-gray-200">${r.n}</td>
+                                    <td class="px-3 py-1 text-center ${flipCls}">${r.n_flipped}</td>
                                     <td class="px-3 py-1 text-right text-gray-300">${fmt(r.actual_avg_pct)}</td>
                                     <td class="px-3 py-1 text-right ${actCls}">${fmt$(r.actual_total_usd)}</td>
                                     <td class="px-3 py-1 text-right text-gray-300">${fmt(r.cf_avg_pct)}</td>
                                     <td class="px-3 py-1 text-right ${cfCls}">${fmt$(r.cf_total_usd)}</td>
                                     <td class="px-3 py-1 text-right ${dCls}">${fmt(r.delta_pct)}</td>
                                     <td class="px-3 py-1 text-right ${dCls}">${fmt$(r.delta_usd)}</td>
+                                    <td class="px-3 py-1 text-right text-gray-300">${fmtMin(r.avg_actual_min)}</td>
+                                    <td class="px-3 py-1 text-right text-gray-300">${fmtMin(r.avg_phantom_min)}</td>
+                                    <td class="px-3 py-1 text-right ${dminCls}">${fmtDMin(r.delta_min)}</td>
                                     <td class="px-3 py-1 ${vCls} text-xs">${r.verdict}</td>
                                 </tr>`;
                             }).join('');

@@ -4608,6 +4608,26 @@
                                 <input type="number" id="config-min-adx-delta-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.10">
                             </div>
                         </div>
+                        <p class="text-xs text-gray-500 mt-3 mb-1">Pair Extension floor (May 22). Block entries where |price − EMA13| / EMA13 × 100 &lt; min — these are bottom-of-pullback (LONG) / top-of-pullback (SHORT) bounce-buying entries that historically die NP / EMA13_CROSS_EXIT. Cross-batch evidence: pair_ext &lt; 0.20 LONG = 9 trades / 7L / saves $250 / cuts $13. 0 = disabled per side. SHORT analog not yet cross-batch validated.</p>
+                        <div class="flex items-center gap-4 mt-1 flex-wrap">
+                            <label class="flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-entry-dist-from-ema13-filter-enabled" class="sr-only peer">
+                                <div class="w-9 h-5 bg-white/10 peer-checked:bg-emerald-500/50 rounded-full relative transition-colors">
+                                    <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                </div>
+                                <span class="ml-2 text-xs text-gray-400">Enable Pair Extension floor</span>
+                            </label>
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">LONG min ext:</span>
+                                <input type="number" id="config-entry-dist-from-ema13-min-long" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.20">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="text-xs text-gray-400">SHORT min |ext|:</span>
+                                <input type="number" id="config-entry-dist-from-ema13-min-short" step="0.01" min="0" class="w-20 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200" value="0.00">
+                                <span class="text-xs text-gray-500">%</span>
+                            </div>
+                        </div>
                         <p class="text-xs text-gray-500 mt-3 mb-1">Entry Quality Score block filter (May 15 PM, opt-in). 6-point composite of pair RSI/ADX/gap sweet-spot hits + macro alignment. <strong>Threshold matches the Performance by Quality Score table</strong> — set to <code>1</code> to block Score 0 AND Score 1; set to <code>2</code> to block Score 0-2. Cross-sample evidence: Score ≤ 1 across 10 archived samples = N=95, 34.7% WR, −$684. <strong>Default: disabled.</strong></p>
                         <div class="flex items-center gap-4 mt-1 flex-wrap">
                             <label class="flex items-center cursor-pointer">
@@ -14784,6 +14804,13 @@
                 const _adxDeltaShort = document.getElementById('config-min-adx-delta-short');
                 if (_adxDeltaLong) _adxDeltaLong.value = config.thresholds.min_adx_delta_long !== undefined ? config.thresholds.min_adx_delta_long : 0;
                 if (_adxDeltaShort) _adxDeltaShort.value = config.thresholds.min_adx_delta_short !== undefined ? config.thresholds.min_adx_delta_short : 0;
+                // May 22: Pair Extension floor filter
+                const _peEn = document.getElementById('config-entry-dist-from-ema13-filter-enabled');
+                if (_peEn) _peEn.checked = (config.thresholds.entry_dist_from_ema13_filter_enabled !== false);
+                const _peL = document.getElementById('config-entry-dist-from-ema13-min-long');
+                const _peS = document.getElementById('config-entry-dist-from-ema13-min-short');
+                if (_peL) _peL.value = config.thresholds.entry_dist_from_ema13_min_long !== undefined ? config.thresholds.entry_dist_from_ema13_min_long : 0;
+                if (_peS) _peS.value = config.thresholds.entry_dist_from_ema13_min_short !== undefined ? config.thresholds.entry_dist_from_ema13_min_short : 0;
                 document.getElementById('config-macro-trend-filter-enabled').checked = config.thresholds.macro_trend_filter_enabled !== undefined ? config.thresholds.macro_trend_filter_enabled : true;
                 document.getElementById('config-btc-global-filter-enabled').checked = config.thresholds.btc_global_filter_enabled !== undefined ? config.thresholds.btc_global_filter_enabled : true;
                 document.getElementById('config-macro-trend-neutral-mode').value = config.thresholds.macro_trend_neutral_mode || 'both';
@@ -15742,6 +15769,9 @@
                     range_position_max_long: safeFloat((document.getElementById('config-range-position-max-long')||{}).value || 100),
                     min_adx_delta_long: safeFloat((document.getElementById('config-min-adx-delta-long') || {}).value || 0),
                     min_adx_delta_short: safeFloat((document.getElementById('config-min-adx-delta-short') || {}).value || 0),
+                    entry_dist_from_ema13_filter_enabled: ((document.getElementById('config-entry-dist-from-ema13-filter-enabled') || {}).checked === true),
+                    entry_dist_from_ema13_min_long: safeFloat((document.getElementById('config-entry-dist-from-ema13-min-long') || {}).value || 0),
+                    entry_dist_from_ema13_min_short: safeFloat((document.getElementById('config-entry-dist-from-ema13-min-short') || {}).value || 0),
                     macro_trend_filter_enabled: document.getElementById('config-macro-trend-filter-enabled').checked,
                     btc_global_filter_enabled: document.getElementById('config-btc-global-filter-enabled').checked,
                     macro_trend_neutral_mode: document.getElementById('config-macro-trend-neutral-mode').value,

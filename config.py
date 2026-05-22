@@ -111,6 +111,8 @@ class SignalThresholds(BaseModel):
     # pair_ext < 0.20% = 9 trades / 7L / saves $250 / cuts $13 / ratio 19.82.
     # 0 = disabled. SHORT analog not yet validated.
     entry_dist_from_ema13_min_long: float = 0.0
+    entry_dist_from_ema13_min_short: float = 0.0  # SHORT analog — uses abs(pair_ext_pct) when active. 0 = disabled.
+    entry_dist_from_ema13_filter_enabled: bool = True  # Master toggle (May 22 UI ship).
     # May 2: per-pair EMA20 slope MAX filter (new). Block entry when
     # abs(pair_ema20_slope) > max — guards against over-extended pair trends.
     # 0 = disabled.

@@ -330,7 +330,9 @@ def get_signal(
     adx_delta = (adx - adx_prev1) if (adx is not None and adx_prev1 is not None) else None
     # May 22: Entry Distance from EMA13 minimum (Pair Extension floor). LONG-side only.
     # Block LONG entries with pair_ext < min — bottom-of-pullback bounce-buying NP zone.
-    entry_dist_ema13_min_long = getattr(th, 'entry_dist_from_ema13_min_long', 0.0)
+    _ext_enabled = getattr(th, 'entry_dist_from_ema13_filter_enabled', True)
+    entry_dist_ema13_min_long = getattr(th, 'entry_dist_from_ema13_min_long', 0.0) if _ext_enabled else 0.0
+    entry_dist_ema13_min_short = getattr(th, 'entry_dist_from_ema13_min_short', 0.0) if _ext_enabled else 0.0
     pair_ext_pct = None
     if price is not None and ema13 is not None and ema13 != 0:
         pair_ext_pct = (price - ema13) / ema13 * 100
@@ -438,6 +440,9 @@ def get_signal(
             elif min_adx_delta_short > 0 and adx_delta is not None and adx_delta < min_adx_delta_short:
                 logger.debug(f"[MOMENTUM] SHORT skipped: ADX delta {adx_delta:.4f} < min {min_adx_delta_short}")
                 _record("PAIR_ADX_DELTA_MIN", "SHORT")
+            elif entry_dist_ema13_min_short > 0 and pair_ext_pct is not None and abs(pair_ext_pct) < entry_dist_ema13_min_short:
+                logger.debug(f"[MOMENTUM] SHORT skipped: |pair_ext| {abs(pair_ext_pct):.4f}% < min {entry_dist_ema13_min_short}% (bottom-of-pullback NP zone, SHORT mirror)")
+                _record("PAIR_EXT_MIN", "SHORT")
             elif rsi_momentum_enabled and rsi is not None and rsi_prev2 is not None and rsi > rsi_prev2:
                 logger.debug(f"[MOMENTUM] SHORT skipped: RSI rising ({rsi_prev2:.1f} -> {rsi:.1f}), momentum against SHORT (2 candles)")
                 _record("PAIR_RSI_MOMENTUM", "SHORT")

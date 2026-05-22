@@ -303,7 +303,9 @@
     "spike_guard_volume_multiplier": 3.0,
     "spike_guard_price_move_pct": 1.5,
     "spike_guard_max_ema20_distance_pct": 2.0,
-    "entry_dist_from_ema13_min_long": 0.2
+    "entry_dist_from_ema13_min_long": 0.2,
+    "entry_dist_from_ema13_min_short": 0.0,
+    "entry_dist_from_ema13_filter_enabled": true
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

@@ -242,6 +242,16 @@ class SignalThresholds(BaseModel):
     # pairs (high ATR) get wider pullback; calm pairs use the fixed pullback.
     # Set to 0.0 to disable ATR floor entirely.
     trailing_atr_multiplier: float = 0.50
+    # May 22: ATR-adjusted SL floor (analog of trailing_atr_multiplier but for SL).
+    # Widens the hard SL on high-ATR pairs to prevent wicks from stopping trades
+    # whose signal is still valid. Only WIDENS (more negative); never tightens.
+    # effective_sl = min(stop_loss, -(entry_atr_pct × sl_atr_multiplier))
+    # 0.0 = disabled. 1.5 default = "1.5 candles of noise breathing room."
+    # Cross-batch evidence (May 22): 68 STOP_LOSS_WIDE trades, 19% had post-peak
+    # ≥+0.60% (heavy regret). LONG heavy-regret avg ATR 1.165% vs right-exits 0.631%.
+    # SHORT heavy-regret avg ATR 0.633% vs right-exits 0.500%. Projected save:
+    # ~$700-1000 across pool after in-sample bias haircut.
+    sl_atr_multiplier: float = 1.5
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in

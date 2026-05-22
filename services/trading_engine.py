@@ -6534,6 +6534,21 @@ class TradingEngine:
             elif signal_still_active:
                 effective_sl = order_info.get('signal_active_sl', stop_loss_pct)
 
+            # May 22: ATR-adjusted SL widening for high-volatility pairs. Mirrors
+            # trailing_atr_multiplier on the pullback side. Only WIDENS — if ATR-SL
+            # is tighter than current effective_sl, keep current (no tightening).
+            # Skipped when BE is active (BE floor overrides).
+            if not breakeven_active:
+                try:
+                    _sl_atr_mult = float(getattr(config.trading_config.thresholds, 'sl_atr_multiplier', 0.0) or 0.0)
+                except Exception:
+                    _sl_atr_mult = 0.0
+                _entry_atr_pct = order_info.get('entry_atr_pct')
+                if _sl_atr_mult > 0 and _entry_atr_pct is not None and _entry_atr_pct > 0:
+                    _atr_sl = -(_entry_atr_pct * _sl_atr_mult)
+                    if _atr_sl < effective_sl:  # more negative = wider
+                        effective_sl = _atr_sl
+
             # Check if stop loss triggered (epsilon 0.01% to avoid boundary precision issues)
             if pnl_pct <= effective_sl + 0.01:
                 if breakeven_active:

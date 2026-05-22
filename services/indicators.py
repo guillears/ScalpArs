@@ -734,7 +734,21 @@ def check_exit_conditions(
     elif signal_active:
         effective_stop_loss = conf_config.signal_active_sl
         logger.debug(f"[SIGNAL_ACTIVE_SL] {direction} L{current_tp_level}: Signal still active, SL widened from {stop_loss}% to {effective_stop_loss}%")
-    
+
+    # May 22: ATR-adjusted SL widening for high-volatility pairs.
+    # Same mechanism as services/trading_engine.py realtime path.
+    # Only WIDENS (more negative); never tightens. Skipped under BE.
+    if not breakeven_active:
+        try:
+            _sl_atr_mult = float(getattr(config_module.trading_config.thresholds, 'sl_atr_multiplier', 0.0) or 0.0)
+        except Exception:
+            _sl_atr_mult = 0.0
+        if _sl_atr_mult > 0 and entry_atr_pct is not None and entry_atr_pct > 0:
+            _atr_sl = -(entry_atr_pct * _sl_atr_mult)
+            if _atr_sl < effective_stop_loss:  # more negative = wider
+                logger.debug(f"[ATR_SL_WIDEN] {direction}: SL widened from {effective_stop_loss}% to {_atr_sl}% (ATR {entry_atr_pct}% × {_sl_atr_mult})")
+                effective_stop_loss = _atr_sl
+
     # Check Stop Loss (P&L based, with break-even adjustment in pre-TP zone only)
     if pnl_pct <= effective_stop_loss:
         if breakeven_active:

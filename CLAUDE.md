@@ -1,5 +1,195 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+# ============================================================================
+# ANALYSIS METHODOLOGY — locked playbook for CSV-batch analysis (May 22, 2026)
+# ============================================================================
+#
+# When the operator drops a fresh batch CSV, Claude MUST follow this 10-step
+# playbook BEFORE answering whatever question was asked. The playbook produces
+# a structured audit; the operator's question is then answered using that
+# audit as context. This prevents "I asked X but Claude missed a tripped gate
+# Y because Y wasn't in the question" failures.
+#
+# Sized for the typical batch analysis. If the operator's question is narrow
+# (e.g., "check XLMUSDT specifically"), the operator can opt out by saying
+# "skip the methodology playbook" — otherwise Claude runs it by default.
+#
+# ----------------------------------------------------------------------------
+# THE 10-STEP PLAYBOOK
+# ----------------------------------------------------------------------------
+#
+# STEP 1 — Batch header
+#   N closed, LONG/SHORT split, total $, Avg P&L %, runtime, date range.
+#   Compare against trailing 5-batch baseline if archived data available.
+#   Flag if Combined Avg P&L deviates ≥0.10pp from baseline.
+#
+# STEP 2 — Locked gate sweep (HIGHEST PRIORITY — never skip)
+#   Walk the locked criteria documented in CLAUDE.md entries. Output one of
+#   TRIPPED / APPROACHING (within 20% of threshold) / STABLE per item.
+#   Required minimum sweep (this list is the SHIP-DECISION load-bearing list):
+#
+#     a. May 5 stop-rule: Combined Avg P&L %
+#        ≥+0.10% → genuine edge → advance phase
+#        +0.05 to +0.10% → keep, observe
+#        -0.05 to +0.05% → marginal → flag
+#        <-0.05% on N≥80 → structural pivot review
+#     b. May 4 Phase 3 multiplier verdict matrix — per active mult cell with N≥5:
+#        ★ WORKING: WR ≥70% AND Total $ positive
+#        ⚠ DRAG: Δ$ vs BL < -$1
+#        ✗ HARMFUL: Total $ negative → propose revert
+#     c. May 21 lev-stack revert criteria — any 3× effective cell with:
+#        Single trade Δ$ vs BL ≤ -$50 on a leveraged trade → IMMEDIATE drop lev
+#        N≥3 WR ≤55% → drop lev
+#        N≥5 WR ≤55% → revert both inv + lev
+#     d. Pattern Cell Ship rules (May 21): per-cell verdict per CLAUDE.md.
+#     e. Per-rule pre-committed revert criteria from any CLAUDE.md "Pre-committed
+#        revert criteria" or "Locked revert criteria" section. There are roughly
+#        40-50 of these scattered through the file — Claude is expected to
+#        recall and check the ones relevant to currently-active config.
+#
+#   For each TRIPPED entry, propose a config diff. Do NOT auto-apply.
+#
+# STEP 3 — Filter health audit
+#   For each active entry filter:
+#     - Count blocks this batch (Filter Blocks counter or simulated re-apply)
+#     - Flag if 0 blocks across last 100 trades → DEAD CODE, investigate or retire
+#     - Compute "saved $ counterfactual": for each blocked trade, what would
+#       have happened. Use as Δ$ value of the filter.
+#
+# STEP 4 — Multiplier cell verdicts
+#   Apply May 4 verdict matrix to each cell with N≥5 this batch. Output:
+#   ★ WORKING / ✓ Marginal / ⚠ DRAG / ✗ HARMFUL / ⚠ Low N per cell.
+#   Cross-reference with Multiplier Cell Performance table from dashboard.
+#
+# STEP 5 — Pattern C/W gate check (NEVER skip)
+#   For each pattern C1-C9 + W1-W6 + UNMATCHED:
+#     - Output N this batch + cumulative N from dedupe pool
+#     - Apply locked promotion gates:
+#       ⚠ FILTER CANDIDATE: N ≥ 30, WR ≤ 40%, Avg P&L % ≤ -0.20%, NP ≥ 60%
+#       ★ MULTIPLIER CANDIDATE: N ≥ 30, WR ≥ 70%, Avg P&L % ≥ +0.10%, Total $ > 0
+#       ⚠ High WR but net losing: WR ≥ 60% AND (Avg ≤ 0 OR Total $ ≤ 0)
+#     - For pattern signatures where N just crossed 30, FLAG explicitly so the
+#       operator can decide whether to ship gate-triggered action.
+#
+# STEP 6 — 3-pattern failure taxonomy attribution (May 16)
+#   Per losing trade, classify as:
+#     A: low-conviction (Score ≤ 1)
+#     B: peak-and-retrace (peak ≥ +0.20%, then died)
+#     C: Never Positive (peak < 0.05% — macro adverse / never-momentum)
+#   Output: counts + $ totals per pattern. Flag if Pattern C rate jumps
+#   ≥10pp vs trailing baseline (CLAUDE.md's "Pattern C is the dominant
+#   unaddressed leak" rule).
+#
+# STEP 7 — Cross-batch slice comparison
+#   Last 50 closed trades vs prior 50 closed trades, per-bucket WR:
+#     BTC RSI bands, BTC ADX bands, BTC ATR bands, Pair Stretch, RngPos, Pair Gap
+#   Flag any bucket where last-50 WR drops ≥15pp vs prior-50 on N≥10.
+#   These are regime-shift early warnings.
+#
+# STEP 8 — Unmatched cohort signature scan
+#   For each losing trade NOT matching any C1-C9 pattern:
+#     Dump entry signature (RSI, ADX, gap, stretch, RngPos, BTC indicators,
+#     volume, ATR, post-arm-min, peak, etc.)
+#   If ≥3 trades share 3+ dimension matches (e.g., same BTC RSI band + same
+#   BTC ADX band + same Global Vol bucket), FLAG as candidate for new C10/C11
+#   signature. Don't ship — propose to operator as observation candidate.
+#
+# STEP 9 — Counterfactual sweep (ONLY when operator requests)
+#   NOT run on every batch. When asked, simulate alternative configs:
+#     - Filter survivor: what if filter X disabled
+#     - Exit alternatives: BE floor 0.05 vs 0.10 vs 0.15, SL -0.50 vs -0.70, TP 0.30 vs 0.50
+#     - Multiplier sensitivity: per cell, $ outcome at 1.0× / 1.5× / 2.0× / 2.5×
+#   Apply 30-50% in-sample bias haircut to projected Δ$. State the haircut explicitly.
+#
+# STEP 10 — Output format
+#   Single structured response with sections 1-8 always populated, section 9
+#   optional. End with explicit list:
+#     • TRIPPED criteria → proposed config diffs (Step 2)
+#     • APPROACHING criteria → watchlist
+#     • Novel observations (operator should investigate)
+#     • Multiplier cell verdicts requiring action (Step 4)
+#     • Pattern gate triggers (Step 5)
+#
+# ----------------------------------------------------------------------------
+# LOCKED ANTI-PATTERN RULES (apply to ALL analyses, not just CSV reviews)
+# ----------------------------------------------------------------------------
+#
+# 1. NEVER claim cross-batch evidence without citing N from the dedupe pool.
+#    Use scripts/build_unified_pool.py or reports/dedupe_pool.csv.
+#
+# 2. NEVER ship a multiplier from 1-sample evidence regardless of how clean
+#    the in-batch numbers look. CLAUDE.md May 11 + May 16 + May 18 lessons.
+#    Exception: cross-batch ≥5-sample structural backing AND BE-compatibility
+#    check passes (≥60% of cell losses are Pattern B).
+#
+# 3. NEVER apply +cross-batch counterfactual without modeling the CURRENT
+#    exit stack. CLAUDE.md May 20 lesson — historical P&L reflects historical
+#    exits, not current. Run trades through current BE/SL/FAST_EXIT before
+#    computing $ impact.
+#
+# 4. NEVER pool raw trades across config changes. Per-config sub-samples only,
+#    Avg P&L % for cross-sample comparison (leverage-invariant).
+#
+# 5. NEVER lower a locked promotion gate at decision time. If a gate fails
+#    by a hair, the answer is "no ship." Pre-committed numbers stand.
+#
+# 6. ALWAYS apply in-sample bias haircut (30-50%) when projecting a Δ$ from
+#    a counterfactual on the same batch the rule was derived from. State the
+#    haircut explicitly.
+#
+# 7. ALWAYS distinguish "matched cohort" (post-hoc, by outcome) from
+#    "classifiable at entry" (the only thing forward filters can use).
+#    Unm. L / Unm. W are post-hoc — forward you only know "no W match",
+#    which includes future winners AND future losers.
+#
+# 8. ALWAYS check per-pair concentration before shipping a dimensional
+#    filter. If the cell's loss is 60%+ driven by 1-2 pairs, ship a pair
+#    blacklist instead of a dimensional filter (CLAUDE.md May 12 lesson).
+#
+# 9. CAPS FOR LOSERS, MULT FOR WINNERS, DON'T CROSS THEM. CLAUDE.md May 20.
+#    Pattern C cohort → TP/SL caps (defensive). Pattern W cohort → multiplier
+#    (offensive). Mixing destroys edge mechanically.
+#
+# 10. PATTERN CODE IS THE SIGNATURE, TREATMENT IS DETERMINED BY EMPIRICAL
+#     BEHAVIOR. C-tagged cells can carry W treatment if cross-batch shows
+#     winning behavior (e.g., C1 SHORT at 2.0×); W-tagged cells can carry
+#     C treatment if losing (e.g., W1 LONG at fixed TP/SL). CLAUDE.md May 21.
+#
+# ----------------------------------------------------------------------------
+# DISCIPLINE OVERRIDES — known exceptions, document each
+# ----------------------------------------------------------------------------
+#
+# When the operator explicitly overrides a locked criterion (e.g., shipping at
+# N=3 when gate requires N=10), Claude MUST:
+#   1. Acknowledge the override transparently in the response
+#   2. Count the override in the running tally (currently ~6 in 2 weeks as of
+#      May 22 — see CLAUDE.md May 22 BTC ATR ship entry)
+#   3. Lock TIGHTER revert criteria than standard (e.g., immediate-drop on
+#      first ✗ HARMFUL trade vs standard N=5 gate)
+#   4. Document the override rationale + the tightened revert in CLAUDE.md
+#
+# Overrides are not bugs — they're acceptable trade-offs when explicit. They
+# become a problem only when accumulated without acknowledgment. The tally
+# matters: 1-2 per month is fine; 6+ in 2 weeks is a discipline-drift signal.
+#
+# ----------------------------------------------------------------------------
+# WHEN TO BREAK THE PLAYBOOK
+# ----------------------------------------------------------------------------
+#
+# Skip the playbook when:
+#   - Operator says "skip methodology" or asks a narrow lookup
+#   - Operator asks a methodology / architecture question (not a data analysis)
+#   - Bug fix or code work (no batch data involved)
+#
+# Always run the playbook when:
+#   - Operator pastes a CSV
+#   - Operator asks "what's interesting" / "deep dive" / "what should we change"
+#   - Operator asks "is X working" about an active cell or filter
+#
+# ----------------------------------------------------------------------------
+# END OF METHODOLOGY SECTION
+# ----------------------------------------------------------------------------
+
 ## May 22, 2026 — BTC ATR × BTC ADX 2D Cross-Filter shipped (SHORT-only `0.0-0.10:30-999`)
 
 ### Change

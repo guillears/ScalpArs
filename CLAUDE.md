@@ -80,20 +80,113 @@
 #
 # Phase B — Quant analysis (THIS IS THE WORK — typically 60-80% of response)
 #
-#   Pick the 2-4 most interesting threads from the batch and reason through
-#   them along the 8 axes above. Each thread should have:
+#   Phase B has TWO components: a mandatory deep-dive on the highest-alpha
+#   cohorts (B.1), and 2-4 emerging-signal threads (B.2).
 #
-#     - The observation (what makes this thread interesting — e.g., a cell
-#       that just turned harmful, a pattern signature emerging, a regime
-#       shift indicator)
+#   ────────────────────────────────────────────────────────────────────────
+#   B.1 — MANDATORY DEEP-DIVE: NP / UNMATCHED LOSERS / UNMATCHED WINNERS
+#   ────────────────────────────────────────────────────────────────────────
+#
+#   These three cohorts are where the dashboard's coverage breaks down and
+#   genuine alpha-discovery lives. They MUST be inspected EVERY batch,
+#   regardless of how thin the sample. Never skip B.1.
+#
+#   B.1.a — NEVER POSITIVE TRADES (peak < 0.05%, never made it green)
+#
+#     For each NP trade this batch:
+#       - Dump entry signature: BTC RSI, BTC ADX, BTC ATR, BTC EMA13-50 gap,
+#         BTC slope, Pair RSI, Pair ADX, ADX Δ, Pair gap (ema13), Stretch,
+#         RngPos, Global Vol, Pair Vol $, EMA50 slope, Pattern C matches,
+#         Pattern W matches, time-of-day, BTC regime label
+#       - Determine close mechanism: SL hit, EMA13 cross, regime change,
+#         FAST_EXIT, BREAKEVEN — what killed it
+#
+#     Then ask:
+#       1. Did the NPs share 3+ dimensions in common? If yes, candidate
+#          new Pattern C signature (C10+). Cross-check against last 3-5
+#          batches in the dedupe pool to confirm cross-batch persistence.
+#       2. Were any NPs matched to existing patterns? If yes, the pattern
+#          was supposed to catch this but the treatment (caps) didn't help
+#          — because NP means peak < 0.05% and BE 0.20/0.10 can't arm.
+#          This is the structural Pattern C problem: caps don't reach NPs.
+#       3. Could a NEW entry filter have blocked these? Compare avg X for
+#          NPs vs avg X for batch winners across every dimension. Where
+#          gap ≥1 std → candidate filter dimension. Bring receipts.
+#       4. Regime signature? Compare today's NP rate (% of all trades) vs
+#          trailing 5-batch baseline. Spike ≥10pp → flag regime shift.
+#
+#     NP rescue is the hardest problem the bot has. CLAUDE.md May 16
+#     framework: Pattern A is caught by EQS filter, Pattern B by BE Layer,
+#     Pattern C (= NP / macro-adverse) is currently UNADDRESSED. Every
+#     batch must explicitly attempt to advance the C-pattern catalogue or
+#     propose a NEW entry-side mechanism that reaches NPs.
+#
+#   B.1.b — UNMATCHED LOSERS (lost trades not matching any C1-C9)
+#
+#     These are the "Pattern C taxonomy is incomplete" cohort. For each:
+#       - Dump entry signature (same as B.1.a)
+#       - Near-miss check: does this trade match an existing pattern
+#         partially (2 of 3 C4 conditions met, threshold just-missed)?
+#         If yes, the existing pattern's threshold may need loosening to
+#         catch this trade family.
+#       - Cluster scan: for any 3+ unmatched losers sharing 3+ dimensions,
+#         propose a candidate signature for the next iteration of pattern
+#         taxonomy. Name it explicitly: "C-CANDIDATE-X: BTC RSI 60-62 AND
+#         BTC ADX 19-21 AND Global Vol >0.95. N=X this batch, $-Y. Needs
+#         cross-batch confirmation in pool."
+#
+#     The Unmatched Losers Deep Dive table on the dashboard helps but
+#     doesn't cluster. Claude's job: do the clustering and propose the
+#     signature. Don't ship from 1-batch; propose for observation.
+#
+#   B.1.c — UNMATCHED WINNERS (won trades not matching any W1-W6)
+#
+#     Symmetric to B.1.b — but BIDIRECTIONAL: these are upside the bot is
+#     leaving on the table, not captured by any current multiplier cell.
+#       - Dump entry signature
+#       - Cluster scan for 3+ sharing 3+ dimensions → candidate W7/W8/etc.
+#       - Cross-check with dedupe pool: if cluster persists ≥3 batches AND
+#         WR ≥70% on combined N≥15, this is a real winner signature
+#         missing from the framework — propose new W signature.
+#
+#     Unmatched winners are pure structural opportunity. Every batch must
+#     attempt to extend the W catalogue. If today's batch has 0 unmatched
+#     winners, say so explicitly (it's also a finding — means current W
+#     coverage is good for this regime).
+#
+#   B.1.d — OUTPUT FOR B.1 (concise even if data is rich)
+#
+#     For each cohort (NP / Unm.L / Unm.W), end with one of:
+#       ★ NEW CANDIDATE: <signature> — N=X this batch, cross-batch pool
+#         shows N=Y / WR=Z / $=W. ⚠ Propose for observation tracker.
+#       ★ EXISTING PATTERN NEAR-MISS: <pattern> with threshold X needs
+#         loosening to Y. Cross-check pool first.
+#       ✓ NO CLEAR CANDIDATE: cohort too dispersed (N=X across Y
+#         dimensions, no 3+ shared). Continue observing.
+#       ⚠ STRUCTURAL UNADDRESSED: e.g., NPs cluster at BTC ATR <0.10 but
+#         no entry-side filter can reach them. Document, escalate.
+#
+#   ────────────────────────────────────────────────────────────────────────
+#   B.2 — EMERGING-SIGNAL THREADS (2-4 high-signal items)
+#   ────────────────────────────────────────────────────────────────────────
+#
+#   After B.1, pick the 2-4 most interesting OTHER threads from the batch:
+#     - A cell that just turned harmful / ★ working
+#     - A regime indicator shifting (BTC ATR collapse, BTC RSI band drift)
+#     - A locked criterion approaching its threshold
+#     - A counter-narrative across 2 cross-tabs
+#     - An overlap finding (filter X cuts winners filter Y kept)
+#
+#   Each thread structured as:
+#     - The observation (what makes this thread interesting)
 #     - The hypothesis space (2-3 candidate explanations)
-#     - The disambiguator (specific data to check that distinguishes the
-#       hypotheses)
-#     - The recommended action (ship / observe / investigate / override gate)
-#     - The pre-mortem (what would have to be true for the action to fail)
+#     - The disambiguator (specific data to distinguish hypotheses)
+#     - The recommended action (ship / observe / investigate / override)
+#     - The pre-mortem (what would have to be true for action to fail)
 #
-#   The threads should reflect what a quant ACTUALLY cares about — not a
-#   complete coverage of every table. Pick the 2-4 most signal-dense.
+#   B.2 threads complement B.1's structural alpha-hunting. B.1 = "what's
+#   the bot missing structurally"; B.2 = "what's signaling shift in the
+#   current ship-decision space." Both required.
 #
 # Phase C — Action proposal (concise, end of response)
 #

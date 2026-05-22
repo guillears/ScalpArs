@@ -104,6 +104,13 @@ class SignalThresholds(BaseModel):
     # 0 = disabled.
     min_adx_delta_long: float = 0.0
     min_adx_delta_short: float = 0.0
+    # May 22: Entry Distance from EMA13 minimum filter (Pair Extension floor).
+    # Block LONG entries with (price - ema13)/ema13 × 100 < min — these are
+    # bottom-of-pullback bounce-buying entries that historically die at NP /
+    # EMA13_CROSS_EXIT. Cross-batch evidence (153-trade LONG pool, 7 batches):
+    # pair_ext < 0.20% = 9 trades / 7L / saves $250 / cuts $13 / ratio 19.82.
+    # 0 = disabled. SHORT analog not yet validated.
+    entry_dist_from_ema13_min_long: float = 0.0
     # May 2: per-pair EMA20 slope MAX filter (new). Block entry when
     # abs(pair_ema20_slope) > max — guards against over-extended pair trends.
     # 0 = disabled.
@@ -306,6 +313,19 @@ class SignalThresholds(BaseModel):
     btc_gap_btc_adx_filter_short: str = ""
     # Master toggle. Same A/B pattern as other cross-filters.
     btc_gap_btc_adx_filter_enabled: bool = True
+    # BTC ATR × BTC ADX 2D Cross-Filter (May 22, 2026).
+    # Cross-batch SHORT evidence at BTC ADX ≥ 30:
+    #   - BTC ATR <0.10% × BTC ADX ≥30 = 3 trades / 33% WR / -$159 ✗ killer
+    #   - BTC ATR 0.10-0.15% × BTC ADX ≥30 = 17 trades / 100% WR / +$230 ★
+    #   - BTC ATR 0.20-0.30% × BTC ADX ≥30 = 8 trades / 100% / +$83 ★
+    # Mechanism: SHORTs at strong BTC trend (ADX ≥30) need volatility. Dead-quiet
+    # BTC at strong trend = exhausted move + accumulated squeeze ammo. LONG mirror
+    # shows OPPOSITE (8t / 88% WR at same cell) — asymmetric, SHORT-only filter.
+    # Format per rule: "<atrLo>-<atrHi>:<adxLo>-<adxHi>" (block when both match).
+    # Half-open ranges [lo, hi). Multi-rule comma-separated.
+    btc_atr_btc_adx_filter_long: str = ""
+    btc_atr_btc_adx_filter_short: str = "0.0-0.10:30-999"
+    btc_atr_btc_adx_filter_enabled: bool = True
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

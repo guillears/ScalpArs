@@ -1,5 +1,309 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 22, 2026 — BTC ATR × BTC ADX 2D Cross-Filter shipped (SHORT-only `0.0-0.10:30-999`)
+
+### Change
+- `config.py`: new fields `btc_atr_btc_adx_filter_long/short` (str, default `""` / `"0.0-0.10:30-999"`) + `btc_atr_btc_adx_filter_enabled` (bool, default True)
+- `trading_config.json`: SHORT rule active, LONG empty, master toggle ON
+- `services/trading_engine.py`: 2D filter check placed immediately after BTC GAP × BTC ADX block; reads live `btc_atr_pct` global computed in BTC scan
+- `templates/index.html`: UI config panel (toggle + LONG/SHORT rule tables with add/remove rows) + NEW "BTC ATR × BTC ADX cross-tab" analytics table (LONG + SHORT split, 5 ATR × 6 ADX buckets)
+- `main.py`: new `_compute_btc_atr_adx_crosstab` analytics helper + payload entry
+
+### Cross-batch evidence (137 SHORT pool with non-NULL `entry_btc_atr_pct`)
+
+SHORT side at **BTC ADX ≥ 30**, BTC ATR is the cleanest single discriminator:
+
+| BTC ATR | N | WR | Total $ | Verdict |
+|---|---|---|---|---|
+| **<0.10%** | **3** | **33%** | **-$159** | ✗✗ killer cell — primary target |
+| 0.10-0.15% | 17 | **100%** | **+$230** | ★★ kept |
+| 0.20-0.30% | 8 | 100% | +$83 | ★ kept |
+
+Single rule `0.0-0.10:30-999` catches the killer cell, preserves both winner zones.
+
+### Mechanism
+
+SHORTs at strong BTC trend (ADX ≥ 30) require some volatility to sustain continuation. Dead-quiet BTC at strong trend signals an exhausted move with accumulated squeeze ammunition (no late shorts to add fuel; first reversal candle triggers cascade against existing position). Higher BTC ATR cells (0.10-0.30%) show this isn't a high-ADX problem per se — it's specifically the LOW-VOL × HIGH-ADX combination.
+
+### LONG mirror — asymmetric (does NOT motivate a LONG rule)
+
+LONG at BTC ATR <0.10% × BTC ADX ≥30: **8 trades / 88% WR / +$31** ★ — the SHORT killer cell is a LONG winner cell. Structural asymmetry:
+- LONG = trend-aligned by default → low ATR + high ADX = slow predictable grind → catches trend
+- SHORT = countertrend by default → low ATR + high ADX = exhausted move + squeeze risk → loses
+
+LONG side ships empty. The asymmetry is the lesson: same dimensional combination can mean opposite things per direction.
+
+### Discipline acknowledgment
+
+N=3 cross-batch SHORT in the killer cell — well below the locked N≥10 promotion bar. User-directed ship rationale:
+1. WR 33% is 28-point break below SHORT baseline ~62%; direction-consistent loss profile
+2. Adjacent cells (0.10-0.15, 0.20-0.30) are CLEAN winners → cliff is structurally sharp
+3. Pre-committed revert is mechanical (single field flip)
+4. Cohort frequency low: minimum collateral risk if wrong
+
+Counted as 6th locked-discipline override in 2 weeks.
+
+### Pre-committed revert criteria at next 100-trade SHORT checkpoint
+
+| Outcome (in observation logs / would-have-been-blocked) | Action |
+|---|---|
+| N ≥ 5 fresh AND WR ≥ 55% | REVERT — set rule to `""` |
+| N ≥ 5 fresh AND WR ≤ 40% | Confirmed structural — lock |
+| Kept-zone (ATR 0.10-0.15 × ADX ≥30) drops to ≤55% WR on N≥10 | Discriminator weakened — investigate before changing filter |
+| `[BTC_ATR_BTC_ADX_CROSS]` count = 0 across 100+ SHORTs | Filter dormant — investigate or accept as low-frequency safety net |
+
+### NEW analytics surface — BTC ATR × BTC ADX cross-tab
+
+5 ATR buckets (<0.10, 0.10-0.15, 0.15-0.20, 0.20-0.30, ≥0.30) × 6 ADX buckets (<18, 18-22, 22-25, 25-30, 30-35, ≥35) × LONG/SHORT. Renders under existing BTC 1h Slope × ADX cross-tab. Same column structure (N / WR / Avg% / Total$ / NP%). Canonical observation surface for BTC volatility-regime effects going forward.
+
+### Why this entry exists in CLAUDE.md
+
+1. Cross-batch evidence (SHORT killer cell N=3 / 33% WR / -$159) with explicit N<10 discipline override
+2. LONG asymmetry rationale (same cell wins LONG → no mirror rule)
+3. Locked revert gates → mechanical at next checkpoint
+4. New cross-tab as canonical observation surface for BTC volatility-regime patterns
+
+## May 22, 2026 — BTC RSI 60-65 LONG cross-filter tightened (replaced `0-30` with `22-25` + `27-30`)
+
+### Change
+`btc_rsi_adx_filter_long`:
+- Before: `"70-100:35,65-70:30,60-65:0-30,55-60:20-25"`
+- After:  `"70-100:35,65-70:30,60-65:22-25,60-65:27-30,55-60:20-25"`
+
+The 60-65 RSI band now allows ONLY two surgical ADX zones (22-25 and 27-30). All other BTC ADX values within 60-65 are blocked.
+
+### Cross-batch sub-cell evidence (165 LONG trades at BTC RSI 60-65)
+
+Sub-cell decomposition revealed alternating winner/loser pattern:
+
+| BTC ADX | N | WR | Total $ | Verdict |
+|---|---|---|---|---|
+| 18-20 | 53 | 43% | -$452 | ✗ Loser (caught by `btc_adx_min_long: 18`) |
+| **20-22** | **42** | **45%** | **-$461** | **✗ Loser — newly blocked** |
+| **22-25** | **41** | **73%** | **+$333 ★** | **★ L-P1 WINNER — kept** |
+| **25-27** | **11** | **36%** | **-$237** | **✗ Loser — newly blocked** |
+| **27-30** | **14** | **79%** | **+$78 ★** | **★ Winner — kept** |
+| 30-35 | 4 | 25% | -$7 | small N (blocked by `btc_adx_max_long`) |
+
+### Pattern observed
+
+LONG entries at BTC RSI 60-65 show **alternating cells** — 20-22 BAD, 22-25 GOOD, 25-27 BAD, 27-30 GOOD. The single-range rule `60-65:0-30` admitted all 5 ADX sub-cells, including 2 catastrophic loser zones (-$461 + -$237 = -$698 cross-batch).
+
+### Today's batch confirmation
+
+Of today's 4 LONG losers in BTC RSI 60-65 × BTC ADX 20-25:
+- 3 of 4 had BTC ADX 20.22-21.21 (in the 20-22 loser zone) — would have been BLOCKED by new rule
+- 1 (TONUSDT) had BTC ADX 24.46 (in the 22-25 winner zone) — would have been ALLOWED. Anomaly with GVol 0.64 + Pair_ADX 17.71 low.
+
+Plus the 1 winner today (TAOUSDT BTC_ADX 24.46) is in the 22-25 winner zone — kept.
+
+### Expected cross-batch effect
+
+Blocks 53 historical loser trades:
+- 20-22 zone: 42 trades → save -$461
+- 25-27 zone: 11 trades → save -$237
+- **Net cross-batch save: ~+$698**
+
+Cuts 0 winner zones (22-25 and 27-30 fully preserved).
+
+### Multiplier interaction check
+
+`btc_rsi_adx_multiplier_long` active cells at BTC RSI 60-65:
+- `60-65:22-25:2.0:1.5` (L-P1 at 3.0× effective) — INSIDE the new allowed range ✓
+- `60-65:18-22:1.0` — would never fire under new filter (18-22 blocked by btc_adx_min_long anyway)
+- `60-65:28-30:2.0` — INSIDE the new allowed range (27-30) ✓
+
+All active multiplier cells fall within the new tightened allow-zones. No multiplier loses its eligible trade flow.
+
+### Pre-committed revert criteria at next 100-trade LONG checkpoint
+
+| Outcome | Action |
+|---|---|
+| 20-22 zone fresh observation (if rule disabled) shows ≥55% WR on N≥10 | REVERT — pattern broke |
+| 25-27 zone shows ≥55% WR on N≥10 | REVERT |
+| 22-25 cell drops below 55% WR on N≥15 | Re-investigate L-P1 — may need full reconsideration |
+| 27-30 cell drops below 55% WR on N≥10 | Consider tightening to just 22-25 |
+| `BTC_RSI_ADX_CROSS` block count rises materially on 60-65 entries | Verify the new ranges are correctly applied |
+
+### Why not also tighten the SHORT 30-35 × 30-35 cell
+
+Same sub-cell decomposition showed SHORT 34-36 BTC ADX is the loser zone (16 trades / 44% WR / -$276). BUT the 34-36 zone also contains 3 real trailing-stop winners worth +$130 (1000PEPE, DOGS, NEAR). The win/loss split was 7W/9L — net negative but not clean enough to ship without potentially cutting legitimate runners. Defer SHORT tightening pending more data.
+
+### Files changed
+- `trading_config.json` — single field update (cross-filter rule string)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. Documents the surgical tightening of an existing rule (not adding a new dimension)
+2. Preserves the sub-cell evidence table showing the alternating winner/loser pattern in BTC RSI 60-65
+3. Confirms all multiplier cells stay inside the tightened allow-zones (no multiplier flow disruption)
+4. Anchors the locked revert criteria for next-checkpoint validation
+5. Documents WHY SHORT side wasn't tightened (winners in the 34-36 zone preventing a clean cut)
+
+## May 22, 2026 — Shipped `entry_dist_from_ema13_min_long: 0.20` (Pair Extension floor for LONGs)
+
+### Change
+
+New config field `entry_dist_from_ema13_min_long: 0.20` ships LIVE. Blocks LONG entries where `(price - ema13) / ema13 × 100 < 0.20%` — bot longing a pair barely above its EMA13 (bottom-of-pullback bounce-buying zone).
+
+### Cross-batch evidence (153 LONG pool, 7 batches with Pair Extension instrumentation)
+
+The Entry Extension table revealed two distinct loser zones in today's batch:
+
+| Pair Extension bucket | N | WR | Total $ |
+|---|---|---|---|
+| < +0.20% (LOW — bot longing a bounce) | 7 | 28.6% | -$86.70 |
+| +0.20 to +0.40% | 20 | 70.0% | -$144 |
+| +0.40 to +0.60% | 10 | **90.0%** | **+$69.66** ★ sweet spot |
+| > +0.60% (extended/late) | 7 | 57.1% | -$75.44 |
+
+The **<0.20% bucket cleanly catches 4 NPs + 1 near-NP** out of 5 catastrophic losers (SOL×2, 1000PEPE, LTC, BTC). All 5 closed via EMA13_CROSS_EXIT — bot longing at noise level, first opposite candle kills it.
+
+**Cross-batch validation on 153 deduped LONG pool:**
+
+| Filter | Block | Saves $ | Cuts $ | Net | Ratio | NPs killed |
+|---|---|---|---|---|---|---|
+| **Pair Ext < 0.20% (alone)** | **9** | **$250** | **$13** | **+$237** | **19.82** | **5/24** |
+| Pair Ext < 0.20% AND PairVol < 1.10 | 9 (same 9!) | $250 | $13 | +$237 | 19.82 | 5/24 |
+| Pair Ext < 0.20% AND ADXδ ≥ 1.0 | 4 (all today) | $87 | $0 | +$87 | ∞ | 3/24 |
+
+The Vol Ratio component is REDUNDANT (same 9 trades). The ADXδ component is TOO NARROW (today-only, 1-batch — fails CLAUDE.md cross-sample discipline). The cleanest cross-batch evidence supports the **single-dimension filter** at 0.20%.
+
+### Synergy with Option A (same-day ship)
+
+Both shipped together. The 2 winners the extension filter formerly cut (AAVE +$5.09, XRP +$7.52) were both PATTERN_FIXED_TP wins from C4/UNMATCHED LONG patterns. Under Option A (which removed TP cap from these patterns), those 2 trades become losers (would EMA13-cross-exit at avg -0.22%) rather than tiny wins.
+
+**Under Option A, the extension filter cuts 7 trades with ZERO winners** (perfect ratio). Net benefit on top of Option A: **+$125.17** on today's 44-LONG batch.
+
+### Today's 44-LONG batch projection (combined effect)
+
+| Scenario | Batch P&L | Δ vs status quo |
+|---|---|---|
+| Status quo (pre-changes) | -$236.91 | — |
+| Option A only | +$265.56 | +$502.47 |
+| **Option A + Extension Filter** | **+$390.73** | **+$627.63** |
+
+Caveat: Option A's $502 windfall is dominated by FIDAUSDT alone (+$415, post-peak +8.82% would have armed trailing). Extension Filter's +$125 contribution does NOT depend on FIDA — it's structurally robust.
+
+### Filter Blocks tag
+
+`PAIR_EXT_MIN` — new tag, will show in Filter Blocks counter. LONG only.
+
+### Implementation
+
+- `config.py` — new field `entry_dist_from_ema13_min_long: float = 0.0` (default disabled)
+- `trading_config.json` — value 0.20 (active)
+- `services/indicators.py::get_signal` — computes `pair_ext_pct = (price - ema13) / ema13 × 100` once at top of function, applies LONG-side filter check between `PAIR_ADX_DELTA_MIN` and `PAIR_RSI_MOMENTUM` in the elif chain
+- No UI input added yet — operator edits via `trading_config.json` directly
+
+### Pre-committed revert criteria at next 100-trade LONG checkpoint
+
+| Outcome | Action |
+|---|---|
+| Pair Ext < 0.20% LONG cohort (would-have-been-blocked in observation logs) shows ≥55% WR on N≥10 fresh | REVERT to 0 (disabled) |
+| Adjacent zone (Pair Ext 0.20-0.40%) drops below 55% WR on N≥10 fresh | Investigate — may need to RAISE threshold to 0.30 |
+| Cohort stays ≤35% WR on N≥10 fresh | ★ KEEP at 0.20 — confirmed structural |
+| `PAIR_EXT_MIN` filter shows 0 blocks across 100+ LONG trades | Filter dormant — investigate; thresholds may have shifted |
+
+### What this filter does NOT do
+
+- **Doesn't address the high-extension (>+0.60%) loser zone.** Cross-batch shows that zone is mixed: 53 trades pooled at 35W/18L net +$94 (only mildly bad). Blocking it would cost too many winners. The Option A change addresses these (let runners run via trailing). SHORT-side and HIGH-extension analysis pending.
+- **Doesn't filter SHORT side.** Symmetric SHORT filter (`entry_dist_from_ema13_max_short`) candidate exists but no cross-batch evidence validates it yet — defer.
+
+### Cross-batch single-batch caveat
+
+Today's batch contributed 7 of the 9 blocked trades in the cross-batch pool (78%). The remaining 2 came from older batches. So while the cross-batch sample is 153 trades, the filter's behavior is heavily today-anchored. Validate at next 100+ LONG checkpoint that the historical 2-batch confirmation holds in fresh data.
+
+### Files changed
+- `config.py` — new field with evidence comment
+- `trading_config.json` — value set to 0.20
+- `services/indicators.py` — filter check + pair_ext computation
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. Documents the simultaneous-ship with Option A (TP removal for C4/UNMATCHED LONG)
+2. Establishes the structural rationale (Pair Extension bucketed analysis from report's Entry Extension table)
+3. Anchors the locked revert criteria so the next-batch decision is mechanical
+4. Notes the asymmetry — LONG only, SHORT pending separate evidence
+5. Highlights synergy with Option A (extension filter benefit INCREASES under Option A from +$87 → +$125 because previously-blocked winners become losers under Option A)
+
+## May 22, 2026 — Option A: removed `fixed_tp_pct` from C4 LONG + UNMATCHED LONG (kept SL caps)
+
+### Change
+- `pattern_cell_rules[C4 LONG]`: dropped `fixed_tp_pct: 0.10` — kept `fixed_sl_pct: -0.50`
+- `pattern_cell_rules[UNMATCHED LONG]`: dropped `fixed_tp_pct: 0.10` — kept `fixed_sl_pct: -0.50`
+- C8 LONG + W1 LONG unchanged (still TP+SL)
+- All SHORT rules unchanged
+
+### Evidence — May 22 44-LONG batch deep dive
+
+Operator flagged that PATTERN_FIXED_TP L1 LONG was cutting winners (Post-Exit Regret showed PostPeak% far above Close%). Per-trade analysis on today's batch (21 PATTERN_FIXED_TP L1 fires, $+150.72 actual):
+
+| Trade | Source | Close% | Post-Peak% | Lost upside |
+|---|---|---|---|---|
+| FIDAUSDT | UNMATCHED | +0.12% | **+8.82%** | ~$680 (single trade dominates) |
+| ARBUSDT | C8 | +0.11% | +1.17% | ~$65 |
+| DOTUSDT | C4 | +0.17% | +0.94% | ~$45 |
+| FILUSDT (×3) | C4 | +0.11-0.14% | +0.73-0.93% | ~$108 |
+| ONDOUSDT | C4 | +0.10% | +0.85% | ~$40 |
+
+**11 of 21 LONG TP fires had post-peak ≥ 0.50%** (would have armed trailing). The TP cap was firing at +0.10% before trailing could engage. Net counterfactual: actual $+150.72 vs held-to-trailing $+494.54 = **lost upside $343.83** in one batch.
+
+### Why C4 + UNMATCHED specifically, not C8 + W1
+
+Lost-$ attribution by source:
+- C4: 12 fires, lost ~$240 (systemic — multiple FILUSDT/DOTUSDT runners capped)
+- **UNMATCHED**: 3 fires, lost ~$685 (FIDAUSDT alone)
+- C8: 3 fires, lost ~$36 (small)
+- W1: 2 fires, lost ~$5 (negligible)
+
+C8 + W1 are small-cohort low-damage — keep TP for safety on their cohort losers.
+C4 + UNMATCHED are the systemic cap-on-runners offenders.
+
+### Pattern_Fixed_SL is NOT touched — working as designed
+
+5 PATTERN_FIXED_SL L1 fires:
+- Actual $-165.59 at -0.50% Pattern Fixed SL
+- Default SL at -0.70% would have given $-227.27
+- **Pattern_Fixed_SL saves $61.68** by capping loss earlier
+
+3 of 5 SL trades had post-recovery peaks (TAO +0.07%, JTO +2.36%, ONDO +0.65%). BUT — every single one had post-trough ≤ -0.70%, meaning default SL would have fired BEFORE recovery. The recoveries are post-default-SL and unreachable under any current SL config. Pattern_Fixed_SL captures real protection without missing real recoveries.
+
+### Asymmetric verdict (key methodological note)
+
+For pattern-gated exits, TP and SL caps must be evaluated INDEPENDENTLY:
+- LONG TP caps: cut real winners that would have run to trailing (HARMFUL on LONG side)
+- LONG SL caps: save -0.20pp vs default SL on cohort-losers; don't miss recoveries (BENEFICIAL on LONG side)
+
+Same rule may apply to SHORT side but not yet analyzed — needs separate post-exit regret analysis on SHORT PATTERN_FIXED trades.
+
+### Pre-committed revert criteria at next 100-trade LONG checkpoint
+
+| Outcome | Action |
+|---|---|
+| C4 LONG cohort Avg P&L % improves ≥ +0.05pp vs pre-change baseline | ★ KEEP — TP removal validated |
+| C4 LONG cohort shows ≥ 5 fresh trades crossing EMA13 at avg ≤ -0.20% before reaching peak 0.50% | ⚠ Re-add TP at 0.20% (slightly higher than original 0.10%) for these patterns |
+| UNMATCHED LONG cohort shows mixed signal | Defer — single-batch FIDAUSDT outlier dominated the case |
+| Combined LONG Avg P&L % worsens > 0.10pp | Restore TP at 0.10% on both patterns (full revert) |
+
+### Single-batch caveat
+
+This decision is based on a single 44-LONG batch. The FIDAUSDT +8.82% post-peak is potentially the biggest in-batch outlier in the data. Cross-batch confirmation across ≥3 batches needed before locking the change permanently. The locked revert gates above govern if it doesn't replicate.
+
+### Files changed
+- `trading_config.json` — 2 fields removed from pattern_cell_rules (`fixed_tp_pct` on C4 LONG and UNMATCHED LONG)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. Documents a same-day decision that disagrees with the prior Pattern Cell Ship Phase 1 design (which paired TP+SL together by default)
+2. Establishes the asymmetric-evaluation rule: TP and SL caps should be tested independently
+3. Anchors the locked revert criteria so the next-batch decision is mechanical
+4. Notes the single-batch caveat for cross-batch validation
+5. Preserves the C8 LONG + W1 LONG TP-still-active decision for symmetry with future analysis
+
 ## May 21, 2026 (very late evening) — BUG FIX: `_lookup_pattern_cell_rule` Option C fall-through
 
 ### Bug

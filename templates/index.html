@@ -1623,6 +1623,44 @@
                             </table>
                         </div>
                     </div>
+
+                    <h4 class="text-xs font-semibold text-gray-400 mt-5 mb-2">BTC ATR × BTC ADX cross-tab <span class="text-gray-500">(May 22 — surfaces SHORT killer cell at low ATR + high ADX, asymmetric mirror for LONG)</span></h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-emerald-300 mb-1">LONG</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">BTC ATR</th>
+                                        <th class="text-left px-2">BTC ADX</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2" title="Peak ≤ 0%">NP%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="btc-atr-adx-long-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No trades yet</td></tr></tbody>
+                            </table>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-red-300 mb-1">SHORT</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">BTC ATR</th>
+                                        <th class="text-left px-2">BTC ADX</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2" title="Peak ≤ 0%">NP%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="btc-atr-adx-short-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No trades yet</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Phantom BE 0.20/0.10 Counterfactual (May 14) — observation-only -->
@@ -4837,6 +4875,35 @@
                                     <tbody id="btc-gap-btc-adx-filter-short-body"></tbody>
                                 </table>
                                 <button type="button" onclick="addBtcGapBtcAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
+                        <div class="flex items-center gap-3 mb-1">
+                            <span class="text-sm text-gray-300">BTC ATR × BTC ADX Cross-Filter <span class="text-amber-400 text-xs">(May 22)</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-btc-atr-btc-adx-filter-enabled" class="sr-only peer" checked>
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                <span class="ml-2 text-xs text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">Block entry when BTC ATR% AND BTC ADX both fall in the specified ranges. <span class="text-amber-400">SHORT default `0.0-0.10:30-999` shipped May 22 — cross-batch 3t / 33% WR / -$159 killer cell. LONG mirror is OPPOSITE (88% WR on same cell), so LONG side empty by default.</span></p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">ATR Min %</th><th class="text-left px-1">ATR Max %</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="btc-atr-btc-adx-filter-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcAtrBtcAdxRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">ATR Min %</th><th class="text-left px-1">ATR Max %</th><th class="text-left px-1">BTC ADX Min</th><th class="text-left px-1">BTC ADX Max</th><th></th></tr></thead>
+                                    <tbody id="btc-atr-btc-adx-filter-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtcAtrBtcAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
                             </div>
                         </div>
                     </div>
@@ -10192,6 +10259,35 @@
                     _render1hSlopeAdx(_bx.longs, 'btc-1h-slope-adx-long-body');
                     _render1hSlopeAdx(_bx.shorts, 'btc-1h-slope-adx-short-body');
                 }
+                // BTC ATR × BTC ADX cross-tab (May 22) — reuses _render1hSlopeAdx
+                // shape but the keys differ ({btc_atr, btc_adx} vs {slope_1h, btc_adx}).
+                const _renderAtrAdx = (rows, bodyId) => {
+                    const el = document.getElementById(bodyId);
+                    if (!el) return;
+                    if (!rows || !rows.length) {
+                        el.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No trades yet</td></tr>';
+                        return;
+                    }
+                    el.innerHTML = rows.map(r => {
+                        const avg = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const tot = r.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const np = r.np_pct >= 40 ? 'text-red-400' : (r.np_pct >= 20 ? 'text-amber-400' : 'text-gray-400');
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1">${r.btc_atr}</td>
+                            <td class="px-2 py-1">${r.btc_adx}</td>
+                            <td class="px-2 py-1 text-right">${r.count}</td>
+                            <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${avg}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
+                            <td class="px-2 py-1 text-right ${tot}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
+                            <td class="px-2 py-1 text-right ${np}">${(r.np_count || 0)} (${r.np_pct.toFixed(1)}%)</td>
+                        </tr>`;
+                    }).join('');
+                };
+                if (data.btc_atr_adx_crosstab) {
+                    const _bx2 = data.btc_atr_adx_crosstab;
+                    _renderAtrAdx(_bx2.longs, 'btc-atr-adx-long-body');
+                    _renderAtrAdx(_bx2.shorts, 'btc-atr-adx-short-body');
+                }
 
                 // Phantom BE 0.20/0.10 Counterfactual (May 14)
                 if (data.phantom_be_aggr_by_close_reason) {
@@ -14786,6 +14882,11 @@
                 loadBtcGapBtcAdxFilter('short', config.thresholds.btc_gap_btc_adx_filter_short || '');
                 const _bgadEn = document.getElementById('config-btc-gap-btc-adx-filter-enabled');
                 if (_bgadEn) _bgadEn.checked = (config.thresholds.btc_gap_btc_adx_filter_enabled !== false);
+                // BTC ATR × BTC ADX (May 22)
+                loadBtcAtrBtcAdxFilter('long', config.thresholds.btc_atr_btc_adx_filter_long || '');
+                loadBtcAtrBtcAdxFilter('short', config.thresholds.btc_atr_btc_adx_filter_short || '');
+                const _batadEn = document.getElementById('config-btc-atr-btc-adx-filter-enabled');
+                if (_batadEn) _batadEn.checked = (config.thresholds.btc_atr_btc_adx_filter_enabled !== false);
                 // Premium Multipliers (May 4, 2026)
                 loadMultRules('long', 'pair', config.thresholds.rsi_adx_multiplier_long || '');
                 loadMultRules('short', 'pair', config.thresholds.rsi_adx_multiplier_short || '');
@@ -15295,6 +15396,47 @@
             return rules.join(',');
         }
 
+        // BTC ATR × BTC ADX Cross-Filter helpers (May 22, 2026)
+        // Rule format: "<atrLo>-<atrHi>:<adxLo>-<adxHi>"
+        function addBtcAtrBtcAdxRow(direction, tLo='', tHi='', aLo='', aHi='') {
+            const tbody = document.getElementById(`btc-atr-btc-adx-filter-${direction}-body`);
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="number" step="0.01" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs batad-t-lo" value="${tLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.01" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs batad-t-hi" value="${tHi}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs batad-a-lo" value="${aLo}"></td>
+                <td class="px-1 py-1"><input type="number" step="1" class="w-14 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-center text-xs batad-a-hi" value="${aHi}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadBtcAtrBtcAdxFilter(direction, filterStr) {
+            const tbody = document.getElementById(`btc-atr-btc-adx-filter-${direction}-body`);
+            tbody.innerHTML = '';
+            if (!filterStr || !filterStr.trim()) return;
+            for (const rule of filterStr.split(',')) {
+                const r = rule.trim();
+                if (!r || !r.includes(':')) continue;
+                const [tPart, aPart] = r.split(':');
+                const [tLo, tHi] = tPart.split('-');
+                const [aLo, aHi] = aPart.split('-');
+                addBtcAtrBtcAdxRow(direction, tLo || '', tHi || '', aLo || '', aHi || '');
+            }
+        }
+        function collectBtcAtrBtcAdxFilter(direction) {
+            const rows = document.querySelectorAll(`#btc-atr-btc-adx-filter-${direction}-body tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const tLo = row.querySelector('.batad-t-lo').value.trim();
+                const tHi = row.querySelector('.batad-t-hi').value.trim();
+                const aLo = row.querySelector('.batad-a-lo').value.trim();
+                const aHi = row.querySelector('.batad-a-hi').value.trim();
+                if (tLo !== '' && tHi !== '' && aLo !== '' && aHi !== '') {
+                    rules.push(`${tLo}-${tHi}:${aLo}-${aHi}`);
+                }
+            });
+            return rules.join(',');
+        }
+
         // Premium Multiplier helpers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         // May 21 extended: each cell now has Invest Multi + Lev Multi columns. Storage format
         // backward-compatible:
@@ -15677,6 +15819,9 @@
                     btc_gap_btc_adx_filter_long: collectBtcGapBtcAdxFilter('long'),
                     btc_gap_btc_adx_filter_short: collectBtcGapBtcAdxFilter('short'),
                     btc_gap_btc_adx_filter_enabled: ((document.getElementById('config-btc-gap-btc-adx-filter-enabled') || {}).checked === true),
+                    btc_atr_btc_adx_filter_long: collectBtcAtrBtcAdxFilter('long'),
+                    btc_atr_btc_adx_filter_short: collectBtcAtrBtcAdxFilter('short'),
+                    btc_atr_btc_adx_filter_enabled: ((document.getElementById('config-btc-atr-btc-adx-filter-enabled') || {}).checked === true),
                     // Premium Multipliers (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
                     rsi_adx_multiplier_long: collectMultRules('long', 'pair'),
                     rsi_adx_multiplier_short: collectMultRules('short', 'pair'),

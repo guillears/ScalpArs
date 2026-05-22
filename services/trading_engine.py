@@ -5517,6 +5517,42 @@ class TradingEngine:
                         except (ValueError, TypeError):
                             continue
 
+            # BTC ATR × BTC ADX 2D Cross-Filter (May 22, 2026).
+            # Cross-batch evidence — SHORT at strong BTC trend (ADX≥30) needs
+            # volatility; dead-quiet BTC = exhausted + squeeze ammo. See CLAUDE.md
+            # May 22 entry. LONG mirror shows OPPOSITE pattern → asymmetric filter.
+            # Default ships SHORT-only rule "0.0-0.10:30-999".
+            _batr_enabled = getattr(config.trading_config.thresholds,
+                                    'btc_atr_btc_adx_filter_enabled', True)
+            _btc_atr_val = btc_atr_pct
+            if (_batr_enabled and signal in ["LONG", "SHORT"]
+                    and _btc_atr_val is not None and btc_adx is not None):
+                _th4 = config.trading_config.thresholds
+                _batr_key = ('btc_atr_btc_adx_filter_long' if signal == 'LONG'
+                             else 'btc_atr_btc_adx_filter_short')
+                _batr_str = getattr(_th4, _batr_key, '')
+                if _batr_str and _batr_str.strip():
+                    for _batr_rule in _batr_str.split(','):
+                        _batr_rule = _batr_rule.strip()
+                        if not _batr_rule or ':' not in _batr_rule:
+                            continue
+                        try:
+                            _at_part, _ax_part = _batr_rule.split(':')
+                            _at_lo, _at_hi = map(float, _at_part.split('-'))
+                            _ax_lo, _ax_hi = map(float, _ax_part.split('-'))
+                            if (_at_lo <= _btc_atr_val < _at_hi and
+                                    _ax_lo <= btc_adx < _ax_hi):
+                                logger.info(
+                                    f"[BTC_ATR_BTC_ADX_CROSS] {pair}: {signal} blocked — "
+                                    f"BTC ATR {_btc_atr_val:.3f}% in [{_at_lo}-{_at_hi}) "
+                                    f"AND BTC ADX {btc_adx:.1f} in [{_ax_lo}-{_ax_hi})"
+                                )
+                                self._record_filter_block("BTC_ATR_BTC_ADX_CROSS", signal, had_room=_had_room)
+                                signal = "NO_TRADE"
+                                break
+                        except (ValueError, TypeError):
+                            continue
+
             # BTC Trend Filter — runs independently of Macro Trend toggle (May 5).
             # Compares BTC EMA13 vs BTC EMA50 on the 5m chart (May 6 — switched from
             # EMA20 to EMA13 for faster reversal detection; EMA13 spans ~65 min vs EMA20's

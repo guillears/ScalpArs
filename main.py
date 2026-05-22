@@ -6412,6 +6412,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "btc_1h_slope_performance": _compute_btc_1h_slope_performance(orders),
         "btc_5m_1h_slope_alignment_crosstab": _compute_btc_5m_1h_slope_alignment_crosstab(orders),
         "btc_1h_slope_adx_crosstab": _compute_btc_1h_slope_adx_crosstab(orders),
+        # BTC ATR × BTC ADX cross-tab (May 22, 2026). Surfaces the BTC ATR<0.10
+        # × BTC ADX ≥30 SHORT killer cell and the asymmetric LONG mirror.
+        "btc_atr_adx_crosstab": _compute_btc_atr_adx_crosstab(orders),
         # Phantom BE 0.20/0.10 counterfactual by close reason (May 14)
         "phantom_be_aggr_by_close_reason": _compute_phantom_be_aggr_by_close_reason(orders),
         # BE Floor Counterfactual (May 17): per close_reason × direction, compares
@@ -7234,6 +7237,46 @@ def _compute_btc_5m_1h_slope_alignment_crosstab(orders):
                 'avg_pnl_usd': round(tot/n, 2),
                 'np_count': np_ct, 'np_pct': round(np_ct/n*100, 1),
             })
+        return rows
+    return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
+
+
+def _compute_btc_atr_adx_crosstab(orders):
+    """BTC ATR × BTC ADX 2D cross-tab (May 22, 2026).
+    Surfaces the SHORT killer cell (BTC ATR <0.10 × BTC ADX ≥30 = 3t/33% WR/-$159
+    cross-batch) vs adjacent winner zones, and reveals the asymmetric LONG mirror
+    (same cell wins for LONGs)."""
+    closed = [o for o in orders if o.status == 'CLOSED'
+              and getattr(o, 'entry_btc_atr_pct', None) is not None
+              and o.entry_btc_adx is not None]
+    if not closed:
+        return {'longs': [], 'shorts': [], 'pool_size': 0}
+    atr_bk = [('<0.10%', 0.0, 0.10), ('0.10-0.15%', 0.10, 0.15),
+              ('0.15-0.20%', 0.15, 0.20), ('0.20-0.30%', 0.20, 0.30),
+              ('≥0.30%', 0.30, 99)]
+    adx_bk = [('<18', 0, 18), ('18-22', 18, 22), ('22-25', 22, 25),
+              ('25-30', 25, 30), ('30-35', 30, 35), ('≥35', 35, 999)]
+    def _for(direction):
+        rows = []
+        dir_o = [o for o in closed if o.direction == direction]
+        for atrl, atrlo, atrhi in atr_bk:
+            for axl, axlo, axhi in adx_bk:
+                sub = [o for o in dir_o
+                       if atrlo <= (o.entry_btc_atr_pct or 0) < atrhi
+                       and axlo <= (o.entry_btc_adx or 0) < axhi]
+                if not sub: continue
+                n = len(sub)
+                wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+                tot = sum(o.pnl or 0 for o in sub)
+                avg_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                np_ct = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+                rows.append({
+                    'btc_atr': atrl, 'btc_adx': axl, 'count': n,
+                    'win_rate': round(wins/n*100, 1),
+                    'avg_pnl_pct': round(avg_pct, 4),
+                    'total_pnl_usd': round(tot, 2),
+                    'np_count': np_ct, 'np_pct': round(np_ct/n*100, 1),
+                })
         return rows
     return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
 

@@ -6061,6 +6061,38 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 avg_ema13_cross_min = sum(o.post_exit_ema13_cross_minutes for o in ema13_cross_orders) / len(ema13_cross_orders) if ema13_cross_orders else None
                 avg_ema13_cross_pnl = sum(o.post_exit_ema13_cross_pnl or 0 for o in ema13_cross_orders) / len(ema13_cross_orders) if ema13_cross_orders else None
 
+                # May 23: post-exit regime-flip aggregation. RegFlipMin =
+                # minutes from close until BTC regime first stopped supporting
+                # trade direction. P&L@RegFlip = running P&L at that moment.
+                # NULL/dash = regime never flipped in tracking window (= original
+                # exit was structurally correct; holding would have ridden into
+                # the post-exit trough). The comparison column for the
+                # "EMA13 vs regime exit" question.
+                regime_flip_orders = []
+                for o in group:
+                    _rf_at = getattr(o, 'post_exit_regime_flip_at', None)
+                    _exit_at = getattr(o, 'closed_at', None)
+                    if _rf_at is not None and _exit_at is not None:
+                        regime_flip_orders.append(o)
+                regime_flip_pct = round(len(regime_flip_orders) / count * 100, 1) if count > 0 else 0
+                if regime_flip_orders:
+                    _rf_minutes = []
+                    _rf_pnls = []
+                    for o in regime_flip_orders:
+                        try:
+                            _dt = (o.post_exit_regime_flip_at - o.closed_at).total_seconds() / 60.0
+                            _rf_minutes.append(_dt)
+                        except Exception:
+                            pass
+                        _pnl = getattr(o, 'post_exit_regime_flip_pnl_pct', None)
+                        if _pnl is not None:
+                            _rf_pnls.append(_pnl)
+                    avg_regime_flip_min = sum(_rf_minutes) / len(_rf_minutes) if _rf_minutes else None
+                    avg_regime_flip_pnl = sum(_rf_pnls) / len(_rf_pnls) if _rf_pnls else None
+                else:
+                    avg_regime_flip_min = None
+                    avg_regime_flip_pnl = None
+
                 rec_neg020 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.20)
                 rec_neg010 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.10)
                 rec_neg005 = sum(1 for o in group if (o.post_exit_peak_pnl or 0) >= -0.05)
@@ -6116,6 +6148,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "ema13_cross_pct": ema13_cross_pct,
                     "avg_ema13_cross_min": round(avg_ema13_cross_min, 1) if avg_ema13_cross_min is not None else None,
                     "avg_ema13_cross_pnl": round(avg_ema13_cross_pnl, 4) if avg_ema13_cross_pnl is not None else None,
+                    # May 23: post-exit regime-flip diagnostic (EMA13 vs regime exit comparison)
+                    "regime_flip_pct": regime_flip_pct,
+                    "avg_regime_flip_min": round(avg_regime_flip_min, 1) if avg_regime_flip_min is not None else None,
+                    "avg_regime_flip_pnl": round(avg_regime_flip_pnl, 4) if avg_regime_flip_pnl is not None else None,
                     "recovery_neg020_pct": round(rec_neg020 / count * 100, 1),
                     "recovery_neg010_pct": round(rec_neg010 / count * 100, 1),
                     "recovery_neg005_pct": round(rec_neg005 / count * 100, 1),

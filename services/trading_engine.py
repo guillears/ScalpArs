@@ -635,6 +635,12 @@ class TradingEngine:
                 "rsi_history": [],
                 "ema13_cross_at": None,
                 "ema13_cross_pnl": None,
+                # May 23: post-exit regime-flip tracker. entry_regime is the
+                # regime at trade open; we watch for first opposite-or-neutral
+                # transition during post-exit window.
+                "entry_regime": order.entry_btc_regime,
+                "regime_flip_at": order.post_exit_regime_flip_at,
+                "regime_flip_pnl": order.post_exit_regime_flip_pnl_pct,
                 "signal_regained_at": None,
                 "pnl_at_signal_regained": None,
                 "running_min_pnl": None,
@@ -3743,6 +3749,10 @@ class TradingEngine:
             "rsi_history": [],
             "ema13_cross_at": None,
             "ema13_cross_pnl": None,
+            # May 23: post-exit regime-flip tracker (fresh registration path)
+            "entry_regime": order.entry_btc_regime,
+            "regime_flip_at": None,
+            "regime_flip_pnl": None,
             "signal_regained_at": None,
             "pnl_at_signal_regained": None,
             "running_min_pnl": None,
@@ -3941,6 +3951,29 @@ class TradingEngine:
                         info["ema13_cross_at"] = now
                         info["ema13_cross_pnl"] = current_pnl
 
+            # May 23: post-exit regime-flip detection. Compare live BTC regime
+            # against entry_regime (captured at trade open). First transition
+            # to OPPOSITE-of-direction or NEUTRAL captures the moment +
+            # post-exit running P&L. Answers: "would holding past current
+            # exit until regime flipped have been better?"
+            if info["regime_flip_at"] is None and info.get("entry_regime"):
+                _entry_reg = info["entry_regime"]
+                _live_reg = _current_btc_regime
+                # Define "supporting regime" by trade direction:
+                #   LONG supportive: regime contains "BULL" (BULLISH, STRONG_BULL, HEALTHY_BULL, BULL_EXHAUSTED)
+                #   SHORT supportive: regime contains "BEAR" (BEARISH, STRONG_BEAR, HEALTHY_BEAR, BEAR_EXHAUSTED)
+                # Flip = entry was supportive AND live is NOT supportive (= NEUTRAL/CHOPPY or opposite-direction)
+                if direction == "LONG":
+                    _entry_supportive = "BULL" in (_entry_reg or "")
+                    _live_supportive = "BULL" in (_live_reg or "")
+                else:
+                    _entry_supportive = "BEAR" in (_entry_reg or "")
+                    _live_supportive = "BEAR" in (_live_reg or "")
+                if _entry_supportive and not _live_supportive:
+                    info["regime_flip_at"] = now
+                    info["regime_flip_pnl"] = current_pnl
+                    logger.info(f"[POST_EXIT_REGIME_FLIP] {order.pair} {order.direction}: regime flipped {_entry_reg} → {_live_reg} after exit, captured pnl={current_pnl:.4f}%")
+
             # Track reachable peak (best P&L while signal still active)
             if info["signal_lost_at"] is None:
                 if current_pnl > info["peak_before_signal_lost"]:
@@ -4013,6 +4046,9 @@ class TradingEngine:
                                 post_exit_rsi3_exit_pnl=round(info["rsi3_exit_pnl"], 4) if info["rsi3_exit_pnl"] is not None else None,
                                 post_exit_ema13_cross_minutes=round(ema13_cross_minutes, 2) if ema13_cross_minutes is not None else None,
                                 post_exit_ema13_cross_pnl=round(info["ema13_cross_pnl"], 4) if info["ema13_cross_pnl"] is not None else None,
+                                # May 23: post-exit regime flip
+                                post_exit_regime_flip_at=info["regime_flip_at"],
+                                post_exit_regime_flip_pnl_pct=round(info["regime_flip_pnl"], 4) if info["regime_flip_pnl"] is not None else None,
                                 post_exit_signal_regained_minutes=round(sig_regained_minutes, 2) if sig_regained_minutes is not None else None,
                                 post_exit_pnl_at_signal_regained=round(info["pnl_at_signal_regained"], 4) if info["pnl_at_signal_regained"] is not None else None,
                                 post_exit_floor_before_signal_regain=round(info["floor_before_signal_regain"], 4) if info["floor_before_signal_regain"] is not None else None,

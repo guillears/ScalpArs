@@ -122,6 +122,11 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_ema13_cross_minutes FLOAT"))
                 if 'post_exit_ema13_cross_pnl' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_ema13_cross_pnl FLOAT"))
+                # May 23: post-exit regime-flip tracker
+                if 'post_exit_regime_flip_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_regime_flip_at DATETIME"))
+                if 'post_exit_regime_flip_pnl_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN post_exit_regime_flip_pnl_pct FLOAT"))
                 if 'post_arm_min_pnl_pct' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN post_arm_min_pnl_pct FLOAT"))
                 if 'post_arm_min_pnl_at' not in columns:

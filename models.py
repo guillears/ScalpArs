@@ -356,6 +356,19 @@ class Order(Base):
     # hypothetical new exit fired?"
     post_exit_ema13_cross_minutes = Column(Float, nullable=True)
     post_exit_ema13_cross_pnl = Column(Float, nullable=True)
+    # May 23: post-exit regime-flip tracker. After trade closes, post-exit
+    # watcher continues to read live BTC regime classification each tick.
+    # When BTC regime first transitions to OPPOSITE-of-trade-direction
+    # (or to NEUTRAL — counts as "no longer supporting our direction"),
+    # capture the timestamp and current post-exit running P&L. Answers:
+    # "if we had held past the actual exit until regime flipped, what
+    # would the P&L have been?" Compare to actual close to decide
+    # whether EMA13 cross / SL exit fired too early vs the regime signal.
+    # NULL = regime never flipped in the post-exit tracking window
+    # (= EMA13 cross / SL was the structural exit; regime would have
+    # held into deeper drawdown).
+    post_exit_regime_flip_at = Column(DateTime, nullable=True)
+    post_exit_regime_flip_pnl_pct = Column(Float, nullable=True)
     post_exit_signal_regained_minutes = Column(Float, nullable=True)
     post_exit_pnl_at_signal_regained = Column(Float, nullable=True)
     post_exit_floor_before_signal_regain = Column(Float, nullable=True)

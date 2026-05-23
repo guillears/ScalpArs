@@ -1,5 +1,110 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 23, 2026 — Post-Exit Regime-Flip diagnostic (RegFlipMin / RegFlip P&L columns)
+
+### The strategic question this answers
+
+> "Should we exit at EMA13 cross, or wait for actual regime change?"
+
+Today's COSUSDT id=13 exited at -1.52% via EMA13_CROSS while regime stayed
+BULLISH. Post-exit trough went to -3.89% — holding for regime would have
+been much worse. But that's N=1. The structural question: NET across many
+EMA13 exits, would holding to regime flip have been better?
+
+The existing Phantom Regime Change Exit Counterfactual table only measures
+**in-trade** regime flips. Today's batch has zero of those. The diagnostic
+we needed was **post-exit** regime tracking — for each closed trade, did
+BTC regime eventually stop supporting our direction? When? At what P&L?
+
+### What ships
+
+Two new columns added to **Post-Exit Regret Deep Dive** table:
+
+| Column | Definition |
+|---|---|
+| **RegFlipMin** | Minutes after close until BTC regime first stopped supporting trade direction (LONG → not BULL-flavored, SHORT → not BEAR-flavored). `-` if regime never flipped in tracking window. |
+| **RegFlip P&L** | Post-exit running P&L at the flip moment. Compare against `Close%` — higher = holding to regime would have been better. `-` = regime never flipped. |
+
+"Regime supports trade direction" is detected via substring match on the
+regime name: trades opened in any regime containing "BULL" (BULLISH,
+STRONG_BULL, HEALTHY_BULL, BULL_EXHAUSTED) keep LONGs supported; same for
+"BEAR" on SHORTs. Flip = entry regime supported direction AND live regime
+no longer does (NEUTRAL/CHOPPY/opposite all count as "stopped supporting").
+
+### Mechanism
+
+1. **Schema**: 2 new nullable Order columns
+   - `post_exit_regime_flip_at: DateTime`
+   - `post_exit_regime_flip_pnl_pct: Float`
+   - `database.py` auto-migrate
+2. **Engine**: post-exit watcher loop (services/trading_engine.py, ~30 LOC):
+   - Captures `entry_regime` from Order at watcher init
+   - Each tick: compares `_current_btc_regime` global against direction-
+     specific supportive-regime check
+   - On first non-supportive detection: stores timestamp + current post-
+     exit running P&L
+   - `[POST_EXIT_REGIME_FLIP]` log line for verification
+3. **Report**: `_compute_post_exit_regret_deep_dive` aggregates per-bucket
+   averages (`avg_regime_flip_min`, `avg_regime_flip_pnl`)
+4. **UI**: 2 new columns with tooltips explaining the comparison logic;
+   both text-export sites updated with `RegFlMin` / `RegFlP&L` (named
+   distinctly from `RegMin` / `RegP&L` which already exist for Signal
+   Regained)
+
+### How to read the columns (locked methodology)
+
+For each (close_reason × direction) bucket at next ≥30-trade checkpoint:
+
+| Column reading | Interpretation |
+|---|---|
+| RegFlipMin small (e.g., 5-10min) AND RegFlip P&L > Close% by ≥+0.10pp | Current exit fired too early — regime flipped soon after and price would have been better than what we got. **Consider switching to regime-based exit.** |
+| RegFlipMin small AND RegFlip P&L < Close% | Current exit fired late — regime flipped soon but P&L was already worse. **Current exit was right.** |
+| RegFlipMin large (≥20min) or `-` | Regime didn't flip (or only flipped long after). **Current exit was the structural exit — regime would have ridden into deeper drawdown.** |
+
+### Pre-committed decision criteria at next ≥30 EMA13_CROSS_EXIT trades
+
+| Cohort outcome | Action |
+|---|---|
+| ≥60% have RegFlipMin=`-` (regime didn't flip in window) AND avg post-exit trough deeper than close | ★ KEEP EMA13 cross exit — regime would have held into worse losses |
+| ≥40% have RegFlipMin ≤10min AND avg RegFlip P&L > Close% by ≥+0.10pp | Consider EMA13 cross as PARTIAL signal — require regime confirmation OR delay exit until both fire |
+| Mixed (40-60% flips, mixed P&L) | Look for discriminator (peak%, ATR%, direction). Don't ship logic change yet. |
+
+Same gates apply to PATTERN_FIXED_SL, STOP_LOSS_WIDE, FAST_EXIT rows —
+but EMA13_CROSS_EXIT is the primary focus because of the volume.
+
+### Caveats
+
+1. **Pre-deploy trades have NULL** on both new columns forever. Reports
+   built on historical-only data will show all `-` in the new columns.
+2. **`_current_btc_regime` is a global** populated by the BTC scan loop.
+   Post-exit ticks may run on cached regime if BTC scan hasn't updated
+   since trade close. This produces minor timing imprecision (typically
+   <1min) — acceptable for the comparison purpose.
+3. **"Supportive regime" is substring-based.** If regime taxonomy changes
+   in the future (new label that doesn't contain "BULL" or "BEAR"), this
+   logic needs updating. Documented here so future-Claude knows.
+
+### Files changed
+- `models.py` — 2 new columns + evidence comment
+- `database.py` — auto-migrate ADD COLUMN ×2
+- `services/trading_engine.py` — init in 2 post-exit watcher sites; flip
+  detection block after EMA13 cross block; persistence in DB update block
+- `main.py` — aggregation block in `_compute_post_exit_regret_deep_dive` +
+  3 new payload fields per row
+- `templates/index.html` — 2 new column headers (UI) + 2 new cell renders
+  + both text-export sites updated
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the strategic question (EMA13 vs regime exit) and the
+   diagnostic that answers it
+2. To preserve the locked decision criteria for next checkpoint
+3. To document the supportive-regime substring rule so future taxonomy
+   changes know what to update
+4. To distinguish this **post-exit** tracker from the **in-trade** Phantom
+   Regime Change Exit CF — they answer different questions
+
 ## May 23, 2026 — `sl_atr_widen_floor_pct: -1.20` shipped (ATR-SL cap on extreme-volatility pairs)
 
 ### Why this exists (yesterday's ship had no upper bound)

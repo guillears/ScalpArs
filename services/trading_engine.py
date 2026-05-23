@@ -1408,10 +1408,17 @@ class TradingEngine:
         """Pattern Cell Ship Rules — May 21, NEW dimension per CLAUDE.md May 21 ship plan.
 
         Walks pattern_cell_rules config, collects rules matching this trade's
-        direction + matched C/W patterns, applies Option C conflict resolution:
-          - If ANY C-pattern matches → C-side rules apply;
-            W-side rules are BLOCKED ("C presence blocks W")
+        direction + matched C/W patterns, applies Option D conflict resolution
+        (May 23 strict-C-blocks-W refinement):
+          - If ANY C-pattern matches AND a C rule fires → apply C rule
+          - If ANY C-pattern matches but NO C rule fires → return BASELINE
+            (1.0, 1.0, None, None, None). DO NOT fall through to W.
+            Rationale: a C-signature match means "loser-shape" — defang any
+            co-matched W multipliers. Operator can explicitly opt-in to
+            multiplier on a C cell by configuring its rule (e.g., C1 SHORT
+            at 2.0× — see CLAUDE.md May 21 treatment-decoupling).
           - Else if ANY W-pattern matches → W-side rules apply
+          - Else if no C and no W → UNMATCHED rules apply
           - Else no rule fires → returns (1.0, 1.0, None, None, None)
 
         Within the active side, ANY rule can carry ANY treatment (May 21 late ship —
@@ -1431,18 +1438,26 @@ class TradingEngine:
         if not rules:
             return 1.0, 1.0, None, None, None
 
-        # Determine candidate sides in priority order (Option C — see May 21 bug fix below).
-        # "C presence blocks W" was the original intent, but ONLY when a C rule actually
-        # fires. If a trade matches a C signature with NO configured C rule for that
-        # direction, the bot should fall through to W (then UNMATCHED) — otherwise W
-        # rules are silently blocked by an unconfigured C match.
+        # Determine candidate sides in priority order (May 23 Option D — strict
+        # C-blocks-W with explicit-opt-in for C multipliers).
         #
-        # Concrete failure case that drove the fix: FILUSDT LONG (id=8, May 21):
-        # matched C1 LONG AND W2 LONG. No C1 LONG rule was configured. Old logic set
-        # active_side='C', walked rules, found nothing, returned None. The W2 rule
-        # (which IS configured) never got a chance. Result: trade missed its multiplier.
+        # Evolution of this logic:
+        #   May 21 first ship: strict C-blocks-W. Broke FILUSDT (C1+W2, no C1 rule).
+        #   May 21 bug fix:    fall through to W when C has no rule. Broke MTLUSDT
+        #                      (id=28, May 23): C2 matched + W1+W6 mults applied at
+        #                      2.0× → loss doubled to -$91.37.
+        #   May 23 Option D:   restore strict C-blocks-W with surgery — if C matches
+        #                      but no C rule fires, return BASELINE (don't fall to W).
+        #                      Operator opts into C multipliers explicitly via rule
+        #                      config (e.g., C1 SHORT at 2.0× already shipped).
         #
-        # Fix: try sides in priority [C → W → UNMATCHED], return first match.
+        # Why this is structurally correct:
+        # A C-signature firing means "trade has loser-shape signature." If no rule
+        # is explicitly configured for that C cell, the conservative default is
+        # baseline sizing (1.0×) and default exit chain — NOT amplification via
+        # co-matched W rules. This preserves the May 21 treatment-decoupling lesson
+        # (pattern code is the signature, treatment is in rule fields) while making
+        # the default safe.
         matched_c = [k for k, v in c_flags.items() if v is True]
         matched_w = [k for k, v in w_flags.items() if v is True]
         sides_to_try: List[Tuple[str, set]] = []
@@ -1505,6 +1520,12 @@ class TradingEngine:
             if applied_sources:
                 source_label = '+'.join(sorted(applied_sources))
                 return applied_inv, applied_lev, source_label, applied_tp, applied_sl
+            # May 23 Option D: strict C-blocks-W. If C matched but no C rule fired,
+            # return baseline immediately — DON'T fall through to W (which would
+            # apply co-matched W multipliers and amplify a loser-shape trade).
+            # Operator opts into C multiplier by explicitly configuring a C rule.
+            if active_side == 'C':
+                return 1.0, 1.0, None, None, None
 
         return 1.0, 1.0, None, None, None
 

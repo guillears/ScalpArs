@@ -1,5 +1,119 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 23, 2026 (late evening) — Pattern Cell lookup: Option D strict-C-blocks-W (defang W mults on bare C match)
+
+### Change
+
+`services/trading_engine.py::_lookup_pattern_cell_rule` — when a C-pattern
+matches but no C rule fires, return baseline `(1.0, 1.0, None, None, None)`
+immediately. DO NOT fall through to W rules.
+
+Operator opts into a C cell carrying multiplier treatment by explicitly
+configuring its rule (e.g., C1 SHORT at 2.0× already shipped per
+CLAUDE.md May 21 treatment-decoupling).
+
+### Why this exists — MTLUSDT id=28 failure mode (May 23)
+
+MTL SHORT closed -$91.37. CSV inspection revealed:
+- `entry_pattern_c2_match: True` (BTC trend gap +0.36% = macro counter-trend)
+- `entry_pattern_w1_match: True` AND `entry_pattern_w6_match: True`
+- `pattern_cell_source: W1+W6` → cell_multiplier 2.0× applied
+- Investment $963 vs $480 baseline → loss doubled from -$45.69 to -$91.37
+
+C2 was correctly flagging the trade as loser-shape (BTC bullish, SHORTing
+against macro). But C2 SHORT has no rule configured. Under the May 21 bug
+fix, lookup fell through to W → W1+W6 mults fired → 2× amplification.
+
+The May 21 fix swung the pendulum too far: "C matched but no rule" should
+NOT trigger fall-through to W amplification. It should default to safe
+baseline.
+
+### Evolution of the lookup logic (3 generations)
+
+| Date | Behavior | Failure |
+|---|---|---|
+| May 21 first ship | Strict C-blocks-W (any C match blocks W) | FILUSDT C1+W2 stuck at no treatment when C1 had no rule |
+| May 21 bug fix | Fall through C→W when C has no rule | MTLUSDT C2+W1+W6 got 2× amplification on loser-shape trade |
+| **May 23 (Option D)** | **Strict C-blocks-W + explicit opt-in for C mults** | Both failures fixed — see below |
+
+### Why Option D handles both failure modes
+
+**FILUSDT-style case (the May 21 driver):**
+- C1+W2 matched, C1 LONG had no rule, W2 LONG had 2× mult
+- Under Option D: C1 matches without rule → return baseline (1.0×).
+  W2 mult is suppressed.
+- Outcome: trade enters at baseline sizing with default exits. NOT "no treatment"
+  — it's baseline treatment, which is the conservative correct default.
+
+**MTLUSDT-style case (today's driver):**
+- C2+W1+W6 matched, C2 SHORT has no rule, W1/W6 SHORT have 2× mults
+- Under Option D: C2 matches without rule → return baseline (1.0×).
+  W1+W6 mults are suppressed.
+- Outcome: would have taken -$45.69 loss instead of -$91.37. **+$45.68 saved
+  on this single trade.**
+
+**C1 SHORT explicit-opt-in case (preservation):**
+- A SHORT trade matches C1 (or any other C with explicit rule)
+- C1 SHORT rule (`inv_mult: 2.0`) IS configured → applies
+- Outcome: 2× multiplier fires as designed. Treatment-decoupling preserved
+  (CLAUDE.md May 21).
+
+### Conceptual model after this change
+
+> Pattern code is the SIGNATURE. Treatment is what's in the rule.
+> A bare C match (no rule) means "loser-shape, default to safe baseline."
+> A configured C rule means "operator explicitly chose this C cell's treatment."
+
+This is structurally cleaner than the May 21 fall-through: instead of
+silently inheriting W treatment, an un-ruled C match deliberately blocks
+amplification.
+
+### Cross-batch counterfactual on today's MTL slice
+
+| Scenario | MTL outcome |
+|---|---|
+| Pre-fix (May 21 fall-through) | -$91.37 (2× multiplier from W1+W6) |
+| **Post-fix (May 23 Option D)** | **-$45.69 (baseline, W mults suppressed)** |
+| If C2 SHORT rule shipped with TP 0.10 / SL -0.50 | ~+$5 (TP catches the +0.23% peak) |
+
+Option D handles MTL without requiring a C2-specific rule. If a C2 cluster
+develops across batches, the operator can still ship the C2 fixed-exit
+rule as a second layer of protection on top of the baseline fallback.
+
+### What this does NOT change
+
+- All explicit C/W rules in `pattern_cell_rules` continue to work as configured
+- C1 SHORT 2× multiplier (treatment-decoupled winner cell) still fires
+- W1 LONG fixed exits (treatment-decoupled loser cell on a W tag) still fire
+- UNMATCHED rules still fire when no C and no W match
+- Pattern C/W observation trackers unchanged (they read flags, not rules)
+
+### Pre-committed revert criteria
+
+At next ≥30-trade checkpoint, if Option D produces:
+
+| Outcome | Action |
+|---|---|
+| ≥3 trades where C-match-no-rule blocked a W mult AND those trades would have been winners at 2× | Reconsider — maybe the C signature was misclassifying winners |
+| Net P&L improves ≥+$30 per ~50-trade batch vs pre-fix counterfactual | ★ KEEP — Option D validated |
+| Trades that previously got W treatment via fall-through now show worse outcomes systematically | Investigate per-pattern; possibly add explicit C rules where the fall-through was correct |
+
+### Files changed
+
+- `services/trading_engine.py` — `_lookup_pattern_cell_rule` docstring + comment
+  block updated to Option D narrative; ~7-line code change in the side-walking
+  loop to return baseline on C-matched-no-rule
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the third (and hopefully final) iteration of the lookup logic
+2. To preserve the FILUSDT (May 21) and MTLUSDT (May 23) failure modes so
+   future-Claude doesn't re-introduce either pendulum swing
+3. To anchor the conceptual model: bare C match → baseline; configured C rule
+   → explicit operator choice
+4. To lock the revert criteria at next checkpoint
+
 ## May 23, 2026 (same-day refinement) — `btc_rsi_adx_filter_long` 65-70 rule: `:40` → `:0-35` (surgical: preserve winner sub-zone)
 
 ### Change

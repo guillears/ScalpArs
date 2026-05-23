@@ -1,5 +1,90 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 23, 2026 — `sl_atr_widen_floor_pct: -1.20` shipped (ATR-SL cap on extreme-volatility pairs)
+
+### Why this exists (yesterday's ship had no upper bound)
+
+The `sl_atr_multiplier: 1.5` ship (May 22) produces `effective_sl = -(atr × 1.5)`.
+On extreme-ATR pairs the math goes off the rails:
+
+- ATR 0.50% → SL -0.75% (modest widening, reasonable)
+- ATR 1.20% → SL -1.80% (still defensible)
+- ATR 2.32% → SL **-3.48%** — effectively no SL until something else catches it
+
+Today's COSUSDT id=13 (ATR 2.32%) was the first real-world trade where this math
+engaged on a true extreme-volatility pair. Trade rode to **-2.17% trough**, closed
+at -1.52% via EMA13_CROSS_EXIT, lost -$135. Base -0.70% SL would have caught at
+~$60 loss. Net ~$75 worse under the new widening — same trade, no upper bound.
+
+### Mechanism
+
+New field `sl_atr_widen_floor_pct: -1.20`. Engine logic (both realtime callback
+and monitor loop paths):
+
+```python
+# After ATR-SL widening:
+if _sl_floor < 0 and effective_sl < _sl_floor:
+    effective_sl = _sl_floor  # clamp at floor
+```
+
+Floor expressed as the most-negative-allowed SL value. -1.20 means widening
+stops at -1.20%; ATR-multiplier results more negative than that are clamped.
+
+| Entry ATR% | Today's SL (ATR×1.5) | With -1.20 cap |
+|---:|---:|---:|
+| 0.50% | -0.75 | -0.75 (cap inactive) |
+| 0.80% | -1.20 | -1.20 (break-even point) |
+| 1.50% | -2.25 | **-1.20** (clamped) |
+| 2.32% | -3.47 (COSUSDT) | **-1.20** (clamped, would save ~$29 on this trade) |
+
+### Cross-batch evidence supporting -1.20 specifically
+
+| Bucket | N | -1.20 cap effect |
+|---|---:|---|
+| High-ATR losers (ATR ≥1.50, pnl ≤ 0) | 5 | Save +$28.78 (all from today's COSUSDT — other 4 are pre-May-22, closed at base SL anyway) |
+| High-ATR winners (ATR ≥1.50, pnl > 0) | 6 | **Zero killed** — every winner's trough was > -0.68%, well above -1.20 |
+
+Net: zero winner collateral. ~$29 save on the one trade where the new widening
+actually engaged on a 2.32% ATR pair. The structural defect is small in absolute
+$ today (N=1) but the mechanism is clearly broken — needs the cap before more
+high-ATR pairs trade.
+
+### Methodological lesson (locked)
+
+**Any ATR-scaled exit mechanism needs both a multiplier AND a floor cap.
+Unbounded multiplication produces structurally-broken results at the extreme
+tail of the ATR distribution.** This is the third ATR mechanism shipped this
+week (trailing_atr_multiplier, sl_atr_multiplier, sl_atr_widen_floor_pct) and
+the lesson should propagate forward: when adding any future ATR-scaled knob,
+ship the cap in the same commit. Don't wait for the production failure to
+expose the defect.
+
+### Pre-committed revert criteria at next ≥20-high-ATR-trade checkpoint
+
+| Outcome | Action |
+|---|---|
+| ≥1 trade where cap fires AND trade closes at base SL @ -1.20 (vs running to -3%+ without cap) | ★ KEEP — cap doing its job |
+| ≥1 trade where cap fires AND trade subsequently recovers to profit (cap killed a winner) | Loosen cap to -1.50 |
+| 0 trades trigger cap across 50+ entries | Defer — high-ATR cohort too rare; cap dormant but harmless |
+| Multiple winners killed by cap (e.g., 2+ trades with trough between cap and -0.70 reversing to wins) | ✗ REVERT (set floor to 0) |
+
+### Files changed
+
+- `config.py` — `sl_atr_widen_floor_pct: float = -1.20` field with evidence comment
+- `trading_config.json` — `"sl_atr_widen_floor_pct": -1.2`
+- `services/trading_engine.py` — floor cap clamp after ATR-SL widening in realtime callback (~12 lines)
+- `services/indicators.py` — same cap in monitor loop path (~10 lines)
+- `templates/index.html` — UI input + live preview (shows the ATR threshold where cap engages) + save handler (per D11 mandatory checklist)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the defect that triggered the cap (COSUSDT id=13 on 2026-05-23, lost -$135 where base SL would have lost ~$60)
+2. To document the math + cap-engagement table so future-Claude can re-derive the threshold if regime changes
+3. To preserve the locked methodology lesson: **ATR multipliers need caps, ship them together**
+4. To lock the revert gates so next-checkpoint decision is mechanical
+5. To list the D11 verification trail (5 layers grep'd before commit)
+
 ## May 23, 2026 — Trailing Confirmation Performance: 3 new ATR-trailing diagnostic columns
 
 ### What ships

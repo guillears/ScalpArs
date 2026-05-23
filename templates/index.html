@@ -4020,6 +4020,18 @@
                             <p class="text-xs text-gray-500 mt-1">ATR-normalized SL widening: <code>effective_sl = min(base_sl, -(entry_atr_pct × multiplier))</code>. Only WIDENS — low-ATR pairs keep base SL. <span class="text-amber-400">Cross-batch (May 22): 19% of STOP_LOSS_WIDE trades had post-peak ≥+0.60% recovery; heavy-regret ATR avg 1.16% (LONG) / 0.63% (SHORT) vs right-exits 0.63% / 0.50%. Projected save ~$700-1000 cross-batch.</span> Skipped under BE. 0 = disable.</p>
                         </div>
                         <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">SL ATR Widen Floor Cap <span class="text-xs text-amber-400">(May 23)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    Floor (most negative SL allowed)
+                                    <input type="number" step="0.05" min="-3.0" max="0" id="config-sl-atr-widen-floor-pct" class="w-24 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="-1.20">
+                                    <span class="ml-1">%</span>
+                                </label>
+                                <span id="config-sl-atr-widen-floor-preview" class="text-xs text-gray-500"></span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Caps the ATR-SL widening so extreme-ATR pairs don't effectively disable the SL. If <code>entry_atr_pct × sl_atr_multiplier &gt; |floor|</code>, effective_sl is clamped at this floor. <span class="text-amber-400">May 23: COSUSDT (ATR 2.32%) ran SL out to -3.47%, closed -1.52% via EMA13 (-$135) — base -0.70 SL would have caught at ~-$60. Cross-batch (N=6 high-ATR winners): zero winners trough &lt; -0.68%, so -1.20 cap kills no winners.</span> 0 = disabled (no cap). Set negative (e.g., -1.20) to enable.</p>
+                        </div>
+                        <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Early-Arm Trailing (Phase 2) <span class="text-xs text-violet-400">(May 8)</span></label>
                             <div class="flex items-center gap-4 flex-wrap">
                                 <label class="flex items-center text-sm text-gray-400">
@@ -15057,6 +15069,30 @@
                     _updateSlAtrPreview();
                 }
 
+                // May 23: SL ATR widen floor cap
+                const _slAtrFloorInput = document.getElementById('config-sl-atr-widen-floor-pct');
+                if (_slAtrFloorInput) {
+                    _slAtrFloorInput.value = config.thresholds.sl_atr_widen_floor_pct !== undefined ? config.thresholds.sl_atr_widen_floor_pct : -1.20;
+                    const _updateSlAtrFloorPreview = () => {
+                        const floor = parseFloat(_slAtrFloorInput.value) || 0;
+                        const mult = parseFloat(_slAtrInput?.value || 1.5) || 1.5;
+                        const preview = document.getElementById('config-sl-atr-widen-floor-preview');
+                        if (preview) {
+                            if (floor >= 0) {
+                                preview.textContent = 'Cap disabled — SL widening unbounded';
+                            } else if (mult > 0) {
+                                const atrAtFloor = (Math.abs(floor) / mult).toFixed(2);
+                                preview.textContent = `Cap engages at ATR > ${atrAtFloor}% (above that, SL clamped at ${floor}%)`;
+                            } else {
+                                preview.textContent = `Floor ${floor}% — ATR widening disabled, cap inert`;
+                            }
+                        }
+                    };
+                    _slAtrFloorInput.removeEventListener('input', _updateSlAtrFloorPreview);
+                    _slAtrFloorInput.addEventListener('input', _updateSlAtrFloorPreview);
+                    _updateSlAtrFloorPreview();
+                }
+
                 // May 8 Phase 2: Early-arm trailing zone
                 const _earlyArmThrInput = document.getElementById('config-trailing-early-arm-threshold');
                 const _earlyArmPbInput = document.getElementById('config-trailing-early-arm-pullback');
@@ -15946,6 +15982,7 @@
                     pullback_widening_per_level: safeFloat(document.getElementById('config-pullback-widening').value),
                     trailing_atr_multiplier: safeFloat(document.getElementById('config-trailing-atr-multiplier')?.value || 0.50),
                     sl_atr_multiplier: safeFloat(document.getElementById('config-sl-atr-multiplier')?.value || 1.5),
+                    sl_atr_widen_floor_pct: safeFloat(document.getElementById('config-sl-atr-widen-floor-pct')?.value || -1.20),
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,
                     trailing_early_arm_threshold: safeFloat(document.getElementById('config-trailing-early-arm-threshold')?.value || 0.30),
                     trailing_early_arm_pullback: safeFloat(document.getElementById('config-trailing-early-arm-pullback')?.value || 0.10),

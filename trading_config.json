@@ -135,6 +135,7 @@
     "pullback_widening_per_level": 0.1,
     "trailing_atr_multiplier": 0.5,
     "sl_atr_multiplier": 1.5,
+    "sl_atr_widen_floor_pct": -1.2,
     "trailing_early_arm_threshold": 0.0,
     "trailing_early_arm_pullback": 0.1,
     "pair_trend_filter_enabled": false,

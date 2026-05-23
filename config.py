@@ -252,6 +252,17 @@ class SignalThresholds(BaseModel):
     # SHORT heavy-regret avg ATR 0.633% vs right-exits 0.500%. Projected save:
     # ~$700-1000 across pool after in-sample bias haircut.
     sl_atr_multiplier: float = 1.5
+    # May 23: ATR-SL widening floor cap. The sl_atr_multiplier formula
+    # produces effective_sl = -(atr × mult). On extreme-ATR pairs (e.g.,
+    # ATR 2.3%) this gives -3.47% — effectively no SL. Today's COSUSDT
+    # trade ran to -1.52% before EMA13 caught it (~$75 worse than base
+    # -0.70 SL would have produced). This field clamps the WIDENING:
+    # if (atr × mult) > |floor|, effective_sl is capped at floor.
+    # Negative value = active cap. 0.0 = disabled (no cap, current behavior).
+    # Default -1.20 chosen from cross-batch: cap engages for ATR > 0.80%,
+    # zero winners killed (all high-ATR winners had trough > -0.68%).
+    # See CLAUDE.md May 23 entry for full rationale.
+    sl_atr_widen_floor_pct: float = -1.20
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in

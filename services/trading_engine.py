@@ -6548,6 +6548,15 @@ class TradingEngine:
                     _atr_sl = -(_entry_atr_pct * _sl_atr_mult)
                     if _atr_sl < effective_sl:  # more negative = wider
                         effective_sl = _atr_sl
+                # May 23: cap ATR widening at floor. Prevents extreme-ATR
+                # pairs (e.g., ATR 2.3% → -3.47% SL) from effectively
+                # disabling the SL. See CLAUDE.md May 23 entry.
+                try:
+                    _sl_floor = float(getattr(config.trading_config.thresholds, 'sl_atr_widen_floor_pct', 0.0) or 0.0)
+                except Exception:
+                    _sl_floor = 0.0
+                if _sl_floor < 0 and effective_sl < _sl_floor:
+                    effective_sl = _sl_floor
 
             # Check if stop loss triggered (epsilon 0.01% to avoid boundary precision issues)
             if pnl_pct <= effective_sl + 0.01:

@@ -748,6 +748,15 @@ def check_exit_conditions(
             if _atr_sl < effective_stop_loss:  # more negative = wider
                 logger.debug(f"[ATR_SL_WIDEN] {direction}: SL widened from {effective_stop_loss}% to {_atr_sl}% (ATR {entry_atr_pct}% × {_sl_atr_mult})")
                 effective_stop_loss = _atr_sl
+        # May 23: cap ATR widening at floor. Prevents extreme-ATR pairs
+        # (e.g., ATR 2.3% → -3.47% SL) from effectively disabling the SL.
+        try:
+            _sl_floor = float(getattr(config_module.trading_config.thresholds, 'sl_atr_widen_floor_pct', 0.0) or 0.0)
+        except Exception:
+            _sl_floor = 0.0
+        if _sl_floor < 0 and effective_stop_loss < _sl_floor:
+            logger.debug(f"[ATR_SL_FLOOR] {direction}: SL clamped from {effective_stop_loss}% to {_sl_floor}% (floor cap)")
+            effective_stop_loss = _sl_floor
 
     # Check Stop Loss (P&L based, with break-even adjustment in pre-TP zone only)
     if pnl_pct <= effective_stop_loss:

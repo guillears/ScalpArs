@@ -1,5 +1,157 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 23, 2026 — WATCHLIST: FAST_EXIT + PATTERN_FIXED_TP ATR scaling (defer until cross-batch data)
+
+### The structural question
+
+The May 22-23 ATR scaling ships (trailing pullback, SL widen, SL cap) followed
+a clear pattern: noise distance scales with ATR → wider thresholds on volatile
+pairs. **Should FAST_EXIT L1/L2 AND PATTERN_FIXED_TP L1 follow the same pattern?**
+
+Both are fixed lock-in thresholds (FAST_EXIT: +0.20%/+0.40% on momentum, PATTERN_FIXED_TP:
++0.10% on Pattern C cells) — same noise-distance asymmetry across pairs.
+
+Symmetric argument: on COSUSDT (ATR 2.32%), the current FAST_EXIT L1 threshold
+of +0.20% in 2min represents <0.10 candles — sub-candle noise level. On BTC
+(ATR 0.10%), the same +0.20% threshold represents 2 full candles of motion —
+real momentum. Same fixed threshold, different statistical meaning.
+
+### Why this is structurally different from trailing/SL
+
+| Mechanism | Design intent | ATR scaling effect |
+|---|---|---|
+| Trailing pullback | "Don't exit on noise retrace" | Widens to absorb noise → ✓ aligned with intent |
+| SL widening | "Don't stop on intra-candle wick" | Widens SL to survive wicks → ✓ aligned |
+| **FAST_EXIT** | **"Lock small profit FAST before it fades"** | Widening threshold = waits longer = **opposite of design intent** |
+
+Naive ATR scaling on FAST_EXIT turns it into another version of trailing —
+which we already have. The mechanism would be confused.
+
+### Evidence we have today (insufficient for any decision)
+
+Today's batch has 1 fire of each mechanism on extreme-ATR pairs:
+
+**FAST_EXIT L1**: COSUSDT id=11 (ATR 2.336%)
+- Locked +$22.71 at peak +0.27% in 1.26min
+- Post-exit peak: +0.98% (+0.71pp upside left on table)
+- Post-exit trough: -4.80% (massive drawdown if held)
+- Under hypothetical ATR-scaled threshold (peak ≥ 0.70%): would NEVER have fired
+- **Verdict: FAST_EXIT SAVED ~$120-400 here.** ATR scaling would have turned save into loss.
+
+**PATTERN_FIXED_TP L1**: EDENUSDT id=12 (ATR 2.32%, W1 pattern, fixed_tp 0.10%)
+- Locked +$9.19 at +0.107% in 23 seconds
+- Post-exit peak: +0.70% (+0.59pp upside left)
+- Post-exit trough: -3.31% (steep drop if held)
+- Under hypothetical ATR-scaled threshold (TP ≥ 0.23%): would NEVER have fired
+- **Verdict: PATTERN_FIXED_TP SAVED this trade.** ATR scaling would have hurt.
+
+Both N=1 on the same exact mechanism (lock tiny profit fast → save from extreme-vol
+drawdown). Pattern is suggestive but ungeneralizable from single trades.
+
+### Three options if we eventually ship
+
+**Option A** — `fast_exit_l1_atr_multiplier: 0.10` (subtle scaling): threshold =
+`max(0.20, ATR × 0.10)`. ATR 2.32% → 0.232% (barely shifted). Only meaningful
+on extreme-ATR pairs. Preserves intent.
+
+**Option B** — `fast_exit_max_atr: 1.50` (binary block on extreme ATR): when
+entry ATR > 1.50%, skip FAST_EXIT entirely. Simpler than scaling. But would
+have killed today's COSUSDT id=11 save.
+
+**Option C** — Ship nothing. FAST_EXIT is doing its structural job
+(catching profit before fade); extreme-ATR pairs benefit MORE from quick
+locks than from longer holds (per COSUSDT today). Don't fix what's working.
+
+### Pre-committed promotion gate at next ≥10-fire checkpoint (per mechanism)
+
+Bucket FAST_EXIT L1 + L2 fires AND PATTERN_FIXED_TP L1 fires by entry ATR.
+Apply gates SEPARATELY for each mechanism (don't pool — they target different
+trade populations):
+
+| Cohort | Signal | Action |
+|---|---|---|
+| **ATR ≥1.50% with N ≥ 5 FAST_EXIT fires** AND avg post-exit trough deeper than -1.50% (FAST_EXIT was structurally protective) | KEEP FAST_EXIT on extreme-ATR | Ship Option C (no change) |
+| ATR ≥1.50% with N ≥ 5 AND avg post-exit peak >+0.50pp above close (FAST_EXIT left profit on table consistently) | Ship Option A (subtle ATR scaling) |
+| ATR ≥1.50% with N ≥ 5 AND mixed (both deep trough AND high post-peak) | Ship Option B (block on extreme ATR) — surgical |
+| N < 5 ATR≥1.50% FAST_EXIT fires across 30+ trades | Defer — high-ATR cohort too rare to evaluate |
+
+Also at same checkpoint, evaluate low-ATR side:
+
+| ATR ≤0.50% with N ≥ 5 FAST_EXIT fires | Signal |
+|---|---|
+| Avg post-exit peak ≥+0.30pp above close | FAST_EXIT fires too early on low-vol pairs → tighten L1 to peak ≥ 0.15% |
+| Avg post-exit peak ≤+0.10pp | FAST_EXIT correctly timed → no change |
+
+### Why this is on watchlist, not shipped
+
+Per locked CLAUDE.md discipline (May 4 + May 11 multiplier ship lessons):
+do NOT ship structural changes from N=1 evidence. The May 22-23 ATR ships
+(trailing, SL) had N≥30 cross-batch evidence. FAST_EXIT scaling needs the
+same bar before any change.
+
+### Files when this ships (future)
+
+For **FAST_EXIT**:
+- Option A: new `fast_exit_l1_atr_multiplier` + `fast_exit_l2_atr_multiplier`
+  fields. Engine reads in realtime FAST_EXIT block.
+- Option B: new `fast_exit_max_atr` field. Engine skip-clause in FAST_EXIT
+  realtime block.
+- Option C: no code change. Remove from watchlist.
+
+For **PATTERN_FIXED_TP**:
+- Option A: extend pattern_cell_rules schema with optional `fixed_tp_atr_mult`
+  per rule, OR add global `pattern_fixed_tp_atr_multiplier`.
+- Option B: extend pattern_cell_rules with optional `max_atr_for_tp` (skip TP
+  if entry ATR > X), OR add global `pattern_fixed_tp_max_atr`.
+- Option C: no code change.
+
+If both mechanisms point to the same option (e.g., both want Option A), ship
+them in the same commit. If they diverge (e.g., FAST_EXIT wants B, PATTERN_FIXED_TP
+wants A), ship one per checkpoint per locked discipline.
+
+UI changes per D11 mandatory checklist for any new config field.
+
+### Why PATTERN_FIXED_SL L1 is EXPLICITLY EXCLUDED from this watchlist
+
+The instinct is to apply the same ATR-scaling argument to PATTERN_FIXED_SL
+(-0.50% cap on Pattern C cells). **It's the wrong direction.**
+
+PATTERN_FIXED_SL was specifically designed to OVERRIDE the global ATR-SL
+widening (`sl_atr_multiplier: 1.5` + `sl_atr_widen_floor_pct: -1.20`) on
+known-loser pattern cohorts. The whole point: "for trades matching Pattern C
+loser signatures, IGNORE the ATR widening and tighten the SL to -0.50%."
+
+ATR-scaling PATTERN_FIXED_SL would re-introduce the widening we explicitly
+overrode → mechanism becomes redundant with global SL widening → defeats
+design intent. The relevant question for PATTERN_FIXED_SL is whether the
+PATTERN matches the right losers (entry-side signature quality), not whether
+the SL threshold needs ATR adjustment (exit-side calibration).
+
+Today's PATTERN_FIXED_SL fire (ONDOUSDT id=14, ATR 0.80%, fired at -0.51%,
+post-exit peak +2.33% recovery) is a case where the pattern signature was wrong
+about the trade being a loser — NOT a case where the SL threshold should scale.
+
+**Locked rule: do not add PATTERN_FIXED_SL ATR scaling to any future
+watchlist.** If the SL on Pattern C cells needs adjustment, look at the
+pattern signatures themselves (Pattern C tracker promotion/demotion), not the
+SL threshold.
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the structural question (FAST_EXIT + PATTERN_FIXED_TP vs trailing/SL
+   — same ATR reasoning, but profit-locking mechanisms have opposite design intent
+   from SL widening)
+2. To prevent reflexive "ATR scale everything" — these mechanisms may NOT need it
+3. To lock the promotion gates BEFORE more data arrives, so the next checkpoint
+   decision is mechanical (3 distinct outcomes mapped to 3 ships per mechanism)
+4. To document that today's N=1 evidence per mechanism is INSUFFICIENT and we
+   deliberately chose to defer
+5. To explicitly EXCLUDE PATTERN_FIXED_SL from this watchlist (different design
+   intent — it overrides ATR widening, not parallel to it)
+
+When the next ≥10-fire batch lands, this watchlist tells future-Claude
+(or future-User) which option to pick PER MECHANISM based on the data.
+
 ## May 23, 2026 — Post-Exit Regime-Flip diagnostic (RegFlipMin / RegFlip P&L columns)
 
 ### The strategic question this answers

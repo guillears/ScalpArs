@@ -150,7 +150,7 @@
     "rsi_handoff_level": 2,
     "rsi_adx_filter_long": "",
     "rsi_adx_filter_short": "30-35:25,35-50:30",
-    "btc_rsi_adx_filter_long": "70-100:40,65-70:40,60-65:22-25,60-65:27-30,55-60:20-25",
+    "btc_rsi_adx_filter_long": "70-100:40,65-70:0-35,60-65:22-25,60-65:27-30,55-60:20-25",
     "btc_rsi_adx_filter_short": "30-35:30,35-40:20-30,45-50:25,0-30:0-30",
     "adx_delta_btc_adx_filter_long": "1.0-2.0:18-30",
     "adx_delta_btc_adx_filter_short": "2.0-99:24-99",

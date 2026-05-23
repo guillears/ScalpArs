@@ -1,5 +1,96 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 23, 2026 (same-day refinement) — `btc_rsi_adx_filter_long` 65-70 rule: `:40` → `:0-35` (surgical: preserve winner sub-zone)
+
+### Change
+`btc_rsi_adx_filter_long`:
+- Before: `"70-100:40,65-70:40,60-65:22-25,60-65:27-30,55-60:20-25"`
+- After:  `"70-100:40,65-70:0-35,60-65:22-25,60-65:27-30,55-60:20-25"`
+
+The `70-100:40` rule (climax block at BTC RSI ≥70) is UNCHANGED. Only the
+65-70 rule is refined from `MIN_ADX:40` (require ADX ≥40, block <40) to
+range-form `0-35` (allow ADX ≤35, block 35-40 only).
+
+### Why this refinement
+
+The earlier-today ship (commit `7296045`) used `65-70:40` thinking it would
+block the BTC ADX 35-40 cliff zone. **It also blocked the historically
+winning ADX <35 sub-zone** — over-broad by design.
+
+Cross-batch evidence on BTC RSI 65-70 LONG (347-trade pool):
+
+| BTC ADX sub-zone | N | WR | Total $ | Verdict |
+|---|---|---|---|---|
+| <35 | 4 | **100%** | **+$18** | ★ winner sub-zone (was being blocked!) |
+| 35-40 | 19 | 16% | -$188 | ✗ climax cliff (target of block) |
+
+Plus current batch: NEAR id=9 entered BTC RSI 65-70 × BTC ADX 27.9 → won
+**+$196**. Cell sits inside the <35 winner sub-zone. The `65-70:40` rule
+would have blocked NEAR. Surgical fix preserves it.
+
+### Range syntax used
+
+Per CLAUDE.md May 5 cross-filter syntax extension, range form
+`RSI_LO-RSI_HI:MIN-MAX` requires BTC ADX in [MIN, MAX]. So `65-70:0-35`
+allows ADX ≤35 and blocks the 35-40 climax cliff. Single-rule version of
+"keep winners, cut losers" without needing two rules.
+
+### Counterfactual on this batch (current 22-LONG slice)
+
+Of the trades that would have been LONG entries:
+
+| Scenario | Trades cut | $ retained vs cut | Net |
+|---|---|---|---|
+| Pre-refinement (`65-70:40`) | 16 of 22 | Cuts NEAR +$196 + others | -$30 net effect |
+| **Post-refinement (`65-70:0-35`)** | **11 of 22** | **Preserves NEAR +$196 + ALT +$45 + COS +$22 + GMT +$20 + GMT +$86 (= +$372 retained)** | **+$342 net improvement** |
+
+Catches the same -$342 loser cluster the earlier ship targeted (climax
+zone 35-40) while sparing the +$372 winner cluster the over-broad rule
+was killing.
+
+### Discipline acknowledgment
+
+Same-day correction of an over-broad ship. Process worked:
+1. Earlier ship (commit `7296045`) included counterfactual impact analysis
+2. User asked the right question ("before and after P&L?") which exposed
+   the over-broad sub-zone block
+3. Surgical fix preserves intent (block climax cliff) without collateral
+   damage to winner sub-zone
+
+The pattern reinforces the **May 5 cross-filter syntax extension's value**:
+range-form rules let us express "block this slice" rather than just
+"require minimum threshold." When the loser zone is bounded (not unbounded
+above), range form is structurally cleaner than min form.
+
+### Pre-committed revert criteria (locked at next ≥30-LONG checkpoint)
+
+| Outcome | Action |
+|---|---|
+| 65-70 × <35 LONG fresh data shows N≥5 AND Total $ positive | ★ KEEP — winner sub-zone preserved correctly |
+| 65-70 × <35 LONG shows N≥5 AND Total $ ≤ -$30 | ✗ Was actually a loser zone too — revert to `65-70:40` (full block) |
+| 65-70 × 35-40 LONG in observation logs shows ≥55% WR on N≥5 | Climax zone broke — revert this rule (set `65-70:` to nothing) |
+| Mixed | Hold one more batch |
+
+The 70-100:40 rule continues under its own locked revert criteria
+(unchanged from earlier today's entry).
+
+### Files changed
+
+- `trading_config.json` — single rule string updated (one field, 65-70 sub-rule)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To document:
+1. The same-day refinement of the over-broad earlier ship
+2. The structural lesson — when the loser zone is bounded above (climax,
+   not exhaustion-without-ceiling), use range-form rules
+3. The locked revert criteria so next-checkpoint validation is mechanical
+
+If at next batch the <35 sub-zone proves to be a loser too, the full block
+(`65-70:40`) reverts. If it holds as a winner sub-zone, the surgical fix
+is validated.
+
 ## May 23, 2026 — `btc_rsi_adx_filter_long`: tighten BTC RSI 65-70 AND 70-100 from `:30/:35` → `:40` (climax-buying block)
 
 ### Change

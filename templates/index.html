@@ -1037,6 +1037,9 @@
                                     <th class="text-right px-2" title="Avg P&L% at the first moment pullback threshold was crossed (would-have-fired-immediately counterfactual)">Avg 1st PB%</th>
                                     <th class="text-right px-2" title="Avg P&L% at actual close">Avg Close%</th>
                                     <th class="text-right px-2 text-cyan-300" title="Avg Peak% − Avg Close% = actual pullback distance used to exit. Compare against +Nmin% to decide if widening pullback would capture or hurt.">Pullback Used</th>
+                                    <th class="text-right px-2 text-amber-300" title="May 23: Avg entry_atr_pct for trades in this row. Reference for whether the new wider ATR-trailing (0.50×) is firing.">AvgATR%</th>
+                                    <th class="text-right px-2 text-amber-300" title="May 23: % of trades in this row where atr × 0.50 > 0.30 (i.e., entry_atr_pct ≥ 0.60). 0% = wider trailing dormant; 40-60% = mechanism doing real work.">ATR-Act%</th>
+                                    <th class="text-right px-2 text-cyan-300" title="May 23: Counterfactual Δpp vs previous trailing_atr_multiplier 0.30×. Positive = new wider trailing captured more (ship helping). Negative = wider gave back more (revert candidate). Only meaningful when ATR-Act% > 0.">CF@0.30 Δpp</th>
                                     <th class="text-right px-2" title="Avg Close% − Avg 1st Pullback%. Positive = confirmation helped">Δ pct</th>
                                     <th class="text-right px-2" title="Total $ delta vs hypothetical immediate-fire exits">Total $ Δ</th>
                                     <th class="text-right px-2 text-amber-300" title="Avg P&L% exactly 1 min after the trade exited. NULL if tracking ended before 1 min mark.">+1min%</th>
@@ -1053,7 +1056,7 @@
                                 </tr>
                             </thead>
                             <tbody id="trailing-confirm-perf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="21" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
+                                <tr><td colspan="24" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -6978,14 +6981,17 @@
                 const _snapStr1 = (v, n) => v == null || n === 0 ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(2) + '%(' + n + ')').padStart(11);
                 lines.push(`\n${hr2}`);
                 lines.push(`## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)\n`);
-                lines.push('Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     ΔPct      Total$Δ    +1min%      PB→1m       +2min%      PB→2m       +5min%      PB→5m       +15min%     PB→15m      +30min%     PB→30m      Verdict');
-                lines.push('-'.repeat(220));
+                lines.push('Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     AvgATR%   ATR-Act% CF@0.30Δ   ΔPct      Total$Δ    +1min%      PB→1m       +2min%      PB→2m       +5min%      PB→5m       +15min%     PB→15m      +30min%     PB→30m      Verdict');
+                lines.push('-'.repeat(245));
                 const _pbStr1 = (v) => v == null ? '   -    ' : (v.toFixed(2) + '%').padStart(11);
                 _tcp1.rows.forEach(r => {
                     const pk = r.avg_peak_pct != null ? ((r.avg_peak_pct >= 0 ? '+' : '') + r.avg_peak_pct.toFixed(3) + '%') : '-';
                     const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
                     const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
                     const pbu = r.avg_pullback_used != null ? r.avg_pullback_used.toFixed(3) + '%' : '-';
+                    const atr = r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3) + '%' : '-';
+                    const atrAct = r.atr_active_pct != null ? r.atr_active_pct.toFixed(0) + '%' : '-';
+                    const cf30 = (r.cf_30_delta_pp != null && (r.atr_active_pct || 0) > 0) ? ((r.cf_30_delta_pp >= 0 ? '+' : '') + r.cf_30_delta_pp.toFixed(3) + 'pp') : '-';
                     const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
                     const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
                     const s1 = _snapStr1(r.avg_pnl_at_1min, r.n_at_1min);
@@ -6994,7 +7000,7 @@
                     const s15 = _snapStr1(r.avg_pnl_at_15min, r.n_at_15min);
                     const s30 = _snapStr1(r.avg_pnl_at_30min, r.n_at_30min);
                     const pb1 = _pbStr1(r.pb_to_1min), pb2 = _pbStr1(r.pb_to_2min), pb5 = _pbStr1(r.pb_to_5min), pb15 = _pbStr1(r.pb_to_15min), pb30 = _pbStr1(r.pb_to_30min);
-                    lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30} ${r.verdict}`);
+                    lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${atr.padStart(9)} ${atrAct.padStart(8)} ${cf30.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30} ${r.verdict}`);
                 });
                 if (_tcp1.summary && _tcp1.summary.n > 0) {
                     const tot = (_tcp1.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp1.summary.total_dollar_delta).toFixed(2);
@@ -8495,6 +8501,9 @@
                         const fp = (r.avg_first_pullback_pct >= 0 ? '+' : '') + r.avg_first_pullback_pct.toFixed(3) + '%';
                         const cls = (r.avg_close_pct >= 0 ? '+' : '') + r.avg_close_pct.toFixed(3) + '%';
                         const pbu = r.avg_pullback_used != null ? r.avg_pullback_used.toFixed(3) + '%' : '-';
+                        const atr = r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3) + '%' : '-';
+                        const atrAct = r.atr_active_pct != null ? r.atr_active_pct.toFixed(0) + '%' : '-';
+                        const cf30 = (r.cf_30_delta_pp != null && (r.atr_active_pct || 0) > 0) ? ((r.cf_30_delta_pp >= 0 ? '+' : '') + r.cf_30_delta_pp.toFixed(3) + 'pp') : '-';
                         const dlt = (r.avg_delta_pct >= 0 ? '+' : '') + r.avg_delta_pct.toFixed(3) + 'pp';
                         const dol = (r.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(r.total_dollar_delta).toFixed(2);
                         const s1 = _snapStr2(r.avg_pnl_at_1min, r.n_at_1min);
@@ -8503,7 +8512,7 @@
                         const s15 = _snapStr2(r.avg_pnl_at_15min, r.n_at_15min);
                         const s30 = _snapStr2(r.avg_pnl_at_30min, r.n_at_30min);
                         const pb1 = _pbStr2(r.pb_to_1min), pb2 = _pbStr2(r.pb_to_2min), pb5 = _pbStr2(r.pb_to_5min), pb15 = _pbStr2(r.pb_to_15min), pb30 = _pbStr2(r.pb_to_30min);
-                        lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30} ${r.verdict}`);
+                        lines.push(`${r.direction.padEnd(10)} ${(r.tp_level || '').padEnd(6)} ${String(r.n).padStart(4)} ${String(r.n_with_resets).padStart(6)} ${pk.padStart(10)} ${fp.padStart(10)} ${cls.padStart(11)} ${pbu.padStart(10)} ${atr.padStart(9)} ${atrAct.padStart(8)} ${cf30.padStart(10)} ${dlt.padStart(9)} ${dol.padStart(10)} ${s1} ${pb1} ${s2} ${pb2} ${s5} ${pb5} ${s15} ${pb15} ${s30} ${pb30} ${r.verdict}`);
                     });
                     if (_tcp2.summary && _tcp2.summary.n > 0) {
                         const tot = (_tcp2.summary.total_dollar_delta >= 0 ? '+$' : '-$') + Math.abs(_tcp2.summary.total_dollar_delta).toFixed(2);
@@ -11061,7 +11070,7 @@
                     const _tcpSummary = document.getElementById('trailing-confirm-perf-summary');
                     if (_tcpBody) {
                         if (!_tcp.rows || !_tcp.rows.length) {
-                            _tcpBody.innerHTML = '<tr><td colspan="16" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>';
+                            _tcpBody.innerHTML = '<tr><td colspan="24" class="py-3 text-center text-gray-500">No confirmation-tracked trades yet</td></tr>';
                             if (_tcpSummary) _tcpSummary.textContent = '';
                         } else {
                             const _fmtSnap = (v, n) => {
@@ -11099,6 +11108,9 @@
                                     <td class="px-2 py-1 text-right ${fpClass}">${r.avg_first_pullback_pct >= 0 ? '+' : ''}${r.avg_first_pullback_pct.toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right ${closeClass}">${r.avg_close_pct >= 0 ? '+' : ''}${r.avg_close_pct.toFixed(3)}%</td>
                                     <td class="px-2 py-1 text-right text-cyan-300">${r.avg_pullback_used != null ? r.avg_pullback_used.toFixed(3) + '%' : '-'}</td>
+                                    <td class="px-2 py-1 text-right text-amber-300">${r.avg_atr_pct != null ? r.avg_atr_pct.toFixed(3) + '%' : '-'}</td>
+                                    <td class="px-2 py-1 text-right ${(r.atr_active_pct || 0) >= 30 ? 'text-amber-300 font-semibold' : 'text-gray-500'}">${r.atr_active_pct != null ? r.atr_active_pct.toFixed(0) + '%' : '-'}</td>
+                                    <td class="px-2 py-1 text-right ${(r.cf_30_delta_pp || 0) >= 0.10 ? 'text-emerald-400 font-semibold' : ((r.cf_30_delta_pp || 0) <= -0.05 ? 'text-red-400 font-semibold' : 'text-gray-400')}">${r.cf_30_delta_pp != null && (r.atr_active_pct || 0) > 0 ? (r.cf_30_delta_pp >= 0 ? '+' : '') + r.cf_30_delta_pp.toFixed(3) + 'pp' : '<span class="text-gray-600">-</span>'}</td>
                                     <td class="px-2 py-1 text-right ${deltaClass}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
                                     <td class="px-2 py-1 text-right ${dollarClass}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
                                     <td class="px-2 py-1 text-right">${_fmtSnap(r.avg_pnl_at_1min, r.n_at_1min)}</td>

@@ -1,5 +1,104 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 23, 2026 — Trailing Confirmation Performance: 3 new ATR-trailing diagnostic columns
+
+### What ships
+
+Three columns added to the existing **⏱️ Trailing Confirmation Performance** dashboard table. Surgical extension (no new table) — these columns make the `trailing_atr_multiplier: 0.30 → 0.50` ship verifiable per-batch without running the cross-batch script.
+
+| Column | Compute | Color logic |
+|---|---|---|
+| **AvgATR%** | Avg `entry_atr_pct` per row | Amber, neutral — sanity reference |
+| **ATR-Act%** | % of trades in row where `entry_atr_pct ≥ 0.60` (the breakpoint where atr×0.50 > fixed 0.30) | Amber bold ≥30% (mechanism doing real work), gray <30% (dormant) |
+| **CF@0.30 Δpp** | Avg close − simulated close at old 0.30× multiplier. For trades with atr ≥ 0.60: CF_close = `trailing_first_pullback_pnl_pct` (≈ what 0.30× would have caught). For atr <0.60: CF_close = actual close (no diff). Δpp = avg_close − CF_close. | Emerald bold ≥+0.10pp = working / Red bold ≤-0.05pp = revert / Gray = inconclusive. Shows `-` when ATR-Act%=0 (comparison meaningless). |
+
+### Reading the columns at checkpoint
+
+1. Find rows with **ATR-Act% ≥ 30%** — these are the rows where the wider 0.50× trailing is actually firing
+2. Read their **CF@0.30 Δpp**:
+   - Green ≥+0.10pp → ship is capturing more continuation, KEEP
+   - Red ≤-0.05pp → wider trailing giving back more than catching, REVERT
+   - Gray/near-zero → mechanism firing but neutral, hold one more batch
+3. Rows with ATR-Act% <30% are ATR-irrelevant — `-` in CF column is expected
+
+### Methodological honesty
+
+The CF approximation uses `trailing_first_pullback_pnl_pct` as the proxy for "what 0.30× would have done." This is accurate for the atr 0.60-1.00% band (where 0.30× = fixed 0.30 anyway). For atr ≥1.00%, both old and new use ATR-scaled pullback but at different multipliers — the proxy slightly understates the difference. Acceptable trade-off vs. building a full per-trade simulation.
+
+### Files changed
+- `main.py` — `_compute_trailing_confirmation_performance`: added `atr_pct` per-trade rec field + 4 new aggregate fields in `_row_from` (`avg_atr_pct`, `atr_active_pct`, `cf_30_close_pct`, `cf_30_delta_pp`)
+- `templates/index.html` — 3 new column headers in Trailing Confirmation table, colspan updated 21→24 and empty-state 16→24, JS renderer cells, both text-export sites updated with header line + per-row data
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The reading workflow at next checkpoint (find ATR-Act% ≥30 rows, read CF@0.30 Δpp, apply gates)
+2. The CF approximation honesty (uses first_pullback as 0.30× proxy — accurate in atr 0.60-1.00 band)
+3. The reason for surgical extension vs new table (single config knob, integrates with existing trailing diagnostic surface)
+4. The locked gates align with the prior `trailing_atr_multiplier` ship's revert criteria (Δ$ ≥ +$30 + ratio ≥2.5:1 at script level corresponds to CF@0.30 Δpp ≥+0.10pp at row level)
+
+## May 23, 2026 — `trailing_atr_multiplier: 0.30 → 0.50` shipped (analog of sl_atr_multiplier)
+
+### Change
+- `trailing_atr_multiplier`: 0.30 → **0.50** (`trading_config.json`)
+
+ATR threshold where ATR-trailing becomes active drops from ATR ≥1.00% to **ATR ≥0.60%**. Below that, fixed `pullback_trigger: 0.30%` still dominates.
+
+### Cross-batch evidence (195 TRAILING_STOP trades, May 4 → May 23)
+
+Regret-by-ATR-bucket showed monotonic rise:
+- ATR 0.40-0.60: N=68, AvgPostPeak 1.35%, regret +0.94pp, 69% peak-after-exit
+- ATR 0.60-1.00: N=41, AvgPostPeak 1.38%, regret +0.98pp, 68% peak-after-exit
+- ATR ≥1.00: N=9, AvgPostPeak 2.41%, regret +2.07pp (small N)
+
+Counterfactual sim across candidate multipliers:
+
+| Mult | Active at ATR ≥ | Net Δ$ | Save:Give ratio |
+|---|---|---|---|
+| 0.30 (today) | 1.00% | $0 (inert) | — |
+| **0.50 (ship)** | **0.60%** | **+$753** | **3.58:1** ★ |
+| 0.75 | 0.40% | +$1,795 | 2.41:1 |
+| 1.00 | 0.30% | +$1,520 | 1.55:1 |
+| 1.50 | 0.20% | -$465 | 0.80:1 ✗ |
+
+Chose 0.50 over 0.75 (higher $) because:
+1. Clears locked 3:1 save:give bar with margin
+2. Phase 3 staging discipline (validate conservative first, escalate later)
+3. Targets the ATR 0.60-1.00 band with cleanest evidence (N=109 combined)
+
+### Forward expectation (with 50% in-sample bias haircut)
+
+**~+$38-53 per ~20-trade batch.** Modest but real. Saturday's specific 2 SHORTs (ATR 0.40) sit BELOW the new threshold — they would NOT have triggered. The ship addresses the broader pattern those trades exposed, not those trades themselves.
+
+### Pre-committed revert criteria at next ≥30-trailing-exit checkpoint
+
+| Outcome | Action |
+|---|---|
+| Net Δ$ ≥ +$30 AND save:give ratio ≥ 2.5:1 vs simulated baseline | ★ KEEP, consider 0.75 next |
+| Net Δ$ ≤ $0 OR save:give ≤ 1.5:1 | ✗ REVERT to 0.30 |
+| Any single high-ATR (≥1.0%) trade with Δ$ ≤ -$80 | Investigate, consider per-band cap |
+| Mixed (Δ$ $0-$30) | Hold one more batch |
+
+### Verification at checkpoint
+
+1. **Post-Exit Regret Deep Dive** TRAILING_STOP rows: AvgPostPeak should DROP by ≥0.20pp on N≥20 post-ship trades
+2. **Trailing Confirmation Performance** Avg1stPB column: should split — low-ATR trades stay ~0.30, high-ATR trades shift to 0.30-0.50
+3. **ATR <0.40 bucket** (control group, unaffected): regret should stay ~0.71pp
+4. **Filter Blocks counter**: no new tag (this is exit-side, not entry-side)
+
+### Structural pattern recognition gap acknowledged
+
+This ship is the symmetric companion to `sl_atr_multiplier` shipped May 22. Both should have been audited together at the time of the original `trailing_atr_multiplier` ship months ago. Locked rule (per operator feedback): **any time we touch one ATR-aware exit mechanism, audit the symmetric one in the same session.**
+
+### Files changed
+- `trading_config.json` — single field value change
+- `CLAUDE.md` — this entry
+
+No code changes (wiring already exists from prior ATR-trailing ship).
+
+
+
 # ============================================================================
 # ANALYSIS METHODOLOGY — Quant Analyst Playbook (May 22, 2026)
 # ============================================================================

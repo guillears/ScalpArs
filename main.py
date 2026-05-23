@@ -6527,6 +6527,9 @@ def _compute_trailing_confirmation_performance(orders):
             'pnl_at_5min': getattr(o, 'post_exit_pnl_at_5min', None),
             'pnl_at_15min': getattr(o, 'post_exit_pnl_at_15min', None),
             'pnl_at_30min': getattr(o, 'post_exit_pnl_at_30min', None),
+            # May 23: ATR-trailing diagnostic. atr_pct lets us see which trades
+            # were eligible for the wider 0.50× trailing (atr ≥ 0.60%).
+            'atr_pct': getattr(o, 'entry_atr_pct', None),
         }
         by_dir_level.setdefault((d, tp_label), []).append(rec)
 
@@ -6594,6 +6597,25 @@ def _compute_trailing_confirmation_performance(orders):
             'pb_to_5min': _pb_needed(avg_5m),
             'pb_to_15min': _pb_needed(avg_15m),
             'pb_to_30min': _pb_needed(avg_30m),
+            # May 23: ATR-trailing diagnostic columns.
+            # avg_atr_pct: sanity check on ATR distribution for this tier.
+            # atr_active_pct: % of trades where atr × 0.50 > 0.30 (i.e., atr ≥ 0.60).
+            #   If 0%, the wider trailing is dormant on this row.
+            # cf_30_close_pct: simulated close if trailing_atr_multiplier were 0.30
+            #   (the previous value). For atr < 0.60: same as actual close (no diff).
+            #   For atr ≥ 0.60: approx = first_pullback_pnl (= moment 0.30% retrace hit).
+            # cf_30_delta_pp: avg_close − cf_30_close. Positive = wider trailing
+            #   captured more (ship working); negative = wider gave back more (revert).
+            'avg_atr_pct': (lambda v: round(v, 4) if v is not None else None)(_avg_skip_none(rs, 'atr_pct')[0]),
+            'atr_active_pct': round(100.0 * sum(1 for r in rs if (r.get('atr_pct') or 0) >= 0.60) / n, 1) if n else 0.0,
+            'cf_30_close_pct': round(sum(
+                (r['first_pullback_pct'] if (r.get('atr_pct') or 0) >= 0.60 else r['close_pct'])
+                for r in rs
+            ) / n, 4) if n else None,
+            'cf_30_delta_pp': round(avg_close_pct - (sum(
+                (r['first_pullback_pct'] if (r.get('atr_pct') or 0) >= 0.60 else r['close_pct'])
+                for r in rs
+            ) / n), 4) if n else None,
             'verdict': _verdict(rs),
         }
 

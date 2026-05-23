@@ -133,7 +133,7 @@
     "ema_stack_cross_exit_enabled": false,
     "ema_stack_cross_exit_level": 2,
     "pullback_widening_per_level": 0.1,
-    "trailing_atr_multiplier": 0.3,
+    "trailing_atr_multiplier": 0.5,
     "sl_atr_multiplier": 1.5,
     "trailing_early_arm_threshold": 0.0,
     "trailing_early_arm_pullback": 0.1,

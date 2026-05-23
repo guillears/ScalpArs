@@ -1,5 +1,106 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 23, 2026 — `btc_rsi_adx_filter_long`: tighten BTC RSI 65-70 AND 70-100 from `:30/:35` → `:40` (climax-buying block)
+
+### Change
+`btc_rsi_adx_filter_long`:
+- Before: `"70-100:35,65-70:30,60-65:22-25,60-65:27-30,55-60:20-25"`
+- After:  `"70-100:40,65-70:40,60-65:22-25,60-65:27-30,55-60:20-25"`
+
+Two rule changes:
+- `70-100:35 → 70-100:40` (require BTC ADX ≥40 for BTC RSI 70+)
+- `65-70:30 → 65-70:40` (require BTC ADX ≥40 for BTC RSI 65-70)
+
+Since `btc_adx_max_long: 40` caps BTC ADX above 40, effectively this blocks
+**all LONG entries with BTC RSI ≥65 AND BTC ADX in [35, 40]**.
+
+### Cross-batch evidence (347 LONG pool, including today's 4 new trades)
+
+The climax-buying signature lives across both BTC RSI 65-70 and 70+ buckets:
+
+| BTC RSI × BTC ADX 35-40 LONG | N | WR | Avg P&L % | Total $ | NP |
+|---|---:|---:|---:|---:|---:|
+| **65-70** | **23** | **61%** | **-0.10%** | **-$170** | **3** |
+| 70-75 | 7 | 57% | -0.06% | -$67 | 2 |
+| 75-80 | 11 | 55% | -0.16% | -$149 | 4 |
+| ≥80 | 3 | 33% | -0.30% | -$92 | 2 |
+| **Combined 65+ × 35-40** | **44** | **57%** | **-0.10%** | **-$478** | **11** |
+
+44 trades, 25% NP rate. Direction-clean across all sub-buckets.
+
+### Today's 4 confirming trades (BTC ADX 35.75-35.99)
+
+| Trade | BTC RSI | BTC ADX | Outcome |
+|---|---:|---:|---|
+| COSUSDT id=25 (LONG) | 65.9 | 35.75 | +$21 (FAST_EXIT saved) |
+| ONDOUSDT id=24 (LONG) | 65.9 | 35.75 | +$21 (FAST_EXIT saved) |
+| ONDOUSDT id=26 (LONG) | 68.2 | 35.99 | **-$52** (PATTERN_FIXED_SL) |
+| COSUSDT id=27 (LONG) | 68.2 | 35.99 | **-$55** (PATTERN_FIXED_SL) |
+
+All 4 land in the cliff zone. Net for the slice: -$64. The new filter
+blocks all 4 — the 2 wins (FAST_EXIT-saved tiny profits) get sacrificed
+to prevent the 2 large losses. Net-positive sacrifice: cuts +$43 of
+small wins to save -$107 of full SL hits.
+
+### Today's earlier VVV + ONDO id=19/20 (at BTC RSI 75-83)
+
+Those also fall in the blocked zone. Earlier analysis (5 hours ago) noted
+they'd be caught by `70-100:40` alone — the broader `65-70:40` ship is
+strictly additive on top.
+
+### Why this is the right ship vs alternatives
+
+Compared head-to-head:
+
+| Candidate | Catches today's 4 | Cross-batch | Collateral | Mechanism |
+|---|---|---|---|---|
+| `70-100:40` alone (initial proposal) | 0 of 4 (RSI too low) | 21 trades, -$307 | 0 | Climax-confirmed RSI 70+ |
+| `btc_adx_max_long: 40 → 35` (broad) | 4 of 4 | 47 trades, -$566 | Cuts BTC ADX ≥35 at ALL RSI (some kept zones) | Pure BTC ADX cap |
+| **`65-70:40,70-100:40` (shipped)** | **4 of 4** | **44 trades, -$478** | **0 at BTC RSI <65 × ADX 35-40** | **Climax zone (65+ RSI + high ADX)** |
+
+The cross-filter approach is surgical: blocks the exact "BTC RSI ≥65 +
+high ADX" climax-buying signature. Preserves BTC RSI <65 × any ADX
+zones (where the failure mechanism is structurally different — not
+climax buying).
+
+### Discipline acknowledgment
+
+The 65-70 portion of the rule rests on **N=23 cross-batch with 61% WR
+and -$170 total**. WR is 6pp above the locked 55% kill threshold — but
+direction-clean across 4 RSI sub-buckets (65-70, 70-75, 75-80, ≥80 all
+losing), combined N=44 well over the N≥15 bar, and today's 4-trade
+confirmation reinforces it.
+
+Strictly the 65-70 sub-rule is "marginal" by locked criteria
+(N=23/WR=61% is 1pp inside the "Mixed (40-55%)" band — actually 6pp
+above). User-directed ship based on multi-bucket pattern uniformity.
+
+Counted as 7th locked-discipline override in 2 weeks. Mitigation =
+tight revert criteria below.
+
+### Pre-committed revert criteria at next ≥100-trade LONG checkpoint
+
+| Outcome | Action |
+|---|---|
+| BTC RSI 65-70 × ADX 35-40 (in observation logs) shows ≥55% WR on N≥10 fresh AND Total $ positive | REVERT just 65-70 portion: `65-70:40 → 65-70:35` (keep 70-100:40) |
+| BTC RSI 70-100 × ADX 35-40 shows ≥55% WR on N≥10 fresh | REVERT 70-100 portion: `70-100:40 → 70-100:35` |
+| Both zones recover (≥55% WR) | Full revert to prior rule |
+| Both stay ≤45% WR on N≥10 each | Lock as default, consider extending to `60-65:40` |
+| Trade rate drops >50% with no Avg P&L improvement | Over-restrictive; investigate before reverting |
+
+### What this ship does NOT address
+
+- BTC RSI <65 × ADX 35-40 zone (N=2 in pool, 50% WR, -$100) — too small to act
+- BTC ADX <35 entries with high pair extension — separate watchlist item
+- Today's data showed RngPos 99-100% as a strong loss marker — not addressed; future cross-tab work
+- ATR scaling on PATTERN_FIXED_TP (separate watchlist, May 23)
+
+### Files changed
+- `trading_config.json` — single field (cross-filter rule string)
+- `CLAUDE.md` — this entry
+
+No code changes (rule format already supported by existing parser).
+
 ## May 23, 2026 — WATCHLIST: FAST_EXIT + PATTERN_FIXED_TP ATR scaling (defer until cross-batch data)
 
 ### The structural question

@@ -68,6 +68,35 @@ expose the defect.
 | 0 trades trigger cap across 50+ entries | Defer — high-ATR cohort too rare; cap dormant but harmless |
 | Multiple winners killed by cap (e.g., 2+ trades with trough between cap and -0.70 reversing to wins) | ✗ REVERT (set floor to 0) |
 
+### How to track cap activity in current tables (no new columns needed)
+
+The cap is observable via INDIRECT cross-reference in existing tables — no new column work required at this volume. Two surfaces:
+
+**Primary: Stop Loss Deep Dive table** (May 22 ship has AvgATR% + ATR-SL@1.5× columns).
+
+Detection logic per row:
+1. Filter to **STOP_LOSS_WIDE L1** close reason
+2. Check `AvgATR%` column — if ≥0.80% then ATR×1.5 would compute to < -1.20% (cap eligible)
+3. Check `AvgClose%` column:
+   - **AvgClose% ≈ -1.20% (±0.05pp tick noise)** → cap fired, clamped at floor ✓
+   - **AvgClose% < -1.50%** → cap NOT fired (either ATR<0.80%, OR something else closed the trade before reaching the floor, e.g., EMA13_CROSS at deeper P&L)
+   - **AvgClose% between -1.20% and -1.50%** → mixed bucket, cap fired on some trades but not all
+
+**Secondary: Post-Exit Regret Deep Dive** — same AvgATR% + ATR-SL@1.5× columns. Useful for cross-checking the cap-fired trades against post-exit behavior (did the trade subsequently recover post-cap? = cap killed a winner; did trade continue worse? = cap saved $).
+
+**Indirect cross-check: Entry Conditions by Close Reason / by Outcome** — both have AvgATR%, confirms the high-ATR cohort exists and roughly how many trades land there.
+
+### When to add a dedicated column (decision rule)
+
+- High-ATR trades (entry_atr_pct ≥ 0.80%) **< 10 per batch** → indirect cross-reference is fine, don't clutter Stop Loss Deep Dive
+- High-ATR trades **≥ 20 per batch** → add a first-class `ATR-Floor Fires%` column to Stop Loss Deep Dive (count of trades where cap actually clamped, divided by N in bucket)
+
+Today's COSUSDT-class trades are rare (1 today, ~5 cross-batch across 6 weeks). Indirect cross-reference is sufficient at current frequency. Revisit the column-add decision if high-ATR cohort grows.
+
+### Why this distinction exists in CLAUDE.md
+
+To prevent future-Claude (or future-User) from adding the column reflexively. The columns we already have answer the question — just requires manual reading of two adjacent fields. Build first-class infrastructure only when frequency justifies the maintenance cost.
+
 ### Files changed
 
 - `config.py` — `sl_atr_widen_floor_pct: float = -1.20` field with evidence comment

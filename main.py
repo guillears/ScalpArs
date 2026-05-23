@@ -425,6 +425,15 @@ async def terminal_event_stream(request: Request):
 async def get_status(db: AsyncSession = Depends(get_db)):
     """Get bot status"""
     await trading_engine.initialize(db)
+    # May 22: refresh BNB burn rate every status poll (cheap SQL aggregate).
+    # Previously the metric only recomputed every bnb_check_interval_hours (6h),
+    # leaving Runway/Burn empty for hours after a reset until the swap loop fired.
+    # See CLAUDE.md May 11 — burn-rate recompute was already decoupled from swap
+    # gate; this just makes it UI-poll-driven so the runway stays current.
+    try:
+        await trading_engine._recompute_bnb_burn_rate(db)
+    except Exception as e:
+        logger.debug(f"[STATUS] burn rate recompute skipped: {e}")
     return trading_engine.get_status()
 
 

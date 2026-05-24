@@ -1,0 +1,56 @@
+==============================================================================================================
+FULL-POOL STRUCTURAL CELL ANALYSIS — locked CLAUDE.md May 24 methodology
+==============================================================================================================
+Pool: 886 trades (529L / 357S), 2026-04-28 → 2026-05-24 (25 dates)
+Gates: LOSER (block) — N≥15, WR≤45%, Avg≤-0.1%, ≥3 dates
+       WINNER (mult) — N≥15, WR≥70%, Avg≥+0.1%, MedWin≥+0.12%, BE-rescue≤30%
+
+$ values shown as 1×-equivalent (de-multiplied: pnl / max(cell_multiplier × cell_lev_multiplier, 1))
+
+==============================================================================================================
+STRUCTURAL LOSERS — 4 ship candidates (sorted by $-impact)
+==============================================================================================================
+Category       Cell                                           Side    N   WR     Avg%    MedW     $ 1×    NP  D
+--------------------------------------------------------------------------------------------------------------
+RNGPOS_ADXD    RngPos 85-95 × ADXΔ 0-0.3                      LONG   47  40%  -0.198% +0.290% $-536.90  9/47 19
+BTC_GAP_ADX    BTC Gap 0to+0.10 × BTC ADX 22-25               LONG   20  45%  -0.186% +0.228% $-211.40  5/20  5
+BTC_RSI_ADX    BTC RSI 50-55 × BTC ADX 18-22                  LONG   18  39%  -0.234% +0.225% $-193.27  3/18  9
+BTC_RSI_ADX    BTC RSI 65-70 × BTC ADX 18-22                  LONG   27  33%  -0.158% +0.497% $-97.43  8/27  9
+
+==============================================================================================================
+STRUCTURAL WINNERS (passes BE-floor gate) — 5 multiplier candidates
+==============================================================================================================
+Category       Cell                                           Side    N   WR     Avg%    MedW     $ 1×  BE%  D
+--------------------------------------------------------------------------------------------------------------
+BTC_RSI_ADX    BTC RSI 60-65 × BTC ADX 22-25                  LONG   49  76%  +0.168% +0.324% $+423.60  14% 15
+BTC_RSI_ADX    BTC RSI 25-30 × BTC ADX 28-30                  SHORT  18  83%  +0.214% +0.297% $+163.11  20%  6
+BTC_1H_ADX     BTC 1h Slope 0to+0.10 × BTC ADX 25-30          SHORT  17  88%  +0.159% +0.213% $+158.72  20%  5
+BTC_1H_ADX     BTC 1h Slope -0.20to-0.10 × BTC ADX 18-25      LONG   17  76%  +0.165% +0.290% $+156.13  23%  4
+PAIR_RSI_ADX   Pair RSI 35-40 × Pair ADX 30-35                SHORT  23  78%  +0.137% +0.308% $+129.57  17% 12
+
+==============================================================================================================
+BE-RESCUE-DEPENDENT CELLS — 16 (NOT shippable as multipliers under BE-OFF)
+==============================================================================================================
+Category       Cell                                           Side    N   WR     Avg%     $ 1×  BE%  D
+--------------------------------------------------------------------------------------------------------------
+RNGPOS_ADXD    RngPos 10-15 × ADXΔ 1.0-2.0                    SHORT  54  76%  +0.067% $+247.61  34% 19
+RNGPOS_ADXD    RngPos 15-25 × ADXΔ 1.0-2.0                    SHORT  30  77%  +0.053% $+148.92  30% 16
+BTC_GAP_ADX    BTC Gap -0.10to0 × BTC ADX 18-22               SHORT  47  72%  +0.046% $+120.79  38% 14
+EXT_PVOL       Ext -0.60to-0.40% × PairVol 1.10-1.50          SHORT  21  71%  +0.068% $+117.17  40%  8
+BTC_RSI_ADX    BTC RSI 30-35 × BTC ADX 30-35                  SHORT  36  72%  +0.034% $+67.85  31% 11
+BTC_1H_ADX     BTC 1h Slope <-0.20 × BTC ADX 18-25            SHORT  21  67%  +0.033% $+65.15  36%  5
+EXT_PVOL       Ext -0.40to-0.20% × PairVol >1.50              SHORT  10  70%  +0.065% $+19.82  57%  6
+BTC_GAP_ADX    BTC Gap -0.25to-0.10 × BTC ADX 35-40           SHORT  19  74%  -0.000% $+16.15  50%  5
+BTC_1H_ADX     BTC 1h Slope 0to+0.10 × BTC ADX 35-40          LONG   18  72%  +0.028% $+13.62  31%  3
+BTC_1H_ADX     BTC 1h Slope -0.10to0 × BTC ADX 25-30          SHORT  19  74%  +0.028% $ +1.77  64%  5
+BTC_RSI_ADX    BTC RSI 25-30 × BTC ADX 18-22                  SHORT  19  68%  -0.000% $-12.44  62%  5
+EXT_PVOL       Ext -1.0to-0.60% × PairVol <0.95               SHORT  15  67%  -0.024% $-22.16  40%  8
+EXT_PVOL       Ext +0.40to+0.60% × PairVol <0.95              LONG   41  68%  -0.035% $-43.01  36% 11
+BTC_GAP_ADX    BTC Gap 0to+0.10 × BTC ADX 30-35               SHORT  13  69%  -0.048% $-44.92  33%  3
+EXT_PVOL       Ext -1.0to-0.60% × PairVol 1.10-1.50           SHORT  18  67%  -0.103% $-147.42  33%  8
+BTC_1H_ADX     BTC 1h Slope -0.10to0 × BTC ADX 18-25          SHORT  32  66%  -0.065% $-154.01  33%  7
+
+Total cells examined: 121
+  ★ Multiplier candidates: 5
+  ✗ Filter (block) candidates: 4
+  ⚠ BE-rescue dependent (watchlist): 16

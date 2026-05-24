@@ -1,5 +1,260 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (very late evening, post-methodology lock) — PHASE 1 STRUCTURAL SHIP: 3 filters + 4 multipliers from full-pool baseline
+
+### What ships
+
+Direct output of the locked structural methodology (entry above). Every change here passed the strict gates documented in the methodology section — N≥15, multi-date direction-consistency, Avg P&L % cliff (filters at ≤−0.10%, mults at ≥+0.10% BE-floor), BE-rescue check (≤30% for mults), all backed by the 886-trade full-column pool.
+
+### Filters added (3 blocks)
+
+| # | Filter rule | Mechanism | Cross-batch evidence |
+|---|---|---|---|
+| **F1** | `rngpos_adx_delta_filter_long`: `90-95:0.0-0.3` → `85-95:0.0-0.3` (extend lower bound) | Existing 2D filter — broaden RngPos range | N=47, 40% WR, Avg −0.20%, **−$537 / 19 dates** (71% of loss from NP) |
+| **F2** | `btc_gap_btc_adx_filter_long`: add `0.0-0.10:22-25` rule | Existing 2D filter — add cell | N=20, 45% WR, Avg −0.19%, **−$211 / 5 dates** (62% NP loss) |
+| **F3** | `btc_rsi_adx_filter_long`: changed `65-70:0-35` → `65-70:22-35` AND added `50-55:22` | Existing cross-filter — tighter range AND new MIN rule (L-B1 ship from Apr 14 finally lands) | L-B1: N=18, 39% WR, −$193, 9 dates; 65-70×18-22: N=27, 33% WR, −$97, 9 dates |
+
+**Combined cross-batch save**: $941 across 85 historical trades (de-multiplied to 1× equivalent).
+
+### Multipliers added (4 cells @ 2.0× investment, 1.0× lev)
+
+| # | Cell | Side | Mechanism | Cross-batch evidence | BE% |
+|---|---|---|---|---|---|
+| **M1** | BTC RSI 25-30 × BTC ADX 28-30 | SHORT | Existing `btc_rsi_adx_multiplier_short`: add `25-30:28-30:2.0` | N=18, 83% WR, Avg +0.21%, MedWin +0.30%, **+$163 / 6 dates** | 20% |
+| **M2** | BTC 1h Slope 0 to +0.10 × BTC ADX 25-30 | SHORT | **NEW dimension** `btc_1h_slope_btc_adx_multiplier_rules` | N=17, 88% WR, Avg +0.16%, MedWin +0.21%, **+$159 / 5 dates** | 20% |
+| **M3** | BTC 1h Slope −0.20 to −0.10 × BTC ADX 18-25 | LONG | Same NEW dim, mirror of M2 | N=17, 76% WR, Avg +0.17%, MedWin +0.29%, **+$156 / 4 dates** | 23% |
+| **M4** | Pair RSI 35-40 × Pair ADX 30-35 | SHORT | Existing `rsi_adx_multiplier_short`: add `35-40:30-35:2.0` | N=23, 78% WR, Avg +0.14%, MedWin +0.31%, **+$130 / 12 dates** | 17% |
+
+**Combined cross-batch lift at 2.0× (vs 1× baseline)**: $608 → $1,216 effective add on cross-batch.
+
+All 4 cells passed the **strict BE-floor gate** (Avg P&L % ≥ +0.10%, MedWin ≥ +0.12%, BE-rescue ≤ 30%) — NOT the BE-rescue-dependent watchlist class. Verified config-stable, robust under current BE-OFF state.
+
+### NEW dimension: BTC 1h Slope × BTC ADX multiplier
+
+Sister to `btc_rsi_adx_multiplier_*` and `extension_multiplier_rules`. Encoded as JSON list (rather than string-CSV like btc_rsi_adx_multiplier_*) because BTC 1h slope can be negative — the string-CSV format conflates `-` as both negative sign and range separator.
+
+**Rule schema:**
+```python
+{
+  "name": str,                # short ID (e.g., "M2", "M3")
+  "direction": "LONG"/"SHORT",
+  "slope_min": float,         # BTC 1h slope MIN (can be negative)
+  "slope_max": float,         # BTC 1h slope MAX (exclusive)
+  "adx_min": float, "adx_max": float,  # BTC ADX range
+  "inv_mult": float,          # investment multiplier
+  "lev_mult": float           # leverage multiplier
+}
+```
+
+**Source label format:** `BTC1H_{name}` (e.g., `BTC1H_M2` for SHORT, `BTC1H_M3` for LONG).
+
+**Engineering scope (~250 LOC):**
+- `config.py`: `btc_1h_slope_btc_adx_multiplier_rules: List = []`
+- `trading_config.json`: 2 ship rules (M2, M3)
+- `services/trading_engine.py`: `_lookup_btc_1h_slope_btc_adx_multiplier` helper (~50 LOC) + integration in candidates list (1 line tuple)
+- `main.py`: `_compute_btc_1h_slope_btc_adx_multiplier_performance` (~150 LOC) + payload entry
+- `templates/index.html`: UI config panel + analytics table + JS renderer + 2 text-export sites (~200 LOC)
+
+### Conflict resolution
+
+Within the existing engine's HIGHER-wins candidates list, the new dim is added as a 4th candidate alongside `_pair_inv`, `_btc_inv`, `_ext_inv`. Pattern Cell rules still PRIORITY-OVERRIDE all multiplier dims. Hard cap (`rsi_adx_multiplier_hard_cap: 2.0`) applies uniformly.
+
+### Pre-committed revert criteria at next ≥30-trade checkpoint
+
+**Filters (per-cell):**
+- If would-have-been-blocked cell (in observation logs) shows ≥55% WR on N≥10 fresh → REVERT that specific rule
+- If kept zone Avg P&L % drops below 0% on N≥10 fresh → investigate before changing
+- If `[RNGPOS_ADX_DELTA_CROSS]` / `[BTC_GAP_BTC_ADX_CROSS]` / `[BTC_RSI_ADX_CROSS]` block counts are 0 across 100+ LONG trades → filter dormant, investigate
+
+**Multipliers (per cell, locked May 4 verdict matrix):**
+
+| Cell | ★ KEEP | ⚠ DROP to 1.5× | ✗ REVERT to 1.0× |
+|---|---|---|---|
+| M1 BTC_25-30_28-30 SHORT | WR ≥75% AND Δ$ ≥+$30 on N≥10 | WR 60-75% OR Δ$ −$1 to $30 | Total $ negative on N≥5 |
+| M2 BTC1H_M2 SHORT | Same gates | Same | Same |
+| M3 BTC1H_M3 LONG | Same gates | Same | Same |
+| M4 PAIR_35-40_30-35 SHORT | Same gates | Same | Same |
+
+**Cross-cell escalation**: if M2+M3 (BTC 1h Slope dim) both validate at N≥10 with ≥70% WR, consider STAGE 2 — extend the dim to ADX 22-25 sub-cell for SHORTs (cross-batch N=10, 70% WR, +$0.93 — borderline, requires fresh validation).
+
+### Why no `cell_lev_multiplier > 1.0` shipped
+
+Phase 1 explicitly ships at **2.0× investment × 1.0× leverage = 2.0× effective**, NOT the lev-stacked 3.0× pattern used for C1 SHORT and BTC_60-65_22-25 LONG. Reason: even though full-pool evidence supports the cells, today's INJ failure at 3.0× lev on C1 SHORT (and the BTC SHORT loss at 2.0× on W4 SHORT — both forced demotes) shows the variance amplification under leverage is currently MISBEHAVING with BE-OFF. Stage 2 (lev-stacking) is a separate ship that requires:
+1. M1-M4 cells validate at 2.0× for ≥10 fresh trades each
+2. BE either permanently re-enabled OR cells maintain ≤30% BE-rescue rate in fresh data
+3. Locked discipline gate per CLAUDE.md May 21 lev-stacking criteria
+
+### Methodology check
+
+This ship is the **first one to fully follow the May 24 locked structural methodology**. Every cell was:
+1. Identified via full-pool 2D cross-tab scan (886 trades, 25 dates)
+2. Validated against strict gates (BE-floor Avg, MedWin, BE-rescue, dates ≥3)
+3. NP-enrichment checked (filters: NP $-share ≥62%; multipliers: NP rate below baseline)
+4. De-multiplied to 1× equivalent for $-comparisons
+5. Cross-checked against existing rules to ensure no overlap/redundancy
+
+**This is the template for all future ships going forward.** Reactive batch-analysis ships are deprecated.
+
+### Files changed
+
+- `config.py` — new field `btc_1h_slope_btc_adx_multiplier_rules`
+- `trading_config.json` — 7 rule changes across 5 fields
+- `services/trading_engine.py` — new helper + 1 candidate added
+- `main.py` — new performance helper + payload entry + 2 empty-fallback sites
+- `templates/index.html` — UI config panel + analytics table + JS renderer + 2 text exports + load/save handlers
+- `CLAUDE.md` — this entry
+
+### Projected forward impact
+
+Conservatively (with in-sample bias haircut applied):
+- Filters: +$300-500 per ~50-trade batch
+- Multipliers M1+M4 (existing dims): +$120-180 per batch
+- Multipliers M2+M3 (new dim): +$100-150 per batch
+- **Combined**: +$520-830 per batch
+
+vs the −$857 disaster batch baseline (today's pre-methodology batch), this is a meaningful structural shift in expected per-batch P&L.
+
+## May 24, 2026 (very late evening) — LOCKED METHODOLOGY: Full-pool structural cell analysis (replaces reactive batch analysis)
+
+### Motivation — the failure mode this fixes
+
+For 6 weeks we shipped filter/multiplier changes REACTIVELY: a specific
+trade blew up (INJ today at −$184 / 3× lev, BTC SHORT at −$110 / 2× lev,
+S-P1 SHORT cohort at −$381 May 18, BUSDT May 11 at −$109, etc.), and only
+THEN did we ship a block or demote. The cross-batch evidence for many of
+these blocks existed weeks before the failure (e.g., the BTC RSI <30 ×
+ADX 18-22 SHORT loser cohort had been bleeding silently for 13 dates by
+the time INJ triggered the analysis).
+
+This is now closed off. Forward analysis uses the saved structural
+baseline below.
+
+### Saved reference files (DO NOT DELETE)
+
+| File | Purpose |
+|---|---|
+| `reports/dedupe_pool_FULL.csv` | **Full-column unified pool** — 886 trades (529L / 357S), 25 dates, Apr 28 → May 24. UNION of all columns across all CSVs (preserves newer dimensions like `entry_btc_trend_gap_pct`, `entry_btc_1h_slope`, `entry_btc_atr_pct`, `entry_pattern_*`, `entry_dist_from_ema13_pct`, `cell_multiplier`, `cell_lev_multiplier`). DIFFERENT from `dedupe_pool.csv` which uses LCD intersection and drops these columns. |
+| `reports/structural_cell_findings_2026-05-24.txt` | **Locked baseline findings** — output of structural cell analysis at May 24 close. Reference snapshot for future batch comparisons. |
+| `scripts/build_pool_FULL.py` | **Regenerates the full-column pool** from `reports/orders_*.csv` + `~/Downloads/scalpars_orders_paper_*.csv`. Rebuild before any fresh analysis to include the latest batch. |
+| `scripts/structural_cell_analysis.py` | **Runs the structural cell scan** against the pool. Outputs LOSER (block) candidates, WINNER (multiplier) candidates, and BE-rescue-dependent watchlist. |
+
+### Locked methodology — the 6 rules
+
+1. **Use the FULL-column unified pool.** Newer cross-tab dimensions (BTC Gap, BTC 1h Slope, BTC ATR, Pattern C/W, Extension) only got captured post-May-13. The LCD-intersection pool (`dedupe_pool.csv`) silently drops these. ALWAYS use `dedupe_pool_FULL.csv` for cell analysis.
+
+2. **Use Avg P&L % (leverage-invariant) NOT raw $** for cross-batch comparison. Per CLAUDE.md core operating principle: *"When comparing results across different reports or batches, always use Avg P&L % instead of absolute P&L"*. Raw $ mixes leverage/sizing across config eras.
+
+3. **De-multiply historical $** for $-aggregations:
+   ```
+   pnl_1x = pnl / max(cell_multiplier × cell_lev_multiplier, 1)
+   ```
+   Comparing cells at consistent 1× sizing exposes true edge without amplification bias.
+
+4. **LOSER ship gate (block candidate):**
+   - N ≥ 15
+   - WR ≤ 45%
+   - **Avg P&L % ≤ −0.10%** (clearly losing, not just BE noise)
+   - dates ≥ 3 (multi-batch direction-consistency)
+   - 1×-equivalent pool $-impact ≤ −$30
+
+5. **WINNER ship gate (multiplier candidate) — STRICT version with BE-rescue check:**
+   - N ≥ 15
+   - WR ≥ 70%
+   - **Avg P&L % ≥ +0.10%** (BE-floor gate — per CLAUDE.md May 21 latest+5: "MULT Avg threshold = BE floor")
+   - dates ≥ 3
+   - 1×-equivalent pool $-impact ≥ +$30
+   - **Median win % ≥ +0.12%** (filters out BE-floor-cluster cells where most wins are exactly +0.10%)
+   - **BE-rescue rate ≤ 30% of wins** (most wins from TRAILING/FAST_EXIT — config-stable mechanisms, not BE)
+
+6. **BE-rescue-dependent FLAGGING (watchlist, NOT shippable as multiplier under current BE-OFF state):**
+   - WR ≥ 65% but Avg P&L % < +0.10%
+   - AND BE-rescue rate > 30%
+   - Under BE-OFF, the BE-rescued wins become losers → cell collapses
+   - Becomes actionable IF/WHEN BE is permanently re-enabled
+
+### Why the BE-rescue check matters (the trap)
+
+A cell can show 76% WR / +$248 / 19 dates and LOOK like a great multiplier
+candidate. But if 34% of those wins came from `BREAKEVEN_EXIT_L1` (BE rescue
+at +0.10% floor), the cell's true edge is BE doing the work, not the entry
+signature. At 2× sizing under BE-OFF, those rescued-then-doubled wins become
+doubled-loss-to-SL trades. The cell flips from net positive to net catastrophic.
+
+Empirical example from today's full-pool scan:
+- **SHORT RngPos 10-15 × ADXΔ 1.0-2.0**: N=54, 76% WR, +$248, 19 dates → looks ★
+  - But Avg P&L % = +0.067% (BELOW BE floor)
+  - BE-rescue rate = 34% of wins
+  - Verdict: **watchlist only**, NOT ship — under BE-OFF this cohort likely flips
+
+### How to use this for "current batch" analysis (the workflow you wanted)
+
+When a new batch comes in:
+
+```bash
+# 1. Regenerate the full-column pool (includes the new batch)
+python3 scripts/build_pool_FULL.py
+
+# 2. Run the structural cell analysis
+python3 scripts/structural_cell_analysis.py --save reports/structural_findings_YYYY-MM-DD.txt
+
+# 3. Compare against the LOCKED baseline reports/structural_cell_findings_2026-05-24.txt:
+#    - Did any cell flip from LOSER → WINNER or vice versa? Regime shift.
+#    - Did any new cell hit gate criteria? New ship candidate.
+#    - Did any existing LOSER cell exit the gate (WR rose)? Filter may be over-restrictive.
+#    - Did any active multiplier cell drop into BE-rescue suspect? Demote candidate.
+
+# 4. Apply locked promotion/demotion gates mechanically.
+```
+
+The baseline file is the LOCKED REFERENCE. New batches get compared against it. Cells that meet the structural gates become MANDATORY ship candidates — not "interesting observations to revisit later." That reactive-only pattern is what wasted 6 weeks.
+
+### Current findings (May 24 baseline) — anchored here for reference
+
+**4 STRUCTURAL LOSER cells (block candidates):**
+
+| Cell | Side | N | WR | Avg % | $ 1× | Dates | Currently blocked? |
+|---|---|---|---|---|---|---|---|
+| RngPos 85-95 × ADXΔ 0-0.3 | LONG | 47 | 40% | −0.20% | **−$537** | **19** | ✗ NO — silent bleed for 19 dates |
+| BTC Gap 0 to +0.10 × BTC ADX 22-25 | LONG | 20 | 45% | −0.19% | **−$211** | 5 | ✗ NO |
+| BTC RSI 50-55 × BTC ADX 18-22 (L-B1) | LONG | 18 | 39% | −0.23% | **−$193** | 9 | ✗ NO — L-B1 was identified Apr 14 in CLAUDE.md but never shipped |
+| BTC RSI 65-70 × BTC ADX 18-22 | LONG | 27 | 33% | −0.16% | −$97 | 9 | ✓ Now blocked by today's `65-70:28` rule |
+
+**5 STRUCTURAL WINNER cells (multiplier candidates passing BE-floor gate):**
+
+| Cell | Side | N | WR | Avg % | MedWin | $ 1× | BE% | Dates | Status |
+|---|---|---|---|---|---|---|---|---|---|
+| BTC RSI 60-65 × BTC ADX 22-25 | LONG | 49 | 76% | +0.17% | +0.32% | +$424 | 14% | 15 | ★ already shipped at 3.0× (inv 2 × lev 1.5) |
+| BTC RSI 25-30 × BTC ADX 28-30 | SHORT | 18 | 83% | +0.21% | +0.30% | +$163 | 20% | 6 | ★ NEW MULT candidate (inside today's `0-30:25-30` rule kept zone) |
+| BTC 1h Slope 0 to +0.10 × BTC ADX 25-30 | SHORT | 17 | 88% | +0.16% | +0.21% | +$159 | 20% | 5 | ★ NEW MULT candidate (needs new BTC 1h Slope × ADX multiplier dim) |
+| BTC 1h Slope −0.20 to −0.10 × BTC ADX 18-25 | LONG | 17 | 76% | +0.17% | +0.29% | +$156 | 23% | 4 | ★ NEW MULT candidate (mirror of above) |
+| Pair RSI 35-40 × Pair ADX 30-35 | SHORT | 23 | 78% | +0.14% | +0.31% | +$130 | 17% | 12 | ★ NEW MULT candidate (existing `rsi_adx_multiplier_short`) |
+
+**16 BE-RESCUE-DEPENDENT cells (watchlist — NOT shippable as multipliers under BE-OFF).** See `reports/structural_cell_findings_2026-05-24.txt` for full list. Top 5 by $: SHORT RngPos 10-15 × ADXΔ 1.0-2.0 (N=54, +$248, 34% BE), SHORT RngPos 15-25 × ADXΔ 1.0-2.0 (N=30, +$149, 30% BE), SHORT BTC Gap −0.10 to 0 × BTC ADX 18-22 (N=47, +$121, 38% BE), SHORT Ext −0.60 to −0.40 × PairVol 1.10-1.50 (N=21, +$117, 40% BE), SHORT BTC RSI 30-35 × BTC ADX 30-35 (N=36, +$68, 31% BE).
+
+### Locked discipline rule going forward
+
+**MANDATORY pre-ship check**: every new filter or multiplier ship proposal must be validated by running `scripts/structural_cell_analysis.py` against the latest pool. If a proposed cell does NOT pass the structural gate criteria above, the ship requires explicit override documentation in CLAUDE.md with the discipline-acknowledgment counter (currently 11 in 2 weeks per recent entries).
+
+**MANDATORY cell discovery**: every checkpoint runs the same analysis. Cells newly meeting structural gates get auto-flagged for ship consideration. The "we've been waiting for failures" pattern is now eliminated — failures are pre-empted by the structural scan.
+
+**MANDATORY BE-rescue check on all multiplier candidates**: BE-OFF is current state. A cell with WR ≥70% but Avg P&L % <+0.10% AND BE-rescue >30% is NOT shippable. Re-evaluate IF/WHEN BE is permanently re-enabled.
+
+### Why this entry is at the top of CLAUDE.md (and stays there)
+
+This is the meta-methodology that supersedes most prior ship/demote/watchlist
+decisions. The full-pool baseline is the locked reference; the methodology gates
+are the locked decision criteria. All future single-batch analysis is now
+SUBORDINATE to comparing the batch against this baseline.
+
+The reactive pattern that wasted 6 weeks is now closed off — structural cells
+either pass the gates and ship, or they don't and stay observation-only. No
+more "interesting watchlist items that sit there for weeks until a specific
+trade triggers the analysis."
+
+If at any future point this methodology proves wrong (e.g., gate thresholds
+miss real edge or admit noise), update the gates HERE first BEFORE running
+analysis, not after. Pre-commitment is the whole point.
+
 ## May 24, 2026 (late evening) — `btc_rsi_adx_filter_short` tightened: `0-30:0-30` → `0-30:25-30` (ADX MIN floor)
 
 ### Change

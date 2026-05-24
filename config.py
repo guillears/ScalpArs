@@ -411,6 +411,25 @@ class SignalThresholds(BaseModel):
     # All cells below the locked N≥30 gate but BE-compatible under new filter regime.
     # Operator-directed ship accepting the discipline override.
     extension_multiplier_rules: List = []
+    # BTC 1h Slope × BTC ADX Multiplier Rules (May 24 evening, 2026) — NEW dimension.
+    # Sister to btc_rsi_adx_multiplier (existing) and extension_multiplier (today).
+    # JSON-list format (not the string-CSV format used by btc_rsi_adx_multiplier_*)
+    # because BTC 1h slope can be negative and the string-CSV format conflates `-`
+    # as both negative-sign and range-separator. Each rule:
+    #   {"name": str, "direction": "LONG"/"SHORT",
+    #    "slope_min": float, "slope_max": float,
+    #    "adx_min": float, "adx_max": float,
+    #    "inv_mult": float, "lev_mult": float}
+    # Both ranges half-open [min, max). HIGHER inv wins on overlap with other dims.
+    # Source label: "BTC1H_{name}" (e.g., "BTC1H_M2_SHORT").
+    # Cross-batch evidence at ship (May 24 full-pool structural analysis):
+    #   M2 SHORT BTC 1h Slope 0 to +0.10 × BTC ADX 25-30:
+    #     N=17 / 88% WR / +0.16% Avg / +$159 / 5 dates / 20% BE-rescue / NP 6%
+    #   M3 LONG  BTC 1h Slope -0.20 to -0.10 × BTC ADX 18-25:
+    #     N=17 / 76% WR / +0.17% Avg / +$156 / 4 dates / 23% BE-rescue / NP 6%
+    # Both pass strict BE-floor + median-win + BE-rescue gates per CLAUDE.md
+    # locked May 24 methodology.
+    btc_1h_slope_btc_adx_multiplier_rules: List = []
     # Entry Quality Score multiplier (May 18 → REMOVED May 21): the Score-based 1D
     # multiplier dimension was retired after cross-batch evidence showed cells
     # decaying or showing no edge over baseline. See CLAUDE.md May 21 removal entry.

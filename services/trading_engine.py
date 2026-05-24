@@ -1470,6 +1470,62 @@ class TradingEngine:
         label = f"EXT_{names}"
         return inv, lev, label
 
+    def _lookup_btc_1h_slope_btc_adx_multiplier(
+        self,
+        direction: str,
+        btc_1h_slope: Optional[float],
+        btc_adx: Optional[float],
+    ) -> Tuple[float, float, Optional[str]]:
+        """BTC 1h Slope × BTC ADX Multiplier (May 24 evening, 2026) — NEW dimension.
+
+        Walks `btc_1h_slope_btc_adx_multiplier_rules` config and returns
+        (invest_multiplier, leverage_multiplier, source_label).
+
+        Rule struct (JSON-list, see config.py):
+          {name, direction, slope_min, slope_max, adx_min, adx_max, inv_mult, lev_mult}
+
+        Matching: direction must match, btc_1h_slope in [slope_min, slope_max),
+        btc_adx in [adx_min, adx_max). HIGHER inv_mult wins on multi-match.
+        Source label: "BTC1H_{name}" (e.g., "BTC1H_M3" for LONG, "BTC1H_M2" for SHORT).
+
+        Returns (1.0, 1.0, None) on no match or missing inputs.
+        """
+        try:
+            rules = getattr(config.trading_config.thresholds,
+                            'btc_1h_slope_btc_adx_multiplier_rules', []) or []
+        except Exception:
+            return 1.0, 1.0, None
+        if not rules or btc_1h_slope is None or btc_adx is None:
+            return 1.0, 1.0, None
+
+        matches = []
+        for r in rules:
+            try:
+                if r.get('direction') != direction:
+                    continue
+                slope_min = float(r.get('slope_min', -999))
+                slope_max = float(r.get('slope_max', 999))
+                adx_min = float(r.get('adx_min', -1))
+                adx_max = float(r.get('adx_max', 999))
+                if not (slope_min <= btc_1h_slope < slope_max):
+                    continue
+                if not (adx_min <= btc_adx < adx_max):
+                    continue
+                matches.append(r)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[BTC1H_MULT] Failed to parse rule {r}: {e}, skipping")
+                continue
+
+        if not matches:
+            return 1.0, 1.0, None
+
+        best = max(matches, key=lambda r: float(r.get('inv_mult', 1.0)))
+        inv = float(best.get('inv_mult', 1.0))
+        lev = float(best.get('lev_mult', 1.0))
+        names = '+'.join(r.get('name', '?') for r in matches)
+        label = f"BTC1H_{names}"
+        return inv, lev, label
+
     def _lookup_pattern_cell_rule(
         self, direction: str, c_flags: dict, w_flags: dict,
     ) -> Tuple[float, float, Optional[str], Optional[float], Optional[float]]:
@@ -2534,6 +2590,12 @@ class TradingEngine:
             entry_pair_volume_ratio,
             entry_adx_delta,
         )
+        # BTC 1h Slope × BTC ADX multiplier (May 24 evening) — NEW dimension.
+        _btc1h_inv, _btc1h_lev, _btc1h_src = self._lookup_btc_1h_slope_btc_adx_multiplier(
+            direction,
+            _current_btc_1h_slope,
+            entry_btc_adx,
+        )
 
         # Conflict resolution (May 21 — extended for "both" mode):
         # When pair-level AND BTC-level cells both match, the HIGHER candidate wins.
@@ -2564,6 +2626,7 @@ class TradingEngine:
                 (_pair_inv, _pair_lev, _pair_src),
                 (_btc_inv, _btc_lev, _btc_src),
                 (_ext_inv, _ext_lev, _ext_src),
+                (_btc1h_inv, _btc1h_lev, _btc1h_src),
             ]
             _winner = max(_candidates, key=lambda c: _score_candidate(c[0], c[1]))
             cell_mult, cell_lev_mult, cell_src = _winner

@@ -1,5 +1,105 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (early morning, post-analysis) — ROLLBACK: C2 SHORT defensive rule removed pending deeper analysis
+
+### Change
+
+Removed the C2 SHORT entry from `pattern_cell_rules` shipped earlier
+this session. Config reverted to pre-ship state.
+
+```json
+// REMOVED:
+{"pattern": "C2", "direction": "SHORT",
+ "inv_mult": 1.0, "lev_mult": 1.0,
+ "fixed_tp_pct": 0.1, "fixed_sl_pct": -0.5}
+```
+
+The earlier ship entry below remains in CLAUDE.md as a record of the
+reasoning, but the rule itself is no longer active.
+
+### Why rolled back — deeper analysis exposed weaker evidence than claimed
+
+Post-ship cross-batch analysis on alternative dimensions revealed:
+
+1. **The 4-trade C2 cluster's BTC RSI × BTC ADX cell (40-45 × 25-30) was
+   actually a WINNER zone pre-tonight.** 13 trades May 11-18 in that cell:
+   62% WR, +$25 net. Tonight's 3 SHORTs (LTC/FET/1000SHIB) dragged the
+   pooled cell to 50% WR / -$88. Calling it a structural loser cell was
+   wrong.
+
+2. **The discriminator WITHIN the cell was BTC RSI direction** (rising vs
+   falling). Tonight's losers all had BTC RSI rising; historical winners
+   in same cell had RSI falling. This is a 3D pattern (RSI × ADX × RSI
+   direction) — too thin to ship at N=3 in the "RSI rising" sub-cell.
+
+3. **BTC 1h slope filter (Option C explored) failed cross-batch
+   validation.** The 141-trade SHORT pool (May 14+) has ZERO trades at
+   BTC 1h slope > +0.10 before tonight. Tonight's 4 trades are the ONLY
+   data points in the proposed block zone. Same N=4 evidence level as
+   C2 rule — no actual cross-batch backing.
+
+4. **Cross-batch BTC 1h slope DOES show structural patterns** but not in
+   the proposed block zone:
+   - SHORT sweet spot: slope -0.10 to 0 (N=60, 77% WR, +$258)
+   - SHORT weak zone: slope < -0.20 (N=45, mostly losing)
+   - Slope +0.05 to +0.10: tiny N (9 trades, mixed)
+   - Slope > +0.10: zero pre-tonight data
+
+### What this rollback acknowledges
+
+The C2 SHORT defensive rule was shipped on **N=4 single-session evidence**
+without exploring the alternative dimensions that would have either
+strengthened the case (a different cell-level filter) or revealed the
+mechanism is too thin to ship. Same-day deeper analysis showed:
+
+- C2 captures the macro-counter-trend signature broadly, but the
+  cohort's empirical behavior in this specific cell varies regime-to-regime
+- The proper validation requires multi-session C2 SHORT data, which we
+  don't have (column added May 19)
+- Shipping a rule from one cluster before validating cross-session is
+  the same anti-pattern as the S-P1 demote (CLAUDE.md May 18) and
+  Score 3 SHORT (CLAUDE.md May 16)
+
+### What remains in place
+
+- **Option D pattern cell lookup fix** (shipped earlier May 23) — STAYS.
+  Cross-batch reasoning was sound (FILUSDT vs MTLUSDT failure modes).
+- **BTC RSI 65-70 surgical refinement** (`:0-35`) — STAYS. Cross-batch
+  evidence is solid.
+- **All other Pattern Cell Ship rules unchanged** (C1 SHORT, C4/C8, W1-W6,
+  UNMATCHED).
+
+### Forward analysis plan (when revisited)
+
+When more C2 SHORT clusters arrive across multiple sessions:
+
+1. **Validate the cell-level pattern**: does BTC RSI 40-45 × ADX 25-30
+   SHORT continue losing in fresh data, or was tonight regime-specific?
+2. **Validate the BTC RSI direction discriminator**: do losing C2 SHORTs
+   consistently show RSI rising vs winners showing RSI falling?
+3. **Consider the structural BTC 1h slope sweet-spot filter** rather than
+   Option C's block-extreme approach. Block when slope < -0.20 OR
+   slope > +0.05 (require slope in the proven winner range).
+4. **Avoid shipping from single-session clusters.** The discipline
+   threshold is multi-session direction-consistency at N≥10.
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the rollback transparently — same-day reversal of a
+   same-day ship is unusual, must be visible in the audit trail
+2. To preserve the deeper analysis findings (cell was winner pre-tonight,
+   BTC RSI direction is real discriminator, Option C had no cross-batch
+   data) so future-Claude doesn't re-derive
+3. To reinforce the discipline lesson: deeper analysis BEFORE shipping
+   prevents same-day reversals. Earlier I jumped to "ship C2 rule"
+   without checking the BTC RSI × BTC ADX cell or the BTC 1h slope
+   cross-batch data. The user's push-back ("any other BTC indicator?")
+   exposed the gap.
+4. To list the locked forward analysis plan so the next C2 SHORT cluster
+   gets the deeper treatment from the start
+
+The earlier C2 SHORT ship entry below remains for the full audit trail.
+
 ## May 24, 2026 (early morning) — Pattern Cell Ship rule: C2 SHORT defensive (TP +0.10 / SL -0.50, baseline sizing)
 
 ### Change

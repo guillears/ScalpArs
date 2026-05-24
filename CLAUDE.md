@@ -1,5 +1,104 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (latest evening) — ⚠️ MANDATORY WATCHLIST: btc_1h_slope_max_long: 0.15 + btc_1h_slope_max_short: 0.10 — OVER-BLOCK RISK
+
+### Why this entry is at the TOP of CLAUDE.md
+
+These two filters are the single highest-$-impact filters currently shipped
+AND the most volume-cutting. They MUST be monitored at every checkpoint.
+Operator concern (May 24 latest evening): risk of blocking TOO many trades
+in regimes where BTC 1h slope is consistently elevated.
+
+### Today's impact (May 24 morning batch counterfactual — proof of concern)
+
+| Filter | Trades cut | % of side |
+|---|---|---|
+| `btc_1h_slope_max_long: 0.15` | 26 of 47 LONG | **55%** |
+| `btc_1h_slope_max_short: 0.10` | 6 of 8 SHORT | **75%** |
+| **Combined trade rate cut** | **32 of 55** | **58%** |
+
+In today's specific regime (BTC strongly rising 1h slope all day), these
+filters were correct — they blocked 4.8× more losers than winners by $-value.
+**But** under different regimes (flat BTC, choppy markets):
+- Cuts could fall to 5-15% of trades (filter mostly dormant) — fine
+- OR they could STILL cut 50%+ if 1h slope stays elevated for days — problematic
+
+### Mandatory check at EVERY ≥30-trade checkpoint going forward
+
+Run these specific tests:
+
+1. **Filter Block counter sanity** — How many trades did each filter block this batch?
+   - `[BTC_1H_SLOPE_MAX_GATE]` log line count for LONG and SHORT
+   - If >60% of attempted entries blocked over ≥3 consecutive days → INVESTIGATE
+
+2. **Would-have-been-blocked trade quality** — From observation logs OR cross-batch pool:
+   - WR of trades that would have been blocked
+   - If ≥55% WR on N≥10 fresh → **filter is over-restrictive, loosen threshold**
+   - If ≤35% WR on N≥10 → filter is doing real work, keep
+   - If 35-55% WR → mixed, monitor one more batch
+
+3. **Trade rate / Daily Compound Return** — Compare:
+   - Trades per day under current filters vs prior ~30-trade batch baseline
+   - If trade rate drops >70% from prior baseline AND DCR doesn't improve → filter is starving the bot of opportunities. Loosen.
+
+### Pre-committed loosening criteria (locked NOW)
+
+| Trigger | Action |
+|---|---|
+| LONG: would-have-been-blocked at BTC 1h slope 0.15-0.25% shows ≥55% WR on N≥10 fresh | Loosen `btc_1h_slope_max_long: 0.15 → 0.20` |
+| LONG: same band shows ≥60% WR on N≥15 fresh | Loosen further to 0.25 |
+| LONG: would-blocked >0.25% slope shows ≥55% WR on N≥10 | Loosen further to 0.30 |
+| SHORT: would-blocked at slope 0.10-0.15% shows ≥55% WR on N≥10 fresh | Loosen `btc_1h_slope_max_short: 0.10 → 0.15` |
+| SHORT: same band ≥60% WR on N≥15 | Loosen further to 0.20 |
+| Combined trade rate drops to <8 trades/day for 3 consecutive days | Investigate WHY — maybe regime issue, maybe filter over-cutting |
+
+### Pre-committed TIGHTENING criteria (for completeness)
+
+| Trigger | Action |
+|---|---|
+| LONG: kept-zone (slope ≤0.15) shows ≤40% WR on N≥20 fresh | Tighten `btc_1h_slope_max_long: 0.15 → 0.10` |
+| SHORT: kept-zone (slope ≤0.10) shows ≤40% WR on N≥20 fresh | Tighten `btc_1h_slope_max_short: 0.10 → 0.05` |
+
+### How to check at next checkpoint (mechanical workflow)
+
+```bash
+# 1. Rebuild full pool with new batch included
+python3 scripts/build_pool_FULL.py
+
+# 2. Check filter block counts in the new batch (in dashboard Filter Blocks panel)
+#    Look for [BTC_1H_SLOPE_MAX_GATE] log line counts
+
+# 3. Run cell analysis specifically on the BTC 1h Slope × BTC ADX cross-tab
+#    on cells:
+#    - LONG slope >0.15: WR? $?
+#    - LONG slope 0.15-0.25 sub-band: WR? $?  ← key loosening signal
+#    - SHORT slope >0.10: WR? $?
+#    - SHORT slope 0.10-0.15 sub-band: WR? $?  ← key loosening signal
+
+# 4. Apply pre-committed criteria above mechanically.
+```
+
+### Why this entry exists at TOP of CLAUDE.md
+
+The structural methodology entry below this one was the META-lock — "don't
+ship reactively, use full-pool baseline." This entry is the COROLLARY for
+the two specific filters most likely to need adjustment: **the highest-impact
+filters are also the highest-volume-cutting**. Pre-committing the loosening
+criteria here prevents:
+
+1. Forgetting to monitor these specifically (they're easy to ignore when
+   "everything is working")
+2. Over-aggressive cuts in regimes where they shouldn't apply
+3. Goalpost-moving when the filters become questionable ("but they saved
+   $$$ in the May 24 batch!" — that was IN-SAMPLE)
+
+If these filters never need loosening over the next 100 trades, great.
+If they do, the criteria above make the decision mechanical.
+
+### Files changed
+
+- `CLAUDE.md` — this watchlist entry only. NO config / engine changes.
+
 ## May 24, 2026 (very late evening, post-methodology lock) — PHASE 1 STRUCTURAL SHIP: 3 filters + 4 multipliers from full-pool baseline
 
 ### What ships

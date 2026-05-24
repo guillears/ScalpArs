@@ -1664,7 +1664,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
-            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [],
+            "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "pair_gap_pair_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -2886,7 +2886,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "btc_slope_performance": [],
             "pair_ema20_ema50_gap_performance": [],
             "btc_ema20_ema50_gap_performance": [],
-            "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "rsi_direction_performance": [],
+            "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "pair_gap_pair_adx_crosstab": [], "rsi_direction_performance": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
             "by_close_reason": {},
@@ -4382,6 +4382,50 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                         "direction": direction,
                         "gap_range": gr_name,
                         "btc_adx_range": ar_name,
+                        "trades": b_count,
+                        "win_rate": round(b_wins / b_count * 100, 1),
+                        "avg_pnl": round(b_pnl / b_count, 2),
+                        "avg_pnl_pct": round(b_pnl_pct / b_count, 4),
+                        "total_pnl": round(b_pnl, 2),
+                        "never_positive": b_never_positive,
+                        "never_positive_pct": round(b_never_positive / b_count * 100, 1) if b_count else 0,
+                        "by_confidence": b_conf,
+                    })
+
+        # Pair EMA13-EMA50 Gap × Pair ADX Cross-Tab (May 24 — pair-level counterpart of BTC version).
+        # Reuses pair_ema_gap_ranges (24 fine buckets) for direct 1D/2D comparison and
+        # ct_adx_ranges_pair for finer pair-ADX resolution. Tests whether pair over-extension
+        # (gap > +0.10%) at a given pair ADX is uniformly bad, or concentrated in cells.
+        # Mirror of the BTC version per CLAUDE.md May 19 design — surfaces sub-cell structure
+        # in the pair's own multi-hour trend.
+        pair_gap_pair_adx_crosstab = []
+        _pair_gap_pool = [o for o in orders
+                          if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None
+                          and getattr(o, 'entry_adx', None) is not None]
+        for direction in ["LONG", "SHORT"]:
+            for gr_name, gr_min, gr_max in pair_ema_gap_ranges:
+                for ar_name, ar_min, ar_max in ct_adx_ranges_pair:
+                    bucket = [
+                        o for o in _pair_gap_pool
+                        if (o.direction or "LONG") == direction
+                        and gr_min <= o.entry_pair_ema20_ema50_gap_pct < gr_max
+                        and ar_min <= o.entry_adx < ar_max
+                    ]
+                    if not bucket:
+                        continue
+                    b_count = len(bucket)
+                    b_wins = len([o for o in bucket if (o.pnl or 0) > 0])
+                    b_pnl = sum(o.pnl or 0 for o in bucket)
+                    b_pnl_pct = sum(o.pnl_percentage or 0 for o in bucket)
+                    b_never_positive = sum(1 for o in bucket if (o.peak_pnl or 0) <= 0)
+                    b_conf = {}
+                    for o in bucket:
+                        c = o.confidence or "UNKNOWN"
+                        b_conf[c] = b_conf.get(c, 0) + 1
+                    pair_gap_pair_adx_crosstab.append({
+                        "direction": direction,
+                        "gap_range": gr_name,
+                        "pair_adx_range": ar_name,
                         "trades": b_count,
                         "win_rate": round(b_wins / b_count * 100, 1),
                         "avg_pnl": round(b_pnl / b_count, 2),
@@ -6406,6 +6450,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "btc_slope_adx_crosstab": btc_slope_adx_crosstab,
         "adx_delta_btc_adx_crosstab": adx_delta_btc_adx_crosstab,
         "btc_gap_btc_adx_crosstab": btc_gap_btc_adx_crosstab,
+        "pair_gap_pair_adx_crosstab": pair_gap_pair_adx_crosstab,
         "btc_rsi_performance": btc_rsi_performance,
         "btc_rsi_adx_crosstab": btc_rsi_adx_crosstab,
         "quality_score_performance": quality_score_performance,
@@ -6460,6 +6505,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "ema13_extension_performance": _compute_ema13_extension_performance(orders),
         "ema13_extension_pvol_crosstab": _compute_ema13_extension_pvol_crosstab(orders),
         "ema13_extension_adxdelta_crosstab": _compute_ema13_extension_adxdelta_crosstab(orders),
+        "ema13_extension_pair_adx_crosstab": _compute_ema13_extension_pair_adx_crosstab(orders),
         # BTC Market Extension / BTC Late Regime Risk (May 14) — macro counterpart of
         # pair extension. Tests whether losses cluster when BTC itself is stretched
         # (price far from BTC EMA13), and especially when both BTC and pair are
@@ -6830,17 +6876,25 @@ def _compute_ema13_extension_performance(orders):
     if not closed:
         return {"longs": [], "shorts": [], "pool_size": 0}
 
-    # Buckets sized for typical 5m crypto entries
+    # Buckets sized for typical 5m crypto entries — 0.10% granularity
+    # Refined May 24: previous coarse 3-bucket view at >+0.20% was hiding
+    # non-monotonic structure. Cross-batch shows +0.50-0.70% is WINNER zone
+    # while +0.70-0.80% is DISASTER cell. Fine granularity surfaces it.
     # Negative buckets = pullback entry (ideal); positive = late
     buckets = [
         ('< -0.20%', -99, -0.20, 'pullback'),
         ('-0.20 to -0.10%', -0.20, -0.10, 'pullback'),
         ('-0.10 to 0%', -0.10, 0.0, 'near mean'),
         ('0 to +0.10%', 0.0, 0.10, 'mild late'),
-        ('+0.10 to +0.20%', 0.10, 0.20, 'late'),
-        ('+0.20 to +0.40%', 0.20, 0.40, 'extended'),
-        ('+0.40 to +0.60%', 0.40, 0.60, 'very extended'),
-        ('> +0.60%', 0.60, 99, 'extreme'),
+        ('+0.10 to +0.20%', 0.10, 0.20, 'late (blocked LONG)'),
+        ('+0.20 to +0.30%', 0.20, 0.30, 'extended'),
+        ('+0.30 to +0.40%', 0.30, 0.40, 'extended'),
+        ('+0.40 to +0.50%', 0.40, 0.50, 'very extended'),
+        ('+0.50 to +0.60%', 0.50, 0.60, 'very extended'),
+        ('+0.60 to +0.70%', 0.60, 0.70, 'extreme'),
+        ('+0.70 to +0.80%', 0.70, 0.80, 'extreme'),
+        ('+0.80 to +1.00%', 0.80, 1.00, 'extreme'),
+        ('> +1.00%', 1.00, 99, 'parabolic'),
     ]
 
     def _bucket_for_direction(direction):
@@ -6994,6 +7048,82 @@ def _compute_ema13_extension_adxdelta_crosstab(orders):
                 rows.append({
                     'extension': ext_label,
                     'adx_delta': adxd_label,
+                    'count': n,
+                    'win_rate': round(wins / n * 100, 1),
+                    'avg_pnl_pct': round(avg_pnl_pct, 4),
+                    'avg_pnl_usd': round(total_pnl / n, 2),
+                    'total_pnl_usd': round(total_pnl, 2),
+                    'np_count': np,
+                    'np_pct': round(np / n * 100, 1),
+                })
+        return rows
+
+    return {
+        'longs': _crosstab_for('LONG'),
+        'shorts': _crosstab_for('SHORT'),
+        'pool_size': len(closed),
+    }
+
+
+def _compute_ema13_extension_pair_adx_crosstab(orders):
+    """Cross-tab: Entry Extension × Pair ADX (May 24).
+
+    Tests whether the extension failure modes are conditional on
+    pair-level trend strength. Hypothesis: high extension + low pair ADX
+    = chasing weak trend (high failure); high extension + high pair ADX
+    = confirmed momentum (better odds).
+    """
+    closed = [o for o in orders
+              if (o.status == 'CLOSED')
+              and o.entry_dist_from_ema13_pct is not None
+              and o.entry_adx is not None]
+    if not closed:
+        return {"longs": [], "shorts": [], "pool_size": 0}
+
+    ext_buckets = [
+        ('< 0%', -99, 0.0),
+        ('0 to +0.20%', 0.0, 0.20),
+        ('+0.20 to +0.40%', 0.20, 0.40),
+        ('+0.40 to +0.60%', 0.40, 0.60),
+        ('+0.60 to +0.80%', 0.60, 0.80),
+        ('+0.80 to +1.00%', 0.80, 1.00),
+        ('> +1.00%', 1.00, 99),
+    ]
+    # Pair ADX bins — match standard analytics
+    adx_buckets = [
+        ('< 15', 0, 15),
+        ('15-18', 15, 18),
+        ('18-22', 18, 22),
+        ('22-25', 22, 25),
+        ('25-28', 25, 28),
+        ('28-30', 28, 30),
+        ('30-33', 30, 33),
+        ('> 33', 33, 99),
+    ]
+
+    def _crosstab_for(direction):
+        rows = []
+        dir_orders = [o for o in closed if o.direction == direction]
+        for ext_label, ext_lo, ext_hi in ext_buckets:
+            for adx_label, adx_lo, adx_hi in adx_buckets:
+                if direction == 'LONG':
+                    sub = [o for o in dir_orders
+                           if ext_lo <= o.entry_dist_from_ema13_pct < ext_hi
+                           and adx_lo <= o.entry_adx < adx_hi]
+                else:
+                    sub = [o for o in dir_orders
+                           if ext_lo <= -o.entry_dist_from_ema13_pct < ext_hi
+                           and adx_lo <= o.entry_adx < adx_hi]
+                if not sub:
+                    continue
+                n = len(sub)
+                wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+                total_pnl = sum(o.pnl or 0 for o in sub)
+                avg_pnl_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+                np = sum(1 for o in sub if (o.peak_pnl or 0) <= 0)
+                rows.append({
+                    'extension': ext_label,
+                    'pair_adx': adx_label,
                     'count': n,
                     'win_rate': round(wins / n * 100, 1),
                     'avg_pnl_pct': round(avg_pnl_pct, 4),

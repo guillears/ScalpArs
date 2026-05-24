@@ -1353,6 +1353,51 @@
                             </table>
                         </div>
                     </div>
+
+                    <!-- Cross-tab: Extension × Pair ADX (May 24) -->
+                    <h4 class="text-xs font-semibold text-gray-400 mt-5 mb-2">Extension × Pair ADX — trend-strength conditional extension test
+                        <span class="text-gray-500 font-normal ml-2">Late entry conditional on pair trend strength — does high ADX rescue late entries?</span>
+                    </h4>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-emerald-300 mb-1">LONG</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Extension</th>
+                                        <th class="text-left px-2">Pair ADX</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2" title="Peak ≤ 0% — trade never went positive at all (Never Positive)">NP%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-pair-adx-long-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="7" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-red-300 mb-1">SHORT</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">Extension</th>
+                                        <th class="text-left px-2">Pair ADX</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2" title="Peak ≤ 0% — trade never went positive at all (Never Positive)">NP%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ema13-ext-pair-adx-short-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="7" class="py-3 text-center text-gray-500">No data yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- BTC Market Extension / BTC Late Regime Risk (May 14) -->
@@ -3309,6 +3354,33 @@
                                 </tr>
                             </thead>
                             <tbody id="btc-gap-btc-adx-crosstab-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Pair EMA13-EMA50 Gap × Pair ADX Cross-Tab (May 24 — pair-level counterpart of BTC version) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Pair EMA13-EMA50 Gap × Pair ADX Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">Pair over-extension (pair EMA13 vs pair EMA50) × pair trend strength — pair-level counterpart of the BTC version above. Tests whether pair gap behavior is uniform across pair ADX magnitudes, or concentrated in specific pair-cell combinations. Uses tighter pair-ADX bins (15-18, 18-22, 22-25, 25-28, 28-30, 30-33, 33+) for finer resolution.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Dir</th>
+                                    <th class="px-3 py-2 font-medium" title="(Pair EMA13 − Pair EMA50) / Pair EMA50 × 100. Positive = pair above 4h trend.">Pair Gap</th>
+                                    <th class="px-3 py-2 font-medium">Pair ADX</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&L %</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&L</th>
+                                    <th class="px-3 py-2 font-medium text-right" title="Never Positive: trades that never went green (peak ≤ 0)">NP</th>
+                                    <th class="px-3 py-2 font-medium text-center">Conf</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pair-gap-pair-adx-crosstab-body" class="divide-y divide-white/5">
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
                             </tbody>
                         </table>
@@ -6646,6 +6718,7 @@
             const _ext1 = perf.ema13_extension_performance || {};
             const _extPvol1 = perf.ema13_extension_pvol_crosstab || {};
             const _extAdxd1 = perf.ema13_extension_adxdelta_crosstab || {};
+            const _extPairAdx1 = perf.ema13_extension_pair_adx_crosstab || {};
             if (_ext1.pool_size) {
                 lines.push(`\n${hr2}`);
                 lines.push(`## Entry Extension / Late Entry Risk — pool ${_ext1.pool_size} trades (post-deploy only)\n`);
@@ -6681,6 +6754,17 @@
                     lines.push('-'.repeat(70));
                     rows.forEach(r => {
                         lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
+                    });
+                    lines.push('');
+                });
+                ['longs', 'shorts'].forEach(k => {
+                    const rows = _extPairAdx1[k] || [];
+                    if (!rows.length) return;
+                    lines.push(`### ${k.toUpperCase()} — Extension × Pair ADX`);
+                    lines.push('Extension        Pair ADX     N    WR%    Avg%       Total$    NP');
+                    lines.push('-'.repeat(75));
+                    rows.forEach(r => {
+                        lines.push(`${r.extension.padEnd(16)} ${r.pair_adx.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                     });
                     lines.push('');
                 });
@@ -7737,6 +7821,17 @@
                 }
             }
 
+            if (perf.pair_gap_pair_adx_crosstab && perf.pair_gap_pair_adx_crosstab.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Pair EMA13-EMA50 Gap x Pair ADX Cross-Tab\n');
+                lines.push(`${'Dir'.padEnd(7)} ${'Pair Gap'.padEnd(18)} ${'Pair ADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'NP'.padEnd(10)} ${'Conf'}`);
+                for (const r of perf.pair_gap_pair_adx_crosstab) {
+                    const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                    lines.push(`${(r.direction||'').padEnd(7)} ${(r.gap_range||'').padEnd(18)} ${(r.pair_adx_range||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
+                }
+            }
+
             if (perf.rsi_adx_crosstab && perf.rsi_adx_crosstab.length > 0) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Performance by RSI x ADX\n');
@@ -8163,6 +8258,7 @@
                 const _ext2 = perf.ema13_extension_performance || {};
                 const _extPvol2 = perf.ema13_extension_pvol_crosstab || {};
                 const _extAdxd2 = perf.ema13_extension_adxdelta_crosstab || {};
+                const _extPairAdx2 = perf.ema13_extension_pair_adx_crosstab || {};
                 if (_ext2.pool_size) {
                     lines.push(`\n${hr2}`);
                     lines.push(`## Entry Extension / Late Entry Risk — pool ${_ext2.pool_size} trades (post-deploy only)\n`);
@@ -8198,6 +8294,17 @@
                         lines.push('-'.repeat(78));
                         rows.forEach(r => {
                             lines.push(`${r.extension.padEnd(16)} ${r.adx_delta.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
+                        });
+                        lines.push('');
+                    });
+                    ['longs', 'shorts'].forEach(k => {
+                        const rows = _extPairAdx2[k] || [];
+                        if (!rows.length) return;
+                        lines.push(`### ${k.toUpperCase()} — Extension × Pair ADX`);
+                        lines.push('Extension        Pair ADX     N    WR%    Avg%       Total$     NP%');
+                        lines.push('-'.repeat(78));
+                        rows.forEach(r => {
+                            lines.push(`${r.extension.padEnd(16)} ${r.pair_adx.padEnd(12)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${(r.np_pct != null ? (r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)' : '-').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -9296,6 +9403,18 @@
                     }
                 }
 
+                // --- Pair EMA13-EMA50 Gap x Pair ADX CROSS-TAB (May 24) ---
+                if (perf.pair_gap_pair_adx_crosstab && perf.pair_gap_pair_adx_crosstab.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Pair EMA13-EMA50 Gap x Pair ADX Cross-Tab\n');
+                    lines.push(`${'Dir'.padEnd(7)} ${'Pair Gap'.padEnd(18)} ${'Pair ADX'.padEnd(10)} ${'#'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)} ${'NP'.padEnd(10)} ${'Conf'}`);
+                    for (const r of perf.pair_gap_pair_adx_crosstab) {
+                        const confStr = Object.entries(r.by_confidence||{}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                        const npStr = `${r.never_positive||0} (${(r.never_positive_pct||0).toFixed(0)}%)`;
+                        lines.push(`${(r.direction||'').padEnd(7)} ${(r.gap_range||'').padEnd(18)} ${(r.pair_adx_range||'').padEnd(10)} ${String(r.trades).padEnd(5)} ${(r.win_rate+'%').padEnd(7)} ${('$'+((r.avg_pnl||0).toFixed(2))).padStart(9)} ${(((r.avg_pnl_pct||0) >= 0 ? '+' : '') + (r.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${('$'+((r.total_pnl||0).toFixed(2))).padStart(11)} ${npStr.padEnd(10)} ${confStr}`);
+                    }
+                }
+
                 // --- RSI x ADX CROSS-TAB ---
                 if (perf.rsi_adx_crosstab && perf.rsi_adx_crosstab.length > 0) {
                     lines.push(`\n${hr2}`);
@@ -10203,6 +10322,11 @@
                     const _xa = data.ema13_extension_adxdelta_crosstab;
                     _renderExtCrosstab(_xa.longs, 'ema13-ext-adxd-long-body', 'adx_delta');
                     _renderExtCrosstab(_xa.shorts, 'ema13-ext-adxd-short-body', 'adx_delta');
+                }
+                if (data.ema13_extension_pair_adx_crosstab) {
+                    const _xpa = data.ema13_extension_pair_adx_crosstab;
+                    _renderExtCrosstab(_xpa.longs, 'ema13-ext-pair-adx-long-body', 'pair_adx');
+                    _renderExtCrosstab(_xpa.shorts, 'ema13-ext-pair-adx-short-body', 'pair_adx');
                 }
 
                 // BTC Market Extension (May 14) — reuses pair-extension renderers with btc_extension as first cross-tab col
@@ -12527,6 +12651,43 @@
                     }).join('');
                 } else {
                     btcGapBtcAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                }
+
+                // Pair EMA13-EMA50 Gap × Pair ADX Cross-Tab (May 24 — pair-level counterpart of BTC version)
+                const pairGapPairAdxBody = document.getElementById('pair-gap-pair-adx-crosstab-body');
+                if (data.pair_gap_pair_adx_crosstab && data.pair_gap_pair_adx_crosstab.length > 0) {
+                    pairGapPairAdxBody.innerHTML = data.pair_gap_pair_adx_crosstab.map(r => {
+                        const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = r.win_rate >= 60 ? 'text-emerald-400' : r.win_rate >= 45 ? 'text-yellow-400' : 'text-red-400';
+                        const avgClass = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalClass = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgPct = r.avg_pnl_pct || 0;
+                        const avgPctStr = `${avgPct >= 0 ? '+' : ''}${avgPct.toFixed(3)}%`;
+                        const avgPctClass = avgPct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const confEntries = Object.entries(r.by_confidence || {}).sort((a, b) => b[1] - a[1]);
+                        const confBadges = confEntries.map(([c, n]) => `<span class="text-xs px-1 mx-0.5 rounded ${c === 'VERY_STRONG' ? 'bg-purple-700/40' : 'bg-blue-700/40'}">${c[0]}:${n}</span>`).join('');
+                        const npCount = r.never_positive || 0;
+                        const npPct = r.never_positive_pct || 0;
+                        const npClass = npPct >= 50 ? 'text-red-400' : npPct >= 25 ? 'text-amber-400' : 'text-gray-400';
+                        const gapColor = r.gap_range.startsWith('< ') || r.gap_range.startsWith('-') ? 'text-emerald-400' :
+                                         r.gap_range.includes('to +0.10') || r.gap_range.includes('to +0.20') ? 'text-yellow-400' :
+                                         r.gap_range.includes('+0.50') || r.gap_range.includes('+1.00') || r.gap_range.startsWith('> +') ? 'text-red-400' : 'text-cyan-400';
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 ${dirColor} font-medium">${r.direction}</td>
+                                <td class="px-3 py-2 font-medium ${gapColor}">${r.gap_range}</td>
+                                <td class="px-3 py-2 font-medium text-purple-400">${r.pair_adx_range}</td>
+                                <td class="px-3 py-2 text-center">${r.trades}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-3 py-2 text-right ${avgClass} font-medium">${formatUSD(r.avg_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right ${avgPctClass} font-medium">${avgPctStr}</td>
+                                <td class="px-3 py-2 text-right ${totalClass} font-medium">${formatUSD(r.total_pnl || 0)}</td>
+                                <td class="px-3 py-2 text-right text-xs ${npClass}">${npCount} (${npPct.toFixed(0)}%)</td>
+                                <td class="px-3 py-2 text-center">${confBadges}</td>
+                            </tr>`;
+                    }).join('');
+                } else {
+                    pairGapPairAdxBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                 }
 
                 // RSI x ADX Cross-Tab

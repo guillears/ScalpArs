@@ -1,5 +1,123 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (early morning) — W6 LONG multiplier demoted 2.0× → 1.0× (✗ HARMFUL gate triggered)
+
+### Change
+
+`pattern_cell_rules` W6 LONG entry: `inv_mult: 2.0 → 1.0`.
+W6 SHORT entry unchanged (still at 2.0×).
+
+### Evidence — W6 LONG cell broke under tonight's regime
+
+**Pre-ship cross-batch (May 21 ship entry):** 14 trades / **100% WR** /
++$298 net. Strongest single-cell winner in entire dataset at ship time.
+
+**Tonight's W6 LONG fires (8 trades, May 24 batch):**
+
+| ID | Pair | Peak | Close | At 2.0× actual | At 1.0× equiv |
+|---|---|---|---|---|---|
+| 33 | WLDUSDT | +0.40% | +0.40% | +$72 | +$36 |
+| 34 | ONDOUSDT | +0.42% | +0.42% | +$38 | +$19 |
+| 36 | PLAYUSDT | +0.10% | +0.10% | +$11 | +$6 |
+| 37 | PLAYUSDT | +0.10% | +0.10% | +$11 | +$6 |
+| **32** | **SUIUSDT** | **+0.16%** | **-0.45%** | **-$80** | -$40 |
+| **35** | **WLDUSDT** | **+0.17%** | **-0.79%** | **-$147** | -$73 |
+| **38** | **PLAYUSDT** | **0%** | **-0.51%** | **-$60** | -$30 |
+| **39** | **PLAYUSDT** | **+0.41%** | **-1.13%** | **-$120** | -$60 |
+| | **TOTAL** | | | **-$274 at 2.0×** | **-$137 at 1.0×** |
+
+Multiplier amplification cost: **$137 of pure incremental loss tonight.**
+
+### Why this triggers the demote
+
+CLAUDE.md May 4 verdict matrix:
+- ✗ HARMFUL: Total $ negative on N≥5 → revert to 1.0×
+
+W6 LONG tonight: N=8 / Total -$274 → **✗ HARMFUL**
+
+CLAUDE.md May 21 W6 ship locked tighter criterion:
+- "If WR drops below 60% on N≥10 fresh data → revert to 1.0× even if not
+  yet outright HARMFUL (the 100% cross-batch WR was the gate; significant
+  drift = pattern wasn't structural)"
+
+W6 LONG tonight: 50% WR on N=8 — below the 60% threshold even at smaller N
+than locked criterion. Magnitude (50% WR + $137 amplification cost) matches
+S-P1 SHORT demote precedent (May 18: 5-sample structural → broke at N=3 → demoted).
+
+### Structural identity with S-P1 demote (May 18)
+
+| Cell | Pre-ship cross-batch | Fresh batch break | Action |
+|---|---|---|---|
+| S-P1 SHORT (May 18) | 5-sample, 75% pool WR | 3 trades / 33% WR / -$381 | Demoted 2.0× → 1.0× |
+| **W6 LONG (May 24)** | **5-sample, 100% pool WR** | **8 trades / 50% WR / -$274** | **Demoted 2.0× → 1.0×** |
+
+Same evidence pattern, same break shape, same discipline action.
+
+### Why NOT define a new C10 pattern
+
+The 8 tonight W6 LONG trades share a tight entry signature (BTC ADX 22-26
++ BTC RSI 1h ≥60 + BTC trend gap +0.18 to +0.25%) but produce 50/50 mixed
+outcomes. The signature is NOT a clean Pattern C loser candidate:
+
+- Winners (4): peaked +0.10 to +0.42%, captured via trailing or TP
+- Losers (4): peaked 0 to +0.41%, retraced to -0.45 to -1.13%
+
+Same entry conditions, different post-entry behavior. This is regime-
+dependent W6 cell decay, NOT an entry signature problem. A C10 filter
+on this signature would block 50% winners — net negative.
+
+The right intervention is at the SIZING level (demote multiplier), not
+the ENTRY level (new filter).
+
+### W6 SHORT untouched
+
+W6 SHORT (BTC ADX ≥32) was shipped same date as W6 LONG with cross-batch
+25 trades / 100% WR / +$313. Tonight had no W6 SHORT fires. No evidence
+to demote SHORT side. Asymmetric action preserved.
+
+### Cell preserved in config for re-promotion
+
+W6 LONG stays in `pattern_cell_rules` at 1.0× rather than removed. Per
+CLAUDE.md May 4 convention (PAIR_55-60_22-25, SCORE_4 LONG, S-P1 SHORT
+all preserved as 1.0× post-demote):
+
+- Cell stays visible in Multiplier Cell Performance table for observation
+- Easy re-promotion (one config edit) if cross-batch evidence rebuilds
+- Maintains audit trail of "we tried this, it broke"
+
+### Pre-committed re-promotion criteria (locked NOW)
+
+At next ≥10-trade W6 LONG checkpoint (across multiple sessions):
+
+| Outcome | Action |
+|---|---|
+| N≥10 fresh, WR ≥70%, Total $ positive | Consider re-promote to **1.5×** (Phase 3 staging) |
+| N≥10 fresh at 1.5×, WR ≥75%, Total $ ≥ +$50 | Step up to 2.0× |
+| WR stays ≤55% on N≥10 | Keep at 1.0× permanently |
+| WR ≥60% but Total $ near zero | Hold at 1.0×, observe |
+
+### What this does NOT change
+
+- W6 SHORT: unchanged at 2.0× (no tonight evidence to revisit)
+- All other Pattern Cell Ship rules: unchanged
+- Pattern C/W trackers: unchanged (observation continues)
+- Pattern W tracker will show W6 LONG with appropriate verdict based on
+  ongoing data
+
+### Files changed
+
+- `trading_config.json` — single field `inv_mult: 2.0 → 1.0` on W6 LONG entry
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the W6 LONG demote with cross-batch evidence vs tonight's break
+2. To anchor the discipline precedent (matches S-P1 SHORT demote exactly)
+3. To explicitly REJECT defining C10 from same data (50% WR signature is
+   not a clean loser pattern; mechanism is at sizing level not entry level)
+4. To preserve W6 SHORT asymmetric treatment (no evidence to touch it)
+5. To lock the re-promotion criteria mechanical at next checkpoint
+
 ## May 24, 2026 (early morning, post-analysis) — ROLLBACK: C2 SHORT defensive rule removed pending deeper analysis
 
 ### Change

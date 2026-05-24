@@ -237,7 +237,7 @@
       {
         "pattern": "W6",
         "direction": "LONG",
-        "inv_mult": 2.0,
+        "inv_mult": 1.0,
         "lev_mult": 1.0
       },
       {

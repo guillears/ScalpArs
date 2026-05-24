@@ -261,6 +261,14 @@
         "lev_mult": 1.5
       },
       {
+        "pattern": "C2",
+        "direction": "SHORT",
+        "inv_mult": 1.0,
+        "lev_mult": 1.0,
+        "fixed_tp_pct": 0.1,
+        "fixed_sl_pct": -0.5
+      },
+      {
         "pattern": "UNMATCHED",
         "direction": "LONG",
         "inv_mult": 1.0,

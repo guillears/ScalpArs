@@ -1,5 +1,170 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (early morning) — Pattern Cell Ship rule: C2 SHORT defensive (TP +0.10 / SL -0.50, baseline sizing)
+
+### Change
+
+New entry appended to `pattern_cell_rules`:
+
+```json
+{"pattern": "C2", "direction": "SHORT",
+ "inv_mult": 1.0, "lev_mult": 1.0,
+ "fixed_tp_pct": 0.1, "fixed_sl_pct": -0.5}
+```
+
+Under the May 23 Option D lookup logic, when a SHORT trade matches C2:
+- C2 rule fires (matched + configured)
+- inv_mult/lev_mult stay at baseline (1.0×) — no multiplier amplification
+- Fixed TP at +0.10% locks micro-recoveries before reversal
+- Fixed SL at -0.50% caps loss tighter than default -0.80% SL
+
+Any co-matched W rules (W1/W2/W6 etc.) are blocked per Option C — the C2
+rule wins because C-presence-blocks-W when C rule exists.
+
+### Evidence base — May 23 4-trade C2 SHORT cluster (single-session)
+
+The session that drove this ship: BTC in 4hr uptrend (`btc_trend_gap_pct`
++0.28% to +0.36%), bot SHORTed against macro 4 times in one ~6-minute
+window. All 4 lost.
+
+| ID | Pair | C2 match | C2-co-matched W | Peak | Close | Pre-Option-D | Post-Option-D | With C2 rule (projected) |
+|---|---|---|---|---|---|---|---|---|
+| 28 | MTLUSDT | ✅ | W1+W6 | +0.23% | -0.47% | -$91 (2× mult) | -$45.69 (baseline) | **+$2 (TP catches +0.10%)** |
+| 29 | LTCUSDT | ✅ | none | 0% | -0.36% | n/a | -$35 (EMA13 cross) | ~-$35 (TP unreached, SL unreached) |
+| 30 | FETUSDT | ✅ | W1 | 0% | -0.55% | -$106 (2× mult) | -$53 (baseline) | **-$48 (SL cap at -0.50%)** |
+| 31 | 1000SHIBUSDT | ✅ | none | +0.02% | -0.27% | n/a | -$26 (EMA13 cross) | ~-$26 (TP unreached, SL unreached) |
+| | **TOTAL** | | | | | **-$205** | **-$159** | **~-$107** |
+
+C2 rule incremental save (vs Option D alone): **~$53 per this cluster.**
+Mostly comes from MTL's TP capture (+$48) and FET's tighter SL (+$5).
+
+### Common entry signature across the 4-trade cluster
+
+Every dimension lines up — this IS the C2 SHORT failure mode:
+
+- `entry_pattern_c2_match: True` (BTC EMA13 > EMA50, BTC above 4hr trend)
+- `entry_btc_trend_gap_pct: +0.28% to +0.36%` — BTC clearly above 4hr trend
+- `entry_btc_rsi_1h: 59-66` (elevated, rolling but still bullish 1h)
+- `entry_macro_trend: STRONG_BEAR` (5m bearish flicker)
+- `exit_btc_regime: CHOPPY_WEAK/FLAT/HEALTHY_BULL` (regime drift during trade)
+- `entry_range_position: 6.5 to 14.1` (deep range-bottom SHORTs)
+- `entry_rsi: 32-36` (deep oversold)
+- 3 of 4 closed via EMA13_CROSS_EXIT L1, peak ≈ 0 (Never Positive profile)
+
+**Mechanism:** bot SHORTs at the bottom of a 5m bearish flicker while BTC
+is structurally in a 4hr uptrend. Pair reverts to macro direction within
+1-3 candles. Trade exits via EMA13 cross with little to no peak captured.
+
+### Discipline acknowledgment — N=4 single-session evidence
+
+This is the standard "below locked promotion bar" ship discipline override:
+
+- **N=4 single-session** vs locked N≥15 multi-session cross-batch criterion
+- **No cross-batch evidence** — `entry_pattern_c2_match` column was only
+  added May 19; the deduped pool has 0 C2 records pre-May-23
+- All 4 trades in one ~6-minute window (clustered, not spread)
+- C2 LONG side NOT shipped — asymmetric ship pending separate evidence
+
+Counted as **8th locked-discipline override in 2 weeks** (per running
+tally — BTC ADX min LONG May 6, S-P2 N<8 May 11, SHORT min vol N<15 May
+19, RngPos×ADXΔ LONG N<15 May 19, btc_adx_min_short 20→18 May 19, BE
+0.20/0.10 May 20, BTC RSI 65-70 climax block May 23, **C2 SHORT defensive
+rule May 24**).
+
+### Why ship despite the override
+
+Three structural factors mitigate the thin evidence:
+
+1. **Mechanism is unambiguous.** C2 by design encodes "BTC in 4hr uptrend
+   + SHORT against macro." Tonight's 4/4 confirms the signature fires
+   reliably. The pattern code's design intent and the empirical outcome
+   agree — rare in the discipline-override history.
+2. **Treatment matches the C-cell paradigm.** Defensive rule with TP/SL
+   caps is structurally identical to how C4 LONG/SHORT, C8 LONG/SHORT,
+   and UNMATCHED LONG/SHORT shipped. We're not introducing a novel
+   mechanism — just extending a proven pattern.
+3. **Reversibility is one config line.** Drop the rule from
+   `pattern_cell_rules` if next batch shows TP firing too often on
+   trades that would have run further, or if cluster doesn't replicate.
+   Per-trade reversibility is at most the cost of the rule's per-trade
+   damage (~$25-50 vs baseline default exits).
+
+### Why NOT a filter (block entry entirely)
+
+User considered a filter and chose the defensive rule instead. Rationale:
+
+- Filter is irreversible per-trade (the trade never opens, can never
+  produce a winner)
+- Rule generates cross-batch C2 SHORT data that the filter would prevent
+- Filter is the right answer IF the cohort never produces winners — but
+  N=4 isn't enough to know that yet
+- Tonight's cluster had 1 of 4 trades reach peak ≥+0.10% (MTL at +0.23%) —
+  not zero. The TP capture is non-trivial.
+
+If after 2 weeks of the defensive rule we see:
+- TP fires ≤10% of C2 SHORT entries → upgrade to filter
+- TP fires 20%+ → keep rule, working as designed
+- Mixed (10-20%) → keep rule, default for safety
+
+### Interaction with existing rules and Option D
+
+Option D (shipped earlier May 23) already capped MTL-style downside by
+blocking W1+W6 multipliers on bare C2 match. The C2 rule layered on top:
+
+- **With C2 match but no C2 rule (current Option D behavior):** baseline
+  sizing + default exit chain (EMA13 cross, FAST_EXIT, trailing, -0.80% SL)
+- **With C2 match AND C2 rule (after this ship):** baseline sizing +
+  fixed TP +0.10 / fixed SL -0.50 fires before default exits
+
+The two changes compound:
+- Option D removes the multiplier amplification (caps damage at baseline 1×)
+- C2 rule adds upside capture (TP) + tighter downside cap (-0.50% vs -0.80%)
+
+Together they convert C2 SHORT from "uncontrolled loss with possible
+amplification" to "bounded loss at baseline sizing with micro-win capture."
+
+### Pre-committed revert criteria (locked NOW)
+
+At next ≥10-trade C2 SHORT checkpoint (across multiple sessions):
+
+| Outcome | Action |
+|---|---|
+| ≥10 C2 SHORTs across ≥2 sessions, WR ≤30%, TP fires ≤10%, Total $ ≤ -$200 | ✗ **UPGRADE TO FILTER** — cohort never produces wins, rule isn't capturing value, block entry entirely |
+| ≥10 C2 SHORTs, TP fires 20%+ of trades, Total $ improvement vs Option-D-only baseline ≥+$50 | ★ **KEEP** — rule capturing micro-recoveries as designed |
+| ≥10 C2 SHORTs, WR ≥50%, Total $ positive | ✗ **REVERT** — C2 pattern broke in current regime, drop the rule |
+| Cluster from May 23 doesn't replicate in 2 weeks (<5 C2 SHORTs total) | C2 regime-specific to tonight, hold rule, defer decision |
+| Adjacent Pattern C/W cells show degraded performance | Investigate spill-over effects before unilateral C2 changes |
+
+### What this does NOT change
+
+- All other Pattern Cell Ship rules unchanged (C1 SHORT 2× mult, C4/C8
+  fixed exits, W1-W6 multipliers, UNMATCHED LONG/SHORT)
+- Option D lookup logic unchanged
+- Pattern C/W observation trackers unchanged
+- Entry filters unchanged (C2 still produces an entry signal — the rule
+  only changes EXIT behavior on entry)
+- Multiplier cells (RSI×ADX) unchanged
+
+### Files changed
+
+- `trading_config.json` — single entry appended to `pattern_cell_rules`
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the 4-trade evidence base before it gets buried in cross-
+   batch noise — preserve the cluster signature and per-trade outcomes
+2. To anchor the discipline-override accounting (8th in 2 weeks) so
+   future-Claude can see the override frequency pattern
+3. To preserve the mechanism explanation (BTC 4hr uptrend + 5m bear
+   flicker + range-bottom SHORT) so future C2 deep dives don't re-derive
+4. To lock the pre-committed revert criteria so next checkpoint is
+   mechanical — UPGRADE to filter, KEEP, or REVERT based on observable
+   thresholds
+5. To explicitly document the asymmetric ship (SHORT only, LONG side
+   pending separate evidence) so future-Claude doesn't add a C2 LONG
+   rule by symmetry assumption
+
 ## May 23, 2026 (late evening) — Pattern Cell lookup: Option D strict-C-blocks-W (defang W mults on bare C match)
 
 ### Change

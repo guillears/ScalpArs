@@ -996,6 +996,44 @@
                     <div id="pattern-cell-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- Extension Multiplier Performance (May 24, 2026 — Pair Distance from EMA13 multiplier) -->
+                <div class="mt-6 pt-6 border-t border-amber-900/40">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 Extension Multiplier Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        Per-cell breakdown of Extension Multiplier rule impact (Pair Distance from EMA13 dimension).
+                        Source label = "EXT_{name}" (e.g. "EXT_L1b", "EXT_L1b+L2a"). HIGHER inv_mult wins on overlap.
+                        Verdict uses ★ WORKING / ⚠ DRAG / ✗ HARMFUL via Δ$ vs baseline.
+                        AvgPeak% + LosersPk≥0.20% columns flag BE-compatibility — cells whose losers peak under 0.20% can't be rescued by BE.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Source</th>
+                                    <th class="text-left px-2">Brief</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2">Inv</th>
+                                    <th class="text-right px-2">Lev</th>
+                                    <th class="text-right px-2">Eff</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Avg P&amp;L%</th>
+                                    <th class="text-right px-2" title="Average intra-trade peak P&amp;L%">AvgPk%</th>
+                                    <th class="text-right px-2">Total$</th>
+                                    <th class="text-right px-2">PF</th>
+                                    <th class="text-right px-2">Δ$ vs BL</th>
+                                    <th class="text-right px-2" title="Losers peaking ≥+0.20% (BE-protectable) / total losers">L≥0.20</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="extension-mult-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="15" class="py-3 text-center text-gray-500">No extension-multiplier trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="extension-mult-perf-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+
                 <!-- EMA13 Strict-Mode Performance (May 8, 2026 — tracks ema13_cross_requires_stack_flip toggle) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🛡️ EMA13 Strict-Mode Performance</h3>
@@ -4804,6 +4842,19 @@
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
+                        <!-- May 24: BTC 1h Slope MAX guard (higher-TF macro). Block late-stage steep-rising BTC LONGs. -->
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                            <span class="text-xs text-gray-500 w-32" title="Maximum BTC 1h EMA20 slope % (3h lookback) allowed for entry. Blocks late-stage steep-rising BTC LONG entries (mean-reversion zone). LONG: positive cap. SHORT: negative cap (mirror). 0 = disabled. May 24: shipped 0.15 LONG based on 14 trades in 0.15-0.20% cell at 21% WR / -$511.">Max BTC 1h Slope L:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.01" id="config-btc-1h-slope-max-long" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.15">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <span class="text-xs text-gray-500 ml-2">S:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.01" id="config-btc-1h-slope-max-short" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.0">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                        </div>
                         <!-- BTC ADX Direction — moved from the Macro Trend block into BTC Independent Filters
                              (Phase 1c Option B refactor, Apr 17). Works standalone regardless of
                              the BTC Global toggle. 3-sample confirmed: Rising BTC ADX > Falling for SHORTs. -->
@@ -5203,6 +5254,37 @@
                             </table>
                         </div>
                         <button type="button" onclick="addPatternCellRow()" class="mt-2 text-xs text-fuchsia-400 hover:text-fuchsia-300">+ Add rule</button>
+                    </div>
+
+                    <!-- Extension Multiplier Rules (May 24, 2026) — Pair Distance from EMA13 dimension -->
+                    <div class="mt-4 p-4 bg-amber-900/10 border border-amber-500/30 rounded">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-amber-300 font-semibold">🎯 Extension Multiplier Rules</span>
+                            <span class="text-xs text-gray-500">Pair Distance from EMA13 (`entry_dist_from_ema13_pct`)</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mb-3">
+                            Each rule applies a multiplier when the trade's entry extension falls in [ext_min, ext_max) AND optional sub-axis conditions hold.
+                            Leave Pair Vol Max / ADX Δ Max blank for no sub-condition.
+                            <span class="text-cyan-300">HIGHER wins</span> across multiple matching rules.
+                            Hard caps reuse RSI×ADX caps above.
+                        </p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead><tr class="text-gray-500">
+                                    <th class="text-left px-1">Name</th>
+                                    <th class="text-left px-1">Direction</th>
+                                    <th class="text-left px-1" title="Min entry_dist_from_ema13_pct (% from EMA13)">Ext Min</th>
+                                    <th class="text-left px-1" title="Max entry_dist_from_ema13_pct">Ext Max</th>
+                                    <th class="text-left px-1" title="Optional: require pair_volume_ratio < this. Blank = no condition.">Pair Vol Max</th>
+                                    <th class="text-left px-1" title="Optional: require adx_delta < this. Blank = no condition.">ADX Δ Max</th>
+                                    <th class="text-left px-1">Inv Mult</th>
+                                    <th class="text-left px-1">Lev Mult</th>
+                                    <th></th>
+                                </tr></thead>
+                                <tbody id="extension-mult-rules-body"></tbody>
+                            </table>
+                        </div>
+                        <button type="button" onclick="addExtensionMultRow()" class="mt-2 text-xs text-amber-400 hover:text-amber-300">+ Add rule</button>
                     </div>
 
                     <div class="mt-3 mb-2 px-4">
@@ -6714,6 +6796,25 @@
                 }
             }
 
+            // Extension Multiplier Performance (May 24, 2026)
+            const _emp1 = perf.extension_multiplier_performance || {};
+            const _empRows1 = _emp1.rules || [];
+            if (_empRows1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## Extension Multiplier Performance\n`);
+                lines.push(`${'Source'.padEnd(14)} ${'Dir'.padEnd(6)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'AvgPk%'.padEnd(9)} ${'Total$'.padEnd(11)} ${'PF'.padEnd(6)} ${'Δ$ vs BL'.padEnd(10)} ${'L≥0.20'.padEnd(8)} ${'Verdict'}`);
+                for (const r of _empRows1) {
+                    const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                    const dvbStr = (r.n === 0 || (r.effective_multiplier || 1.0) === 1.0) ? '—' : (r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2);
+                    const lk20 = `${r.loser_peak_ge_20_count || 0}/${r.loser_count || 0}`;
+                    lines.push(`${(r.source || '').padEnd(14)} ${(r.direction || '').padEnd(6)} ${((r.inv_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.lev_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.effective_multiplier || 1.0).toFixed(2)+'x').padEnd(7)} ${String(r.n || 0).padEnd(5)} ${(r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—').padEnd(7)} ${(r.n > 0 ? ((r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%') : '—').padEnd(10)} ${(r.n > 0 ? ((r.avg_peak_pct >= 0 ? '+' : '') + (r.avg_peak_pct || 0).toFixed(3) + '%') : '—').padEnd(9)} ${(r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—').padEnd(11)} ${(r.n > 0 ? pfStr : '—').padEnd(6)} ${dvbStr.padEnd(10)} ${lk20.padEnd(8)} ${r.verdict || ''}`);
+                }
+                if (_emp1.summary) {
+                    const s = _emp1.summary;
+                    lines.push(`\nBoosted: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)}`);
+                }
+            }
+
             // Entry Extension / Late Entry Risk (May 13 PM)
             const _ext1 = perf.ema13_extension_performance || {};
             const _extPvol1 = perf.ema13_extension_pvol_crosstab || {};
@@ -7872,6 +7973,7 @@
             lines.push(`  EMA Gap Threshold L: ${th.ema_gap_threshold_long || th.ema_gap_threshold}  |  S: ${th.ema_gap_threshold_short || th.ema_gap_threshold}  |  L Max: ${_gap58_max_l}  |  S Max: ${_gap58_max_s}`);
             lines.push(`  Pair EMA20 Slope Max L: ${th.momentum_ema20_slope_max_long !== undefined ? th.momentum_ema20_slope_max_long : 0}%  |  S: ${th.momentum_ema20_slope_max_short !== undefined ? th.momentum_ema20_slope_max_short : 0}%  (May 2: 0 = disabled)`);
             lines.push(`  BTC EMA20 Slope Max L: ${th.btc_ema20_slope_max_long !== undefined ? th.btc_ema20_slope_max_long : 0}%  |  S: ${th.btc_ema20_slope_max_short !== undefined ? th.btc_ema20_slope_max_short : 0}%  (May 2: 0 = disabled)`);
+            lines.push(`  BTC 1h Slope Max L: ${th.btc_1h_slope_max_long !== undefined ? th.btc_1h_slope_max_long : 0}%  |  S: ${th.btc_1h_slope_max_short !== undefined ? th.btc_1h_slope_max_short : 0}%  (May 24: 0 = disabled; LONG ship at 0.15)`);
             lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
             lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
             const rsiAdxL = th.rsi_adx_filter_long || '(none)';
@@ -8251,6 +8353,25 @@
                     if (_pcp2.summary) {
                         const s = _pcp2.summary;
                         lines.push(`\nSized cells: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)} | Pure-exit cells: ${s.fixed_exit_trades_n || 0} trades, total ${(s.fixed_exit_total_dollars >= 0 ? '+$' : '-$') + Math.abs(s.fixed_exit_total_dollars).toFixed(2)}`);
+                    }
+                }
+
+                // Extension Multiplier Performance (May 24, 2026) — mirror of clipboard export above
+                const _emp2 = perf.extension_multiplier_performance || {};
+                const _empRows2 = _emp2.rules || [];
+                if (_empRows2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## Extension Multiplier Performance\n`);
+                    lines.push(`${'Source'.padEnd(14)} ${'Dir'.padEnd(6)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'AvgPk%'.padEnd(9)} ${'Total$'.padEnd(11)} ${'PF'.padEnd(6)} ${'Δ$ vs BL'.padEnd(10)} ${'L≥0.20'.padEnd(8)} ${'Verdict'}`);
+                    for (const r of _empRows2) {
+                        const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                        const dvbStr = (r.n === 0 || (r.effective_multiplier || 1.0) === 1.0) ? '—' : (r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2);
+                        const lk20 = `${r.loser_peak_ge_20_count || 0}/${r.loser_count || 0}`;
+                        lines.push(`${(r.source || '').padEnd(14)} ${(r.direction || '').padEnd(6)} ${((r.inv_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.lev_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.effective_multiplier || 1.0).toFixed(2)+'x').padEnd(7)} ${String(r.n || 0).padEnd(5)} ${(r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—').padEnd(7)} ${(r.n > 0 ? ((r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%') : '—').padEnd(10)} ${(r.n > 0 ? ((r.avg_peak_pct >= 0 ? '+' : '') + (r.avg_peak_pct || 0).toFixed(3) + '%') : '—').padEnd(9)} ${(r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—').padEnd(11)} ${(r.n > 0 ? pfStr : '—').padEnd(6)} ${dvbStr.padEnd(10)} ${lk20.padEnd(8)} ${r.verdict || ''}`);
+                    }
+                    if (_emp2.summary) {
+                        const s = _emp2.summary;
+                        lines.push(`\nBoosted: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)}`);
                     }
                 }
 
@@ -10255,6 +10376,70 @@
                         const upCls = (s.boosted_uplift_dollars || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const fxCls = (s.fixed_exit_total_dollars || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         pcSum.innerHTML = `Sized cells: ${s.boosted_trades_n || 0} trades, actual ${fmt$(s.boosted_actual_dollars)}, simulated baseline ${fmt$(s.boosted_baseline_dollars)}, uplift <span class="font-semibold ${upCls}">${fmt$(s.boosted_uplift_dollars)}</span> &nbsp;|&nbsp; Pure-exit cells: ${s.fixed_exit_trades_n || 0} trades, total <span class="font-semibold ${fxCls}">${fmt$(s.fixed_exit_total_dollars)}</span>`;
+                    }
+                }
+
+                // Extension Multiplier Performance (May 24, 2026 — Pair Distance from EMA13 dimension)
+                if (data.extension_multiplier_performance) {
+                    const emp = data.extension_multiplier_performance;
+                    const tb = document.getElementById('extension-mult-perf-body');
+                    const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    const rules = emp.rules || [];
+                    if (tb) {
+                        if (!rules.length) {
+                            tb.innerHTML = '<tr><td colspan="15" class="py-3 text-center text-gray-500">No Extension Multiplier rules configured yet — see config panel above</td></tr>';
+                        } else {
+                            tb.innerHTML = rules.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const totalCls = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const avgCls = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const dvbCls = r.delta_vs_baseline_dollars > 0 ? 'text-emerald-400'
+                                    : r.delta_vs_baseline_dollars < 0 ? 'text-red-400'
+                                    : 'text-gray-500';
+                                const verdictColor =
+                                    r.verdict.includes('★') ? 'text-emerald-400 font-semibold'
+                                    : r.verdict.includes('✗') ? 'text-red-500'
+                                    : r.verdict.includes('DRAG') ? 'text-red-400'
+                                    : r.verdict.includes('⏳') ? 'text-gray-400 italic'
+                                    : r.verdict.includes('✓') ? 'text-blue-400'
+                                    : r.verdict.includes('Low N') ? 'text-amber-400'
+                                    : 'text-gray-500';
+                                const _multTier = (v) => v >= 2.5 ? 'text-red-400' : v >= 1.5 ? 'text-amber-300' : v === 1.0 ? 'text-gray-500' : 'text-gray-400';
+                                const invColor = _multTier(r.inv_multiplier || 1.0);
+                                const levColor = _multTier(r.lev_multiplier || 1.0);
+                                const effColor = _multTier(r.effective_multiplier || 1.0);
+                                const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                                const sourceLabel = `<span class="text-amber-300 font-mono font-semibold">${r.source}</span>`;
+                                const briefLabel = `<span class="text-gray-500 text-xs">${r.brief || ''}</span>`;
+                                const lk20 = `${r.loser_peak_ge_20_count || 0}/${r.loser_count || 0}`;
+                                const lk20Cls = (r.loser_count || 0) === 0 ? 'text-gray-500'
+                                    : (r.loser_peak_ge_20_count / r.loser_count) >= 0.60 ? 'text-emerald-400'
+                                    : 'text-amber-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1">${sourceLabel}</td>
+                                    <td class="px-2 py-1">${briefLabel}</td>
+                                    <td class="px-2 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right ${invColor}">${(r.inv_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${levColor}">${(r.lev_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${effColor} font-semibold">${(r.effective_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${r.n === 0 ? 'text-gray-500' : 'text-gray-200'}">${r.n}</td>
+                                    <td class="px-2 py-1 text-right">${r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${avgCls}">${r.n > 0 ? (r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${r.n > 0 ? (r.avg_peak_pct >= 0 ? '+' : '') + (r.avg_peak_pct || 0).toFixed(3) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${totalCls}">${r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—'}</td>
+                                    <td class="px-2 py-1 text-right">${r.n > 0 ? pfStr : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${dvbCls}">${r.n === 0 || r.effective_multiplier === 1.0 ? '—' : fmt$(r.delta_vs_baseline_dollars)}</td>
+                                    <td class="px-2 py-1 text-right ${lk20Cls}">${lk20}</td>
+                                    <td class="px-2 py-1 ${verdictColor} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                    const emSum = document.getElementById('extension-mult-perf-summary');
+                    if (emSum && emp.summary) {
+                        const s = emp.summary;
+                        const upCls = (s.boosted_uplift_dollars || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        emSum.innerHTML = `Boosted trades: ${s.boosted_trades_n || 0}, actual ${fmt$(s.boosted_actual_dollars)}, simulated baseline ${fmt$(s.boosted_baseline_dollars)}, uplift <span class="font-semibold ${upCls}">${fmt$(s.boosted_uplift_dollars)}</span>`;
                     }
                 }
 
@@ -15104,6 +15289,10 @@
                 // May 2: BTC EMA20 slope max
                 document.getElementById('config-btc-slope-max-long').value = config.thresholds.btc_ema20_slope_max_long !== undefined ? config.thresholds.btc_ema20_slope_max_long : 0.35;
                 document.getElementById('config-btc-slope-max-short').value = config.thresholds.btc_ema20_slope_max_short !== undefined ? config.thresholds.btc_ema20_slope_max_short : 0.35;
+                const _b1hMaxL = document.getElementById('config-btc-1h-slope-max-long');
+                if (_b1hMaxL) _b1hMaxL.value = config.thresholds.btc_1h_slope_max_long !== undefined ? config.thresholds.btc_1h_slope_max_long : 0;
+                const _b1hMaxS = document.getElementById('config-btc-1h-slope-max-short');
+                if (_b1hMaxS) _b1hMaxS.value = config.thresholds.btc_1h_slope_max_short !== undefined ? config.thresholds.btc_1h_slope_max_short : 0;
                 document.getElementById('config-ema-gap-5-20-enabled').checked = config.thresholds.ema_gap_5_20_enabled !== undefined ? config.thresholds.ema_gap_5_20_enabled : true;
                 document.getElementById('config-ema-gap-5-20-min-long').value = config.thresholds.ema_gap_5_20_min_long !== undefined ? config.thresholds.ema_gap_5_20_min_long : 0.15;
                 document.getElementById('config-ema-gap-5-20-min-short').value = config.thresholds.ema_gap_5_20_min_short !== undefined ? config.thresholds.ema_gap_5_20_min_short : 0.15;
@@ -15163,6 +15352,9 @@
                 // Refresh column highlight to match the loaded target mode.
                 if (typeof _refreshMultColumnHighlight === 'function') _refreshMultColumnHighlight();
                 // Pattern Cell Ship Rules (May 21 Phase 2)
+                if (typeof loadExtensionMultRules === 'function') {
+                    loadExtensionMultRules(config.thresholds.extension_multiplier_rules || []);
+                }
                 if (typeof loadPatternCellRules === 'function') {
                     loadPatternCellRules(config.thresholds.pattern_cell_rules || []);
                 }
@@ -15925,6 +16117,70 @@
             return rules;
         }
 
+        // Extension Multiplier Rules (May 24, 2026) — Pair Distance from EMA13 dimension
+        function addExtensionMultRow(name='', direction='LONG', extMin='0.40', extMax='0.60', pairVolMax='', adxDeltaMax='', invMult='2.0', levMult='1.0') {
+            const tbody = document.getElementById('extension-mult-rules-body');
+            if (!tbody) return;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="text" class="w-16 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs ext-name" value="${name}" placeholder="L1b"></td>
+                <td class="px-1 py-1">
+                    <select class="bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs ext-dir">
+                        <option value="LONG" ${direction==='LONG'?'selected':''}>LONG</option>
+                        <option value="SHORT" ${direction==='SHORT'?'selected':''}>SHORT</option>
+                    </select>
+                </td>
+                <td class="px-1 py-1"><input type="number" step="0.05" class="w-16 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs ext-min" value="${extMin}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.05" class="w-16 bg-white/5 border border-amber-500/40 rounded px-1 py-0.5 text-amber-300 text-center text-xs ext-max" value="${extMax}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.05" class="w-16 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-gray-300 text-center text-xs ext-pv" value="${pairVolMax}" placeholder="—"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" class="w-16 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-gray-300 text-center text-xs ext-adxd" value="${adxDeltaMax}" placeholder="—"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-16 bg-white/5 border border-fuchsia-500/40 rounded px-1 py-0.5 text-fuchsia-300 text-center text-xs font-semibold ext-inv" value="${invMult}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-16 bg-white/5 border border-fuchsia-500/40 rounded px-1 py-0.5 text-fuchsia-300 text-center text-xs font-semibold ext-lev" value="${levMult}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadExtensionMultRules(rules) {
+            const tbody = document.getElementById('extension-mult-rules-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!Array.isArray(rules)) return;
+            for (const r of rules) {
+                addExtensionMultRow(
+                    r.name || '',
+                    r.direction || 'LONG',
+                    String(r.ext_min != null ? r.ext_min : 0.40),
+                    String(r.ext_max != null ? r.ext_max : 0.60),
+                    r.pair_vol_max != null ? String(r.pair_vol_max) : '',
+                    r.adx_delta_max != null ? String(r.adx_delta_max) : '',
+                    String(r.inv_mult != null ? r.inv_mult : 2.0),
+                    String(r.lev_mult != null ? r.lev_mult : 1.0),
+                );
+            }
+        }
+        function collectExtensionMultRules() {
+            const rows = document.querySelectorAll('#extension-mult-rules-body tr');
+            const rules = [];
+            rows.forEach(row => {
+                const nm = row.querySelector('.ext-name').value.trim();
+                const d = row.querySelector('.ext-dir').value.trim();
+                if (!nm || !d) return;
+                const rule = {
+                    name: nm,
+                    direction: d,
+                    ext_min: parseFloat(row.querySelector('.ext-min').value) || 0,
+                    ext_max: parseFloat(row.querySelector('.ext-max').value) || 0,
+                    inv_mult: parseFloat(row.querySelector('.ext-inv').value) || 1.0,
+                    lev_mult: parseFloat(row.querySelector('.ext-lev').value) || 1.0,
+                };
+                const pvStr = row.querySelector('.ext-pv').value.trim();
+                const adStr = row.querySelector('.ext-adxd').value.trim();
+                if (pvStr !== '') rule.pair_vol_max = parseFloat(pvStr);
+                if (adStr !== '') rule.adx_delta_max = parseFloat(adStr);
+                rules.push(rule);
+            });
+            return rules;
+        }
+
 
         // Update investment unit display
         function updateInvestmentUnit() {
@@ -16106,6 +16362,8 @@
                     momentum_ema20_slope_max_short: safeFloat(document.getElementById('config-ema20-slope-max-short').value),
                     btc_ema20_slope_max_long: safeFloat(document.getElementById('config-btc-slope-max-long').value),
                     btc_ema20_slope_max_short: safeFloat(document.getElementById('config-btc-slope-max-short').value),
+                    btc_1h_slope_max_long: safeFloat((document.getElementById('config-btc-1h-slope-max-long')||{}).value || 0),
+                    btc_1h_slope_max_short: safeFloat((document.getElementById('config-btc-1h-slope-max-short')||{}).value || 0),
                     ema_gap_5_20_enabled: document.getElementById('config-ema-gap-5-20-enabled').checked,
                     ema_gap_5_20_min_long: safeFloat(document.getElementById('config-ema-gap-5-20-min-long').value),
                     ema_gap_5_20_min_short: safeFloat(document.getElementById('config-ema-gap-5-20-min-short').value),
@@ -16143,6 +16401,7 @@
                     rsi_adx_multiplier_hard_cap: safeFloat(document.getElementById('config-mult-hard-cap').value) || 2.0,
                     rsi_adx_multiplier_lev_hard_cap: safeFloat(document.getElementById('config-mult-lev-hard-cap').value) || 2.0,
                     pattern_cell_rules: (typeof collectPatternCellRules === 'function') ? collectPatternCellRules() : [],
+                    extension_multiplier_rules: (typeof collectExtensionMultRules === 'function') ? collectExtensionMultRules() : [],
                     entry_quality_score_filter_enabled: (document.getElementById('config-entry-quality-score-filter-enabled') || {}).checked === true,
                     entry_quality_score_block_max: parseInt((document.getElementById('config-entry-quality-score-block-max') || {}).value) || 1,
                     regime_change_exit_enabled: document.getElementById('config-regime-change-exit-enabled').checked,

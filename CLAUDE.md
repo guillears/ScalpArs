@@ -1,5 +1,709 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (late evening) — WATCHLIST: W6 SHORT lev-stack candidate (re-evaluate next batch)
+
+### Trigger
+
+Today's Pattern Cell Ship Performance table flagged a SHORT cell with strong
+metrics that suggested 3.0× effective via lev-stacking:
+
+| Source | Inv | Lev | Eff | N | WR | Avg | Total$ | Δ$ vs BL | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| C1 SHORT | 2.00× | **1.50×** | **3.00×** | 1 | 100% | +0.240% | +$57.66 | +$38.44 | ⚠ Low N |
+| W1+W2+W6 SHORT | 2.00× | 1.00× | 2.00× | 1 | 100% | +0.256% | +$40.91 | +$20.46 | ⚠ Low N |
+
+User question: should W1+W2+W6 SHORT also get lev-stacked to 3.0× (add lev_mult: 1.5)?
+
+### Why DEFER (locked watchlist, not ship)
+
+**Hard N gate failure.** N=1 is the lowest possible count. The W1+W2+W6 combo
+is a SINGLE trade today (FILUSDT, +$40.91, peak +0.56%). CLAUDE.md May 21
+lev-stacking discipline requires:
+
+| Gate | Required | Current |
+|---|---|---|
+| N (fresh) | ≥10 | **1** ✗ |
+| WR | ≥75% | 100% ✓ (N=1) |
+| Avg P&L % | ≥+0.15% | +0.256% ✓ |
+| Δ$ vs BL | ≥+$30 | +$20.46 ✗ |
+| BE-compatible | ≥60% losers peak≥0.20% | n/a (no losers) |
+| Multi-batch stable | ≥3 batches | **1 batch** ✗ |
+
+Fails on 3 of 5 explicit gates plus the multi-batch stability check.
+
+### Structural issue — no clean implementation
+
+The combo "W1+W2+W6" is NOT a single rule. The engine matches each of W1, W2,
+W6 SHORT independently and assembles the source label from all matched
+patterns. To lev-stack "the combo cell" would require either:
+
+1. **Adding lev_mult: 1.5 to ONE of W1/W2/W6 SHORT rules** — which then leaks
+   the lev boost to all single-pattern matches in that rule, not just the
+   triple-match cell.
+2. **A new combo-specific rule type** that only fires when ALL three patterns
+   match. The current pattern_cell_rules schema doesn't support this.
+
+Option 1 is the only clean implementation. Under that lens, the right question
+becomes: **which single W-rule deserves lev-stacking?**
+
+### Single-pattern cross-batch evidence (for "which to lev")
+
+Per CLAUDE.md prior entries:
+
+| Pattern | Cross-batch backing |
+|---|---|
+| W1 SHORT | 148 trades / 60.8% WR / 0.99× lift — REJECTED at 2× per CLAUDE.md May 21 (no edge over baseline) |
+| W2 SHORT | 100 trades / 64% WR / 1.04× lift — marginal but ✓ at 2× |
+| **W6 SHORT** | **25 trades / 100% WR / +$313** — strongest single-pattern SHORT signal in dataset |
+
+**If anything gets lev-stacked, it should be W6 SHORT alone.** W6's structural
+backing is the strongest. But even W6 SHORT fails the fresh-batch N≥10 gate
+under live Phase 1 engine path.
+
+### Today's W-SHORT roster (for context)
+
+| Pair | Source | $ | Outcome |
+|---|---|---|---|
+| TONUSDT | W1+W6 | +$12 | Small W (now blocked by new BTC 1h slope filter — irrelevant) |
+| 1000PEPEUSDT | W6 | −$43 | NP loss (blocked by new filter) |
+| FETUSDT | W1 | −$53 | NP loss (blocked) |
+| MTLUSDT | W1+W6 | −$91 | Loss (blocked) |
+| DASHUSDT | C1 | +$58 | W (kept) — already lev-stacked at 3.0× |
+| **FILUSDT** | **W1+W2+W6** | **+$41** | **W (kept)** — the cell in question |
+
+Under the new SHORT 1h-slope filter (shipped same session), 4 of 6 W-SHORT
+trades are blocked. The surviving 2 (DASH, FIL) are already in C1 (DASH) or
+W1+W2+W6 (FIL). The FILUSDT trade is the only N=1 evidence for the candidate
+cell.
+
+### Pre-committed re-evaluation gates at next ≥30-SHORT checkpoint
+
+Re-open shipping discussion for W6 SHORT lev-stack (1.5× lev → 3.0× effective)
+if at next checkpoint ALL hold:
+
+1. W6 SHORT cell shows **N ≥ 10** fresh trades post-deploy
+2. WR ≥ 75% across those trades
+3. Avg P&L % ≥ +0.20%
+4. Δ$ vs BL ≥ +$50 (multiplier extracting real boost)
+5. **At least 3 fresh dates direction-consistent** (cross-batch stability check
+   per CLAUDE.md May 21 lev-stacking discipline)
+6. BE-compatible: ≥60% of W6 SHORT losses (if any) peak ≥+0.20%
+7. **No 1-batch outliers** — if a single batch drives >50% of total $, defer
+
+If ALL 7 pass → ship `lev_mult: 1.5` on W6 SHORT rule only (NOT W1 or W2,
+since their cross-batch backing is weaker per CLAUDE.md May 21 rejection of
+SHORT W1 multiplier).
+
+If only 4-6 pass → hold one more batch.
+
+If 3 or fewer pass → drop from watchlist permanently (the May 18 S-P1 SHORT
+demote precedent: 5-sample structural → broken at N=3 → demoted. Same risk
+profile if rushed).
+
+### Why C1 SHORT at 3.0× is NOT a counter-argument
+
+C1 SHORT was lev-stacked May 21 PM when it had **27 cross-batch trades / 78%
+WR / +$0.76 per trade**. That's a discipline-override with substantial
+backing. W1+W2+W6 SHORT at N=1 is structurally a different evidence
+profile — the precedent doesn't justify expanding the override.
+
+### Files changed
+
+- `CLAUDE.md` — this watchlist entry only. No config / engine changes.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The locked re-evaluation criteria so next checkpoint decision is mechanical
+2. The structural insight that "lev-stack the W1+W2+W6 combo cell" doesn't
+   have a clean implementation — must pick a single rule to lev (W6 best
+   candidate)
+3. The S-P1 SHORT cautionary precedent (rushed lev-stack at low N → demote)
+4. The honest acknowledgment that the FILUSDT N=1 trade looks great but is
+   insufficient evidence regardless
+
+If at next checkpoint W6 SHORT accumulates the N≥10 fresh evidence AND the
+combo-cell-FIL-style trades keep working, ship W6 SHORT at lev 1.5×. Until
+then, defer.
+
+## May 24, 2026 (late evening) — `btc_1h_slope_max_short: 0.10` SHIPPED + SHORT semantics fix
+
+### Change
+
+- `btc_1h_slope_max_short`: 0.0 → **0.10** (`trading_config.json`)
+- `services/trading_engine.py` BTC_1H_SLOPE_MAX_GATE: **SHORT logic reversed**.
+  Was `slope < -max` (blocked SHORTs in falling BTC — backward). Now `slope > max`
+  for BOTH directions (intuitive: max = upper bound on BTC strength a same-direction
+  entry tolerates).
+
+### Why the semantics fix was needed
+
+The original SHORT logic (`slope < -max`) blocked SHORTs in steeply FALLING BTC —
+exactly the regime SHORTs SHOULD trade. Cross-batch evidence (and today's batch)
+shows the OPPOSITE failure mode: SHORTs into RISING BTC (countertrend) are
+catastrophic.
+
+Unified semantics now: both LONG and SHORT blocked when `BTC 1h slope > max`. The
+filter prevents same-direction entries while BTC is over-extending in the wrong
+direction.
+
+### Cross-batch evidence (active window May 22+, SHORT N=22)
+
+| BTC 1h Slope bucket | N | WR | Total $ | NP rate |
+|---|---|---|---|---|
+| ≤-0.20 (falling hard) | 2 | 100% | +$99 | 0/2 ★ |
+| -0.10 to 0 | 9 | 67% | -$157 | 2/9 mixed |
+| 0 to 0.10 | 5 | 100% | +$108 | 0/5 ★ kept zone |
+| **>0.10** | **6** | **17%** | **-$236** | **3/6 NP ✗** ← BLOCKED |
+| (4 of the 6 are ≥+0.30 = 0% WR / -$205) | | | | |
+
+Threshold sweep:
+
+| threshold | Blocks | Saved $ | Keeps WR | Cuts |
+|---|---|---|---|---|
+| > 0.0 (very aggressive) | 11 | +$128 | 73% | cuts winners |
+| > **+0.10** ★ | **6** | **+$236** | **81%** | 1 small winner (TON +$12) |
+| > +0.20 | 6 | +$236 | 81% | same |
+
++0.10 is the clean cliff. The 0-0.10 zone is a 100% WR winner zone that must NOT
+be cut. The >0.10 zone is the structural loser.
+
+### Discipline acknowledgment
+
+**N=6 in blocked zone, below locked N≥10 promotion bar.** Same evidence-strength
+as today's earlier ship discipline overrides:
+
+- Mechanism is symmetric to today's LONG `btc_1h_slope_max_long: 0.15` ship —
+  same structural argument, opposite direction
+- Adjacent kept zone (0 to +0.10) is clean 100% WR / N=5 ★
+- Direction-consistent: all 4 trades at slope ≥+0.30 are NP/loss
+- Today's confirmation: 6 of 8 SHORTs in batch had slope >0.10, only 1 small win
+
+Counted as **10th locked-discipline override in 2 weeks**.
+
+### Today's batch impact
+
+| Pair | BTC 1h slope | Effect |
+|---|---|---|
+| TONUSDT | +0.221 | ✗ BLOCKED (was +$12 small win — cost) |
+| 1000PEPEUSDT | +0.221 | ✗ BLOCKED (rescues -$43 loss) |
+| 1000SHIBUSDT | +0.445 | ✗ BLOCKED (rescues -$26) |
+| FETUSDT | +0.445 | ✗ BLOCKED (rescues -$53) |
+| LTCUSDT | +0.445 | ✗ BLOCKED (rescues -$35) |
+| MTLUSDT | +0.454 | ✗ BLOCKED (rescues -$91) |
+| DASHUSDT | -0.394 | ✓ KEPT (+$58 winner survives) |
+| FILUSDT | -0.394 | ✓ KEPT (+$41 winner survives) |
+
+**Net today: -$137 → +$99** (+$236 swing). 6 trades blocked, 1 small winner cut.
+
+### Pre-committed revert criteria at next ≥30-SHORT checkpoint
+
+| Outcome | Action |
+|---|---|
+| BTC 1h slope >+0.10 SHORT (obs logs) ≥55% WR on N≥10 fresh | REVERT to 0.0 |
+| Zone stays ≤30% WR on N≥10 | LOCK at 0.10 |
+| Kept zone (≤+0.10) drops below 60% WR on N≥10 | Investigate (don't change filter yet) |
+| `[BTC_1H_SLOPE_MAX_GATE]` SHORT count = 0 across 100+ trades | Filter dormant — investigate |
+
+### Watchlist (S-A and S-B multiplier candidates — DEFERRED)
+
+The cross-batch SHORT cells reviewed alongside this ship:
+
+- **S-A** (BTC RSI 30-35 × BTC ADX ≥35): N=4, 75% WR, +$68 — would have 2 of its
+  4 matches CUT by this filter (TON, 1000PEPE). Collapses to S-B subset.
+- **S-B** (BTC Gap ≤-0.25% × BTC ADX ≥35): N=4 post today, 100% WR, +$197, 2
+  dates. Survives this filter (DASH, FIL have slope -0.394).
+
+Neither shipped at multiplier — both fail N≥30 gate. After this filter ships,
+S-B remains the multiplier watchlist candidate. Re-evaluate at next ≥30-SHORT
+checkpoint.
+
+### Files changed
+
+- `trading_config.json` — single field flip
+- `services/trading_engine.py` — SHORT branch logic + comment
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The semantics fix (the old SHORT branch was structurally wrong)
+2. The cross-batch evidence + threshold sweep showing +0.10 is the right cliff
+3. The N=6 discipline override (10th in 2 weeks)
+4. Locked revert gates for next checkpoint
+5. The S-A/S-B watchlist deferral with explanation of why the filter changes
+   the multiplier picture
+
+## May 24, 2026 (late afternoon) — Extension Multiplier dimension SHIPPED (L1b + L2a + L2b at 2.0× investment)
+
+### What ships
+
+NEW multiplier dimension: Pair Distance from EMA13. Sister to the existing
+RSI×ADX and Pattern Cell Ship dimensions. Three rules active at 2.0× investment:
+
+| Rule | Direction | Condition | Inv Mult |
+|---|---|---|---|
+| **L1b** | LONG | Ext +0.40 to +0.60% | 2.0× |
+| **L2a** | LONG | Ext +0.40-0.60 × PairVol<0.95 | 2.0× |
+| **L2b** | LONG | Ext +0.40-0.60 × ADXΔ<0.3 | 2.0× |
+
+Source labels: `EXT_L1b`, `EXT_L1b+L2a`, `EXT_L1b+L2b`, `EXT_L1b+L2a+L2b`
+(when multiple rules match the same trade). HIGHER inv_mult wins.
+
+### Cross-batch evidence (active config window May 22+, post 3-LONG-filter regime)
+
+| Cell | Cross-batch N | WR | Avg P&L % | Total $ | Dates | BE-compat |
+|---|---|---|---|---|---|---|
+| L1b Ext +0.40-0.60% | 12 | 83% | +0.22% | +$256 | 2 | ✓ no NPs |
+| L2a × PairVol<0.95 | 8 | 75% | +0.22% | +$165 | 2 | ✓ no NPs |
+| L2b × ADXΔ<0.3 | 3 | 100% | +0.98% | +$274 | 1 | ✓ no losers |
+
+POST today's 3-LONG-filter ship (BTC 1h slope max 0.15, Score≥2, RngPos≤98%),
+the Extension +0.40-0.60% cohort is structurally clean — the new filters cut
+the NP losers that previously made this band BE-incompatible.
+
+### Discipline acknowledgment
+
+**All 3 cells fail the locked N≥30 gate at ship.** L1b is the closest (N=12,
+60% short). Operator-directed override accepting:
+
+1. **In-sample bias** — these cells were derived FROM the May 22-24 active
+   window data. Forward expectation should haircut by 30-50%.
+2. **Single-date driver** — most of L2b's evidence is May 23 (3 trades). L3
+   (BTC 1h slope -0.30 to -0.20) and L4 (BTC Gap +0.10-0.15 × ADX 30-35)
+   were rejected because they were ALSO the same 3 May 23 trades.
+3. **Pattern C overlap risk** — Extension multiplier fires AFTER Pattern
+   Cell Ship rule lookup, but the same trade may also match Pattern C/W.
+   Conflict resolution: Pattern Cell rule wins (higher priority), Extension
+   is only consulted in the RSI×ADX fallback path. So trades matching a
+   pattern with active rule won't get Extension multiplier on top.
+
+Count: **9th locked-discipline override in 2 weeks** (per running tally —
+BTC ADX min LONG May 6, S-P2 N<8 May 11, SHORT min vol N<15 May 19,
+RngPos×ADXΔ LONG N<15 May 19, btc_adx_min_short 20→18 May 19, BE 0.20/0.10
+May 20, BTC RSI 65-70 climax block May 23, C2 SHORT defensive rule May 24,
+**Extension multiplier 2.0× May 24**).
+
+### Hard cap interaction
+
+Effective multiplier capped at `rsi_adx_multiplier_hard_cap` (2.0× default).
+A trade matching all 3 rules (L1b + L2a + L2b) still gets 2.0× — HIGHER
+wins, not multiplied. So compound matches add NOTHING beyond what L1b
+alone provides. The L2a and L2b rules exist for ATTRIBUTION (so the source
+label tells us which sub-axes matched), not for compound boost.
+
+### Conflict resolution (within open_position candidates list)
+
+Engine builds candidates list in order:
+1. Pair-level RSI×ADX multiplier
+2. BTC-level RSI×ADX multiplier
+3. **Extension multiplier (NEW)**
+
+Then HIGHER `_score_candidate()` wins (effective inv × lev under "both"
+mode, inv alone under "investment" mode). Currently in "investment" mode
+so inv_mult comparison only.
+
+Pattern Cell rule wins OVERRIDE this entirely — Pattern fires before
+the candidates list is consulted. Extension never fires on Pattern-matched
+trades.
+
+### Engineering scope
+
+| File | Change | LOC |
+|---|---|---|
+| `config.py` | `extension_multiplier_rules: List = []` + evidence comment | ~25 |
+| `trading_config.json` | 3 rule entries with defaults | ~28 |
+| `services/trading_engine.py` | `_lookup_extension_multiplier` helper + integration in candidates list | ~75 |
+| `main.py` | `_compute_extension_multiplier_performance` + payload + empty fallbacks | ~180 |
+| `templates/index.html` | UI config panel + analytics table + JS + 2 text-exports + load/save handlers | ~250 |
+| `CLAUDE.md` | This entry | ~110 |
+
+Total: ~670 LOC across 6 files.
+
+### Analytics surface — 🎯 Extension Multiplier Performance
+
+New table in dashboard mirroring Pattern Cell Ship Performance:
+- Source | Brief | Dir | Inv | Lev | Eff | N | WR% | Avg P&L% | AvgPk% | Total$ | PF | Δ$ vs BL | L≥0.20 | Verdict
+- Verdict: ★ WORKING / ✓ Marginal / ⚠ DRAG / ✗ HARMFUL / ⚠ Low N / ⏳ No trades yet
+- L≥0.20 column tracks BE-compatibility (% of losers peaking ≥+0.20% — BE can rescue these)
+
+Both text-export sites updated (`## Extension Multiplier Performance` section).
+
+### Pre-committed revert criteria at next ≥30-trade LONG checkpoint
+
+Per-rule verdict applied via the analytics table:
+
+| Rule | ★ KEEP | ⚠ DROP to 1.5× | ✗ REVERT to 1.0× |
+|---|---|---|---|
+| L1b | WR ≥70% AND Δ$ ≥+$30 on N≥10 | WR 60-70% OR Δ$ -$1 to $30 | Total $ negative on N≥5 |
+| L2a | WR ≥75% AND Δ$ ≥+$20 on N≥8 | WR 60-75% | Total $ negative on N≥5 |
+| L2b | WR ≥75% AND Δ$ ≥+$15 on N≥5 | WR 60-75% | Total $ negative on N≥5 |
+
+If L1b reverts, L2a/L2b auto-irrelevant (subsets). If L2a/L2b show
+materially better Δ$ than L1b alone, consider tightening L1b to require
+the sub-axis condition.
+
+### What this does NOT do
+
+- Does NOT touch SHORT side — no candidates passed validation (S1-S4
+  cross-batch were all negative net). SHORT-side equivalent stays empty.
+- Does NOT change exit logic — same BE 0.10, FAST_EXIT L1/L2, trailing,
+  SL -0.70%, EMA13 cross strict, etc.
+- Does NOT interact with Pattern Cell Ship rules at the same trade —
+  Pattern wins, Extension only fires when no Pattern rule matched.
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The 3-cell ship with explicit N-gate override accounting
+2. The conflict resolution rule (Pattern wins over Extension; HIGHER
+   wins within Extension)
+3. The locked revert criteria per rule (mechanical at next checkpoint)
+4. The decision to leave SHORT side empty (no validated cells)
+5. The L2a/L2b "attribution only" rationale — they don't compound with
+   L1b under the hard cap, they identify which sub-axis matched
+
+If at next ≥30-LONG checkpoint L1b reverts to 1.0×, the entire dimension
+is effectively dormant (L2a/L2b are subsets). If L1b holds, evaluate
+whether the sub-axis cells (L2a/L2b) materially outperform — if so,
+tighten L1b's base condition. If not, keep all 3 at 2.0× for attribution
+clarity.
+
+## May 24, 2026 (afternoon) — W4 LONG fixed TP+SL shipped (treatment-decoupled W cell)
+
+### Change
+
+`pattern_cell_rules` W4 LONG entry: added `fixed_tp_pct: 0.10` and
+`fixed_sl_pct: -0.50` on top of the existing `inv_mult: 1.0, lev_mult: 1.0`.
+The W4 SHORT entry is unchanged (still at `inv_mult: 2.0`).
+
+### Cross-batch evidence (active config window May 22+, dedup pool)
+
+| Direction | N | WR | Avg $ | Total $ |
+|---|---|---|---|---|
+| **W4 LONG** | **12** | **41.7%** | **-$24.45** | **-$293.34** ★ clean loser |
+| W4 SHORT | 1 | 100% | +$13.96 | +$13.96 (thin) |
+
+W4 LONG is a structural loser cohort cross-batch:
+- 12 trades, 41.7% WR — well below the 60% baseline LONG WR
+- -$293 total — 44% of the W-only LONG disaster (-$657 across 21 trades)
+- Today's W4 LONG: 7 trades / 29% WR / -$222 / 33% NP rate
+- Pattern signature ("Pullback aligned" — designed as W=winner) but
+  empirically behaving as a Pattern C loser
+
+### Mechanism — treatment-decoupling
+
+Per CLAUDE.md May 21 treatment-decoupling rule:
+
+> Pattern code is the SIGNATURE; treatment is determined by cross-batch
+> empirical behavior. C-tagged cells can carry W treatment if cross-batch
+> shows winning behavior. W-tagged cells can carry C treatment if losing.
+
+W4 LONG is the **second W-tag cell to receive C-treatment** (first was
+W1 LONG, shipped CLAUDE.md May 21 PM with same +0.10/-0.50 exits at
+N=5 / 20% WR / -$22/tr).
+
+### What this changes operationally
+
+Engine logic at `_lookup_pattern_cell_rule`:
+- Trade matches W4 LONG signature at entry → rule fires
+- `inv_mult: 1.0` keeps base sizing (no investment amplification)
+- `fixed_tp_pct: 0.10` → exits at +0.10% net once peak ≥ +0.10%
+- `fixed_sl_pct: -0.50` → caps loss at -0.50% (vs default -0.70% main SL)
+
+Co-matched W rules (W1, W2, W6 multipliers) — under Option C
+(CLAUDE.md May 23) when both W rules and C-style exit rules are
+configured for the same trade, the C-style exits take priority on the
+losing side, while multipliers can still apply if also configured. For
+W4 LONG specifically, the fixed exits override any default-chain
+behavior on the matched-W4-LONG cohort.
+
+### Expected per-batch impact
+
+Per-trade rescue from PFS-style fix:
+- 10 estimated NP-style W4 trades per ~50-trade LONG batch
+- Save ~$10/trade by capping loss at -0.50% vs natural death at -1.08% trough
+- ~$80-120 per batch incremental positive impact
+
+This stacks on top of the 3 LONG entry filters shipped today
+(slope > +0.15, Score ≤ 1, RngPos ≥ 98%) and the BTC 1h slope cap.
+Most W4 LONG losers may be cut at entry by the BTC 1h slope filter
+(W4 fires on bullish setups, often coincident with late-cycle BTC
+slope). Realistic NET incremental save ~$30-60 after filter overlap.
+
+### Pre-committed revert criteria at next ≥30-LONG checkpoint
+
+| Outcome | Action |
+|---|---|
+| W4 LONG cohort shows ≥5 trades with WR ≥ 60% AND Total $ positive | Drop fixed exits — cohort recovered organically under new filter stack |
+| TP fires ≤ 20% of W4 LONG trades AND SL fires ≤ 30% | Exits not catching the cohort — revert |
+| Cohort still ≤45% WR with positive net (TP saves outweigh winner cuts) | KEEP — structural rescue working |
+| Cohort WR drops further with negative net | KEEP — defensive mechanism even more justified |
+| Single trade Δ$ vs baseline ≤ -$30 (winner cut) | Investigate — possibly TP too tight at +0.10% |
+
+### Asymmetric treatment preserved
+
+W4 SHORT (currently inv_mult: 2.0) is **unchanged**. CLAUDE.md May 24
+asymmetric ship treatment rule: when LONG side requires
+defensive-cell treatment and SHORT side shows winner behavior, ship
+asymmetrically. SHORT data is thin (N=1) but doesn't warrant the same
+defensive treatment as LONG.
+
+### Conflict check (Option C resolution)
+
+If a trade matches both C-rule-with-exits AND W4 LONG-with-exits
+(e.g., trade matches C4 AND W4):
+- C-rules take priority over W-rules in pattern_cell_rule lookup
+- W4 LONG exits only fire when C4/C8/etc. rules don't match
+- No double-firing risk — the engine's first-match-wins logic prevents it
+
+For trades matching W4 LONG AND a W multiplier (e.g., W4+W6):
+- Multiplier from W6 still applies (1.0x per current config, after
+  the May 24 W6 LONG demote)
+- W4 LONG fixed exits fire on top
+- No conflict between sizing and exit mechanisms
+
+### Files changed
+
+- `trading_config.json` — single entry updated in `pattern_cell_rules`
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+To anchor:
+1. The cross-batch evidence (N=12 / 41.7% WR / -$293) that justified the ship
+2. The treatment-decoupling rationale (W-tag with C-treatment, mirror of W1 LONG)
+3. The asymmetric treatment (LONG only, SHORT untouched)
+4. The locked revert gates at next ≥30-LONG checkpoint
+5. The expected incremental impact (modest ~$30-60/batch after filter overlap)
+6. The Option C conflict resolution (no double-firing with C-rule matches)
+
+If at next batch the W4 LONG cohort recovers above 60% WR after the
+3 entry filters do their work, this rule reverts cleanly. If it
+continues at ≤45% WR, the fixed exits cap the damage and ship is
+validated.
+
+## May 24, 2026 (afternoon) — WATCHLIST: 6-pair blacklist candidates (SUI, TAO, TON, COS, PLAY, ONDO)
+
+### Today's per-pair LONG performance
+
+The 6 pairs that drove most of today's LONG loss:
+
+| Pair | N today | WR today | Tot$ today | Notes |
+|---|---|---|---|---|
+| ONDOUSDT | 9 | 33% | **-$264** | Largest single-pair LONG loss |
+| COSUSDT | 6 | 33% | **-$219** | High ATR (avg 1.28%), large swings |
+| PLAYUSDT | 4 | 50% | -$157 | Mixed; -$120 worst trade |
+| WLDUSDT | 3 | 33% | -$158 | -$146 worst trade (single biggest LONG loss) |
+| TAOUSDT | 3 | 0% | -$132 | 3/3 losers |
+| SUIUSDT | 1 | 0% | -$80 | Single trade — N=1 |
+
+### Cross-batch context (active config window May 22+ deduped pool, LONG only)
+
+Per-pair per CLAUDE.md May 12 dedup methodology:
+
+| Pair | Cross-batch N | Cross-batch WR | Total $ |
+|---|---|---|---|
+| TAOUSDT | 26 | 38.5% | -$481 |
+| SUIUSDT | 24 | 41.7% | -$323 |
+| ONDOUSDT | 23 | 56.5% | -$247 |
+| TONUSDT | 15 | 60.0% | -$314 |
+| COSUSDT | 6 | 33.3% | -$219 |
+| PLAYUSDT | 7 | 42.9% | -$226 |
+
+Sum: **101 trades, ~47% WR, -$1,810 cross-batch** on these 6 pairs.
+
+### Why DEFER blacklist ship (despite the magnitude)
+
+Per CLAUDE.md May 24 deep-dive on the volume hypothesis: **these 6 pairs do NOT
+share a common volume profile**. The "BL pairs vs non-BL at same volume bucket"
+comparison showed non-BL pairs at $200-500M win at +$3.05/trade while BL pairs
+at the same volume lose at -$29.57/trade. **The cohort shares the bot's signal
+quality, not pair character.**
+
+CLAUDE.md May 24 conclusion: "Pair blacklisting IS treating the symptom. You'd
+blacklist forever — replace these 6 with the next 6 high-frequency pairs
+(HYPER, 币安人生, SAHARA, BU, ICP, DOGS in the cross-batch table) and you'd
+be back here in 2 batches."
+
+### Locked promotion gate at next ≥30-LONG-trade post-deploy checkpoint
+
+The 3 LONG entry filters shipped today (slope > +0.15, Score ≤ 1, RngPos ≥ 98)
+PLUS the BTC 1h Slope cap should structurally cut most of the BTC-late-cycle
+trades that triggered the bot to take SUI/TAO/TON/COS/PLAY/ONDO LONGs.
+
+**Evaluate at next batch:**
+
+| Outcome | Action |
+|---|---|
+| Combined 6-pair LONGs in next batch: WR ≥ 55% AND Avg P&L % ≥ 0% | ★ DROP from watchlist — filters resolved the problem |
+| 6-pair WR ≤ 35% on N ≥ 10 AND Tot $ ≤ -$150 | Per CLAUDE.md May 3 gate: ≥6 trades + WR ≤25% multi-batch → blacklist permanently |
+| Mixed (40-55% WR or N<10) | Hold on watchlist one more batch |
+| Single pair (e.g. ONDOUSDT) shows ≥6 fresh trades at ≤25% WR alone | Surgical single-pair blacklist (less aggressive than full 6-pair list) |
+
+### Pre-committed blacklist add criteria (per-pair, locked)
+
+If at next checkpoint ANY of these 6 pairs individually shows:
+- N ≥ 6 fresh trades
+- WR ≤ 25%
+- Total $ ≤ -$80
+
+→ Add ONLY that pair to `pair_blacklist`. NOT all 6 at once. Surgical additions
+preserve the option to re-evaluate as filters mature.
+
+### What this watchlist does NOT do today
+
+- **Does NOT ship blacklist today.** The 3 LONG filters shipped today were
+  designed to catch this exact cohort upstream (high-BTC-1h-slope entries
+  on these pairs). Ship them first, measure forward, then surgical-blacklist
+  any survivors at next checkpoint.
+- **Does NOT pre-block any pair.** The filter-overlap analysis already showed
+  the slope filter catches ~67% of these 6 pairs' losses (16 of 23 BL-pair
+  trades in cut zone of slope > +0.15).
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The 6-pair cohort identification (today + cross-batch totals)
+2. The structural argument AGAINST simple blacklist (volume hypothesis rejected)
+3. The locked per-pair promotion gates for next checkpoint
+4. The hypothesis to test: "did the 3 LONG filters + BTC 1h Slope cap fix the
+   symptom or just paper over it?" — answer at next batch via these gates
+
+If at next batch ONDOUSDT or TAOUSDT continues showing ≥6 LONGs at ≤25% WR
+(after the new filters are live), the surgical single-pair blacklist ships
+mechanically. If the filters successfully reroute around these pairs, the
+watchlist drops cleanly.
+
+## May 24, 2026 (afternoon) — WATCHLIST: SHORT-only BTC Trend Filter — cross-batch DEFERRED
+
+### Trigger
+
+Today's batch (47L + 8S, -$857) showed 4 of 8 SHORTs in BTC EMA13-EMA50 gap > 0 zone
+all losing for -$205. The BTC Gap × BTC ADX SHORT cross-tab in the report visually
+suggested an obvious "block SHORT when BTC above 4hr trend" filter. User correctly
+pushed back asking for cross-batch validation before any ship.
+
+### Cross-batch validation (active-window May 22+ rejected as too thin; widened to
+full post-May-6 BTC-gap-instrumented pool, 350 SHORTs across 27 days Apr 28 → May 24)
+
+| Zone | N | WR | Avg $ | Total $ |
+|---|---|---|---|---|
+| Cut zone (BTC gap > 0) | 51 | **52.9%** | -$13.78 | **-$702.57** |
+| Keep zone (BTC gap ≤ 0) | 234 | 65.4% | -$0.31 | -$71.86 |
+| WR gap | — | **+12.4 pp** | — | — |
+
+Headline WR gap looks promising — but **the locked promotion gates per CLAUDE.md
+May 9 SHORT-only BTC Trend Filter watchlist FAIL on 2 of 4 axes**:
+
+| Gate | Required | Actual | Verdict |
+|---|---|---|---|
+| 1. Cut zone N ≥ 20 | ≥20 | 51 | ✓ PASS |
+| 2. **Cut zone WR ≤ 30%** | ≤30% | **52.9%** | **✗ FAIL** |
+| 3. **Direction-consistent ≥80% days** | ≥80% | **3/8 (38%)** | **✗ FAIL** |
+| 4. Keep zone WR ≥ 60% | ≥60% | 65.4% | ✓ PASS |
+
+### The damning finding: 5 of 8 days have INVERSE direction
+
+Per-day direction-consistency table from cross-batch SHORT pool:
+
+| Day | Cut WR | Keep WR | Direction |
+|---|---|---|---|
+| May 9 | 20% | 100% | ✓ cut worse |
+| May 11 | 56% | 67% | ✓ cut worse |
+| May 13 | 29% | 27% | ✗ cut BETTER (bad) |
+| May 14 | 25% | 53% | ✓ cut worse |
+| May 17 | 100% | 88% | ✗ cut BETTER (bad) |
+| May 18 | 75% | 75% | ✗ tied |
+| May 20 | 83% | 54% | ✗ cut BETTER (bad) |
+| May 21 | 100% | 79% | ✗ cut BETTER (bad) |
+| May 23 | 0% (today's regime) | — | inconclusive |
+| May 24 | 50% (today) | — | inconclusive |
+
+**On 5 of 8 days, BTC-gap-positive SHORTs actually OUTPERFORMED keep-zone SHORTs.**
+On May 20 and May 21, the would-be-blocked SHORTs won at 83-100% WR. The
+binary filter would have killed those wins.
+
+### The real cliff is much narrower — N too small to ship
+
+Fine-bucket cross-batch breakdown:
+
+| BTC Gap bucket | N | WR | Total $ |
+|---|---|---|---|
+| 0 to +0.05% | 21 | **67%** | **+$33** ← profitable! |
+| **+0.05 to +0.10%** | **11** | **27%** | **-$350** ✗✗ |
+| +0.10 to +0.20% | 13 | 62% | -$216 (mixed, magnitude loss) |
+| +0.20 to +0.30% | 5 | 40% | -$78 |
+| > +0.30% | 1 | 0% | -$91 |
+
+The actual cliff sits in the +0.05% to +0.10% sub-band (-$350 / N=11 / 27% WR).
+N=11 is below the locked promotion bar. And the pattern is non-monotonic
+(62% WR at +0.10-0.20%) — not a clean structural cliff.
+
+### Today + yesterday are regime-specific outliers
+
+May 23 + May 24 had ALL SHORTs in cut zone (BTC strongly rising window). No
+keep-zone SHORTs to compare against. The +$236 "today swing" projection from
+a SHORT-only filter is therefore single-regime evidence, not cross-batch
+structural signal.
+
+### Decision: DEFER. Do NOT ship SHORT-only BTC Trend Filter.
+
+The locked promotion gates fail. Shipping anyway would be classic single-batch
+overfitting — same anti-pattern as CLAUDE.md May 11 single-batch projections
+that collapsed at cross-batch scale.
+
+### Pre-committed re-evaluation criteria at next ≥30-SHORT batch
+
+Re-open ship discussion if at the next ≥30-trade SHORT batch:
+
+1. **+0.05 to +0.10% sub-band** shows N ≥ 15 fresh AND WR ≤ 30% AND Tot$ ≤ -$100
+2. **AND direction-consistency rises to ≥ 6/8 of remaining days**
+3. **AND keep zone (gap ≤ 0) WR stays ≥ 60%** (proves the filter isn't cutting winners)
+
+Then ship as a NARROW MAX filter at +0.05% (not at zero), requiring code work:
+either per-direction toggle split or new `btc_trend_gap_max_short: 0.05` field.
+
+### Critical caveat — single-toggle is structurally wrong
+
+Even if the SHORT side eventually passes the gates, **flipping
+`btc_trend_filter_enabled: false → true` is NOT the answer.** The single
+toggle currently controls BOTH directions:
+
+- LONG block: when BTC EMA13 < EMA50 → kills CLAUDE.md May 14 cross-batch
+  documented 80% WR counter-trend LONG winners
+- SHORT block: when BTC EMA13 > EMA50 → would catch SHORTs in disaster zone
+
+CLAUDE.md May 14 data ("Counter-trend LONG = 80% WR / +$344 on N=15") proves
+the LONG-side asymmetry. The right ship is **SHORT-only** which requires the
+per-direction split. ~15-20 LOC in `config.py` + engine block.
+
+### What this entry locks for future reviewers
+
+1. The cross-batch sample (N=350) and locked-gate results (2 of 4 FAIL)
+2. The per-day direction inconsistency (3/8 consistent — fails the ≥6/8 bar)
+3. The narrow sub-band finding (+0.05 to +0.10% is the real cliff, N=11)
+4. The mechanism-correct ship shape (SHORT-only split, NOT single toggle)
+5. The pre-committed re-evaluation gates (N≥15, WR≤30%, 6/8 days direction-consistent)
+
+When the next ≥30-SHORT batch lands, this entry is the locked test. No
+re-litigation, no headline-only ship.
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The N=350 cross-batch finding so future-Claude doesn't redo it from scratch
+2. The locked promotion gates so the decision at next checkpoint is mechanical
+3. The "single-toggle is structurally wrong" reminder so the LONG-side
+   counter-trend edge (May 14 documented) isn't accidentally killed
+4. The specific +0.05-0.10% sub-band signal as the actual cliff location —
+   if a future ship happens, it should target THIS band, not "gap > 0"
+
+If at next batch the cliff replicates at N≥15 + the direction-consistency
+rises to ≥6/8, the ship is mechanically green-lit per the gates above.
+Until then, accept SHORT-side losses in regime-counter-trend windows as
+the cost of NOT killing LONG-side counter-trend winners.
+
 ## May 24, 2026 (early morning, post-W6-demote) — WATCHLIST: W6 LONG sub-cell refinements
 
 ### Watchlist items (NOT shipping — observation only)

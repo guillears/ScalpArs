@@ -96,6 +96,14 @@ class SignalThresholds(BaseModel):
     # 0 = disabled. Independent per direction.
     range_position_min_short: float = 0.0
     range_position_max_long: float = 100.0
+    # May 24: BTC 1h Slope MAX guard. Block LONG entries when BTC 1h EMA20 slope
+    # over the prior 3 hours exceeds the threshold — catches late-stage steep-rising
+    # BTC trends where LONGs are mean-reversion candidates.
+    # Cross-batch + today: slope > +0.15% LONG cohort N=26 / 30.8% WR / -$837 (today),
+    # active-window pool also showed cliff at 0.12-0.15%. 0 = disabled.
+    # SHORT side disabled by default (no clean cliff observed yet).
+    btc_1h_slope_max_long: float = 0.0
+    btc_1h_slope_max_short: float = 0.0
     # May 10: minimum ADX delta (current ADX − ADX 1 candle ago).
     # Cross-sample validated 2-sample finding (May 4 224tr survivors + May 10 34tr):
     # ADXΔ <0.10 = ~17% WR / -0.42% Avg; ADXΔ ≥0.10 = ~62% WR / +0.03% Avg.
@@ -383,6 +391,26 @@ class SignalThresholds(BaseModel):
     # design discussion). Forward Unmatched cells NOT in initial ship (will be added
     # as proper pattern signatures once cross-batch identifies their structural shape).
     pattern_cell_rules: List = []
+    # Extension Multiplier Rules (May 24, 2026) — Pair Distance from EMA13 multiplier dimension.
+    # Each rule: dict with keys
+    #   name: short label e.g. "L1b" (appears in source label as "EXT_L1b")
+    #   direction: "LONG" or "SHORT"
+    #   ext_min, ext_max: required range on entry_dist_from_ema13_pct (% from EMA13)
+    #   pair_vol_max: optional — pair volume ratio max (e.g. 0.95 to require quiet pair tape)
+    #   adx_delta_max: optional — ADX delta max (e.g. 0.3 to require slow momentum)
+    #   inv_mult: investment multiplier (default 1.0)
+    #   lev_mult: leverage multiplier (default 1.0)
+    # Source label format: "EXT_{name}" — joined with "+" if multiple rules match.
+    # Conflict resolution at engine: HIGHER wins across matching rules (same as
+    # RSI×ADX cells). Hard caps via existing rsi_adx_multiplier_hard_cap +
+    # _lev_hard_cap apply to the combined effective multiplier.
+    # Cross-batch evidence at ship (May 24, post 3 LONG filters, May 22+ active window):
+    #   L1b Ext +0.40-0.60% LONG: N=12 / 83% WR / +$256 / 2 dates / no NP losers
+    #   L2a L1b × PairVol<0.95:   N=8  / 75% WR / +$165 / 2 dates / no NP losers
+    #   L2b L1b × ADXΔ<0.3:        N=3  / 100% / +$274 / 1 date / no losers
+    # All cells below the locked N≥30 gate but BE-compatible under new filter regime.
+    # Operator-directed ship accepting the discipline override.
+    extension_multiplier_rules: List = []
     # Entry Quality Score multiplier (May 18 → REMOVED May 21): the Score-based 1D
     # multiplier dimension was retired after cross-batch evidence showed cells
     # decaying or showing no edge over baseline. See CLAUDE.md May 21 removal entry.

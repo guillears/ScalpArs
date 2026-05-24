@@ -1402,6 +1402,74 @@ class TradingEngine:
     # Historical trades with cell_multiplier_source starting "STRETCH_..." retain
     # their attribution in the Multiplier Cell Performance table.
 
+    def _lookup_extension_multiplier(
+        self,
+        direction: str,
+        ext_pct: Optional[float],
+        pair_vol_ratio: Optional[float],
+        adx_delta: Optional[float],
+    ) -> Tuple[float, float, Optional[str]]:
+        """Extension Multiplier (May 24, 2026) — Pair Distance from EMA13 multiplier dimension.
+
+        Walks `extension_multiplier_rules` config and returns
+        (invest_multiplier, leverage_multiplier, source_label) for the matching cell.
+
+        Rule structure (see config.py):
+          {name, direction, ext_min, ext_max, pair_vol_max?, adx_delta_max?, inv_mult, lev_mult}
+
+        Matching logic:
+          - direction must match
+          - ext_pct must be in [ext_min, ext_max)
+          - if pair_vol_max present, pair_vol_ratio must be < pair_vol_max
+          - if adx_delta_max present, adx_delta must be < adx_delta_max
+
+        Conflict resolution: HIGHER inv_mult wins across multiple matching rules
+        (when several rules match the same trade). Source labels for combined matches
+        are joined as "EXT_{name1}+{name2}" — but the active inv/lev pair returned
+        is the single highest-inv-mult rule.
+
+        Returns (1.0, 1.0, None) on no match or missing required inputs.
+        """
+        try:
+            rules = getattr(config.trading_config.thresholds, 'extension_multiplier_rules', []) or []
+        except Exception:
+            return 1.0, 1.0, None
+        if not rules or ext_pct is None:
+            return 1.0, 1.0, None
+
+        matches = []
+        for r in rules:
+            try:
+                if r.get('direction') != direction:
+                    continue
+                ext_min = float(r.get('ext_min', -999))
+                ext_max = float(r.get('ext_max', 999))
+                if not (ext_min <= ext_pct < ext_max):
+                    continue
+                pv_max = r.get('pair_vol_max')
+                if pv_max is not None:
+                    if pair_vol_ratio is None or pair_vol_ratio >= float(pv_max):
+                        continue
+                ad_max = r.get('adx_delta_max')
+                if ad_max is not None:
+                    if adx_delta is None or adx_delta >= float(ad_max):
+                        continue
+                matches.append(r)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[EXT_MULT] Failed to parse rule {r}: {e}, skipping")
+                continue
+
+        if not matches:
+            return 1.0, 1.0, None
+
+        # HIGHER inv_mult wins for the active inv/lev pair; combined names in label.
+        best = max(matches, key=lambda r: float(r.get('inv_mult', 1.0)))
+        inv = float(best.get('inv_mult', 1.0))
+        lev = float(best.get('lev_mult', 1.0))
+        names = '+'.join(r.get('name', '?') for r in matches)
+        label = f"EXT_{names}"
+        return inv, lev, label
+
     def _lookup_pattern_cell_rule(
         self, direction: str, c_flags: dict, w_flags: dict,
     ) -> Tuple[float, float, Optional[str], Optional[float], Optional[float]]:
@@ -2459,6 +2527,13 @@ class TradingEngine:
         _btc_rules = getattr(_th, f'btc_rsi_adx_multiplier_{direction.lower()}', '')
         _pair_inv, _pair_lev, _pair_src = self._lookup_rsi_adx_multiplier(entry_rsi, entry_adx, _pair_rules, 'PAIR')
         _btc_inv, _btc_lev, _btc_src = self._lookup_rsi_adx_multiplier(entry_btc_rsi, entry_btc_adx, _btc_rules, 'BTC')
+        # Extension multiplier (May 24) — Pair Distance from EMA13 dimension.
+        _ext_inv, _ext_lev, _ext_src = self._lookup_extension_multiplier(
+            direction,
+            entry_dist_from_ema13_pct,
+            entry_pair_volume_ratio,
+            entry_adx_delta,
+        )
 
         # Conflict resolution (May 21 — extended for "both" mode):
         # When pair-level AND BTC-level cells both match, the HIGHER candidate wins.
@@ -2488,6 +2563,7 @@ class TradingEngine:
             _candidates = [
                 (_pair_inv, _pair_lev, _pair_src),
                 (_btc_inv, _btc_lev, _btc_src),
+                (_ext_inv, _ext_lev, _ext_src),
             ]
             _winner = max(_candidates, key=lambda c: _score_candidate(c[0], c[1]))
             cell_mult, cell_lev_mult, cell_src = _winner
@@ -5679,6 +5755,30 @@ class TradingEngine:
                     logger.info(f"[BTC_SLOPE_MAX_GATE] {pair}: {signal} blocked — abs(BTC slope) {abs(btc_ema20_slope_pct):.4f}% > max {_btc_max}%")
                     self._record_filter_block("BTC_SLOPE_MAX_GATE", signal, had_room=_had_room)
                     signal = "NO_TRADE"
+
+            # May 24: BTC 1h Slope MAX guard. Block late-stage steep-rising BTC LONG
+            # entries (and symmetric SHORT if configured). Uses the 1h-timeframe slope
+            # captured globally by the BTC scan loop. 0 = disabled.
+            # LONG @ slope > +0.15%: 26 trades / 30.8% WR / -$837 today, 14 trades in
+            # the 0.15-0.20 cliff at 21.4% WR. Mechanism: BTC in late-stage rising
+            # trend → mean reversion → countertrend LONG bounces fail.
+            if signal in ["LONG", "SHORT"] and _current_btc_1h_slope is not None:
+                _th = config.trading_config.thresholds
+                _btc_1h_max = getattr(_th, f'btc_1h_slope_max_{signal.lower()}', 0)
+                # May 24 (evening) — SHORT semantics REVERSED to block COUNTERTREND SHORTs
+                # (SHORTs into rising BTC). Cross-batch evidence: SHORTs at BTC 1h slope > +0.10
+                # are catastrophic (N=6, 1W only +$12, others NP/loser, -$236 total).
+                # Both LONG and SHORT now block when slope > max (intuitive: max is the
+                # upper bound on BTC strength a same-direction entry tolerates).
+                if _btc_1h_max and _btc_1h_max > 0 and _current_btc_1h_slope > _btc_1h_max:
+                    if signal == "LONG":
+                        logger.info(f"[BTC_1H_SLOPE_MAX_GATE] {pair}: LONG blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% > max +{_btc_1h_max}% (late-stage rising trend)")
+                        self._record_filter_block("BTC_1H_SLOPE_MAX_GATE", "LONG", had_room=_had_room)
+                        signal = "NO_TRADE"
+                    elif signal == "SHORT":
+                        logger.info(f"[BTC_1H_SLOPE_MAX_GATE] {pair}: SHORT blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% > max +{_btc_1h_max}% (countertrend SHORT in rising BTC)")
+                        self._record_filter_block("BTC_1H_SLOPE_MAX_GATE", "SHORT", had_room=_had_room)
+                        signal = "NO_TRADE"
 
             # May 2: per-pair EMA20 slope MAX guard. Block over-extended pair trends.
             # Computes the slope locally from indicators (pair_ema20_slope_pct is

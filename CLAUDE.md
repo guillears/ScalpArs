@@ -1,5 +1,108 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (early morning, post-W6-demote) — WATCHLIST: W6 LONG sub-cell refinements
+
+### Watchlist items (NOT shipping — observation only)
+
+Two candidate refinements to the W6 LONG signature surfaced from tonight's
+8-trade cohort analysis (May 24 batch). Both rest on N=2 single-session
+evidence and CANNOT be acted upon without cross-session validation.
+
+#### Item 1 — W6 LONG with BTC RSI 65-70 sub-cell
+
+**Observation:** Within tonight's W6 LONG cohort, the BTC RSI 65-70 sub-cell
+was **0 wins / 2 losses**:
+
+| Trade | BTC RSI | Outcome |
+|---|---|---|
+| PLAY id=38 | 65.3 | LOSS -$60 |
+| PLAY id=39 | 65.3 | LOSS -$120 |
+
+Other BTC RSI bands within W6 LONG tonight:
+- BTC RSI 50-55: 0W/1L (WLD -$147, single outlier)
+- BTC RSI 55-60: 1W/0L (PLAY +$11)
+- BTC RSI 60-65: 3W/1L (75% WR)
+- **BTC RSI 65-70: 0W/2L** (0% WR) ★
+
+**Hypothesis:** W6 LONG signature (BTC ADX [22, 26) + Pair Gap < +0.20)
+may over-fire when BTC RSI is in the climax zone (≥65). At those levels,
+BTC is over-extended on 5m and the W6 "Healthy BTC Tailwind" mechanism
+inverts to "climax buying."
+
+**Locked promotion gate (cross-session validation required):**
+
+At next ≥5-trade W6 LONG checkpoint within the BTC RSI 65-70 sub-cell
+(across multiple sessions):
+- If WR ≤20% AND Total $ ≤ -$100 → **TIGHTEN W6 LONG to require BTC RSI < 65**
+  (would modify W6 LONG match function: add `btc_rsi < 65` condition)
+- If WR ≥60% on fresh data → drop from watchlist (tonight was regime-specific)
+- N<5 across multiple sessions → continue observing, no decision
+
+#### Item 2 — W6 LONG with BTC ADX > 23 sub-cell
+
+**Observation:** Within tonight's W6 LONG cohort, the BTC ADX >23 sub-cell
+was **0 wins / 2 losses**:
+
+| Trade | BTC ADX | Outcome |
+|---|---|---|
+| PLAY id=38 | 23.38 | LOSS -$60 |
+| PLAY id=39 | 25.38 | LOSS -$120 |
+
+All 4 tonight winners had BTC ADX in [22.35, 22.89] — tightly clustered.
+All 4 tonight losers had wider BTC ADX spread, with the 2 highest values
+(23.38, 25.38) being the worst losses.
+
+**Hypothesis:** W6 LONG's BTC ADX range [22, 26) is too wide. The cell's
+historical 100% WR (14 trades pre-ship) may have concentrated in the
+22-23 sub-range. Tightening to [22, 23] would preserve the winner
+sub-zone and cut the losing sub-zone.
+
+**Locked promotion gate (cross-session validation required):**
+
+At next ≥5-trade W6 LONG checkpoint within the BTC ADX 23-26 sub-cell
+(across multiple sessions):
+- If WR ≤30% AND Total $ ≤ -$80 → **TIGHTEN W6 LONG ADX range to [22, 23]**
+  (would modify W6 LONG match function)
+- If WR ≥60% on fresh data → drop from watchlist
+- N<5 across multiple sessions → continue observing, no decision
+
+### Discipline acknowledgment
+
+Both watchlist items rest on N=2 single-session evidence. Same discipline
+trap as:
+- C2 SHORT defensive rule (shipped May 24, rolled back same day — N=4 single-session)
+- S-P1 SHORT multiplier (shipped May 4, demoted May 18 — broke at N=3)
+- Score 3 SHORT 2.0× (shipped, demoted at N=10 with mixed signal)
+
+**Do NOT act on N=2 single-session.** Cross-session validation required
+before any refinement to the W6 LONG signature.
+
+### Interaction with the W6 LONG demote (also May 24)
+
+W6 LONG was demoted to 1.0× tonight per ✗ HARMFUL gate. These watchlist
+items are SECONDARY refinements that would only matter if:
+- W6 LONG eventually re-promotes to 2.0× via Phase 3 staging (cross-batch
+  evidence rebuild)
+- OR if the demoted 1.0× cell continues firing and produces sub-cell
+  evidence
+
+At 1.0× sizing the cost of these failure modes is bounded (no amplification).
+The watchlist refinements would only ship after W6 LONG itself proves
+re-promotion-worthy.
+
+### Why this entry exists in CLAUDE.md
+
+1. To preserve the BTC RSI 65-70 + BTC ADX 23-26 sub-cell observations from
+   tonight's W6 LONG cohort so future-Claude has the starting hypothesis
+   without re-deriving
+2. To anchor the locked cross-session promotion gates so action at next
+   checkpoint is mechanical
+3. To explicitly DOCUMENT that these are NOT shippable from N=2 single-
+   session — same discipline trap as the rejected C2 SHORT rule earlier
+   tonight
+4. To preserve the sequencing rule: W6 LONG itself must re-promote
+   before these refinements become relevant
+
 ## May 24, 2026 (early morning) — W6 LONG multiplier demoted 2.0× → 1.0× (✗ HARMFUL gate triggered)
 
 ### Change

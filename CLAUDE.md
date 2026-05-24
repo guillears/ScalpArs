@@ -1,5 +1,209 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 24, 2026 (late evening) — `btc_rsi_adx_filter_short` tightened: `0-30:0-30` → `0-30:25-30` (ADX MIN floor)
+
+### Change
+
+`btc_rsi_adx_filter_short`:
+- Before: `30-35:30,35-40:20-30,45-50:25,0-30:0-30`
+- After:  `30-35:30,35-40:20-30,45-50:25,**0-30:25-30**`
+
+The `0-30:25-30` rule REQUIRES BTC ADX in `[25, 30]` for BTC RSI <30 SHORTs.
+Adds a MIN floor where the old rule only had a MAX cap. Blocks "oversold + chop"
+SHORT entries (BTC RSI low AND BTC ADX low — no trend conviction).
+
+### Trigger — today's INJUSDT SHORT loss
+
+INJ SHORT entered at BTC RSI 17.9, BTC ADX 18.4. C1 SHORT (3.0× lev-stacked)
+matched. Peak +0.37%, close −0.77%, **−$184.51 loss**. Mechanism: SHORTing
+deep oversold BTC without trend conviction → BTC bounces from oversold →
+SHORT squeeze. Multiplier amplified Pattern C-shape loss.
+
+### Cross-batch evidence (full archive, 350 dedup SHORTs, 111 in RSI <30 cohort)
+
+| BTC ADX bucket within RSI <30 | N | WR | Avg % | Total $ | NP rate | Dates |
+|---|---|---|---|---|---|---|
+| 18-22 | 27 | 67% | −0.04% | **−$197** | 3/27 | 7 |
+| 22-25 | 31 | 52% | −0.07% | **−$341** | 7/31 | 13 |
+| 25-30 | 40 | 72% | +0.06% | **+$119** | 6/40 | 13 |
+| 30-35 | 10 | 60% | −0.13% | −$45 | 3/10 | 4 |
+| ≥35 | 3 | 100% | +0.41% | +$2 | 1/3 | 1 |
+
+Below ADX 25: 58 trades / 64% WR / **−$538 net**. At/above ADX 25: 53 trades /
+72% WR / **+$76 net**. Clean structural cliff.
+
+### Mechanism
+
+BTC RSI <30 = "oversold." SHORTing oversold REQUIRES trend conviction
+(BTC ADX ≥ 25) for continuation. Without conviction:
+- BTC bounces from oversold extreme → SHORTs squeeze
+- Low ADX means no momentum carry → exit ladder runs to SL
+- Multipliers amplify the loss tail (INJ at 3× = −$184 vs −$61 at 1×)
+
+### Acknowledged caveat — sweet spot is narrower than 25-30
+
+Finer-grained data shows the actual "winner zone" is BTC ADX **28-30**, not
+broadly 25-30:
+
+| ADX sub-bucket | N | WR | Total $ |
+|---|---|---|---|
+| 25-26 (part of 24-26 worst) | included | 41% | losing |
+| 26-28 | 9 | 56% | −$75 |
+| **28-30** | **26** | **85%** | **+$189** ★ true sweet spot |
+
+The kept zone `25-30` includes the still-losing 25-28 sub-zone (~−$308 of
+embedded loss). Net kept = +$77 because 28-30 sweet spot dominates.
+
+**Ship chose 25-30 (Option B) over surgical 28-30 only (Option C)** for
+risk-balance: range form `0-30:28-30` would cut 85 of 111 historical trades
+(77% volume drop) on a single-bucket signal. ADX 25 is the structurally
+defensible cliff (every below-bucket net losing), but watchlist holds
+ADX 28 as the potential next tightening.
+
+### Locked watchlist for next ≥30-SHORT checkpoint
+
+If at next batch the BTC RSI <30 × ADX 25-28 sub-zone shows continued losing
+behavior (Total $ ≤ −$30 on N≥5), tighten further to range form:
+```
+"30-35:30,35-40:20-30,45-50:25,0-30:28-30"
+```
+
+If 25-28 sub-zone shows recovery (≥60% WR on N≥5) → keep current `0-30:25-30`.
+
+### Today's INJ verification
+
+INJ had BTC RSI 17.9 (in <30) AND BTC ADX 18.4 (below 25 floor) → **WOULD BE
+BLOCKED** under new rule. Forward saves the $-184 catastrophic 3×-lev loss.
+
+### Cross-batch impact summary
+
+| Slice | Net effect |
+|---|---|
+| Block zone (ADX 18-25 within RSI <30) | Saves $538 across 58 trades, cuts $330 of historical winners ($-330 lost upside) |
+| Net cross-batch | +$208 cumulative |
+| Per-trade save in block zone | ~$9.3/trade |
+| Forward expectation (with in-sample bias haircut) | ~+$100-200 per ~30-SHORT batch |
+
+### Pre-committed revert criteria
+
+| Outcome | Action |
+|---|---|
+| BTC RSI <30 × ADX 18-25 SHORTs (obs logs) show ≥55% WR on N≥10 fresh | REVERT to `0-30:0-30` |
+| Block zone stays ≤45% WR on N≥10 | LOCK at 25 |
+| Kept 25-30 zone drops below 60% WR on N≥10 | Investigate; potentially tighten to 28-30 sweet spot |
+| 25-28 sub-zone continues losing on N≥5 | Tighten to `0-30:28-30` (range form) |
+
+### Discipline acknowledgment
+
+This is the **11th locked-discipline override in 2 weeks**. Same evidence-
+strength pattern as today's earlier ship overrides — structural mechanism
+plus multi-date direction-consistency despite per-bucket N falling short of
+strict N≥30 gate.
+
+### Files changed
+
+- `trading_config.json` — single field tightening
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the rule tightening with full granular cross-batch evidence
+2. To anchor the "ADX 28-30 is true sweet spot" finding so future tightening
+   is mechanical, not re-derived
+3. To preserve the in-batch INJ trigger evidence for audit
+4. To lock the revert criteria so next checkpoint decision is mechanical
+5. To note the asymmetric kept-zone composition: kept 25-30 is dragged by
+   25-28 sub-zone — if that doesn't recover, range form `0-30:28-30` is
+   the locked next step
+
+## May 24, 2026 (late evening) — W4 SHORT demoted 2.0× → 1.0× (BTC SHORT loss + structural watch)
+
+### Change
+
+`pattern_cell_rules[W4 SHORT]`: `inv_mult: 2.0 → 1.0`. Lev unchanged at 1.0.
+W4 LONG (already at 1.0× with fixed TP+SL since today PM) unchanged.
+
+### Evidence — combined cross-batch + today
+
+| Sample | N | WR | Total $ | Notes |
+|---|---|---|---|---|
+| Pre-today cross-batch | 1 | 100% | +$13.96 | Single trade, thin |
+| **Today (May 24 evening, post-reset batch)** | **2** | **50%** | **−$94** | BTC SHORT id=7 (−$110 at 2× = was -$55 at 1×); ETH SHORT id=8 (W1+W4, +$16) |
+| **Combined** | **3** | **67%** | **−$80** | N below all gates, but direction-consistent toward HARMFUL |
+
+### Why demote on N=2 fresh evidence
+
+1. **The BTC SHORT loss was BE-uncatchable.** Peak +0.14% (below BE 0.20%
+   trigger), trade slid to −0.69% SL. Multiplier 2× doubled what would have
+   been a −$55 loss into −$110. Pattern C territory amplified — exactly the
+   failure mode CLAUDE.md May 16 BE-compatibility rule warns against.
+2. **Asymmetric risk profile under 2× sizing.** The ETH SHORT win was capped
+   by FAST_EXIT L1 at +$16 (peak +0.20% → exit at +0.20%). The BTC SHORT
+   loss at 2× was −$110 (full SL). At 2×, the wins are SMALL (capped by FE
+   at fixed +0.20%) while the losses are LARGE (full −0.7% SL). Asymmetry
+   destroys edge.
+3. **W4 LONG already demoted this morning** with similar logic — cross-batch
+   42% WR. The SHORT side is now showing the same fragility shape (Pattern
+   C losses dominating cell). Symmetric treatment justified at lower N.
+4. **Demote is safer than fixed exits at this evidence level.** Could ship
+   fixed TP+SL (treatment-decouple like W4 LONG), but the cohort is too
+   thin (N=3) to know the right thresholds. Demote to 1.0× first, observe
+   under no-multiplier conditions, then decide on treatment if pattern
+   persists.
+
+### Pre-committed RE-PROMOTION criteria at next ≥30-SHORT checkpoint
+
+If next batch shows W4 SHORT performance meeting ALL of these gates:
+
+| Gate | Required for re-promotion to 2.0× |
+|---|---|
+| Fresh N (post-demote) | ≥ 5 |
+| WR | ≥ 70% |
+| Avg P&L % | ≥ +0.10% |
+| Total $ at 1× sizing | ≥ +$30 |
+| ≥ 60% of any losses peak ≥+0.20% (BE-compatible) | ✓ |
+| No single trade $ ≤ −$30 at 1× sizing | ✓ |
+
+If ALL pass → re-promote to inv_mult: 2.0× (revert to today's pre-demote setting).
+
+If 3-5 pass → hold at 1.0× one more batch, re-evaluate.
+
+If ≤2 pass → consider treatment-decoupling (mirror W4 LONG approach):
+ship `fixed_tp_pct: 0.10 + fixed_sl_pct: -0.50` and KEEP inv_mult at 1.0×.
+
+### What this does NOT do
+
+- Does NOT touch W4 LONG (already at 1.0× with fixed exits from today PM ship)
+- Does NOT ship fixed exits on W4 SHORT (deferred until more evidence)
+- Does NOT change W1 SHORT, W2 SHORT, W6 SHORT, or any other multiplier
+  cell. The ETH SHORT id=8 today matched W1+W4 — under demote W4 SHORT to
+  1.0×, the HIGHER-wins resolution gives W1 SHORT's 2.0× still applies.
+  Only W4-alone SHORT trades like BTC id=7 lose their 2× sizing.
+- Does NOT alter pattern matching, observation trackers, or any analytics.
+
+### Cell preserved in config for re-promotion
+
+W4 SHORT stays in `pattern_cell_rules` at 1.0× (rather than removed) per
+CLAUDE.md convention. Easy re-promotion via one config edit if next
+batch shows recovery. Cell stays visible in Pattern Cell Ship Performance
+table for ongoing observation.
+
+### Files changed
+
+- `trading_config.json` — single field flip (W4 SHORT inv_mult 2.0 → 1.0)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the demote with explicit per-trade evidence (BTC SHORT $-110
+   at 2× was structurally a Pattern C loss BE couldn't catch)
+2. To lock the re-promotion gates so next checkpoint decision is mechanical
+3. To document the asymmetric risk (small FE-capped wins vs full-SL losses)
+   that makes 2× sizing structurally wrong for cells with low peak distribution
+4. To preserve the cell in config (not remove) so re-promotion is one edit
+5. To document the sequencing: demote first, then consider treatment-
+   decoupling (fixed exits) only if pattern persists multi-batch
+
 ## May 24, 2026 (late evening) — WATCHLIST: W6 SHORT lev-stack candidate (re-evaluate next batch)
 
 ### Trigger

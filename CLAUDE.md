@@ -182,26 +182,67 @@ Net effect of disabling: re-admits the 45-55% Bear% SHORT zone (currently
 the BEST SHORT zone) and the borderline 30-40% Bull% LONG zone, both
 captured by other filters anyway.
 
-**3. Pair Blacklist watchlist — SHORT Bear%≥85 as filter candidate (NOT shipped)**
+**3. Pair Blacklist watchlist — SHORT Bear%≥85 as filter candidate ❌ WITHDRAWN (May 25 late evening — filter-overlap audit)**
 
-Cross-sample evidence: 99 SHORTs at Bear%≥85, **58% WR, -$764**. This is
-the capitulation-zone disaster: shorting into extreme bearish breadth
-signals oversold conditions ripe for squeezes.
+ORIGINAL claim (raw cross-batch): 99 SHORTs at Bear%≥85, 58% WR, -$764.
+Looked like a "capitulation-zone disaster" that an MAX filter could fix.
 
-**Locked promotion gate at next ≥100-trade SHORT checkpoint:**
-- Fresh N ≥ 15 SHORT trades in Bear%≥85 zone in observation logs (won't
-  trade them under filter, but counter logs would-have-been-blocked)
-- WR ≤ 45% on fresh sample
-- Avg P&L % ≤ -0.15% on fresh sample
-- Adjacent winner zone (Bear% 45-75) maintains WR ≥ 60% on N≥30 fresh
+**Filter-overlap audit (May 25 late evening) FLIPS the verdict.**
 
-If all 4 hold → ship `market_breadth_bear_max_short: 85` (asymmetric MAX
-filter, mirrors the inverted-direction insight). NOT a MIN filter like
-the current disabled one.
+When the CURRENT filter stack is applied to the 886-trade pool first,
+then survivors are bucketed by Bear%:
 
-Drop criteria:
-- Bear%≥85 zone shows ≥55% WR on N≥10 fresh → regime-conditional, defer
-- `[BREADTH_BEAR_MAX_SHORT]` block count = 0 across 100+ SHORTs → dormant
+| Bear% bucket | N (survivors) | WR | Total$ | NP rate | Verdict |
+|---|---|---|---|---|---|
+| 75-80% | 19 | 68% | **-$228** | **21%** | Losing zone (Pattern C-shaped) |
+| 80-85% | 21 | 71% | -$125 | 14% | Mid-losing |
+| **85-90%** | **17** | **100%** | **+$299** | **0%** | ★ BEST zone in filtered SHORT pool |
+| 90%+ | 11 | 73% | +$48 | 18% | Mixed but positive |
+
+The -$764 in raw cross-batch concentrated in trades that **other filters
+now catch**: pair blacklist (HYPE/ASTER/DOGE), BTC RSI×ADX cross-filter,
+GVol max with capitulation override, Quality Score ≥2.
+
+What survives ALL filters AND sits at Bear%≥85 is the legitimate
+capitulation-trend SHORT — bot shorting into confirmed bearish regime
+where many pairs are aligned. **These trades work (100% WR, 0% NP, +$299
+on N=17).**
+
+**Adding a Bear%≥85 MAX filter would CUT WINNERS, not losers.** Watchlist
+withdrawn.
+
+### Methodology lesson — filter-overlap audit is mandatory
+
+The CLAUDE.md May 11 PM rule applies cleanly here:
+
+> Before recommending a filter from cross-batch evidence, apply the
+> CURRENT filter stack to the historical pool first. Many "structural"
+> patterns dissolve when other filters have already caught their loser
+> tail.
+
+The original Bear%≥85 watchlist relied on raw cross-batch -$764 evidence.
+Filter-overlap audit revealed the loss was the OVERLAP with other
+filters, not the unique contribution of the Bear%-only signal. Future
+watchlist proposals require this audit BEFORE entering the watchlist,
+not just "for promotion."
+
+### Where the real SHORT-side opportunity lives (locked observation)
+
+The filter-overlap audit DID find a different actionable cell:
+
+**Bear% 75-85% × SHORT survivors: N=40, WR=70%, Total$ -$353, NP rate 18%**
+
+This is the mid-high-bear-but-not-extreme zone. The 21% NP rate at 75-80%
+specifically is structurally Pattern C-shaped. Possible refinement:
+NARROW the existing breadth filter to MIN 75% rather than disable
+entirely — but this requires cross-sample validation before any ship.
+
+**Locked observation gate at next ≥30-SHORT checkpoint:**
+- Fresh SHORT trades with Bear% in [75, 85] and peak <+0.10%: count them
+- If ≥5 fresh trades match AND avg pnl ≤ -0.20% → re-evaluate Bear% 75-85
+  as MAX-style cut zone
+- If <5 match OR avg pnl flat/positive → confirm earlier withdrawal,
+  no Bear% filter ship
 
 ### Cross-batch methodology lesson (locked)
 

@@ -1,5 +1,93 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 — 🚨 CRITICAL LESSON: Filter compound-effect blind spot — ROLLBACK of 2 over-aggressive cross-filter rules
+
+### The discovery
+
+User-triggered audit on May 24 batch (47L + 8S). Reconciled my "yesterday morning ship will flip results +$291 LONG" claim against the actual simulation under TODAY's full filter stack (after 5+ days of additional cross-filter additions).
+
+**Result:**
+
+| Filter set | LONG admitted | LONG P&L |
+|---|---|---|
+| Yesterday morning (3 filters: 1h_slope, EQS, RngPos>98) | **17 of 47** | **+$291** ★ correct projection |
+| TODAY's full stack (with all additions May 19-24) | **1 of 47** | +$23 |
+
+**Each cross-filter added after May 24 morning incrementally cut WINNERS** that the prior stack was already letting through correctly. Net effect: lost **$268+ of confirmed winners** including NEAR +$197, GMT +$86 — exact same trades that made yesterday's projection real.
+
+### The root failure mode
+
+**Cross-filters added one-at-a-time based on their isolated cross-batch cell evidence, without checking COMPOUND effect with existing filter stack.** Each individual filter had legitimate cell-level loser evidence. But:
+
+1. The cells they targeted overlapped with cells admitted by other filters
+2. Many winners that survived the prior stack ALSO matched the new "loser" cells
+3. The cell evidence was on a population where THESE OTHER FILTERS WEREN'T ACTIVE
+4. With all filters active, the surviving population is different — and the cell rules were never re-validated against that new survivor distribution
+
+### Concrete rollback shipped
+
+Two rules removed from `btc_rsi_adx_filter_long`:
+- `65-70:22-35` — REMOVED (was killing GMT+$86, NEAR+$197 winners on May 24)
+
+Two rules removed from `btc_gap_btc_adx_filter_long`:
+- `0.0-0.10:22-25` — REMOVED (killed COS+$23, ALT+$46)
+- `0.10-0.20:25-28` — REMOVED (over-restrictive in this BTC ADX zone)
+
+Final LONG cross-filter strings post-rollback:
+```
+btc_rsi_adx_filter_long: "70-100:40,60-65:22-25,60-65:27-30,55-60:20-25,50-55:22"
+btc_gap_btc_adx_filter_long: "0.10-0.20:0-22"
+```
+
+### LOCKED METHODOLOGY RULE (this is the part that MUST persist)
+
+**Before shipping ANY new cross-filter or filter rule, MANDATORY check:**
+
+1. **Compound-effect simulation**: apply the proposed new rule TO THE POOL AS FILTERED BY THE EXISTING STACK (not the raw pool). Count survivors and survivor $.
+2. **Winner-kill check**: of trades the proposed rule would block, what % were ALREADY blocked by the existing stack? What % are UNIQUELY blocked? Of those uniquely blocked, what was their actual P&L?
+3. **Discard the rule if** the uniquely-blocked-winners $ exceeds 60% of the uniquely-blocked-losers $ saved. The rule is removing more edge than it adds.
+
+**Workflow gate at any future filter ship:**
+```
+unique_blocked_trades = trades_blocked_by_new_rule - trades_blocked_by_existing
+unique_winner_$ = sum($ of unique_blocked_trades where pnl > 0)
+unique_loser_$ = abs(sum($ of unique_blocked_trades where pnl < 0))
+if unique_winner_$ / unique_loser_$ > 0.6:
+    DO NOT SHIP — rule cuts too many winners relative to losers saved
+```
+
+This is the rule I should have followed before shipping the BTC_RSI×ADX `65-70:22-35` and BTC_Gap×ADX `0.0-0.10:22-25` / `0.10-0.20:25-28` rules. Per-rule cross-batch cell analysis was insufficient — needed compound-effect validation.
+
+### What this prevents going forward
+
+- Stacking filters that individually look justified but collectively destroy the entry surface
+- Over-engineering toward 99% rejection rate (current bot state had ~99% rejection in production)
+- Killing winners through cell-derived rules that don't account for what other filters already do
+
+### Don't add MORE filters until exit-side work is done
+
+Per user direction (5/25): the next session focus is EXIT-SIDE optimization, NOT more entry filters. The bot has 15+ filters; adding more is reaching diminishing returns and risks more over-engineering. Exit-side levers that haven't been explored:
+- Smarter trailing (loose when peak high, tight when peak low)
+- Time-based bail (force exit if peak <0.15% by minute X)
+- Multi-tier BE (more BE arming levels)
+- Cohort-specific exits (different exits for Pattern C vs Pattern W trades)
+
+### Files changed
+
+- `trading_config.json` — 2 fields (btc_rsi_adx_filter_long, btc_gap_btc_adx_filter_long)
+- `CLAUDE.md` — this entry
+
+### Effect on May 24 batch post-rollback (re-validated)
+
+| Setup | LONG admit | LONG $ |
+|---|---|---|
+| Pre-rollback (full stack) | 1 | +$23 |
+| **Post-rollback (this commit)** | **expected ~10-15** | **expected ~+$200-300** |
+
+Re-simulation will quantify exactly.
+
+---
+
 ## May 25, 2026 — SHIPPED: `global_volume_rescue_max_long: 0.60` (rescue MAX ceiling)
 
 ### Change

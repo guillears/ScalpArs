@@ -587,6 +587,16 @@ class SignalThresholds(BaseModel):
     # AND (Pair Vol $ < rescue_threshold) — large-cap pairs in quiet markets pass.
     pair_volume_usd_rescue_long: float = 0.0
     pair_volume_usd_rescue_short: float = 0.0
+    # May 25: rescue MAX ceiling. Rescue clause only fires when GlobalVol < this
+    # value. Above the ceiling but below global_volume_threshold_* = block (no
+    # rescue). 0 = no ceiling (rescue fires across full <threshold zone).
+    # Cross-batch evidence (CLAUDE.md May 25): GVol 0.60-0.70 LONG rescue zone
+    # = N=36, 47% WR, -$717 (loser). GVol <0.60 LONG rescue zone = N=46, 67%
+    # WR, +$62 (winner). Default 0.60 LONG isolates the loser sub-zone while
+    # preserving the winner zone. AGT (today) confirmed: 37th data point in
+    # 0.60-0.70, lost -$98 as predicted.
+    global_volume_rescue_max_long: float = 0.0
+    global_volume_rescue_max_short: float = 0.0
     global_volume_lookback_bars: int = 48  # Rolling window for global volume average (5m bars)
     pair_volume_lookback_bars: int = 20  # Rolling window for per-pair volume average (5m bars)
     market_breadth_filter_enabled: bool = True  # Gate entries based on % of pairs in Bull/Bear regime

@@ -5900,8 +5900,16 @@ class TradingEngine:
                         # is large enough to sustain its own momentum even in a
                         # quiet global market — let it through. 0 = no rescue.
                         _pair_vol_rescue = getattr(_th, f'pair_volume_usd_rescue_{signal.lower()}', 0.0)
-                        if _pair_vol_rescue > 0 and volume_24h >= _pair_vol_rescue:
-                            logger.info(f"[VOL_GATE_RESCUE] {pair}: {signal} GlobalVol {_global_volume_ratio:.2f}<{_gv_thresh} BUT PairVol ${volume_24h/1e6:.0f}M ≥ ${_pair_vol_rescue/1e6:.0f}M — rescued")
+                        # May 25: rescue MAX ceiling. Rescue only fires when
+                        # GVol < this value. Above ceiling but below threshold
+                        # = block (no rescue). 0 = no ceiling. Cross-batch
+                        # evidence: GVol 0.60-0.70 LONG rescue zone = N=36,
+                        # 47% WR, -$717 (structural loser). GVol <0.60 = +$62
+                        # winner. Default 0.60 LONG isolates the loser zone.
+                        _rescue_max = getattr(_th, f'global_volume_rescue_max_{signal.lower()}', 0.0)
+                        _rescue_zone_ok = (_rescue_max <= 0) or (_global_volume_ratio < _rescue_max)
+                        if _pair_vol_rescue > 0 and volume_24h >= _pair_vol_rescue and _rescue_zone_ok:
+                            logger.info(f"[VOL_GATE_RESCUE] {pair}: {signal} GlobalVol {_global_volume_ratio:.2f}<{_gv_thresh} BUT PairVol ${volume_24h/1e6:.0f}M ≥ ${_pair_vol_rescue/1e6:.0f}M (rescue_max={_rescue_max:.2f}) — rescued")
                         else:
                             global_vol_blocks = True
 

@@ -346,6 +346,8 @@
     "global_volume_max_short_capitulation_slope": 0.0,
     "pair_volume_usd_rescue_long": 50000000,
     "pair_volume_usd_rescue_short": 0.0,
+    "global_volume_rescue_max_long": 0.60,
+    "global_volume_rescue_max_short": 0.0,
     "pair_volume_filter_enabled": false,
     "pair_volume_threshold_long": 1.1,
     "pair_volume_threshold_short": 1.1,

@@ -4706,6 +4706,14 @@
                                 <span class="text-xs text-gray-400">M</span>
                                 <span class="text-xs text-gray-500 ml-1">(0 = disabled)</span>
                             </div>
+                            <p class="text-xs text-cyan-400 mt-3" title="May 25 — rescue MAX ceiling. Rescue clause only fires when GlobalVol < this value. Above ceiling but below GVol MIN = blocked. Cross-batch: GVol 0.60-0.70 LONG rescue = N=36, 47% WR, -$717 (loser zone); GVol <0.60 LONG = N=46, 67% WR, +$62 (winner zone). 0 = no ceiling.">📊 Rescue MAX ceiling — only rescue if GVol &lt;</p>
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+                                <span class="text-xs text-gray-500">L:</span>
+                                <input type="number" id="config-global-vol-rescue-max-long" step="0.05" min="0" max="1" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-20" value="0.60" title="LONG rescue ceiling — rescue fires only when GVol < this value (default 0.60 isolates the loser sub-zone)">
+                                <span class="text-xs text-gray-500 ml-4">S:</span>
+                                <input type="number" id="config-global-vol-rescue-max-short" step="0.05" min="0" max="1" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs w-20" value="0" title="SHORT rescue ceiling — 0 = no ceiling (rescue fires across full <threshold zone)">
+                                <span class="text-xs text-gray-500 ml-1">(0 = no ceiling)</span>
+                            </div>
                         </div>
 
                         <!-- ── PER-PAIR VOLUME FILTER (local quality) ── -->
@@ -15442,6 +15450,11 @@
                 const _rescueShortVal = config.thresholds.pair_volume_usd_rescue_short !== undefined ? config.thresholds.pair_volume_usd_rescue_short : 0;
                 if (_rescueLongEl) _rescueLongEl.value = Math.round(_rescueLongVal / 1e6);
                 if (_rescueShortEl) _rescueShortEl.value = Math.round(_rescueShortVal / 1e6);
+                // May 25: rescue MAX ceiling — rescue only fires below this GVol
+                const _rmaxL = document.getElementById('config-global-vol-rescue-max-long');
+                const _rmaxS = document.getElementById('config-global-vol-rescue-max-short');
+                if (_rmaxL) _rmaxL.value = config.thresholds.global_volume_rescue_max_long !== undefined ? config.thresholds.global_volume_rescue_max_long : 0;
+                if (_rmaxS) _rmaxS.value = config.thresholds.global_volume_rescue_max_short !== undefined ? config.thresholds.global_volume_rescue_max_short : 0;
                 document.getElementById('config-momentum-long-rsi-min').value = config.thresholds.momentum_long_rsi_min !== undefined ? config.thresholds.momentum_long_rsi_min : 55;
                 document.getElementById('config-momentum-long-rsi-max').value = config.thresholds.momentum_long_rsi_max !== undefined ? config.thresholds.momentum_long_rsi_max : 100;
                 document.getElementById('config-momentum-short-rsi-max').value = config.thresholds.momentum_short_rsi_max !== undefined ? config.thresholds.momentum_short_rsi_max : 50;
@@ -16582,6 +16595,8 @@
                     // May 10 evening: pair volume USD rescue thresholds — UI in MILLIONS, stored as USD
                     pair_volume_usd_rescue_long: safeFloat((document.getElementById('config-pair-vol-usd-rescue-long') || {}).value || 0) * 1e6,
                     pair_volume_usd_rescue_short: safeFloat((document.getElementById('config-pair-vol-usd-rescue-short') || {}).value || 0) * 1e6,
+                    global_volume_rescue_max_long: safeFloat((document.getElementById('config-global-vol-rescue-max-long') || {}).value || 0),
+                    global_volume_rescue_max_short: safeFloat((document.getElementById('config-global-vol-rescue-max-short') || {}).value || 0),
                     momentum_long_rsi_min: safeFloat(document.getElementById('config-momentum-long-rsi-min').value),
                     momentum_long_rsi_max: safeFloat(document.getElementById('config-momentum-long-rsi-max').value),
                     momentum_short_rsi_max: safeFloat(document.getElementById('config-momentum-short-rsi-max').value),

@@ -340,6 +340,8 @@
     "fast_exit_l2_window_minutes": 5,
     "fast_exit_l1_atr_multiplier": 0.50,
     "fast_exit_l2_atr_multiplier": 0.50,
+    "fast_exit_l1_atr_floor_cap_pct": 0.60,
+    "fast_exit_l2_atr_floor_cap_pct": 0.80,
     "global_volume_filter_enabled": true,
     "global_volume_threshold_long": 0.7,
     "global_volume_threshold_short": 0.5,

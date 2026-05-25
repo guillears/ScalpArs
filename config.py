@@ -477,6 +477,18 @@ class SignalThresholds(BaseModel):
     # 0.0 to disable ATR floor entirely (preserves fixed threshold).
     fast_exit_l1_atr_multiplier: float = 0.50
     fast_exit_l2_atr_multiplier: float = 0.50
+    # May 25, 2026 — ATR-floor caps. The ATR multiplier alone can drive the
+    # effective FE threshold absurdly high on extreme-ATR pairs (e.g., XAN
+    # at ATR 1.6% gave eff threshold 0.84% — peak never reached, FE never
+    # fired, trade rode to SL). Cap bounds the floor: effective_threshold =
+    # min(cap, max(fixed_threshold, entry_atr_pct × multiplier)).
+    # Differentiated by tier to preserve FE1/FE2 semantics:
+    #   - L1 cap 0.60 (fast-burst tier stays eager)
+    #   - L2 cap 0.80 (slow-climber tier stays patient)
+    # Cross-batch evidence: May 25 PM batch had 3 XANUSDT FE-saves (ATR 1.6%)
+    # that would have ridden to SL without the cap. Set cap to 0 to disable.
+    fast_exit_l1_atr_floor_cap_pct: float = 0.60
+    fast_exit_l2_atr_floor_cap_pct: float = 0.80
     # Pattern C Tracker (May 19, 2026 — observation-only, no behavior change).
     # Captures 4 candidate Pattern C precursor signatures at entry for each
     # direction. Pattern C = trade peaks <+0.10% (never positive). Multiple

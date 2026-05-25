@@ -6447,10 +6447,17 @@ class TradingEngine:
                 # May 25 — ATR-normalized FE L1 floor (mirror of trailing_atr_multiplier).
                 # threshold = max(fast_exit_threshold_pct, entry_atr_pct × multiplier).
                 # Prevents FE from firing on sub-noise moves on high-ATR pairs.
+                # May 25 evening — added floor cap. On extreme-ATR pairs (e.g., XAN
+                # at 1.6%), uncapped floor drove eff threshold to 0.84% — trade
+                # peak never reached it, FE never fired, rode to SL. Cap bounds:
+                # effective = min(cap, max(fixed, ATR × mult)).
                 _fe_atr_mult = float(getattr(config.trading_config.thresholds, 'fast_exit_l1_atr_multiplier', 0.0) or 0.0)
                 _fe_atr_pct = order_info.get('entry_atr_pct')
                 if _fe_atr_mult > 0 and _fe_atr_pct is not None and _fe_atr_pct > 0:
                     _fe_atr_floor = _fe_atr_pct * _fe_atr_mult
+                    _fe_atr_cap = float(getattr(config.trading_config.thresholds, 'fast_exit_l1_atr_floor_cap_pct', 0.0) or 0.0)
+                    if _fe_atr_cap > 0 and _fe_atr_floor > _fe_atr_cap:
+                        _fe_atr_floor = _fe_atr_cap
                     if _fe_atr_floor > _fe_thr:
                         _fe_thr = _fe_atr_floor
                 _fe_opened_at = order_info.get('opened_at')
@@ -6491,10 +6498,15 @@ class TradingEngine:
                 _fe2_thr = getattr(config.trading_config.thresholds, 'fast_exit_l2_threshold_pct', 0.40)
                 _fe2_window_min = getattr(config.trading_config.thresholds, 'fast_exit_l2_window_minutes', 5)
                 # May 25 — ATR-normalized FE L2 floor (mirror of L1 + trailing_atr_multiplier).
+                # Floor cap (May 25 evening): differentiated per tier — L2 cap is
+                # higher than L1 cap to preserve slow-climber semantics.
                 _fe2_atr_mult = float(getattr(config.trading_config.thresholds, 'fast_exit_l2_atr_multiplier', 0.0) or 0.0)
                 _fe2_atr_pct = order_info.get('entry_atr_pct')
                 if _fe2_atr_mult > 0 and _fe2_atr_pct is not None and _fe2_atr_pct > 0:
                     _fe2_atr_floor = _fe2_atr_pct * _fe2_atr_mult
+                    _fe2_atr_cap = float(getattr(config.trading_config.thresholds, 'fast_exit_l2_atr_floor_cap_pct', 0.0) or 0.0)
+                    if _fe2_atr_cap > 0 and _fe2_atr_floor > _fe2_atr_cap:
+                        _fe2_atr_floor = _fe2_atr_cap
                     if _fe2_atr_floor > _fe2_thr:
                         _fe2_thr = _fe2_atr_floor
                 _fe2_opened_at = order_info.get('opened_at')

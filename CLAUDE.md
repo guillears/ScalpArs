@@ -1,5 +1,114 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 (late evening, post-FE-floor) — FE ATR floor caps shipped (L1: 0.60%, L2: 0.80%)
+
+### Why this exists — counter-example to the morning FE ATR floor ship
+
+Same-day analysis of the May 25 PM batch showed the FE ATR floor at
+0.50× multiplier — shipped earlier today without a cap — would have
+caused catastrophic damage on a specific high-ATR pair pattern.
+
+The data: 3 XANUSDT FE trades, all at ATR ~1.6%, all with peak +0.20%
+that FE correctly caught. Without ATR floor: 3 wins of +$20 each.
+With ATR floor at 0.50× (no cap): effective threshold = 0.84% — peak
+never reached, FE skips, trades ride to **post_trough −3 to −4%**,
+hit STOP_LOSS_WIDE at ~−$70 each. The 4th XANUSDT trade in the batch
+(which opened later and missed the FE save) is the empirical proof:
+closed at **STOP_LOSS_WIDE −$95**.
+
+Realistic counterfactual for the batch with the uncapped ATR floor:
+batch P&L flips from +$26 actual to **−$501**.
+
+### Counter-batch pattern (XAN vs FIDA/GMT from May 24)
+
+| Batch | Pair pattern | ATR | Outcome with uncapped ATR floor |
+|---|---|---|---|
+| May 24 | FIDA, GMT | 0.78%, 1.22% | Real continuation runs → trailing captures +$300-400 each ★ |
+| May 24 | COS L1 #2 | 2.34% | Fake spike then crash → SL fires −$182 (vs +$23 FE save) ✗ |
+| **May 25 PM** | **XAN ×3** | **1.6%** | **All fake spikes then crash → SL on all 3 ≈ −$200 ✗** |
+
+Above ATR ~1.5%, fake-spike-then-crash pattern dominates. FE saves
+become structurally important. The ATR floor (which prevents FE from
+firing on noise) becomes counterproductive when the +0.20% peak IS
+the actual peak (not noise — the trade is genuinely about to crash).
+
+### Fix — differentiated caps
+
+```python
+# config.py
+fast_exit_l1_atr_floor_cap_pct: float = 0.60  # L1 stays eager
+fast_exit_l2_atr_floor_cap_pct: float = 0.80  # L2 stays patient
+```
+
+Engine math (both FE blocks):
+```
+atr_floor = entry_atr_pct × multiplier
+if atr_floor > cap: atr_floor = cap
+effective_threshold = max(fixed_threshold, atr_floor)
+```
+
+### Effective thresholds (post-ship)
+
+| ATR | L1 effective | L2 effective | Notes |
+|---|---|---|---|
+| 0.20% (BTC) | 0.20% (fixed) | 0.40% (fixed) | Floor below fixed |
+| 0.80% (mid) | 0.40% (ATR×0.50) | 0.40% (fixed) | Floor active L1 |
+| 1.20% (high) | 0.60% (capped) | 0.60% (ATR×0.50) | L1 cap engaged |
+| 1.60% (extreme) | **0.60% (capped)** | 0.80% (ATR×0.50) | L1 capped, L2 at limit |
+| 2.00% | **0.60% (capped)** | **0.80% (capped)** | Both capped |
+| 2.50% | **0.60% (capped)** | **0.80% (capped)** | Both capped |
+
+L1 plateaus at 0.60% once ATR ≥ 1.2%. L2 plateaus at 0.80% once ATR ≥ 1.6%.
+
+### Differentiated rationale (FE1 vs FE2 semantics)
+
+| Tier | Window | Intent | Cap reflects |
+|---|---|---|---|
+| FE L1 | 2 min | Fast burst — lock small profit before fade | Stay eager (0.60%) |
+| FE L2 | 5 min | Slow climber — give time to develop | Stay patient (0.80%) |
+
+Differentiated caps preserve the L1/L2 distinction at extreme ATR.
+Unified caps would collapse both to identical behavior at ATR ≥ 1.6%.
+
+### Locked revert criteria at next ≥30-FE-trade checkpoint
+
+| Outcome | Action |
+|---|---|
+| Trades at ATR > 1.5% peak at 0.4-0.6% AND FE-skipped trades subsequently hit SL on ≥3 cases | ★ KEEP cap (working as designed) |
+| Trades at ATR > 1.5% routinely peak ≥0.60-0.80% AND continue running (FE missed real wins) | ⚠ Raise cap (0.80 → 1.00 L1, 0.80 → 1.20 L2) |
+| Cap engages on < 2 trades across 100+ FE-eligible signals | Effectively dormant — investigate or accept as safety net |
+| Cross-batch Δ$ on capped-zone trades worsens vs uncapped | ✗ REVERT cap (set to 0 = disabled, accept the morning +$2K cross-batch result with raw 0.50 multiplier) |
+
+### Methodology lesson — single-batch counter-examples have analytical value
+
+The morning cross-batch analysis showed +$2,345 net benefit at 0.50
+multiplier on 888 trades. The evening single-batch analysis showed
+−$527 damage on 3 trades from a different ATR regime. Both are true —
+the cross-batch average masks per-regime variance.
+
+**Locked rule for future continuous-parameter ships:**
+
+> When a cross-batch finding involves a continuous parameter (ATR,
+> slope, RSI, etc.) that scales an effect linearly, examine the
+> extreme tails of the parameter distribution separately before
+> shipping. The average may say "ship it" while the extremes say
+> "this destroys batches with parameter values X+."
+
+Adding a cap is the structural fix: preserve the cross-batch edge in
+the mid-range, prevent the extreme-tail damage. This pattern applies
+to any future ATR-scaled, slope-scaled, or volatility-scaled rule.
+
+### Files changed
+- `config.py` — 2 new fields with full rationale comment
+- `trading_config.json` — fields populated (0.60 L1, 0.80 L2)
+- `services/trading_engine.py` — cap applied after ATR floor calc in
+  both FE L1 + FE L2 realtime blocks
+- `templates/index.html` — 2 UI inputs (L1 cap + L2 cap) + load/save
+  handlers + text-export entries with cap info
+- `CLAUDE.md` — this entry (locked revert gates + methodology lesson)
+
+---
+
 ## May 25, 2026 (late evening) — Triple ship: FE ATR floors + Market Breadth disabled + SHORT Bear%≥85 watchlist
 
 ### What ships (3 changes, all backed by 888-trade cross-batch pool analysis)

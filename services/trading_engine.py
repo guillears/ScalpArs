@@ -6444,6 +6444,15 @@ class TradingEngine:
             if _fe_enabled and not order_info.get('_closing_in_progress'):
                 _fe_thr = getattr(config.trading_config.thresholds, 'fast_exit_threshold_pct', 0.20)
                 _fe_window_min = getattr(config.trading_config.thresholds, 'fast_exit_window_minutes', 2)
+                # May 25 — ATR-normalized FE L1 floor (mirror of trailing_atr_multiplier).
+                # threshold = max(fast_exit_threshold_pct, entry_atr_pct × multiplier).
+                # Prevents FE from firing on sub-noise moves on high-ATR pairs.
+                _fe_atr_mult = float(getattr(config.trading_config.thresholds, 'fast_exit_l1_atr_multiplier', 0.0) or 0.0)
+                _fe_atr_pct = order_info.get('entry_atr_pct')
+                if _fe_atr_mult > 0 and _fe_atr_pct is not None and _fe_atr_pct > 0:
+                    _fe_atr_floor = _fe_atr_pct * _fe_atr_mult
+                    if _fe_atr_floor > _fe_thr:
+                        _fe_thr = _fe_atr_floor
                 _fe_opened_at = order_info.get('opened_at')
                 if _fe_opened_at is not None and pnl_pct >= _fe_thr:
                     _fe_opened_naive = _fe_opened_at.replace(tzinfo=None) if _fe_opened_at.tzinfo is not None else _fe_opened_at
@@ -6481,6 +6490,13 @@ class TradingEngine:
             if _fe2_enabled and not order_info.get('_closing_in_progress'):
                 _fe2_thr = getattr(config.trading_config.thresholds, 'fast_exit_l2_threshold_pct', 0.40)
                 _fe2_window_min = getattr(config.trading_config.thresholds, 'fast_exit_l2_window_minutes', 5)
+                # May 25 — ATR-normalized FE L2 floor (mirror of L1 + trailing_atr_multiplier).
+                _fe2_atr_mult = float(getattr(config.trading_config.thresholds, 'fast_exit_l2_atr_multiplier', 0.0) or 0.0)
+                _fe2_atr_pct = order_info.get('entry_atr_pct')
+                if _fe2_atr_mult > 0 and _fe2_atr_pct is not None and _fe2_atr_pct > 0:
+                    _fe2_atr_floor = _fe2_atr_pct * _fe2_atr_mult
+                    if _fe2_atr_floor > _fe2_thr:
+                        _fe2_thr = _fe2_atr_floor
                 _fe2_opened_at = order_info.get('opened_at')
                 if _fe2_opened_at is not None and pnl_pct >= _fe2_thr:
                     _fe2_opened_naive = _fe2_opened_at.replace(tzinfo=None) if _fe2_opened_at.tzinfo is not None else _fe2_opened_at

@@ -1,5 +1,140 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 (late evening) — Triple ship: FE ATR floors + Market Breadth disabled + SHORT Bear%≥85 watchlist
+
+### What ships (3 changes, all backed by 888-trade cross-batch pool analysis)
+
+**1. Fast Exit ATR-normalized floors (L1 + L2 at 0.50× ATR)**
+
+New config fields (mirror of existing `trailing_atr_multiplier` primitive):
+- `fast_exit_l1_atr_multiplier: 0.50`
+- `fast_exit_l2_atr_multiplier: 0.50`
+
+Formula: `effective_threshold = max(fixed_threshold, entry_atr_pct × multiplier)`.
+Engine wired at both realtime FE blocks in `services/trading_engine.py`.
+
+**Evidence (888-trade pool):** Post-FE give-up scales monotonically with ATR:
+
+| ATR Bucket | N | AvgClose% | AvgPostPeak% | Give-up (pp) |
+|---|---|---|---|---|
+| <0.30% | 5 | +0.207% | +0.432% | 0.225 |
+| 0.30-0.50% | 20 | +0.256% | +0.857% | 0.601 |
+| 0.50-0.70% | 15 | +0.242% | +0.907% | 0.665 |
+| 0.70-1.00% | 11 | +0.235% | +1.691% | **1.456** |
+| 1.00-1.50% | 5 | +0.231% | +2.629% | **2.397** |
+| >1.50% | 3 | +0.224% | +4.143% | **3.919** |
+
+A +0.20% FE threshold is sub-noise on 1.5%+ ATR pairs (trade exits at first
+wiggle while true move runs to ~4%). Counterfactual at scaling 0.50: +$2,345
+across 31 FE-skip trades vs actual. Same multiplier (0.50) as
+`trailing_atr_multiplier` — single ATR primitive across all exits.
+
+Per-pair effect after ship:
+| ATR | FE L1 threshold | FE L2 threshold |
+|---|---|---|
+| 0.20-0.40% (BTC/typical) | 0.20% floor | 0.40% floor |
+| 0.80% (mid-vol) | **0.40%** (ATR×0.50) | 0.40% (floor) |
+| 1.20% (high) | **0.60%** | **0.60%** |
+| 2.00% (extreme) | **1.00%** | **1.00%** |
+
+**2. Market Breadth filter DISABLED** (`market_breadth_filter_enabled: false`)
+
+Cross-batch analysis revealed the filter is doing no structural work on
+LONG and is INVERTED on SHORT:
+
+**LONG by Bull% bucket (N=529):**
+| Bull% | N | WR | Total$ |
+|---|---|---|---|
+| 30-40 | 35 | 40% | +$15 |
+| 40-50 | 54 | 59% | -$34 |
+| 50-60 | 112 | 57% | -$828 |
+| 60-70 | 137 | **42%** | **-$1,428** ✗ worst zone |
+| 70-80 | 151 | 50% | -$843 |
+| 80+ | 40 | 53% | -$199 |
+
+Non-monotonic. Worst zone is MID-range (60-70%). High-breadth bucket only
++11pp WR gap on N=529 = weak signal, doesn't justify cutting volume.
+
+**SHORT by Bear% bucket (N=357):**
+| Bear% | N | WR | Total$ |
+|---|---|---|---|
+| **45-55** | 11 | **82%** | **+$112** ★ best zone |
+| 55-65 | 17 | 41% | -$177 |
+| 65-75 | 87 | 61% | -$170 |
+| 75-85 | 143 | 66% | -$237 |
+| **85+** | 99 | 58% | **-$764** ✗ capitulation zone |
+
+INVERTED — the filter assumes "more bear% = better SHORT" but data shows
+the opposite. LOWEST allowed bracket (45-55%) is the best zone; raising
+threshold to 50 cuts 5 trades worth +$110 in winners (loss). WR gap
+low→high = **-19pp** on N=357.
+
+Net effect of disabling: re-admits the 45-55% Bear% SHORT zone (currently
+the BEST SHORT zone) and the borderline 30-40% Bull% LONG zone, both
+captured by other filters anyway.
+
+**3. Pair Blacklist watchlist — SHORT Bear%≥85 as filter candidate (NOT shipped)**
+
+Cross-sample evidence: 99 SHORTs at Bear%≥85, **58% WR, -$764**. This is
+the capitulation-zone disaster: shorting into extreme bearish breadth
+signals oversold conditions ripe for squeezes.
+
+**Locked promotion gate at next ≥100-trade SHORT checkpoint:**
+- Fresh N ≥ 15 SHORT trades in Bear%≥85 zone in observation logs (won't
+  trade them under filter, but counter logs would-have-been-blocked)
+- WR ≤ 45% on fresh sample
+- Avg P&L % ≤ -0.15% on fresh sample
+- Adjacent winner zone (Bear% 45-75) maintains WR ≥ 60% on N≥30 fresh
+
+If all 4 hold → ship `market_breadth_bear_max_short: 85` (asymmetric MAX
+filter, mirrors the inverted-direction insight). NOT a MIN filter like
+the current disabled one.
+
+Drop criteria:
+- Bear%≥85 zone shows ≥55% WR on N≥10 fresh → regime-conditional, defer
+- `[BREADTH_BEAR_MAX_SHORT]` block count = 0 across 100+ SHORTs → dormant
+
+### Cross-batch methodology lesson (locked)
+
+This is the **second** time a filter has been found INVERTED on cross-batch
+audit (first was the May 5 SHORT BTC trend filter where the existing toggle
+was structurally backwards). The pattern:
+
+> Single-direction filters with a MIN threshold ("require X ≥ Y") should
+> always be cross-batch validated to confirm the relationship is monotonic.
+> Non-monotonic patterns mean the filter is either irrelevant (LONG case
+> here) or structurally inverted (SHORT case here) — in either case the
+> filter must be disabled or restructured as MAX/range form.
+
+For any future MIN-threshold filter proposal: include a WR-by-bucket
+table across ≥3 buckets before shipping, and reject if the relationship
+is non-monotonic.
+
+### Pre-committed revert criteria at next ≥100-trade checkpoint
+
+**FE ATR floors:**
+| Outcome | Action |
+|---|---|
+| FE fire count drops on ATR>0.50% pairs AND those trades close at materially better Avg% | ★ KEEP at 0.50 |
+| Trades that would have fired FE under fixed-only now ride to SL | ⚠ Lower mult to 0.33 |
+| Total $ on FE-eligible trades worsens vs pre-ship baseline | ✗ REVERT to 0.0 (disable ATR floor) |
+
+**Market Breadth disabled:**
+| Outcome | Action |
+|---|---|
+| LONG WR in Bull% 30-40 zone maintains ≥40% on N≥15 fresh | ★ Confirmed: filter was noise, keep disabled |
+| LONG Avg P&L % drops materially on N≥80 fresh trades AND losers cluster in low-Bull% zone | ⚠ Re-enable LONG side at Bull%≥30 |
+| SHORT Bear% 45-55 zone shows ≥70% WR on fresh data | ★ Confirmed inversion; ship Bear%≥85 MAX filter |
+
+### Files changed
+- `config.py` — `fast_exit_l1_atr_multiplier`, `fast_exit_l2_atr_multiplier` (default 0.50)
+- `trading_config.json` — both new fields populated; `market_breadth_filter_enabled: true → false`
+- `services/trading_engine.py` — ATR floor logic in FE L1 + FE L2 realtime blocks
+- `templates/index.html` — UI inputs for both ATR multipliers + load/save handlers + text-export entries with ATR floor info
+- `CLAUDE.md` — this entry (locked revert gates + Bear%≥85 watchlist + cross-batch methodology lesson)
+
+---
+
 ## May 25, 2026 (later evening) — BUG FIX v4: cumulative runtime, not per-session started_at
 
 ### v3 broken by restart semantics

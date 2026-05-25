@@ -467,6 +467,16 @@ class SignalThresholds(BaseModel):
     fast_exit_l2_enabled: bool = True
     fast_exit_l2_threshold_pct: float = 0.40
     fast_exit_l2_window_minutes: int = 5
+    # May 25, 2026 — ATR-normalized FE thresholds. Mirror of trailing_atr_multiplier
+    # primitive. Formula: effective_threshold = max(fixed_threshold, entry_atr_pct × multiplier).
+    # Prevents FE from firing on sub-noise moves on high-ATR pairs (e.g. on a 1.5%
+    # ATR pair, 0.20% is sub-candle noise — at multiplier 0.50, FE waits for 0.75%
+    # before firing). Cross-batch evidence (888-trade pool): post-FE give-up scales
+    # monotonically with ATR (0.225pp at <0.3% ATR → 3.92pp at >1.5% ATR).
+    # Counterfactual at 0.50: +$2,345 across 31 FE-skip trades. Set multiplier to
+    # 0.0 to disable ATR floor entirely (preserves fixed threshold).
+    fast_exit_l1_atr_multiplier: float = 0.50
+    fast_exit_l2_atr_multiplier: float = 0.50
     # Pattern C Tracker (May 19, 2026 — observation-only, no behavior change).
     # Captures 4 candidate Pattern C precursor signatures at entry for each
     # direction. Pattern C = trade peaks <+0.10% (never positive). Multiple

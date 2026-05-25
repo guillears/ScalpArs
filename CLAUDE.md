@@ -1,5 +1,76 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 (late afternoon) — ROLLED BACK same-day disable of PAIR_EXT_MIN + PAIR_EMA20_SLOPE_MIN
+
+### Change
+
+| Field | Disabled state (this morning) | Rolled back to |
+|---|---|---|
+| `entry_dist_from_ema13_min_long` | 0.0 | **0.20** |
+| `entry_dist_from_ema13_filter_enabled` | false | **true** |
+| `momentum_ema20_slope_min_short` | 0.0 | **0.06** |
+
+### Why rolled back
+
+Deeper analysis of the marginal-zone evidence (not just unique-block historical count) revealed the disable carried more NP exposure than my initial "negligible $-impact" framing suggested:
+
+**PAIR_EXT_MIN (LONG) — marginal-zone evidence:**
+- 9 historical trades in target zone (dist<0.20%): **56% Never Positive** (5 of 9), only 22% tiny wins, 22% small reach-and-fade losers
+- Total cohort: -$246 across 12 days = -$27/trade avg
+- The 1 "uniquely-blocked" trade (other filters wouldn't catch it): 100% NP, -$13.78
+- Projected 24h exposure if disabled: ~-$375 LONG
+
+**PAIR_EMA20_SLOPE_MIN (SHORT) — marginal-zone evidence:**
+- 0 trades in filter zone (perfectly enforced) — but marginal zone just above threshold (|slope| 0.06-0.08) is **100% NP / 0% WR / -$99 across N=2**
+- 0.08-0.10 zone: 50% WR but 17% NP, -$25/trade avg
+- Structural pattern: weaker slope = more NPs (consistent with mechanism)
+- Projected 24h exposure if disabled: ~-$200 SHORT
+
+**Combined 24h NP exposure if left disabled: ~-$575 expected drag**
+
+### User's reasoning for rollback
+
+> "if its redundant then they will still be blocked, im not going to have more transactions"
+
+Critical insight: if the 89% redundancy claim from this morning's audit is correct, KEEPING the filters enabled doesn't reduce trade volume — other filters block the same signals first-in-chain. The filter being "first to fire" vs "second to fire" is invisible at trade count level. Net effect of leaving enabled: equal or near-equal trade volume, with the 11% truly-unique cohort blocked (saving the -$575 NP exposure).
+
+The asymmetry favors keeping them on:
+- KEEP: lose nothing (other filters do same blocking), gain protection on the 11% unique cohort
+- REMOVE: gain nothing (same trade count), lose protection on 11% NP-heavy unique cohort
+
+### Methodology correction (locked)
+
+The redundancy audit was directionally correct (89% redundant) but the SHIP DECISION undervalued the unique-cohort risk. The "negligible $-impact" framing focused on the small N (1-2 trades) of measured unique blocks instead of the BROADER marginal-zone evidence (the 0.06-0.08 SHORT zone is 100% NP; the dist<0.20% LONG zone is 56% NP).
+
+**New rule for future redundancy audits:**
+
+When the unique-block N is tiny (<5), look at the FULL marginal-zone behavior (not just the uniquely-blocked subset). The structural pattern of the marginal zone proxies for what the unique cohort would do at larger N. If the marginal zone is NP-heavy, the filter has structural value even with 89% redundancy.
+
+The redundancy headline (89%) measures "how often other filters also block" — NOT "what the filter saves." Those are different questions. The right question for ship/keep decisions is:
+- "What is the unique cohort's expected $-loss if filter removed?"
+- "Is the marginal zone structurally bad enough to be worth blocking even at high redundancy?"
+
+For both filters here, the answer to both questions is YES.
+
+### What this rollback restores
+
+Filter behavior identical to the state before the May 25 afternoon disable. PAIR_EXT_MIN LONG and PAIR_EMA20_SLOPE_MIN SHORT continue blocking as they have been (May 22 and May 12 ships respectively).
+
+### Forward observation plan
+
+Continue monitoring the Filter Blocks counter on next reports. If unique-block evidence ever grows (e.g., observation-mode log captures of would-be-blocked trades' subsequent behavior), reassess. Until then, keep both filters active.
+
+### Files changed
+
+- `trading_config.json` — 3 fields reverted to pre-disable state
+- `CLAUDE.md` — this entry
+
+### Discipline acknowledgment
+
+Same-day reversal of a same-day ship. The disable was based on real evidence (89% redundancy is true) but the action drawn from that evidence was wrong. Better to acknowledge the error quickly than let the disabled state run 24h and lose -$575 to confirm what the marginal-zone data already tells us.
+
+---
+
 ## May 25, 2026 (afternoon) — DISABLED Pair Extension floor + zero'd Pair EMA20 Slope Min SHORT (redundancy audit)
 
 ### Change

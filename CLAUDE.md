@@ -1,5 +1,71 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 (later evening) — BUG FIX v4: cumulative runtime, not per-session started_at
+
+### v3 broken by restart semantics
+
+v3 used `self.started_at` as session start, then `min(started_at,
+oldest_close)`. But `started_at` is **this session's** start — it resets
+on every deploy/restart.
+
+After 3 deploys back-to-back, the user saw the bot was still showing the
+inflated rate. Reason:
+- `started_at` = ~minutes ago (post most-recent-deploy)
+- `oldest_24h` close = 1.23h ago (pre-deploy)
+- `min(started_at, oldest_close)` = oldest_close (1.23h ago)
+- → same broken v2 behavior, just dressed up differently
+
+### v4 fix
+
+Use `get_runtime_seconds()` (returns `total_runtime_seconds +
+current_session_elapsed`) — this is the cumulative across-restart runtime
+that the dashboard already displays as the bot's "Runtime" clock.
+
+Math:
+```
+runtime_h = self.get_runtime_seconds() / 3600
+span = min(24, runtime_h)  # cap at window size
+if trade_span > span: span = min(24, trade_span)  # safety
+burn = fees_24h / span
+```
+
+The safety clamp `if trade_span > span` handles edge cases where trade
+timestamps exceed the tracked runtime (clock drift, manual DB
+imports, etc.) — never use a denominator SMALLER than the actual elapsed
+trade span.
+
+### Verification for user's screenshot
+
+- Cumulative runtime: 9h 51min = 9.85h (shown on dashboard clock)
+- Total fees in 24h: $58.31 (6 closed trades)
+- span = min(24, 9.85) = 9.85h
+- burn rate = $58.31 / 9.85h = **$5.92/hr ✓**
+- projected need 24h = $142
+- emergency threshold = ~$71
+- BNB $999 >> all thresholds → no swap pressure
+
+### Why v3 also failed paper restart
+
+`started_at` is set fresh each time the bot's `start()` is called.
+`total_runtime_seconds` is persisted to DB on shutdown and reloaded on
+startup. So `get_runtime_seconds()` is the only correct cumulative
+measure.
+
+### Files changed
+- `services/trading_engine.py` — `_recompute_bnb_burn_rate`: denominator
+  = `get_runtime_seconds() / 3600`, capped at window, with safety clamp
+  against trade_span underflow. Same for 12h window.
+- `CLAUDE.md` — this entry
+
+### Honest acknowledgment
+
+v1, v2, v3 all had different versions of the same conceptual error
+(wrong window denominator). v4 uses the cumulative runtime field that
+matches what the UI already displays as bot uptime. Tested mentally
+against the user's exact screenshot data.
+
+---
+
 ## May 25, 2026 (later evening) — BUG FIX v3: BNB burn rate denominator must be BOT UPTIME, not "time since oldest trade"
 
 ### v2 was still wrong

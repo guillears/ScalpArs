@@ -1176,64 +1176,45 @@ class TradingEngine:
         )
         oldest_24h = result_oldest_24h.scalar()
 
-        # May 25 BUGFIX (v3): denominator must be BOT UPTIME within the window,
-        # not "time since oldest trade closed". v2 used oldest_closed_at as the
-        # window start, which collapsed to ~1h when trades clustered late even
-        # though the bot had been running 9.85h with mostly-idle hours of zero
-        # fees. Result: burn rate read $47/hr (true: ~$6/hr).
+        # May 25 BUGFIX (v4): denominator = CUMULATIVE bot runtime (across
+        # restarts), not per-session started_at. v3 used `started_at` which
+        # resets on every deploy/restart, so after 3 deploys it was minutes
+        # ago — `min(started_at, oldest_close)` still collapsed to oldest_close
+        # (~1.23h), reproducing the v2 bug.
         #
-        # v3 design: denominator = `now - max(cutoff_window, bot_started_at)`.
-        # This represents "the time the bot was actually running and eligible
-        # to accumulate fees within the window". Idle hours with zero fees
-        # are correctly counted in the denominator, so concentrated late
-        # bursts don't artificially inflate the rate.
+        # Correct semantic: "for how long has the bot been running (and
+        # eligible to accumulate fees) within the 24h window?" That's
+        # cumulative runtime (`total_runtime_seconds + current_session`),
+        # accessed via `get_runtime_seconds()`. It persists across restarts.
         #
-        # Edge case: bot restarted within window. `started_at` is per-session;
-        # earlier closed trades within the 24h window pre-date this restart.
-        # In that case we want max(started_at, oldest_close_at_minus_buffer)
-        # — but the simpler and correct semantic is `max(cutoff_24h, oldest_24h)`:
-        # if there's a trade older than `started_at`, the bot ran for some
-        # time before THIS session, so use the oldest trade timestamp as the
-        # earliest fee-eligible moment. If the oldest trade is newer than
-        # `started_at`, use `started_at` (this session's uptime).
+        # Cap at 24h (the window size). If bot has been alive cumulatively
+        # >24h → full 24h denominator. Otherwise → cumulative uptime.
         MIN_DATA_MATURE_HOURS = 2.0
+        runtime_h = self.get_runtime_seconds() / 3600.0
         if count_24h > 0 and oldest_24h:
-            # Window start = whichever is EARLIER: oldest trade in window,
-            # or bot session start. Earlier = larger denominator = more
-            # honest rate.
-            session_start = getattr(self, 'started_at', None)
-            if session_start is not None:
-                # Use the earlier of: bot session start, or oldest trade
-                # (older trades imply earlier sessions, so bot was running then)
-                window_start = min(session_start, oldest_24h)
-            else:
-                window_start = oldest_24h
-            # Clamp window_start to cutoff_24h (can't go further back than 24h)
-            if window_start < cutoff_24h:
-                window_start = cutoff_24h
-            elapsed_24h = (now - window_start).total_seconds() / 3600.0
-            span_24h_hours = min(24.0, elapsed_24h) if elapsed_24h > 0 else 0
+            # Denominator: cumulative runtime, capped at the 24h window.
+            span_24h_hours = min(24.0, runtime_h) if runtime_h > 0 else 0
+            # Safety: never let span be less than the actual trade span
+            # (trades older than runtime imply pre-tracked sessions or
+            # clock drift; use whichever gives a larger denominator).
+            trade_span_h = (now - oldest_24h).total_seconds() / 3600.0
+            if trade_span_h > span_24h_hours:
+                span_24h_hours = min(24.0, trade_span_h)
             self._bnb_burn_rate = fees_24h / span_24h_hours if span_24h_hours > 0 else 0
             self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
-            # Data is "mature" once we have ≥2h of real elapsed window.
-            self._bnb_data_mature = elapsed_24h >= MIN_DATA_MATURE_HOURS
+            self._bnb_data_mature = span_24h_hours >= MIN_DATA_MATURE_HOURS
         else:
             span_24h_hours = 0
             self._bnb_burn_rate = 0
             self._bnb_projected_need = 0
             self._bnb_data_mature = False
 
-        # 12h emergency threshold — same logic with session_start adjustment
+        # 12h emergency threshold — same logic, capped at 12h
         if count_12h > 0 and oldest_12h:
-            session_start = getattr(self, 'started_at', None)
-            if session_start is not None:
-                window_start_12 = min(session_start, oldest_12h)
-            else:
-                window_start_12 = oldest_12h
-            if window_start_12 < cutoff_12h:
-                window_start_12 = cutoff_12h
-            elapsed_12h = (now - window_start_12).total_seconds() / 3600.0
-            span_12h_hours = min(12.0, elapsed_12h) if elapsed_12h > 0 else 0
+            span_12h_hours = min(12.0, runtime_h) if runtime_h > 0 else 0
+            trade_span_12h = (now - oldest_12h).total_seconds() / 3600.0
+            if trade_span_12h > span_12h_hours:
+                span_12h_hours = min(12.0, trade_span_12h)
             burn_rate_12h = fees_12h / span_12h_hours if span_12h_hours > 0 else 0
         else:
             burn_rate_12h = 0

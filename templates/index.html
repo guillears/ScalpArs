@@ -8171,7 +8171,10 @@
             const st = bnbData.status || {};
             lines.push(`\n${hr}`);
             lines.push('## BNB SWAP HISTORY & STATUS\n');
-            lines.push(`Auto-Swap: ${st.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Burn Rate: $${(st.burn_rate_per_hour || 0).toFixed(2)}/hr  |  Projected Need: $${(st.projected_need || 0).toFixed(2)}  |  Emergency Threshold: $${(st.emergency_threshold || 0).toFixed(2)}`);
+            const _matureTag = (typeof st.data_mature === 'boolean')
+                ? (st.data_mature ? '[MATURE — swaps active]' : '[WARMING UP <2h — swaps suppressed]')
+                : '';
+            lines.push(`Auto-Swap: ${st.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Burn Rate: $${(st.burn_rate_per_hour || 0).toFixed(2)}/hr ${_matureTag}  |  Projected Need: $${(st.projected_need || 0).toFixed(2)}  |  Emergency Threshold: $${(st.emergency_threshold || 0).toFixed(2)}`);
             lines.push(`Check Interval: ${st.check_interval_hours || '-'}h  |  Target Runway: ${st.runway_hours || '-'}h  |  Last Check: ${st.last_check ? new Date(st.last_check).toISOString().replace('T',' ').substring(0,19)+' UTC' : 'never'}`);
             if (!swaps.length) {
                 lines.push('\nNo swaps recorded yet.');

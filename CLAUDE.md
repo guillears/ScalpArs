@@ -29,20 +29,48 @@ inflating burn rate 6-10× over the real value. The inflated rate fed into:
   balance (decremented per fee) fell below the inflated emergency
   threshold → EMERGENCY swap fired against a phantom need
 
-### Fix
+### Fix (v2 — display always updates, gate only at swap decision)
 
-Replaced floor with a min-window gate (MIN_SPAN_HOURS = 2.0):
-- If oldest closed trade in 24h window is < 2h ago → burn rate and
-  projected need stay at 0 (no swap can fire from extrapolation)
-- If ≥ 2h → divide fees by real elapsed time, no artificial floor
-- Same min-window guard applied to 12h emergency threshold path
+User pushback on v1: "burn rate should update after closed orders" — v1
+suppressed burn rate display itself when window < 2h, which broke the
+expected UX (the rate should refresh every closed order, just not drive
+auto-swaps until data is mature).
 
-Trade-off: bot won't pre-emptively swap during the first 2h of fee history
-after a fresh cold-start. Acceptable because:
-1. Real burn rate isn't measurable from < 2h of data anyway
-2. BNB initial balance ($500 default) is far above emergency threshold
-   at typical burn rates — no real-world emergency in the first 2h
-3. After 2h, normal swap logic resumes with accurate burn rate
+**v2 design — separate display from swap decision:**
+
+1. **Display layer (always update):**
+   - `_bnb_burn_rate` = `fees_24h / real_elapsed_24h` — no floor on
+     denominator, no gate. Updates with every closed order.
+   - `_bnb_projected_need` = `burn_rate × runway_hours` — published live.
+   - `_bnb_emergency_threshold` = `burn_rate_12h × 12` — published live.
+
+2. **Swap decision layer (gated by data maturity):**
+   - New flag `_bnb_data_mature` set to True only when the oldest closed
+     trade in the 24h window is ≥ 2h old (real elapsed time, not bot uptime).
+   - `bnb_scheduled_check` returns early with a `[BNB_CHECK]` log line
+     when `_bnb_data_mature == False`, even if `projected_need` is high.
+   - `_handle_paper_fee` emergency swap path: if breach uses the
+     EXTRAPOLATED threshold (`_bnb_emergency_threshold`) and data is not
+     mature, suppress the swap. The FALLBACK threshold (10% of initial
+     BNB) is still allowed to fire — that's a genuine "BNB nearly empty"
+     signal, not an extrapolation.
+
+3. **UI / text export:**
+   - Status payload exposes `bnb_data_mature` (top-level `/api/status`
+     and `/api/bnb-swaps`).
+   - Text export shows burn rate with `[WARMING UP <2h — swaps suppressed]`
+     or `[MATURE — swaps active]` tag.
+
+Trade-off: bot still won't pre-emptively swap during the first 2h of fee
+history after a fresh cold-start (same as v1 net behavior), but the
+operator now sees the burn rate update live with every closed order.
+Acceptable because:
+1. Real burn rate is statistically too noisy to drive auto-swaps off <2h
+2. BNB initial balance ($500 default) is far above the fixed 10%
+   fallback threshold ($50) at typical burn rates — real "BNB nearly empty"
+   emergencies still fire correctly via the fallback path.
+3. After 2h, the data-mature flag flips True and normal swap logic
+   resumes with accurate burn rate.
 
 ### Companion fix: text-export BNB section was missing
 
@@ -71,14 +99,27 @@ computed from current burn rate (vs the static `bnb_runway_hours` target).
 ### Pre-committed validation at next bot startup
 
 Watch for the following at next cold-start:
-1. **First 2h post-restart**: BNB Swaps UI panel should show burn rate
-   $0.00/hr (not extrapolated). No swap should fire during this window
-   regardless of how fast fees accumulate.
-2. **At 2h+**: burn rate publishes. If real burn rate × 24h > current BNB,
-   a scheduled swap will fire normally. Emergency only if real 12h burn × 12
-   > current BNB.
-3. **Text export**: copyReport / copySplitReport should now include a
-   `## BNB SWAP HISTORY & STATUS` section with full swap log.
+1. **First closed order**: BNB Swaps UI panel should show a real burn rate
+   value (e.g. $5.20/hr) computed from that order's fees / real elapsed
+   time. NOT $0.00 (v1 was wrong on this).
+2. **Burn rate refreshes per closed order**: every new fee accumulation
+   updates the display. Operator can watch it evolve in real time.
+3. **First 2h post-restart**: even though the burn rate displays, the
+   `data_mature` flag is False. Scheduled and extrapolated-emergency
+   swaps are SUPPRESSED with explicit log lines:
+   - `[BNB_CHECK] Data window <2h — burn rate $X/hr published for
+     display but scheduled swap suppressed (need ≥2h of history).`
+   - `[BNB_EMERGENCY] BNB $X < extrapolated threshold $Y, but data
+     window <2h — suppressing emergency swap.`
+4. **At 2h+**: `data_mature` flips True. If real burn rate × 24h > current
+   BNB, a scheduled swap will fire normally. Emergency fires if real 12h
+   burn × 12 > current BNB.
+5. **Text export**: copyReport / copySplitReport now include a
+   `## BNB SWAP HISTORY & STATUS` section with full swap log, plus a
+   `[WARMING UP <2h]` / `[MATURE]` tag next to the burn rate.
+6. **Fallback floor (10% of initial)**: this fires regardless of data
+   maturity — it's a fixed safety floor, not extrapolated. Protects
+   against true BNB-near-empty scenarios in the warm-up period.
 
 ### Locked methodology rule (added to discipline list)
 
@@ -90,9 +131,13 @@ rate when actual elapsed is below the floor. Use a min-data-window gate
 whenever the metric drives auto-actions like swaps.
 
 ### Files changed
-- `services/trading_engine.py` — `_recompute_bnb_burn_rate` floor → gate
+- `services/trading_engine.py` — `_recompute_bnb_burn_rate` floor → live
+  display + `_bnb_data_mature` flag; `__init__` adds flag; status payload
+  exposes it; `bnb_scheduled_check` and `_handle_paper_fee` gate swaps on it
+- `main.py` — `/api/bnb-swaps` status returns `data_mature` field
 - `templates/index.html` — `_buildBnbSwapLines` helper + wire-up in 2
-  copy sites + Paper BNB display switched to live balance + Live Runway line
+  copy sites + Paper BNB display switched to live balance + Live Runway
+  line + `[WARMING UP]`/`[MATURE]` tag next to burn rate
 - `CLAUDE.md` — this entry
 
 ---

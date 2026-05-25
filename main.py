@@ -634,6 +634,7 @@ async def get_bnb_swaps(db: AsyncSession = Depends(get_db)):
             "burn_rate_per_hour": round(trading_engine._bnb_burn_rate, 2),
             "projected_need": round(trading_engine._bnb_projected_need, 2),
             "emergency_threshold": round(trading_engine._bnb_emergency_threshold, 2),
+            "data_mature": getattr(trading_engine, '_bnb_data_mature', False),
             # May 7 — emit timezone-aware ISO so JS interprets as UTC unambiguously
             # (datetime.utcnow() produces naive datetime; without TZ info, JS Date()
             # parsing varies by browser and the displayed time can be off by hours).

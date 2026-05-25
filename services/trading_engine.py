@@ -420,6 +420,12 @@ class TradingEngine:
         self._bnb_emergency_threshold: float = 0.0
         self._bnb_projected_need: float = 0.0
         self._bnb_burn_rate: float = 0.0
+        # May 25 — "data mature" flag gates AUTO-SWAP decisions (not display).
+        # True only when oldest closed trade in 24h window is ≥2h old. Below
+        # that threshold, burn rate still updates with every closed order
+        # (display + UI accurate), but scheduled/emergency swaps suppressed
+        # to avoid extrapolating from a narrow window.
+        self._bnb_data_mature: bool = False
         self._last_bnb_check: Optional[datetime] = None
         # Filter Block Counters (May 5) — in-memory tally of pre-entry filter
         # rejections, surfaced via /api/engine/state and the dashboard.
@@ -747,6 +753,7 @@ class TradingEngine:
             "paper_bnb_balance_usd": round(self.paper_bnb_balance_usd, 2),
             "bnb_burn_rate": round(self._bnb_burn_rate, 2),
             "bnb_emergency_threshold": round(self._bnb_emergency_threshold, 2),
+            "bnb_data_mature": self._bnb_data_mature,
             # May 7 — emit TZ-aware ISO so JS unambiguously interprets as UTC
             "bnb_last_check": (self._last_bnb_check.replace(tzinfo=timezone.utc).isoformat()
                                if self._last_bnb_check else None),
@@ -1002,6 +1009,18 @@ class TradingEngine:
             emergency_threshold = tc.paper_bnb_initial_usd * 0.1
 
         if current_bnb < emergency_threshold:
+            # May 25 v2 — burn-rate-derived emergency threshold can fire from
+            # an extrapolation off <2h of data. Gate auto-swap on data maturity.
+            # Fall-back fixed threshold (10% of initial) is still allowed to
+            # fire — that's a genuine "BNB nearly empty" signal, not extrapolation.
+            using_extrapolated = self._bnb_emergency_threshold > 0 and emergency_threshold == self._bnb_emergency_threshold
+            if using_extrapolated and not self._bnb_data_mature:
+                logger.info(
+                    f"[BNB_EMERGENCY] {'Paper' if self.is_paper_mode else 'Live'} BNB ${current_bnb:.2f} "
+                    f"< extrapolated threshold ${emergency_threshold:.2f}, but data window <2h — "
+                    f"suppressing emergency swap. Real BNB floor (10% of initial = ${tc.paper_bnb_initial_usd * 0.1:.2f}) not breached."
+                )
+                return
             logger.warning(
                 f"[BNB_EMERGENCY] {'Paper' if self.is_paper_mode else 'Live'} BNB ${current_bnb:.2f} "
                 f"< emergency threshold ${emergency_threshold:.2f} — triggering swap"
@@ -1157,36 +1176,39 @@ class TradingEngine:
         )
         oldest_24h = result_oldest_24h.scalar()
 
-        # May 25 BUGFIX: was `span = max(1.0, ...)` which clamped sub-1h windows
-        # to 1h denominator, inflating burn rate 6-10× post-restart when first
-        # trades cluster in a narrow window. Triggered phantom EMERGENCY swaps
-        # (see CLAUDE.md May 25 BNB swap bug entry). New rule: require ≥2h of
-        # real data before publishing a burn rate; otherwise return 0 (no swap).
-        MIN_SPAN_HOURS = 2.0
+        # May 25 BUGFIX (v2): was `span = max(1.0, ...)` which clamped sub-1h
+        # windows to 1h denominator, inflating burn rate 6-10× post-restart
+        # when first trades cluster in a narrow window. Triggered phantom
+        # EMERGENCY swaps (see CLAUDE.md May 25 BNB swap bug entries).
+        #
+        # New design (v2): ALWAYS publish a real burn rate from real fees /
+        # real elapsed time — operator wants to see the rate update with
+        # every closed order, not wait 2h post-restart. The 2h "data mature"
+        # gate moves DOWN to the swap-trigger decision (see bnb_scheduled_check
+        # and _handle_paper_fee), so phantom-swap protection is preserved
+        # without suppressing the display.
+        MIN_DATA_MATURE_HOURS = 2.0
         if count_24h > 0 and oldest_24h:
             elapsed_24h = (now - oldest_24h).total_seconds() / 3600.0
-            if elapsed_24h < MIN_SPAN_HOURS:
-                # Insufficient data window — refuse to extrapolate.
-                self._bnb_burn_rate = 0
-                self._bnb_projected_need = 0
-                span_24h_hours = 0
-            else:
-                span_24h_hours = min(24.0, elapsed_24h)
-                self._bnb_burn_rate = fees_24h / span_24h_hours
-                self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
+            # Use real elapsed time as denominator. No floor — even a 5min
+            # window gives a real $/hr rate (volatile but honest).
+            span_24h_hours = min(24.0, elapsed_24h) if elapsed_24h > 0 else 0
+            self._bnb_burn_rate = fees_24h / span_24h_hours if span_24h_hours > 0 else 0
+            self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
+            # Data is "mature" once we have ≥2h of real elapsed window. Below
+            # that, burn rate is statistically too volatile to drive auto-swaps.
+            self._bnb_data_mature = elapsed_24h >= MIN_DATA_MATURE_HOURS
         else:
             span_24h_hours = 0
             self._bnb_burn_rate = 0
             self._bnb_projected_need = 0
+            self._bnb_data_mature = False
 
-        # 12h emergency threshold — same min-window guard
+        # 12h emergency threshold — same logic: always compute, gate at trigger
         if count_12h > 0 and oldest_12h:
             elapsed_12h = (now - oldest_12h).total_seconds() / 3600.0
-            if elapsed_12h < MIN_SPAN_HOURS:
-                burn_rate_12h = 0
-            else:
-                span_12h_hours = min(12.0, elapsed_12h)
-                burn_rate_12h = fees_12h / span_12h_hours
+            span_12h_hours = min(12.0, elapsed_12h) if elapsed_12h > 0 else 0
+            burn_rate_12h = fees_12h / span_12h_hours if span_12h_hours > 0 else 0
         else:
             burn_rate_12h = 0
         self._bnb_emergency_threshold = burn_rate_12h * 12.0
@@ -1249,7 +1271,17 @@ class TradingEngine:
         if self._bnb_projected_need <= 0:
             logger.info("[BNB_CHECK] No fee history yet, skipping swap check")
             return
-        
+
+        # May 25 v2 — projected_need is derived from burn rate. If data window
+        # is <2h (data not mature), the projected need can be wildly inflated
+        # from a narrow burst of trades. Display the rate but don't act on it.
+        if not self._bnb_data_mature:
+            logger.info(
+                f"[BNB_CHECK] Data window <2h — burn rate ${self._bnb_burn_rate:.2f}/hr "
+                f"published for display but scheduled swap suppressed (need ≥2h of history)."
+            )
+            return
+
         if self.is_paper_mode:
             await self._recalculate_paper_bnb(db)
             current_bnb = self.paper_bnb_balance_usd

@@ -208,6 +208,74 @@ class BinanceService:
             logger.error(f"[BNB_SWAP] Failed: {e}. If transfer already happened, check spot wallet for stranded funds.")
             return None
 
+    async def sell_bnb(self, amount_usdt: float) -> Optional[Dict]:
+        """Sell BNB for USDT via transfer-to-spot + spot market sell + transfer-back.
+        Mirror of buy_bnb (May 25). Spec:
+        - Input: amount_usdt = approximate USDT value of BNB to sell.
+        - Convert to BNB quantity at current price.
+        - Transfer that BNB from futures wallet → spot wallet.
+        - Market-sell on BNB/USDT spot pair.
+        - Transfer received USDT spot → futures.
+        - Return any leftover BNB (lot-size remainder) back to futures.
+        """
+        try:
+            await self.load_markets()
+            await self._load_spot_markets()
+
+            # Step 0: Convert USDT amount to BNB units at current price
+            bnb_price = await self.get_bnb_price()
+            if bnb_price <= 0:
+                logger.error("[BNB_SWAP_SELL] Failed: could not get BNB price")
+                return None
+            bnb_to_sell = round(amount_usdt / bnb_price, 4)
+            if bnb_to_sell <= 0:
+                logger.error(f"[BNB_SWAP_SELL] Computed BNB qty too small: {bnb_to_sell} at price {bnb_price}")
+                return None
+
+            # Step 1: Transfer BNB from futures wallet to spot wallet
+            logger.info(f"[BNB_SWAP_SELL] Step 1/4: Transferring {bnb_to_sell} BNB futures → spot")
+            await self.spot_exchange.transfer('BNB', bnb_to_sell, 'future', 'spot')
+
+            # Step 2: Sell BNB on spot for USDT (market order)
+            logger.info(f"[BNB_SWAP_SELL] Step 2/4: Selling {bnb_to_sell} BNB on spot")
+            order = await self.spot_exchange.create_order(
+                'BNB/USDT', 'market', 'sell', bnb_to_sell, None
+            )
+
+            avg_price = float(order.get('average', order.get('price', 0)))
+            cost = float(order.get('cost', 0))  # USDT received
+            order_id = order.get('id', 'spot_sell')
+
+            # Step 3: Fetch actual spot balances and transfer USDT back to futures
+            spot_bal = await self.spot_exchange.fetch_balance()
+            actual_usdt = float(spot_bal.get('USDT', {}).get('free', 0))
+            if actual_usdt <= 0:
+                logger.error("[BNB_SWAP_SELL] No USDT on spot after sell. Check order status.")
+                return None
+
+            if avg_price <= 0 and actual_usdt > 0 and bnb_to_sell > 0:
+                avg_price = actual_usdt / bnb_to_sell
+
+            logger.info(f"[BNB_SWAP_SELL] Step 3/4: Transferring {actual_usdt:.2f} USDT spot → futures")
+            await self.spot_exchange.transfer('USDT', actual_usdt, 'spot', 'future')
+
+            # Step 4: Return any leftover BNB (lot-size rounding remainder) back to futures
+            leftover_bnb = float(spot_bal.get('BNB', {}).get('free', 0))
+            if leftover_bnb > 0.0001:
+                logger.info(f"[BNB_SWAP_SELL] Step 4/4: Returning {leftover_bnb} leftover BNB spot → futures")
+                await self.spot_exchange.transfer('BNB', leftover_bnb, 'spot', 'future')
+
+            logger.info(f"[BNB_SWAP_SELL] Complete: {bnb_to_sell} BNB → {actual_usdt:.2f} USDT @ {avg_price:.2f}")
+            return {
+                'bnb_amount': bnb_to_sell,
+                'price': avg_price,
+                'proceeds_usdt': actual_usdt,
+                'order_id': str(order_id)
+            }
+        except Exception as e:
+            logger.error(f"[BNB_SWAP_SELL] Failed: {e}. If transfer already happened, check spot wallet for stranded funds.")
+            return None
+
     async def close(self):
         """Close exchange connections"""
         await self.exchange.close()

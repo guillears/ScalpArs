@@ -4462,12 +4462,21 @@
                         </div>
                     </div>
                     <div class="mt-4 flex items-center gap-3">
-                        <label class="text-sm text-gray-400">Manual BNB Buy:</label>
+                        <label class="text-sm text-gray-400 w-32">Manual BNB Buy:</label>
                         <div class="flex">
                             <input type="number" id="manual-bnb-amount" min="1" step="1" placeholder="USDT" class="w-24 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500">
                             <button onclick="manualBnbBuy()" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-r-lg transition">Buy BNB</button>
                         </div>
                         <span id="manual-bnb-result" class="text-xs text-gray-500"></span>
+                    </div>
+                    <!-- May 25 — Manual BNB Sell row (reverse of Buy) -->
+                    <div class="mt-2 flex items-center gap-3">
+                        <label class="text-sm text-gray-400 w-32">Manual BNB Sell:</label>
+                        <div class="flex">
+                            <input type="number" id="manual-bnb-sell-amount" min="1" step="1" placeholder="USDT" class="w-24 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-orange-500">
+                            <button onclick="manualBnbSell()" class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-medium rounded-r-lg transition">Sell BNB</button>
+                        </div>
+                        <span id="manual-bnb-sell-result" class="text-xs text-gray-500"></span>
                     </div>
                 </div>
 
@@ -15090,6 +15099,40 @@
             }
         }
 
+        // May 25 — Manual BNB → USDT sell (reverse of manualBnbBuy)
+        async function manualBnbSell() {
+            const amountEl = document.getElementById('manual-bnb-sell-amount');
+            const resultEl = document.getElementById('manual-bnb-sell-result');
+            const amount = parseFloat(amountEl.value);
+            if (!amount || amount <= 0) { showToast('Enter a valid USDT amount', 'error'); return; }
+            if (!confirm(`Sell $${amount} worth of BNB for USDT? This will reduce your fee reserve.`)) return;
+            resultEl.textContent = 'Selling...';
+            try {
+                const res = await fetch(`${API_BASE}/api/bnb-swaps/manual-sell`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({amount})
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    resultEl.textContent = `Sold ${data.bnb_amount} BNB @ $${data.bnb_price} (+$${data.proceeds_usdt})`;
+                    resultEl.className = 'text-xs text-orange-400';
+                    showToast(`Sold ${data.bnb_amount} BNB for $${data.proceeds_usdt}`, 'success');
+                    amountEl.value = '';
+                    loadBalance();
+                    loadBnbSwaps();
+                } else {
+                    resultEl.textContent = data.detail || 'Failed';
+                    resultEl.className = 'text-xs text-red-400';
+                    showToast(data.detail || 'BNB sell failed', 'error');
+                }
+            } catch (e) {
+                resultEl.textContent = 'Error';
+                resultEl.className = 'text-xs text-red-400';
+                showToast('Error selling BNB', 'error');
+            }
+        }
+
         async function loadBnbSwaps() {
             try {
                 const res = await fetch(`${API_BASE}/api/bnb-swaps`);
@@ -15118,17 +15161,30 @@
                 }
 
                 tbody.innerHTML = swaps.map(s => {
+                    // May 25 — handle manual_sell as a distinct type (BNB → USDT direction)
                     const typeBadge = s.swap_type === 'emergency'
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-red-500/20 text-red-400">EMERGENCY</span>'
                         : s.swap_type === 'manual'
-                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">MANUAL</span>'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">MANUAL BUY</span>'
+                        : s.swap_type === 'manual_sell'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/20 text-orange-400">MANUAL SELL</span>'
                         : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">AUTO</span>';
-                    const afterClass = s.post_bnb_usd > s.pre_bnb_usd ? 'text-emerald-400' : 'text-white';
+                    // BNB direction-aware coloring: BUY = BNB rises (green if increase), SELL = BNB drops (orange)
+                    const afterClass = s.post_bnb_usd > s.pre_bnb_usd
+                        ? 'text-emerald-400'
+                        : (s.post_bnb_usd < s.pre_bnb_usd ? 'text-orange-400' : 'text-white');
+                    // USDT amount: BUY logged as positive (USDT outflow), SELL logged as negative (USDT inflow).
+                    // Show absolute value in column + sign in a separate visual marker.
+                    const usdtAbs = Math.abs(s.amount_usdt || 0);
+                    const isSell = (s.amount_usdt || 0) < 0 || s.swap_type === 'manual_sell';
+                    const usdtCell = isSell
+                        ? `<span class="text-orange-400">+${formatUSD(usdtAbs)}</span><span class="text-gray-500 text-xs ml-1">(BNB→USDT)</span>`
+                        : `<span class="text-yellow-400 font-medium">-${formatUSD(usdtAbs)}</span><span class="text-gray-500 text-xs ml-1">(USDT→BNB)</span>`;
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${s.timestamp ? formatTime(s.timestamp) : '--'}</td>
                             <td class="px-4 py-3 text-center">${typeBadge}</td>
-                            <td class="px-4 py-3 text-right text-yellow-400 font-medium">${formatUSD(s.amount_usdt)}</td>
+                            <td class="px-4 py-3 text-right">${usdtCell}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatUSD(s.bnb_price)}</td>
                             <td class="px-4 py-3 text-right font-mono">${(s.amount_bnb || 0).toFixed(4)}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(s.pre_bnb_usd)}</td>

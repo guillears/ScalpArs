@@ -707,6 +707,80 @@ async def manual_bnb_buy(data: dict, db: AsyncSession = Depends(get_db)):
         return {"ok": True, "bnb_amount": result['bnb_amount'], "bnb_price": round(bnb_price, 2), "cost_usdt": round(result['cost_usdt'], 2)}
 
 
+@app.post("/api/bnb-swaps/manual-sell")
+async def manual_bnb_sell(data: dict, db: AsyncSession = Depends(get_db)):
+    """Manually sell BNB for a specified USDT amount equivalent. May 25 — mirror of manual_bnb_buy."""
+    amount = data.get("amount", 0)
+    if amount <= 0:
+        raise HTTPException(400, "Amount must be positive")
+
+    await trading_engine.initialize(db)
+
+    if trading_engine.is_paper_mode:
+        # Validate sufficient BNB balance
+        available_bnb = trading_engine.paper_bnb_balance_usd or 0
+        if available_bnb < amount:
+            raise HTTPException(400, f"Insufficient BNB balance: available ${available_bnb:.2f}, requested ${amount:.2f}")
+
+        bnb_price = await binance_service.get_bnb_price()
+        if bnb_price <= 0:
+            bnb_price = 600.0
+        pre_bnb = trading_engine.paper_bnb_balance_usd
+        pre_usdt = trading_engine.paper_balance
+        trading_engine.paper_bnb_balance_usd -= amount
+        if trading_engine.paper_bnb_balance_usd < 0:
+            trading_engine.paper_bnb_balance_usd = 0
+        # Note: paper_balance is reverse-derived from DB via _recalculate_paper_balance
+        # which subtracts total_bnb_swaps. We log this as a NEGATIVE swap (amount_usdt
+        # negative) so the reverse-derived balance increases by `amount`.
+        swap_log = BnbSwapLog(
+            swap_type="manual_sell",
+            amount_usdt=-amount,  # negative = USDT inflow (BNB → USDT)
+            bnb_price=bnb_price,
+            amount_bnb=round(amount / bnb_price, 6),
+            pre_bnb_usd=pre_bnb,
+            post_bnb_usd=trading_engine.paper_bnb_balance_usd,
+            pre_usdt=pre_usdt,
+            post_usdt=pre_usdt + amount,
+            burn_rate=trading_engine._bnb_burn_rate,
+            is_paper=True
+        )
+        db.add(swap_log)
+        await db.commit()
+        await trading_engine._recalculate_paper_balance(db)
+        await trading_engine.save_state(db)
+        return {"ok": True, "bnb_amount": round(amount / bnb_price, 6), "bnb_price": round(bnb_price, 2), "proceeds_usdt": round(amount, 2)}
+    else:
+        pre_balance = await binance_service.get_balance()
+        pre_bnb_price = await binance_service.get_bnb_price()
+        pre_bnb_usd = pre_balance['bnb_total'] * pre_bnb_price if pre_bnb_price > 0 else 0
+        pre_usdt = pre_balance['usdt_free']
+
+        if pre_bnb_usd < amount:
+            raise HTTPException(400, f"Insufficient BNB balance: available ${pre_bnb_usd:.2f}, requested ${amount:.2f}")
+
+        result = await binance_service.sell_bnb(amount)
+        if not result:
+            raise HTTPException(500, "BNB sell failed — check Binance API logs")
+        new_balance = await binance_service.get_balance()
+        bnb_price = result['price']
+        swap_log = BnbSwapLog(
+            swap_type="manual_sell",
+            amount_usdt=-result['proceeds_usdt'],  # negative = USDT inflow
+            bnb_price=bnb_price,
+            amount_bnb=result['bnb_amount'],
+            pre_bnb_usd=pre_bnb_usd,
+            post_bnb_usd=new_balance['bnb_total'] * bnb_price,
+            pre_usdt=pre_usdt,
+            post_usdt=new_balance['usdt_free'],
+            burn_rate=trading_engine._bnb_burn_rate,
+            is_paper=False
+        )
+        db.add(swap_log)
+        await db.commit()
+        return {"ok": True, "bnb_amount": result['bnb_amount'], "bnb_price": round(bnb_price, 2), "proceeds_usdt": round(result['proceeds_usdt'], 2)}
+
+
 # ----- Market Data -----
 
 @app.get("/api/pairs")

@@ -1,5 +1,82 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 (afternoon) — DISABLED Pair Extension floor + zero'd Pair EMA20 Slope Min SHORT (redundancy audit)
+
+### Change
+
+| Field | Before | After |
+|---|---|---|
+| `entry_dist_from_ema13_min_long` | 0.20 | **0.0** |
+| `entry_dist_from_ema13_filter_enabled` | true | **false** |
+| `momentum_ema20_slope_min_short` | 0.06 | **0.0** |
+
+PAIR_EXT_MIN LONG filter disabled. PAIR_EMA20_SLOPE_MIN SHORT zeroed.
+
+### Why — redundancy with the other 16 filters
+
+Today's analytics report showed:
+- PAIR_EXT_MIN was the **#1 LONG blocker** (455 blocks in ~6h = 38% of all LONG blocks, 20% of all filter blocks total)
+- PAIR_EMA20_SLOPE_MIN was the **#1 SHORT blocker** (289 blocks = 26% of SHORT, 13% of total)
+
+User raised the structural question: are those blocks ACTUALLY preventing trades, or are they
+just first-in-the-chain blocks for trades that would fail other filters anyway?
+
+Redundancy audit (May 13-24 closed-trade pool, LONG side, dist_from_ema13 < 0.20% cohort):
+
+| Outcome | Count | Pct |
+|---|---|---|
+| Would be blocked by OTHER filters too (EQS, BTC RSI×ADX, GVol, RngPos, ADX delta) | 8 of 9 | **89%** |
+| Uniquely caught only by PAIR_EXT_MIN | 1 of 9 | 11% |
+
+Single unique-block trade: SOLUSDT, ext=+0.149%, NP loss -$13.78 across 12 days. **Marginal $-impact relative to the 455 blocks/session that imply the filter is "doing huge work."** The block volume is misleading — most blocks are redundant with other filter mechanisms.
+
+SHORT slope filter redundancy can't be measured from pool (filter has been so effective at blocking since ~Apr-May that 0 closed trades exist with |slope|<0.06), but the same engine-order argument applies — likely similar redundancy via the EMA Gap Expanding, ADX Direction, RSI Range, and other 15 active filters.
+
+### Original ship rationale (now considered weak in hindsight)
+
+CLAUDE.md May 22 (PAIR_EXT_MIN): Shipped on N=9 cross-batch trades / 22% WR / -$237. Direction was correct but the SHIP DECISION conflated "filter saves $237" with "filter is uniquely necessary." Under the 16+ filter stack already active at the time, the savings overlap with other filters' blocks.
+
+CLAUDE.md May 12 (SLOPE_MIN_SHORT 0.04→0.06): Shipped on broader cross-sample evidence (cross-sample N=15 in 0.04-0.06 zone, 33% WR, -$269). Stronger original evidence than EXT_MIN, but same redundancy issue not assessed at ship time.
+
+### Pre-committed revert criteria at next ≥30-trade batch
+
+If at next batch:
+1. **AvgP&L% drops ≥ 0.05pp** vs current baseline on N≥40 LONG OR ≥30 SHORT → re-enable the filter (was uniquely catching losers other filters miss)
+2. **≥5 fresh LONG trades fire with dist<0.20% AND WR≤30%** → re-enable PAIR_EXT_MIN at 0.20
+3. **≥5 fresh SHORT trades fire with |slope|<0.06 AND WR≤35%** → re-enable PAIR_EMA20_SLOPE_MIN at 0.06
+4. **Combined Avg P&L % materially worsens (>0.10pp vs prior batch)** → revert both immediately
+
+If post-disable AvgP&L% is flat or improves → confirmed redundant, lock at disabled.
+
+### Filter Blocks redistribution expectation
+
+With these two disabled, blocks should redistribute to the next-in-chain filters:
+- EQS, BTC RSI×ADX, GlobalVol min, RngPos, ADX delta should pick up the LONG block volume
+- EMA Gap Expanding, ADX Direction, RSI Range should pick up SHORT block volume
+- Net trade rate should rise modestly (the ~11% truly-unique cohort that now enters)
+
+### What this does NOT change
+
+- All other 15+ filters unchanged
+- Pair blacklist unchanged
+- Multipliers unchanged
+- Exit stack unchanged (BE disabled, FAST_EXIT L1/L2 active, trailing active, EMA13 Cross Exit active)
+- No code changes — pure config edit
+
+### Files changed
+- `trading_config.json` — 3 fields (1 filter toggle, 2 threshold values to 0)
+- `CLAUDE.md` — this entry
+
+### Methodology lesson locked
+
+When a filter shows large block volume per session, that volume does NOT equal "value created." With 16+ filters running in series and first-fail-wins crediting, block counters massively overstate each individual filter's marginal contribution. Before relying on "X% of blocks" as justification for a filter's importance, **measure redundancy via the closed-trade pool** (or via parallel evaluation logging) to identify what each filter UNIQUELY catches.
+
+For future filter audit:
+1. Pool query: trades that pass all OTHER current filters but fail filter X
+2. If <30% of filter X's blocks are unique → high redundancy, consider removing
+3. If unique-block cohort is net positive on P&L → filter is cutting winners, remove
+4. If unique-block cohort is net negative AND substantial $-impact → filter is necessary
+
 ## May 25, 2026 — 🚨 CRITICAL LESSON: Filter compound-effect blind spot — ROLLBACK of 2 over-aggressive cross-filter rules
 
 ### The discovery

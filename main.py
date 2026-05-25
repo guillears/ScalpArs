@@ -2648,18 +2648,24 @@ def _compute_volume_crosstab(orders):
     return rows
 
 
+# May 25 — refactored from 11 narrow 5% bins to 7 wider purpose-built bins.
+# OLD: <25 / 25-30 / 30-35 / 35-40 / 40-45 / 45-50 / 50-55 / 55-60 / 60-65 / 65-70 / 70%+
+# NEW: <30 / 30-50 / 50-60 / 60-70 / 70-80 / 80-85 / 85%+
+# Rationale: old layout lumped everything ≥70% into one bucket, masking the
+# SHORT 85%+ capitulation cliff (-$764 cross-batch). New layout collapses
+# rarely-populated low end (25-50% was 89 trades across 5 narrow bins) into
+# 30-50 single bucket, and SPLITS the formerly-lumped tail into 70-80, 80-85,
+# 85%+ so the cliff is visible. LONG worst zone (60-70%, -$1,428 cross-batch)
+# gets its own row. Same boundaries for both directions (LONG uses Bull%,
+# SHORT uses Bear%, same bin definitions).
 _BREADTH_BINS = [
-    ("< 25%", 0, 25),
-    ("25-30%", 25, 30),
-    ("30-35%", 30, 35),
-    ("35-40%", 35, 40),
-    ("40-45%", 40, 45),
-    ("45-50%", 45, 50),
-    ("50-55%", 50, 55),
-    ("55-60%", 55, 60),
-    ("60-65%", 60, 65),
-    ("65-70%", 65, 70),
-    ("70%+", 70, 101),
+    ("< 30%", 0, 30),
+    ("30-50%", 30, 50),
+    ("50-60%", 50, 60),
+    ("60-70%", 60, 70),
+    ("70-80%", 70, 80),
+    ("80-85%", 80, 85),
+    ("85%+", 85, 101),
 ]
 
 

@@ -1,5 +1,69 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 (later evening) — BUG FIX v3: BNB burn rate denominator must be BOT UPTIME, not "time since oldest trade"
+
+### v2 was still wrong
+
+v2 used `now - oldest_24h_close` as the denominator. This collapsed to
+~1.23h when 6 trades clustered in a late burst, even though bot had been
+running 9.85h with mostly-idle hours before.
+
+- Bot runtime: 9h 51min
+- Total fees: $58.31
+- True burn (correct): $58.31 / 9.85h = **$5.92/hr**
+- v2 displayed: $47.49/hr ✗ (8× inflation)
+
+Same root failure as v1: the denominator didn't represent "time the bot
+was running and eligible to accumulate fees." Idle hours (0 fees but
+bot running) must be in the denominator.
+
+### v3 fix
+
+Denominator = `now - max(cutoff_window, min(bot_started_at, oldest_close))`:
+- If bot session started before any trade closed → use bot session start
+  (idle hours count toward denominator).
+- If oldest closed trade in window pre-dates this session → use oldest
+  trade timestamp (bot was running in a prior session too).
+- Clamp to cutoff_24h (max 24h window).
+
+Net effect for user's scenario:
+- session_start = 9.85h ago
+- oldest_24h_close = 1.23h ago
+- window_start = min(9.85h ago, 1.23h ago) = 9.85h ago
+- elapsed = 9.85h
+- burn rate = $58.31 / 9.85h = **$5.92/hr ✓**
+- projected_need 24h = $5.92 × 24 = $142
+- emergency_threshold = ~$71
+- BNB balance $999 >> all thresholds → no swap fires
+
+### Same fix applied to 12h emergency window
+
+12h emergency threshold uses identical logic with `cutoff_12h` and
+`oldest_12h`.
+
+### What this corrects
+
+- Burn rate displays the TRUE sustained rate including idle hours, not
+  the burst rate during recent activity.
+- Runway calculation `current_BNB / burn_rate` becomes realistic.
+- Projected need / emergency threshold become realistic.
+- Phantom swaps from late-burst activity are eliminated as a class.
+
+### Validation at next bot run
+
+After ≥1h of runtime with any fees in the 24h window:
+- Burn rate should approximate `total_24h_fees / bot_uptime_hours`
+- Runway display should be in the days range for typical trade pace
+- `[WARMING UP <2h]` tag continues to gate auto-swaps until `started_at`
+  is ≥ 2h ago (independent of when trades closed)
+
+### Files changed
+- `services/trading_engine.py` — `_recompute_bnb_burn_rate`: window_start
+  = min(session_start, oldest_close), clamped to cutoff. Same for 12h.
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 25, 2026 (evening) — BUG FIX: BNB burn rate `max(1.0, ...)` floor inflated post-restart, triggered phantom EMERGENCY swap
 
 ### What broke

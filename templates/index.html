@@ -8104,7 +8104,15 @@
                 ? `Paper Balance: $${(status && status.paper_balance) || cfg.paper_balance || 0}`
                 : 'LIVE mode — balance from Binance';
             lines.push(`  Paper Trading: ${isPaperRuntime ? 'ON' : 'OFF'} (${modeSource})  |  ${balanceDisplay}`);
-            lines.push(`  BNB Auto-Swap: ${cfg.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Paper BNB: $${cfg.paper_bnb_initial_usd || 500}  |  Check: ${cfg.bnb_check_interval_hours || 12}h  |  Runway: ${cfg.bnb_runway_hours || 24}h`);
+            // May 25 — use LIVE BNB balance (status payload) instead of initial config,
+            // and compute true live runway = current_bnb / burn_rate (vs the static
+            // runway_hours target). Falls back to initial if status not provided.
+            const _liveBnb = (status && typeof status.paper_bnb_balance_usd === 'number') ? status.paper_bnb_balance_usd : (cfg.paper_bnb_initial_usd || 500);
+            const _burnRate = (status && typeof status.bnb_burn_rate === 'number') ? status.bnb_burn_rate : 0;
+            const _runwayTarget = cfg.bnb_runway_hours || 24;
+            const _liveRunwayH = _burnRate > 0 ? (_liveBnb / _burnRate).toFixed(1) : '—';
+            lines.push(`  BNB Auto-Swap: ${cfg.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Paper BNB (live): $${_liveBnb.toFixed(2)}  |  Initial: $${cfg.paper_bnb_initial_usd || 500}  |  Check: ${cfg.bnb_check_interval_hours || 12}h  |  Target Runway: ${_runwayTarget}h`);
+            lines.push(`  Burn Rate: $${_burnRate.toFixed(2)}/hr  |  Live Runway: ${_liveRunwayH}h  |  Emergency Threshold: $${(status && status.bnb_emergency_threshold) ? status.bnb_emergency_threshold.toFixed(2) : '0.00'}`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
             lines.push(`  Cooldown After Loss: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
@@ -8152,6 +8160,50 @@
             return lines;
         }
 
+        // May 25 — BNB swap history in text exports. Was previously UI-only,
+        // making "why did the swap fire?" forensics impossible from saved reports.
+        // Also surfaces live burn-rate / runway numbers so the swap context is
+        // self-contained in the export.
+        function _buildBnbSwapLines(bnbData, hr, hr2) {
+            const lines = [];
+            if (!bnbData) return lines;
+            const swaps = bnbData.swaps || [];
+            const st = bnbData.status || {};
+            lines.push(`\n${hr}`);
+            lines.push('## BNB SWAP HISTORY & STATUS\n');
+            lines.push(`Auto-Swap: ${st.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Burn Rate: $${(st.burn_rate_per_hour || 0).toFixed(2)}/hr  |  Projected Need: $${(st.projected_need || 0).toFixed(2)}  |  Emergency Threshold: $${(st.emergency_threshold || 0).toFixed(2)}`);
+            lines.push(`Check Interval: ${st.check_interval_hours || '-'}h  |  Target Runway: ${st.runway_hours || '-'}h  |  Last Check: ${st.last_check ? new Date(st.last_check).toISOString().replace('T',' ').substring(0,19)+' UTC' : 'never'}`);
+            if (!swaps.length) {
+                lines.push('\nNo swaps recorded yet.');
+                return lines;
+            }
+            lines.push(`\nTotal swaps recorded: ${swaps.length} (most recent first, max 50)`);
+            lines.push(hr2);
+            lines.push(`${'Time (UTC)'.padEnd(20)} ${'Type'.padEnd(10)} ${'USDT'.padStart(10)} ${'BNB Px'.padStart(10)} ${'BNB Got'.padStart(10)} ${'Before $'.padStart(10)} ${'After $'.padStart(10)} ${'Burn/hr'.padStart(10)} ${'Mode'.padStart(6)}`);
+            lines.push(hr2);
+            for (const s of swaps) {
+                const ts = s.timestamp ? new Date(s.timestamp).toISOString().replace('T',' ').substring(0,19) : '-';
+                lines.push(
+                    `${ts.padEnd(20)} ${(s.swap_type||'-').padEnd(10)} ` +
+                    `${('$' + (s.amount_usdt||0).toFixed(2)).padStart(10)} ` +
+                    `${('$' + (s.bnb_price||0).toFixed(2)).padStart(10)} ` +
+                    `${((s.amount_bnb||0).toFixed(4)).padStart(10)} ` +
+                    `${('$' + (s.pre_bnb_usd||0).toFixed(2)).padStart(10)} ` +
+                    `${('$' + (s.post_bnb_usd||0).toFixed(2)).padStart(10)} ` +
+                    `${('$' + (s.burn_rate||0).toFixed(2)).padStart(10)} ` +
+                    `${(s.is_paper ? 'PAPER' : 'LIVE').padStart(6)}`
+                );
+            }
+            // Summary stats
+            const totalUsdt = swaps.reduce((a, s) => a + (s.amount_usdt || 0), 0);
+            const emergencyCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'emergency').length;
+            const scheduledCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'scheduled').length;
+            const manualCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'manual').length;
+            lines.push(hr2);
+            lines.push(`Summary: Total USDT swapped: $${totalUsdt.toFixed(2)}  |  Emergency: ${emergencyCount}  |  Scheduled: ${scheduledCount}  |  Manual: ${manualCount}`);
+            return lines;
+        }
+
         async function copyToClipboard(text) {
             if (navigator.clipboard && window.isSecureContext) {
                 await navigator.clipboard.writeText(text);
@@ -8185,16 +8237,18 @@
                     if (_from && _to) { _params1.push(`from_date=${_from}`); _params1.push(`to_date=${_to}`); }
                 }
                 const regimeParam = _params1.length ? '?' + _params1.join('&') : '';
-                const [perfRes, cfgRes, logRes, statusRes] = await Promise.all([
+                const [perfRes, cfgRes, logRes, statusRes, bnbRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance${regimeParam}`),
                     fetch(`${API_BASE}/api/config`),
                     fetch(`${API_BASE}/api/config/changelog?limit=50`),
-                    fetch(`${API_BASE}/api/status`)
+                    fetch(`${API_BASE}/api/status`),
+                    fetch(`${API_BASE}/api/bnb-swaps`)
                 ]);
                 const perf = await perfRes.json();
                 const cfg = await cfgRes.json();
                 const changelog = logRes.ok ? await logRes.json() : [];
                 const status = statusRes.ok ? await statusRes.json() : null;
+                const bnbData = (bnbRes && bnbRes.ok) ? await bnbRes.json() : null;
                 const lines = [];
                 const hr = '='.repeat(80);
                 const hr2 = '-'.repeat(60);
@@ -8215,6 +8269,9 @@
                 lines.push(hr);
 
                 lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));
+
+                // --- BNB SWAP HISTORY (May 25) ---
+                lines.push(..._buildBnbSwapLines(bnbData, hr, hr2));
 
                 // --- OVERALL PERFORMANCE ---
                 lines.push(`\n${hr}`);
@@ -9708,18 +9765,20 @@
             try {
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const _winSuffix = _buildWindowQuery('&');
-                const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes] = await Promise.all([
+                const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/config`),
                     fetch(`${API_BASE}/api/config/changelog?limit=50`),
-                    fetch(`${API_BASE}/api/status`)
+                    fetch(`${API_BASE}/api/status`),
+                    fetch(`${API_BASE}/api/bnb-swaps`)
                 ]);
                 const perfBull = await perfBullRes.json();
                 const perfBear = await perfBearRes.json();
                 const cfg = await cfgRes.json();
                 const changelog = logRes.ok ? await logRes.json() : [];
                 const status = statusRes.ok ? await statusRes.json() : null;
+                const bnbData = (bnbRes && bnbRes.ok) ? await bnbRes.json() : null;
                 const lines = [];
                 const hr = '='.repeat(80);
                 const hr2 = '-'.repeat(60);
@@ -9740,6 +9799,9 @@
                 lines.push(hr);
 
                 lines.push(..._buildConfigLines(cfg, changelog, hr, hr2, status));
+
+                // May 25 — BNB swap history in split-report too
+                lines.push(..._buildBnbSwapLines(bnbData, hr, hr2));
 
                 lines.push(`\n${sectionHr}`);
                 lines.push('### BULLISH REGIME');

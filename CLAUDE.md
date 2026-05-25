@@ -1,5 +1,102 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 25, 2026 (evening) — BUG FIX: BNB burn rate `max(1.0, ...)` floor inflated post-restart, triggered phantom EMERGENCY swap
+
+### What broke
+
+Operator's UI screenshot showed an EMERGENCY BNB swap at 11:25 AM that
+shouldn't have fired:
+- BNB Before: $453.35, After: $1,010.75 (spent $557.39)
+- Burn Rate at swap: $42.11/hr → Projected 24h need: ~$1,010
+- True burn rate based on real fee history ($58.31 fees over 9.6h runtime) ≈ $6.07/hr
+- The displayed burn rate was **~7× inflated**
+
+### Root cause
+
+`services/trading_engine.py::_recompute_bnb_burn_rate` used:
+
+```python
+span_24h_hours = max(1.0, min(24.0, (now - oldest_24h).total_seconds() / 3600.0))
+```
+
+The `max(1.0, ...)` floor was meant to prevent divide-by-zero on tiny
+windows, but it created the inverse failure mode: when the first few trades
+post-restart all closed within 30-60 min, the span got clamped to 1.0h,
+inflating burn rate 6-10× over the real value. The inflated rate fed into:
+- 24h projected need (= burn × 24) — became the swap-trigger threshold
+- 12h emergency threshold (= 12h burn × 12) — became inflated too
+- Both projected need and emergency threshold rose together, but BNB
+  balance (decremented per fee) fell below the inflated emergency
+  threshold → EMERGENCY swap fired against a phantom need
+
+### Fix
+
+Replaced floor with a min-window gate (MIN_SPAN_HOURS = 2.0):
+- If oldest closed trade in 24h window is < 2h ago → burn rate and
+  projected need stay at 0 (no swap can fire from extrapolation)
+- If ≥ 2h → divide fees by real elapsed time, no artificial floor
+- Same min-window guard applied to 12h emergency threshold path
+
+Trade-off: bot won't pre-emptively swap during the first 2h of fee history
+after a fresh cold-start. Acceptable because:
+1. Real burn rate isn't measurable from < 2h of data anyway
+2. BNB initial balance ($500 default) is far above emergency threshold
+   at typical burn rates — no real-world emergency in the first 2h
+3. After 2h, normal swap logic resumes with accurate burn rate
+
+### Companion fix: text-export BNB section was missing
+
+User reported that the swap history was visible in the UI's "BNB Swaps" tab
+but NOT in any text report export. This made forensic analysis of swap
+triggers impossible from saved reports.
+
+Added new `_buildBnbSwapLines` helper in templates/index.html that fetches
+`/api/bnb-swaps` and surfaces:
+- Live BNB balance (vs static initial config)
+- Burn rate ($/hr), projected need, emergency threshold
+- Live computed runway (current BNB / burn rate, in hours)
+- Last check timestamp
+- Per-swap history table (up to 50 swaps, most recent first):
+  - Timestamp, Type (emergency/scheduled/manual), USDT spent, BNB price,
+    BNB amount, pre/post BNB USD, burn rate at swap, mode
+- Summary stats: total USDT swapped, count by type
+
+Wired into both copy sites (copyReport + copySplitReport).
+
+Also fixed the config-line Paper BNB display to use the LIVE balance from
+the status payload (`status.paper_bnb_balance_usd`) instead of the static
+`cfg.paper_bnb_initial_usd`. Same line now also shows the Live Runway
+computed from current burn rate (vs the static `bnb_runway_hours` target).
+
+### Pre-committed validation at next bot startup
+
+Watch for the following at next cold-start:
+1. **First 2h post-restart**: BNB Swaps UI panel should show burn rate
+   $0.00/hr (not extrapolated). No swap should fire during this window
+   regardless of how fast fees accumulate.
+2. **At 2h+**: burn rate publishes. If real burn rate × 24h > current BNB,
+   a scheduled swap will fire normally. Emergency only if real 12h burn × 12
+   > current BNB.
+3. **Text export**: copyReport / copySplitReport should now include a
+   `## BNB SWAP HISTORY & STATUS` section with full swap log.
+
+### Locked methodology rule (added to discipline list)
+
+When a counter / extrapolation has a `max(N, ...)` floor on its denominator,
+ALWAYS verify the floor doesn't create the inverse failure mode. If the
+denominator represents elapsed time of a sample, a min-floor inflates the
+rate when actual elapsed is below the floor. Use a min-data-window gate
+(return 0 if elapsed < threshold) rather than a floor (clamp denominator)
+whenever the metric drives auto-actions like swaps.
+
+### Files changed
+- `services/trading_engine.py` — `_recompute_bnb_burn_rate` floor → gate
+- `templates/index.html` — `_buildBnbSwapLines` helper + wire-up in 2
+  copy sites + Paper BNB display switched to live balance + Live Runway line
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 25, 2026 (late afternoon) — ROLLED BACK same-day disable of PAIR_EXT_MIN + PAIR_EMA20_SLOPE_MIN
 
 ### Change

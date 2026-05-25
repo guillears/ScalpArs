@@ -1157,17 +1157,36 @@ class TradingEngine:
         )
         oldest_24h = result_oldest_24h.scalar()
 
+        # May 25 BUGFIX: was `span = max(1.0, ...)` which clamped sub-1h windows
+        # to 1h denominator, inflating burn rate 6-10× post-restart when first
+        # trades cluster in a narrow window. Triggered phantom EMERGENCY swaps
+        # (see CLAUDE.md May 25 BNB swap bug entry). New rule: require ≥2h of
+        # real data before publishing a burn rate; otherwise return 0 (no swap).
+        MIN_SPAN_HOURS = 2.0
         if count_24h > 0 and oldest_24h:
-            span_24h_hours = max(1.0, min(24.0, (now - oldest_24h).total_seconds() / 3600.0))
+            elapsed_24h = (now - oldest_24h).total_seconds() / 3600.0
+            if elapsed_24h < MIN_SPAN_HOURS:
+                # Insufficient data window — refuse to extrapolate.
+                self._bnb_burn_rate = 0
+                self._bnb_projected_need = 0
+                span_24h_hours = 0
+            else:
+                span_24h_hours = min(24.0, elapsed_24h)
+                self._bnb_burn_rate = fees_24h / span_24h_hours
+                self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
         else:
             span_24h_hours = 0
-        self._bnb_burn_rate = fees_24h / span_24h_hours if span_24h_hours > 0 else 0
-        self._bnb_projected_need = self._bnb_burn_rate * tc.bnb_runway_hours
+            self._bnb_burn_rate = 0
+            self._bnb_projected_need = 0
 
-        # 12h emergency threshold
+        # 12h emergency threshold — same min-window guard
         if count_12h > 0 and oldest_12h:
-            span_12h_hours = max(1.0, min(12.0, (now - oldest_12h).total_seconds() / 3600.0))
-            burn_rate_12h = fees_12h / span_12h_hours
+            elapsed_12h = (now - oldest_12h).total_seconds() / 3600.0
+            if elapsed_12h < MIN_SPAN_HOURS:
+                burn_rate_12h = 0
+            else:
+                span_12h_hours = min(12.0, elapsed_12h)
+                burn_rate_12h = fees_12h / span_12h_hours
         else:
             burn_rate_12h = 0
         self._bnb_emergency_threshold = burn_rate_12h * 12.0

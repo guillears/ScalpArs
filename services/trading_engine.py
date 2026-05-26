@@ -2552,7 +2552,9 @@ class TradingEngine:
             logger.info(f"[SKIP] {pair}: Already have open position")
             return None  # Already have position
         
-        # Check cooldown - don't re-enter same pair too quickly after a losing trade
+        # Check cooldown - don't re-enter same pair too quickly after ANY close (win or loss)
+        # CLAUDE.md May 26: cross-batch evidence on 919-trade pool — 84 same-pair re-entries
+        # within 5min after a WINNING trade had 61.9% WR but -$731 net (2.71:1 R:R loss asymmetry).
         cooldown_minutes = config.trading_config.investment.cooldown_after_loss_minutes
         if cooldown_minutes > 0:
             cooldown_threshold = datetime.utcnow() - timedelta(minutes=cooldown_minutes)
@@ -2563,14 +2565,14 @@ class TradingEngine:
                         Order.status == "CLOSED",
                         Order.is_paper == self.is_paper_mode,
                         Order.closed_at >= cooldown_threshold,
-                        Order.pnl < 0  # Only apply cooldown after losses
                     )
                 ).order_by(desc(Order.closed_at)).limit(1)
             )
             recent_close = result.scalar_one_or_none()
             if recent_close:
                 time_since_close = (datetime.utcnow() - recent_close.closed_at).total_seconds() / 60
-                logger.info(f"[COOLDOWN] {pair}: Recent loss {time_since_close:.1f} mins ago (pnl={recent_close.pnl:.2f}), waiting {cooldown_minutes} mins")
+                outcome = "loss" if recent_close.pnl < 0 else "win"
+                logger.info(f"[COOLDOWN] {pair}: Recent {outcome} {time_since_close:.1f} mins ago (pnl={recent_close.pnl:.2f}), waiting {cooldown_minutes} mins")
                 return None
         
         # Calculate position size

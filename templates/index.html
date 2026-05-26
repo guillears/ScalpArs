@@ -4021,12 +4021,12 @@
                             </div>
                         </div>
                         <div>
-                            <label class="block text-sm text-gray-400 mb-2">Pair Cooldown (after loss)</label>
+                            <label class="block text-sm text-gray-400 mb-2">Pair Cooldown (after any close)</label>
                             <div class="flex">
                                 <input type="number" id="config-cooldown-loss" min="0" max="60" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="5">
                                 <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">min</span>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Wait before re-entering same pair after a losing trade</p>
+                            <p class="text-xs text-gray-500 mt-1">Wait before re-entering same pair after any close (win or loss). 0 = disabled.</p>
                         </div>
                     </div>
                     
@@ -8150,7 +8150,7 @@
             lines.push(`  BNB Auto-Swap: ${cfg.bnb_swap_enabled ? 'ON' : 'OFF'}  |  Paper BNB (live): $${_liveBnb.toFixed(2)}  |  Initial: $${cfg.paper_bnb_initial_usd || 500}  |  Check: ${cfg.bnb_check_interval_hours || 12}h  |  Target Runway: ${_runwayTarget}h`);
             lines.push(`  Burn Rate: $${_burnRate.toFixed(2)}/hr  |  Live Runway: ${_liveRunwayH}h  |  Emergency Threshold: $${(status && status.bnb_emergency_threshold) ? status.bnb_emergency_threshold.toFixed(2) : '0.00'}`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
-            lines.push(`  Cooldown After Loss: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
+            lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
 
             lines.push(`\nFee & Maker Orders:`);

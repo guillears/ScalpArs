@@ -644,8 +644,12 @@ class InvestmentConfig(BaseModel):
     reserve_fixed: float = 500.0  # USD
     reserve_percentage: float = 20.0  # % of total balance
     
-    # Cooldown after losing trade (prevents immediate re-entry on same pair)
-    cooldown_after_loss_minutes: int = 5  # Minutes to wait before re-entering same pair after loss
+    # Cooldown after trade close (prevents immediate re-entry on same pair, win or loss)
+    # CLAUDE.md May 26: cross-batch evidence on 919-trade pool shows 84 same-pair re-entries
+    # within 5min after a WINNING trade had 61.9% WR but -$731 net (2.71:1 R:R loss asymmetry).
+    # Fast-exit/trailing/BE wins lock tiny profit on fading momentum → re-entry catches the fade.
+    # Applies to ANY close (was previously loss-only).
+    cooldown_after_loss_minutes: int = 5  # Minutes to wait before re-entering same pair (any close)
     
     # Position limits
     max_open_positions: int = 100  # Max simultaneous open positions

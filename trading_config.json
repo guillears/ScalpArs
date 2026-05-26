@@ -65,7 +65,7 @@
     "range_position_min_short": 2.0,
     "range_position_max_long": 98.0,
     "btc_1h_slope_max_long": 0.15,
-    "btc_1h_slope_max_short": 0.10,
+    "btc_1h_slope_max_short": 0.1,
     "min_adx_delta_long": 0.0,
     "min_adx_delta_short": 0.0,
     "momentum_ema20_slope_max_long": 0.4,
@@ -229,8 +229,8 @@
         "direction": "LONG",
         "inv_mult": 1.0,
         "lev_mult": 1.0,
-        "fixed_tp_pct": 0.10,
-        "fixed_sl_pct": -0.50
+        "fixed_tp_pct": 0.1,
+        "fixed_sl_pct": -0.5
       },
       {
         "pattern": "W4",
@@ -267,16 +267,15 @@
       {
         "pattern": "UNMATCHED",
         "direction": "LONG",
-        "inv_mult": 1.0,
+        "inv_mult": 2.0,
         "lev_mult": 1.0,
         "fixed_sl_pct": -0.5
       },
       {
         "pattern": "UNMATCHED",
         "direction": "SHORT",
-        "inv_mult": 1.0,
+        "inv_mult": 2.0,
         "lev_mult": 1.0,
-        "fixed_tp_pct": 0.1,
         "fixed_sl_pct": -0.5
       }
     ],
@@ -284,8 +283,8 @@
       {
         "name": "1hPullback_L",
         "direction": "LONG",
-        "slope_min": -0.20,
-        "slope_max": -0.10,
+        "slope_min": -0.2,
+        "slope_max": -0.1,
         "adx_min": 18,
         "adx_max": 25,
         "inv_mult": 2.0,
@@ -295,7 +294,7 @@
         "name": "1hMildRise_S",
         "direction": "SHORT",
         "slope_min": 0.0,
-        "slope_max": 0.10,
+        "slope_max": 0.1,
         "adx_min": 25,
         "adx_max": 30,
         "inv_mult": 2.0,
@@ -306,16 +305,16 @@
       {
         "name": "Ext0.4-0.6_L",
         "direction": "LONG",
-        "ext_min": 0.40,
-        "ext_max": 0.60,
+        "ext_min": 0.4,
+        "ext_max": 0.6,
         "inv_mult": 2.0,
         "lev_mult": 1.0
       },
       {
         "name": "Ext_QuietVol_L",
         "direction": "LONG",
-        "ext_min": 0.40,
-        "ext_max": 0.60,
+        "ext_min": 0.4,
+        "ext_max": 0.6,
         "pair_vol_max": 0.95,
         "inv_mult": 2.0,
         "lev_mult": 1.0
@@ -323,8 +322,8 @@
       {
         "name": "Ext_SlowADX_L",
         "direction": "LONG",
-        "ext_min": 0.40,
-        "ext_max": 0.60,
+        "ext_min": 0.4,
+        "ext_max": 0.6,
         "adx_delta_max": 0.3,
         "inv_mult": 2.0,
         "lev_mult": 1.0
@@ -338,10 +337,10 @@
     "fast_exit_l2_enabled": true,
     "fast_exit_l2_threshold_pct": 0.4,
     "fast_exit_l2_window_minutes": 5,
-    "fast_exit_l1_atr_multiplier": 0.50,
-    "fast_exit_l2_atr_multiplier": 0.50,
-    "fast_exit_l1_atr_floor_cap_pct": 0.60,
-    "fast_exit_l2_atr_floor_cap_pct": 0.80,
+    "fast_exit_l1_atr_multiplier": 0.5,
+    "fast_exit_l2_atr_multiplier": 0.5,
+    "fast_exit_l1_atr_floor_cap_pct": 0.6,
+    "fast_exit_l2_atr_floor_cap_pct": 0.8,
     "global_volume_filter_enabled": true,
     "global_volume_threshold_long": 0.7,
     "global_volume_threshold_short": 0.5,
@@ -350,7 +349,7 @@
     "global_volume_max_short_capitulation_slope": 0.0,
     "pair_volume_usd_rescue_long": 50000000,
     "pair_volume_usd_rescue_short": 0.0,
-    "global_volume_rescue_max_long": 0.60,
+    "global_volume_rescue_max_long": 0.6,
     "global_volume_rescue_max_short": 0.0,
     "pair_volume_filter_enabled": false,
     "pair_volume_threshold_long": 1.1,

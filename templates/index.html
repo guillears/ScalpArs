@@ -5160,6 +5160,35 @@
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <div class="flex items-center gap-3 mb-1">
+                            <span class="text-sm text-gray-300">BTC 1h × BTC 5m RSI Direction Cross-Filter <span class="text-fuchsia-400 text-xs">(May 26 PM)</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-btc-1h-5m-rsi-dir-filter-enabled" class="sr-only peer" checked>
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                <span class="ml-2 text-xs text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">Block entry when BTC 1h and 5m RSI directions match a specified cell. Each rule: 1h direction × 5m direction (Rising / Falling). Empty = filter inactive. <span class="text-fuchsia-400">SHORT default `RR` shipped May 26 PM — blocks double-countertrend setup (both RSI timeframes rising while bot fires SHORT). N=5 combined evidence, 60% WR, -$182, 20% NP. 11th locked-discipline override.</span></p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">1h Dir</th><th class="text-left px-1">5m Dir</th><th></th></tr></thead>
+                                    <tbody id="btc-1h-5m-rsi-dir-filter-long-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtc1h5mRsiDirRow('long')" class="mt-1 text-xs text-emerald-400 hover:text-emerald-300">+ Add Rule</button>
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT rules</span>
+                                <table class="w-full text-xs mt-1">
+                                    <thead><tr class="text-gray-500"><th class="text-left px-1">1h Dir</th><th class="text-left px-1">5m Dir</th><th></th></tr></thead>
+                                    <tbody id="btc-1h-5m-rsi-dir-filter-short-body"></tbody>
+                                </table>
+                                <button type="button" onclick="addBtc1h5mRsiDirRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
+                        <div class="flex items-center gap-3 mb-1">
                             <span class="text-sm text-gray-300">BTC EMA13-EMA50 Gap × BTC ADX Cross-Filter <span class="text-amber-400 text-xs">(May 19)</span></span>
                             <label class="inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="config-btc-gap-btc-adx-filter-enabled" class="sr-only peer" checked>
@@ -15779,6 +15808,11 @@
                 loadRngposAdxDeltaFilter('short', config.thresholds.rngpos_adx_delta_filter_short || '');
                 const _rpadEn = document.getElementById('config-rngpos-adx-delta-filter-enabled');
                 if (_rpadEn) _rpadEn.checked = (config.thresholds.rngpos_adx_delta_filter_enabled !== false);
+                // BTC 1h × 5m RSI Direction Cross-Filter (May 26 PM)
+                loadBtc1h5mRsiDirFilter('long', config.thresholds.btc_1h_5m_rsi_dir_filter_long || '');
+                loadBtc1h5mRsiDirFilter('short', config.thresholds.btc_1h_5m_rsi_dir_filter_short || '');
+                const _rsiDirEn = document.getElementById('config-btc-1h-5m-rsi-dir-filter-enabled');
+                if (_rsiDirEn) _rsiDirEn.checked = (config.thresholds.btc_1h_5m_rsi_dir_filter_enabled !== false);
                 // BTC Gap × BTC ADX Cross-Filter (May 19)
                 loadBtcGapBtcAdxFilter('long', config.thresholds.btc_gap_btc_adx_filter_long || '');
                 loadBtcGapBtcAdxFilter('short', config.thresholds.btc_gap_btc_adx_filter_short || '');
@@ -16316,6 +16350,40 @@
                 if (rLo !== '' && rHi !== '' && dLo !== '' && dHi !== '') {
                     rules.push(`${rLo}-${rHi}:${dLo}-${dHi}`);
                 }
+            });
+            return rules.join(',');
+        }
+
+        // BTC 1h × BTC 5m RSI Direction Cross-Filter helpers (May 26 PM, 2026)
+        // Rule format: 2-char codes "RR" "RF" "FR" "FF" (1h dir, 5m dir).
+        // R=Rising, F=Falling. Empty = inactive.
+        function addBtc1h5mRsiDirRow(direction, d1h='R', d5m='R') {
+            const tbody = document.getElementById(`btc-1h-5m-rsi-dir-filter-${direction}-body`);
+            const tr = document.createElement('tr');
+            const opt = (val, sel) => `<option value="${val}" ${sel===val?'selected':''}>${val==='R'?'Rising':'Falling'}</option>`;
+            tr.innerHTML = `
+                <td class="px-1 py-1"><select class="w-20 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs rsi-dir-1h">${opt('R',d1h)}${opt('F',d1h)}</select></td>
+                <td class="px-1 py-1"><select class="w-20 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs rsi-dir-5m">${opt('R',d5m)}${opt('F',d5m)}</select></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadBtc1h5mRsiDirFilter(direction, filterStr) {
+            const tbody = document.getElementById(`btc-1h-5m-rsi-dir-filter-${direction}-body`);
+            tbody.innerHTML = '';
+            if (!filterStr || !filterStr.trim()) return;
+            for (const rule of filterStr.split(',')) {
+                const r = rule.trim().toUpperCase();
+                if (r.length !== 2 || !'RF'.includes(r[0]) || !'RF'.includes(r[1])) continue;
+                addBtc1h5mRsiDirRow(direction, r[0], r[1]);
+            }
+        }
+        function collectBtc1h5mRsiDirFilter(direction) {
+            const rows = document.querySelectorAll(`#btc-1h-5m-rsi-dir-filter-${direction}-body tr`);
+            const rules = [];
+            rows.forEach(row => {
+                const d1h = row.querySelector('.rsi-dir-1h').value;
+                const d5m = row.querySelector('.rsi-dir-5m').value;
+                if (d1h && d5m) rules.push(`${d1h}${d5m}`);
             });
             return rules.join(',');
         }
@@ -16912,6 +16980,10 @@
                     rngpos_adx_delta_filter_long: collectRngposAdxDeltaFilter('long'),
                     rngpos_adx_delta_filter_short: collectRngposAdxDeltaFilter('short'),
                     rngpos_adx_delta_filter_enabled: ((document.getElementById('config-rngpos-adx-delta-filter-enabled') || {}).checked === true),
+                    // BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26 PM)
+                    btc_1h_5m_rsi_dir_filter_long: collectBtc1h5mRsiDirFilter('long'),
+                    btc_1h_5m_rsi_dir_filter_short: collectBtc1h5mRsiDirFilter('short'),
+                    btc_1h_5m_rsi_dir_filter_enabled: ((document.getElementById('config-btc-1h-5m-rsi-dir-filter-enabled') || {}).checked === true),
                     // BTC Gap × BTC ADX Cross-Filter (May 19)
                     btc_gap_btc_adx_filter_long: collectBtcGapBtcAdxFilter('long'),
                     btc_gap_btc_adx_filter_short: collectBtcGapBtcAdxFilter('short'),

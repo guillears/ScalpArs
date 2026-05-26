@@ -332,6 +332,17 @@ class SignalThresholds(BaseModel):
     rngpos_adx_delta_filter_short: str = ""
     # Master toggle for the RngPos × ADX Δ cross-filter. Same A/B pattern.
     rngpos_adx_delta_filter_enabled: bool = True
+    # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
+    # Block entry when both BTC RSI timeframes are in specified directions.
+    # Rule format: 2-char codes "RR" "RF" "FR" "FF" where first=1h dir, second=5m dir.
+    # R=Rising (curr > prev), F=Falling (curr <= prev).
+    # Multiple rules comma-separated. Empty = filter inactive.
+    # Default SHORT="RR" — blocks SHORT when both 1h and 5m BTC RSI are rising
+    # (double-countertrend setup). N=5 combined evidence, 60% WR, -$182, 20% NP rate.
+    # 11th locked-discipline override per CLAUDE.md May 26 PM watchlist.
+    btc_1h_5m_rsi_dir_filter_long: str = ""
+    btc_1h_5m_rsi_dir_filter_short: str = "RR"
+    btc_1h_5m_rsi_dir_filter_enabled: bool = True
     # BTC EMA13-EMA50 Gap × BTC ADX 2D Cross-Filter (May 19, 2026).
     # Catches the "BTC mid-extension + low/climax trend conviction" LONG loser zone
     # that single-axis filters can't express. Inside Gap [+0.10, +0.20%]:

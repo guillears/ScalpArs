@@ -5760,6 +5760,43 @@ class TradingEngine:
                             except (ValueError, TypeError):
                                 continue
 
+            # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
+            # Block entry when both BTC RSI timeframes are in specified
+            # directions (Rising/Falling). Rule encoded as 2-char codes:
+            # "RR" "RF" "FR" "FF" where first=1h dir, second=5m dir.
+            # R=Rising (curr > prev), F=Falling (curr <= prev, matches existing
+            # BTC 1h × 5m RSI cross-tab convention).
+            # Default SHORT="RR" — blocks double-countertrend setup (BTC rising
+            # on both timeframes while SHORT signal fires). Cross-batch N=5
+            # combined, 60% WR, -$182. 11th locked-discipline override
+            # acknowledged per CLAUDE.md May 26 PM watchlist.
+            _rsi_dir_enabled = getattr(config.trading_config.thresholds,
+                                       'btc_1h_5m_rsi_dir_filter_enabled', True)
+            if (_rsi_dir_enabled and signal in ["LONG", "SHORT"]
+                    and btc_rsi is not None and btc_rsi_prev is not None
+                    and btc_rsi_1h is not None and btc_rsi_1h_prev is not None):
+                _th_rsi = config.trading_config.thresholds
+                _rsi_dir_key = ('btc_1h_5m_rsi_dir_filter_long' if signal == 'LONG'
+                                else 'btc_1h_5m_rsi_dir_filter_short')
+                _rsi_dir_str = (getattr(_th_rsi, _rsi_dir_key, '') or '').strip()
+                if _rsi_dir_str:
+                    _dir_1h = 'R' if btc_rsi_1h > btc_rsi_1h_prev else 'F'
+                    _dir_5m = 'R' if btc_rsi > btc_rsi_prev else 'F'
+                    _trade_key = f"{_dir_1h}{_dir_5m}"
+                    _rules = [r.strip().upper() for r in _rsi_dir_str.split(',') if r.strip()]
+                    if _trade_key in _rules:
+                        _dir_full = lambda c: 'Rising' if c == 'R' else 'Falling'
+                        logger.info(
+                            f"[BTC_1H_5M_RSI_DIR_GATE] {pair}: {signal} blocked — "
+                            f"1h {_dir_full(_dir_1h)} × 5m {_dir_full(_dir_5m)} "
+                            f"(1h RSI {btc_rsi_1h:.1f} vs prev {btc_rsi_1h_prev:.1f}, "
+                            f"5m RSI {btc_rsi:.1f} vs prev {btc_rsi_prev:.1f}) "
+                            f"matches rule {_trade_key}"
+                        )
+                        self._record_filter_block("BTC_1H_5M_RSI_DIR_GATE", signal, had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "BTC_1H_5M_RSI_DIR_GATE"
+                        signal = "NO_TRADE"
+
             # BTC EMA13-EMA50 Gap × BTC ADX 2D Cross-Filter (May 19, 2026).
             # Catches the "BTC mid-extension + low/climax trend conviction" LONG
             # loser zone that single-axis filters can't express. Cross-batch

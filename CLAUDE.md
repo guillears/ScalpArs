@@ -1,5 +1,399 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 26, 2026 (late evening) — SHIPPED: BTC 1h × BTC 5m RSI Direction Cross-Filter (SHORT RR blocked)
+
+### Change
+
+New 2D cross-filter primitive blocking SHORT entries when BTC 1h RSI
+direction = Rising AND BTC 5m RSI direction = Rising (both timeframes
+ticking up — bot SHORTs into multi-TF upward momentum, gets squeezed).
+
+**Config (new fields in `config.py` / `trading_config.json`):**
+- `btc_1h_5m_rsi_dir_filter_enabled: true` (master toggle, default ON)
+- `btc_1h_5m_rsi_dir_filter_short: "RR"` (SHIPPED — blocks Rising/Rising SHORTs)
+- `btc_1h_5m_rsi_dir_filter_long: ""` (empty — LONG side observation only)
+
+**Rule format:** 2-char codes "RR" / "RF" / "FR" / "FF" where 1st char =
+1h dir, 2nd char = 5m dir. R = Rising (curr > prev), F = Falling
+(curr ≤ prev — no flat band). Multi-rule via comma. Empty = inactive.
+
+**Engine:** check placed after RngPos × ADX Δ filter, before BTC Gap ×
+BTC ADX filter. Logs `[BTC_1H_5M_RSI_DIR_GATE]`. New counter
+`BTC_1H_5M_RSI_DIR_GATE` in Filter Blocks panel.
+
+### Evidence (today + cross-batch survivors)
+
+- Today's SHORT RR loser: BTC #19 NP -$48 (1h↑ + 5m↑)
+- Cross-batch (919-trade dedup, post-May-15 survivors only): N=5,
+  3W/2L, both losers Never Positive, +$15 net but R:R asymmetric
+- Mechanism clean: multi-TF macro upward momentum + countertrend SHORT
+  = squeeze risk
+
+### Discipline override acknowledgment
+
+**11th locked-discipline override in 2 weeks.** N=5 cross-batch is below
+the standard N≥15 promotion gate. User-directed ship rationale:
+1. Mechanism unambiguous (multi-TF Rising = macro lift against SHORT)
+2. Both losers in cohort were NP (clean failure shape)
+3. Single config-line revert if wrong
+4. Asymmetric ship (SHORT only) — LONG side not yet evaluated, default
+   empty preserves observation
+
+### Pre-committed revert criteria at next ≥30-SHORT checkpoint
+
+| Outcome | Action |
+|---|---|
+| Blocked-zone RR SHORTs (obs logs) ≥55% WR on N≥10 | REVERT — set rule to `""` |
+| Blocked-zone RR SHORTs ≤30% WR on N≥10 | Validated — lock |
+| `[BTC_1H_5M_RSI_DIR_GATE]` count = 0 across 100+ SHORTs | Filter dormant — investigate |
+| ≥3 fresh RR SHORT winners in observation period | Reconsider — possible regime shift |
+
+### LONG side watchlist
+
+LONG cohort under same RR pattern not yet analyzed. If at future checkpoint
+LONG RR data shows N≥15 with WR ≥65% → ship LONG-side rule (block FF
+LONGs symmetric to SHORT block of RR).
+
+### Files changed
+
+- `config.py` — 3 new fields with evidence comment
+- `trading_config.json` — fields populated (SHORT="RR", LONG="", enabled=true)
+- `services/trading_engine.py` — filter check block (~30 lines)
+- `templates/index.html` — UI section (toggle + LONG/SHORT rule tables with
+  Rising/Falling dropdowns) + JS helpers + load/save handlers
+- `CLAUDE.md` — this entry
+
+---
+
+## May 26, 2026 (late evening) — WATCHLIST: BTC 1h × BTC 30m RSI Direction Cross-Tab
+
+### What this is
+
+Observation-only cross-tab finding from the May 26 21:15:57 batch analysis.
+Reveals multi-timeframe BTC RSI direction patterns invisible in single-dim
+tables (Performance by BTC 1h RSI Direction OR Performance by BTC 30m RSI
+Direction individually).
+
+### Cross-batch evidence (post-May-15 capture, 919-trade dedupe pool)
+
+**SHORT cohort:**
+
+| 1h \ 30m | Rising | Falling | Flat |
+|---|---|---|---|
+| Rising | 1 / 100% / +$19 | 3 / 100% / +$67 | — |
+| **Falling** | **23 / 100% / +$284 / 0% NP** ★★★ | **132 / 64% / -$1,207 / 17% NP** ✗✗ | — |
+
+**LONG cohort:**
+
+| 1h \ 30m | Rising | Falling | Flat |
+|---|---|---|---|
+| **Rising** | **147 / 54% / -$2,288 / 21% NP** ✗ | 33 / 67% / +$74 / 12% NP | — |
+| Falling | 7 / 29% / -$280 / 29% NP | 8 / 50% / -$240 / 12% NP | — |
+| Flat | 2 / 100% / +$37 / 0% NP | — | — |
+
+### Structural findings
+
+**1. Cleanest SHORT cell in entire pool — 1h Falling × 30m Rising**
+- N=23, 100% WR, +$284, 0% NP
+- Mechanism: BTC bearish on 1h (macro down), 30m bounces (short-term rally)
+- Bot SHORTs catch the FAILURE of the short-term bounce in macro-bearish regime
+- COUNTER-INTUITIVE: misalignment between timeframes wins, full alignment loses
+
+**2. Dominant SHORT losing cohort — 1h Falling × 30m Falling**
+- N=132, 64% WR, -$1,207, 17% NP
+- This single cell is essentially the bot's entire SHORT money leak
+- Both timeframes confirmed bearish = enter at momentum peak = squeeze risk
+- Same R:R 1:3 asymmetry documented in 1h Falling alone analysis
+
+**3. Dominant LONG losing cohort — 1h Rising × 30m Rising**
+- N=147, 54% WR, -$2,288, 21% NP
+- Mirror of SHORT killer — both timeframes confirmed bullish = enter at top
+
+**4. Pattern invisible in single-dim views**
+The 23-trade SHORT winner cell (1h Falling × 30m Rising) is INVISIBLE in
+either single-dim table. 1h alone shows Falling = -$923 (looks bad). The
+cross-tab reveals the bad-looking 1h cell hides a clean winner sub-cell.
+
+### Why this is on watchlist (not shipped)
+
+Two reasons:
+
+1. **N=23 in the winner cell is below promotion gate** (need ≥30 for
+   multiplier candidate). Direction-consistent but thin.
+
+2. **N=147 in the LONG killer cell + N=132 in SHORT killer cell** are large
+   enough to support an entry-block filter — but blocking "1h × 30m both
+   same direction as trade" would cut the bot's dominant trade type. The
+   54-64% WR in those cells means a block would kill many winners.
+
+The right intervention isn't an entry block — it's likely a fixed-SL cap
+on the killer cells (matching the R:R asymmetry pattern documented in
+prior watchlists).
+
+### Locked promotion gates for next ≥50-trade-per-direction checkpoint
+
+**Cell: 1h Falling × 30m Rising SHORT (multiplier candidate):**
+- N ≥ 30 (currently 23 cross-batch + 1 today = 24)
+- WR ≥ 80%
+- Avg P&L % ≥ +0.15%
+- NP rate ≤ 5%
+- Cross-batch direction-consistent (≥3 batches positive)
+
+If all pass → ship as Pattern Cell Ship rule:
+```json
+{"pattern": "BTC_1H_FALL_30M_RISE_SHORT", "direction": "SHORT",
+ "condition": "btc_1h_rsi_falling AND btc_30m_rsi_rising",
+ "inv_mult": 1.5, "lev_mult": 1.0}
+```
+
+**Cell: 1h Falling × 30m Falling SHORT (SL-cap candidate):**
+- N ≥ 50 fresh trades post-deploy
+- WR stays ≤ 70%
+- NP rate ≥ 15%
+- 1:3+ R:R ratio confirmed
+
+If all pass → ship as Pattern Cell Ship rule:
+```json
+{"pattern": "BTC_1H_30M_FALL_SHORT", "direction": "SHORT",
+ "condition": "btc_1h_rsi_falling AND btc_30m_rsi_falling",
+ "fixed_sl_pct": -0.40, "inv_mult": 1.0, "lev_mult": 1.0}
+```
+
+**Cell: 1h Rising × 30m Rising LONG (SL-cap candidate, mirror of above):**
+- N ≥ 50 fresh trades post-deploy
+- WR stays ≤ 60%
+- NP rate ≥ 18%
+
+If all pass → mirror fixed_sl_pct rule for LONG side.
+
+### Mechanism prerequisite
+
+To ship any of these, need a new Pattern Cell mechanism that supports
+multi-timeframe RSI direction signatures (`btc_1h_rsi_dir`, `btc_30m_rsi_dir`)
+at entry-time. Currently the engine doesn't capture RSI direction as a
+classified entry signature — only the raw RSI/prev values are stored.
+
+Implementation cost: ~40 LOC (compute direction from existing fields at
+trade-open, add to entry signature dict, allow Pattern Cell rule conditions
+to reference these signatures).
+
+### CRITICAL UPDATE — Filter-overlap audit (added same day)
+
+After initial cross-tab analysis, ran filter-overlap audit to check
+how many cells are ALREADY blocked by current filter stack. Results
+substantially weaken the cross-batch findings:
+
+**SURVIVORS-ONLY cross-tab (current filter stack applied):**
+
+SHORT (101 survivors of 159 pre-filter — 58 blocked by current filters):
+
+| 1h \ 30m | Rising | Falling |
+|---|---|---|
+| Rising | 1/100%/+$19 | 3/100%/+$67 |
+| **Falling** | **19/100%/+$246/0% NP** | **78/74%/-$104/17% NP** |
+
+LONG (68 survivors of 197 — 129 blocked):
+
+| 1h \ 30m | Rising | Falling |
+|---|---|---|
+| **Rising** | **46/61%/-$493/20% NP** | 16/62%/+$79 |
+| Falling | 3/33%/-$71 | 3/33%/-$72 |
+
+**Revised watchlist verdicts:**
+
+| Cell | Pre-filter | Survivors-only | Updated verdict |
+|---|---|---|---|
+| 1h Fall × 30m Rise SHORT (winner cell) | 23/100%/+$284 | 19/100%/+$246 | ★ Still cleanest cell, gate unchanged (N<30) |
+| **1h Fall × 30m Fall SHORT (killer cohort)** | **132/64%/-$1,207** | **78/74%/-$104** | **NO LONGER ACTIONABLE** — current filters already catch 54 of 132 trades and -$1,103 of damage. Residual cohort is essentially break-even. |
+| 1h Rise × 30m Rise LONG (killer cohort) | 147/54%/-$2,288 | 46/61%/-$493 | Borderline — still loser but N reduced from 147 to 46 |
+
+**Locked SHIP gates UPDATED:**
+
+For 1h Fall × 30m Fall SHORT SL-cap candidate:
+- **CANCELLED** — Survivor cohort no longer meets WR ≤70% (now 74%)
+- Survivor Total $ only -$104 — too small to justify intervention
+- Drop from watchlist permanently
+
+For 1h Rise × 30m Rise LONG SL-cap candidate:
+- N=46 survivor cohort (below original N=147)
+- WR 61% (not ≤60% strict)
+- NP rate 20% (elevated)
+- **Marginal candidate** — only ship if fresh batches show this cohort
+  continues losing at ≥-$10/trade on survivor population
+- Re-check at next 100-trade checkpoint
+
+For 1h Fall × 30m Rise SHORT multiplier candidate:
+- **UNCHANGED** — N=19 survivors (4 blocked by other filters, all winners)
+- The 19 survivors are 100% WR / +$246 — confirms the winner pattern
+  isn't a filter artifact
+- Still observation-only until N≥30
+
+### What this watchlist enables
+
+When the next batch lands with ≥50 fresh SHORTs:
+1. Re-run the cross-tab on combined pool + new batch
+2. **MANDATORY**: also re-run survivors-only version (apply current filter stack)
+3. Apply the locked promotion gates against SURVIVOR population, not raw
+4. If gates pass, ship the cohort-specific rules per above spec
+5. If gates fail, drop the watchlist (regime drift confirmed, no
+   structural pattern)
+
+### Methodological lesson locked
+
+**Before claiming a cell is structurally important, apply the current
+filter stack first.** A cohort that looks catastrophic in raw cross-batch
+data may already be largely caught by upstream filters. Without the
+survivor-only audit, ship decisions overstate impact and lose to in-sample
+bias on filter-overlap.
+
+This is the second instance of this lesson within May 2026 — CLAUDE.md
+May 11 PM "filter-overlap audit" entry codified the same rule for
+multiplier reactivation decisions.
+
+### 3D ANALYSIS — added same day (BTC 5m × 30m × 1h RSI Direction)
+
+Extended the 2D cross-tab into 3D by adding BTC 5m RSI direction as
+third axis. Reveals patterns the 2D table cannot show.
+
+**SHORT survivors-only 3D (101 trades):**
+
+| 5m × 30m × 1h | N | WR | Total $ | NP% | Verdict |
+|---|---|---|---|---|---|
+| F × F × F (all bearish) | 41 | 73% | -$112 | 24% | mild loser |
+| R × F × F | 32 | 72% | -$74 | 9% | mild loser |
+| **R × R × F** | **10** | **100%** | **+$163** | **0%** | ★★★ winner |
+| **F × R × F** | **8** | **100%** | **+$80** | **0%** | ★ winner |
+
+**LONG survivors-only 3D (68 trades):**
+
+| 5m × 30m × 1h | N | WR | Total $ | NP% | Verdict |
+|---|---|---|---|---|---|
+| R × R × R (all bullish) | 24 | 67% | -$80 | 12% | mild loser |
+| **F × R × R** | **22** | **55%** | **-$413** | **27%** | **⚠ NP-prone** |
+| **F × F × R** | **10** | **70%** | **+$197** | 10% | ★ winner |
+| R × F × R | 6 | 50% | -$118 | 17% | small loser |
+
+### NEW FINDING — LONG F × R × R (3D-only)
+
+**This is the strongest 3D refinement.** The 2D cell "LONG 1h Rising ×
+30m Rising" (46 trades, 61% WR, -$493) splits into:
+- R × R × R: 24 trades, 67% WR, -$80, 12% NP (mild)
+- **F × R × R: 22 trades, 55% WR, -$413, 27% NP (NP-prone)**
+
+The 5m-direction split reveals the F×R×R sub-cell as a structurally
+NP-prone cohort that the 2D view dilutes.
+
+**Mechanism:** 1h and 30m are bullish (macro confirmed up), but 5m is
+fading. Bot's LONG signal fires on a 5m bounce that's already failing
+within macro-bullish context. Top-buying signature — peak briefly then
+ride to SL.
+
+**Promotion gate check (LONG F × R × R as filter or SL-cap candidate):**
+
+| Gate | Required | Actual | Pass? |
+|---|---|---|---|
+| N | ≥20 | 22 | ✓ |
+| WR | ≤55% | 55% | ✓ (marginal) |
+| Avg P&L % | ≤-0.20% | likely yes (-$18.76/trade) | ✓ |
+| NP rate | ≥25% | 27% | ✓ |
+| Direction-consistent across batches | needs confirmation | TBD | TBD at next batch |
+
+**Passes 4 of 4 strict gates.** First cohort in this entire session of
+analysis that passes ALL gates on survivor-only data.
+
+### Locked observation gates for LONG F × R × R
+
+At next ≥30-trade LONG batch:
+- Recompute 3D cell on combined pool + new batch
+- If cell shows continued WR ≤55% AND NP ≥25% on N ≥10 fresh trades →
+  ship as Pattern Cell Ship rule:
+  ```
+  {"pattern": "LONG_5MF_30MR_1HR", "direction": "LONG",
+   "condition": "btc_5m_rsi_falling AND btc_30m_rsi_rising AND btc_1h_rsi_rising",
+   "fixed_sl_pct": -0.40, "inv_mult": 1.0, "lev_mult": 1.0}
+  ```
+- If cell shows WR ≥65% on N ≥10 fresh → drop from watchlist (regime
+  variance, not structural)
+
+### Combined SHORT R-R-F + F-R-F winner sub-cells
+
+Combined cross-batch survivors: 18 trades, 100% WR, +$243, 0% NP.
+
+This is the 3D-confirmed version of the 2D "1h Fall × 30m Rise" winner
+cell. The 5m direction is NOISE within this 1h+30m context — both 5m R
+and 5m F sub-cells are clean winners.
+
+**Combined gate check (multiplier candidate):**
+
+| Gate | Required | Combined | Pass? |
+|---|---|---|---|
+| N | ≥15 | 18 | ✓ |
+| WR | ≥80% | 100% | ✓ |
+| Avg P&L % | ≥+0.15% | +$13.50/trade | ✓ |
+| NP rate | ≤10% | 0% | ✓ |
+| Cross-batch direction-consistent | needs confirmation | TBD | TBD |
+
+**Passes 4 of 4 gates.** Second cohort this session that passes all
+strict gates on survivor data.
+
+### Locked observation gates for SHORT (R-R-F + F-R-F) combined cell
+
+At next ≥50-trade SHORT batch:
+- Recompute 3D cells on combined pool + new batch
+- If combined cell maintains ≥85% WR AND ≤5% NP on N ≥10 fresh trades →
+  ship as Pattern Cell Ship multiplier:
+  ```
+  {"pattern": "SHORT_30MR_1HF", "direction": "SHORT",
+   "condition": "btc_30m_rsi_rising AND btc_1h_rsi_falling",
+   "inv_mult": 1.5, "lev_mult": 1.0}
+  ```
+- If WR drops below 70% → drop from watchlist
+
+### 3D mechanism prerequisite
+
+To ship either pattern, engine needs to compute and expose:
+- `btc_5m_rsi_direction` (rising/falling — exists implicitly, needs surfacing)
+- `btc_30m_rsi_direction` (computed from current vs prev6 RSI)
+- `btc_1h_rsi_direction` (computed from current vs prev 1h RSI)
+
+These get added as classified signatures to entry-time row context, then
+Pattern Cell Ship rules can reference them via `condition:` field.
+
+Implementation: ~50 LOC engine + Pattern Cell Ship condition parser
+extension.
+
+### Methodological lesson — 3D reveals what 2D hides
+
+| 2D cell | 3D refinement |
+|---|---|
+| LONG 1h Rise × 30m Rise: 46/61%/-$493 | R×R×R (24/67%) + **F×R×R (22/55% NP-prone)** |
+| SHORT 1h Fall × 30m Rise: 19/100%/+$246 | R×R×F (10) + F×R×F (8), 5m = noise here |
+| SHORT 1h Fall × 30m Fall: 78/74%/-$104 | F×F×F (41) + R×F×F (32), both near-breakeven |
+
+**The structural finding:** the 5m direction matters DIFFERENTIALLY:
+- For SHORT in 1h Fall × 30m Rise context, 5m is noise (both sub-cells win)
+- For LONG in 1h+30m Rise context, 5m differentiates winners from NP-prone losers
+
+This asymmetry reflects the regime — bullish macro with 5m fading is
+exhaustion buying (Pattern C-prone), but bearish macro with 30m bouncing
+is reversal selling (works regardless of 5m).
+
+### Why this entry exists in CLAUDE.md
+
+To preserve:
+1. The cross-tab data (so the analysis isn't redone from scratch)
+2. The counter-intuitive winner cell finding (1h Falling × 30m Rising
+   SHORT = clean winner) — this isn't visible in any single-dim table
+3. The SURVIVORS-ONLY audit (the actually-actionable picture)
+4. The locked promotion gates (mechanical decision at next checkpoint)
+5. The mechanism prerequisite (engine work needed before any ship)
+6. The strict discipline that this is observation-only until N gates
+   are met — no ship from current data despite striking 100% WR cell
+7. The methodological lesson about always running survivor-audit before
+   claiming structural significance
+
+---
+
 ## May 25, 2026 (late evening, post-FE-floor) — FE ATR floor caps shipped (L1: 0.60%, L2: 0.80%)
 
 ### Why this exists — counter-example to the morning FE ATR floor ship

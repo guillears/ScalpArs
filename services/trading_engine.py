@@ -5355,9 +5355,11 @@ class TradingEngine:
                 # Stash current pair so the block recorder closure can stamp
                 # _last_pair_block_reason for the UI's Block Reason column.
                 _current_pair_holder['pair'] = pair
-                # Clear stale reason from prior scan so trades that pass all
-                # filters show no block reason rather than yesterday's tag.
-                self._last_pair_block_reason.pop(pair, None)
+                # Pre-stamp a default "no setup" reason. Most top-50 pairs at any
+                # moment have no EMA stack alignment → get_signal returns NOTHING
+                # without calling _record(). Default placeholder is overwritten
+                # the moment any filter actually fires.
+                self._last_pair_block_reason[pair] = "No setup (EMA stack not aligned)"
 
                 ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
                 if not ohlcv:

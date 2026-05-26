@@ -854,7 +854,7 @@ async def get_pairs(db: AsyncSession = Depends(get_db), limit: int = 50):
             if engine and hasattr(engine, '_last_pair_block_reason'):
                 block_reason = engine._last_pair_block_reason.get(p.pair)
             if not block_reason:
-                block_reason = "Pre-signal (no filter recorded)"
+                block_reason = "Awaiting scan (no pair data yet)"
 
         pairs_data.append({
             "pair": p.pair,

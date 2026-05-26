@@ -256,13 +256,13 @@
       {
         "pattern": "UNMATCHED",
         "direction": "LONG",
-        "inv_mult": 2.0,
+        "inv_mult": 1.0,
         "lev_mult": 1.0
       },
       {
         "pattern": "UNMATCHED",
         "direction": "SHORT",
-        "inv_mult": 2.0,
+        "inv_mult": 1.0,
         "lev_mult": 1.0
       }
     ],

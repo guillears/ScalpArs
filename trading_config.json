@@ -179,32 +179,25 @@
         "pattern": "C4",
         "direction": "LONG",
         "inv_mult": 1.0,
-        "lev_mult": 1.0,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "C4",
         "direction": "SHORT",
         "inv_mult": 1.0,
-        "lev_mult": 1.0,
-        "fixed_tp_pct": 0.1,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "C8",
         "direction": "LONG",
         "inv_mult": 1.0,
-        "lev_mult": 1.0,
-        "fixed_tp_pct": 0.1,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "C8",
         "direction": "SHORT",
         "inv_mult": 1.0,
-        "lev_mult": 1.0,
-        "fixed_tp_pct": 0.1,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "W1",
@@ -228,9 +221,7 @@
         "pattern": "W4",
         "direction": "LONG",
         "inv_mult": 1.0,
-        "lev_mult": 1.0,
-        "fixed_tp_pct": 0.1,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "W4",
@@ -254,9 +245,7 @@
         "pattern": "W1",
         "direction": "LONG",
         "inv_mult": 1.0,
-        "lev_mult": 1.0,
-        "fixed_tp_pct": 0.1,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "C1",
@@ -268,15 +257,13 @@
         "pattern": "UNMATCHED",
         "direction": "LONG",
         "inv_mult": 2.0,
-        "lev_mult": 1.0,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "UNMATCHED",
         "direction": "SHORT",
         "inv_mult": 2.0,
-        "lev_mult": 1.0,
-        "fixed_sl_pct": -0.5
+        "lev_mult": 1.0
       }
     ],
     "btc_1h_slope_btc_adx_multiplier_rules": [
@@ -331,10 +318,10 @@
     ],
     "entry_quality_score_filter_enabled": true,
     "entry_quality_score_block_max": 1,
-    "fast_exit_enabled": true,
+    "fast_exit_enabled": false,
     "fast_exit_threshold_pct": 0.2,
     "fast_exit_window_minutes": 2,
-    "fast_exit_l2_enabled": true,
+    "fast_exit_l2_enabled": false,
     "fast_exit_l2_threshold_pct": 0.4,
     "fast_exit_l2_window_minutes": 5,
     "fast_exit_l1_atr_multiplier": 0.5,

@@ -432,6 +432,12 @@ class TradingEngine:
         # Key: (filter_name, direction) → count. Reset on bot start.
         # See CLAUDE.md May 5 entry on BTC Trend Filter for context.
         self._filter_block_counts: Dict[tuple, int] = {}
+
+        # Per-pair last block reason (May 26) — keyed by pair → filter tag.
+        # Updated at every _record_filter_block call site. Read by main.py
+        # /api/pairs to show Block Reason column without re-enumerating
+        # 40+ filters in UI code (single source of truth).
+        self._last_pair_block_reason: Dict[str, str] = {}
     
     async def initialize(self, db: AsyncSession):
         """Initialize engine state from database (only on first call).
@@ -5318,6 +5324,10 @@ class TradingEngine:
                 f"pair-level blocks for vetoed directions will be suppressed from counters"
             )
 
+        # Container holding the pair being evaluated. Set inside the per-pair
+        # loop below so the recorder closure can stamp _last_pair_block_reason.
+        _current_pair_holder = {'pair': None}
+
         def _signal_block_recorder(filter_name: str, direction: str):
             # Suppress pair-level block recording for directions that BTC-level
             # filters would have vetoed anyway. This makes Filter Blocks counts
@@ -5327,6 +5337,9 @@ class TradingEngine:
             if direction == "SHORT" and _btc_macro_blocks_short is not None:
                 return
             self._record_filter_block(filter_name, direction, had_room=_scan_had_room_snapshot)
+            _p = _current_pair_holder.get('pair')
+            if _p:
+                self._last_pair_block_reason[_p] = filter_name
 
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
@@ -5338,6 +5351,13 @@ class TradingEngine:
                 pair = pair_info['pair']
                 symbol = pair_info['symbol']
                 volume_24h = pair_info['volume_24h']
+
+                # Stash current pair so the block recorder closure can stamp
+                # _last_pair_block_reason for the UI's Block Reason column.
+                _current_pair_holder['pair'] = pair
+                # Clear stale reason from prior scan so trades that pass all
+                # filters show no block reason rather than yesterday's tag.
+                self._last_pair_block_reason.pop(pair, None)
 
                 ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
                 if not ohlcv:
@@ -5523,6 +5543,7 @@ class TradingEngine:
                         reason = f"pair={pair_regime} vs BTC={btc_regime}"
                     logger.info(f"[BTC-GATE] {pair}: {signal} blocked — {reason}")
                     self._record_filter_block("BTC_REGIME", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_REGIME"
                     signal = "NO_TRADE"
 
             # Pair ADX Direction check — runs independently of BTC global filter
@@ -5536,11 +5557,13 @@ class TradingEngine:
                         _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
                         logger.info(f"[PAIR_ADX_DIR] {pair}: {signal} blocked — Pair ADX {_pd_label} ({_pair_adx:.4f} vs prev {_pair_adx_prev:.4f}), requires {_pair_adx_dir_cfg}")
                         self._record_filter_block("PAIR_ADX_DIR", signal, had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "PAIR_ADX_DIR"
                         signal = "NO_TRADE"
                     elif _pair_adx_dir_cfg == 'falling' and _pair_adx >= _pair_adx_prev:
                         _pd_label = "Rising" if _pair_adx > _pair_adx_prev else "Falling"
                         logger.info(f"[PAIR_ADX_DIR] {pair}: {signal} blocked — Pair ADX {_pd_label} ({_pair_adx:.4f} vs prev {_pair_adx_prev:.4f}), requires {_pair_adx_dir_cfg}")
                         self._record_filter_block("PAIR_ADX_DIR", signal, had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "PAIR_ADX_DIR"
                         signal = "NO_TRADE"
 
             # BTC ADX range check — runs independently of BTC global filter.
@@ -5587,6 +5610,7 @@ class TradingEngine:
                         f"({btc_adx:.2f} vs prev {btc_adx_prev:.2f}), requires {_adx_dir_cfg}"
                     )
                     self._record_filter_block("BTC_ADX_DIR", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_ADX_DIR"
                     signal = "NO_TRADE"
 
             # BTC RSI x BTC ADX Cross-Filter — runs independently of BTC global filter (May 5 fix).
@@ -5632,6 +5656,7 @@ class TradingEngine:
                                         f"{_cf_label}, got {btc_adx:.1f}"
                                     )
                                     self._record_filter_block("BTC_RSI_ADX_CROSS", signal, had_room=_had_room)
+                                    self._last_pair_block_reason[pair] = "BTC_RSI_ADX_CROSS"
                                     signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):
@@ -5675,6 +5700,7 @@ class TradingEngine:
                                         f"AND BTC ADX {btc_adx:.1f} in [{_df_a_lo}-{_df_a_hi})"
                                     )
                                     self._record_filter_block("ADX_DELTA_BTC_ADX_CROSS", signal, had_room=_had_room)
+                                    self._last_pair_block_reason[pair] = "ADX_DELTA_BTC_ADX_CROSS"
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -5726,6 +5752,7 @@ class TradingEngine:
                                         f"AND ADXΔ {_adx_delta_val2:.2f} in [{_ad_lo}-{_ad_hi})"
                                     )
                                     self._record_filter_block("RNGPOS_ADX_DELTA_CROSS", signal, had_room=_had_room)
+                                    self._last_pair_block_reason[pair] = "RNGPOS_ADX_DELTA_CROSS"
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -5768,6 +5795,7 @@ class TradingEngine:
                                     f"AND BTC ADX {btc_adx:.1f} in [{_a_lo}-{_a_hi})"
                                 )
                                 self._record_filter_block("BTC_GAP_BTC_ADX_CROSS", signal, had_room=_had_room)
+                                self._last_pair_block_reason[pair] = "BTC_GAP_BTC_ADX_CROSS"
                                 signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):
@@ -5804,6 +5832,7 @@ class TradingEngine:
                                     f"AND BTC ADX {btc_adx:.1f} in [{_ax_lo}-{_ax_hi})"
                                 )
                                 self._record_filter_block("BTC_ATR_BTC_ADX_CROSS", signal, had_room=_had_room)
+                                self._last_pair_block_reason[pair] = "BTC_ATR_BTC_ADX_CROSS"
                                 signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):
@@ -5837,6 +5866,7 @@ class TradingEngine:
                         f"(macro downtrend, countertrend LONG blocked)"
                     )
                     self._record_filter_block("BTC_TREND_FILTER", "LONG", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_TREND_FILTER"
                     signal = "NO_TRADE"
                 elif signal == "SHORT" and btc_ema13 > btc_ema50:
                     logger.info(
@@ -5844,6 +5874,7 @@ class TradingEngine:
                         f"(macro uptrend, countertrend SHORT blocked)"
                     )
                     self._record_filter_block("BTC_TREND_FILTER", "SHORT", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_TREND_FILTER"
                     signal = "NO_TRADE"
                 else:
                     logger.info(f"[BTC_TREND_FILTER_PASS] {pair} {signal}: btc_ema20={btc_ema20:.2f} btc_ema50={btc_ema50:.2f} (passed)")
@@ -5860,6 +5891,7 @@ class TradingEngine:
                     if _flat_th > 0 and btc_ema20_slope_pct < _flat_th:
                         logger.info(f"[BTC_SLOPE_GATE] {pair}: LONG blocked — BTC slope {btc_ema20_slope_pct:+.4f}% < min +{_flat_th}%")
                         self._record_filter_block("BTC_SLOPE_GATE", "LONG", had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "BTC_SLOPE_GATE"
                         signal = "NO_TRADE"
                 else:  # SHORT
                     _flat_th = getattr(_th, 'macro_trend_flat_threshold_short',
@@ -5867,6 +5899,7 @@ class TradingEngine:
                     if _flat_th > 0 and btc_ema20_slope_pct > -_flat_th:
                         logger.info(f"[BTC_SLOPE_GATE] {pair}: SHORT blocked — BTC slope {btc_ema20_slope_pct:+.4f}% > max -{_flat_th}%")
                         self._record_filter_block("BTC_SLOPE_GATE", "SHORT", had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "BTC_SLOPE_GATE"
                         signal = "NO_TRADE"
 
             # May 2: BTC EMA20 slope MAX guard. Block over-extended BTC trends
@@ -5877,6 +5910,7 @@ class TradingEngine:
                 if _btc_max and _btc_max > 0 and abs(btc_ema20_slope_pct) > _btc_max:
                     logger.info(f"[BTC_SLOPE_MAX_GATE] {pair}: {signal} blocked — abs(BTC slope) {abs(btc_ema20_slope_pct):.4f}% > max {_btc_max}%")
                     self._record_filter_block("BTC_SLOPE_MAX_GATE", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_SLOPE_MAX_GATE"
                     signal = "NO_TRADE"
 
             # May 24: BTC 1h Slope MAX guard. Block late-stage steep-rising BTC LONG
@@ -5897,10 +5931,12 @@ class TradingEngine:
                     if signal == "LONG":
                         logger.info(f"[BTC_1H_SLOPE_MAX_GATE] {pair}: LONG blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% > max +{_btc_1h_max}% (late-stage rising trend)")
                         self._record_filter_block("BTC_1H_SLOPE_MAX_GATE", "LONG", had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "BTC_1H_SLOPE_MAX_GATE"
                         signal = "NO_TRADE"
                     elif signal == "SHORT":
                         logger.info(f"[BTC_1H_SLOPE_MAX_GATE] {pair}: SHORT blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% > max +{_btc_1h_max}% (countertrend SHORT in rising BTC)")
                         self._record_filter_block("BTC_1H_SLOPE_MAX_GATE", "SHORT", had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "BTC_1H_SLOPE_MAX_GATE"
                         signal = "NO_TRADE"
 
             # May 2: per-pair EMA20 slope MAX guard. Block over-extended pair trends.
@@ -5919,6 +5955,7 @@ class TradingEngine:
                         if _pair_slope_abs > _pair_max:
                             logger.info(f"[PAIR_SLOPE_MAX_GATE] {pair}: {signal} blocked — abs(pair slope) {_pair_slope_abs:.4f}% > max {_pair_max}%")
                             self._record_filter_block("PAIR_SLOPE_MAX_GATE", signal, had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "PAIR_SLOPE_MAX_GATE"
                             signal = "NO_TRADE"
 
             # May 7: Pair Trend Filter (pair-level analog of BTC Trend Filter).
@@ -5940,6 +5977,7 @@ class TradingEngine:
                                 f"(gap {_pair_gap_pct:.4f}% — pair in 4hr downtrend, countertrend LONG blocked)"
                             )
                             self._record_filter_block("PAIR_TREND_FILTER", "LONG", had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "PAIR_TREND_FILTER"
                             signal = "NO_TRADE"
                         elif signal == "SHORT" and _pair_ema13 > _pair_ema50:
                             logger.info(
@@ -5947,6 +5985,7 @@ class TradingEngine:
                                 f"(gap {_pair_gap_pct:.4f}% — pair in 4hr uptrend, countertrend SHORT blocked)"
                             )
                             self._record_filter_block("PAIR_TREND_FILTER", "SHORT", had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "PAIR_TREND_FILTER"
                             signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:
@@ -6016,6 +6055,7 @@ class TradingEngine:
                         )
                         logger.info(f"[VOL_GATE_MAX_SHORT] {pair}: SHORT blocked — {reason}")
                         self._record_filter_block("VOL_GATE_MAX_SHORT", signal, had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "VOL_GATE_MAX_SHORT"
                     else:
                         if global_vol_blocks:
                             reason = f"Global Vol {_global_volume_ratio:.2f} < {_gv_thresh} for {signal}"
@@ -6023,16 +6063,19 @@ class TradingEngine:
                             reason = f"Pair Vol {_pair_volume_ratio:.2f} < {_pv_thresh} for {signal}"
                         logger.info(f"[VOL-GATE] {pair}: {signal} blocked — {reason}")
                         self._record_filter_block("VOL_GATE", signal, had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "VOL_GATE"
                     signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and _breadth_enabled:
                 if signal == "LONG" and _market_bull_pct < _breadth_bull_th:
                     logger.info(f"[BREADTH_GATE] {pair}: LONG blocked — Bull% {_market_bull_pct:.1f}% < {_breadth_bull_th}%")
                     self._record_filter_block("BREADTH_GATE", "LONG", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BREADTH_GATE"
                     signal = "NO_TRADE"
                 elif signal == "SHORT" and _market_bear_pct < _breadth_bear_th:
                     logger.info(f"[BREADTH_GATE] {pair}: SHORT blocked — Bear% {_market_bear_pct:.1f}% < {_breadth_bear_th}%")
                     self._record_filter_block("BREADTH_GATE", "SHORT", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BREADTH_GATE"
                     signal = "NO_TRADE"
 
             await self.update_pair_data(db, pair, indicators, signal, confidence, volume_24h, _pair_volume_ratio)
@@ -6064,6 +6107,7 @@ class TradingEngine:
                 if _sg_blocked:
                     logger.info(f"[SPIKE_GUARD] {pair}: {signal} blocked — {_sg_reason}")
                     self._record_filter_block("SPIKE_GUARD", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "SPIKE_GUARD"
                     signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"] and confidence and confidence != "NO_TRADE":
@@ -6120,6 +6164,7 @@ class TradingEngine:
                         f"[QUALITY_SCORE_GATE] {pair}: {signal} blocked — entry_quality_score={entry_quality_score} <= block_max={_qs_block_max}"
                     )
                     self._record_filter_block("ENTRY_QUALITY_SCORE", signal, had_room=_scan_had_room_snapshot)
+                    self._last_pair_block_reason[pair] = "ENTRY_QUALITY_SCORE"
                     continue
                 entry_btc_regime = classify_btc_regime(btc_adx, btc_rsi, btc_ema20_slope_pct)
 

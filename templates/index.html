@@ -3248,6 +3248,52 @@
                 </div>
             </div>
 
+                <!-- BTC 1h × BTC 30m RSI Direction Cross-Tab (May 26 PM) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🎯 BTC 1h × BTC 30m RSI Direction Cross-Tab</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        Multi-timeframe BTC RSI direction (Rising/Falling) at entry. Surfaces patterns invisible in single-dim views.
+                        Per CLAUDE.md May 26 watchlist: <strong class="text-emerald-300">SHORT 1h Falling × 30m Rising</strong> = cleanest winner cell (multiplier candidate at N≥30).
+                        <strong class="text-red-300">LONG 1h+30m both Rising</strong> = dominant losing cohort. Direction = simple curr vs prev (no flat band; Flat shown only on exact equality).
+                    </p>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-emerald-300 mb-1">LONG</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">1h Dir</th>
+                                        <th class="text-left px-2">30m Dir</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2" title="Peak ≤ 0%">NP (n/%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="btc-1h-30m-rsi-long-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr></tbody>
+                            </table>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <h5 class="text-xs text-red-300 mb-1">SHORT</h5>
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase">
+                                    <tr>
+                                        <th class="text-left py-1 px-2">1h Dir</th>
+                                        <th class="text-left px-2">30m Dir</th>
+                                        <th class="text-right px-2">N</th>
+                                        <th class="text-right px-2">WR%</th>
+                                        <th class="text-right px-2">Avg%</th>
+                                        <th class="text-right px-2">Total$</th>
+                                        <th class="text-right px-2" title="Peak ≤ 0%">NP (n/%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="btc-1h-30m-rsi-short-body" class="divide-y divide-white/5"><tr><td colspan="7" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Performance by BTC Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by BTC Entry RSI</h3>
@@ -7088,6 +7134,24 @@
                 });
             }
 
+            // BTC 1h × BTC 30m RSI Direction Cross-Tab (May 26 PM)
+            const _b1h30m1 = perf.btc_1h_30m_rsi_direction_crosstab || {};
+            if (_b1h30m1.pool_size) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## BTC 1h × BTC 30m RSI Direction Cross-Tab — pool ${_b1h30m1.pool_size} trades (post-May-15 deploy)\n`);
+                ['longs','shorts'].forEach(k => {
+                    const rows = _b1h30m1[k] || [];
+                    if (!rows.length) return;
+                    lines.push(`### ${k.toUpperCase()}`);
+                    lines.push('1h Dir     30m Dir    N    WR%    Avg%       Total$     NP (n/%)');
+                    lines.push('-'.repeat(75));
+                    rows.forEach(r => {
+                        lines.push(`${r.dir_1h.padEnd(10)} ${r.dir_30m.padEnd(10)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
+                    });
+                    lines.push('');
+                });
+            }
+
             // Phantom BE 0.20/0.10 Counterfactual (May 14)
             const _pba1 = perf.phantom_be_aggr_by_close_reason || {};
             if (_pba1.rows && _pba1.rows.length) {
@@ -8722,6 +8786,24 @@
                         lines.push('-'.repeat(80));
                         rows.forEach(r => {
                             lines.push(`${r.slope_1h.padEnd(16)} ${r.btc_adx.padEnd(10)}${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
+                        });
+                        lines.push('');
+                    });
+                }
+
+                // BTC 1h × BTC 30m RSI Direction Cross-Tab (May 26 PM)
+                const _b1h30m2 = perf.btc_1h_30m_rsi_direction_crosstab || {};
+                if (_b1h30m2.pool_size) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## BTC 1h × BTC 30m RSI Direction Cross-Tab — pool ${_b1h30m2.pool_size} trades (post-May-15 deploy)\n`);
+                    ['longs','shorts'].forEach(k => {
+                        const rows = _b1h30m2[k] || [];
+                        if (!rows.length) return;
+                        lines.push(`### ${k.toUpperCase()}`);
+                        lines.push('1h Dir     30m Dir    N    WR%    Avg%       Total$     NP (n/%)');
+                        lines.push('-'.repeat(75));
+                        rows.forEach(r => {
+                            lines.push(`${r.dir_1h.padEnd(10)} ${r.dir_30m.padEnd(10)} ${String(r.count).padStart(3)}  ${r.win_rate.toFixed(1).padStart(5)}  ${(r.avg_pnl_pct>=0?'+':'')}${r.avg_pnl_pct.toFixed(3).padStart(8)}  ${(r.total_pnl_usd>=0?'+$':'-$')}${Math.abs(r.total_pnl_usd).toFixed(2).padStart(7)}  ${((r.np_count || 0) + ' (' + r.np_pct.toFixed(1) + '%)').padStart(10)}`);
                         });
                         lines.push('');
                     });
@@ -10947,6 +11029,44 @@
                     const _bx2 = data.btc_atr_adx_crosstab;
                     _renderAtrAdx(_bx2.longs, 'btc-atr-adx-long-body');
                     _renderAtrAdx(_bx2.shorts, 'btc-atr-adx-short-body');
+                }
+                // BTC 1h × BTC 30m RSI Direction Cross-Tab (May 26 PM)
+                const _render1h30mRsiDir = (rows, bodyId, direction) => {
+                    const el = document.getElementById(bodyId);
+                    if (!el) return;
+                    if (!rows || !rows.length) {
+                        el.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
+                        return;
+                    }
+                    el.innerHTML = rows.map(r => {
+                        const avg = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const tot = r.total_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const np = r.np_pct >= 25 ? 'text-red-400' : (r.np_pct >= 15 ? 'text-amber-400' : 'text-gray-400');
+                        // Highlight key cells per CLAUDE.md May 26 watchlist
+                        let rowCls = 'hover:bg-white/5';
+                        if (direction === 'SHORT' && r.dir_1h === 'Falling' && r.dir_30m === 'Rising' && r.count >= 10 && r.win_rate >= 80) {
+                            rowCls += ' bg-emerald-900/20'; // winner cell highlight
+                        } else if (direction === 'LONG' && r.dir_1h === 'Rising' && r.dir_30m === 'Rising' && r.count >= 10 && r.total_pnl_usd < 0) {
+                            rowCls += ' bg-red-900/20'; // loser cell highlight
+                        } else if (direction === 'SHORT' && r.dir_1h === 'Falling' && r.dir_30m === 'Falling' && r.count >= 20 && r.np_pct >= 15) {
+                            rowCls += ' bg-amber-900/20'; // R:R problem cell highlight
+                        }
+                        const dirCol = (d) => d === 'Rising' ? 'text-emerald-300' : (d === 'Falling' ? 'text-red-300' : 'text-gray-400');
+                        return `<tr class="${rowCls}">
+                            <td class="px-2 py-1 ${dirCol(r.dir_1h)}">${r.dir_1h}</td>
+                            <td class="px-2 py-1 ${dirCol(r.dir_30m)}">${r.dir_30m}</td>
+                            <td class="px-2 py-1 text-right">${r.count}</td>
+                            <td class="px-2 py-1 text-right">${r.win_rate.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${avg}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
+                            <td class="px-2 py-1 text-right ${tot}">${r.total_pnl_usd >= 0 ? '+$' : '-$'}${Math.abs(r.total_pnl_usd).toFixed(2)}</td>
+                            <td class="px-2 py-1 text-right ${np}">${(r.np_count || 0)} (${r.np_pct.toFixed(1)}%)</td>
+                        </tr>`;
+                    }).join('');
+                };
+                if (data.btc_1h_30m_rsi_direction_crosstab) {
+                    const _b1h30m = data.btc_1h_30m_rsi_direction_crosstab;
+                    _render1h30mRsiDir(_b1h30m.longs, 'btc-1h-30m-rsi-long-body', 'LONG');
+                    _render1h30mRsiDir(_b1h30m.shorts, 'btc-1h-30m-rsi-short-body', 'SHORT');
                 }
 
                 // Phantom BE 0.20/0.10 Counterfactual (May 14)

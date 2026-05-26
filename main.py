@@ -6470,6 +6470,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # winner/loser signatures. Tests "5m bearish blip during 1h uptrend" hypothesis.
         "btc_1h_slope_performance": _compute_btc_1h_slope_performance(orders),
         "btc_5m_1h_slope_alignment_crosstab": _compute_btc_5m_1h_slope_alignment_crosstab(orders),
+        "btc_1h_30m_rsi_direction_crosstab": _compute_btc_1h_30m_rsi_direction_crosstab(orders),
         "btc_1h_slope_adx_crosstab": _compute_btc_1h_slope_adx_crosstab(orders),
         # BTC ATR × BTC ADX cross-tab (May 22, 2026). Surfaces the BTC ATR<0.10
         # × BTC ADX ≥30 SHORT killer cell and the asymmetric LONG mirror.
@@ -7399,6 +7400,66 @@ def _compute_btc_5m_1h_slope_alignment_crosstab(orders):
             rows.append({
                 'alignment': cat, 'count': n, 'win_rate': round(wins/n*100, 1),
                 'avg_pnl_pct': round(avg_pct, 4), 'total_pnl_usd': round(tot, 2),
+                'avg_pnl_usd': round(tot/n, 2),
+                'np_count': np_ct, 'np_pct': round(np_ct/n*100, 1),
+            })
+        return rows
+    return {'longs': _for('LONG'), 'shorts': _for('SHORT'), 'pool_size': len(closed)}
+
+
+def _compute_btc_1h_30m_rsi_direction_crosstab(orders):
+    """BTC 1h × 30m RSI Direction 2D cross-tab (May 26, 2026 evening).
+
+    Surfaces multi-timeframe BTC RSI direction patterns invisible in
+    single-dim tables. Per CLAUDE.md May 26 watchlist:
+    - SHORT 1h Falling × 30m Rising = cleanest winner cell
+    - SHORT 1h Falling × 30m Falling = dominant losing cohort (R:R asymmetry)
+    - LONG 1h Rising × 30m Rising = dominant LONG losing cohort
+
+    Direction classification: simple Rising/Falling (current > prev) with
+    Flat only when exactly equal (rare). Matches dashboard convention.
+    """
+    closed = [o for o in orders if o.status == 'CLOSED'
+              and getattr(o, 'entry_btc_rsi', None) is not None
+              and getattr(o, 'entry_btc_rsi_prev6', None) is not None
+              and getattr(o, 'entry_btc_rsi_1h', None) is not None
+              and getattr(o, 'entry_btc_rsi_1h_prev', None) is not None]
+    if not closed:
+        return {'longs': [], 'shorts': [], 'pool_size': 0}
+
+    def _cls(curr, prev):
+        if curr > prev: return 'Rising'
+        if curr < prev: return 'Falling'
+        return 'Flat'
+
+    def _for(direction):
+        rows = []
+        dir_o = [o for o in closed if o.direction == direction]
+        buckets = {}
+        for o in dir_o:
+            d30 = _cls(o.entry_btc_rsi, o.entry_btc_rsi_prev6)
+            d1h = _cls(o.entry_btc_rsi_1h, o.entry_btc_rsi_1h_prev)
+            key = (d1h, d30)
+            buckets.setdefault(key, []).append(o)
+        # Display order: 1h Rising/Falling/Flat × 30m Rising/Falling/Flat
+        order = [
+            ('Rising', 'Rising'), ('Rising', 'Falling'), ('Rising', 'Flat'),
+            ('Falling', 'Rising'), ('Falling', 'Falling'), ('Falling', 'Flat'),
+            ('Flat', 'Rising'), ('Flat', 'Falling'), ('Flat', 'Flat'),
+        ]
+        for (d1h, d30) in order:
+            sub = buckets.get((d1h, d30), [])
+            if not sub: continue
+            n = len(sub)
+            wins = sum(1 for o in sub if (o.pnl or 0) > 0)
+            tot = sum(o.pnl or 0 for o in sub)
+            avg_pct = sum(o.pnl_percentage or 0 for o in sub) / n
+            np_ct = sum(1 for o in sub if (o.peak_pnl or 0) <= 0.005)
+            rows.append({
+                'dir_1h': d1h, 'dir_30m': d30, 'count': n,
+                'win_rate': round(wins/n*100, 1),
+                'avg_pnl_pct': round(avg_pct, 4),
+                'total_pnl_usd': round(tot, 2),
                 'avg_pnl_usd': round(tot/n, 2),
                 'np_count': np_ct, 'np_pct': round(np_ct/n*100, 1),
             })

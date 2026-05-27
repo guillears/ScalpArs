@@ -1,12 +1,13 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
-## May 27, 2026 (evening) — SHIPPED: Time-to-L1 Protection Tracker + dormant TIME_EXIT_NO_L1 engine hook
+## May 27, 2026 (evening) — SHIPPED: Time-to-L1 Protection Tracker (observation-only, NO engine hook)
 
 ### What ships
 
-New observation-only analytics surface answering: **how fast do winners reach
-L1 protection (+0.20% peak) vs losers that never reach it?** Drives a future
-time-based exit decision via a dormant engine hook.
+Observation-only analytics surface answering: **how fast do winners reach
+L1 protection (+0.20% peak) vs losers that never reach it?** Pure tracking —
+no engine logic, no config knob, no close-reason convention. The data will
+inform a future exit-design conversation; the exit shape itself is TBD.
 
 ### Three new tables in dashboard + text exports
 
@@ -15,81 +16,63 @@ time-based exit decision via a dormant engine hook.
    "never reaches L1" cohort.
 2. **Time-exit counterfactual** — for X in {5, 8, 10, 12, 15, 20, 30} min,
    computes: triggered count, losers_caught, winners_cut, saved_usd (50%
-   rescue assumption), killed_usd, net_usd, **save:kill ratio**.
+   rescue assumption), killed_usd, net_usd, save:kill ratio.
 3. **Per-pattern impact at best X (10 min default)** — for C4 only / C1 only /
-   C any / Unmatched C / Any winner cohorts: how many trades would the
-   time-exit rule hit at X=10, and what's the loss/win split.
+   C any / Unmatched C / Any winner cohorts.
 
-### Engine hook — DORMANT by default (`time_exit_no_l1_minutes: 0`)
+### Why dormant, with NO engine hook
 
-New config field `time_exit_no_l1_minutes` (int, default 0 = disabled) +
-`time_exit_no_l1_threshold_pct` (float, default 0.20). When `minutes > 0`,
-realtime callback fires `TIME_EXIT_NO_L1` close reason when:
+Earlier draft of this entry shipped a `TIME_EXIT_NO_L1` engine hook + config
+field gated on `time_exit_no_l1_minutes`. That was premature — the exit shape
+implied (single `peak < threshold AND elapsed >= X`) may NOT be what the data
+suggests once the tracker accumulates. Plausible alternative exit shapes:
+- **P&L-range gated**: exit only when current P&L in [-0.30%, +0.05%]
+  by min Y (don't bail on deep losers; let SL handle those)
+- **Peak-band gated**: target the "stalled near zero" cohort (peak in
+  [0%, +0.10%]) specifically
+- **Per-pattern thresholds**: different X for Pattern C vs Unmatched
+- Something the data reveals that doesn't fit a single template
 
-```
-(now - opened_at) >= time_exit_no_l1_minutes × 60s
-AND peak_pnl < time_exit_no_l1_threshold_pct
-AND not closing_in_progress
-```
+Shipping the engine hook prematurely would have locked us into one shape.
+Tracker-only ship preserves the design space.
 
-Placed in exit ladder AFTER FAST_EXIT L1/L2 (gives those mechanisms first
-shot at locking profit) and BEFORE Phase 1 shadow tracking. Logs as
-`[TIME_EXIT_NO_L1]`.
+### Caveats baked into the simulation
 
-### Pre-committed promotion criteria (locked NOW)
+The Time-Exit Counterfactual uses a **50% rescue assumption** — the bot
+doesn't snapshot intra-trade P&L at minute X, so we proxy by halving the
+close P&L for "never reached L1" trades. This is conservative but approximate.
+Forward $-projections from this table are directional, not precise.
 
-Before flipping `time_exit_no_l1_minutes` from 0 to any value, the Time-Exit
-Counterfactual table must show at next ≥30-trade fresh checkpoint:
+### Next-checkpoint analysis intent
 
-1. **N ≥ 30** triggered at candidate X
-2. **save:kill ratio ≥ 3:1** at that X
-3. **Losers caught ≥ 5× winners cut** at that X
-4. **Net $ ≥ +$50** at that X
-5. **Best-ratio X reasonable** (5-15 min range — beyond 20 min the structural
-   "give up" signal is weak)
-
-If multiple X candidates pass, choose the one with highest **save:kill ratio**
-(not highest net $) — ratio is the leading indicator of forward robustness,
-net $ is in-sample and decays.
-
-### Pre-committed revert criteria after ship
-
-Once `time_exit_no_l1_minutes > 0` and fires ≥10 times in fresh batch:
-- Net $ < $0 cross-batch → revert to 0
-- TIME_EXIT_NO_L1 close reason shows ≥30% post-exit recovery (in Post-Exit
-  Regret Deep Dive) → time threshold too aggressive, raise by 5 min
-- save:kill ratio drops below 2:1 fresh → revert to 0, re-analyze
-
-### Why ship dormant (not active)
-
-The save:kill simulation uses a 50% rescue assumption — the bot doesn't have
-intra-trade P&L snapshots at minute X, so we proxy. This is conservative but
-approximate. Activating the hook with no fresh-data validation against the
-real intra-trade P&L would be a 1-batch ship. The locked promotion gates
-above require live observation of the counterfactual table + per-pattern
-breakdown across multiple batches before any live ship.
+When fresh batches accumulate, read this tracker to answer:
+1. **Is the cohort meaningful?** Does the "never reaches L1" cohort have ≥10
+   losers per typical batch? If yes, a time-based intervention has a target.
+2. **Is the time signal sharp?** Does median time-to-peak for winners
+   cluster meaningfully below the never-reach AvgDur for losers?
+3. **What's the right exit shape?** Look at per-pattern impact —
+   Pattern C cohort might want one rule, Unmatched might want another.
+4. **What's the right P&L band?** Cross-reference with current intra-trade
+   P&L distribution at the candidate X (will require new instrumentation
+   if not already captured).
 
 ### Files changed
 
-- `config.py` — 2 new fields (`time_exit_no_l1_minutes`, `time_exit_no_l1_threshold_pct`)
-- `trading_config.json` — both at 0 / 0.20 defaults
-- `services/trading_engine.py` — TIME_EXIT_NO_L1 realtime exit block (~35 LOC)
 - `main.py` — `_compute_time_to_l1_analysis` helper (~150 LOC) + payload entry
 - `templates/index.html` — new analytics section (3 tables) + JS renderer +
-  config panel input + load/save handlers + 2 text-export sites (~250 LOC)
+  2 text-export sites (~200 LOC)
 - `CLAUDE.md` — this entry
+
+NO engine touch. NO config field. NO close-reason convention.
 
 ### Why this entry exists in CLAUDE.md
 
-1. To anchor the locked promotion criteria — flipping `time_exit_no_l1_minutes`
-   from 0 to any value is a real ship decision with a clear gate
-2. To preserve the 50% rescue assumption disclosure (it's why the engine ships
-   dormant, not active)
-3. To list the per-pattern cohort focus (C4 / C1 / Unm. C / Any winner) for
-   the next-checkpoint analysis — Pattern C cohort impact is the most
-   structurally relevant signal
-4. To anchor the close-reason convention (`TIME_EXIT_NO_L1`) so future
-   Post-Exit Regret + Closing Reason Summary analytics auto-include it
+1. To document that this is OBSERVATION-ONLY — no exit mechanism shipped
+2. To preserve the 50% rescue caveat (directional, not precise)
+3. To list candidate exit shapes (single-threshold, P&L-band gated, peak-band
+   gated, per-pattern) so future design conversations don't lock in too early
+4. To anchor the next-checkpoint analysis intent: validate cohort size + time
+   signal sharpness + per-pattern dispersion BEFORE designing the exit rule
 
 ## May 27, 2026 (afternoon, follow-up) — REFINEMENT: BTC RSI 65-70 LONG block replaced with A3 conditional (BTC ATR < 0.10)
 

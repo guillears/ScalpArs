@@ -361,9 +361,7 @@
     "btc_adx_block_min_short": 24.0,
     "btc_adx_block_max_short": 30.0,
     "btc_rsi_band_atr_block_long": "65-70:<0.10",
-    "btc_rsi_band_atr_block_short": "",
-    "time_exit_no_l1_minutes": 0,
-    "time_exit_no_l1_threshold_pct": 0.20
+    "btc_rsi_band_atr_block_short": ""
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

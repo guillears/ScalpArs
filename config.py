@@ -172,14 +172,6 @@ class SignalThresholds(BaseModel):
     # Save:cut ratio 3.99:1 (vs 1.91:1 for broad block) — preserves NEAR +$197 / GMT +$86 winners.
     btc_rsi_band_atr_block_long: str = ""
     btc_rsi_band_atr_block_short: str = ""
-    # Time-based exit when trade fails to reach L1 protection (May 27, 2026).
-    # If 0 = disabled. If >0 = exit at market when (now - opened_at) >= X minutes
-    # AND peak_pnl < L1 threshold (currently +0.20%). Catches the "Never reaches L1"
-    # cohort that drifts to SL. Locked in observation-only mode until cross-batch
-    # data validates the X threshold (see "Time-to-L1 Protection Tracker" table).
-    # See CLAUDE.md May 27 entry for promotion gates and revert criteria.
-    time_exit_no_l1_minutes: int = 0
-    time_exit_no_l1_threshold_pct: float = 0.20  # peak must be below this to trigger time-exit
     btc_adx_dir_long: str = "both"  # BTC ADX direction filter for LONGs: "both", "rising", "falling"
     btc_adx_dir_short: str = "both"  # BTC ADX direction filter for SHORTs: "both", "rising", "falling"
     btc_trend_filter_enabled: bool = False  # BTC EMA20 vs EMA50 macro trend filter (May 5). Blocks countertrend entries: EMA20 > EMA50 blocks SHORTs, EMA20 < EMA50 blocks LONGs.

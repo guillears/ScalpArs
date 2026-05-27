@@ -56,12 +56,12 @@ class Order(Base):
     entry_gap = Column(Float, nullable=True)
     # Entry EMA5-EMA8 gap: abs((ema5 - ema8) / ema8 * 100) at time of entry
     entry_ema_gap_5_8 = Column(Float, nullable=True)
-    # Entry EMA5-EMA13 gap: abs((ema5 - ema13) / ema13 * 100) at time of entry (May 27).
-    # Complement to EMA5-EMA8 — measures momentum stretch vs the bot's key trend reference
-    # (EMA13 is what EMA13_CROSS_EXIT fires against). Larger 5-13 gap = momentum farther
-    # past the trend reference = more room before EMA13 cross. Tracked alongside the
-    # existing entry_dist_from_ema13_pct (price vs EMA13, different signal).
-    entry_ema_gap_5_13 = Column(Float, nullable=True)
+    # Entry EMA8-EMA13 gap: abs((ema8 - ema13) / ema13 * 100) at time of entry (May 27).
+    # Complement to EMA5-EMA8 — measures the gap between two smoothed momentum lines vs
+    # the bot's trend reference (EMA13 is what EMA13_CROSS_EXIT fires against). Less
+    # noisy than EMA5-EMA13 because EMA8 is already smoothed. Tracked alongside
+    # entry_dist_from_ema13_pct (price vs EMA13, different signal).
+    entry_ema_gap_8_13 = Column(Float, nullable=True)
     # RSI(12) value at time of entry
     entry_rsi = Column(Float, nullable=True)
     # RSI(12) value 2 candles prior (~10min ago, matches RSI Momentum Filter comparison

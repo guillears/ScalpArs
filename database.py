@@ -76,8 +76,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_macro_trend VARCHAR(10)"))
                 if 'entry_ema_gap_5_8' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema_gap_5_8 FLOAT"))
-                if 'entry_ema_gap_5_13' not in columns:
-                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema_gap_5_13 FLOAT"))
+                if 'entry_ema_gap_8_13' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_ema_gap_8_13 FLOAT"))
                 if 'peak_ema5_gap' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN peak_ema5_gap FLOAT DEFAULT 0.0"))
                 if 'peak_ema5_dist_pct' not in columns:

@@ -1860,7 +1860,7 @@ class TradingEngine:
         # at open_position call sites because they're already function params.
         entry_gap: Optional[float] = None,
         entry_ema_gap_5_8: Optional[float] = None,
-        entry_ema_gap_5_13: Optional[float] = None,
+        entry_ema_gap_8_13: Optional[float] = None,
         entry_ema5_stretch: Optional[float] = None,
         entry_rsi: Optional[float] = None,
         entry_rsi_prev: Optional[float] = None,
@@ -1972,7 +1972,7 @@ class TradingEngine:
                 # Entry indicators (May 2)
                 entry_gap=entry_gap,
                 entry_ema_gap_5_8=entry_ema_gap_5_8,
-                entry_ema_gap_5_13=entry_ema_gap_5_13,
+                entry_ema_gap_8_13=entry_ema_gap_8_13,
                 entry_ema5_stretch=entry_ema5_stretch,
                 entry_rsi=entry_rsi,
                 entry_rsi_prev=entry_rsi_prev,
@@ -2482,7 +2482,7 @@ class TradingEngine:
         current_price: float,
         entry_gap: float = None,
         entry_ema_gap_5_8: float = None,
-        entry_ema_gap_5_13: float = None,
+        entry_ema_gap_8_13: float = None,
         entry_ema5_stretch: float = None,
         entry_rsi: float = None,
         entry_rsi_prev: float = None,
@@ -2774,7 +2774,7 @@ class TradingEngine:
                         wait_seconds=result.get('wait_seconds'),
                         entry_gap=entry_gap,
                         entry_ema_gap_5_8=entry_ema_gap_5_8,
-                        entry_ema_gap_5_13=entry_ema_gap_5_13,
+                        entry_ema_gap_8_13=entry_ema_gap_8_13,
                         entry_ema5_stretch=entry_ema5_stretch,
                         entry_rsi=entry_rsi,
                         entry_rsi_prev=entry_rsi_prev,
@@ -2853,7 +2853,7 @@ class TradingEngine:
                         wait_seconds=result.get('wait_seconds'),
                         entry_gap=entry_gap,
                         entry_ema_gap_5_8=entry_ema_gap_5_8,
-                        entry_ema_gap_5_13=entry_ema_gap_5_13,
+                        entry_ema_gap_8_13=entry_ema_gap_8_13,
                         entry_ema5_stretch=entry_ema5_stretch,
                         entry_rsi=entry_rsi,
                         entry_rsi_prev=entry_rsi_prev,
@@ -2922,7 +2922,7 @@ class TradingEngine:
             confidence=confidence,
             entry_gap=entry_gap,
             entry_ema_gap_5_8=entry_ema_gap_5_8,
-            entry_ema_gap_5_13=entry_ema_gap_5_13,
+            entry_ema_gap_8_13=entry_ema_gap_8_13,
             entry_ema5_stretch=entry_ema5_stretch,
             entry_rsi=entry_rsi,
             entry_rsi_prev=entry_rsi_prev,
@@ -6257,9 +6257,9 @@ class TradingEngine:
                 entry_ema_gap_5_8 = None
                 if indicators.get('ema5') and indicators.get('ema8') and indicators['ema8'] > 0:
                     entry_ema_gap_5_8 = round(abs((indicators['ema5'] - indicators['ema8']) / indicators['ema8'] * 100), 4)
-                entry_ema_gap_5_13 = None
-                if indicators.get('ema5') and indicators.get('ema13') and indicators['ema13'] > 0:
-                    entry_ema_gap_5_13 = round(abs((indicators['ema5'] - indicators['ema13']) / indicators['ema13'] * 100), 4)
+                entry_ema_gap_8_13 = None
+                if indicators.get('ema8') and indicators.get('ema13') and indicators['ema13'] > 0:
+                    entry_ema_gap_8_13 = round(abs((indicators['ema8'] - indicators['ema13']) / indicators['ema13'] * 100), 4)
                 entry_ema5_stretch = None
                 entry_price_vs_ema5_pct = None
                 if indicators.get('ema5') and indicators['price'] > 0:
@@ -6356,7 +6356,7 @@ class TradingEngine:
                     current_price=indicators['price'],
                     entry_gap=entry_gap,
                     entry_ema_gap_5_8=entry_ema_gap_5_8,
-                    entry_ema_gap_5_13=entry_ema_gap_5_13,
+                    entry_ema_gap_8_13=entry_ema_gap_8_13,
                     entry_ema5_stretch=entry_ema5_stretch,
                     entry_rsi=round(entry_rsi, 2) if entry_rsi is not None else None,
                     entry_rsi_prev=round(entry_rsi_prev, 2) if entry_rsi_prev is not None else None,

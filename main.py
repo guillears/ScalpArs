@@ -1604,7 +1604,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [],
-            "ema513_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
+            "ema813_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "pair_gap_pair_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
@@ -2644,7 +2644,7 @@ def _compute_time_buckets(orders, bucket_minutes=15):
             gaps = [o.entry_gap for o in bucket_orders if o.entry_gap is not None]
             adxs = [o.entry_adx for o in bucket_orders if o.entry_adx is not None]
             gaps58 = [o.entry_ema_gap_5_8 for o in bucket_orders if o.entry_ema_gap_5_8 is not None]
-            gaps513 = [getattr(o, 'entry_ema_gap_5_13', None) for o in bucket_orders if getattr(o, 'entry_ema_gap_5_13', None) is not None]
+            gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in bucket_orders if getattr(o, 'entry_ema_gap_8_13', None) is not None]
             local_time = bk.astimezone(UTC_MINUS_3)
             result.append({
                 "time": local_time.strftime("%H:%M"),
@@ -2659,7 +2659,7 @@ def _compute_time_buckets(orders, bucket_minutes=15):
                 "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                 "avg_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
                 "avg_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
-                "avg_gap513": round(sum(gaps513) / len(gaps513), 4) if gaps513 else None,
+                "avg_gap813": round(sum(gaps813) / len(gaps813), 4) if gaps813 else None,
                 "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None
             })
         return result
@@ -2830,7 +2830,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "outcome_distribution": [],
             "gap_performance": [],
             "ema58_gap_performance": [],
-            "ema513_gap_performance": [],
+            "ema813_gap_performance": [],
             "rsi_performance": [],
             "range_position_performance": [],
             "adx_delta_performance": [],
@@ -3072,7 +3072,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # Performance by Entry Gap / RSI / ADX (split by direction)
     gap_performance = []
     ema58_gap_performance = []
-    ema513_gap_performance = []
+    ema813_gap_performance = []
     rsi_performance = []
     range_position_performance = []
     adx_delta_performance = []
@@ -3200,12 +3200,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "by_confidence": conf_breakdown
                 })
 
-        # Performance by Entry Gap EMA5-EMA13 (May 27 — momentum stretch vs trend ref).
-        # Complement to EMA5-EMA8 — measures distance to bot's key trend reference
-        # (EMA13 is what EMA13_CROSS_EXIT fires against). Larger 5-13 gap = momentum
+        # Performance by Entry Gap EMA8-EMA13 (May 27 — momentum stretch vs trend ref).
+        # Complement to EMA5-EMA8 — measures distance from EMA8 to bot's key trend reference
+        # (EMA13 is what EMA13_CROSS_EXIT fires against). Larger 8-13 gap = smoothed momentum
         # farther past trend ref. Same bucket structure as EMA5-EMA8 for direct visual
-        # comparison. Pre-deploy trades have NULL on entry_ema_gap_5_13 — excluded silently.
-        ema513_ranges = [
+        # comparison. Pre-deploy trades have NULL on entry_ema_gap_8_13 — excluded silently.
+        ema813_ranges = [
             ("0.00 - 0.02%", 0.00, 0.02),
             ("0.02 - 0.03%", 0.02, 0.03),
             ("0.03 - 0.04%", 0.03, 0.04),
@@ -3220,9 +3220,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             ("0.18 - 0.20%", 0.18, 0.20),
             ("> 0.20%", 0.20, 999),
         ]
-        ema513_gap_orders = [o for o in orders if getattr(o, 'entry_ema_gap_5_13', None) is not None]
-        for range_name, gap_min, gap_max in ema513_ranges:
-            range_orders = [o for o in ema513_gap_orders if gap_min <= o.entry_ema_gap_5_13 < gap_max]
+        ema813_gap_orders = [o for o in orders if getattr(o, 'entry_ema_gap_8_13', None) is not None]
+        for range_name, gap_min, gap_max in ema813_ranges:
+            range_orders = [o for o in ema813_gap_orders if gap_min <= o.entry_ema_gap_8_13 < gap_max]
             if not range_orders:
                 continue
             for direction in ["LONG", "SHORT"]:
@@ -3237,7 +3237,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
                     conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
-                ema513_gap_performance.append({
+                ema813_gap_performance.append({
                     "range": range_name,
                     "direction": direction,
                     "count": count,
@@ -4780,7 +4780,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             adxs = [o.entry_adx for o in group if o.entry_adx is not None]
             gaps = [o.entry_gap for o in group if o.entry_gap is not None]
             gaps58 = [o.entry_ema_gap_5_8 for o in group if o.entry_ema_gap_5_8 is not None]
-            gaps513 = [getattr(o, 'entry_ema_gap_5_13', None) for o in group if getattr(o, 'entry_ema_gap_5_13', None) is not None]
+            gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in group if getattr(o, 'entry_ema_gap_8_13', None) is not None]
             stretches = [o.entry_ema5_stretch for o in group if o.entry_ema5_stretch is not None]
             slopes = [abs(o.entry_ema20_slope) for o in group if o.entry_ema20_slope is not None]
             btc_slopes = [abs(o.entry_btc_ema20_slope) for o in group if o.entry_btc_ema20_slope is not None]
@@ -4921,7 +4921,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "adx_falling": adx_falling,
                 "avg_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
                 "avg_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
-                "avg_gap513": round(sum(gaps513) / len(gaps513), 4) if gaps513 else None,
+                "avg_gap813": round(sum(gaps813) / len(gaps813), 4) if gaps813 else None,
                 "avg_stretch": round(sum(stretches) / len(stretches), 4) if stretches else None,
                 "avg_ema20_slope": round(sum(slopes) / len(slopes), 4) if slopes else None,
                 "avg_btc_slope": round(sum(btc_slopes) / len(btc_slopes), 4) if btc_slopes else None,
@@ -5043,7 +5043,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             adxs = [o.entry_adx for o in group if o.entry_adx is not None]
             gaps = [o.entry_gap for o in group if o.entry_gap is not None]
             gaps58 = [o.entry_ema_gap_5_8 for o in group if o.entry_ema_gap_5_8 is not None]
-            gaps513 = [getattr(o, 'entry_ema_gap_5_13', None) for o in group if getattr(o, 'entry_ema_gap_5_13', None) is not None]
+            gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in group if getattr(o, 'entry_ema_gap_8_13', None) is not None]
             stretches = [o.entry_ema5_stretch for o in group if o.entry_ema5_stretch is not None]
             slopes = [abs(o.entry_ema20_slope) for o in group if o.entry_ema20_slope is not None]
             btc_slopes = [abs(o.entry_btc_ema20_slope) for o in group if o.entry_btc_ema20_slope is not None]
@@ -5174,7 +5174,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "adx_falling": adx_falling,
                 "avg_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
                 "avg_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
-                "avg_gap513": round(sum(gaps513) / len(gaps513), 4) if gaps513 else None,
+                "avg_gap813": round(sum(gaps813) / len(gaps813), 4) if gaps813 else None,
                 "avg_stretch": round(sum(stretches) / len(stretches), 4) if stretches else None,
                 "avg_ema20_slope": round(sum(slopes) / len(slopes), 4) if slopes else None,
                 "avg_btc_slope": round(sum(btc_slopes) / len(btc_slopes), 4) if btc_slopes else None,
@@ -5535,7 +5535,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 avg_close = sum(o.pnl_percentage or 0 for o in bucket_orders) / count
                 gaps = [o.entry_gap for o in bucket_orders if o.entry_gap is not None]
                 gaps58 = [o.entry_ema_gap_5_8 for o in bucket_orders if o.entry_ema_gap_5_8 is not None]
-                gaps513 = [getattr(o, 'entry_ema_gap_5_13', None) for o in bucket_orders if getattr(o, 'entry_ema_gap_5_13', None) is not None]
+                gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in bucket_orders if getattr(o, 'entry_ema_gap_8_13', None) is not None]
                 rsis = [o.entry_rsi for o in bucket_orders if o.entry_rsi is not None]
                 adxs = [o.entry_adx for o in bucket_orders if o.entry_adx is not None]
                 by_conf = {}
@@ -5561,7 +5561,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_pnl_usd": round(total_pnl / count, 2),
                     "avg_entry_gap": round(sum(gaps) / len(gaps), 4) if gaps else None,
                     "avg_entry_gap58": round(sum(gaps58) / len(gaps58), 4) if gaps58 else None,
-                    "avg_entry_gap513": round(sum(gaps513) / len(gaps513), 4) if gaps513 else None,
+                    "avg_entry_gap813": round(sum(gaps813) / len(gaps813), 4) if gaps813 else None,
                     "avg_entry_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                     "avg_entry_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,
                     "by_confidence": by_conf,
@@ -6435,7 +6435,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "outcome_distribution": outcome_distribution,
         "gap_performance": gap_performance,
         "ema58_gap_performance": ema58_gap_performance,
-        "ema513_gap_performance": ema513_gap_performance,
+        "ema813_gap_performance": ema813_gap_performance,
         "rsi_performance": rsi_performance,
         "adx_performance": adx_performance,
         "adx_direction_performance": adx_direction_performance,

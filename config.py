@@ -159,6 +159,11 @@ class SignalThresholds(BaseModel):
     btc_adx_max_long: float = 100  # Max BTC ADX to allow LONGs (100 = disabled)
     btc_adx_min_short: float = 0  # Min BTC ADX to allow SHORTs (0 = disabled)
     btc_adx_max_short: float = 100  # Max BTC ADX to allow SHORTs (100 = disabled)
+    # SHORT-only BTC ADX block range (May 27, 2026 — see CLAUDE.md). Blocks SHORT entry when
+    # btc_adx_block_min_short <= btc_adx < btc_adx_block_max_short. Both 0 = disabled.
+    # Default 24/30 from cross-batch evidence (965-trade pool): BTC ADX 24-30 SHORT = 49% WR / -$16/tr.
+    btc_adx_block_min_short: float = 0.0
+    btc_adx_block_max_short: float = 0.0
     btc_adx_dir_long: str = "both"  # BTC ADX direction filter for LONGs: "both", "rising", "falling"
     btc_adx_dir_short: str = "both"  # BTC ADX direction filter for SHORTs: "both", "rising", "falling"
     btc_trend_filter_enabled: bool = False  # BTC EMA20 vs EMA50 macro trend filter (May 5). Blocks countertrend entries: EMA20 > EMA50 blocks SHORTs, EMA20 < EMA50 blocks LONGs.
@@ -610,6 +615,12 @@ class SignalThresholds(BaseModel):
     global_volume_max_short: float = 0.0  # MAX GlobalVol cap for SHORTs (0 = disabled)
     global_volume_max_short_capitulation_rsi: float = 30.0  # Override threshold: skip block if BTC RSI < this (signals deep oversold)
     global_volume_max_short_capitulation_slope: float = 0.0  # Override threshold: skip block if BTC slope < this (signals falling; negative = down)
+    # Capitulation override GV CAP (May 27, 2026 — see CLAUDE.md).
+    # Even when BTC is in capitulation (RSI<30 AND slope<0), CAP the override at this GV value.
+    # Today's TON SHORT at GV 5.24 + capitulation conditions hit -$232 — extreme GV signals
+    # blow-off-the-top volume that overpowers capitulation continuation. 0 = disabled (legacy behavior).
+    # Default 2.0 = override fires only when GlobalVol ≤ 2.0; SHORT blocked when GV > 2 regardless.
+    global_volume_max_short_capitulation_gv_cap: float = 0.0
     pair_volume_filter_enabled: bool = False  # Gate trades when per-pair volume is below its own average
     pair_volume_threshold_long: float = 1.10  # Min pair volume ratio to allow LONGs
     pair_volume_threshold_short: float = 1.10  # Min pair volume ratio to allow SHORTs

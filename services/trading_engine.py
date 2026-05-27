@@ -5592,6 +5592,26 @@ class TradingEngine:
                     self._record_filter_block(_gate_subtype, signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
+            # SHORT-only BTC ADX BLOCK RANGE — May 27, 2026 (see CLAUDE.md).
+            # Blocks SHORT entries when BTC ADX falls inside a "kill zone" range, even though
+            # min/max gate above would allow it. Cross-batch evidence (965-trade pool, full
+            # STRONG_BUY SHORT cohort): BTC ADX 24-30 = 100 trades / 49% WR / -$1,607 / -$16/tr.
+            # Both 0 = disabled. Default config 24/30 (block ≥24 AND <30 within the SHORT
+            # min/max window). VERY_STRONG SHORT in the same zone: 38 trades / 60.5% WR /
+            # +$2.07/tr — borderline; this filter cuts that cohort too (acceptable trade-off).
+            if signal == "SHORT" and btc_adx is not None:
+                _th2 = config.trading_config.thresholds
+                _block_lo = getattr(_th2, 'btc_adx_block_min_short', 0.0)
+                _block_hi = getattr(_th2, 'btc_adx_block_max_short', 0.0)
+                if _block_lo > 0 and _block_hi > _block_lo and _block_lo <= btc_adx < _block_hi:
+                    logger.info(
+                        f"[BTC_ADX_BLOCK_SHORT] {pair}: SHORT blocked — BTC ADX {btc_adx:.1f} "
+                        f"in kill range [{_block_lo}, {_block_hi})"
+                    )
+                    self._record_filter_block("BTC_ADX_BLOCK_SHORT", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_ADX_BLOCK_SHORT"
+                    signal = "NO_TRADE"
+
             # BTC ADX Direction check — runs independently of BTC global filter
             # (Phase 1c Option B refactor, Apr 17).  Pre-refactor this lived inside
             # the `if btc_global_enabled:` block, so turning off Macro Trend
@@ -6078,8 +6098,15 @@ class TradingEngine:
                         # Check capitulation override: BTC RSI < threshold AND BTC slope < threshold
                         _cap_rsi_thresh = getattr(_th, 'global_volume_max_short_capitulation_rsi', 30.0)
                         _cap_slope_thresh = getattr(_th, 'global_volume_max_short_capitulation_slope', 0.0)
-                        if (btc_rsi is not None and btc_ema20_slope_pct is not None
-                                and btc_rsi < _cap_rsi_thresh and btc_ema20_slope_pct < _cap_slope_thresh):
+                        # May 27 2026: GV CAP on the capitulation override.
+                        # Extreme GV (e.g. TON 5/27 at GV 5.24 + capitulation = -$232) blows past
+                        # the override's protective rationale. If gv_cap > 0, override only fires
+                        # when GlobalVol ≤ gv_cap. SHORT blocked when GV > gv_cap regardless of capitulation.
+                        _cap_gv_cap = getattr(_th, 'global_volume_max_short_capitulation_gv_cap', 0.0)
+                        _cap_match = (btc_rsi is not None and btc_ema20_slope_pct is not None
+                                      and btc_rsi < _cap_rsi_thresh and btc_ema20_slope_pct < _cap_slope_thresh)
+                        _gv_cap_exceeded = (_cap_gv_cap > 0 and _global_volume_ratio > _cap_gv_cap)
+                        if _cap_match and not _gv_cap_exceeded:
                             _capitulation_override = True
                             logger.info(
                                 f"[VOL_GATE_MAX_OVERRIDE] {pair}: SHORT allowed despite "
@@ -6089,6 +6116,12 @@ class TradingEngine:
                             )
                         else:
                             global_vol_max_blocks = True
+                            if _cap_match and _gv_cap_exceeded:
+                                logger.info(
+                                    f"[VOL_GATE_MAX_CAP_OVERRIDE_CAPPED] {pair}: SHORT blocked — "
+                                    f"BTC capitulation met BUT GlobalVol {_global_volume_ratio:.2f} > "
+                                    f"GV cap {_cap_gv_cap} (override capped)"
+                                )
 
                 if global_vol_blocks or pair_vol_blocks or global_vol_max_blocks:
                     if global_vol_max_blocks:

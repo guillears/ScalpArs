@@ -4848,6 +4848,8 @@
                                 <input type="number" id="config-global-vol-max-short-cap-rsi" step="1" min="0" max="100" class="bg-white/5 border border-amber-500/30 rounded px-2 py-1 text-white text-xs w-14" value="30" title="Allow SHORT if BTC RSI is below this (signals deep oversold)">
                                 <span class="text-xs text-gray-500 ml-1">AND BTC slope &lt;</span>
                                 <input type="number" id="config-global-vol-max-short-cap-slope" step="0.01" class="bg-white/5 border border-amber-500/30 rounded px-2 py-1 text-white text-xs w-16" value="0" title="Allow SHORT if BTC EMA20 slope is below this (negative = falling)">
+                                <span class="text-xs text-gray-500 ml-1">AND GV ≤</span>
+                                <input type="number" id="config-global-vol-max-short-cap-gv-cap" step="0.1" min="0" class="bg-white/5 border border-amber-500/30 rounded px-2 py-1 text-white text-xs w-16" value="0" title="GV CAP on capitulation override (May 27): even with capitulation, block SHORT if GV exceeds this. 0 = disabled. Today TON SHORT at GV 5.24 + capitulation = -$232.">
                             </div>
                             <p class="text-xs text-cyan-400 mt-3" title="Intersection rescue clause (May 10 evening). When Global Vol Filter would block, override and ALLOW the trade if pair's absolute 24h USD volume is at or above this threshold. Large-cap pairs can sustain their own momentum even in quiet global markets. 0 = disabled.">📊 Rescue from Global Vol block if Pair Vol ≥</p>
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
@@ -5019,6 +5021,12 @@
                                 <input type="number" step="1" min="0" max="100" id="config-btc-adx-min-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
                                 <span class="mx-1 text-gray-500">to</span>
                                 <input type="number" step="1" min="0" max="100" id="config-btc-adx-max-short" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="100">
+                            </label>
+                            <span class="text-xs text-red-400 ml-4" title="SHORT-only BTC ADX BLOCK RANGE (May 27, 2026). Blocks SHORT entries when BTC ADX falls inside [min, max). Both 0 = disabled. Cross-batch: BTC ADX 24-30 SHORT = 100 trades / 49% WR / -$1,607.">BTC ADX Block S:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.5" min="0" max="100" id="config-btc-adx-block-min-short" class="w-16 bg-white/5 border border-red-500/30 rounded px-2 py-1 text-white text-center" value="0">
+                                <span class="mx-1 text-gray-500">to</span>
+                                <input type="number" step="0.5" min="0" max="100" id="config-btc-adx-block-max-short" class="w-16 bg-white/5 border border-red-500/30 rounded px-2 py-1 text-white text-center" value="0">
                             </label>
                             <span class="text-xs text-gray-500 ml-4" title="Minimum |BTC EMA20 slope %| required for entry. LONGs need slope > +threshold; SHORTs need slope < -threshold. Below this absolute value = considered flat, entries blocked.">Min BTC EMA20 Slope L:</span>
                             <label class="flex items-center text-sm text-gray-400">
@@ -15899,6 +15907,15 @@
                 document.getElementById('config-global-vol-max-short').value = config.thresholds.global_volume_max_short !== undefined ? config.thresholds.global_volume_max_short : 1.10;
                 document.getElementById('config-global-vol-max-short-cap-rsi').value = config.thresholds.global_volume_max_short_capitulation_rsi !== undefined ? config.thresholds.global_volume_max_short_capitulation_rsi : 30;
                 document.getElementById('config-global-vol-max-short-cap-slope').value = config.thresholds.global_volume_max_short_capitulation_slope !== undefined ? config.thresholds.global_volume_max_short_capitulation_slope : 0;
+                if (document.getElementById('config-global-vol-max-short-cap-gv-cap')) {
+                    document.getElementById('config-global-vol-max-short-cap-gv-cap').value = config.thresholds.global_volume_max_short_capitulation_gv_cap !== undefined ? config.thresholds.global_volume_max_short_capitulation_gv_cap : 0;
+                }
+                if (document.getElementById('config-btc-adx-block-min-short')) {
+                    document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
+                }
+                if (document.getElementById('config-btc-adx-block-max-short')) {
+                    document.getElementById('config-btc-adx-block-max-short').value = config.thresholds.btc_adx_block_max_short !== undefined ? config.thresholds.btc_adx_block_max_short : 0;
+                }
                 document.getElementById('config-pair-vol-threshold-long').value = config.thresholds.pair_volume_threshold_long !== undefined ? config.thresholds.pair_volume_threshold_long : 1.10;
                 document.getElementById('config-pair-vol-threshold-short').value = config.thresholds.pair_volume_threshold_short !== undefined ? config.thresholds.pair_volume_threshold_short : 1.10;
                 document.getElementById('config-global-vol-lookback').value = config.thresholds.global_volume_lookback_bars !== undefined ? config.thresholds.global_volume_lookback_bars : 48;
@@ -17096,6 +17113,9 @@
                     global_volume_max_short: safeFloat(document.getElementById('config-global-vol-max-short').value),
                     global_volume_max_short_capitulation_rsi: safeFloat(document.getElementById('config-global-vol-max-short-cap-rsi').value),
                     global_volume_max_short_capitulation_slope: safeFloat(document.getElementById('config-global-vol-max-short-cap-slope').value),
+                    global_volume_max_short_capitulation_gv_cap: safeFloat(document.getElementById('config-global-vol-max-short-cap-gv-cap')?.value || 0),
+                    btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
+                    btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
                     pair_volume_filter_enabled: document.getElementById('config-pair-volume-filter-enabled').checked,
                     pair_volume_threshold_long: safeFloat(document.getElementById('config-pair-vol-threshold-long').value),
                     pair_volume_threshold_short: safeFloat(document.getElementById('config-pair-vol-threshold-short').value),

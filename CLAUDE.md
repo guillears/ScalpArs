@@ -1,5 +1,132 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 27, 2026 (afternoon) — SHIPPED: 8-change defensive stack after disaster batch (-$1,001)
+
+### Context
+
+Today's 23-trade full-day batch closed -$1,001 (10L -$590 / 13S -$411). Combined with
+the prior 4-batch deep dive (73 trades / -$1,801 across May 26 + May 27), structural
+analysis identified 8 distinct ship candidates that pass locked CLAUDE.md promotion
+gates. All shipped together as a coherent defensive stack.
+
+### Cross-batch evidence base
+- Full pool: 965 closed trades (May 4 → May 27)
+- 4-batch sample: 73 closed trades (May 26 morning + evening + May 27 full day)
+- Per-rule per-cell evidence below
+
+### What ships
+
+**1. Pair blacklist — add FILUSDT, VVVUSDT, ERAUSDT**
+- `pair_blacklist`: appended 3 pairs (now 22 total)
+- FILUSDT: 5 LONGs in 4-batch / 20% WR / -$392 (single largest pair-leak)
+- VVVUSDT: 3 LONGs / 0% WR / -$254
+- ERAUSDT: 3 trades both directions / 33% WR / -$207
+- All clear locked May 12 blacklist gate (≥6 trades + WR ≤25% OR multi-direction toxicity)
+
+**2. Capitulation override GV cap (NEW field) — `global_volume_max_short_capitulation_gv_cap: 2.0`**
+- Modifies existing capitulation override on `global_volume_max_short`
+- Override now requires: BTC RSI<30 AND BTC slope<0 AND GlobalVol ≤ 2.0
+- Engine: new check in `services/trading_engine.py` capitulation override block (~10 LOC)
+- Logs `[VOL_GATE_MAX_CAP_OVERRIDE_CAPPED]` when override capped by GV
+- Evidence: today's TON SHORT had GV 5.24 + capitulation conditions, lost -$232 at 2.0×
+  multiplier. Cross-batch GV ≥2.0 SHORT: 11 trades / 45.5% WR / -$230 / -$21/tr
+- 4-batch impact: blocks TON -$232, FET -$114, UNI -$73 = +$419 save (3 trades, 0 winners cut)
+
+**3. LONG block on BTC RSI 65-70 (broad veto)** — via existing BTC RSI × BTC ADX cross-filter
+- `btc_rsi_adx_filter_long`: added rule `65-70:99-100` (impossible ADX range = always blocks)
+- Mechanism: existing cross-filter primitive — no new code
+- Cross-batch VS LONG BTC RSI 65-70: 37 trades / 23% WR / -$1,123 / -$30/tr / 5/5 gates pass
+- 4-batch impact: blocks 9 trades (3W/6L) for +$539 net save
+
+**4. SHORT block on BTC RSI 35-40 × BTC ADX 26-30 (surgical)** — via cross-filter rule tighten
+- `btc_rsi_adx_filter_short`: changed `35-40:20-30` → `35-40:20-26`
+- Mechanism: existing cross-filter — no new code
+- Cross-batch SB SHORT BTC RSI 35-40 × ADX 26-30: 20 trades / 40% WR / -$545 / -$27/tr
+- 4-batch impact: blocks 7 trades (2W/5L) for +$349 save, cuts ONDO +$89 winner
+
+**5. LONG block on Pair RSI 60-65 × Pair ADX 25-28 (pair-level surgical)** — via pair-level cross-filter
+- `rsi_adx_filter_long`: was empty, now `60-65:0-25` (block Pair ADX ≥25 in RSI 60-65)
+- Mechanism: existing pair-level cross-filter
+- Cross-batch VS LONG Pair RSI 60-65 × Pair ADX 25-28: 26 trades / 42% WR / -$629 / -$24/tr
+- Note: due to single-rule engine semantics, this also blocks adjacent 28-30 zone
+  (which cross-batch also showed losing — acceptable over-block)
+- 4-batch impact: blocks 2 trades for +$150 save
+
+**6. SHORT block on BTC ADX 24-30 broad (NEW mechanism)** — new config field + engine code
+- New fields: `btc_adx_block_min_short: 24.0`, `btc_adx_block_max_short: 30.0`
+- Engine: new check after BTC ADX min/max gate in `services/trading_engine.py` (~15 LOC)
+- Logs `[BTC_ADX_BLOCK_SHORT]`. New filter counter `BTC_ADX_BLOCK_SHORT`.
+- Cross-batch STRONG_BUY SHORT BTC ADX 24-30: 100 trades / 49% WR / -$1,607 / -$16/tr
+- This filter applies to ALL SHORT confidences (not just STRONG_BUY) — VERY_STRONG
+  SHORT in same zone is borderline (60.5% WR / +$2/tr) so some VERY_STRONG winners cut
+- 4-batch impact: blocks 6 trades (2W/4L) for +$148 save
+
+**7. W2 SHORT lev-stacking — 2.0× inv × 1.5× lev = 3.0× effective**
+- `pattern_cell_rules` W2 SHORT: `lev_mult: 1.0 → 1.5`
+- Multiplier target mode already `"both"` so lev_mult fires
+- Hard caps: 2.0 inv × 2.0 lev (both unchanged) — 1.5 lev within cap
+- Cross-batch SHORT W2 + BTC ADX 22-30: 23 trades / 78.3% WR / +$392 / +$17/tr / 4/4 gates pass
+- 4-batch evidence: 11 W2 SHORT trades / 100% WR / +$810 (already amplified at 2.0×)
+- Lev-stack at 3.0× effective on 11 winners → projected ~+$405 additional in 4-batch sample
+- **3rd 3.0× effective cell on the bot** (after BTC_60-65_22-25 LONG and C1 SHORT)
+
+### Discipline acknowledgment
+
+- All 7 blocking filters clear locked promotion gates strictly OR have explicit
+  discipline override documentation
+- W2 SHORT lev-stacking has 3 distinct dates of cross-batch evidence (borderline
+  on multi-date stability requirement, but passes the locked 4-criterion gate)
+- Same S-P1 demote precedent (CLAUDE.md May 18) is the relevant cautionary tale:
+  strong cross-batch + few dates can break under regime shift. Tight revert criteria
+  locked below.
+
+### 4-batch counterfactual on May 26 + May 27 data (73 trades, -$1,801 actual)
+
+| Component | $-impact |
+|---|---|
+| Pair BL FIL/VVV/ERA | +$854 (11 blocks, 2W cut for $67) |
+| LONG BTC RSI 65-70 broad veto | +$539 (9 blocks) |
+| SHORT BTC RSI 35-40 × ADX 26-30 surgical | +$349 (7 blocks) |
+| Capitulation override GV cap | +$419 (3 blocks, 0 winners cut) |
+| LONG Pair RSI 60-65 × Pair ADX 25-28 | +$150 (2 blocks) |
+| SHORT BTC ADX 24-30 broad | +$148 (6 blocks, 2W cut for $58) |
+| **Sum from 7 blocking filters** | **+$2,128** |
+| W2 SHORT lev 1.5× (3.0× effective) | **+$405** projected on 11 winners |
+| **Combined projected** | **~+$2,533** |
+
+Projected 4-batch result: -$1,801 actual → ~+$700 simulated.
+
+### Locked revert criteria at next ≥30-trade checkpoint
+
+| Change | Revert if |
+|---|---|
+| Pair BL FIL/VVV/ERA | Any pair shows ≥3 fresh trades at ≥60% WR (would-have-been winners) |
+| Capitulation override GV cap | Cross-batch SHORT @ GV>2 + capitulation shows ≥55% WR on N≥10 fresh |
+| LONG BTC RSI 65-70 block | Cell shows ≥55% WR on N≥10 fresh |
+| SHORT BTC RSI 35-40 × ADX 26-30 | Cell shows ≥55% WR on N≥10 fresh — biggest winner-cut risk (ONDO-class) |
+| LONG Pair RSI 60-65 × Pair ADX 25-28 | Cell shows ≥55% WR on N≥10 fresh |
+| SHORT BTC ADX 24-30 broad | Either: (a) cell shows ≥55% WR on N≥15 OR (b) VERY_STRONG SHORT in zone shows ≥70% WR on N≥10 (would justify confidence-scoped variant) |
+| W2 SHORT lev 1.5× | Standard CLAUDE.md May 21 lev-stacking revert: WR <70% on N≥5 fresh → drop lev to 1.0× immediately; any single trade Δ$ < -$60 → immediate drop |
+
+### Files changed
+
+- `trading_config.json` — 6 config updates (pair_blacklist + 4 filter strings + W2 lev_mult) + 3 new fields
+- `config.py` — 3 new schema fields with evidence comments
+- `services/trading_engine.py` — 2 new logic blocks (capitulation GV cap + BTC ADX block range)
+- `templates/index.html` — 3 new UI inputs + load/save handlers (D11 compliance)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To document the 8-change defensive stack as a coherent ship, not 8 isolated decisions
+2. To preserve the cross-batch evidence per-rule so future audits can verify
+3. To anchor the projected 4-batch impact (-$1,801 → ~+$700) as the in-sample baseline
+   for forward expectation (real forward likely ~30% haircut for in-sample bias)
+4. To lock the per-rule revert criteria so next-checkpoint decisions are mechanical
+5. To document the structural overlap: TON-style C1 SHORT capitulation disasters
+   are now caught by the capitulation GV cap (rule #2), so no separate C1 SHORT
+   demote or fixed-SL is needed — the upstream filter handles it
+
 ## May 26, 2026 (very late evening) — SHIPPED: Pattern C / W Combination Trackers (multi-pattern combos surfaced)
 
 ### What ships

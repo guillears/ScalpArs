@@ -1,5 +1,96 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 27, 2026 (evening) — SHIPPED: Time-to-L1 Protection Tracker + dormant TIME_EXIT_NO_L1 engine hook
+
+### What ships
+
+New observation-only analytics surface answering: **how fast do winners reach
+L1 protection (+0.20% peak) vs losers that never reach it?** Drives a future
+time-based exit decision via a dormant engine hook.
+
+### Three new tables in dashboard + text exports
+
+1. **Cohort reach rates** — per (direction × outcome): N, L1 reach %, median /
+   p75 / p90 time-to-peak (winners), Never-N + AvgDur + Never Total $ for the
+   "never reaches L1" cohort.
+2. **Time-exit counterfactual** — for X in {5, 8, 10, 12, 15, 20, 30} min,
+   computes: triggered count, losers_caught, winners_cut, saved_usd (50%
+   rescue assumption), killed_usd, net_usd, **save:kill ratio**.
+3. **Per-pattern impact at best X (10 min default)** — for C4 only / C1 only /
+   C any / Unmatched C / Any winner cohorts: how many trades would the
+   time-exit rule hit at X=10, and what's the loss/win split.
+
+### Engine hook — DORMANT by default (`time_exit_no_l1_minutes: 0`)
+
+New config field `time_exit_no_l1_minutes` (int, default 0 = disabled) +
+`time_exit_no_l1_threshold_pct` (float, default 0.20). When `minutes > 0`,
+realtime callback fires `TIME_EXIT_NO_L1` close reason when:
+
+```
+(now - opened_at) >= time_exit_no_l1_minutes × 60s
+AND peak_pnl < time_exit_no_l1_threshold_pct
+AND not closing_in_progress
+```
+
+Placed in exit ladder AFTER FAST_EXIT L1/L2 (gives those mechanisms first
+shot at locking profit) and BEFORE Phase 1 shadow tracking. Logs as
+`[TIME_EXIT_NO_L1]`.
+
+### Pre-committed promotion criteria (locked NOW)
+
+Before flipping `time_exit_no_l1_minutes` from 0 to any value, the Time-Exit
+Counterfactual table must show at next ≥30-trade fresh checkpoint:
+
+1. **N ≥ 30** triggered at candidate X
+2. **save:kill ratio ≥ 3:1** at that X
+3. **Losers caught ≥ 5× winners cut** at that X
+4. **Net $ ≥ +$50** at that X
+5. **Best-ratio X reasonable** (5-15 min range — beyond 20 min the structural
+   "give up" signal is weak)
+
+If multiple X candidates pass, choose the one with highest **save:kill ratio**
+(not highest net $) — ratio is the leading indicator of forward robustness,
+net $ is in-sample and decays.
+
+### Pre-committed revert criteria after ship
+
+Once `time_exit_no_l1_minutes > 0` and fires ≥10 times in fresh batch:
+- Net $ < $0 cross-batch → revert to 0
+- TIME_EXIT_NO_L1 close reason shows ≥30% post-exit recovery (in Post-Exit
+  Regret Deep Dive) → time threshold too aggressive, raise by 5 min
+- save:kill ratio drops below 2:1 fresh → revert to 0, re-analyze
+
+### Why ship dormant (not active)
+
+The save:kill simulation uses a 50% rescue assumption — the bot doesn't have
+intra-trade P&L snapshots at minute X, so we proxy. This is conservative but
+approximate. Activating the hook with no fresh-data validation against the
+real intra-trade P&L would be a 1-batch ship. The locked promotion gates
+above require live observation of the counterfactual table + per-pattern
+breakdown across multiple batches before any live ship.
+
+### Files changed
+
+- `config.py` — 2 new fields (`time_exit_no_l1_minutes`, `time_exit_no_l1_threshold_pct`)
+- `trading_config.json` — both at 0 / 0.20 defaults
+- `services/trading_engine.py` — TIME_EXIT_NO_L1 realtime exit block (~35 LOC)
+- `main.py` — `_compute_time_to_l1_analysis` helper (~150 LOC) + payload entry
+- `templates/index.html` — new analytics section (3 tables) + JS renderer +
+  config panel input + load/save handlers + 2 text-export sites (~250 LOC)
+- `CLAUDE.md` — this entry
+
+### Why this entry exists in CLAUDE.md
+
+1. To anchor the locked promotion criteria — flipping `time_exit_no_l1_minutes`
+   from 0 to any value is a real ship decision with a clear gate
+2. To preserve the 50% rescue assumption disclosure (it's why the engine ships
+   dormant, not active)
+3. To list the per-pattern cohort focus (C4 / C1 / Unm. C / Any winner) for
+   the next-checkpoint analysis — Pattern C cohort impact is the most
+   structurally relevant signal
+4. To anchor the close-reason convention (`TIME_EXIT_NO_L1`) so future
+   Post-Exit Regret + Closing Reason Summary analytics auto-include it
+
 ## May 27, 2026 (afternoon, follow-up) — REFINEMENT: BTC RSI 65-70 LONG block replaced with A3 conditional (BTC ATR < 0.10)
 
 ### Why this refinement

@@ -6714,6 +6714,43 @@ class TradingEngine:
                         continue  # Trade is closed; skip remaining checks for this order
 
             # ════════════════════════════════════════════════════════════════
+            # TIME_EXIT_NO_L1 (May 27) — exit when trade fails to reach L1 within X min.
+            # Catches the "Never reaches L1" cohort (Pattern C / NP-style trades) that
+            # drifts toward SL. Default DISABLED (time_exit_no_l1_minutes = 0).
+            # Activates only when config field > 0. Fires when:
+            #   (now - opened_at) >= X min  AND  peak_pnl < L1 threshold (+0.20%)
+            # See Time-to-L1 Protection Tracker table + CLAUDE.md May 27 entry.
+            # ════════════════════════════════════════════════════════════════
+            _te_minutes = int(getattr(config.trading_config.thresholds, 'time_exit_no_l1_minutes', 0) or 0)
+            if _te_minutes > 0 and not order_info.get('_closing_in_progress'):
+                _te_thr = float(getattr(config.trading_config.thresholds, 'time_exit_no_l1_threshold_pct', 0.20) or 0.20)
+                _te_peak = order_info.get('peak_pnl') or 0.0
+                _te_opened_at = order_info.get('opened_at')
+                if _te_opened_at is not None and _te_peak < _te_thr:
+                    _te_opened_naive = _te_opened_at.replace(tzinfo=None) if _te_opened_at.tzinfo is not None else _te_opened_at
+                    _te_elapsed_min = (datetime.utcnow() - _te_opened_naive).total_seconds() / 60.0
+                    if _te_elapsed_min >= _te_minutes:
+                        logger.warning(
+                            f"[TIME_EXIT_NO_L1] {pair} {direction}: peak={_te_peak:.4f}% < L1={_te_thr}%, "
+                            f"elapsed={_te_elapsed_min:.2f}min >= X={_te_minutes}min - CLOSING NOW (no L1 protection reached)"
+                        )
+                        order_info['_closing_in_progress'] = True
+                        try:
+                            async with AsyncSessionLocal() as db:
+                                result = await db.execute(
+                                    select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                )
+                                order = result.scalar_one_or_none()
+                                if order:
+                                    closed = await self.close_position(db, order, current_price, "TIME_EXIT_NO_L1")
+                                    if closed:
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                        except Exception as e:
+                            logger.error(f"[TIME_EXIT_NO_L1] Error closing {pair}: {e}")
+                        continue  # Trade is closed; skip remaining checks for this order
+
+            # ════════════════════════════════════════════════════════════════
             # Phase 1 shadow tracking (May 6) — counterfactual exit at first
             # price-vs-EMA cross against trade direction. Observation only:
             # records the moment + counterfactual close P&L if we had exited

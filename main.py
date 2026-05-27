@@ -6499,6 +6499,10 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Pattern W batch coverage + unmatched-winners deep dive (May 20 latest+3)
         "pattern_w_batch_coverage": _compute_pattern_w_batch_coverage(orders),
         "pattern_w_unmatched_winners": _compute_unmatched_winners(orders, limit=20),
+        # Time-to-L1 Protection Tracker (May 27, observation-only — exit-side analytic)
+        # Measures how fast winners reach L1 (+0.20% peak) vs losers that never reach.
+        # Informs time-based exit candidate (TIME_EXIT_NO_L1) — see config.time_exit_no_l1_minutes.
+        "time_to_l1_analysis": _compute_time_to_l1_analysis(orders),
         # ====== PATTERN CALCULATOR START — May 20, 2026 ======
         # Removal: delete the next line + the _compute_pattern_calculator_data
         # function definition (fenced with same START/END markers).
@@ -7952,6 +7956,180 @@ _FAST_EXIT_THRESHOLDS = [0.20, 0.30, 0.40]   # P&L % triggers to test (May 17: s
 _FAST_EXIT_WINDOWS = [1, 2, 5]               # minutes from entry (3min dropped May 13)
 _FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
 _FAST_EXIT_FEE_PCT = 0.063                   # taker round-trip fee approx
+
+
+def _compute_time_to_l1_analysis(orders, l1_threshold_pct=0.20, exit_time_candidates=(5, 8, 10, 12, 15, 20, 30)):
+    """Time-to-L1 Protection Tracker (May 27, 2026 — observation-only).
+
+    Analyzes how long it takes WINNERS to reach the L1 protection threshold
+    (peak >= L1_threshold_pct) vs LOSERS that never reach it. Drives the
+    "time-based exit" decision: at minute X with peak < L1, exit because
+    trade is structurally failing.
+
+    Returns three tables:
+    1. cohort_table — per (direction × outcome) cohort: L1 reach rate,
+       time-to-peak distribution, never-reach cohort stats
+    2. time_exit_counterfactual — for each X in candidates, save/kill from
+       a "peak < L1 AND dur >= X → exit" rule
+    3. per_pattern_impact — top Pattern C cohorts and how time-exit at the
+       best-ratio X would affect each
+
+    Reads existing Order columns only (peak_pnl, peak_reached_at,
+    opened_at, closed_at, pnl, pnl_percentage, pattern_c*_match).
+    """
+    from datetime import datetime as _dt
+
+    # Pre-process trades with computed times
+    rows = []
+    for o in orders:
+        try:
+            if getattr(o, 'status', None) != 'CLOSED':
+                continue
+            opened = getattr(o, 'opened_at', None)
+            closed = getattr(o, 'closed_at', None)
+            peak_at = getattr(o, 'peak_reached_at', None)
+            pnl = getattr(o, 'pnl', None)
+            pnl_pct = getattr(o, 'pnl_percentage', None)
+            peak = getattr(o, 'peak_pnl', None) or 0.0
+            if opened is None or closed is None or pnl is None or pnl_pct is None:
+                continue
+            dur_min = (closed - opened).total_seconds() / 60.0
+            peak_min = ((peak_at - opened).total_seconds() / 60.0) if peak_at else None
+            rows.append({
+                'dir': o.direction,
+                'pnl': float(pnl),
+                'pnl_pct': float(pnl_pct),
+                'peak': float(peak),
+                'dur_min': dur_min,
+                'peak_min': peak_min,
+                'pat_c1': bool(getattr(o, 'entry_pattern_c1_match', False)),
+                'pat_c2': bool(getattr(o, 'entry_pattern_c2_match', False)),
+                'pat_c4': bool(getattr(o, 'entry_pattern_c4_match', False)),
+                'pat_c6': bool(getattr(o, 'entry_pattern_c6_match', False)),
+                'pat_c7': bool(getattr(o, 'entry_pattern_c7_match', False)),
+                'pat_c8': bool(getattr(o, 'entry_pattern_c8_match', False)),
+                'pat_c9': bool(getattr(o, 'entry_pattern_c9_match', False)),
+                'pat_c_any': bool(getattr(o, 'entry_pattern_c_any_match', False)),
+                'pat_w_any': bool(getattr(o, 'entry_pattern_w_any_match', False)),
+            })
+        except Exception:
+            continue
+
+    def _percentile(sorted_list, p):
+        if not sorted_list: return None
+        idx = max(0, min(len(sorted_list) - 1, int(len(sorted_list) * p)))
+        return sorted_list[idx]
+
+    # --- Table 1: cohort_table ---
+    cohort_defs = [
+        ('LONG', 'winner', lambda r: r['dir'] == 'LONG' and r['pnl'] > 0),
+        ('LONG', 'loser', lambda r: r['dir'] == 'LONG' and r['pnl'] <= 0),
+        ('SHORT', 'winner', lambda r: r['dir'] == 'SHORT' and r['pnl'] > 0),
+        ('SHORT', 'loser', lambda r: r['dir'] == 'SHORT' and r['pnl'] <= 0),
+        ('ALL', 'winner', lambda r: r['pnl'] > 0),
+        ('ALL', 'loser', lambda r: r['pnl'] <= 0),
+        ('ALL', 'NP', lambda r: r['peak'] < 0.05),
+    ]
+    cohort_table = []
+    for direction, outcome, pred in cohort_defs:
+        sub = [r for r in rows if pred(r)]
+        n = len(sub)
+        if n == 0:
+            cohort_table.append({
+                'direction': direction, 'outcome': outcome, 'n': 0,
+                'reach_pct': 0, 'med_time_min': None, 'p75_time_min': None,
+                'p90_time_min': None, 'never_n': 0, 'never_avg_dur_min': 0,
+                'never_total_usd': 0,
+            })
+            continue
+        reached = [r for r in sub if r['peak'] >= l1_threshold_pct]
+        not_reached = [r for r in sub if r['peak'] < l1_threshold_pct]
+        peak_times = sorted([r['peak_min'] for r in reached if r['peak_min'] is not None])
+        nr_n = len(not_reached)
+        nr_dur = sum(r['dur_min'] for r in not_reached) / nr_n if nr_n else 0.0
+        nr_total = sum(r['pnl'] for r in not_reached)
+        cohort_table.append({
+            'direction': direction, 'outcome': outcome, 'n': n,
+            'reach_pct': round(len(reached) / n * 100, 1),
+            'med_time_min': round(_percentile(peak_times, 0.50), 1) if peak_times else None,
+            'p75_time_min': round(_percentile(peak_times, 0.75), 1) if peak_times else None,
+            'p90_time_min': round(_percentile(peak_times, 0.90), 1) if peak_times else None,
+            'never_n': nr_n,
+            'never_avg_dur_min': round(nr_dur, 1),
+            'never_total_usd': round(nr_total, 2),
+        })
+
+    # --- Table 2: time_exit_counterfactual ---
+    # Rule: peak < L1 AND dur_min >= X → exit at "current P&L" (estimated as close P&L)
+    # This is approximate — real-time P&L at minute X isn't recorded.
+    # But for trades that never reach L1, P&L at any minute is typically close to close P&L
+    # (since they drift toward SL). So close P&L is a reasonable proxy.
+    time_exit_cf = []
+    for X in exit_time_candidates:
+        triggered = [r for r in rows if r['peak'] < l1_threshold_pct and r['dur_min'] >= X]
+        if not triggered:
+            time_exit_cf.append({
+                'x_min': X, 'triggered': 0, 'losers_caught': 0, 'winners_cut': 0,
+                'saved_usd': 0, 'killed_usd': 0, 'net_usd': 0, 'save_kill_ratio': None,
+            })
+            continue
+        losers = [r for r in triggered if r['pnl'] <= 0]
+        winners = [r for r in triggered if r['pnl'] > 0]
+        # Save: if exit at X, avoid the rest of the loss. Estimate: ~50% of close P&L is rescued
+        # (trades typically deteriorate further after X if they haven't reached L1 yet).
+        # This is conservative — actual save depends on intra-trade trajectory.
+        saved = -sum(r['pnl'] for r in losers) * 0.5  # 50% rescue assumption
+        killed = sum(r['pnl'] for r in winners)
+        net = saved - killed
+        ratio = (saved / killed) if killed > 0 else (float('inf') if saved > 0 else 0)
+        time_exit_cf.append({
+            'x_min': X,
+            'triggered': len(triggered),
+            'losers_caught': len(losers),
+            'winners_cut': len(winners),
+            'saved_usd': round(saved, 2),
+            'killed_usd': round(killed, 2),
+            'net_usd': round(net, 2),
+            'save_kill_ratio': round(ratio, 1) if ratio != float('inf') else 999.0,
+        })
+
+    # --- Table 3: per_pattern_impact at best-ratio X (10 min default) ---
+    BEST_X = 10
+    per_pattern = []
+    pat_buckets = [
+        ('C4 only',     lambda r: r['pat_c4'] and not any(r[k] for k in ['pat_c1','pat_c2','pat_c6','pat_c7','pat_c8','pat_c9'])),
+        ('C1 only',     lambda r: r['pat_c1'] and not any(r[k] for k in ['pat_c2','pat_c4','pat_c6','pat_c7','pat_c8','pat_c9'])),
+        ('C any',       lambda r: r['pat_c_any']),
+        ('Unmatched C', lambda r: not r['pat_c_any'] and r['pnl'] <= 0),
+        ('Any winner',  lambda r: r['pnl'] > 0),
+    ]
+    for cohort_name, pred in pat_buckets:
+        sub = [r for r in rows if pred(r) and r['peak'] < l1_threshold_pct and r['dur_min'] >= BEST_X]
+        if not sub:
+            per_pattern.append({
+                'cohort': cohort_name, 'n_triggered': 0, 'losers': 0, 'winners': 0,
+                'losers_total_usd': 0, 'winners_total_usd': 0,
+            })
+            continue
+        losers = [r for r in sub if r['pnl'] <= 0]
+        winners = [r for r in sub if r['pnl'] > 0]
+        per_pattern.append({
+            'cohort': cohort_name,
+            'n_triggered': len(sub),
+            'losers': len(losers),
+            'winners': len(winners),
+            'losers_total_usd': round(sum(r['pnl'] for r in losers), 2),
+            'winners_total_usd': round(sum(r['pnl'] for r in winners), 2),
+        })
+
+    return {
+        'l1_threshold_pct': l1_threshold_pct,
+        'best_x_min': BEST_X,
+        'total_trades': len(rows),
+        'cohort_table': cohort_table,
+        'time_exit_counterfactual': time_exit_cf,
+        'per_pattern_impact_at_best_x': per_pattern,
+    }
 
 
 def _compute_pattern_c_validation(orders):

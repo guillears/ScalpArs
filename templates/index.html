@@ -1921,6 +1921,77 @@
                     </div>
                 </div>
 
+                <!-- Pattern C / W Combo Trackers (May 26 evening — surface multi-pattern combos like C2+C4) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">🧩 Pattern C Combination Tracker</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Groups trades by their full C-pattern signature (e.g., "C2+C4" when both fire together).
+                        Single-pattern matches like "C4" alone also appear as rows. Sorted by Total $ ascending
+                        (worst losers first). Promotion gates: same as Pattern C Tracker
+                        (N≥30, WR≤40%, Avg≤-0.20% → FILTER CANDIDATE).
+                        "(none)" rows = trades with no C match (baseline reference).
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium">Combo</th>
+                                    <th class="px-2 py-2 font-medium">Dir</th>
+                                    <th class="px-2 py-2 font-medium">N</th>
+                                    <th class="px-2 py-2 font-medium">W/L</th>
+                                    <th class="px-2 py-2 font-medium">WR%</th>
+                                    <th class="px-2 py-2 font-medium">Avg%</th>
+                                    <th class="px-2 py-2 font-medium">Total $</th>
+                                    <th class="px-2 py-2 font-medium">NP%</th>
+                                    <th class="px-2 py-2 font-medium">AvgPk%</th>
+                                    <th class="px-2 py-2 font-medium">R:R</th>
+                                    <th class="px-2 py-2 font-medium">TP+SL Δ$</th>
+                                    <th class="px-2 py-2 font-medium">MULT 2× Δ$</th>
+                                    <th class="px-2 py-2 font-medium">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-c-combo-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🧩 Pattern W Combination Tracker</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Groups trades by their full W-pattern signature (e.g., "W2+W4" when both fire together).
+                        Single-pattern matches like "W2" alone also appear. Sorted by Total $ ascending.
+                        Promotion gates: same as Pattern W Tracker (N≥30, WR≥70%, Avg≥+0.10%, Total$>0
+                        → MULTIPLIER CANDIDATE).
+                        "(none)" rows = trades with no W match (baseline reference).
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium">Combo</th>
+                                    <th class="px-2 py-2 font-medium">Dir</th>
+                                    <th class="px-2 py-2 font-medium">N</th>
+                                    <th class="px-2 py-2 font-medium">W/L</th>
+                                    <th class="px-2 py-2 font-medium">WR%</th>
+                                    <th class="px-2 py-2 font-medium">Avg%</th>
+                                    <th class="px-2 py-2 font-medium">Total $</th>
+                                    <th class="px-2 py-2 font-medium">NP%</th>
+                                    <th class="px-2 py-2 font-medium">AvgPk%</th>
+                                    <th class="px-2 py-2 font-medium">R:R</th>
+                                    <th class="px-2 py-2 font-medium">TP+SL Δ$</th>
+                                    <th class="px-2 py-2 font-medium">MULT 2× Δ$</th>
+                                    <th class="px-2 py-2 font-medium">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-w-combo-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Pattern C Tracker Validation (May 19, 2026 — observation-only) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 Pattern C Tracker (observation-only)</h3>
@@ -6963,6 +7034,24 @@
                 }
             }
 
+            // Pattern C / W Combo Trackers (May 26 evening ship)
+            const _renderComboExport1 = (tracker, title) => {
+                const t = perf[`pattern_${tracker.toLowerCase()}_combo_tracker`] || {};
+                const rows = t.rows || [];
+                if (!rows.length) return;
+                lines.push(`\n${hr2}`);
+                lines.push(`## ${title}\n`);
+                lines.push(`${'Combo'.padEnd(20)} ${'Dir'.padEnd(6)} ${'N'.padEnd(4)} ${'W/L'.padEnd(8)} ${'WR%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(11)} ${'NP'.padEnd(7)} ${'AvgPk%'.padEnd(9)} ${'R:R'.padEnd(7)} ${'TP+SL Δ$'.padEnd(20)} ${'MULT 2× Δ$'.padEnd(11)} ${'Verdict'}`);
+                for (const r of rows) {
+                    const fmt$ = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    const fmtPct = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                    const combinedDetail = `${fmt$(r.combined_delta_usd)}(${r.combined_fires_tp}/${r.combined_fires_sl}/${r.combined_cut_winners})`;
+                    lines.push(`${r.combo.padEnd(20)} ${r.direction.padEnd(6)} ${String(r.n).padEnd(4)} ${(r.w+'/'+r.l).padEnd(8)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${fmtPct(r.avg_pnl_pct).padEnd(9)} ${fmt$(r.total_dollars).padEnd(11)} ${(r.np_count+'/'+r.np_rate_pct.toFixed(0)+'%').padEnd(7)} ${fmtPct(r.avg_peak_pct).padEnd(9)} ${('1:'+r.rr_ratio).padEnd(7)} ${combinedDetail.padEnd(20)} ${fmt$(r.mult2x_delta_usd).padEnd(11)} ${r.verdict}`);
+                }
+            };
+            _renderComboExport1('C', 'Pattern C Combination Tracker');
+            _renderComboExport1('W', 'Pattern W Combination Tracker');
+
             // Pattern Cell Ship Performance (May 21 Phase 2)
             const _pcp1 = perf.pattern_cell_performance || {};
             const _pcpRows1 = _pcp1.rules || [];
@@ -8619,6 +8708,24 @@
                         lines.push(`Batch total: ${_4c2.total.n} trades, ${_4c2.total.w}W/${_4c2.total.l}L, ${(_4c2.total.total_dollars >= 0 ? '+$' : '-$') + Math.abs(_4c2.total.total_dollars).toFixed(2)}`);
                     }
                 }
+
+                // Pattern C / W Combo Trackers (May 26 evening ship) — saved-file export
+                const _renderComboExport2 = (tracker, title) => {
+                    const t = perf[`pattern_${tracker.toLowerCase()}_combo_tracker`] || {};
+                    const rows = t.rows || [];
+                    if (!rows.length) return;
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## ${title}\n`);
+                    lines.push(`${'Combo'.padEnd(20)} ${'Dir'.padEnd(6)} ${'N'.padEnd(4)} ${'W/L'.padEnd(8)} ${'WR%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(11)} ${'NP'.padEnd(7)} ${'AvgPk%'.padEnd(9)} ${'R:R'.padEnd(7)} ${'TP+SL Δ$'.padEnd(20)} ${'MULT 2× Δ$'.padEnd(11)} ${'Verdict'}`);
+                    for (const r of rows) {
+                        const fmt$ = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        const fmtPct = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                        const combinedDetail = `${fmt$(r.combined_delta_usd)}(${r.combined_fires_tp}/${r.combined_fires_sl}/${r.combined_cut_winners})`;
+                        lines.push(`${r.combo.padEnd(20)} ${r.direction.padEnd(6)} ${String(r.n).padEnd(4)} ${(r.w+'/'+r.l).padEnd(8)} ${(r.wr_pct.toFixed(1)+'%').padEnd(7)} ${fmtPct(r.avg_pnl_pct).padEnd(9)} ${fmt$(r.total_dollars).padEnd(11)} ${(r.np_count+'/'+r.np_rate_pct.toFixed(0)+'%').padEnd(7)} ${fmtPct(r.avg_peak_pct).padEnd(9)} ${('1:'+r.rr_ratio).padEnd(7)} ${combinedDetail.padEnd(20)} ${fmt$(r.mult2x_delta_usd).padEnd(11)} ${r.verdict}`);
+                    }
+                };
+                _renderComboExport2('C', 'Pattern C Combination Tracker');
+                _renderComboExport2('W', 'Pattern W Combination Tracker');
 
                 // Pattern Cell Ship Performance (May 21 Phase 2) — mirror of clipboard export above
                 const _pcp2 = perf.pattern_cell_performance || {};
@@ -11444,6 +11551,62 @@
                         _4cBody.innerHTML = '<tr><td colspan="10" class="py-3 text-center text-gray-500">No trades yet</td></tr>';
                     }
                 }
+
+                // Pattern C / W Combo Trackers (May 26 evening ship)
+                const _renderComboTable = (data, bodyId, trackerColor) => {
+                    const body = document.getElementById(bodyId);
+                    if (!body) return;
+                    const rows = (data && data.rows) || [];
+                    if (!rows.length) {
+                        body.innerHTML = '<tr><td colspan="13" class="py-3 text-center text-gray-500">No trades yet</td></tr>';
+                        return;
+                    }
+                    const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    const fmtPct = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                    body.innerHTML = rows.map(r => {
+                        const isNone = r.combo === '(none)';
+                        const comboCls = isNone ? 'text-gray-500 italic'
+                            : r.combo.includes('+') ? 'text-fuchsia-300 font-semibold' : trackerColor;
+                        const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const totCls = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const avgCls = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrCls = r.wr_pct >= 70 ? 'text-emerald-400' : r.wr_pct <= 40 ? 'text-red-400' : 'text-amber-400';
+                        const npCls = r.np_rate_pct >= 30 ? 'text-red-400' : r.np_rate_pct >= 15 ? 'text-amber-400' : 'text-gray-300';
+                        const rrCls = r.rr_ratio === '∞' ? 'text-emerald-400' : r.rr_ratio === '—' ? 'text-gray-500'
+                            : parseFloat(r.rr_ratio) <= 2 ? 'text-emerald-400'
+                            : parseFloat(r.rr_ratio) <= 4 ? 'text-amber-400' : 'text-red-400';
+                        const combinedCls = r.combined_delta_usd >= 30 ? 'text-emerald-400 font-semibold'
+                            : r.combined_delta_usd >= 0 ? 'text-emerald-400'
+                            : r.combined_delta_usd >= -20 ? 'text-amber-400' : 'text-red-400';
+                        const multCls = r.mult2x_delta_usd >= 30 ? 'text-emerald-400 font-semibold'
+                            : r.mult2x_delta_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        let verdictCls = 'text-gray-400';
+                        if (r.verdict.includes('FILTER CANDIDATE')) verdictCls = 'text-red-400 font-bold';
+                        else if (r.verdict.includes('MULTIPLIER CANDIDATE')) verdictCls = 'text-emerald-400 font-bold';
+                        else if (r.verdict.includes('Winner trend')) verdictCls = 'text-emerald-300';
+                        else if (r.verdict.includes('Warning')) verdictCls = 'text-amber-300';
+                        else if (r.verdict.includes('High WR but net losing')) verdictCls = 'text-amber-400';
+                        else if (r.verdict.includes('Low N')) verdictCls = 'text-gray-500';
+                        const combinedDetail = `${r.combined_fires_tp}/${r.combined_fires_sl}/${r.combined_cut_winners}`;
+                        return `<tr class="hover:bg-white/5">
+                            <td class="px-2 py-1 ${comboCls}">${r.combo}</td>
+                            <td class="px-2 py-1 ${dirCls}">${r.direction}</td>
+                            <td class="px-2 py-1 text-right text-gray-200">${r.n}</td>
+                            <td class="px-2 py-1 text-right text-xs"><span class="text-emerald-400">${r.w}</span>/<span class="text-red-400">${r.l}</span></td>
+                            <td class="px-2 py-1 text-right ${wrCls}">${r.wr_pct.toFixed(1)}%</td>
+                            <td class="px-2 py-1 text-right ${avgCls}">${fmtPct(r.avg_pnl_pct)}</td>
+                            <td class="px-2 py-1 text-right ${totCls} font-semibold">${fmt$(r.total_dollars)}</td>
+                            <td class="px-2 py-1 text-right ${npCls}">${r.np_count}/${r.np_rate_pct.toFixed(0)}%</td>
+                            <td class="px-2 py-1 text-right text-gray-300">${fmtPct(r.avg_peak_pct)}</td>
+                            <td class="px-2 py-1 text-right ${rrCls}">1:${r.rr_ratio}</td>
+                            <td class="px-2 py-1 text-right text-xs"><span class="${combinedCls}">${fmt$(r.combined_delta_usd)}</span> <span class="text-gray-500">(${combinedDetail})</span></td>
+                            <td class="px-2 py-1 text-right ${multCls}">${fmt$(r.mult2x_delta_usd)}</td>
+                            <td class="px-2 py-1 text-xs ${verdictCls}">${r.verdict}</td>
+                        </tr>`;
+                    }).join('');
+                };
+                _renderComboTable(data.pattern_c_combo_tracker, 'pattern-c-combo-body', 'text-amber-300');
+                _renderComboTable(data.pattern_w_combo_tracker, 'pattern-w-combo-body', 'text-emerald-300');
 
                 if (data.pattern_c_validation) {
                     const _pcRows = data.pattern_c_validation || [];

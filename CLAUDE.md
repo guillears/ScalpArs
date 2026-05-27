@@ -1,5 +1,176 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 26, 2026 (very late evening) — SHIPPED: Pattern C / W Combination Trackers (multi-pattern combos surfaced)
+
+### What ships
+
+Two new analytics tables in the dashboard, placed directly after
+🧬 4-Cohort Pattern Coverage and before 🎯 Pattern C Tracker:
+
+- **🧩 Pattern C Combination Tracker** — groups trades by their full
+  C-pattern signature (e.g., "C2+C4")
+- **🧩 Pattern W Combination Tracker** — same for W-side
+
+### Why this exists — RENDERUSDT/IOUSDT discovery
+
+Today's RENDERUSDT + IOUSDT LONG losers both matched **C2 AND C4
+simultaneously** at entry. The combo `C2+C4 LONG` was invisible in:
+- Pattern C Tracker (single pattern per row)
+- 4-Cohort Coverage (just shows "C only" bucket aggregate)
+- Pattern Calculator (per-pattern selection, no combo grouping)
+
+Operator had to manually CSV-filter to discover the combo. The new
+table surfaces every observed signature mechanically.
+
+### Row structure
+
+For each (combo_signature, direction) group:
+- N, W/L, WR%, Avg P&L %, Total $, NP n/%, AvgPeak%, Loser %, R:R
+- **TP+SL combined Δ$ (tp_f/sl_f/cut_winners)** — same CF math as Pattern C tracker
+- **MULT 2× Δ$** — same CF as Pattern W tracker
+- Verdict (FILTER CANDIDATE / MULTIPLIER CANDIDATE / High-WR-but-net-losing / etc.)
+
+Rows sorted by Total $ ascending (worst losers first). "(none)" rows
+(trades with no match in that tracker) pulled to bottom as baseline reference.
+
+### Single patterns vs combos
+
+Both appear as rows. E.g.:
+- `C4` row = trades matching ONLY C4 (no other C pattern)
+- `C2+C4` row = trades matching exactly C2 AND C4 together
+- `C1+C2+C7` row = triple combo
+
+This lets operator compare "pure C4 cohort" vs "C2+C4 cohort" side-by-side
+— answers "does C4 behave differently when combined with C2?"
+
+### Locked promotion gates (mirror single-pattern Pattern C/W trackers)
+
+| Verdict | Gate |
+|---|---|
+| ⚠ FILTER CANDIDATE | N≥30 AND WR≤40% AND Avg≤-0.20% AND Total $ < 0 |
+| ★ MULTIPLIER CANDIDATE | N≥30 AND WR≥70% AND Avg≥+0.10% AND Total $ > 0 |
+| ★ Winner trend (wait for N≥30) | N≥10 AND WR≥60% AND positive money |
+| ⚠ Warning (filter trend) | N≥10 AND WR≤45% AND Avg≤-0.15% AND negative money |
+| ⚠ High WR but net losing | N≥10 AND WR≥60% but Avg≤0 OR Total≤0 |
+| ⚠ Low N | N<5 |
+| ✓ Inconclusive | else |
+
+### What this enables
+
+1. **Anchor today's C2+C4 watchlist mechanically** — no more manual CSV pulls
+2. **Discover combo-specific failure modes** that single-pattern analysis hides
+3. **Identify combo multipliers** (e.g., if W2+W6 SHORT has higher WR than either alone, it's a candidate)
+4. **Suggest C10+ candidates**: if a combo like "C2+C4+C9 LONG" consistently shows ⚠ FILTER CANDIDATE, that's the signature for a new pattern definition
+
+### Cross-batch readiness for today's question
+
+Today's `C2+C4 LONG` row will show: N=2 / 0% WR / -$291 / 100% NP rate.
+N<5 → ⚠ Low N verdict. Mechanical observation continues across batches.
+If at next ≥10 matching trades the row hits WR≤40% AND Avg≤-0.20%,
+verdict flips to ⚠ FILTER CANDIDATE for that specific combo.
+
+### Engineering scope
+
+- `main.py` — `_compute_pattern_combo_tracker(orders, tracker)` helper
+  (~150 LOC), generic for both C and W; 2 payload entries; 2 empty-data fallbacks
+- `templates/index.html` — 2 UI table sections + shared `_renderComboTable`
+  JS helper (~70 LOC) + 2 text-export sites (clipboard + saved-file)
+- `CLAUDE.md` — this entry
+
+No schema changes. No engine touches. Reads existing
+`entry_pattern_c1-9_match` + `w1-6_match` columns. Falls back to post-hoc
+`_compute_pattern_w_match` for trades without populated W flags (mirror
+of 4-Cohort coverage logic).
+
+### Files changed
+- `main.py` — new helper + payload + fallbacks
+- `templates/index.html` — UI + JS + 2 text exports
+- `CLAUDE.md` — this entry
+
+---
+
+## May 26, 2026 (very late evening) — BUG FIX: Pattern Cell rule with baseline mults didn't block other dimensional multipliers
+
+### What broke
+
+`services/trading_engine.py` line 2687 override condition was:
+```python
+if _pcell_src is not None and (_pcell_inv != 1.0 or _pcell_lev != 1.0):
+```
+
+A pattern rule that matched but had inv_mult=1.0 AND lev_mult=1.0 (i.e.,
+a defensive baseline cell like C4 LONG after the May 22 fixed-TP removal,
+or UNMATCHED LONG/SHORT) failed the override check. The engine fell
+through to the RSI×ADX/EXT/BTC1H candidates list, where any matching
+dimensional multiplier could fire.
+
+### Concrete failure case (RENDERUSDT LONG May 26 23:20)
+
+- C2 + C4 LONG matched at entry → `pattern_cell_source = "C4"`
+- C4 LONG rule had inv_mult=1.0 / lev_mult=1.0 / no fixed exits (post-May-22)
+- Override check `_pcell_inv != 1.0` was False → fell through
+- EXT cell `Ext0.4-0.6_L+Ext_QuietVol_L` matched (dist=0.59%, GVol=0.49)
+- EXT 2.0× applied → investment $1000 instead of $500
+- Trade lost -0.86% → -$172.84 vs structural -$86 at 1×
+
+The structural rule "C-signature is the conviction signal — don't let
+dimensional multipliers amplify a known loser-shape trade" was already
+documented in `_lookup_pattern_cell_rule` (line 1593) under Option D
+strict C-blocks-W. But the override at the candidate-selection level
+only enforced this when the pattern rule itself set non-baseline mults
+— missing the defensive-cell case.
+
+### Fix
+
+Changed the override condition to fire on ANY pattern rule match:
+```python
+if _pcell_src is not None:
+    cell_mult, cell_lev_mult, cell_src = _pcell_inv, _pcell_lev, _pcell_src
+```
+
+Now any matched pattern rule (including defensive 1.0× cells like
+C2/C4/C5/C7/C9 with no rule + UNMATCHED defensives + W1 LONG fixed exits)
+blocks all dimensional multipliers (EXT, RSI×ADX pair/BTC, BTC 1h slope).
+
+### What this changes per cell type
+
+| Cell type | Before | After |
+|---|---|---|
+| C-rule with inv_mult > 1 (e.g., C1 SHORT 2.0×) | Overrode dims | Overrides dims (unchanged) |
+| **C-rule with inv_mult = 1.0 (e.g., C4 LONG, UNMATCHED LONG with fixed exits)** | **Fell through to dims** | **Blocks dims** ★ |
+| **C-pattern matched, no rule configured** | **Fell through to dims** | **Blocks dims (baseline 1.0×)** ★ |
+| W-rule with inv_mult > 1 (e.g., W2 LONG 2.0×) | Overrode dims | Overrides dims (unchanged) |
+| W-rule with inv_mult = 1.0 + fixed exits (e.g., W1 LONG) | Fell through | Blocks dims |
+| No C, no W, no UNMATCHED → returns None | Used dims (correct) | Uses dims (unchanged) |
+
+### Impact assessment
+
+Forward-looking change. Reduces frequency of EXT/BTC1H/RSI×ADX
+dimensional multipliers firing — they now only fire when NO pattern
+rule matched at all (rare cohort: no C, no W, no UNMATCHED rule).
+
+Practically: EXT multiplier dimension will fire much less often.
+Pattern Cell rules now have absolute priority on size when they match.
+This is the structurally correct behavior per the CLAUDE.md May 21
+Option D + May 24 Phase 1 ship intent ("Pattern Cell rule wins
+OVERRIDE all multiplier dims").
+
+### Pre-committed revert criterion
+
+If at next ≥30-trade checkpoint the EXT/BTC1H/RSI×ADX multiplier cells'
+fire count drops to ~0 across the batch (because most trades now match
+some pattern), AND the per-batch P&L is materially worse because we lost
+amplification on legitimate winners that happened to also match a defensive
+C cell → consider re-introducing a narrow exception: only block dims when
+pattern rule is a known DEFENSIVE cell (C-class with no boost), not when
+it's a W-class winner cell with baseline mults.
+
+### Files changed
+- `services/trading_engine.py` — single condition + comment update (~7 lines)
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 26, 2026 (late evening) — SHIPPED: BTC 1h × BTC 5m RSI Direction Cross-Filter (SHORT RR blocked)
 
 ### Change

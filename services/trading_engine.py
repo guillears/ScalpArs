@@ -2682,11 +2682,15 @@ class TradingEngine:
             return inv  # "investment" mode (default)
 
         # Pattern Cell rule takes PRIORITY over RSI×ADX (May 21 — Pattern is more specific).
-        # If a pattern rule fires, use its multipliers directly. Otherwise fall back to
-        # HIGHER-wins between pair + BTC RSI×ADX cells.
-        if _pcell_src is not None and (_pcell_inv != 1.0 or _pcell_lev != 1.0):
+        # If a pattern rule fires (ANY pcell_src — including baseline 1.0× defensive cells
+        # like C4 LONG and UNMATCHED), it BLOCKS all other dimensional multipliers
+        # (RSI×ADX pair/BTC, Extension, BTC 1h Slope×ADX). The pattern match IS the
+        # conviction signal — co-firing EXT/RSI×ADX boost on a known-loser-shape signature
+        # is structurally wrong (CLAUDE.md May 26 RENDERUSDT bug: C4 LONG matched but
+        # EXT_Ext0.4-0.6_L still fired at 2.0×, doubling -$87 loss into -$173).
+        if _pcell_src is not None:
             cell_mult, cell_lev_mult, cell_src = _pcell_inv, _pcell_lev, _pcell_src
-            logger.info(f"[PATTERN_CELL] {pair} {direction}: rule fired ({_pcell_src}) inv={_pcell_inv}x lev={_pcell_lev}x — overrides RSI×ADX")
+            logger.info(f"[PATTERN_CELL] {pair} {direction}: rule fired ({_pcell_src}) inv={_pcell_inv}x lev={_pcell_lev}x — overrides RSI×ADX/EXT/BTC1H")
         else:
             _candidates = [
                 (_pair_inv, _pair_lev, _pair_src),

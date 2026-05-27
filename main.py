@@ -1621,6 +1621,8 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "extension_multiplier_performance": {"rules": [], "summary": {}},
             "btc_1h_slope_btc_adx_multiplier_performance": {"rules": [], "summary": {}},
             "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
+            "pattern_c_combo_tracker": {"rows": [], "tracker": "C"},
+            "pattern_w_combo_tracker": {"rows": [], "tracker": "W"},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2851,6 +2853,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "extension_multiplier_performance": {"rules": [], "summary": {}},
             "btc_1h_slope_btc_adx_multiplier_performance": {"rules": [], "summary": {}},
             "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
+            "pattern_c_combo_tracker": {"rows": [], "tracker": "C"},
+            "pattern_w_combo_tracker": {"rows": [], "tracker": "W"},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -6446,6 +6450,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "btc_1h_slope_btc_adx_multiplier_performance": _compute_btc_1h_slope_btc_adx_multiplier_performance(orders),
         # 4-Cohort Pattern Coverage (May 21 late — split Unm.L/Unm.W into Both/C-only/W-only/Truly)
         "pattern_4cohort_coverage": _compute_pattern_4cohort_coverage(orders),
+        # Pattern Combo Trackers (May 26 evening — surface within-tracker combos like C2+C4 or W2+W4)
+        "pattern_c_combo_tracker": _compute_pattern_combo_tracker(orders, tracker='C'),
+        "pattern_w_combo_tracker": _compute_pattern_combo_tracker(orders, tracker='W'),
         # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
         "ema13_strict_performance": _compute_ema13_strict_performance(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
@@ -9691,6 +9698,180 @@ def _compute_pattern_4cohort_coverage(orders):
             'total_dollars': round(sum((o.pnl or 0) for o in closed), 2),
         },
     }
+
+
+def _compute_pattern_combo_tracker(orders, tracker='C'):
+    """Pattern combo tracker (May 26 evening ship).
+
+    Groups CLOSED trades by their sorted+joined pattern signature within ONE
+    tracker (C or W). Surfaces combos like "C2+C4" or "W2+W4" that fire on
+    the same trade — currently invisible in single-pattern trackers.
+
+    Triggered by today's RENDERUSDT/IOUSDT LONG observation: both trades
+    matched C2+C4 simultaneously but the combo wasn't a row in any table.
+
+    Per-row metrics: N, W/L, WR%, Avg P&L %, Total $, NP%, AvgPeak%, R:R,
+    TP+SL combined Δ$ (per Pattern C verdict logic), MULT 2× Δ$ (per
+    Pattern W verdict logic), Verdict.
+
+    Combos shown for both directions. Sorted by Total $ ascending (worst
+    losers first). Trades with NO match in this tracker get combo='(none)'
+    — useful baseline reference.
+
+    No schema change — reads entry_pattern_{c1-9, w1-6}_match columns.
+    Falls back to post-hoc Pattern W computation for trades without
+    populated w flags (mirrors _compute_pattern_4cohort_coverage logic).
+    """
+    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
+    if not closed:
+        return {'rows': [], 'tracker': tracker}
+
+    def _c_flags_list(o):
+        out = []
+        for i in range(1, 10):
+            if getattr(o, f'entry_pattern_c{i}_match', None) is True:
+                out.append(f'C{i}')
+        return out
+
+    def _w_flags_list(o):
+        any_populated = any(
+            getattr(o, f'entry_pattern_w{i}_match', None) is True
+            for i in range(1, 7)
+        )
+        out = []
+        if any_populated:
+            for i in range(1, 7):
+                if getattr(o, f'entry_pattern_w{i}_match', None) is True:
+                    out.append(f'W{i}')
+        else:
+            try:
+                w1, w2, w3, w4, w5, w6, _ = _compute_pattern_w_match(o)
+                for idx, flag in enumerate([w1, w2, w3, w4, w5, w6], start=1):
+                    if flag:
+                        out.append(f'W{idx}')
+            except Exception:
+                pass
+        return out
+
+    flags_fn = _c_flags_list if tracker == 'C' else _w_flags_list
+
+    # Group by (combo_signature, direction)
+    groups = {}
+    for o in closed:
+        flags = flags_fn(o)
+        combo = '+'.join(flags) if flags else '(none)'
+        direction = o.direction or 'UNKNOWN'
+        key = (combo, direction)
+        groups.setdefault(key, []).append(o)
+
+    # Per-cohort TP+SL counterfactual (mirror Pattern C tracker logic)
+    def _sim_combined(cohort, tp=0.10, sl=0.50):
+        sim_d = 0.0
+        actual_d = 0.0
+        tp_fires = sl_fires = cut_winners = 0
+        for o in cohort:
+            nt = o.notional_value or ((o.investment or 0) * (o.leverage or 1))
+            actual_pct = o.pnl_percentage or 0
+            peak = o.peak_pnl
+            trough = o.trough_pnl
+            peak_at = getattr(o, 'peak_reached_at', None)
+            trough_at = getattr(o, 'trough_reached_at', None)
+            actual_d += actual_pct / 100.0 * nt
+            tp_would_fire = peak is not None and peak >= tp
+            sl_would_fire = trough is not None and trough <= -sl
+            if tp_would_fire and sl_would_fire:
+                if peak_at and trough_at:
+                    if peak_at <= trough_at:
+                        sim_pct, tp_fires = tp, tp_fires + 1
+                    else:
+                        sim_pct, sl_fires = -sl, sl_fires + 1
+                        if actual_pct > 0: cut_winners += 1
+                else:
+                    sim_pct, tp_fires = tp, tp_fires + 1
+            elif tp_would_fire:
+                sim_pct, tp_fires = tp, tp_fires + 1
+            elif sl_would_fire:
+                sim_pct, sl_fires = -sl, sl_fires + 1
+                if actual_pct > 0: cut_winners += 1
+            else:
+                sim_pct = actual_pct
+            sim_d += sim_pct / 100.0 * nt
+        return actual_d, sim_d, tp_fires, sl_fires, cut_winners
+
+    # Per-cohort MULT 2× counterfactual
+    def _sim_mult2x(cohort):
+        actual_d = sum((o.pnl_percentage or 0) / 100.0 *
+                       (o.notional_value or ((o.investment or 0) * (o.leverage or 1)))
+                       for o in cohort)
+        return actual_d  # at 2× returns 2 × actual; Δ$ = actual
+
+    rows = []
+    for (combo, direction), cohort in groups.items():
+        n = len(cohort)
+        if n < 1:
+            continue
+        winners = [o for o in cohort if (o.pnl or 0) > 0]
+        losers = [o for o in cohort if (o.pnl or 0) <= 0]
+        nps = [o for o in cohort if (o.peak_pnl or 0) <= 0]
+        total_pnl = sum(o.pnl or 0 for o in cohort)
+        avg_pct = sum(o.pnl_percentage or 0 for o in cohort) / n
+        avg_peak = sum(o.peak_pnl or 0 for o in cohort) / n
+        wr = (len(winners) / n * 100) if n else 0
+        np_pct = (len(nps) / n * 100) if n else 0
+        loser_pct = (len(losers) / n * 100) if n else 0
+        avg_win = (sum(o.pnl for o in winners) / len(winners)) if winners else 0
+        avg_loss = abs(sum(o.pnl for o in losers) / len(losers)) if losers else 0
+        rr = (avg_loss / avg_win) if avg_win > 0 else (float('inf') if losers else 0)
+        rr_str = '∞' if rr == float('inf') else ('—' if not winners else f'{rr:.1f}')
+
+        actual_d, sim_d, tp_fires, sl_fires, cw = _sim_combined(cohort)
+        combined_delta = sim_d - actual_d
+
+        mult_delta = _sim_mult2x(cohort)  # Δ$ at 2× = original total (linear)
+
+        # Verdict (mirror Pattern C/W logic)
+        verdict = ''
+        if n < 5:
+            verdict = '⚠ Low N'
+        elif n >= 30 and wr <= 40 and avg_pct <= -0.20 and total_pnl < 0:
+            verdict = '⚠ FILTER CANDIDATE'
+        elif n >= 30 and wr >= 70 and avg_pct >= 0.10 and total_pnl > 0:
+            verdict = '★ MULTIPLIER CANDIDATE'
+        elif n >= 10 and wr <= 45 and avg_pct <= -0.15 and total_pnl < 0:
+            verdict = '⚠ Warning (filter trend)'
+        elif n >= 10 and wr >= 60 and avg_pct > 0 and total_pnl > 0:
+            verdict = '★ Winner trend — wait for N≥30'
+        elif n >= 10 and wr >= 60 and (avg_pct <= 0 or total_pnl <= 0):
+            verdict = '⚠ High WR but net losing'
+        else:
+            verdict = '✓ Inconclusive'
+
+        rows.append({
+            'combo': combo,
+            'direction': direction,
+            'n': n,
+            'w': len(winners),
+            'l': len(losers),
+            'wr_pct': round(wr, 1),
+            'avg_pnl_pct': round(avg_pct, 3),
+            'total_dollars': round(total_pnl, 2),
+            'np_count': len(nps),
+            'np_rate_pct': round(np_pct, 1),
+            'loser_pct': round(loser_pct, 1),
+            'avg_peak_pct': round(avg_peak, 3),
+            'rr_ratio': rr_str,
+            'combined_delta_usd': round(combined_delta, 2),
+            'combined_fires_tp': tp_fires,
+            'combined_fires_sl': sl_fires,
+            'combined_cut_winners': cw,
+            'mult2x_delta_usd': round(mult_delta, 2),
+            'verdict': verdict,
+        })
+
+    # Sort by total_dollars ascending (worst losers first), but pull "(none)" baseline rows to bottom
+    rows.sort(key=lambda r: (r['combo'] == '(none)', r['total_dollars']))
+
+    return {'rows': rows, 'tracker': tracker}
 
 
 def _compute_pattern_cell_performance(orders):

@@ -5592,6 +5592,62 @@ class TradingEngine:
                     self._record_filter_block(_gate_subtype, signal, had_room=_had_room)
                     signal = "NO_TRADE"
 
+            # BTC RSI BAND × BTC ATR conditional block — May 27, 2026 A3 ship.
+            # Replaces the broad "65-70:99-100" BTC RSI 65-70 LONG block (over-restrictive)
+            # with a surgical "BTC RSI in band AND BTC ATR condition" filter.
+            # Cross-batch (965-trade pool): broad block had 1.91:1 save:cut ratio while
+            # the A3 conditional (BTC ATR <0.10) has 3.99:1 — preserves NEAR +$197 / GMT +$86
+            # / TIA +$57 winners that hit BTC RSI 65-70 in healthy-volatility regimes.
+            # Format per rule: "RSI_LO-RSI_HI:OP" where OP is "<X", ">X", or "X-Y".
+            # OP semantics:
+            #   "<X" → block when BTC ATR < X
+            #   ">X" → block when BTC ATR > X
+            #   "X-Y" → block when X <= BTC ATR < Y
+            # Multi-rule via comma. Empty string = inactive.
+            if signal in ["LONG", "SHORT"] and btc_rsi is not None and btc_atr_pct is not None:
+                _th_atr = config.trading_config.thresholds
+                _atr_key = 'btc_rsi_band_atr_block_long' if signal == 'LONG' else 'btc_rsi_band_atr_block_short'
+                _atr_rules_str = getattr(_th_atr, _atr_key, '') or ''
+                if _atr_rules_str.strip():
+                    for _atr_rule in _atr_rules_str.split(','):
+                        _atr_rule = _atr_rule.strip()
+                        if not _atr_rule or ':' not in _atr_rule:
+                            continue
+                        try:
+                            _atr_rsi_part, _atr_op_part = _atr_rule.split(':', 1)
+                            _atr_rsi_lo, _atr_rsi_hi = map(float, _atr_rsi_part.split('-'))
+                            if not (_atr_rsi_lo <= btc_rsi < _atr_rsi_hi):
+                                continue
+                            _atr_op = _atr_op_part.strip()
+                            _blocked = False
+                            _label = ""
+                            if _atr_op.startswith('<'):
+                                _thr = float(_atr_op[1:])
+                                if btc_atr_pct < _thr:
+                                    _blocked = True
+                                    _label = f"BTC ATR {btc_atr_pct:.3f} < {_thr}"
+                            elif _atr_op.startswith('>'):
+                                _thr = float(_atr_op[1:])
+                                if btc_atr_pct > _thr:
+                                    _blocked = True
+                                    _label = f"BTC ATR {btc_atr_pct:.3f} > {_thr}"
+                            elif '-' in _atr_op:
+                                _thr_lo, _thr_hi = map(float, _atr_op.split('-'))
+                                if _thr_lo <= btc_atr_pct < _thr_hi:
+                                    _blocked = True
+                                    _label = f"BTC ATR {btc_atr_pct:.3f} in [{_thr_lo}, {_thr_hi})"
+                            if _blocked:
+                                logger.info(
+                                    f"[BTC_RSI_ATR_COND] {pair}: {signal} blocked — "
+                                    f"BTC RSI {btc_rsi:.1f} in [{_atr_rsi_lo}, {_atr_rsi_hi}) AND {_label}"
+                                )
+                                self._record_filter_block("BTC_RSI_ATR_COND", signal, had_room=_had_room)
+                                self._last_pair_block_reason[pair] = "BTC_RSI_ATR_COND"
+                                signal = "NO_TRADE"
+                                break
+                        except (ValueError, TypeError):
+                            continue
+
             # SHORT-only BTC ADX BLOCK RANGE — May 27, 2026 (see CLAUDE.md).
             # Blocks SHORT entries when BTC ADX falls inside a "kill zone" range, even though
             # min/max gate above would allow it. Cross-batch evidence (965-trade pool, full

@@ -1,5 +1,91 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 27, 2026 (afternoon, follow-up) — REFINEMENT: BTC RSI 65-70 LONG block replaced with A3 conditional (BTC ATR < 0.10)
+
+### Why this refinement
+
+The original 8-change ship (entry below) included a BROAD block of all LONG entries
+at BTC RSI 65-70 via cross-filter rule `65-70:99-100`. Re-evaluation against 4-batch
++ cross-batch (965-trade pool) found this over-restrictive:
+
+| Variant | Blocks (CB) | Save $ | Winner-cut $ | Net $ | Save:Cut |
+|---|---|---|---|---|---|
+| **A1 broad (original ship)** | 142 | +$2,236 | -$1,173 | +$1,063 | 1.91:1 |
+| **A3 +BTC ATR < 0.10 (shipped now)** | 35 | +$1,118 | -$281 | +$838 | **3.99:1** ★ |
+| A2 +PairTGap ≥+0.60 | 27 | +$858 | -$410 | +$448 | 2.10:1 |
+| A4 +BTC ATR < 0.15 | 65 | +$1,259 | -$882 | +$378 | 1.43:1 |
+| A5 +pair watchlist | 10 | +$530 | -$55 | +$475 | 9.59:1 (redundant w/ blacklist) |
+
+A3 captures the "dead-tape during BTC top" failure mechanism specifically
+(today's FIL ×3 + VVV ×2 disasters all had BTC ATR 0.075-0.083). Preserves
+high-vol regime winners like NEAR +$197 (May 23), GMT +$86 (May 23),
+TIA +$57 (May 26), SUI +$55 (May 26) that A1 would have killed.
+
+### What ships now (replacement, not addition)
+
+**Reverted:** `btc_rsi_adx_filter_long` removed rule `65-70:99-100`
+- New: `'70-100:40,60-65:22-25,60-65:27-30,55-60:20-25,50-55:22'`
+
+**Added:** new conditional-filter primitive `btc_rsi_band_atr_block_long/short`
+- LONG default: `'65-70:<0.10'` (block LONG when BTC RSI in [65, 70) AND BTC ATR < 0.10%)
+- SHORT default: `''` (inactive — symmetric structure available for future use)
+
+### Filter syntax
+
+Format per rule: `"RSI_LO-RSI_HI:OP"` where OP is one of:
+- `<X` → block when BTC ATR < X
+- `>X` → block when BTC ATR > X
+- `X-Y` → block when X ≤ BTC ATR < Y
+
+Multi-rule via comma. Empty = inactive. First-match-wins per RSI band.
+
+### Engine implementation
+
+`services/trading_engine.py` — new check placed after BTC ADX block range,
+before SHORT-only BTC ADX block (~50 LOC):
+- Reads `btc_atr_pct` (already computed in BTC scan loop)
+- Iterates rules in config string, parses RSI band + OP
+- Blocks signal if trade falls in band AND OP condition matches
+- New filter counter `BTC_RSI_ATR_COND` (appears in Filter Blocks panel)
+- New log tag `[BTC_RSI_ATR_COND]`
+
+### Pre-committed revert/refinement criteria at next ≥30-trade LONG checkpoint
+
+| Outcome | Action |
+|---|---|
+| BTC RSI 65-70 × BTC ATR <0.10 cell shows ≥55% WR on N≥10 fresh | Revert (drop the rule) |
+| BTC RSI 65-70 × BTC ATR 0.10-0.15 cell shows ≤40% WR on N≥10 | Tighten threshold to <0.15 |
+| BTC RSI 65-70 × BTC ATR ≥0.15 cell shows ≤45% WR on N≥15 fresh | Drop conditional, restore broad block A1 |
+| `BTC_RSI_ATR_COND` counter = 0 across 100+ trades | Cell rarely fires — investigate or accept dormancy |
+
+### 4-batch counterfactual on this refinement
+
+| Metric | Original A1 broad ship | A3 conditional (now) |
+|---|---|---|
+| Blocked LONG cohort | 21 trades / -$986 saved | 12 trades / -$670 saved |
+| Winners cut | 8 ($-243) | 4 ($-114) |
+| Net 4-batch save | +$743 | **+$556** |
+
+4-batch save is $187 less than the broad block, but preserves XAN +$23, ONDO +$24,
+GRASS +$26/+$27, SUI +$22/+$55, TIA +$57 winners that A1 would have cut on
+healthy-volatility BTC RSI 65-70 LONG entries.
+
+### Files changed (refinement)
+
+- `trading_config.json` — removed `65-70:99-100` from `btc_rsi_adx_filter_long`,
+  added `btc_rsi_band_atr_block_long: "65-70:<0.10"`, added `btc_rsi_band_atr_block_short: ""`
+- `config.py` — 2 new schema fields `btc_rsi_band_atr_block_long/short` with evidence comments
+- `services/trading_engine.py` — new conditional-block check (~50 LOC) supporting <X / >X / X-Y operators
+- `templates/index.html` — 2 new text inputs (L + S) + load/save handlers
+- `CLAUDE.md` — this refinement entry
+
+### Why this entry exists in CLAUDE.md
+
+1. Documents the same-day refinement from broad to surgical filter
+2. Locks the new filter syntax (`<X` / `>X` / `X-Y`) as a reusable primitive
+3. Preserves the variant comparison table so future similar decisions can use the same evaluation
+4. Anchors the locked revert/refinement gates so next-checkpoint decision is mechanical
+
 ## May 27, 2026 (afternoon) — SHIPPED: 8-change defensive stack after disaster batch (-$1,001)
 
 ### Context

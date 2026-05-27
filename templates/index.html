@@ -5028,6 +5028,16 @@
                                 <span class="mx-1 text-gray-500">to</span>
                                 <input type="number" step="0.5" min="0" max="100" id="config-btc-adx-block-max-short" class="w-16 bg-white/5 border border-red-500/30 rounded px-2 py-1 text-white text-center" value="0">
                             </label>
+                        </div>
+                        <!-- BTC RSI band × BTC ATR conditional block (May 27, 2026 A3 ship) -->
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2" title="BTC RSI band × BTC ATR conditional block (May 27 A3). Format: 'RSI_LO-RSI_HI:OP' where OP is '<X' (block if BTC ATR < X), '>X', or 'X-Y'. Multi-rule comma-separated. Default '65-70:<0.10' blocks LONG when BTC RSI in [65,70) AND BTC ATR < 0.10 (dead-tape top). Replaces broad RSI 65-70 block — 3.99:1 save:cut vs 1.91:1 broad.">
+                            <span class="text-xs text-red-400 w-44">BTC RSI×ATR Conditional:</span>
+                            <span class="text-xs text-gray-500">L:</span>
+                            <input type="text" id="config-btc-rsi-band-atr-block-long" class="bg-white/5 border border-red-500/30 rounded px-2 py-1 text-white text-xs w-48" value="" placeholder="e.g. 65-70:<0.10">
+                            <span class="text-xs text-gray-500 ml-2">S:</span>
+                            <input type="text" id="config-btc-rsi-band-atr-block-short" class="bg-white/5 border border-red-500/30 rounded px-2 py-1 text-white text-xs w-48" value="" placeholder="(empty = inactive)">
+                        </div>
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
                             <span class="text-xs text-gray-500 ml-4" title="Minimum |BTC EMA20 slope %| required for entry. LONGs need slope > +threshold; SHORTs need slope < -threshold. Below this absolute value = considered flat, entries blocked.">Min BTC EMA20 Slope L:</span>
                             <label class="flex items-center text-sm text-gray-400">
                                 <input type="number" step="0.01" id="config-macro-trend-flat-threshold-long" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
@@ -15916,6 +15926,12 @@
                 if (document.getElementById('config-btc-adx-block-max-short')) {
                     document.getElementById('config-btc-adx-block-max-short').value = config.thresholds.btc_adx_block_max_short !== undefined ? config.thresholds.btc_adx_block_max_short : 0;
                 }
+                if (document.getElementById('config-btc-rsi-band-atr-block-long')) {
+                    document.getElementById('config-btc-rsi-band-atr-block-long').value = config.thresholds.btc_rsi_band_atr_block_long || '';
+                }
+                if (document.getElementById('config-btc-rsi-band-atr-block-short')) {
+                    document.getElementById('config-btc-rsi-band-atr-block-short').value = config.thresholds.btc_rsi_band_atr_block_short || '';
+                }
                 document.getElementById('config-pair-vol-threshold-long').value = config.thresholds.pair_volume_threshold_long !== undefined ? config.thresholds.pair_volume_threshold_long : 1.10;
                 document.getElementById('config-pair-vol-threshold-short').value = config.thresholds.pair_volume_threshold_short !== undefined ? config.thresholds.pair_volume_threshold_short : 1.10;
                 document.getElementById('config-global-vol-lookback').value = config.thresholds.global_volume_lookback_bars !== undefined ? config.thresholds.global_volume_lookback_bars : 48;
@@ -17116,6 +17132,8 @@
                     global_volume_max_short_capitulation_gv_cap: safeFloat(document.getElementById('config-global-vol-max-short-cap-gv-cap')?.value || 0),
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
+                    btc_rsi_band_atr_block_long: (document.getElementById('config-btc-rsi-band-atr-block-long')?.value || '').trim(),
+                    btc_rsi_band_atr_block_short: (document.getElementById('config-btc-rsi-band-atr-block-short')?.value || '').trim(),
                     pair_volume_filter_enabled: document.getElementById('config-pair-volume-filter-enabled').checked,
                     pair_volume_threshold_long: safeFloat(document.getElementById('config-pair-vol-threshold-long').value),
                     pair_volume_threshold_short: safeFloat(document.getElementById('config-pair-vol-threshold-short').value),

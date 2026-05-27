@@ -164,6 +164,14 @@ class SignalThresholds(BaseModel):
     # Default 24/30 from cross-batch evidence (965-trade pool): BTC ADX 24-30 SHORT = 49% WR / -$16/tr.
     btc_adx_block_min_short: float = 0.0
     btc_adx_block_max_short: float = 0.0
+    # BTC RSI band × BTC ATR conditional block (May 27, 2026 — A3 ship per CLAUDE.md).
+    # Replaces the broad BTC RSI 65-70 block with a surgical "RSI band AND BTC ATR condition" filter.
+    # Format per rule: "RSI_LO-RSI_HI:OP" where OP is "<X", ">X", or "X-Y". Multi-rule comma-separated.
+    # Default "65-70:<0.10" blocks LONG when BTC RSI in [65, 70) AND BTC ATR < 0.10% (dead-tape top).
+    # Cross-batch evidence (965-trade pool): 35 trades / 40% WR / -$1,118 / -$32/tr in this cell.
+    # Save:cut ratio 3.99:1 (vs 1.91:1 for broad block) — preserves NEAR +$197 / GMT +$86 winners.
+    btc_rsi_band_atr_block_long: str = ""
+    btc_rsi_band_atr_block_short: str = ""
     btc_adx_dir_long: str = "both"  # BTC ADX direction filter for LONGs: "both", "rising", "falling"
     btc_adx_dir_short: str = "both"  # BTC ADX direction filter for SHORTs: "both", "rising", "falling"
     btc_trend_filter_enabled: bool = False  # BTC EMA20 vs EMA50 macro trend filter (May 5). Blocks countertrend entries: EMA20 > EMA50 blocks SHORTs, EMA20 < EMA50 blocks LONGs.

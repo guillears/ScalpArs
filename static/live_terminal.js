@@ -115,6 +115,7 @@
       state.bootShown = true;
     }
     connect();
+    syncRealPositions();  // immediate authoritative populate on entering terminal
   }
 
   function hide() {
@@ -966,6 +967,36 @@
       ${lastClosedLine}
     </div>`;
   }
+
+  // Real open positions — authoritative poll of /api/orders/open (READ-ONLY).
+  // The event-driven ENTRY/EXIT handlers above give instant feedback between
+  // polls; this poll is the source of truth — it surfaces positions that were
+  // already open before this view connected (e.g. on page reload) and fills in
+  // live P&L, which the log-event stream does not carry. The endpoint filters
+  // by the bot's current paper/live mode, so it always shows the right set.
+  // Pure display: any failure is silently ignored and the panel keeps its last
+  // rendered state. Shares no code path with the trading engine.
+  async function syncRealPositions() {
+    if (!state.inTerminal) return;
+    try {
+      const resp = await fetch('/api/orders/open');
+      if (!resp.ok) return;
+      const orders = await resp.json();
+      if (!Array.isArray(orders)) return;
+      const next = new Map();
+      for (const o of orders) {
+        if (!o || !o.pair) continue;
+        const pnl = (typeof o.pnl_percentage === 'number') ? o.pnl_percentage : 0;
+        next.set(o.pair, { pnl_pct: pnl, direction: o.direction || 'LONG' });
+      }
+      state.positions = next;
+      updatePositionsPanel();
+    } catch (_e) {
+      // Read-only display poll — ignore errors, keep last rendered state.
+    }
+  }
+  // Refresh real positions every 3s while the terminal view is visible.
+  setInterval(syncRealPositions, 3000);
 
   function pnlBar(pct) {
     // ±1% range mapped to 6-character bar centered

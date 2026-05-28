@@ -1,5 +1,57 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 28, 2026 — A/B RE-OPENED: Pair ADX Direction back to `both` — RUN TO COMPLETION (N≥15), no early call
+
+### Decision
+Re-flipped `adx_dir_long`/`adx_dir_short` → **both**. The earlier same-session
+revert (entry below) fired at N=2/dir — too thin to actually answer the
+question. Operator's call: let the A/B run to a proper readout this time. **Do
+NOT make another early discretionary call.** Hold `both` until the locked gate
+has the N it needs, then analyze completely.
+
+### Locked gate (UNCHANGED — this is the real test)
+At the next checkpoint with **N≥15 falling-ADX trades per direction**, read the
+falling-ADX bucket (entry_adx_delta < 0) against the rising-ADX bucket from the
+SAME fresh batch, per direction:
+
+| Falling-ADX bucket (fresh, N≥15 per direction) | Action |
+|---|---|
+| WR ≤ 40% | RE-TIGHTEN that direction to `rising` |
+| WR ≥ 55% | KEEP RELAXED (`both`) |
+| WR 40-55% (mixed) | Hold `both`, extend test |
+| N < 15 in that direction | KEEP HOLDING — do not decide yet |
+
+Decide LONG and SHORT independently (asymmetry allowed).
+
+### What "analyze completely" means at the readout
+Beyond the WR gate, at completion run the full picture per direction:
+1. Falling vs rising bucket: WR, Avg P&L %, Total $, NP rate, avg duration.
+2. Per-pair concentration in the falling-ADX losers (is it 1-2 pairs, or broad?
+   → CLAUDE.md May 12 rule: concentrated = blacklist, not a direction filter).
+3. Falling-ADX bucket cross-referenced against the other entry dims (does the
+   loss come from falling-ADX itself, or a confound like high BTC ADX / extreme
+   RngPos that other filters should catch?).
+4. Survivor check: would the kept rising-only trades have been better/worse than
+   the full both-population on Avg P&L %?
+
+### The N=2 early-call result (superseded — do not weight heavily)
+The earlier revert was triggered by falling LONG 50% WR / -0.58% (N=2) and
+falling SHORT 0% WR / -0.64% (N=2). Direction-consistent negative but N=4 total
+— a loss flicker, not evidence. This re-run exists to replace that with a real
+sample. Pre-existing falling-ADX trades from the first flip window can be POOLED
+with the new ones (same config = `both`, same exit stack) toward the N≥15 target.
+
+### Over-loosening tripwire (RAISED bar this time)
+Because we're committing to run the experiment, the immediate-abort tripwire is
+loosened vs the first attempt: only re-tighten before N≥15 if combined Avg P&L %
+is catastrophically worse (≤ -0.40% on N≥30 combined) AND the falling-ADX bucket
+is clearly the driver. Otherwise hold to the N≥15 gate. The whole point is to
+stop bailing early.
+
+### Files changed
+- `trading_config.json` — `adx_dir_long`/`adx_dir_short`: rising → both (re-opened)
+- `CLAUDE.md` — this entry
+
 ## May 28, 2026 — A/B RESULT: Pair ADX Direction REVERTED `both` → `rising` (falling-ADX bled both sides)
 
 ### Outcome

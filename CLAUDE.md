@@ -1,5 +1,68 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 28, 2026 — A/B TEST: Pair ADX Direction filter relaxed `rising` → `both` (LONG + SHORT)
+
+### What changed
+`adx_dir_long`: rising → **both**. `adx_dir_short`: rising → **both**.
+The `PAIR_ADX_DIR` entry gate (require pair ADX strengthening at entry) is now
+OFF on both sides — entries fire regardless of whether pair ADX is rising or
+falling.
+
+### Why — the filter censored its own counterfactual
+Operator flagged the filter as possibly redundant. Audit found the OPPOSITE of
+the premise, plus a hard evidence gap:
+
+1. **NOT redundant under current config.** Most sibling trend/direction filters
+   are currently DISABLED (`btc_trend_filter_enabled`=false,
+   `pair_trend_filter_enabled`=false, `min_adx_delta_long/short`=0,
+   `adx_delta_btc_adx_filter_enabled`=false, `btc_adx_dir_*`="both"). Before the
+   flip, `PAIR_ADX_DIR rising` was the ONLY active gate requiring any
+   trend-direction/strengthening. The ADX *magnitude* gates that remain on
+   (`adx_strong` floor, `momentum_adx_max` cap) measure level, not direction —
+   orthogonal. So the May 5 "BTC Trend Filter makes PAIR_ADX_DIR redundant"
+   logic no longer holds (BTC Trend Filter is OFF now).
+2. **Zero evidence either way.** The 965-trade FULL pool (`dedupe_pool_FULL.csv`)
+   has **965 of 965 closed trades with rising ADX** — the filter was rising-only
+   for the entire collection window, so there are no falling-ADX trades to
+   compare against. The pool literally cannot say whether blocked (falling-ADX)
+   trades would win or lose. Only a live A/B can produce the counterfactual.
+3. Kept (rising) trades are themselves mediocre cross-batch: LONG rising 49% WR
+   / -0.13% avg (N=569), SHORT rising 61% WR / -0.03% avg (N=396) — not a clean
+   winner population, but that doesn't condemn the filter (it may be blocking
+   even-worse falling trades; we can't tell without the A/B).
+
+This is the same A/B started May 5 that never got a clean readout before the
+May 5-7 resets swept it up. Re-running it deliberately as a single-variable test.
+
+### LOCKED decision gate at next ≥30-per-direction checkpoint
+Read the falling-ADX bucket (entry_adx_delta < 0) on FRESH post-flip trades,
+per direction, against these pre-committed thresholds:
+
+| Falling-ADX bucket (fresh, N≥15 per direction) | Action |
+|---|---|
+| WR ≤ 40% | ✗ RE-TIGHTEN that direction to `rising` — filter was earning its keep |
+| WR ≥ 55% | ★ KEEP RELAXED (`both`) — the rising-only requirement was cutting good trades |
+| WR 40-55% (mixed) | Hold `both` one more batch, extend test |
+| N < 15 falling-ADX in that direction | Defer — insufficient fresh counterfactual |
+
+Decide LONG and SHORT independently (asymmetry allowed). Compare the falling-ADX
+bucket against the rising-ADX bucket from the SAME fresh batch (same regime), not
+against the historical rising-only pool.
+
+### Caveats
+- **Single-variable discipline:** do NOT bundle other filter changes into this
+  window or attribution is lost. This flip is the only trend-direction lever
+  being moved.
+- **Over-loosening watch:** with all sibling trend-direction filters already off,
+  this removes the last one. If the fresh batch shows combined Avg P&L %
+  materially worse (≤ -0.20% on N≥40 combined) AND the falling-ADX bucket is the
+  driver, re-tighten immediately rather than waiting for the per-direction N≥15.
+- **Mechanical reversal:** one-line config flip back to `rising` per direction.
+
+### Files changed
+- `trading_config.json` — `adx_dir_long`/`adx_dir_short`: rising → both
+- `CLAUDE.md` — this entry
+
 ## May 28, 2026 — LOCKED NEXT-BATCH ANALYSIS PLAN: filter remaining LONG + SHORT losers (4 dimensions)
 
 ### Goal (operator-set)

@@ -3257,11 +3257,17 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # trend maturing). Uses existing entry_ema_gap_5_8 + entry_ema_gap_8_13 — both are
         # post-May-27 only (entry_ema_gap_8_13 capture date), so this inherits that window.
         # Requires gap_8_13 > 0 to avoid divide-by-zero (near-zero 8-13 gaps skipped).
+        # Buckets recentered May 28: a 5/8/13 fan's STEADY-trend ratio ≈ 0.6 (EMA-lag math:
+        # gap_5_8 ∝ 1.5, gap_8_13 ∝ 2.5 → 0.6), confirmed empirically (steady-bulk AvgR ≈ 0.62).
+        # So neutral sits at ~0.6, NOT 1.0. Decel <0.45 / Steady 0.45-0.75 / Mild accel
+        # 0.75-1.10 / Accel 1.10-1.60 (loser band — DOT/PEPE capitulation-chase sat at 1.46) /
+        # Strong accel >1.60. Provisional cut-points; re-set from percentiles once N fills.
         ema_fan_ranges = [
-            ("Decelerating <0.8", -999, 0.8),
-            ("Neutral 0.8-1.2", 0.8, 1.2),
-            ("Accelerating 1.2-2.0", 1.2, 2.0),
-            ("Strong accel >2.0", 2.0, 999),
+            ("Decelerating <0.45", -999, 0.45),
+            ("Steady 0.45-0.75", 0.45, 0.75),
+            ("Mild accel 0.75-1.10", 0.75, 1.10),
+            ("Accel 1.10-1.60", 1.10, 1.60),
+            ("Strong accel >1.60", 1.60, 999),
         ]
         ema_fan_orders = [
             o for o in orders

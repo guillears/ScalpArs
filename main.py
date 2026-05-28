@@ -3191,6 +3191,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
                     conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                never_positive = sum(1 for o in dir_orders if (o.peak_pnl or 0) <= 0)
                 ema58_gap_performance.append({
                     "range": range_name,
                     "direction": direction,
@@ -3199,7 +3200,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
-                    "by_confidence": conf_breakdown
+                    "by_confidence": conf_breakdown,
+                    "never_positive": never_positive,
+                    "never_positive_pct": round(never_positive / count * 100, 1) if count else 0,
                 })
 
         # Performance by Entry Gap EMA8-EMA13 (May 27 — momentum stretch vs trend ref).
@@ -3239,6 +3242,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
                     conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                never_positive = sum(1 for o in dir_orders if (o.peak_pnl or 0) <= 0)
                 ema813_gap_performance.append({
                     "range": range_name,
                     "direction": direction,
@@ -3247,7 +3251,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
-                    "by_confidence": conf_breakdown
+                    "by_confidence": conf_breakdown,
+                    "never_positive": never_positive,
+                    "never_positive_pct": round(never_positive / count * 100, 1) if count else 0,
                 })
 
         # EMA Fan Acceleration (May 28) — observation-only, no schema change.
@@ -3291,6 +3297,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 pnl_sum = sum(o.pnl or 0 for o in dir_orders)
                 pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
                 ratio_sum = sum((o.entry_ema_gap_5_8 / o.entry_ema_gap_8_13) for o in dir_orders)
+                never_positive = sum(1 for o in dir_orders if (o.peak_pnl or 0) <= 0)
                 conf_breakdown = {}
                 for o in dir_orders:
                     conf = o.confidence or "UNKNOWN"
@@ -3304,7 +3311,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
-                    "by_confidence": conf_breakdown
+                    "by_confidence": conf_breakdown,
+                    "never_positive": never_positive,
+                    "never_positive_pct": round(never_positive / count * 100, 1) if count else 0,
                 })
 
         rsi_ranges = [
@@ -4804,6 +4813,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         by_close_reason = {}
     
     # Entry Conditions by Close Reason
+    # EMA Fan Acceleration helper (May 28) — avg of per-trade fan_ratio (5-8 gap / 8-13 gap)
+    # for a group. Shared by Entry Conditions by Close Reason + by Outcome. gap_8_13 > 0 guard.
+    def _avg_fan(grp):
+        fr = [o.entry_ema_gap_5_8 / o.entry_ema_gap_8_13 for o in grp
+              if o.entry_ema_gap_5_8 is not None
+              and getattr(o, 'entry_ema_gap_8_13', None) and o.entry_ema_gap_8_13 > 0]
+        return round(sum(fr) / len(fr), 2) if fr else None
+
     entry_conditions_by_reason = []
     try:
         # Same trigger lookup used by Stop Loss Deep Dive (line ~3870) so the
@@ -4973,6 +4990,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "reason": reason,
                 "direction": direction,
                 "trades": count,
+                "avg_fan_ratio": _avg_fan(group),
                 "by_confidence": ec_conf,
                 "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                 "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,
@@ -5226,6 +5244,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 "outcome": outcome,
                 "direction": direction,
                 "trades": count,
+                "avg_fan_ratio": _avg_fan(group),
                 "by_confidence": ec_conf,
                 "avg_rsi": round(sum(rsis) / len(rsis), 1) if rsis else None,
                 "avg_adx": round(sum(adxs) / len(adxs), 1) if adxs else None,
@@ -5722,6 +5741,32 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     bucket = [o for o in np_gap58_trades if lo <= o.entry_ema_gap_5_8 < hi and (o.direction or "LONG") == direction]
                     all_in = len([o for o in all_gap58_trades if lo <= o.entry_ema_gap_5_8 < hi and (o.direction or "LONG") == direction])
                     row = _np_bucket_stats(bucket, "EMA5-EMA8 Gap", rng, direction, all_in)
+                    if row:
+                        never_positive_deep_dive.append(row)
+
+            # EMA Fan Acceleration (May 28) — fan_ratio = 5-8 gap / 8-13 gap. Buckets match
+            # the standalone Fan Acceleration table (recentered on ~0.6 steady). Post-May-27 only.
+            def _np_fan_of(o):
+                if o.entry_ema_gap_5_8 is None:
+                    return None
+                g813 = getattr(o, 'entry_ema_gap_8_13', None)
+                if not g813 or g813 <= 0:
+                    return None
+                return o.entry_ema_gap_5_8 / g813
+            np_fan_ranges = [
+                ("Decelerating <0.45", -999, 0.45),
+                ("Steady 0.45-0.75", 0.45, 0.75),
+                ("Mild accel 0.75-1.10", 0.75, 1.10),
+                ("Accel 1.10-1.60", 1.10, 1.60),
+                ("Strong accel >1.60", 1.60, 999),
+            ]
+            np_fan_trades = [o for o in np_trades if _np_fan_of(o) is not None]
+            all_fan_trades = [o for o in orders if _np_fan_of(o) is not None]
+            for rng, lo, hi in np_fan_ranges:
+                for direction in ["LONG", "SHORT"]:
+                    bucket = [o for o in np_fan_trades if (o.direction or "LONG") == direction and lo <= _np_fan_of(o) < hi]
+                    all_in = len([o for o in all_fan_trades if (o.direction or "LONG") == direction and lo <= _np_fan_of(o) < hi])
+                    row = _np_bucket_stats(bucket, "Fan Accel", rng, direction, all_in)
                     if row:
                         never_positive_deep_dive.append(row)
 

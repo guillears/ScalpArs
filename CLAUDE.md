@@ -1,5 +1,101 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 28, 2026 — LOCKED NEXT-BATCH ANALYSIS PLAN: filter remaining LONG + SHORT losers (4 dimensions)
+
+### Goal (operator-set)
+Accumulate more data (bot kept running), then run the 4 analyses below to filter
+out the remaining LONG losers and SHORT losers. NOTHING ships now — this is the
+locked analysis plan + preserved baseline so next batch isn't re-derived from scratch.
+
+### The 4 analyses to run at next checkpoint
+
+**1. Pair EMA13-EMA50 Gap × Pair ADX Cross-Tab**
+- **SHORT**: evaluate the `< -0.3%` gap zone in detail (pair clearly below 4hr trend).
+  Today's 4-batch read: `< -0.6` N=19 / 63% / -$118, `-0.6/-0.3` N=10 / 70% / +$22 (best),
+  `-0.3/-0.1` N=6 / 33% / -$86 (worst — "barely below trend" is the weak SHORT zone).
+  Hypothesis to confirm: SHORT wants pair *clearly* below trend; the `-0.3/-0.1` band is
+  the loser. Need N≥15 in `-0.3/-0.1` before acting.
+- **LONG**: find the pattern. ★ STRONGEST LONG finding today (FULL pool N=367):
+  monotonic gradient — `-0.3/-0.1` gap = **66% WR, +0.01% (ONLY +EV LONG cell in pool, N=44)**;
+  rising negativity through `> +0.6` = -0.225% (worst). The `gap > +0.4` tail = N=103,
+  50% WR, -0.20% avg, **-$1,419 (1×)**. Candidate: block LONG gap > +0.4 (cut over-extension
+  tail) OR restrict LONG to gap < +0.1 (keep the pullback band).
+  **CAVEAT**: 4-batch showed gap>+0.4 at 21% WR / -$713 — that was REGIME-AMPLIFIED; FULL
+  pool magnitude is far milder (-0.20%). Size any filter to the FULL-pool number, not the batch.
+
+**2. ADX Delta × BTC ADX Cross-Tab**
+- **SHORT**: ship rule `2.0:20-99` (block ADXΔ≥2.0 × BTC ADX≥20). NOT the current `24-99`.
+  Reason: today's 2 biggest SHORT losers (DOT, 1000PEPE, -$448) sat at BTC ADX = **23.9991**,
+  fractionally under the 24 floor → current rule misses them. Lowering to 20 catches them
+  (0 winners cut today) and **costs nothing in the 4-batch** (those blocks were at BTC ADX 27-28).
+  Cross-batch backing: ADXΔ≥2.0 SHORT (any BTC ADX) = **N=53, 51% WR, -0.14% avg, -$907** in FULL pool.
+  This is the strongest cross-batch-validated filter in today's work. Shippable-grade.
+- **LONG**: NO rule. The existing `1.0-2.0:18-30` LONG rule is weak (4-batch: 2W/4L blocked, +$143,
+  on a uniformly-red surface) and DELTA×ADX does not cleanly separate LONG (every cell negative).
+  Drop the LONG side; do NOT bundle it with the SHORT decision.
+
+**3. Performance by Pair EMA20 Slope (signed)** — find the low-slope threshold for L and S.
+- SHORT already has `momentum_ema20_slope_min_short: 0.06`. FULL pool hint: SHORT 0.06-0.10
+  band (just above the floor) is weak (N=8, 38% WR, -0.36%) — candidate to raise min to 0.10,
+  but N too thin. LONG has NO min slope; FULL pool shows low |slope| is the LEAST-bad LONG zone
+  (a low-slope MIN filter would HURT LONG). ⚠ Pair EMA20 slope showed ZERO winner/loser
+  separation for LONG today (losers' range fully inside winners') — treat as low-priority /
+  likely confound unless next batch separates cleanly.
+
+**4. Performance by Entry Gap EMA8-EMA13** — NEW candidate (added May 27).
+- Today (17 SHORTs): directional — low gap (0.06-0.10) = the 2 big losers, ≥0.14 = clean winners.
+  Cleaner separator than EMA20 slope. BUT **data-availability caveat: this column is only
+  populated from May 27 onward** — the FULL/4-batch pools have ZERO history on it, so it
+  CANNOT be cross-batch validated yet. Needs ≥15 post-May-27 trades per direction before any
+  filter decision. Pure observation until then.
+
+### Preserved cross-batch baseline (today's session, May 28 — don't re-derive)
+| Finding | Evidence | Verdict |
+|---|---|---|
+| ADXΔ≥2.0 SHORT | FULL N=53, 51% WR, -0.14%, -$907 | ★ shippable (rule 2.0:20-99) |
+| Pair gap > +0.4 LONG | FULL N=103, 50% WR, -0.20%, -$1,419 | candidate (size to FULL, not batch) |
+| Pair gap -0.3/-0.1 LONG | FULL N=44, 66% WR, +0.01% | ★ ONLY +EV LONG cell — validate, consider restrict-to |
+| EMA8-13 gap (SHORT) | today only; 0 historical | observation, N<15, can't validate |
+| EMA20 slope (LONG) | zero W/L separation | likely confound, low priority |
+| DELTA×ADX (LONG) | every cell negative | no clean cut — structural, not filterable |
+
+### LOCKED REALISTIC-EXPECTATIONS CAVEAT (read before acting)
+The goal "filter all remaining LONG losers" is NOT achievable by cell-filtering. The FULL
+pool shows the **LONG entry surface is negative in every dimension/cell** — the only +EV
+sliver is pair gap -0.3/-0.1 (N=44, +0.01%). Filtering the worst tails (gap>+0.4, ADXΔ<0.1)
+REDUCES the bleed but the kept LONG surface stays ~-0.12% avg. You cannot filter a uniformly-red
+side to positive. The honest LONG lever is **restrict (to the pullback band) or pause**, not
+incremental cell filters. SHORT is different — it has genuine +EV cells and a clean loser
+tail (ADXΔ≥2.0), so SHORT filtering is real edge work. **Decide LONG and SHORT separately.**
+
+### Locked promotion gates (apply mechanically at next checkpoint)
+- N≥15 per candidate cell (N≥30 preferred) before any ship.
+- Cross-batch validate on FULL pool (per CLAUDE.md methodology) — single-batch = watchlist only.
+- Per-pair concentration check: today RENDER drove -$192 of SHORT losses across 3 trades; if a
+  "dimensional" loser cell is ≥60% driven by 1-2 pairs, ship a pair blacklist instead.
+- Non-monotonic single-variable patterns = confound; don't ship.
+- Field-name note: the gap column is `entry_pair_ema20_ema50_gap_pct` but holds **EMA13 vs EMA50**
+  values post-May-6 (CLAUDE.md May 6 evening). EMA8-13 gap is the separate `entry_ema_gap_8_13`.
+
+### Claude's additions (flag for operator — veto any)
+1. **Combine the two validated SHORT filters and measure overlap.** ADXΔ≥2.0 SHORT and the
+   `-0.3/-0.1 gap` weak-SHORT zone may target the same trades (DOT/PEPE had both). Run the
+   dedup-overlap before claiming additive $ savings (CLAUDE.md compound-effect rule).
+2. **Build the LONG "restrict-to-pullback" counterfactual**, not just "block tail": what does
+   LONG total become if restricted to gap < +0.1 (or only -0.3/-0.1) across the FULL pool +
+   new data? This is the real test of whether LONG is salvageable vs should be paused.
+3. **Macro-gate check on the -0.3/-0.1 LONG cell**: is it +EV in all BTC regimes or only some?
+   If only in specific BTC RSI/ADX zones, the LONG filter should be a 2D macro × gap rule.
+4. **Survivor audit before shipping any filter** — re-apply the CURRENT filter stack to the
+   FULL pool first, then bucket. Many cross-batch loser cells dissolve once existing filters
+   catch their tail (CLAUDE.md May 11 + May 25 filter-overlap lesson).
+
+### Why this entry exists
+To make the next-batch analysis mechanical: 4 named tables, what to look for in each, the
+preserved cross-batch baseline, the locked gates, and the hard realistic-expectations caveat
+(LONG can't be filtered to positive — restrict/pause is the real lever). SHORT ADXΔ≥2.0 (rule
+2.0:20-99) is the one shippable-grade item; everything else is validate-then-decide.
+
 ## May 27, 2026 (evening) — SHIPPED: Time-to-L1 Protection Tracker (observation-only, NO engine hook)
 
 ### What ships

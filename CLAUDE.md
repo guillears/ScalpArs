@@ -48,6 +48,11 @@ locked analysis plan + preserved baseline so next batch isn't re-derived from sc
   populated from May 27 onward** — the FULL/4-batch pools have ZERO history on it, so it
   CANNOT be cross-batch validated yet. Needs ≥15 post-May-27 trades per direction before any
   filter decision. Pure observation until then.
+- **Companion: "Performance by EMA Fan Acceleration (5-8 vs 8-13)"** (shipped May 28, commit
+  959c52a). fan_ratio = EMA5-8 gap / EMA8-13 gap — complementary to #4: gap *level* = how wide
+  the fan is, fan_ratio = whether it's still *widening* (>1 accelerating, <1 decelerating).
+  Today both showed "Accelerating 1.2-2.0" SHORT = the same DOT/PEPE −$448 cluster (3rd lens on
+  the ADXΔ≥2.0 capitulation chase). Same May-27+ window + N≥15 gate. Evaluate alongside #4.
 
 ### Preserved cross-batch baseline (today's session, May 28 — don't re-derive)
 | Finding | Evidence | Verdict |

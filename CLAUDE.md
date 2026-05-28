@@ -1,5 +1,44 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 28, 2026 — A/B RESULT: Pair ADX Direction REVERTED `both` → `rising` (falling-ADX bled both sides)
+
+### Outcome
+Reverted same-session. The A/B flip to `both` (entry below) admitted falling-ADX
+trades; the fresh "Performance by ADX Direction at Entry" table showed the
+falling bucket losing on both directions:
+
+| ADX Dir | Dir | N | WR | Avg P&L % | Total $ |
+|---|---|---|---|---|---|
+| Rising | LONG | 10 | 40% | -0.21% | -$332.43 |
+| Rising | SHORT | 20 | 60% | +0.01% | +$27.04 |
+| **Falling** | **LONG** | **2** | **50%** | **-0.58%** | **-$96.44** |
+| **Falling** | **SHORT** | **2** | **0%** | **-0.64%** | **-$116.37** |
+
+Both falling buckets clearly negative (LONG -0.58%, SHORT -0.64% avg), and the
+falling-SHORT bucket at 0% WR. Combined falling = 4 trades / -$212.81.
+
+### Discretionary early call (below the locked N≥15 gate)
+The locked decision gate required N≥15 falling-ADX per direction before deciding.
+This rollback fires at **N=2 per direction** — operator-directed early call.
+Justification accepted: both falling buckets are direction-consistent negative,
+the per-trade loss magnitude is large (-$48 to -$58 avg), and the
+"over-loosening watch" tripwire from the A/B entry below explicitly authorized
+immediate re-tighten if the falling bucket was the driver of worse P&L (it was).
+Risk-off rather than bleed further waiting for N=15.
+
+### What this tells us (honest, given small N)
+The falling-ADX cohort is N=4 — not a structural conclusion, but enough of a
+loss signal to stop the experiment. The rising-only filter is restored as the
+default. We did NOT get a clean N≥15 readout, so the question "is rising-only
+optimal at scale" remains formally open — but the early evidence leans toward
+the filter doing real work (blocking falling-ADX losers), consistent with the
+filter's original design intent. If a future session wants the rigorous answer,
+re-run the A/B and let it reach N≥15 per direction before deciding.
+
+### Files changed
+- `trading_config.json` — `adx_dir_long`/`adx_dir_short`: both → rising (reverted)
+- `CLAUDE.md` — this entry
+
 ## May 28, 2026 — A/B TEST: Pair ADX Direction filter relaxed `rising` → `both` (LONG + SHORT)
 
 ### What changed

@@ -1604,7 +1604,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "runtime_days": 0,
             "by_confidence": {}, "by_macro_trend": {}, "outcome_distribution": [],
             "gap_performance": [], "ema58_gap_performance": [],
-            "ema813_gap_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
+            "ema813_gap_performance": [], "ema_fan_accel_performance": [], "rsi_performance": [], "range_position_performance": [], "adx_delta_performance": [], "adx_performance": [], "adx_direction_performance": [], "rsi_direction_performance": [], "stretch_performance": [],
             "pair_slope_performance": [], "btc_slope_performance": [], "pair_ema20_ema50_gap_performance": [], "btc_ema20_ema50_gap_performance": [], "btc_adx_performance": [], "btc_adx_direction_performance": [], "btc_rsi_direction_performance": [], "btc_rsi_direction_30m_performance": [], "btc_volatility_performance": [], "btc_rsi_1h_direction_performance": [], "btc_vol_adx_crosstab": [], "btc_rsi_1h_5m_crosstab": [], "adx_dir_crosstab": [], "rsi_dir_crosstab": [], "btc_rsi_30m_5m_crosstab": [], "range_pos_btc_rsi_dir_crosstab": [], "range_pos_pair_rsi_dir_crosstab": [], "pair_slope_adx_crosstab": [], "btc_slope_adx_crosstab": [], "adx_delta_btc_adx_crosstab": [], "btc_gap_btc_adx_crosstab": [], "pair_gap_pair_adx_crosstab": [],
             "btc_rsi_performance": [], "btc_rsi_adx_crosstab": [], "quality_score_performance": [],
             "regime_performance": [], "regime_transition_performance": [],
@@ -2831,6 +2831,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "gap_performance": [],
             "ema58_gap_performance": [],
             "ema813_gap_performance": [],
+            "ema_fan_accel_performance": [],
             "rsi_performance": [],
             "range_position_performance": [],
             "adx_delta_performance": [],
@@ -3073,6 +3074,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     gap_performance = []
     ema58_gap_performance = []
     ema813_gap_performance = []
+    ema_fan_accel_performance = []
     rsi_performance = []
     range_position_performance = []
     adx_delta_performance = []
@@ -3242,6 +3244,57 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "direction": direction,
                     "count": count,
                     "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_pnl_usd": round(pnl_sum / count, 2),
+                    "avg_pnl_pct": round(pnl_pct_sum / count, 4),
+                    "total_pnl_usd": round(pnl_sum, 2),
+                    "by_confidence": conf_breakdown
+                })
+
+        # EMA Fan Acceleration (May 28) — observation-only, no schema change.
+        # fan_ratio = (EMA5-EMA8 gap) / (EMA8-EMA13 gap). Spatial proxy for whether the
+        # EMA fan is accelerating at entry: >1 = fast EMAs pulling away from trend ref
+        # (momentum accelerating); <1 = front of fan compressing (momentum decelerating /
+        # trend maturing). Uses existing entry_ema_gap_5_8 + entry_ema_gap_8_13 — both are
+        # post-May-27 only (entry_ema_gap_8_13 capture date), so this inherits that window.
+        # Requires gap_8_13 > 0 to avoid divide-by-zero (near-zero 8-13 gaps skipped).
+        ema_fan_ranges = [
+            ("Decelerating <0.8", -999, 0.8),
+            ("Neutral 0.8-1.2", 0.8, 1.2),
+            ("Accelerating 1.2-2.0", 1.2, 2.0),
+            ("Strong accel >2.0", 2.0, 999),
+        ]
+        ema_fan_orders = [
+            o for o in orders
+            if getattr(o, 'entry_ema_gap_5_8', None) is not None
+            and getattr(o, 'entry_ema_gap_8_13', None) is not None
+            and (o.entry_ema_gap_8_13 or 0) > 0
+        ]
+        for range_name, r_min, r_max in ema_fan_ranges:
+            range_orders = [
+                o for o in ema_fan_orders
+                if r_min <= (o.entry_ema_gap_5_8 / o.entry_ema_gap_8_13) < r_max
+            ]
+            if not range_orders:
+                continue
+            for direction in ["LONG", "SHORT"]:
+                dir_orders = [o for o in range_orders if (o.direction or "LONG") == direction]
+                count = len(dir_orders)
+                if count == 0:
+                    continue
+                dir_wins = len([o for o in dir_orders if (o.pnl or 0) > 0])
+                pnl_sum = sum(o.pnl or 0 for o in dir_orders)
+                pnl_pct_sum = sum(o.pnl_percentage or 0 for o in dir_orders)
+                ratio_sum = sum((o.entry_ema_gap_5_8 / o.entry_ema_gap_8_13) for o in dir_orders)
+                conf_breakdown = {}
+                for o in dir_orders:
+                    conf = o.confidence or "UNKNOWN"
+                    conf_breakdown[conf] = conf_breakdown.get(conf, 0) + 1
+                ema_fan_accel_performance.append({
+                    "range": range_name,
+                    "direction": direction,
+                    "count": count,
+                    "win_rate": round(dir_wins / count * 100, 1),
+                    "avg_ratio": round(ratio_sum / count, 2),
                     "avg_pnl_usd": round(pnl_sum / count, 2),
                     "avg_pnl_pct": round(pnl_pct_sum / count, 4),
                     "total_pnl_usd": round(pnl_sum, 2),
@@ -6436,6 +6489,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "gap_performance": gap_performance,
         "ema58_gap_performance": ema58_gap_performance,
         "ema813_gap_performance": ema813_gap_performance,
+        "ema_fan_accel_performance": ema_fan_accel_performance,
         "rsi_performance": rsi_performance,
         "adx_performance": adx_performance,
         "adx_direction_performance": adx_direction_performance,

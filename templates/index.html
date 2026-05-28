@@ -2773,6 +2773,32 @@
                     </div>
                 </div>
 
+                <!-- Performance by EMA Fan Acceleration (May 28 — 5-8 gap vs 8-13 gap) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by EMA Fan Acceleration (5-8 vs 8-13)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Fan ratio = (EMA5-EMA8 gap) / (EMA8-EMA13 gap) at entry. <span class="text-violet-300">&gt;1 = fast EMAs pulling away from trend ref (momentum accelerating); &lt;1 = front of fan compressing (decelerating / trend maturing).</span> Spatial proxy for whether momentum is accelerating into entry — no schema change. Post-May-27 trades only (inherits EMA8-13 capture window).</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-3 py-2 font-medium">Fan Ratio</th>
+                                    <th class="px-3 py-2 font-medium text-center"># Trades</th>
+                                    <th class="px-3 py-2 font-medium text-center">Direction</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg Ratio</th>
+                                    <th class="px-3 py-2 font-medium text-right">Win Rate</th>
+                                    <th class="px-3 py-2 font-medium text-right">Total P&amp;L</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&amp;L USD</th>
+                                    <th class="px-3 py-2 font-medium text-right">Avg P&amp;L %</th>
+                                    <th class="px-3 py-2 font-medium text-center">Confidence</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ema-fan-accel-performance-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting fan ratios — populates post-May-27 trades only)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Performance by Entry RSI -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Entry RSI</h3>
@@ -8026,6 +8052,14 @@
             }
 
             lines.push(`\n${hr2}`);
+            lines.push('## Performance by EMA Fan Acceleration (5-8 vs 8-13) — May 28\n');
+            lines.push(`${'Fan Ratio'.padEnd(22)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'AvgR'.padEnd(6)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+            for (const g of (perf.ema_fan_accel_performance || [])) {
+                const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                lines.push(`${(g.range||'').padEnd(22)} ${String(g.count).padEnd(5)} ${(g.direction||'').padEnd(7)} ${String((g.avg_ratio!=null?g.avg_ratio.toFixed(2):'-')).padEnd(6)} ${(g.win_rate+'%').padEnd(6)} ${('$'+((g.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((g.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((g.avg_pnl_pct||0) >= 0 ? '+' : '') + (g.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+            }
+
+            lines.push(`\n${hr2}`);
             lines.push('## Performance by Entry RSI\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
             for (const r of (perf.rsi_performance || [])) {
@@ -9753,6 +9787,15 @@
                 for (const g of (perf.ema813_gap_performance || [])) {
                     const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
                     lines.push(`${(g.range||'').padEnd(16)} ${String(g.count).padEnd(5)} ${(g.direction||'').padEnd(7)} ${(g.win_rate+'%').padEnd(6)} ${('$'+((g.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((g.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((g.avg_pnl_pct||0) >= 0 ? '+' : '') + (g.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
+                }
+
+                // --- EMA FAN ACCELERATION (May 28 — 5-8 gap vs 8-13 gap) ---
+                lines.push(`\n${hr2}`);
+                lines.push('## Performance by EMA Fan Acceleration (5-8 vs 8-13) — May 28\n');
+                lines.push(`${'Fan Ratio'.padEnd(22)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'AvgR'.padEnd(6)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)}`);
+                for (const g of (perf.ema_fan_accel_performance || [])) {
+                    const confStr = Object.entries(g.by_confidence||{}).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    lines.push(`${(g.range||'').padEnd(22)} ${String(g.count).padEnd(5)} ${(g.direction||'').padEnd(7)} ${String((g.avg_ratio!=null?g.avg_ratio.toFixed(2):'-')).padEnd(6)} ${(g.win_rate+'%').padEnd(6)} ${('$'+((g.total_pnl_usd||0).toFixed(2))).padStart(11)} ${('$'+((g.avg_pnl_usd||0).toFixed(2))).padStart(9)} ${(((g.avg_pnl_pct||0) >= 0 ? '+' : '') + (g.avg_pnl_pct||0).toFixed(2) + '%').padStart(9)} ${confStr.padEnd(14)}`);
                 }
 
                 // --- RSI PERFORMANCE ---
@@ -12681,6 +12724,43 @@
                     }).join('');
                 } else {
                     ema813Body.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data (collecting EMA8-EMA13 gaps — populates post-May-27 trades only)</td></tr>';
+                }
+
+                // Performance by EMA Fan Acceleration (May 28 — 5-8 gap vs 8-13 gap)
+                const emaFanBody = document.getElementById('ema-fan-accel-performance-body');
+                if (data.ema_fan_accel_performance && data.ema_fan_accel_performance.length > 0) {
+                    const confBadgeColorsFan = {
+                        'LOW': 'text-yellow-400', 'MEDIUM': 'text-orange-400', 'HIGH': 'text-emerald-400',
+                        'EXTREME': 'text-blue-400', 'VERY_STRONG': 'text-purple-400', 'STRONG_BUY': 'text-pink-400'
+                    };
+                    emaFanBody.innerHTML = data.ema_fan_accel_performance.map(g => {
+                        const pnlClass = g.avg_pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const pnlPctClass = (g.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlClass = (g.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const wrClass = g.win_rate >= 40 ? 'text-emerald-400' : 'text-red-400';
+                        const dirColor = g.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(g.by_confidence || {})
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([conf, count]) => {
+                                const color = confBadgeColorsFan[conf] || 'text-gray-400';
+                                return `<span class="${color} text-xs">${conf[0]}:${count}</span>`;
+                            }).join(' ');
+                        return `
+                            <tr class="hover:bg-white/5">
+                                <td class="px-3 py-2 font-medium text-cyan-400">${g.range}</td>
+                                <td class="px-3 py-2 text-center">${g.count}</td>
+                                <td class="px-3 py-2 text-center ${dirColor} font-medium">${g.direction}</td>
+                                <td class="px-3 py-2 text-right text-gray-300">${g.avg_ratio != null ? g.avg_ratio.toFixed(2) : '-'}</td>
+                                <td class="px-3 py-2 text-right ${wrClass} font-medium">${g.win_rate.toFixed(0)}%</td>
+                                <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">${formatUSD(g.total_pnl_usd || 0)}</td>
+                                <td class="px-3 py-2 text-right ${pnlClass} font-medium">${formatUSD(g.avg_pnl_usd)}</td>
+                                <td class="px-3 py-2 text-right ${pnlPctClass} font-medium">${g.avg_pnl_pct != null ? (g.avg_pnl_pct >= 0 ? '+' : '') + g.avg_pnl_pct.toFixed(2) + '%' : '-'}</td>
+                                <td class="px-3 py-2 text-center">${confBadges || '-'}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    emaFanBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data (collecting fan ratios — populates post-May-27 trades only)</td></tr>';
                 }
 
                 // Performance by Entry RSI

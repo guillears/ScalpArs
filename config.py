@@ -345,6 +345,23 @@ class SignalThresholds(BaseModel):
     rngpos_adx_delta_filter_short: str = ""
     # Master toggle for the RngPos × ADX Δ cross-filter. Same A/B pattern.
     rngpos_adx_delta_filter_enabled: bool = True
+    # EMA Fan Acceleration (fan_ratio) dead-zone filter (May 29, 2026).
+    # fan_ratio = abs(EMA5-EMA8 gap%) / abs(EMA8-EMA13 gap%). Measures whether the
+    # EMA fan front is still widening (>1 accelerating) or compressing (<1).
+    # May 29 batch (N=83) discovery: the MID-fan band is a clean loser dead-zone in
+    # BOTH directions (mature/fully-developed trend = entering late, no edge):
+    #   SHORT fan [1.02,1.65) = 0W/5-6L this batch (CLEAN, 0 winners killed).
+    #   LONG  fan [0.85,1.70) = 25L/10W this batch (effective but kills 10 winners).
+    # Symmetric mechanism = strong evidence it's structural, NOT single-batch luck.
+    # CAVEAT: fan_ratio is UNVALIDATED cross-batch — entry_ema_gap_8_13 column only
+    # exists from May-27 onward (FULL/4-batch pools have it NULL), so no historical
+    # validation is possible yet. Next post-May-27 batch is the validation gate.
+    # Rule format: "lo-hi" band(s), comma-separated. Block when fan_ratio in [lo, hi).
+    # Empty = that direction inactive (observation-only).
+    # SHIPPED: SHORT active (clean), LONG observation-only (kills winners + outlier-dep).
+    fan_ratio_block_long: str = ""           # LONG observation-only (inactive) at ship
+    fan_ratio_block_short: str = "1.02-1.65"  # SHORT active dead-zone block
+    fan_ratio_filter_enabled: bool = True     # master toggle (same A/B pattern)
     # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
     # Block entry when both BTC RSI timeframes are in specified directions.
     # Rule format: 2-char codes "RR" "RF" "FR" "FF" where first=1h dir, second=5m dir.

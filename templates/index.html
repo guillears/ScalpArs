@@ -5393,6 +5393,27 @@
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <div class="flex items-center gap-3 mb-1">
+                            <span class="text-sm text-gray-300">EMA Fan Acceleration (fan_ratio) Dead-Zone Filter <span class="text-cyan-400 text-xs">(May 29)</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-fan-ratio-filter-enabled" class="sr-only peer" checked>
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                                <span class="ml-2 text-xs text-gray-400">Enabled</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">fan_ratio = |EMA5-8 gap%| / |EMA8-13 gap%|. The MID-fan band is a loser dead-zone (mature trend = entering late, no edge). Block when fan_ratio in band(s) "lo-hi", comma-separated. Empty = observation-only. <span class="text-cyan-400">SHORT `1.02-1.65` shipped May 29 (clean: 0 winners killed this batch). LONG observation-only (kills winners). UNVALIDATED cross-batch — validate next post-May-27 batch.</span></p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-xs text-emerald-400 font-medium">LONG block band(s)</span>
+                                <input type="text" id="config-fan-ratio-block-long" placeholder="(empty = observation-only)" class="w-full mt-1 px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200">
+                            </div>
+                            <div>
+                                <span class="text-xs text-red-400 font-medium">SHORT block band(s)</span>
+                                <input type="text" id="config-fan-ratio-block-short" placeholder="e.g. 1.02-1.65" class="w-full mt-1 px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3 mb-2 px-4">
+                        <div class="flex items-center gap-3 mb-1">
                             <span class="text-sm text-gray-300">BTC 1h × BTC 5m RSI Direction Cross-Filter <span class="text-fuchsia-400 text-xs">(May 26 PM)</span></span>
                             <label class="inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="config-btc-1h-5m-rsi-dir-filter-enabled" class="sr-only peer" checked>
@@ -16456,6 +16477,13 @@
                 loadRngposAdxDeltaFilter('short', config.thresholds.rngpos_adx_delta_filter_short || '');
                 const _rpadEn = document.getElementById('config-rngpos-adx-delta-filter-enabled');
                 if (_rpadEn) _rpadEn.checked = (config.thresholds.rngpos_adx_delta_filter_enabled !== false);
+                // EMA Fan Acceleration (fan_ratio) Dead-Zone Filter (May 29)
+                const _fanL = document.getElementById('config-fan-ratio-block-long');
+                if (_fanL) _fanL.value = (config.thresholds.fan_ratio_block_long || '');
+                const _fanS = document.getElementById('config-fan-ratio-block-short');
+                if (_fanS) _fanS.value = (config.thresholds.fan_ratio_block_short || '');
+                const _fanEn = document.getElementById('config-fan-ratio-filter-enabled');
+                if (_fanEn) _fanEn.checked = (config.thresholds.fan_ratio_filter_enabled !== false);
                 // BTC 1h × 5m RSI Direction Cross-Filter (May 26 PM)
                 loadBtc1h5mRsiDirFilter('long', config.thresholds.btc_1h_5m_rsi_dir_filter_long || '');
                 loadBtc1h5mRsiDirFilter('short', config.thresholds.btc_1h_5m_rsi_dir_filter_short || '');
@@ -17633,6 +17661,10 @@
                     rngpos_adx_delta_filter_long: collectRngposAdxDeltaFilter('long'),
                     rngpos_adx_delta_filter_short: collectRngposAdxDeltaFilter('short'),
                     rngpos_adx_delta_filter_enabled: ((document.getElementById('config-rngpos-adx-delta-filter-enabled') || {}).checked === true),
+                    // EMA Fan Acceleration (fan_ratio) Dead-Zone Filter (May 29)
+                    fan_ratio_block_long: ((document.getElementById('config-fan-ratio-block-long') || {}).value || '').trim(),
+                    fan_ratio_block_short: ((document.getElementById('config-fan-ratio-block-short') || {}).value || '').trim(),
+                    fan_ratio_filter_enabled: ((document.getElementById('config-fan-ratio-filter-enabled') || {}).checked === true),
                     // BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26 PM)
                     btc_1h_5m_rsi_dir_filter_long: collectBtc1h5mRsiDirFilter('long'),
                     btc_1h_5m_rsi_dir_filter_short: collectBtc1h5mRsiDirFilter('short'),

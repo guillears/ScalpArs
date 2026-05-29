@@ -1,5 +1,132 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 29, 2026 — SHIPPED: EMA Fan Acceleration (fan_ratio) dead-zone filter (SHORT active / LONG observation-only) + full batch analysis
+
+### Batch analyzed
+`reports/orders_2026-05-29_12-58-23.csv` — 83 closed trades, 1.63 days, paper, ~20× lev.
+Baseline **−$173.39** (LONG −$389.58 / SHORT +$216.18). Entire loss is LONG; SHORT
+was already profitable. DCR baseline −4.19%/day (combined account, reverse-derived
+initial ≈ $2,576).
+
+### TIER 0 — Pair ADX Direction A/B gate: HOLD `both`, no re-tighten (gate respected)
+| | LONG | SHORT |
+|---|---|---|
+| Falling-ADX (Δ<0) | N=24, 54% WR, +$167, +0.101% | N=3, 33%, −$78 |
+| Rising-ADX (Δ≥0) | N=31, 39% WR, **−$556**, −0.146% | N=25, 56%, +$294 |
+
+- Mechanical gate: LONG falling N≥15 @ 54% → **"hold both, extend"**; SHORT falling
+  N=3 → **"keep holding."** No re-tighten. **No early call made.**
+- The survivor check **vindicates holding**: re-tightening to `rising`-only = **−$263**
+  (worse than −$173). The original "rising-only" premise is FALSIFIED — rising-ADX
+  LONG is the loss engine in BOTH windows (4-batch 31% WR/−$1,495; this batch 39%/−$556).
+- Falling-ADX is the **only positive LONG cohort ever measured** (+$167), but N=24 / 1
+  batch — keep `both` running to grow it (the only path to a +EV LONG book or pause).
+- Note: FULL pool + 4-batch are 965/965 and 73/73 **rising-ADX** (censored counterfactual)
+  — falling-ADX can only be validated by continuing `both`.
+
+### THE FINDING — EMA Fan Acceleration (fan_ratio) dead-zone, SYMMETRIC across directions
+`fan_ratio = |EMA5-EMA8 gap%| / |EMA8-EMA13 gap%|` (column `entry_ema_gap_5_8` / `entry_ema_gap_8_13`).
+Empirically, the **mid-fan band is a clean loser dead-zone in BOTH directions** — the
+single strongest winner/loser separator found in this dataset, and the first one in ~4
+months of analysis that cleanly stratifies LONG.
+
+| Fan band | mechanism | LONG | SHORT |
+|---|---|---|---|
+| low (<~0.85) | front compressing → early/pullback entry | winner (7W/1L) | mixed-but-+ (holds SEI +352, UNI +286) |
+| **mid (~1.0–1.65)** | **fan evenly spaced → mature/late trend → no edge** | **loser dead-zone** | **loser dead-zone (6L/0W, −$665)** |
+| high (>~1.7) | front expanding → fresh momentum burst | winner (XLM-outlier-dependent) | winner (RONIN/NEAR) |
+
+**The exact same dead-zone [~1.0–1.65] loses in BOTH directions via the same mechanism**
+("don't enter a mature/mid-life trend; enter on the pullback or the fresh burst"). A signal
+that fails identically in both directions through one mechanism is the strongest structural
+evidence available that it is NOT single-batch luck.
+
+Empirically-found exact cuts (from sorted distribution, not imposed buckets):
+- **SHORT block fan `[1.02, 1.65)`** → kills **0 winners / 5–6 losers** (−$617). CLEAN
+  (diverse pairs ETH/SOL/PEPE/FF/PEPE/DOT, zero winners in the band — a real distribution gap).
+  SHORT +$216 → **+$834**.
+- **LONG block fan `[0.85, 1.70)`** → kills 10 winners ($386) / 25 losers (−$1,324). Effective
+  (mid-band LONG WR 29% vs 88%/62% in the tails) but NOT clean. LONG −$390 → **+$549**.
+
+Combined batch counterfactual: **−$173.39 → +$1,382.81** (kill 40 of 83: 10W/30L; keep 43).
+DCR −4.19% → +30.17%/day. **The DCR is an in-sample ceiling, NOT an expectation** — bands
+were fit to this exact batch; +$1,556 on $2,576 at 20× compounding to 30%/day is fantasy.
+
+### What SHIPPED (this commit)
+- `fan_ratio_block_short: "1.02-1.65"` **ACTIVE** — clean (0 winners killed this batch).
+- `fan_ratio_block_long: ""` **observation-only** — LONG cut kills 10 winners and its high
+  tail leans on the XLM +210 outlier (without XLM the >1.70 tail is 7W/5L). Too aggressive to
+  ship live; tracked via the existing EMA Fan Acceleration analytics table.
+- `fan_ratio_filter_enabled: true` (master toggle).
+- New filter block in `services/trading_engine.py` (after RNGPOS_ADX_DELTA), logs
+  `[FAN_RATIO_GATE]`, counter `FAN_RATIO_GATE`. Config + UI + load/save per D11.
+
+### EVERY stack candidate I tried on top of fan FAILED cross-validation (locked record)
+Per the operator's discipline (no filter judged alone; check overlap + cross-batch). After
+fan, I tried to stack additive filters. **All failed — do not re-attempt without new evidence:**
+- **ADXΔ × BTC ADX (current OR any range):** LONG = 100% subset of fan (0 incremental); SHORT
+  current rule blocks 0 (DOT/PEPE sit at BTC ADX 23.999, under the 24 floor). Non-separating
+  on what fan misses. **Retired as redundant.**
+- **RngPos<8 SHORT:** FULL pool 88W/76L (54% WR coin-flip), kills 88 winners ($1,851), kept
+  still −$255. NOT a loser zone. (The real RngPos SHORT loser is the *extreme* 0–2% only, May 12.)
+- **BTC ADX≥35 SHORT:** FULL pool 24W/9L (**73% WR — a WINNER zone**), kills 24 winners. Wrong sign.
+- **ATR<0.50 LONG:** FULL/4-batch fails — kept (high-ATR) LONGs lost MORE (−$1,075). Overfit trap.
+- **EMA20-slope<0.10 LONG:** 80% collinear with the failed ATR filter; 4-batch slope≥0.10 still −$1,340.
+- **RngPos LONG (any):** every bucket loses in FULL pool; no separation.
+- **EMA8-13 gap / fan_ratio sub-lenses SHORT:** 100% subset of the pair-gap cohort (6/6, 2/2).
+
+### The ONE separately-validated filter (NOT shipped, modest): SHORT pair_gap −0.3/−0.1
+`entry_pair_ema20_ema50_gap_pct` (legacy name; holds **Pair EMA13-EMA50 gap** post-May-6).
+FULL pool: the `−0.3/−0.1` band is the single biggest SHORT loss cell (N=76, 47% WR, **−$1,054**) —
+exactly the May 28 documented "−0.3/−0.1 weak SHORT zone." Block it → FULL Δ+$1,054. BUT it's a
+~47% WR magnitude play (kills 36 winners $745), and **this batch it's subsumed by the fan cut**
+(barely populated, N=2). The broad `gap<−0.4` cut I floated first is OVERKILL — FULL pool kills
+98 winners ($2,442) for kept +$56. **Use the surgical −0.3/−0.1 band only, never the broad cut.**
+
+### LOCKED next-batch validation gate for fan_ratio (mechanical, no re-litigation)
+At the next post-May-27 batch (the first that can cross-validate, since `entry_ema_gap_8_13`
+only exists May-27+):
+| Outcome (SHORT fan `[1.02,1.65)` block-zone, fresh data) | Action |
+|---|---|
+| N≥10 fresh AND block-zone WR ≤40% (loser-confirmed) | ★ KEEP SHORT active, lock |
+| N≥10 fresh AND block-zone WR ≥55% | ✗ REVERT (`fan_ratio_block_short: ""`) — single-batch artifact |
+| N≥10 AND mixed 40–55% | hold, extend |
+| N<10 in block-zone | keep observing, no decision |
+
+LONG promotion gate (to flip LONG from observation → active):
+- LONG mid-band `[0.85,1.70)` shows ≤35% WR on N≥15 fresh AND the kept tails (≤0.85, ≥1.70)
+  show ≥55% WR → ship `fan_ratio_block_long: "0.85-1.70"`.
+- If the >1.70 winner tail collapses without the XLM-class outlier (≤45% WR on N≥10) → keep LONG
+  observation-only; the high tail was outlier-driven.
+- Cross-check the intersection (fan>1.70 AND falling-ADX) — both single-batch signals point at
+  the SAME winning LONG sub-population (10/13 fan>1.70 LONGs were falling-ADX).
+
+### Methodology wins this batch (for the record)
+1. The ATR-LONG filter looked like the best LONG lever (+$618 single-batch) and **failed
+   cross-validation outright** — the exact "no filter judged alone" trap. Caught by the FULL pool.
+2. The broad SHORT `gap<−0.4` looked huge (+$983) but **overkills 5× on the FULL pool**
+   (kills $2,442 of winners). The surgical −0.3/−0.1 band is the validated version.
+3. Every "additive" stack candidate (RngPos, BTC ADX, ADXΔ) evaporated on the FULL pool —
+   reinforcing that fan_ratio is qualitatively different (clean, symmetric, mechanistic),
+   not just another threshold fit to one batch.
+
+### Files changed
+- `config.py` — 3 fields (`fan_ratio_block_long/short`, `fan_ratio_filter_enabled`)
+- `trading_config.json` — SHORT `1.02-1.65` active, LONG empty, toggle on
+- `services/trading_engine.py` — FAN_RATIO_GATE filter block after RNGPOS_ADX_DELTA
+- `templates/index.html` — UI inputs (toggle + LONG/SHORT band) + load/save handlers
+- `CLAUDE.md` — this entry
+- `reports/orders_2026-05-29_12-58-23.csv` + `report_..._.txt` — archived batch
+
+### Why this entry exists in CLAUDE.md
+1. To register fan_ratio as the single genuinely-new winner/loser separator, with the exact
+   bands, the symmetric mechanism, and the killed-W/L math.
+2. To LOCK the record that every stack candidate (ADXΔ, RngPos, BTC ADX, ATR, slope) failed
+   cross-validation — so future-Claude doesn't re-attempt them as "additive to fan."
+3. To anchor the asymmetric ship (SHORT active clean / LONG observation-only) and the precise
+   next-batch validation + LONG-promotion gates.
+4. To preserve the A/B-gate vindication (re-tighten = −$263) and the fan-vs-pair_gap overlap.
+
 ## May 28, 2026 — A/B RE-OPENED: Pair ADX Direction back to `both` — RUN TO COMPLETION (N≥15), no early call
 
 ### Decision
@@ -178,15 +305,36 @@ locked analysis plan + preserved baseline so next batch isn't re-derived from sc
   pool magnitude is far milder (-0.20%). Size any filter to the FULL-pool number, not the batch.
 
 **2. ADX Delta × BTC ADX Cross-Tab**
-- **SHORT**: ship rule `2.0:20-99` (block ADXΔ≥2.0 × BTC ADX≥20). NOT the current `24-99`.
-  Reason: today's 2 biggest SHORT losers (DOT, 1000PEPE, -$448) sat at BTC ADX = **23.9991**,
-  fractionally under the 24 floor → current rule misses them. Lowering to 20 catches them
-  (0 winners cut today) and **costs nothing in the 4-batch** (those blocks were at BTC ADX 27-28).
-  Cross-batch backing: ADXΔ≥2.0 SHORT (any BTC ADX) = **N=53, 51% WR, -0.14% avg, -$907** in FULL pool.
-  This is the strongest cross-batch-validated filter in today's work. Shippable-grade.
-- **LONG**: NO rule. The existing `1.0-2.0:18-30` LONG rule is weak (4-batch: 2W/4L blocked, +$143,
-  on a uniformly-red surface) and DELTA×ADX does not cleanly separate LONG (every cell negative).
-  Drop the LONG side; do NOT bundle it with the SHORT decision.
+- **CURRENT STATE (verify first):** the whole filter is **DISABLED** —
+  `adx_delta_btc_adx_filter_enabled: false` (master toggle off since the May 18/21
+  A/B test). Both directions have **preserved-but-inactive rules**:
+  LONG `1.0-2.0:18-30`, SHORT `2.0-99:24-99`. So the real decision this batch is
+  **"do we RE-ACTIVATE this filter (and at what rule values), for each direction?"**
+  — NOT "ship a fresh SHORT rule onto a clean slate." Evaluate re-activation
+  per direction independently. Re-enabling requires flipping the master toggle
+  AND deciding the rule strings.
+- **SHORT**: candidate re-activation rule `2.0-99:20-99` (block ADXΔ≥2.0 × BTC ADX≥20),
+  WIDER than the preserved `2.0-99:24-99`. Reason the preserved 24 floor is too high:
+  the May 28 batch's 2 biggest SHORT losers (DOT, 1000PEPE, −$448) sat at BTC ADX =
+  **23.9991**, fractionally under 24 → preserved rule misses them. Lowering to 20
+  catches them (0 winners cut that day) and **cost nothing in the 4-batch** (those
+  extra blocks were at BTC ADX 27-28). Cross-batch backing: ADXΔ≥2.0 SHORT (any BTC ADX)
+  = **N=53, 51% WR, −0.14% avg, −$907** in FULL pool. Strongest cross-batch-validated
+  filter in the May 28 work. Shippable-grade — but it's a re-enable + widen, not a new ship.
+- **LONG**: re-evaluate the preserved `1.0-2.0:18-30` rule against THIS batch + FULL pool
+  before deciding. Prior read was "drop it" — the rule looked weak (4-batch: 2W/4L blocked,
+  +$143, on a uniformly-red surface) and DELTA×ADX didn't cleanly separate LONG (every cell
+  negative). **But that was a "leave-disabled / drop" call, not a tested re-activation.**
+  This batch: re-run the LONG ADXΔ × BTC ADX cross-tab, apply the survivor audit, and ask
+  whether the preserved `1.0-2.0:18-30` (or any cell) clears the promotion gate under the
+  *current* exit stack. If the LONG surface is still uniformly red → keep LONG disabled
+  (the realistic-expectations caveat: LONG can't be filtered to positive). If a specific
+  ADXΔ×BTC-ADX LONG cell now separates cleanly (≥15 N, loser-precision ≥60%) → re-activate
+  the LONG rule too. Decide LONG and SHORT independently — do NOT bundle.
+- **Per-direction master-toggle note:** the toggle (`adx_delta_btc_adx_filter_enabled`) is
+  currently single (both directions on/off together). If we want to re-activate SHORT but
+  keep LONG off, set the LONG rule string to `""` (empty = inactive that side) and flip the
+  master toggle on. Re-enabling SHORT-only is expressible without a code change.
 
 **3. Performance by Pair EMA20 Slope (signed)** — find the low-slope threshold for L and S.
 - SHORT already has `momentum_ema20_slope_min_short: 0.06`. FULL pool hint: SHORT 0.06-0.10
@@ -211,12 +359,12 @@ locked analysis plan + preserved baseline so next batch isn't re-derived from sc
 ### Preserved cross-batch baseline (today's session, May 28 — don't re-derive)
 | Finding | Evidence | Verdict |
 |---|---|---|
-| ADXΔ≥2.0 SHORT | FULL N=53, 51% WR, -0.14%, -$907 | ★ shippable (rule 2.0:20-99) |
+| ADXΔ≥2.0 SHORT | FULL N=53, 51% WR, -0.14%, -$907 | ★ RE-ENABLE+widen candidate (filter currently disabled; rule 2.0-99:20-99 vs preserved 24-99) |
 | Pair gap > +0.4 LONG | FULL N=103, 50% WR, -0.20%, -$1,419 | candidate (size to FULL, not batch) |
 | Pair gap -0.3/-0.1 LONG | FULL N=44, 66% WR, +0.01% | ★ ONLY +EV LONG cell — validate, consider restrict-to |
 | EMA8-13 gap (SHORT) | today only; 0 historical | observation, N<15, can't validate |
 | EMA20 slope (LONG) | zero W/L separation | likely confound, low priority |
-| DELTA×ADX (LONG) | every cell negative | no clean cut — structural, not filterable |
+| DELTA×ADX (LONG) | prior read: every cell negative | re-evaluate preserved (disabled) 1.0-2.0:18-30 rule vs FULL pool before "keep disabled"; don't bundle w/ SHORT |
 
 ### LOCKED REALISTIC-EXPECTATIONS CAVEAT (read before acting)
 The goal "filter all remaining LONG losers" is NOT achievable by cell-filtering. The FULL

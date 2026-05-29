@@ -5846,6 +5846,49 @@ class TradingEngine:
                             except (ValueError, TypeError):
                                 continue
 
+            # EMA Fan Acceleration (fan_ratio) dead-zone filter (May 29, 2026).
+            # fan_ratio = abs(EMA5-EMA8 gap%) / abs(EMA8-EMA13 gap%). The MID-fan band
+            # is a clean loser dead-zone (mature/fully-developed trend = entering late,
+            # no edge). SHORT active [1.02,1.65); LONG observation-only (rule empty).
+            # Block when fan_ratio in any configured [lo, hi) band. UNVALIDATED cross-
+            # batch (ema_gap_8_13 only exists May-27+) — validate on next post-May-27 batch.
+            _fan_enabled = getattr(config.trading_config.thresholds,
+                                   'fan_ratio_filter_enabled', True)
+            if _fan_enabled and signal in ["LONG", "SHORT"]:
+                _e5 = indicators.get('ema5')
+                _e8 = indicators.get('ema8')
+                _e13 = indicators.get('ema13')
+                _fan_val = None
+                if (_e5 is not None and _e8 is not None and _e13 is not None
+                        and _e8 != 0 and _e13 != 0):
+                    _g58 = abs((_e5 - _e8) / _e8 * 100)
+                    _g813 = abs((_e8 - _e13) / _e13 * 100)
+                    if _g813 > 0:
+                        _fan_val = _g58 / _g813
+                if _fan_val is not None:
+                    _th3 = config.trading_config.thresholds
+                    _fan_key = ('fan_ratio_block_long' if signal == 'LONG'
+                                else 'fan_ratio_block_short')
+                    _fan_str = getattr(_th3, _fan_key, '')
+                    if _fan_str and _fan_str.strip():
+                        for _fan_rule in _fan_str.split(','):
+                            _fan_rule = _fan_rule.strip()
+                            if not _fan_rule or '-' not in _fan_rule:
+                                continue
+                            try:
+                                _fl, _fh = map(float, _fan_rule.split('-'))
+                                if _fl <= _fan_val < _fh:
+                                    logger.info(
+                                        f"[FAN_RATIO_GATE] {pair}: {signal} blocked — "
+                                        f"fan_ratio {_fan_val:.2f} in [{_fl}-{_fh})"
+                                    )
+                                    self._record_filter_block("FAN_RATIO_GATE", signal, had_room=_had_room)
+                                    self._last_pair_block_reason[pair] = "FAN_RATIO_GATE"
+                                    signal = "NO_TRADE"
+                                    break
+                            except (ValueError, TypeError):
+                                continue
+
             # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
             # Block entry when both BTC RSI timeframes are in specified
             # directions (Rising/Falling). Rule encoded as 2-char codes:

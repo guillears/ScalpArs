@@ -1,5 +1,38 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 29, 2026 (RESET) — fresh batch begins on locked config (fan_ratio both directions live)
+
+### Reset
+Operator reset the bot to start a fresh batch at **2026-05-29 ~15:02 UTC**. Prior batch
+(`reports/orders_2026-05-29_12-58-23.csv`, 83 trades) is archived. **Partition cutoff for
+next-batch analysis: `opened_at >= 2026-05-29T15:02:00Z`.** Do NOT pool pre-reset trades.
+
+### Locked config at reset (key fields — full rationale in entries below)
+| Field | Value | Status |
+|---|---|---|
+| `fan_ratio_block_long` | `0.85-1.70` | ACTIVE (promoted today) |
+| `fan_ratio_block_short` | `1.02-1.65` | ACTIVE |
+| `fan_ratio_filter_enabled` | true | — |
+| `adx_dir_long` / `adx_dir_short` | `both` | A/B running (grow falling-ADX N) |
+| `adx_delta_btc_adx_filter_enabled` | false | disabled (redundant w/ fan) |
+| `btc_rsi_adx_filter_short` | `30-35:30,35-40:20-26,45-50:25,0-30:25-30` | active |
+| `rngpos_adx_delta_filter_short` | `5-10:1.0-2.0` | active |
+| `rngpos_adx_delta_filter_long` | `85-95:0.0-0.3` | active |
+| Exit stack | trailing + EMA13 cross; RSI handoff OFF, regime-change OFF, confirmation timer 0s | unchanged (exits deeply analyzed, no clean edge — see exit entry) |
+
+### Pre-committed validation gates for the FRESH batch (mechanical, no re-litigation)
+1. **fan_ratio SHORT `[1.02,1.65)`** — KEEP if block-zone WR ≤40% on N≥10; REVERT if ≥55%. (First batch that can cross-validate fan_ratio — column only exists May-27+.)
+2. **fan_ratio LONG `[0.85,1.70)`** — KEEP if block-zone WR ≤40% on N≥15; REVERT if ≥55%; tighten upper edge if `>1.70` keep-tail ≤45% WR on N≥10 w/o an outlier.
+3. **Pair ADX Direction A/B** — read falling vs rising per direction. LONG falling N≥15 gate; SHORT falling needs N≥15. HOLD `both`, no early call (May 28 lock).
+4. **Watch `[FAN_RATIO_GATE]` counter** — confirm both directions firing on mid-fan entries.
+
+### Why this entry exists
+Anchors the reset timestamp (partition boundary), the exact locked config, and the
+mechanical validation gates so the fresh batch's analysis is mechanical. Fan_ratio (both
+dirs) is the headline thing under test — this is its first cross-validatable batch.
+
+---
+
 ## May 29, 2026 (later) — LONG fan_ratio filter PROMOTED observation → ACTIVE + exit-strategy deep-dive recorded
 
 ### LONG fan filter activated

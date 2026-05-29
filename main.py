@@ -3263,17 +3263,26 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # trend maturing). Uses existing entry_ema_gap_5_8 + entry_ema_gap_8_13 — both are
         # post-May-27 only (entry_ema_gap_8_13 capture date), so this inherits that window.
         # Requires gap_8_13 > 0 to avoid divide-by-zero (near-zero 8-13 gaps skipped).
-        # Buckets recentered May 28: a 5/8/13 fan's STEADY-trend ratio ≈ 0.6 (EMA-lag math:
-        # gap_5_8 ∝ 1.5, gap_8_13 ∝ 2.5 → 0.6), confirmed empirically (steady-bulk AvgR ≈ 0.62).
-        # So neutral sits at ~0.6, NOT 1.0. Decel <0.45 / Steady 0.45-0.75 / Mild accel
-        # 0.75-1.10 / Accel 1.10-1.60 (loser band — DOT/PEPE capitulation-chase sat at 1.46) /
-        # Strong accel >1.60. Provisional cut-points; re-set from percentiles once N fills.
+        # Buckets re-bucketed May 29 to ALIGN with the shipped fan_ratio dead-zone filter
+        # (SHORT block [1.02,1.65) active, LONG block [0.85,1.70) observation-only). The
+        # MID-fan band is a clean loser dead-zone in BOTH directions (mature/late trend = no
+        # edge); the tails win (pullback entry <0.85 / fresh burst >1.65). Boundaries are kept
+        # ROUND (not snapped to the exact 1.02/1.65/0.85/1.70 edges) so the table stays an
+        # at-a-glance DRIFT DETECTOR — if losers migrate into <0.85 or >1.65, the band needs to
+        # move. Precise band validation is done from the raw CSV each checkpoint, not this table.
+        #   <0.85       = LONG keep-low winner tail (pullback)
+        #   0.85-1.00   = LONG dead-zone start (SHORT keep-below)
+        #   1.00-1.35   = shared dead-zone lower half (loser)
+        #   1.35-1.65   = shared dead-zone upper half (loser; DOT/PEPE capitulation sat ~1.46)
+        #   1.65-2.00   = keep-high winner tail start
+        #   >2.00       = strong acceleration (winner)
         ema_fan_ranges = [
-            ("Decelerating <0.45", -999, 0.45),
-            ("Steady 0.45-0.75", 0.45, 0.75),
-            ("Mild accel 0.75-1.10", 0.75, 1.10),
-            ("Accel 1.10-1.60", 1.10, 1.60),
-            ("Strong accel >1.60", 1.60, 999),
+            ("<0.85", -999, 0.85),
+            ("0.85-1.00", 0.85, 1.00),
+            ("1.00-1.35", 1.00, 1.35),
+            ("1.35-1.65", 1.35, 1.65),
+            ("1.65-2.00", 1.65, 2.00),
+            (">2.00", 2.00, 999),
         ]
         ema_fan_orders = [
             o for o in orders
@@ -5753,12 +5762,14 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 if not g813 or g813 <= 0:
                     return None
                 return o.entry_ema_gap_5_8 / g813
+            # May 29: aligned with the fan_ratio filter dead-zone buckets (see main fan table).
             np_fan_ranges = [
-                ("Decelerating <0.45", -999, 0.45),
-                ("Steady 0.45-0.75", 0.45, 0.75),
-                ("Mild accel 0.75-1.10", 0.75, 1.10),
-                ("Accel 1.10-1.60", 1.10, 1.60),
-                ("Strong accel >1.60", 1.60, 999),
+                ("<0.85", -999, 0.85),
+                ("0.85-1.00", 0.85, 1.00),
+                ("1.00-1.35", 1.00, 1.35),
+                ("1.35-1.65", 1.35, 1.65),
+                ("1.65-2.00", 1.65, 2.00),
+                (">2.00", 2.00, 999),
             ]
             np_fan_trades = [o for o in np_trades if _np_fan_of(o) is not None]
             all_fan_trades = [o for o in orders if _np_fan_of(o) is not None]

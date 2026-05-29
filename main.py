@@ -3276,13 +3276,18 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         #   1.35-1.65   = shared dead-zone upper half (loser; DOT/PEPE capitulation sat ~1.46)
         #   1.65-2.00   = keep-high winner tail start
         #   >2.00       = strong acceleration (winner)
+        # May 29: split the >2.00 tail into 2-3 / 3-5 / >5 — the LONG keep-high tail
+        # (fan>1.70, kept by the filter) is losing in the extreme (avg ratio 5.2, 25% WR)
+        # while 1.65-2.00 wins. Splitting locates where the upper edge should be tightened.
         ema_fan_ranges = [
             ("<0.85", -999, 0.85),
             ("0.85-1.00", 0.85, 1.00),
             ("1.00-1.35", 1.00, 1.35),
             ("1.35-1.65", 1.35, 1.65),
             ("1.65-2.00", 1.65, 2.00),
-            (">2.00", 2.00, 999),
+            ("2.00-3.00", 2.00, 3.00),
+            ("3.00-5.00", 3.00, 5.00),
+            (">5.00", 5.00, 999),
         ]
         ema_fan_orders = [
             o for o in orders
@@ -5762,14 +5767,17 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 if not g813 or g813 <= 0:
                     return None
                 return o.entry_ema_gap_5_8 / g813
-            # May 29: aligned with the fan_ratio filter dead-zone buckets (see main fan table).
+            # May 29: aligned with the fan_ratio filter dead-zone buckets (see main fan table);
+            # >2.00 tail split into 2-3 / 3-5 / >5 to locate the upper-edge tightening point.
             np_fan_ranges = [
                 ("<0.85", -999, 0.85),
                 ("0.85-1.00", 0.85, 1.00),
                 ("1.00-1.35", 1.00, 1.35),
                 ("1.35-1.65", 1.35, 1.65),
                 ("1.65-2.00", 1.65, 2.00),
-                (">2.00", 2.00, 999),
+                ("2.00-3.00", 2.00, 3.00),
+                ("3.00-5.00", 3.00, 5.00),
+                (">5.00", 5.00, 999),
             ]
             np_fan_trades = [o for o in np_trades if _np_fan_of(o) is not None]
             all_fan_trades = [o for o in orders if _np_fan_of(o) is not None]

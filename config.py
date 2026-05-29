@@ -358,8 +358,10 @@ class SignalThresholds(BaseModel):
     # validation is possible yet. Next post-May-27 batch is the validation gate.
     # Rule format: "lo-hi" band(s), comma-separated. Block when fan_ratio in [lo, hi).
     # Empty = that direction inactive (observation-only).
-    # SHIPPED: SHORT active (clean), LONG observation-only (kills winners + outlier-dep).
-    fan_ratio_block_long: str = ""           # LONG observation-only (inactive) at ship
+    # SHIPPED May 29: SHORT active. LONG promoted to active same day (operator call —
+    # N=35 killed/batch is significant despite single batch; symmetric mechanism). LONG
+    # cut [0.85,1.70) kills ~10 winners but the 25 losers dominate 3.4:1.
+    fan_ratio_block_long: str = "0.85-1.70"   # LONG active dead-zone block (promoted May 29)
     fan_ratio_block_short: str = "1.02-1.65"  # SHORT active dead-zone block
     fan_ratio_filter_enabled: bool = True     # master toggle (same A/B pattern)
     # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).

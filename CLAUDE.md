@@ -1,5 +1,96 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 29, 2026 (later) — LONG fan_ratio filter PROMOTED observation → ACTIVE + exit-strategy deep-dive recorded
+
+### LONG fan filter activated
+`fan_ratio_block_long: "" → "0.85-1.70"`. The LONG EMA-fan dead-zone block is now LIVE
+(was observation-only at the morning ship). Operator call: N is significant despite
+single batch — the LONG mid-fan block kills **35 trades/batch (25L/10W)**, the losers
+dominate 3.4:1, and the mechanism is **symmetric with the already-shipped SHORT side**
+(same mid-fan dead-zone = mature/late trend = no edge). LONG −$390 → +$549 this batch.
+
+Acknowledged trade-offs (already in the morning entry, restated as the active-ship basis):
+- LONG cut kills ~10 winners ($386) — less clean than SHORT (0 winners), but 25 losers
+  (−$1,324) outweigh.
+- The >1.70 keep-tail leans partly on the XLM +210 outlier (without it the high tail is
+  7W/5L). The *block band* [0.85,1.70) is the robust part; the high keep-tail is thinner.
+- Still **cross-batch UNVALIDATED** (ema_gap_8_13 only exists May-27+). The next post-May-27
+  batch is the validation gate (locked below).
+
+### LOCKED LONG validation gate (next post-May-27 batch)
+| Outcome (LONG fan `[0.85,1.70)` block-zone, fresh data) | Action |
+|---|---|
+| N≥15 fresh AND block-zone WR ≤40% (loser-confirmed) | ★ KEEP LONG active |
+| N≥15 fresh AND block-zone WR ≥55% | ✗ REVERT (`fan_ratio_block_long: ""`) |
+| mixed 40–55% OR N<15 | hold/observe, extend |
+| `>1.70` keep-tail WR ≤45% on N≥10 without an outlier | tighten upper edge (the high tail was outlier-driven) |
+
+### Files changed
+- `config.py` — `fan_ratio_block_long: "" → "0.85-1.70"` + comment
+- `trading_config.json` — same
+- `CLAUDE.md` — this entry
+
+---
+
+## May 29, 2026 — EXIT-STRATEGY DEEP DIVE (recorded for later; NOTHING shipped on exits)
+
+Full post-exit-regret analysis of the May 29 batch + cross-validation on 4-batch + FULL
+pool. Goal: capture the "money left on the table" (trailing winners capture only **46% of
+their post-exit peak**, cross-validated FULL N=276). **Conclusion: the exit side is genuinely
+hard; every idea tested failed or washed out. Nothing shipped. Recorded so we don't re-derive.**
+
+### Ideas tested and their cross-batch verdicts
+| Idea | This batch | Cross-batch | Verdict |
+|---|---|---|---|
+| **RSI handoff from L2** (operator idea) | +$485 | **−$2,253 FULL / −$415 4-batch** | ✗ REJECTED — RSI momentum is too noisy; fires early at negative P&L |
+| **RSI handoff @ L2 toggle** (arm at L2) | — | worse than flag | ✗ exits mid-climb at a LOSS (TAO −0.40@5min, VIRTUAL −0.38@4min would've been losers) |
+| **EMA13-cross handoff** | (looked +$1096) | **−$1,013 when actually fired** | ✗ the +$1096 was a held-to-final artifact; EMA13 fires late on the reversal |
+| **Fixed TP @ 1%** | −$261 | +$332 FULL | ◐ variance-reducer that CAPS the fat tail; loses on runner-batches; round-trip-saves=0 (current stack already protects +1% trades) |
+| **L3+ wider leash** (path-sim) | +$180 | +$189–543 FULL | ◐ small positive expectancy but COIN-FLIP per trade (8 better/9 worse at W=0.5); exits LOWER on crashers (XLM 2.45→0.63, NEAR 0.62→−0.95) |
+
+### The key structural lessons (locked)
+1. **Arming point matters for any RSI handoff.** Toggle (arm at L2) exits mid-climb on early
+   RSI noise dips (they fire at 3–9 min at NEGATIVE P&L) → converts winners to losers. The
+   operator's "flag at pullback, then RSI" is strictly safer (latest arming) — but still
+   loses cross-batch because RSI gives back on real-top exits.
+2. **The Post-Exit Regret table SYSTEMATICALLY OVERSTATES capturable money.** It ignores
+   SEQUENCE: the post-exit peak you "left on the table" usually sits on the *far side of a dip*
+   you'd have been stopped out in. (XLM: exited 2.45, post-path went →0.63→3.56. "Hold-to-final"
+   counts the 3.56 but you'd never survive the 0.63 dip with any real leash.) **Always check
+   post_exit_pnl_at_{1,2,5,15,30}min SEQUENCE, not aggregate peak/trough averages.**
+3. **L2 vs L3+ asymmetry is real but L3+ widening is still marginal.** L2 post-exit trough
+   goes negative (holding loses, −$1,468 FULL) → keep L2 tight. L3+ trough stays positive
+   (proven runners rarely round-trip) → holding is *safer*, but the path-sim shows widening is
+   a coin-flip (+$189–543 net, magnitude-driven by a few resumers, not a clean edge).
+4. **The genuinely capturable exit money is much smaller than the 46%-capture figure implies.**
+   The trailing is already a reasonable compromise — it leaves money on smooth resumers but
+   correctly catches the top on crashers, and you can't tell which is which at exit time.
+
+### Data limitation (why exits are hard to evaluate)
+Post-exit columns only let me simulate "hold past the actual exit until {RSI/EMA13/peak/final}."
+They do NOT let me simulate a *different in-trade path* (wider trailing, confirmation timer,
+ratchet) cleanly — those change *when* the trade exits *during* the trade. The per-minute
+snapshots help (used for the L3+ path-sim) but are coarse (1/2/5/15/30min).
+
+### If exits are revisited — the ONLY rigorous path
+Build a **tick-resolution shadow tracker** that records, per trade, what several
+mechanisms WOULD have exited at without changing live behavior:
+- L3+ leash widths (W = 0.3 / 0.5 / 0.8 / 1.2)
+- sustained-pullback confirmation timer (10/15/20s) — the one structurally-asymmetric idea
+  (delays on noise dips, exits on real reversals) that current data CANNOT evaluate
+- ratchet trailing (tighten only after a new higher high)
+Let it accumulate ≥2 batches, cross-validate on FULL pool, then ship what survives.
+`trailing_pullback_confirmation_seconds` is currently 0 (off) — the May 9 "Trailing
+Confirmation Performance" table is the start of this infra.
+
+### Why this entry exists
+To record that the exit side was deeply analyzed (RSI handoff, fixed TP, L3+ widening all
+cross-validated and rejected/marginal), the structural lessons (arming point, sequence
+overstatement, L2-vs-L3+ asymmetry), and the only rigorous path forward (tick-resolution
+shadow tracker). Entry-side fan_ratio + the A/B have clearer validated edges than exits.
+
+---
+
 ## May 29, 2026 — SHIPPED: EMA Fan Acceleration (fan_ratio) dead-zone filter (SHORT active / LONG observation-only) + full batch analysis
 
 ### Batch analyzed

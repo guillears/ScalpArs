@@ -1,5 +1,186 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 30, 2026 — ADX-min tighten DECISION (5-batch deep dive): SHIPPED LONG 15→18 · HELD SHORT (data contradicted)
+
+Acted on the two TIGHTEN candidates from the BTC Independent Filters audit (entry below),
+gated on a deep dive of the **5-batch pool (May 26-29, most-filtered window)**. The 5-batch
+**split the decision** — confirmed LONG, contradicted SHORT.
+
+### SHIPPED: `btc_adx_min_long` 15 → 18
+
+| Pool | N | WR | Avg P&L % | vs base | ARMED | NP |
+|---|---|---|---|---|---|---|
+| FULL | 29 | 45% | **−0.211%** | base −0.120 | 0% | 30% |
+| 5-batch | 5 | 40% | **−0.281%** | base −0.162 | **0%** | **60%** |
+
+Direction-consistent loser in BOTH pools; 0% armed / mostly never-positive (straight-losers
+the exit can't rescue); diverse pairs (TAO/INJ/FIL via fixed-SL). Reverts the May 6 override
+(18→15). The May 6 locked revert gate was WR-based (≤30%) and isn't strictly tripped (45%),
+but on **Avg P&L %** (the metric that matters) the zone is a clear loser in both pools — an
+expectancy-based tighten. Cuts ~2 tiny winners + 3 straight-losers per the 5-batch zone. SHIPPED.
+
+### HELD (data did NOT support): `btc_adx_min_short` stays 18
+
+| Pool | N | WR | Avg P&L % | vs base |
+|---|---|---|---|---|
+| FULL | 19 | 53% | **−0.104%** (loser) | base −0.033 |
+| **5-batch** | 3 | 67% | **+0.015%** (≈flat/+) | base −0.048 |
+
+The recent 5-batch shows the 18-20 zone is **break-even-to-positive** and the SHORT loser has
+**drifted to 22-24** (N=18, −0.204%). The FULL-pool −0.104% signal is **stale**; N=3 can't
+override a contradicting recent read. Tightening would cut a currently-fine zone. **NOT shipped**
+— this is exactly why the 5-batch check ran first. Future watch: if 22-24 SHORT replicates as
+the loser next batch, that's a *different* cut (a mid-range block, not a min-edge tighten).
+
+### Files changed
+- `trading_config.json` — `btc_adx_min_long` 15 → 18 (single field; SHORT unchanged)
+- `CLAUDE.md` — this entry (staged for operator review; not committed/pushed)
+
+---
+
+## May 30, 2026 — BTC Independent Filters AUDIT (observation; NOTHING changed — locked for next-batch decision)
+
+Cell-level bad-zone audit of the 8 "BTC Independent Filters" against FULL pool (624 CLOSED
+LONG / 424 CLOSED SHORT, Avg P&L % per core principle). **No config touched** — logged here
+so next batch can apply the documented gates without re-deriving. Deliberately NOT acting mid-
+batch (global_vol A/B + rngpos revert already in flight). Headline: the two red *conditional*
+filters are clean professional KEEPs; the broad ADX/slope *range* gates are the mirror problem
+— **3 of them were loosened too far and admit loser sub-zones (TIGHTEN candidates).**
+
+### KEEP — the two red conditional filters (validated, mechanistic, mostly never-arm)
+
+**1. BTC ADX Block SHORT `[24,30]`** — a real U-shaped valley, N=164:
+
+| BTC ADX SHORT | 18-22 | 22-24 | 24-26 | 26-28 | 28-30 | 30-35 | 35+ |
+|---|---|---|---|---|---|---|---|
+| avg% | +0.014 | −0.026 | **−0.130** | **−0.121** | **−0.067** | +0.019 | +0.064 |
+
+Trough in the middle, positive flanks both sides. Block zone 24-30 = 55% WR / **−0.105% avg**
+(base 61% / −0.033%). Diverse pairs (top-3 los 20%). 28-30 is the softest rung (−0.067) but
+still in the trough. **KEEP as-is.**
+
+**2. BTC RSI 65-70 × BTC ATR `<0.10` LONG** — conditional VALIDATED by decomposition:
+
+| RSI 65-70 LONG, by ATR | <0.10 (blocked) | 0.10-0.15 | 0.15-0.25 |
+|---|---|---|---|
+| N / WR / avg% | 35 / 40% / **−0.315%** | 43 / 51% / −0.090% | 8 / 50% / −0.120% |
+
+ATR<0.10 sub-cell ~3.5× worse than its ATR≥0.10 neighbor (which beats baseline). "Dead-tape
+during BTC top" mechanism holds. **11% armed / 31% never-positive → exit thesis can't replace
+it.** This is the A3 refinement (May 27) working exactly as designed (A1 broad block would've
+cut the healthy-vol winners; A3 keeps them). **KEEP as-is.**
+
+### KEEP / INERT — slope caps + ADX direction
+
+| Filter | Data | Verdict |
+|---|---|---|
+| Max 1h Slope SHORT = 0.10 | kept 0.05-0.10 = +0.024 (win); blocked >0.10 = losers | ★ KEEP (cleanest) |
+| Max 1h Slope LONG = 0.15 | blocked >0.15 = −0.325 (loser); kept 0.10-0.15 also −0.300 (N=9) | KEEP; *watch tighten → 0.10* |
+| ADX Dir LONG/SHORT = Both | no-op (no directional block) | inert — nothing to do |
+| ADX BTC max LONG/SHORT = 40 | no pool data above 40 (censored) | safety cap — leave |
+
+### ⚠ TIGHTEN CANDIDATES — broad gates loosened too far (locked for next-batch decision)
+
+| Filter | Current | Loser sub-zone admitted | Proposed | Traces to |
+|---|---|---|---|---|
+| **ADX min LONG** | 15 | 15-18 = 45% WR / **−0.211%** (N=29) | → 18 | May 6 override (18→15) |
+| **ADX min SHORT** | 18 | 18-20 = 53% WR / **−0.104%** (N=19); 20-22 = +0.051% (win) | → 20 | May 19 override (20→18) |
+| **Max EMA20 Slope LONG** | 0.35 | 0.10-0.35 = 37% WR / **−0.242%** (N=30) | → ~0.10 | over-extension fade |
+
+All three are the **mirror image of the rngpos curve-fit problem** — not over-blocking, but
+*under*-blocking. Two trace directly to documented May discipline-override loosenings that
+shipped with locked revert criteria; the data is now the revert gate.
+
+### The WR-vs-Avg% caveat (why these are judgment, not mechanical, tightens)
+The locked revert gates for the ADX-min loosenings were written **WR-based** (e.g. "revert ADX
+min L if 15-18 shows ≤30% WR"). The 15-18 LONG zone is **45% WR but −0.211% avg** — so on WR
+the gate is NOT tripped (45% > 30%), but on **Avg P&L %** (the metric that matters) it's a clear
+loser. Same split on SHORT 18-20 (53% WR but −0.104% avg). So these are **expectancy-based
+tightens, not WR-gate-tripped** — a judgment call for the operator next batch, not an automatic
+revert. (Also: `btc_adx_max_long=40` revert needs the specific 35-40 LONG bin, not pulled here.)
+
+### Locked next-batch decision
+1. Re-run this cell audit on the fresh post-reset partition (`opened_at >= 2026-05-29T15:02Z`).
+2. For each TIGHTEN candidate: confirm the loser sub-zone replicates on **Avg P&L %** (N≥10).
+   If it holds → tighten (these are reverts of documented loosenings). If the zone flips to
+   ≥ baseline → leave loose.
+3. The 3 tightens are LONG/SHORT entry-surface narrowings — ship them ONE at a time for clean
+   attribution, NOT bundled, and not in a batch that also moves exits.
+4. The two red conditionals + slope caps are confirmed KEEP — no action unless a fresh batch
+   contradicts the valley/decomposition shape.
+
+### Files changed
+- `CLAUDE.md` — this entry only. **No config, no engine, no UI changes.** Observation log.
+
+---
+
+## May 30, 2026 — `rngpos_adx_delta_filter_long`: REVERTED `85-95:0.0-0.3` → `90-95:0.0-0.3` (drop curve-fit half) + SHORT cell flagged for removal
+
+### What changed (LONG only)
+`rngpos_adx_delta_filter_long`: **`85-95:0.0-0.3` → `90-95:0.0-0.3`**. Reverts the May 24
+lower-bound extension. The original May 19 ship (`90-95:0.0-0.3`, N=5 discipline override)
+stays; the May 24 widening to 85-95 is dropped. **No SHORT change** (different cell — see below).
+
+### Cell-level bad-zone audit (FULL pool, 624 CLOSED LONG with valid rp+adxΔ+pnl)
+
+The active `85-95:0.0-0.3` filter was a **blend of a real loser sub-cell + a curve-fit dilution**:
+
+| Sub-cell | N | WR | avg% | ARMED (pk≥0.5) | NEVER-POS (pk<0.05) | Verdict |
+|---|---|---|---|---|---|---|
+| **90-95 × 0.0-0.3** (orig May 19) | 20 | **35%** | −0.259% | 20% | 30% | ★ real loser — KEEP |
+| **85-90 × 0.0-0.3** (May 24 ext) | 26 | **46%** | −0.153% | 35% | 12% | ✗ ≈ baseline — DROP |
+| Blended 85-95 (was active) | 46 | 41% | −0.199% | 28% | 20% | diluted |
+| *LONG baseline* | 624 | 48.7% | −0.120% | — | — | — |
+
+**Why the core `90-95` cell is real, not "fitting 5 trades":** N=20 in the pool (not 5), and
+the within-row adxΔ gradient is monotonic — at range_pos 90-95, WR climbs as momentum
+accelerates (0.0-0.3→35%, 0.3-0.6→42%, 0.6-1.0→50%). Coherent mechanism: "top of range +
+weak momentum acceleration = exhaustion fade." Loser per-pair top-3 = 38% (1000PEPE leads,
+3/13) — dimensional, not a pair artifact. **Earns its keep.**
+
+**Why the `85-90` extension was curve-fit:** 46% WR ≈ 48.7% baseline (no edge), the adxΔ
+gradient does NOT hold there (0.6-1.0 and 1.0+ are *worse* than 0.0-0.3), and it had only
+**5 post-ship trades** of fresh data. It diluted a clean cell with 26 baseline-performing
+trades. Reverting re-admits those 26 trades — neutral (they perform at baseline). Modest
+impact: ~20-trade-over-weeks cleanup, not a needle-mover.
+
+**Exit-thesis tie-in (important):** the core `90-95` cell is **30% never-positive, only 20%
+armed** — these trades mostly go straight toward SL without ever going green. So the Leash
+Shadow exit improvement **cannot replace this filter** (no exit variant touches a trade that
+never arms). It's a "straight-loser" filter → stays even with a perfect runner exit.
+
+### SHORT cell is a DIFFERENT cell — and the audit flags it as a removal candidate (NOT changed)
+`rngpos_adx_delta_filter_short = "5-10:1.0-2.0"` is **not the mirror** of the LONG cell. It's
+range_pos 5-10 (bottom of range) × adxΔ 1.0-2.0 (sharp acceleration) — "capitulation
+bottom-fishing chase," shipped May 18 on N=10 (30% WR / −$359, small-sample).
+
+FULL pool (424 CLOSED SHORT) shows the cell **decayed to baseline**:
+
+| Cell | N | WR | **avg%** | ARMED | NEVER-POS |
+|---|---|---|---|---|---|
+| 5-10 × 1.0-2.0 (active) | 47 | 51% | **−0.032%** | 47% | 23% |
+| *SHORT baseline* | 424 | 61% | **−0.033%** | — | — |
+
+WR is 10pp below baseline, **but Avg P&L % is IDENTICAL to baseline (−0.032 vs −0.033)** — on
+the leverage-invariant metric that matters (CLAUDE.md core principle), the cell does NOT
+separate. The grid shows no clean cliff: within range_pos 5-10, the adjacent 0.5-1.0 adxΔ
+band is 70% WR while the target 1.0-2.0 is 51% (mid-pack), and the same 1.0-2.0 band is 77%/72%
+at higher range_pos. ARMED=47% / NP=23% → **armable**, so the exit thesis HAS traction here.
+
+**Verdict: the SHORT cell is a weaker filter than the LONG one — a removal/A-B candidate**
+(blocks baseline-expectancy, armable trades, no clean cliff; original 30% WR was a regime
+artifact, N=42-of-47 are pre-ship). **NOT changed today** — the operator asked only the LONG
+revert + whether SHORT is the same (it is not). Flagged for the locked filter-audit / one-by-one
+removal program. If touched later, disable via A/B (`rngpos_adx_delta_filter_short: ""`) and
+check whether re-admitted trades arm-and-get-captured (exit covers them) vs straight-lose.
+
+### Files changed
+- `trading_config.json` — `rngpos_adx_delta_filter_long` 85-95 → 90-95 (single field)
+- `CLAUDE.md` — this entry
+(SHORT field unchanged; not committed/pushed — staged for operator review.)
+
+---
+
 ## May 30, 2026 — RETIRED 4 observation-only report surfaces (UI/report only; engine capture left inert)
 
 Removed four dashboard/report sections to declutter. **All removals are report-surface

@@ -2344,6 +2344,46 @@
                 </section>
                 <!-- ====== PATTERN CALCULATOR END ====== -->
 
+                <!-- ===== LEASH SHADOW START (May 30, observation-only) ===== -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏃 Leash Shadow: Runner Exit Comparison (observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Virtual trailing leashes run alongside the real exit (armed trades only, peak≥0.5%). Each leash
+                        respects the same live exits (hard SL / EMA13 / signal-lost) — only the trailing width differs.
+                        <span class="text-emerald-300">tight</span>=0.25 flat (SANITY, should ≈ ACTUAL) ·
+                        <span class="text-emerald-300">wide</span>=0.6 flat ·
+                        <span class="text-emerald-300">tierA</span>=0.25→0.8@peak1.0 ·
+                        <span class="text-emerald-300">tierB</span>=0.3→1.0@peak1.0.
+                        <span class="text-emerald-300">Δ</span>=leash total% − actual total%. <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
+                        <span class="text-emerald-300">SLconv</span>=small-win→−0.7% conversions. <span class="text-emerald-300">%MaxPk</span>=% of theoretical max peak captured.
+                        Gate = LONG ≥0.25 armed.
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="leash-shadow-pool">(no post-deploy armed trades yet)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium">Slice / Leash</th>
+                                    <th class="px-2 py-2 font-medium text-center">N</th>
+                                    <th class="px-2 py-2 font-medium text-right">AvgExit%</th>
+                                    <th class="px-2 py-2 font-medium text-right">Total%</th>
+                                    <th class="px-2 py-2 font-medium text-right">Δ vs Act</th>
+                                    <th class="px-2 py-2 font-medium text-center">Clean</th>
+                                    <th class="px-2 py-2 font-medium text-center">Trap</th>
+                                    <th class="px-2 py-2 font-medium text-right">AvgClnΔ</th>
+                                    <th class="px-2 py-2 font-medium text-right">AvgTrpΔ</th>
+                                    <th class="px-2 py-2 font-medium text-center">SLconv</th>
+                                    <th class="px-2 py-2 font-medium text-right">%MaxPk</th>
+                                    <th class="px-2 py-2 font-medium">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leash-shadow-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-2" id="leash-shadow-drill"></div>
+                </div>
+                <!-- ===== LEASH SHADOW END ===== -->
+
                 <!-- Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🌀 Phantom Regime Change Exit Counterfactual (observation-only)</h3>
@@ -7667,6 +7707,25 @@
                 lines.push('');
             }
 
+            // ===== LEASH SHADOW START (May 30, observation-only) =====
+            const _ls1 = perf.leash_shadow || {};
+            if (_ls1.slices && _ls1.slices.length) {
+                lines.push(`## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=${_ls1.cohort_n || 0}]`);
+                lines.push('  Leash           N   AvgExit%  Total%   Δvsact  Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk  Verdict');
+                lines.push('-'.repeat(100));
+                const _lp = (v, w) => String(v == null ? '-' : v).padStart(w);
+                const _le = (v, w) => String(v == null ? '-' : v).padEnd(w);
+                _ls1.slices.forEach(sl => {
+                    lines.push(sl.slice);
+                    sl.rows.forEach(r => {
+                        const a = r.leash === 'actual';
+                        lines.push(`  ${_le(r.leash, 14)}${_lp(r.n, 4)} ${_lp(r.avg.toFixed(3), 9)} ${_lp(r.total.toFixed(2), 8)} ${a ? '      -' : _lp((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${a ? '  -' : _lp(r.clean, 3)} ${a ? '  -' : _lp(r.trap, 3)} ${a ? '      -' : _lp(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp(r.sl_conv, 3)} ${_lp(r.pct_max + '%', 6)}  ${r.verdict}`);
+                    });
+                });
+                lines.push('');
+            }
+            // ===== LEASH SHADOW END =====
+
             // Phantom Regime Change Exit Counterfactual (May 22: all close reasons + timing)
             const _rcf1 = perf.regime_change_counterfactual || {};
             if (_rcf1.rows && _rcf1.rows.length) {
@@ -9396,6 +9455,25 @@
                     });
                     lines.push('');
                 }
+
+                // ===== LEASH SHADOW START (May 30, observation-only) =====
+                const _ls2 = perf.leash_shadow || {};
+                if (_ls2.slices && _ls2.slices.length) {
+                    lines.push(`## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=${_ls2.cohort_n || 0}]`);
+                    lines.push('  Leash           N   AvgExit%  Total%   Δvsact  Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk  Verdict');
+                    lines.push('-'.repeat(100));
+                    const _lp2 = (v, w) => String(v == null ? '-' : v).padStart(w);
+                    const _le2 = (v, w) => String(v == null ? '-' : v).padEnd(w);
+                    _ls2.slices.forEach(sl => {
+                        lines.push(sl.slice);
+                        sl.rows.forEach(r => {
+                            const a = r.leash === 'actual';
+                            lines.push(`  ${_le2(r.leash, 14)}${_lp2(r.n, 4)} ${_lp2(r.avg.toFixed(3), 9)} ${_lp2(r.total.toFixed(2), 8)} ${a ? '      -' : _lp2((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${a ? '  -' : _lp2(r.clean, 3)} ${a ? '  -' : _lp2(r.trap, 3)} ${a ? '      -' : _lp2(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp2(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp2(r.sl_conv, 3)} ${_lp2(r.pct_max + '%', 6)}  ${r.verdict}`);
+                        });
+                    });
+                    lines.push('');
+                }
+                // ===== LEASH SHADOW END =====
 
                 // Phantom Regime Change Exit Counterfactual (May 22: all close reasons + timing)
                 const _rcf2 = perf.regime_change_counterfactual || {};
@@ -12276,6 +12354,56 @@
                         }
                     }
                 }
+
+                // ===== LEASH SHADOW START (May 30, observation-only) =====
+                if (data.leash_shadow) {
+                    const _ls = data.leash_shadow;
+                    const _lsBody = document.getElementById('leash-shadow-body');
+                    const _lsPool = document.getElementById('leash-shadow-pool');
+                    const _lsDrill = document.getElementById('leash-shadow-drill');
+                    if (_lsPool) _lsPool.innerHTML = (_ls.cohort_n || 0) > 0
+                        ? `Armed + shadow-populated cohort: <strong>${_ls.cohort_n}</strong> trades`
+                        : '(no post-deploy armed trades yet)';
+                    if (_lsBody) {
+                        const num = (v, p=2) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(p));
+                        let html = '';
+                        (_ls.slices || []).forEach(sl => {
+                            const gateCls = sl.is_gate ? 'text-emerald-300 font-bold' : sl.is_sub ? 'text-gray-500' : 'text-gray-300 font-semibold';
+                            html += `<tr class="border-b border-white/5"><td colspan="12" class="px-2 pt-2 pb-1 ${gateCls}">${sl.slice}</td></tr>`;
+                            (sl.rows || []).forEach(r => {
+                                const dCls = r.leash === 'actual' || r.leash === 'tight' ? 'text-gray-400'
+                                    : r.delta > 0.5 ? 'text-emerald-400 font-semibold'
+                                    : r.delta < -0.5 ? 'text-red-400 font-semibold' : 'text-gray-400';
+                                let vCls = 'text-gray-500';
+                                if (r.verdict.startsWith('★')) vCls = 'text-emerald-400 font-bold';
+                                else if (r.verdict.startsWith('✗')) vCls = 'text-red-400 font-bold';
+                                else if (r.verdict.startsWith('⚠')) vCls = 'text-amber-400';
+                                else if (r.verdict.startsWith('✓')) vCls = 'text-emerald-300';
+                                html += `<tr class="border-b border-white/5">
+                                    <td class="px-2 py-1 pl-6 text-gray-300">${r.leash}</td>
+                                    <td class="px-2 py-1 text-center">${r.n}</td>
+                                    <td class="px-2 py-1 text-right">${num(r.avg, 3)}</td>
+                                    <td class="px-2 py-1 text-right">${num(r.total)}</td>
+                                    <td class="px-2 py-1 text-right ${dCls}">${r.leash === 'actual' ? '—' : num(r.delta)}</td>
+                                    <td class="px-2 py-1 text-center text-emerald-400">${r.leash === 'actual' ? '—' : r.clean}</td>
+                                    <td class="px-2 py-1 text-center text-red-400">${r.leash === 'actual' ? '—' : r.trap}</td>
+                                    <td class="px-2 py-1 text-right">${r.leash === 'actual' ? '—' : num(r.avg_clean)}</td>
+                                    <td class="px-2 py-1 text-right">${r.leash === 'actual' ? '—' : num(r.avg_trap)}</td>
+                                    <td class="px-2 py-1 text-center text-red-300">${r.leash === 'actual' ? '—' : r.sl_conv}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.pct_max}%</td>
+                                    <td class="px-2 py-1 ${vCls}">${r.verdict}</td>
+                                </tr>`;
+                            });
+                        });
+                        _lsBody.innerHTML = html || '<tr><td colspan="12" class="px-2 py-2 text-gray-500">(no data)</td></tr>';
+                    }
+                    if (_lsDrill && (_ls.drill || []).length) {
+                        const n2 = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2));
+                        _lsDrill.innerHTML = '<span class="text-gray-400">Gate per-trade (top by post-exit peak):</span> '
+                            + _ls.drill.map(d => `${d.pair}(s${d.stretch}) act${n2(d.actual)}→tA${n2(d.tierA)}/tB${n2(d.tierB)} pxpk${n2(d.pxpk)}`).join(' · ');
+                    } else if (_lsDrill) { _lsDrill.innerHTML = ''; }
+                }
+                // ===== LEASH SHADOW END =====
 
                 // Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
                 if (data.regime_change_counterfactual) {

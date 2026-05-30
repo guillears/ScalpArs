@@ -123,6 +123,80 @@ def _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, directi
     return True
 
 
+# ===================== LEASH SHADOW START (May 30, 2026 — observation-only) =====================
+# Virtual trailing leashes run alongside the real exit to measure the true net of a
+# runner-tuned exit on the high-stretch LONG profile (separates XLM-clean-capture from
+# NEAR-trap-mirage that coarse snapshots can't). Each leash respects the SAME live exits
+# (hard SL, EMA13 cross, signal-lost) and only swaps the trailing width. NEVER affects
+# live trading — all logic is wrapped in try/except and isolated in this module dict.
+# TO REMOVE: delete every fenced "LEASH SHADOW" block (grep "LEASH SHADOW") + the 8
+# shadow_* columns in models.py/database.py + the report block in main.py + the UI block
+# in templates/index.html. See CLAUDE.md May 30 entry.
+import time as _leash_time
+_LEASH_STATE = {}  # order_id -> {'rmax', 'ts', 'exits': {name: (pnl, reason)}}
+# spec: (name, kind, tight_width, wide_width, switch_threshold)
+_LEASH_SPECS = [
+    ('tight', 'flat', 0.25, 0.25, 0.0),   # SANITY — should land ~= actual close
+    ('wide',  'flat', 0.60, 0.60, 0.0),   # "just loosen it" contrast
+    ('tierA', 'tier', 0.25, 0.80, 1.0),   # runner design, conservative
+    ('tierB', 'tier', 0.30, 1.00, 1.0),   # runner design, the params that flipped the rough sim
+]
+_LEASH_ACT = 0.5    # trailing activation (matches live tp_min)
+_LEASH_SL = -0.7    # hard SL floor (matches live)
+
+def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False):
+    """Update virtual leashes for one order on a price tick. Observation-only; fail-silent."""
+    try:
+        if order_id is None or pnl_pct is None:
+            return
+        st = _LEASH_STATE.get(order_id)
+        if st is None:
+            if len(_LEASH_STATE) > 100:  # bounded self-cleaning
+                _cut = _leash_time.time() - 3600
+                for _k in [k for k, v in _LEASH_STATE.items() if v.get('ts', 0) < _cut]:
+                    _LEASH_STATE.pop(_k, None)
+            st = {'rmax': pnl_pct, 'ts': _leash_time.time(),
+                  'exits': {n: None for n, _, _, _, _ in _LEASH_SPECS}}
+            _LEASH_STATE[order_id] = st
+        st['ts'] = _leash_time.time()
+        if peak_hint is not None and peak_hint > st['rmax']:
+            st['rmax'] = peak_hint
+        if pnl_pct > st['rmax']:
+            st['rmax'] = pnl_pct
+        rmax = st['rmax']
+        if rmax < _LEASH_ACT:
+            return  # not armed yet — leash inactive, other exits own the trade
+        for name, kind, tight, wide, switch in _LEASH_SPECS:
+            if st['exits'][name] is not None:
+                continue  # already exited
+            if pnl_pct <= _LEASH_SL:
+                st['exits'][name] = (_LEASH_SL, 'hard_sl'); continue
+            if ema13_crossed:
+                st['exits'][name] = (round(pnl_pct, 4), 'ema13'); continue
+            if signal_lost:
+                st['exits'][name] = (round(pnl_pct, 4), 'signal_lost'); continue
+            width = wide if (kind == 'tier' and rmax >= switch) else tight
+            if pnl_pct <= rmax - width:
+                st['exits'][name] = (round(rmax - width, 4), 'trailing')
+    except Exception:
+        pass  # observation-only: a shadow error must NEVER affect trading
+
+def _leash_finalize(order_id, fallback_pnl):
+    """Pop leash state and return {name: (pnl, reason)} for persistence. Unfired -> 'window'."""
+    out = {}
+    try:
+        st = _LEASH_STATE.pop(order_id, None)
+        for name, _, _, _, _ in _LEASH_SPECS:
+            if st and st['exits'].get(name) is not None:
+                out[name] = st['exits'][name]
+            else:
+                out[name] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+    except Exception:
+        pass
+    return out
+# ====================== LEASH SHADOW END ======================
+
+
 def _compute_pattern_c_match(direction, rng_pos, pair_gap, adx_delta,
                              btc_rsi, btc_rsi_prev, btc_adx, btc_adx_prev,
                              btc_gap, stretch, pair_adx, btc_atr,
@@ -4215,6 +4289,14 @@ class TradingEngine:
                 if current_pnl > info["peak_before_signal_lost"]:
                     info["peak_before_signal_lost"] = current_pnl
 
+            # ===== LEASH SHADOW START — post-exit continuation (observation-only) =====
+            # Wide leashes that didn't fire in-trade keep holding past the real exit;
+            # continue them, respecting EMA13-cross and signal-lost as live backstops.
+            _leash_update(order_id, current_pnl, peak_hint=None,
+                          ema13_crossed=(info.get("ema13_cross_at") is not None),
+                          signal_lost=(info.get("signal_lost_at") is not None))
+            # ===== LEASH SHADOW END =====
+
             # Post-exit phantom tick momentum checks
             tick_exit_min_profit = getattr(config.trading_config.thresholds, 'tick_momentum_exit_min_profit', 0.05)
             pe_tick_buf = info.get("tick_prices")
@@ -4262,12 +4344,26 @@ class TradingEngine:
                 if info["signal_regained_at"]:
                     sig_regained_minutes = (info["signal_regained_at"] - exit_time).total_seconds() / 60.0
 
+                # ===== LEASH SHADOW START — finalize at post-exit window end =====
+                _leash_exits = _leash_finalize(order_id, final_pnl)
+                # ===== LEASH SHADOW END =====
+
                 try:
                     async with AsyncSessionLocal() as pe_write_db:
                         await pe_write_db.execute(
                             update(Order)
                             .where(Order.id == order_id)
                             .values(
+                                # ===== LEASH SHADOW START =====
+                                shadow_tight_pnl=_leash_exits.get('tight', (None, None))[0],
+                                shadow_tight_reason=_leash_exits.get('tight', (None, None))[1],
+                                shadow_wide_pnl=_leash_exits.get('wide', (None, None))[0],
+                                shadow_wide_reason=_leash_exits.get('wide', (None, None))[1],
+                                shadow_tierA_pnl=_leash_exits.get('tierA', (None, None))[0],
+                                shadow_tierA_reason=_leash_exits.get('tierA', (None, None))[1],
+                                shadow_tierB_pnl=_leash_exits.get('tierB', (None, None))[0],
+                                shadow_tierB_reason=_leash_exits.get('tierB', (None, None))[1],
+                                # ===== LEASH SHADOW END =====
                                 post_exit_peak_pnl=round(peak_pnl, 4),
                                 post_exit_trough_pnl=round(trough_pnl, 4),
                                 post_exit_peak_minutes=round(peak_minutes, 2),
@@ -6955,6 +7051,10 @@ class TradingEngine:
                     if _ema5_prev3 and _ema5_prev3 > 0:
                         order_info['peak_ema5_slope_pct'] = round((_ema5_val - _ema5_prev3) / _ema5_val * 100, 4)
             order_info['peak_pnl'] = current_peak
+
+            # ===== LEASH SHADOW START — in-trade tick (observation-only) =====
+            _leash_update(order_info.get('id'), pnl_pct, peak_hint=current_peak)
+            # ===== LEASH SHADOW END =====
 
             # May 17: post-arm-min tracking for BE-floor counterfactual analysis.
             # Once peak crosses BE trigger, start tracking the minimum P&L from

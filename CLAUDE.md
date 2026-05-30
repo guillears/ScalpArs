@@ -1,5 +1,87 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 30, 2026 — SHIPPED: Leash Shadow Tracker (observation-only; runner-exit validation infra)
+
+### What ships
+Observation-only instrumentation that runs **4 virtual trailing leashes alongside the
+real exit** on every trade, recording where each *would* have exited — to measure the
+**true net** of a runner-tuned exit on the high-stretch LONG profile. **Zero change to
+live trading** (no orders, no API calls, no perf/storage/AWS impact — all logic wrapped
+in `try/except` and isolated in a module dict). The point: separate the **XLM-clean-
+capture** from the **NEAR-trap-mirage** that the coarse post-exit snapshots cannot.
+
+### Why this exists (the runner finding)
+- **Entry profile is real & validated:** LONG runners = high `ema5_stretch` (≥0.25),
+  d≈+0.9 on the trailing-L2+ cohort, monotonic (13%→60% runner-rate), cross-batch
+  confirmed. SHORT runner profile **falsified** (adx_delta non-monotonic, flipped on
+  cross-validation) → gate is **LONG-only**.
+- **High-stretch LONG is NET-NEGATIVE** (−$2,222 FULL / −$730 5-batch) *despite* 59% WR
+  — a small-wins/full-size-losses problem: we shake out of runners at L1 for +0.3-0.5%
+  of a 1.5-2% move while losers ride to SL. The EV sits in the post-exit peak, uncollected.
+- **Multiplier is OFF the table** — amplifying a net-negative cell doubles the loss.
+- **The rough path-sim was too crude to settle it** — optimistically biased (can't see
+  intra-candle dips), and parameter-fragile (only 1 of 4 leash configs flipped 5-batch
+  barely positive; FULL stayed negative). The shadow tracker runs the **actual live
+  price path**, giving the true net the rough sim couldn't.
+
+### The 4 virtual leashes (hardcoded in `_LEASH_SPECS`, `services/trading_engine.py`)
+| name | rule | purpose |
+|---|---|---|
+| `tight` | flat 0.25% | **sanity** — should land ≈ actual close (validates the sim) |
+| `wide`  | flat 0.60% | "just loosen it" — proves whether *tiering* matters or just width |
+| `tierA` | 0.25 → 0.80 @ peak ≥ 1.0% | runner design, conservative |
+| `tierB` | 0.30 → 1.00 @ peak ≥ 1.0% | runner design, the params that flipped the rough sim |
+Activation +0.5% (live tp_min), hard SL −0.7% (live). Two tiered variants **bracket** the
+params — the key overfitting/robustness test.
+
+### Faithfulness
+Each leash respects the SAME live exits — **hard SL, EMA13 cross, signal-lost** — and only
+swaps the trailing width. Tracked **in-trade** (realtime callback) AND **post-exit**
+(watcher continues any leash that held past the real exit, with EMA13/signal-lost as
+backstops). So it's a true "what if we'd run this leash," not an idealized trailing-only number.
+
+### Architecture (built for trivial removal)
+Module-level `_LEASH_STATE` dict + `_leash_update()` / `_leash_finalize()` helpers — **no
+order-cache or 7-step-preservation touches** (state lives outside the cache; a mid-trade
+restart just re-inits that one trade's shadow — acceptable, observation-only). Persisted to
+8 new Order columns at the post-exit window-end. **Every block fenced with
+`LEASH SHADOW START/END`** across 5 files — **TO REMOVE: `grep "LEASH SHADOW"` and delete
+each fenced region** (models.py columns, database.py migrate, trading_engine.py helper +
+4 call sites, main.py report fn + payload line, index.html table + JS + 2 text-exports).
+
+### The report — 🏃 Leash Shadow: Runner Exit Comparison (observation-only)
+Sliced by **Direction × stretch-bucket** on the **armed** cohort (peak≥0.5%):
+`LONG ≥0.25 (GATE)` / `LONG <0.25 (control)` / `SHORT ≥0.25` / `SHORT <0.25` + LONG
+sub-buckets (0.25-0.4 / 0.4-0.6 / 0.6+). Per leash: N, AvgExit%, Total%, **Δ vs Actual**,
+**Clean/Trap** split (the robustness check), AvgClnΔ/AvgTrpΔ, **SLconv** (small-win→SL
+hits), **%MaxPk** (% of theoretical peak captured), Verdict. Plus a per-trade drill for
+the gate slice (eyeball XLM vs NEAR).
+
+### Pre-committed ship gate (LOCKED before data)
+On `LONG ≥0.25 armed` at the next batch, ship a tiered leash live **only if ALL hold:**
+1. Δ clearly positive vs Actual · 2. Clean ≥ 2× Trap · 3. **both** tiered variants positive
+(params robust, not knife-edge) · 4. holds across ≥2 stretch sub-buckets · 5. `tight` ≈
+Actual (sim validated) · 6. `LONG <0.25` control does NOT show the same lift (gate earns
+its keep). Else hold/refine. Idealized fills → apply a small slippage haircut when reading.
+
+### Data caveats
+Only **post-deploy** trades have shadow columns (NULL before). **Non-armed** trades
+(peak<0.5%) excluded (leash never activates → no signal). Most armed winners get post-exit
+tracking → good coverage; trades closed without post-exit tracking show NULL shadows.
+
+### Files changed (all fenced)
+`models.py` (8 cols) · `database.py` (auto-migrate) · `services/trading_engine.py` (helper
++ in-trade + post-exit + finalize + values) · `main.py` (`_compute_leash_shadow` + payload)
+· `templates/index.html` (table + JS + 2 text-exports) · this CLAUDE.md entry.
+
+### Locked next step
+Accumulate one batch → read the gated table → apply the 6-condition gate → decide
+ship/no-ship on a tiered loose-leash for high-stretch LONG. Honest expectation: likely
+turns high-stretch LONG from small-loss toward break-even, not a goldmine — but resolves
+it definitively instead of guessing.
+
+---
+
 ## May 30, 2026 — DISABLED Global Volume Filter (A/B test — filter-audit + redundancy hypothesis)
 
 ### What changed

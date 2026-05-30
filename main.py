@@ -6694,6 +6694,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # ====== PATTERN CALCULATOR END ======
         # Phantom Regime Change Exit Counterfactual (May 11 capture, May 19 analytics)
         "regime_change_counterfactual": _compute_regime_change_counterfactual(orders),
+        "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -9144,6 +9145,105 @@ def _compute_pattern_calculator_data(orders):
         }
     }
 # ====== PATTERN CALCULATOR END ======
+
+
+# ===================== LEASH SHADOW START (May 30, 2026 — observation-only) =====================
+def _compute_leash_shadow(orders):
+    """Leash Shadow Tracker report. Compares virtual trailing leashes (tight/wide/
+    tierA/tierB) vs the actual exit on the runner-profile cohort, sliced by
+    Direction x stretch-bucket. Observation-only — see CLAUDE.md May 30.
+    TO REMOVE: delete this fenced block + the payload line + the UI block."""
+    ACT = 0.5
+    LEASHES = [
+        ('actual', None, None),
+        ('tight', 'shadow_tight_pnl', 'shadow_tight_reason'),
+        ('wide', 'shadow_wide_pnl', 'shadow_wide_reason'),
+        ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason'),
+        ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason'),
+    ]
+    # armed + shadow-populated cohort
+    rows = [o for o in orders
+            if getattr(o, 'status', None) == 'CLOSED'
+            and (getattr(o, 'peak_pnl', 0) or 0) >= ACT
+            and getattr(o, 'shadow_tight_pnl', None) is not None]
+    BUCKETS = [
+        ('LONG ≥0.25 (GATE)', 'LONG', 0.25, 999.0, True, False),
+        ('LONG <0.25 (control)', 'LONG', -999.0, 0.25, False, False),
+        ('SHORT ≥0.25', 'SHORT', 0.25, 999.0, False, False),
+        ('SHORT <0.25', 'SHORT', -999.0, 0.25, False, False),
+        (' LONG 0.25-0.40', 'LONG', 0.25, 0.40, False, True),
+        (' LONG 0.40-0.60', 'LONG', 0.40, 0.60, False, True),
+        (' LONG 0.60+', 'LONG', 0.60, 999.0, False, True),
+    ]
+    slices = []
+    drill = []
+    for label, dir_, lo, hi, is_gate, is_sub in BUCKETS:
+        coh = [o for o in rows if o.direction == dir_
+               and getattr(o, 'entry_ema5_stretch', None) is not None
+               and lo <= o.entry_ema5_stretch < hi]
+        if not coh:
+            continue
+        actual_total = sum((o.pnl_percentage or 0) for o in coh)
+        leash_rows = []
+        for name, pcol, rcol in LEASHES:
+            evals = []
+            for o in coh:
+                ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
+                if ev is not None:
+                    evals.append(ev)
+            n = len(evals)
+            total = sum(evals)
+            avg = total / n if n else 0.0
+            clean = trap = slconv = 0
+            cwins, ctraps, evs, mps = [], [], [], []
+            for o in coh:
+                ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
+                av = o.pnl_percentage
+                if name != 'actual' and ev is not None and av is not None:
+                    d = ev - av
+                    if d > 0.1:
+                        clean += 1; cwins.append(d)
+                    elif d < -0.1:
+                        trap += 1; ctraps.append(d)
+                    if (getattr(o, rcol, '') or '') == 'hard_sl':
+                        slconv += 1
+                mp = max(o.peak_pnl or 0, o.post_exit_peak_pnl or 0)
+                if mp > 0 and ev is not None:
+                    mps.append(mp); evs.append(ev)
+            delta = total - actual_total
+            pct_max = (sum(evs) / sum(mps) * 100) if mps else 0.0
+            if name == 'actual':
+                verdict = 'baseline'
+            elif name == 'tight':
+                verdict = '✓ sim valid' if abs(delta) <= max(0.5, 0.1 * n) else '⚠ sim off'
+            elif delta > 0.5 and clean >= 2 * max(trap, 1):
+                verdict = '★ helps'
+            elif delta < -0.5:
+                verdict = '✗ hurts'
+            else:
+                verdict = '⚠ marginal'
+            leash_rows.append({
+                'leash': name, 'n': n, 'avg': round(avg, 3), 'total': round(total, 2),
+                'delta': round(delta, 2), 'clean': clean, 'trap': trap,
+                'avg_clean': round(sum(cwins) / len(cwins), 2) if cwins else 0.0,
+                'avg_trap': round(sum(ctraps) / len(ctraps), 2) if ctraps else 0.0,
+                'sl_conv': slconv, 'pct_max': round(pct_max, 0), 'verdict': verdict,
+            })
+        slices.append({'slice': label, 'is_gate': is_gate, 'is_sub': is_sub, 'rows': leash_rows})
+        # per-trade drill for the gate slice only
+        if is_gate:
+            for o in sorted(coh, key=lambda x: -(x.post_exit_peak_pnl or 0))[:15]:
+                drill.append({
+                    'pair': o.pair, 'stretch': round(o.entry_ema5_stretch or 0, 2),
+                    'actual': round(o.pnl_percentage or 0, 2),
+                    'tight': round(o.shadow_tight_pnl, 2) if o.shadow_tight_pnl is not None else None,
+                    'wide': round(o.shadow_wide_pnl, 2) if o.shadow_wide_pnl is not None else None,
+                    'tierA': round(o.shadow_tierA_pnl, 2) if o.shadow_tierA_pnl is not None else None,
+                    'tierB': round(o.shadow_tierB_pnl, 2) if o.shadow_tierB_pnl is not None else None,
+                    'pxpk': round(o.post_exit_peak_pnl or 0, 2),
+                })
+    return {'slices': slices, 'drill': drill, 'cohort_n': len(rows)}
+# ====================== LEASH SHADOW END ======================
 
 
 def _compute_regime_change_counterfactual(orders):

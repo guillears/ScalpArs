@@ -424,6 +424,28 @@ class Order(Base):
     phantom_tick_g_triggered_at = Column(DateTime, nullable=True)
     phantom_tick_g_pnl = Column(Float, nullable=True)
 
+    # ===== LEASH SHADOW START (May 30) — remove this fenced block to delete the feature =====
+    # Leash Shadow Tracker (May 30): observation-only virtual trailing leashes run
+    # alongside the real exit to measure the true net of a runner-tuned exit on the
+    # high-stretch LONG profile (separates XLM-clean-capture from NEAR-trap-mirage,
+    # which the coarse post-exit snapshots cannot). Each virtual leash respects the
+    # SAME live exits (hard SL, EMA13 cross, signal-lost) and only swaps the trailing
+    # width. NULL = leash never armed (peak < activation). Reason: trailing/hard_sl/
+    # ema13/signal_lost/window. See CLAUDE.md May 30 entry. NEVER affects live trading.
+    #   tight = flat 0.25% pullback (SANITY — should land ~= actual close)
+    #   wide  = flat 0.6% pullback whole trade
+    #   tierA = tight 0.25 -> wide 0.8, switch @ running-peak >= 1.0%
+    #   tierB = tight 0.30 -> wide 1.0, switch @ running-peak >= 1.0%
+    shadow_tight_pnl = Column(Float, nullable=True)
+    shadow_tight_reason = Column(String(15), nullable=True)
+    shadow_wide_pnl = Column(Float, nullable=True)
+    shadow_wide_reason = Column(String(15), nullable=True)
+    shadow_tierA_pnl = Column(Float, nullable=True)
+    shadow_tierA_reason = Column(String(15), nullable=True)
+    shadow_tierB_pnl = Column(Float, nullable=True)
+    shadow_tierB_reason = Column(String(15), nullable=True)
+    # ===== LEASH SHADOW END =====
+
     # Signal Lost Flag: trade was in signal-lost zone but kept open
     signal_lost_flagged = Column(Boolean, nullable=True, default=False)
     signal_lost_flag_pnl = Column(Float, nullable=True)

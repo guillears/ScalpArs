@@ -1,5 +1,28 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 30, 2026 — RETIRED 4 observation-only report surfaces (UI/report only; engine capture left inert)
+
+Removed four dashboard/report sections to declutter. **All removals are report-surface
+only — zero engine touches, zero trading risk.** Where a feature had engine capture, the
+capture + DB columns are **left intact and inert** (harmless, just unused).
+
+| Retired section | What was removed | What was KEPT (inert) |
+|---|---|---|
+| 🧮 Pattern Calculator | 5 fenced `PATTERN CALCULATOR` blocks (main.py fn+payload, index.html UI+JS+2 text-exports) | — (was pure UI/report) |
+| 🌀 Phantom Regime Change Exit Counterfactual | `_compute_regime_change_counterfactual` + payload + UI + JS + 2 text-exports | **engine capture** (`regime_flip_at` / `phantom_regime_change_*`, 19 refs) + 2 DB cols |
+| 📊 Post-Arm Min Distribution | `_compute_post_arm_min_distribution` + payload + UI + JS + 2 text-exports | **`post_arm_min` engine capture** + `post_arm_min_pnl_pct/at` cols |
+| 🎯 BE Floor Counterfactual (0.05 vs 0.10) | `_compute_be_floor_counterfactual` + payload + UI + JS + 2 text-exports | same post_arm capture |
+
+**Explicitly preserved (NOT a section — a column):** the **Post-Arm Min %** column inside
+Closing Reason Summary / Stop Loss Deep Dive / Winning Trades Drawdown (the
+`allPostArmSum` aggregate) — only the two standalone sections were retired.
+
+Each removal verified: target identifiers grep to **0** refs, surrounding renderers intact,
+seams join cleanly, all Python parses, Leash Shadow tracker unaffected. To re-add any, pull
+from git history (the engine capture still feeds them — only the report/UI was deleted).
+
+---
+
 ## May 30, 2026 — SHIPPED: Leash Shadow Tracker (observation-only; runner-exit validation infra)
 
 ### What ships

@@ -103,6 +103,24 @@ ship/no-ship on a tiered loose-leash for high-stretch LONG. Honest expectation: 
 turns high-stretch LONG from small-loss toward break-even, not a goldmine — but resolves
 it definitively instead of guessing.
 
+### May 30 EXTENSION — 2 stretch-exit variants (now 6 virtual variants total)
+Operator insight: the exit may be better keyed on **extension fade** (price vs EMA5) than a
+fixed price pullback — a runner that *stays stretched* is still running; one whose stretch
+collapses is done, regardless of the raw price pullback (the top-and-drift case where
+price-trailing rides the drift then eats the drop). Added 2 stretch-exit virtual variants
+alongside the 4 price leashes, same observation-only/fenced design:
+- **strpk** = stretch-trail: exit when live stretch ≤ 0.5× **peak** stretch.
+- **stren** = stretch-to-entry: exit when live stretch ≤ **entry** stretch (ties exit to the
+  entry signal — the operator's core point).
+Both arm at +0.5%, respect the same backstops (hard SL/EMA13/signal-lost), fire at current
+P&L when extension fades. Live stretch = signed %-distance of price from EMA5 (computed each
+tick in-trade + post-exit). Also captures **`shadow_peak_stretch`** (max favorable extension)
+→ the drill shows the entry→peak stretch evolution (do runners hold/expand stretch while
+traps collapse first?). 5 new columns (`shadow_strpk_pnl/reason`, `shadow_stren_pnl/reason`,
+`shadow_peak_stretch`) + 1 fenced cache key (`entry_ema5_stretch`). The gated table now
+compares actual vs tight/wide/tierA/tierB **and** strpk/stren — let the data say whether a
+stretch-fade exit beats price-trailing on the runner cohort before any ship.
+
 ---
 
 ## May 30, 2026 — DISABLED Global Volume Filter (A/B test — filter-audit + redundancy hypothesis)

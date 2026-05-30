@@ -8804,6 +8804,8 @@ def _compute_leash_shadow(orders):
         ('wide', 'shadow_wide_pnl', 'shadow_wide_reason'),
         ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason'),
         ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason'),
+        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason'),  # stretch-trail from peak
+        ('stren', 'shadow_stren_pnl', 'shadow_stren_reason'),  # stretch-to-entry
     ]
     # armed + shadow-populated cohort
     rows = [o for o in orders
@@ -8879,11 +8881,12 @@ def _compute_leash_shadow(orders):
             for o in sorted(coh, key=lambda x: -(x.post_exit_peak_pnl or 0))[:15]:
                 drill.append({
                     'pair': o.pair, 'stretch': round(o.entry_ema5_stretch or 0, 2),
+                    'pkstr': round(o.shadow_peak_stretch, 2) if o.shadow_peak_stretch is not None else None,
                     'actual': round(o.pnl_percentage or 0, 2),
-                    'tight': round(o.shadow_tight_pnl, 2) if o.shadow_tight_pnl is not None else None,
-                    'wide': round(o.shadow_wide_pnl, 2) if o.shadow_wide_pnl is not None else None,
                     'tierA': round(o.shadow_tierA_pnl, 2) if o.shadow_tierA_pnl is not None else None,
                     'tierB': round(o.shadow_tierB_pnl, 2) if o.shadow_tierB_pnl is not None else None,
+                    'strpk': round(o.shadow_strpk_pnl, 2) if o.shadow_strpk_pnl is not None else None,
+                    'stren': round(o.shadow_stren_pnl, 2) if o.shadow_stren_pnl is not None else None,
                     'pxpk': round(o.post_exit_peak_pnl or 0, 2),
                 })
     return {'slices': slices, 'drill': drill, 'cohort_n': len(rows)}

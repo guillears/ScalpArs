@@ -143,8 +143,16 @@ _LEASH_SPECS = [
 ]
 _LEASH_ACT = 0.5    # trailing activation (matches live tp_min)
 _LEASH_SL = -0.7    # hard SL floor (matches live)
+# Stretch-exit variants (May 30 ext): exit on EXTENSION fade, not price pullback.
+# Live stretch = signed %-distance of price from EMA5 (positive = favorable extension).
+#   strpk = exit when live stretch retraces to <= 0.5x PEAK stretch (stretch-trail from peak)
+#   stren = exit when live stretch falls back to <= ENTRY stretch (extension collapsed to entry)
+# Tests whether the move's own extension structure is a better exit than a fixed price %.
+_LEASH_STRETCH_RETAIN = 0.5
+_STRETCH_NAMES = ('strpk', 'stren')
 
-def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False):
+def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
+                  stretch=None, entry_stretch=None):
     """Update virtual leashes for one order on a price tick. Observation-only; fail-silent."""
     try:
         if order_id is None or pnl_pct is None:
@@ -156,9 +164,13 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                 for _k in [k for k, v in _LEASH_STATE.items() if v.get('ts', 0) < _cut]:
                     _LEASH_STATE.pop(_k, None)
             st = {'rmax': pnl_pct, 'ts': _leash_time.time(),
-                  'exits': {n: None for n, _, _, _, _ in _LEASH_SPECS}}
+                  'exits': {n: None for n, _, _, _, _ in _LEASH_SPECS},
+                  'sexits': {n: None for n in _STRETCH_NAMES},
+                  'pstretch': None, 'estretch': entry_stretch}
             _LEASH_STATE[order_id] = st
         st['ts'] = _leash_time.time()
+        if st.get('estretch') is None and entry_stretch is not None:
+            st['estretch'] = entry_stretch
         if peak_hint is not None and peak_hint > st['rmax']:
             st['rmax'] = peak_hint
         if pnl_pct > st['rmax']:
@@ -166,6 +178,10 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
         rmax = st['rmax']
         if rmax < _LEASH_ACT:
             return  # not armed yet — leash inactive, other exits own the trade
+        # track peak favorable stretch once armed
+        if stretch is not None and (st['pstretch'] is None or stretch > st['pstretch']):
+            st['pstretch'] = stretch
+        # ---- price-leash exits ----
         for name, kind, tight, wide, switch in _LEASH_SPECS:
             if st['exits'][name] is not None:
                 continue  # already exited
@@ -178,11 +194,30 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
             width = wide if (kind == 'tier' and rmax >= switch) else tight
             if pnl_pct <= rmax - width:
                 st['exits'][name] = (round(rmax - width, 4), 'trailing')
+        # ---- stretch-exits (fire at current P&L when extension fades; same backstops) ----
+        if stretch is not None:
+            for sname in _STRETCH_NAMES:
+                if st['sexits'][sname] is not None:
+                    continue
+                if pnl_pct <= _LEASH_SL:
+                    st['sexits'][sname] = (_LEASH_SL, 'hard_sl'); continue
+                if ema13_crossed:
+                    st['sexits'][sname] = (round(pnl_pct, 4), 'ema13'); continue
+                if signal_lost:
+                    st['sexits'][sname] = (round(pnl_pct, 4), 'signal_lost'); continue
+                if sname == 'strpk':
+                    pk = st.get('pstretch')
+                    if pk is not None and pk > 0 and stretch <= pk * _LEASH_STRETCH_RETAIN:
+                        st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
+                elif sname == 'stren':
+                    es = st.get('estretch')
+                    if es is not None and stretch <= es:
+                        st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
     except Exception:
         pass  # observation-only: a shadow error must NEVER affect trading
 
 def _leash_finalize(order_id, fallback_pnl):
-    """Pop leash state and return {name: (pnl, reason)} for persistence. Unfired -> 'window'."""
+    """Pop leash state -> {name:(pnl,reason)} (price + stretch variants) + '_peak_stretch'. Unfired -> 'window'."""
     out = {}
     try:
         st = _LEASH_STATE.pop(order_id, None)
@@ -191,6 +226,12 @@ def _leash_finalize(order_id, fallback_pnl):
                 out[name] = st['exits'][name]
             else:
                 out[name] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+        for sname in _STRETCH_NAMES:
+            if st and st.get('sexits', {}).get(sname) is not None:
+                out[sname] = st['sexits'][sname]
+            else:
+                out[sname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+        out['_peak_stretch'] = round(st['pstretch'], 4) if (st and st.get('pstretch') is not None) else None
     except Exception:
         pass
     return out
@@ -3178,6 +3219,7 @@ class TradingEngine:
             order_cache_entry = {
                 'id': order.id,
                 'direction': direction,
+                'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
                 'entry_fee': entry_fee,
@@ -4292,9 +4334,15 @@ class TradingEngine:
             # ===== LEASH SHADOW START — post-exit continuation (observation-only) =====
             # Wide leashes that didn't fire in-trade keep holding past the real exit;
             # continue them, respecting EMA13-cross and signal-lost as live backstops.
+            _pe_ema5 = pair_data.ema5 if pair_data else None
+            _pe_stretch = None
+            if _pe_ema5 and _pe_ema5 > 0 and price > 0:
+                _pe_stretch = ((price - _pe_ema5) / price * 100) if direction == 'LONG' \
+                    else ((_pe_ema5 - price) / price * 100)
             _leash_update(order_id, current_pnl, peak_hint=None,
                           ema13_crossed=(info.get("ema13_cross_at") is not None),
-                          signal_lost=(info.get("signal_lost_at") is not None))
+                          signal_lost=(info.get("signal_lost_at") is not None),
+                          stretch=_pe_stretch)
             # ===== LEASH SHADOW END =====
 
             # Post-exit phantom tick momentum checks
@@ -4363,6 +4411,11 @@ class TradingEngine:
                                 shadow_tierA_reason=_leash_exits.get('tierA', (None, None))[1],
                                 shadow_tierB_pnl=_leash_exits.get('tierB', (None, None))[0],
                                 shadow_tierB_reason=_leash_exits.get('tierB', (None, None))[1],
+                                shadow_strpk_pnl=_leash_exits.get('strpk', (None, None))[0],
+                                shadow_strpk_reason=_leash_exits.get('strpk', (None, None))[1],
+                                shadow_stren_pnl=_leash_exits.get('stren', (None, None))[0],
+                                shadow_stren_reason=_leash_exits.get('stren', (None, None))[1],
+                                shadow_peak_stretch=_leash_exits.get('_peak_stretch'),
                                 # ===== LEASH SHADOW END =====
                                 post_exit_peak_pnl=round(peak_pnl, 4),
                                 post_exit_trough_pnl=round(trough_pnl, 4),
@@ -7053,7 +7106,13 @@ class TradingEngine:
             order_info['peak_pnl'] = current_peak
 
             # ===== LEASH SHADOW START — in-trade tick (observation-only) =====
-            _leash_update(order_info.get('id'), pnl_pct, peak_hint=current_peak)
+            _ls_ema5 = order_info.get('cached_ema5')
+            _ls_stretch = None
+            if _ls_ema5 and _ls_ema5 > 0 and current_price > 0:
+                _ls_stretch = ((current_price - _ls_ema5) / current_price * 100) if direction == 'LONG' \
+                    else ((_ls_ema5 - current_price) / current_price * 100)
+            _leash_update(order_info.get('id'), pnl_pct, peak_hint=current_peak,
+                          stretch=_ls_stretch, entry_stretch=order_info.get('entry_ema5_stretch'))
             # ===== LEASH SHADOW END =====
 
             # May 17: post-arm-min tracking for BE-floor counterfactual analysis.

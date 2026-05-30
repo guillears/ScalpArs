@@ -444,6 +444,14 @@ class Order(Base):
     shadow_tierA_reason = Column(String(15), nullable=True)
     shadow_tierB_pnl = Column(Float, nullable=True)
     shadow_tierB_reason = Column(String(15), nullable=True)
+    # Stretch-exit variants (May 30 ext): exit on extension-fade not price pullback.
+    #   strpk = exit when live stretch <= 0.5x peak stretch · stren = exit when stretch <= entry stretch
+    #   peak_stretch = max favorable %-distance from EMA5 during the trade (moment-evolution signal)
+    shadow_strpk_pnl = Column(Float, nullable=True)
+    shadow_strpk_reason = Column(String(15), nullable=True)
+    shadow_stren_pnl = Column(Float, nullable=True)
+    shadow_stren_reason = Column(String(15), nullable=True)
+    shadow_peak_stretch = Column(Float, nullable=True)
     # ===== LEASH SHADOW END =====
 
     # Signal Lost Flag: trade was in signal-lost zone but kept open

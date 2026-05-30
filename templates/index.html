@@ -2210,7 +2210,10 @@
                         <span class="text-emerald-300">tight</span>=0.25 flat (SANITY, should ≈ ACTUAL) ·
                         <span class="text-emerald-300">wide</span>=0.6 flat ·
                         <span class="text-emerald-300">tierA</span>=0.25→0.8@peak1.0 ·
-                        <span class="text-emerald-300">tierB</span>=0.3→1.0@peak1.0.
+                        <span class="text-emerald-300">tierB</span>=0.3→1.0@peak1.0 ·
+                        <span class="text-cyan-300">strpk</span>=stretch-trail (exit when stretch ≤ 0.5× peak stretch) ·
+                        <span class="text-cyan-300">stren</span>=stretch-to-entry (exit when stretch ≤ entry stretch).
+                        The two <span class="text-cyan-300">str*</span> rows exit on <em>extension fade</em> (price vs EMA5), not a price pullback — tests whether the move's own stretch structure is a better exit.
                         <span class="text-emerald-300">Δ</span>=leash total% − actual total%. <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
                         <span class="text-emerald-300">SLconv</span>=small-win→−0.7% conversions. <span class="text-emerald-300">%MaxPk</span>=% of theoretical max peak captured.
                         Gate = LONG ≥0.25 armed.
@@ -11886,8 +11889,8 @@
                     }
                     if (_lsDrill && (_ls.drill || []).length) {
                         const n2 = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2));
-                        _lsDrill.innerHTML = '<span class="text-gray-400">Gate per-trade (top by post-exit peak):</span> '
-                            + _ls.drill.map(d => `${d.pair}(s${d.stretch}) act${n2(d.actual)}→tA${n2(d.tierA)}/tB${n2(d.tierB)} pxpk${n2(d.pxpk)}`).join(' · ');
+                        _lsDrill.innerHTML = '<span class="text-gray-400">Gate per-trade (top by post-exit peak) — str(entry→peak stretch), exits act/tierB/strpk/stren:</span> '
+                            + _ls.drill.map(d => `${d.pair}(str${d.stretch}→${d.pkstr == null ? '?' : d.pkstr}) act${n2(d.actual)}/tB${n2(d.tierB)}/<span class="text-cyan-300">sp${n2(d.strpk)}/se${n2(d.stren)}</span> pxpk${n2(d.pxpk)}`).join(' · ');
                     } else if (_lsDrill) { _lsDrill.innerHTML = ''; }
                 }
                 // ===== LEASH SHADOW END =====

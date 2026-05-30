@@ -1,5 +1,83 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 30, 2026 — DISABLED Global Volume Filter (A/B test — filter-audit + redundancy hypothesis)
+
+### What changed
+`global_volume_filter_enabled: true → false` in `trading_config.json` (master toggle —
+disables ALL 13 volume knobs at once: Min L/S, Max S, capitulation override ×3, rescue
+floor L/S, rescue ceiling L/S, lookback). `config.py` default stays `True` so the
+infrastructure is preserved for one-line re-enable. **Disabled mid-fresh-batch** (post-May-29
+reset) — see "why this is safe mid-batch" below.
+
+### Why — filter-audit pass (Cohen's d, Winners vs Losers separation, FULL pool N=1048)
+Operator questioned whether the Global Volume Filter (9 user-facing knobs + 3 layers of
+exception-chains: filter → override → rescue → rescue-ceiling) is a *professional* filter
+or **reactive curve-fit accretion** (each clause added in a separate session to patch a
+specific trade — confirmed by CLAUDE.md history). Ran a Cohen's d audit on every entry
+dimension. `|d|<0.10 = noise, 0.10-0.20 = weak, 0.20-0.35 = real, >0.35 = strong`:
+
+| Dimension | LONG d | SHORT d |
+|---|---|---|
+| **global_vol** | **+0.061 NOISE** | **−0.330 REAL** |
+| pair_vol_ratio | +0.087 NOISE | **−0.378 STRONG** |
+| pair_vol_usd | −0.251 REAL (N=345, sparse) | −0.015 NOISE |
+| ema5_stretch | **+0.320 REAL** | −0.059 NOISE |
+| pair_gap(13-50) | −0.112 weak | −0.258 REAL |
+| pair_rsi | −0.171 weak | +0.247 REAL |
+| range_pos | −0.093 NOISE | +0.226 REAL |
+| adx_delta | −0.097 NOISE | −0.063 NOISE |
+| btc_rsi / btc_adx / bull% / bear% | noise-to-weak | noise-to-weak |
+
+### The honest finding (two-sided)
+1. **LONG volume = genuinely dead.** d=+0.061 AND the bad zone is *populated* (GV<0.7 zone
+   N=214 in FULL, loses the same as everything) → confirmed noise, not just well-pruned.
+   Removing it is **free**.
+2. **SHORT volume = REAL.** global_vol d=−0.330, pair_vol_ratio d=−0.378 — two of the
+   strongest SHORT separators in the bot. The *core signal* (low volume → SHORT wins,
+   high GV >1.1 → squeeze/capitulation loss) is validated. What's unprofessional is the
+   **9-knob scaffolding around it**, not the base threshold.
+3. **The earlier "whole volume filter is noise" framing was too harsh on SHORT** — corrected.
+
+### The redundancy hypothesis this A/B tests (operator's insight)
+"Maybe the SHORT volume losers were hidden in FAN ACC — a more professional filter."
+i.e. the high-GV SHORT losers may already sit in the `fan_ratio` dead-zone (now active both
+directions), making the volume filter a **noisy proxy** for the cleaner fan filter.
+Direct overlap test was **data-limited** — fan_ratio needs `entry_ema_gap_8_13` which only
+exists post-May-27 (83/1048 trades), and that window had **zero high-GV SHORTs**. Disabling
+volume is the way to actually answer it: do the high-GV SHORT losers get caught by
+fan_ratio + pair_gap + pair_rsi, or do they bleed back in?
+
+### Why this is SAFE to do mid-fresh-batch (does NOT confound fan_ratio validation)
+Volume and fan are **sequential** filters — fan blocks the mid-fan dead-zone FIRST, so a
+trade blocked by fan never reaches the volume check. Disabling volume only re-admits trades
+that **passed fan but failed volume** — by definition NOT in the fan dead-zone. Therefore
+the **fan_ratio block-zone WR (the May 29 locked validation gate) is unaffected.** The two
+A/Bs are orthogonal and both stay readable next batch.
+
+### LOCKED re-evaluation gate (next batch, partition `opened_at >= 2026-05-29T15:02:00Z`)
+Focus on the **high-GV SHORT zone** (the only part with real signal at risk):
+| Outcome on re-admitted high-GV SHORTs (GV > 1.1, in fresh data) | Action |
+|---|---|
+| WR ≤ 40% on N ≥ 10 **AND** NOT in fan dead-zone | ✗ SHORT volume was load-bearing → **re-enable SHORT-only `global_volume_max_short: 1.1`**, drop the 8 other knobs (Min S / rescue / ceiling / override) |
+| WR ≥ 55% on N ≥ 10 **OR** the losers ARE in the fan dead-zone | ★ Redundant with fan → **keep volume OFF**, removed 9 knobs of curve-fit |
+| LONG re-admitted (GV < 0.7) trades show any WR | confirm noise (expected flat) → keep LONG volume OFF permanently |
+| N < 10 in high-GV SHORT zone | extend — no decision |
+
+### The bigger picture (for the next filter-audit session)
+The audit revealed the bot **filters heavily on noise dimensions** (`adx_delta` noise both
+directions; `range_pos`/`global_vol` noise for LONG) and **under-uses the real ones**
+(`ema5_stretch` + `fan_ratio` for LONG; `pair_vol_ratio`/`pair_gap`/`pair_rsi`/`range_pos`
+for SHORT). Volume is the first filter audited — the **full filter-audit pass** (with the
+survivorship "bad-zone-populated" check per dimension) is the locked next step to find
+which other accumulated filters are curve-fit noise to retire vs real signal to keep.
+
+### Files changed
+- `trading_config.json` — `global_volume_filter_enabled: true → false`
+- `CLAUDE.md` — this entry
+(config.py default unchanged at True; no commit/push yet — staged for operator review)
+
+---
+
 ## May 29, 2026 (RESET) — fresh batch begins on locked config (fan_ratio both directions live)
 
 ### Reset

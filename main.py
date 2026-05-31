@@ -8913,8 +8913,13 @@ def _compute_leash_shadow(orders):
             post_close = (name != 'actual' and fire_min is not None
                           and actual_dur_min is not None and fire_min > actual_dur_min)
             pct_max = (sum(evs) / sum(mps) * 100) if mps else 0.0
+            # no_data: leash has no populated trades in this slice (e.g. post-deploy-only
+            # variant whose cohort trades predate it) — don't score it as a real verdict.
+            no_data = (name != 'actual' and n == 0)
             if name == 'actual':
                 verdict = 'baseline'
+            elif no_data:
+                verdict = '⏳ no data'
             elif name == 'tight':
                 verdict = '✓ sim valid' if abs(delta) <= max(0.5, 0.1 * n) else '⚠ sim off'
             elif delta > 0.5 and clean >= 2 * max(trap, 1):
@@ -8925,7 +8930,7 @@ def _compute_leash_shadow(orders):
                 verdict = '⚠ marginal'
             leash_rows.append({
                 'leash': name, 'n': n, 'avg': round(avg, 3), 'total': round(total, 2),
-                'actual_avg_close': actual_avg_close,
+                'actual_avg_close': actual_avg_close, 'no_data': no_data,
                 'fire_min': fire_min, 'post_close': post_close,
                 'act_usd': round(act_usd_m, 2), 'cf_usd': round(cf_usd, 2), 'delta_usd': round(delta_usd, 2),
                 'delta': round(delta, 2), 'clean': clean, 'trap': trap,

@@ -6299,6 +6299,16 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 avg_atr_pe = sum(atrs_pe) / len(atrs_pe) if atrs_pe else None
                 atr_sl_widened_pe = -(avg_atr_pe * 1.5) if avg_atr_pe is not None else None
 
+                # May 31: stretch-fade recoverable-regret band (Leash Shadow strpk/stren).
+                # strpk = stretch-trail (aggressive ceiling), stren = stretch-to-entry
+                # (conservative floor). Both run the ACTUAL post-exit path (respect the
+                # sequence-trap, unlike PostPeak%). Read Close% → [stren, strpk] → PostPeak%.
+                # Only armed post-deploy trades have shadow data; NULL/dash otherwise.
+                strpk_pe = [o.shadow_strpk_pnl for o in group if getattr(o, 'shadow_strpk_pnl', None) is not None]
+                stren_pe = [o.shadow_stren_pnl for o in group if getattr(o, 'shadow_stren_pnl', None) is not None]
+                avg_strpk_pe = sum(strpk_pe) / len(strpk_pe) if strpk_pe else None
+                avg_stren_pe = sum(stren_pe) / len(stren_pe) if stren_pe else None
+
                 no_regain = [o for o in group if o.post_exit_signal_regained_minutes is None]
                 nr_count = len(no_regain)
                 nr_rec_neg020 = sum(1 for o in no_regain if (o.post_exit_peak_pnl or 0) >= -0.20) if nr_count else 0
@@ -6350,6 +6360,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "exit_ema5_crossed_pct": round(ema5_crossed_pe / count * 100, 1) if count > 0 else None,
                     "avg_atr_pct": round(avg_atr_pe, 4) if avg_atr_pe is not None else None,
                     "atr_sl_15x": round(atr_sl_widened_pe, 4) if atr_sl_widened_pe is not None else None,
+                    # May 31: stretch-fade recoverable-regret band (observation-only)
+                    "avg_strpk_pct": round(avg_strpk_pe, 4) if avg_strpk_pe is not None else None,
+                    "avg_stren_pct": round(avg_stren_pe, 4) if avg_stren_pe is not None else None,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")
@@ -8797,7 +8810,7 @@ def _compute_leash_shadow(orders):
     tierA/tierB) vs the actual exit on the runner-profile cohort, sliced by
     Direction x stretch-bucket. Observation-only — see CLAUDE.md May 30.
     TO REMOVE: delete this fenced block + the payload line + the UI block."""
-    ACT = 0.5
+    ACT = 0.45  # armed threshold — matches live tp_min=0.45 (was 0.5, stale)
     LEASHES = [
         ('actual', None, None),
         ('tight', 'shadow_tight_pnl', 'shadow_tight_reason'),

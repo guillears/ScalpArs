@@ -1,5 +1,40 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — Leash Shadow calibration fix + Post-Exit Regret stretch-band columns (observation-only)
+
+Two report/observation changes, zero trading-logic touch.
+
+### LOCKED RULE: shadow leash activation MUST track live tp_min
+`_LEASH_ACT` (engine, `services/trading_engine.py`) and `ACT` (report, `main.py::_compute_leash_shadow`)
+were both **0.5** — stale. Live `tp_min` for the active tiers (VERY_STRONG / STRONG_BUY) is now
+**0.45**, so the shadow leashes were arming *higher* than the live trailing → the cohort was
+**blind to the 0.45-0.50 peak band** the live trailing actually manages. Concrete miss: 1000PEPEUSDT
+peaked +0.485% (above live tp_min 0.45 → closed TRAILING_STOP L2 live), but below the shadow's 0.5 →
+no leash armed → `shadow_*` all NULL → excluded from the table. **Fixed both to 0.45.**
+- **Locked invariant:** if `tp_min` ever changes again, BOTH `_LEASH_ACT` and the report `ACT` must
+  move with it. The shadow cohort = "the trades the live trailing actually trailed" only if the
+  activation matches. (Can't backfill the one 1000PEPE — price path gone; future 0.45-0.50 peakers
+  now captured.)
+
+### Post-Exit Regret: added Strpk% + Stren% (stretch-fade recoverable-regret band)
+Two columns after PostPeak%/PeakMin: **Strpk%** (stretch-trail, aggressive ceiling) and **Stren%**
+(stretch-to-entry, conservative floor), avg per close-reason from the Leash Shadow `shadow_strpk_pnl`
+/ `shadow_stren_pnl`. Read **Close% → [Stren, Strpk] band → PostPeak%**: PostPeak is the mirage
+ceiling (ignores the sequence-trap dip); the band is what a stretch-fade exit would *actually* bank
+on the real path. A single number over/understates at low N, so the band is the honest read.
+Populates on armed post-deploy TRAILING rows (where regret lives); `—` elsewhere. Deliberately did
+NOT add the price-trail leashes (tight/wide/tierA/tierB) or $ columns — those answer "which exit
+mechanism wins," which is the Leash Shadow table's job. Clean division: Post-Exit Regret = "how much
+regret is recoverable"; Leash Shadow = "which mechanism wins."
+
+### Files changed
+- `services/trading_engine.py` — `_LEASH_ACT` 0.5 → 0.45 (fenced shadow block; no trading touch)
+- `main.py` — `_compute_leash_shadow` ACT 0.5 → 0.45; Post-Exit Regret avg_strpk_pct/avg_stren_pct
+- `templates/index.html` — Strpk%/Stren% in UI table + both text exports
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 30, 2026 — ADX-min tighten DECISION (5-batch deep dive): SHIPPED LONG 15→18 · HELD SHORT (data contradicted)
 
 Acted on the two TIGHTEN candidates from the BTC Independent Filters audit (entry below),

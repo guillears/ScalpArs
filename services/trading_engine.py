@@ -141,7 +141,7 @@ _LEASH_SPECS = [
     ('tierA', 'tier', 0.25, 0.80, 1.0),   # runner design, conservative
     ('tierB', 'tier', 0.30, 1.00, 1.0),   # runner design, the params that flipped the rough sim
 ]
-_LEASH_ACT = 0.5    # trailing activation (matches live tp_min)
+_LEASH_ACT = 0.45    # trailing activation (matches live tp_min=0.45 V_S/S_B; was 0.5 — stale, missed 0.45-0.50 peakers the live trailing armed, e.g. 1000PEPE peak 0.485)
 _LEASH_SL = -0.7    # hard SL floor (matches live)
 # Stretch-exit variants (May 30 ext): exit on EXTENSION fade, not price pullback.
 # Live stretch = signed %-distance of price from EMA5 (positive = favorable extension).

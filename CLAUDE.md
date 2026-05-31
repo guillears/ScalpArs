@@ -1,5 +1,28 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — RETIRED 2 observation-only report surfaces (Phantom BE + Time-to-L1)
+
+Operator decision: **BE is permanently off — proven not to work, will never re-apply.** Removed
+the two report surfaces tied to it / to the deprecated time-exit idea. **Report-surface only —
+zero engine/trading touch.**
+
+| Retired section | Removed | Kept (inert) |
+|---|---|---|
+| 🧪 Phantom BE 0.20/0.10 Counterfactual | `main.py` fn `_compute_phantom_be_aggr_by_close_reason` + payload; `index.html` UI table + JS renderer + 2 text-exports | **engine `_SHADOW_BE` phantom_be_aggr capture + 2 DB cols** (`phantom_be_aggr_triggered_at/_would_exit_pnl`) — harmless, just unused |
+| ⏱️ Time-to-L1 Protection Tracker | `main.py` fn `_compute_time_to_l1_analysis` + payload; `index.html` UI (3 tables) + JS renderer + 2 text-exports | — (was pure report; no engine hook per May 27 ship) |
+
+Verified: target identifiers grep to **0** refs in both files; main.py parses; index.html `{}`
+balanced and `()`/`[]` deltas identical to pre-edit (= balanced blocks cut); all neighboring
+sections (4-Cohort, Pattern C/W, Unmatched, Leash Shadow) intact. Engine phantom-BE capture left
+running but inert — strip later if zero-overhead desired (would touch trading_engine.py + need no
+migration since cols stay). **Also: stop surfacing BE in trade analyses going forward.**
+
+### Files changed
+- `main.py` (2 fns + 2 payload entries removed) · `templates/index.html` (8 fenced regions: 2 UI +
+  2 JS renderers + 4 text-exports) · `CLAUDE.md` — this entry
+
+---
+
 ## May 31, 2026 — fan_ratio SHORT: floor lowered `1.02-1.65` → `1.00-1.65`
 
 Lowered the SHORT EMA-fan dead-zone block floor from 1.02 to **1.00**, adding the

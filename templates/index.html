@@ -1791,40 +1791,6 @@
                     </div>
                 </div>
 
-                <!-- Phantom BE 0.20/0.10 Counterfactual (May 14) — observation-only -->
-                <div class="mt-6 pt-6 border-t border-violet-900/40">
-                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🧪 Phantom BE 0.20/0.10 Counterfactual (observation-only)</h3>
-                    <p class="text-xs text-gray-500 mb-2">
-                        Shadow tracker for BE at trigger <strong>+0.20%</strong> / floor <strong>+0.10%</strong>. Records what BE would have done on every trade. <strong>Use to validate before shipping live BE.</strong>
-                        <br/><em class="text-fuchsia-400">Armed = peak crossed +0.20%. Fired = price retraced to ≤+0.10% after arming. <strong>Avg% columns and Δ are WHOLE-GROUP</strong> — BE-scenario uses phantom exit for fired trades + actual close for the rest. Pre-May-19 captures used ≤+0.05% floor (deeper retrace; values are valid lower bounds for the 0.10 floor). Post-May-19 captures use ≤+0.10%.</em>
-                    </p>
-                    <div class="text-xs text-gray-400 mb-2" id="phantom-be-aggr-pool">(no post-deploy trades yet)</div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead class="text-gray-400 uppercase">
-                                <tr>
-                                    <th class="text-left py-1 px-2">Close Reason</th>
-                                    <th class="text-left px-2">Dir</th>
-                                    <th class="text-right px-2">N</th>
-                                    <th class="text-right px-2" title="Trades where peak ≥ +0.20% (BE would have armed)">Armed</th>
-                                    <th class="text-right px-2" title="Trades where, after arming, P&L retraced to ≤ +0.05% (BE would have fired)">Fired</th>
-                                    <th class="text-right px-2" title="Whole-group average of actual closed P&L%">Actual Avg%</th>
-                                    <th class="text-right px-2" title="Whole-group BE-scenario average: phantom exit pnl for fired trades + actual pnl for the rest">BE Avg%</th>
-                                    <th class="text-right px-2" title="BE Avg% − Actual Avg% (whole-group delta)">Δ%</th>
-                                    <th class="text-right px-2" title="Sum of actual P&L $ across the group (real money)">Actual $</th>
-                                    <th class="text-right px-2" title="Counterfactual: Actual $ + BE delta (what total would have been with BE active)">BE $</th>
-                                    <th class="text-right px-2" title="Counterfactual $ impact across the whole group (sum of fired trades' $ delta)">Δ $</th>
-                                    <th class="text-left px-2">Verdict</th>
-                                </tr>
-                            </thead>
-                            <tbody id="phantom-be-aggr-body" class="divide-y divide-white/5">
-                                <tr><td colspan="12" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-
                 <!-- 4-Cohort Pattern Coverage (May 21 late) — proper split of Unm.L/Unm.W -->
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-2">🧬 4-Cohort Pattern Coverage</h3>
@@ -2114,92 +2080,6 @@
                         </table>
                     </div>
                 </div>
-
-                <!-- ════════════════════════════════════════════════════════════════
-                     Time-to-L1 Protection Tracker (May 27, 2026 — observation-only).
-                     Measures how fast winners reach L1 (+0.20% peak) vs losers
-                     that never reach it. Informs time-based exit candidate
-                     (TIME_EXIT_NO_L1, currently disabled via time_exit_no_l1_minutes=0).
-                     See CLAUDE.md May 27 entry for promotion gates.
-                     ════════════════════════════════════════════════════════════════ -->
-                <section class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">⏱️ Time-to-L1 Protection Tracker (observation-only)</h3>
-                    <p class="text-xs text-gray-400 mb-3">
-                        How long do winners take to reach <strong>L1 protection threshold (+0.20% peak)</strong> vs losers that never reach it?
-                        Drives the <strong>TIME_EXIT_NO_L1</strong> mechanism: if peak hasn't crossed +0.20% by minute X, exit at market
-                        (trade is structurally failing). Three tables: (1) cohort reach rates + time distributions,
-                        (2) per-X counterfactual save/kill analysis, (3) per-pattern impact at the best-ratio X.
-                    </p>
-                    <div id="time-to-l1-summary" class="text-xs text-cyan-200 mb-2"></div>
-
-                    <h4 class="text-xs font-semibold text-cyan-200 mt-3 mb-1">Cohort reach rates (L1 = +0.20% peak)</h4>
-                    <div class="overflow-x-auto mb-4">
-                        <table class="w-full text-xs">
-                            <thead class="text-gray-300 border-b border-white/10">
-                                <tr class="text-left">
-                                    <th class="px-2 py-2 font-medium">Direction</th>
-                                    <th class="px-2 py-2 font-medium">Outcome</th>
-                                    <th class="px-2 py-2 font-medium text-right">N</th>
-                                    <th class="px-2 py-2 font-medium text-right">Reach %</th>
-                                    <th class="px-2 py-2 font-medium text-right">Med t (min)</th>
-                                    <th class="px-2 py-2 font-medium text-right">p75 (min)</th>
-                                    <th class="px-2 py-2 font-medium text-right">p90 (min)</th>
-                                    <th class="px-2 py-2 font-medium text-right">Never-N</th>
-                                    <th class="px-2 py-2 font-medium text-right">Never AvgDur</th>
-                                    <th class="px-2 py-2 font-medium text-right">Never Total $</th>
-                                </tr>
-                            </thead>
-                            <tbody id="time-to-l1-cohort-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <h4 class="text-xs font-semibold text-cyan-200 mt-3 mb-1">Time-exit counterfactual (peak &lt; L1 AND dur ≥ X min → exit)</h4>
-                    <p class="text-xs text-gray-500 mb-2">
-                        Conservative model: rescue = 50% of close P&amp;L (trades that never reach L1 typically continue toward SL).
-                        Save:kill ratio is the key metric — high ratio means time-exit catches mostly losers, few winners.
-                    </p>
-                    <div class="overflow-x-auto mb-4">
-                        <table class="w-full text-xs">
-                            <thead class="text-gray-300 border-b border-white/10">
-                                <tr class="text-left">
-                                    <th class="px-2 py-2 font-medium text-right">X (min)</th>
-                                    <th class="px-2 py-2 font-medium text-right">Triggered</th>
-                                    <th class="px-2 py-2 font-medium text-right">Losers caught</th>
-                                    <th class="px-2 py-2 font-medium text-right">Winners cut</th>
-                                    <th class="px-2 py-2 font-medium text-right">Saved $</th>
-                                    <th class="px-2 py-2 font-medium text-right">Killed $</th>
-                                    <th class="px-2 py-2 font-medium text-right">Net $</th>
-                                    <th class="px-2 py-2 font-medium text-right">Save:Kill</th>
-                                </tr>
-                            </thead>
-                            <tbody id="time-to-l1-cf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <h4 class="text-xs font-semibold text-cyan-200 mt-3 mb-1">Per-pattern impact at best X (10 min default)</h4>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead class="text-gray-300 border-b border-white/10">
-                                <tr class="text-left">
-                                    <th class="px-2 py-2 font-medium">Cohort</th>
-                                    <th class="px-2 py-2 font-medium text-right">N triggered</th>
-                                    <th class="px-2 py-2 font-medium text-right">Losers</th>
-                                    <th class="px-2 py-2 font-medium text-right">Winners</th>
-                                    <th class="px-2 py-2 font-medium text-right">Losers $</th>
-                                    <th class="px-2 py-2 font-medium text-right">Winners $</th>
-                                </tr>
-                            </thead>
-                            <tbody id="time-to-l1-pattern-body" class="divide-y divide-white/5">
-                                <tr><td colspan="6" class="px-3 py-2 text-center text-gray-500">(no data yet)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
 
                 <!-- ===== LEASH SHADOW START (May 30, observation-only) ===== -->
                 <div class="mt-6 pt-6 border-t border-white/10">
@@ -7323,27 +7203,6 @@
                 });
             }
 
-            // Phantom BE 0.20/0.10 Counterfactual (May 14)
-            const _pba1 = perf.phantom_be_aggr_by_close_reason || {};
-            if (_pba1.rows && _pba1.rows.length) {
-                lines.push(`\n${hr2}`);
-                const _p = _pba1.pool || {};
-                const _dd = _p.total_dollar_delta || 0;
-                const _pAct = _p.actual_dollar_total || 0;
-                const _pBe = _p.be_dollar_total || 0;
-                lines.push(`## Phantom BE 0.20/0.10 Counterfactual (observation-only)`);
-                lines.push(`Pool: ${_p.total || 0} trades · ${_p.armed || 0} armed · ${_p.fired || 0} would have fired · Actual ${_pAct >= 0 ? '+$' : '-$'}${Math.abs(_pAct).toFixed(2)} · BE ${_pBe >= 0 ? '+$' : '-$'}${Math.abs(_pBe).toFixed(2)} · Δ ${_dd >= 0 ? '+$' : '-$'}${Math.abs(_dd).toFixed(2)}\n`);
-                lines.push('Close Reason             Dir   N    Armed  Fired  Actual%    BE%        Δ%         Actual$       BE$           Δ$            Verdict');
-                lines.push('-'.repeat(140));
-                _pba1.rows.forEach(r => {
-                    const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
-                    const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
-                    lines.push(`${r.close_reason.padEnd(24)} ${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)}  ${String(r.fired).padStart(5)}  ${fmt(r.avg_actual_pct)}  ${fmt(r.avg_phantom_pct)}  ${fmt(r.delta_pct)}  ${fmt$(r.actual_dollar_total)}  ${fmt$(r.be_dollar_total)}  ${fmt$(r.dollar_delta)}  ${r.verdict}`);
-                });
-                lines.push('');
-            }
-
-
             // Pattern C Tracker (May 19, 2026 — observation-only; May 20 added TP CF columns)
             const _pc1 = perf.pattern_c_validation || [];
             if (_pc1.length) {
@@ -7440,41 +7299,6 @@
                 _uw1.forEach(r => {
                     const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
                     lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
-                });
-                lines.push('');
-            }
-
-            // Time-to-L1 Protection Tracker (May 27, 2026)
-            const _t1a = perf.time_to_l1_analysis || {};
-            if (_t1a.total_trades) {
-                lines.push(`\n${hr2}`);
-                const fmt$x = (v) => v == null ? '$0.00' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                lines.push(`## Time-to-L1 Protection Tracker (observation-only)`);
-                lines.push(`Pool: ${_t1a.total_trades} trades · L1 = +${(_t1a.l1_threshold_pct||0.20).toFixed(2)}% peak · Best-ratio X = ${_t1a.best_x_min || 10} min\n`);
-
-                lines.push('Cohort reach rates:');
-                lines.push('Dir   Outcome   N    Reach%  MedT(min) p75    p90    Never-N AvgDur  NeverTot$');
-                lines.push('-'.repeat(95));
-                (_t1a.cohort_table || []).forEach(r => {
-                    const med = r.med_time_min == null ? '   -  ' : r.med_time_min.toFixed(1).padStart(7);
-                    const p75 = r.p75_time_min == null ? '   -  ' : r.p75_time_min.toFixed(1).padStart(5);
-                    const p90 = r.p90_time_min == null ? '   -  ' : r.p90_time_min.toFixed(1).padStart(5);
-                    lines.push(`${(r.direction||'').padEnd(5)} ${(r.outcome||'').padEnd(8)} ${String(r.n).padStart(4)}  ${(r.reach_pct == null ? '-' : r.reach_pct.toFixed(1) + '%').padStart(6)}  ${med}  ${p75}  ${p90}  ${String(r.never_n).padStart(6)}  ${(r.never_avg_dur_min||0).toFixed(1).padStart(5)}  ${fmt$x(r.never_total_usd).padStart(10)}`);
-                });
-
-                lines.push('\nTime-exit counterfactual (peak < L1 AND dur ≥ X → exit, 50% rescue assumption):');
-                lines.push('X(min)  Trig  LosersC  WinnersC   Saved$    Killed$     Net$    Save:Kill');
-                lines.push('-'.repeat(80));
-                (_t1a.time_exit_counterfactual || []).forEach(r => {
-                    const ratioStr = r.save_kill_ratio == null ? '   -' : (r.save_kill_ratio >= 999 ? '   ∞' : (r.save_kill_ratio.toFixed(1) + ':1').padStart(7));
-                    lines.push(`${String(r.x_min).padStart(5)}  ${String(r.triggered).padStart(4)}  ${String(r.losers_caught).padStart(7)}  ${String(r.winners_cut).padStart(8)}  ${fmt$x(r.saved_usd).padStart(9)}  ${fmt$x(r.killed_usd).padStart(9)}  ${fmt$x(r.net_usd).padStart(9)}  ${ratioStr}`);
-                });
-
-                lines.push(`\nPer-pattern impact at X = ${_t1a.best_x_min || 10} min:`);
-                lines.push('Cohort         Trig  Losers Winners  Losers$    Winners$');
-                lines.push('-'.repeat(65));
-                (_t1a.per_pattern_impact_at_best_x || []).forEach(r => {
-                    lines.push(`${(r.cohort||'').padEnd(14)}  ${String(r.n_triggered).padStart(4)}  ${String(r.losers).padStart(5)}  ${String(r.winners).padStart(6)}  ${fmt$x(r.losers_total_usd).padStart(9)}  ${fmt$x(r.winners_total_usd).padStart(9)}`);
                 });
                 lines.push('');
             }
@@ -9018,27 +8842,6 @@
                     });
                 }
 
-                // Phantom BE 0.20/0.10 Counterfactual (May 14)
-                const _pba2 = perf.phantom_be_aggr_by_close_reason || {};
-                if (_pba2.rows && _pba2.rows.length) {
-                    lines.push(`\n${hr2}`);
-                    const _p2 = _pba2.pool || {};
-                    const _dd2 = _p2.total_dollar_delta || 0;
-                    const _pAct2 = _p2.actual_dollar_total || 0;
-                    const _pBe2 = _p2.be_dollar_total || 0;
-                    lines.push(`## Phantom BE 0.20/0.10 Counterfactual (observation-only)`);
-                    lines.push(`Pool: ${_p2.total || 0} trades · ${_p2.armed || 0} armed · ${_p2.fired || 0} would have fired · Actual ${_pAct2 >= 0 ? '+$' : '-$'}${Math.abs(_pAct2).toFixed(2)} · BE ${_pBe2 >= 0 ? '+$' : '-$'}${Math.abs(_pBe2).toFixed(2)} · Δ ${_dd2 >= 0 ? '+$' : '-$'}${Math.abs(_dd2).toFixed(2)}\n`);
-                    lines.push('Close Reason             Dir   N    Armed  Fired  Actual%    BE%        Δ%         Actual$       BE$           Δ$            Verdict');
-                    lines.push('-'.repeat(140));
-                    _pba2.rows.forEach(r => {
-                        const fmt = (v) => v == null ? '   -    ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(8);
-                        const fmt$ = (v) => v == null ? '       -' : ((v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2)).padStart(10);
-                        lines.push(`${r.close_reason.padEnd(24)} ${r.direction.padEnd(5)} ${String(r.count).padStart(3)}  ${String(r.armed).padStart(5)}  ${String(r.fired).padStart(5)}  ${fmt(r.avg_actual_pct)}  ${fmt(r.avg_phantom_pct)}  ${fmt(r.delta_pct)}  ${fmt$(r.actual_dollar_total)}  ${fmt$(r.be_dollar_total)}  ${fmt$(r.dollar_delta)}  ${r.verdict}`);
-                    });
-                    lines.push('');
-                }
-
-
                 // Pattern C Tracker (May 19, 2026 — observation-only; May 20 added TP CF columns)
                 const _pc2 = perf.pattern_c_validation || [];
                 if (_pc2.length) {
@@ -9132,41 +8935,6 @@
                     _uw2.forEach(r => {
                         const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
                         lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
-                    });
-                    lines.push('');
-                }
-
-                // Time-to-L1 Protection Tracker (May 27, 2026)
-                const _t1b = perf.time_to_l1_analysis || {};
-                if (_t1b.total_trades) {
-                    lines.push(`\n${hr2}`);
-                    const fmt$x = (v) => v == null ? '$0.00' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                    lines.push(`## Time-to-L1 Protection Tracker (observation-only)`);
-                    lines.push(`Pool: ${_t1b.total_trades} trades · L1 = +${(_t1b.l1_threshold_pct||0.20).toFixed(2)}% peak · Best-ratio X = ${_t1b.best_x_min || 10} min\n`);
-
-                    lines.push('Cohort reach rates:');
-                    lines.push('Dir   Outcome   N    Reach%  MedT(min) p75    p90    Never-N AvgDur  NeverTot$');
-                    lines.push('-'.repeat(95));
-                    (_t1b.cohort_table || []).forEach(r => {
-                        const med = r.med_time_min == null ? '   -  ' : r.med_time_min.toFixed(1).padStart(7);
-                        const p75 = r.p75_time_min == null ? '   -  ' : r.p75_time_min.toFixed(1).padStart(5);
-                        const p90 = r.p90_time_min == null ? '   -  ' : r.p90_time_min.toFixed(1).padStart(5);
-                        lines.push(`${(r.direction||'').padEnd(5)} ${(r.outcome||'').padEnd(8)} ${String(r.n).padStart(4)}  ${(r.reach_pct == null ? '-' : r.reach_pct.toFixed(1) + '%').padStart(6)}  ${med}  ${p75}  ${p90}  ${String(r.never_n).padStart(6)}  ${(r.never_avg_dur_min||0).toFixed(1).padStart(5)}  ${fmt$x(r.never_total_usd).padStart(10)}`);
-                    });
-
-                    lines.push('\nTime-exit counterfactual (peak < L1 AND dur ≥ X → exit, 50% rescue assumption):');
-                    lines.push('X(min)  Trig  LosersC  WinnersC   Saved$    Killed$     Net$    Save:Kill');
-                    lines.push('-'.repeat(80));
-                    (_t1b.time_exit_counterfactual || []).forEach(r => {
-                        const ratioStr = r.save_kill_ratio == null ? '   -' : (r.save_kill_ratio >= 999 ? '   ∞' : (r.save_kill_ratio.toFixed(1) + ':1').padStart(7));
-                        lines.push(`${String(r.x_min).padStart(5)}  ${String(r.triggered).padStart(4)}  ${String(r.losers_caught).padStart(7)}  ${String(r.winners_cut).padStart(8)}  ${fmt$x(r.saved_usd).padStart(9)}  ${fmt$x(r.killed_usd).padStart(9)}  ${fmt$x(r.net_usd).padStart(9)}  ${ratioStr}`);
-                    });
-
-                    lines.push(`\nPer-pattern impact at X = ${_t1b.best_x_min || 10} min:`);
-                    lines.push('Cohort         Trig  Losers Winners  Losers$    Winners$');
-                    lines.push('-'.repeat(65));
-                    (_t1b.per_pattern_impact_at_best_x || []).forEach(r => {
-                        lines.push(`${(r.cohort||'').padEnd(14)}  ${String(r.n_triggered).padStart(4)}  ${String(r.losers).padStart(5)}  ${String(r.winners).padStart(6)}  ${fmt$x(r.losers_total_usd).padStart(9)}  ${fmt$x(r.winners_total_usd).padStart(9)}`);
                     });
                     lines.push('');
                 }
@@ -11300,104 +11068,6 @@
                     _render1h30mRsiDir(_b1h30m.shorts, 'btc-1h-30m-rsi-short-body', 'SHORT');
                 }
 
-                // Phantom BE 0.20/0.10 Counterfactual (May 14)
-                if (data.phantom_be_aggr_by_close_reason) {
-                    const _pba = data.phantom_be_aggr_by_close_reason;
-                    const _body = document.getElementById('phantom-be-aggr-body');
-                    const _poolEl = document.getElementById('phantom-be-aggr-pool');
-                    if (_poolEl && _pba.pool) {
-                        const p = _pba.pool;
-                        if (p.total > 0) {
-                            const ddCls = p.total_dollar_delta >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const actCls = (p.actual_dollar_total || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const beCls = (p.be_dollar_total || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const fmt$ = (v) => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                            _poolEl.innerHTML = `Pool: <strong>${p.total}</strong> trades · <strong>${p.armed}</strong> armed (peak ≥+0.20%) · <strong>${p.fired}</strong> would have fired · Actual <span class="${actCls} font-semibold">${fmt$(p.actual_dollar_total || 0)}</span> → BE <span class="${beCls} font-semibold">${fmt$(p.be_dollar_total || 0)}</span> · Δ <span class="${ddCls} font-semibold">${fmt$(p.total_dollar_delta)}</span>`;
-                        } else {
-                            _poolEl.textContent = '(no post-deploy trades yet)';
-                        }
-                    }
-                    if (_body) {
-                        if (!_pba.rows || !_pba.rows.length) {
-                            _body.innerHTML = '<tr><td colspan="12" class="py-3 text-center text-gray-500">No post-deploy trades yet</td></tr>';
-                        } else {
-                            const fmt = (v, d=3) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + '%';
-                            const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                            const rowsHtml = _pba.rows.map(r => {
-                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
-                                const dCls = r.delta_pct == null ? 'text-gray-400' : (r.delta_pct >= 0 ? 'text-emerald-400' : 'text-red-400');
-                                const totCls = r.dollar_delta >= 5 ? 'text-emerald-400' : (r.dollar_delta <= -5 ? 'text-red-400' : 'text-gray-400');
-                                const actCls = r.actual_dollar_total >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                const beCls = r.be_dollar_total >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                const vCls = r.verdict.startsWith('★') ? 'text-emerald-400 font-semibold'
-                                    : r.verdict.startsWith('⚠ HURT') ? 'text-red-400 font-semibold'
-                                    : r.verdict.startsWith('✓') ? 'text-blue-400'
-                                    : 'text-gray-500';
-                                return `<tr class="hover:bg-white/5">
-                                    <td class="px-2 py-1">${r.close_reason}</td>
-                                    <td class="px-2 py-1 ${dirCls}">${r.direction}</td>
-                                    <td class="px-2 py-1 text-right">${r.count}</td>
-                                    <td class="px-2 py-1 text-right">${r.armed}</td>
-                                    <td class="px-2 py-1 text-right font-semibold">${r.fired}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.avg_actual_pct)}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${fmt(r.avg_phantom_pct)}</td>
-                                    <td class="px-2 py-1 text-right ${dCls}">${fmt(r.delta_pct)}</td>
-                                    <td class="px-2 py-1 text-right ${actCls}">${fmt$(r.actual_dollar_total)}</td>
-                                    <td class="px-2 py-1 text-right ${beCls}">${fmt$(r.be_dollar_total)}</td>
-                                    <td class="px-2 py-1 text-right ${totCls}">${fmt$(r.dollar_delta)}</td>
-                                    <td class="px-2 py-1 ${vCls}">${r.verdict}</td>
-                                </tr>`;
-                            }).join('');
-                            // Compute aggregate TOTAL across all close_reason × direction groups.
-                            // count-weighted averages for Actual% and BE%; raw sum for $ columns.
-                            let tN = 0, tArmed = 0, tFired = 0, tActualSum = 0, tBeSum = 0, tDollar = 0, tActualDollar = 0, tBeDollar = 0;
-                            for (const r of _pba.rows) {
-                                tN += (r.count || 0);
-                                tArmed += (r.armed || 0);
-                                tFired += (r.fired || 0);
-                                tActualSum += (r.avg_actual_pct || 0) * (r.count || 0);
-                                tBeSum += (r.avg_phantom_pct || 0) * (r.count || 0);
-                                tDollar += (r.dollar_delta || 0);
-                                tActualDollar += (r.actual_dollar_total || 0);
-                                tBeDollar += (r.be_dollar_total || 0);
-                            }
-                            const tActualAvg = tN > 0 ? tActualSum / tN : null;
-                            const tBeAvg = tN > 0 ? tBeSum / tN : null;
-                            const tDeltaPct = (tActualAvg != null && tBeAvg != null) ? (tBeAvg - tActualAvg) : null;
-                            const tDCls = tDeltaPct == null ? 'text-gray-400' : (tDeltaPct >= 0 ? 'text-emerald-400' : 'text-red-400');
-                            const tTotCls = tDollar >= 5 ? 'text-emerald-400' : (tDollar <= -5 ? 'text-red-400' : 'text-gray-400');
-                            const tActCls = tActualDollar >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const tBeDolCls = tBeDollar >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            let tVerdict, tVCls;
-                            if (tFired === 0) {
-                                tVerdict = 'no fires yet'; tVCls = 'text-gray-500';
-                            } else if (tDollar > 5) {
-                                tVerdict = '★ NET HELPING'; tVCls = 'text-emerald-400 font-bold';
-                            } else if (tDollar < -5) {
-                                tVerdict = '⚠ NET HURTING'; tVCls = 'text-red-400 font-bold';
-                            } else {
-                                tVerdict = '✓ Marginal'; tVCls = 'text-blue-400';
-                            }
-                            const totalRow = `<tr class="bg-fuchsia-500/5 border-t-2 border-fuchsia-500/30 font-semibold">
-                                <td class="px-2 py-1.5 text-fuchsia-300">TOTAL</td>
-                                <td class="px-2 py-1.5 text-gray-400">all</td>
-                                <td class="px-2 py-1.5 text-right">${tN}</td>
-                                <td class="px-2 py-1.5 text-right">${tArmed}</td>
-                                <td class="px-2 py-1.5 text-right">${tFired}</td>
-                                <td class="px-2 py-1.5 text-right text-gray-200">${fmt(tActualAvg)}</td>
-                                <td class="px-2 py-1.5 text-right text-gray-200">${fmt(tBeAvg)}</td>
-                                <td class="px-2 py-1.5 text-right ${tDCls}">${fmt(tDeltaPct)}</td>
-                                <td class="px-2 py-1.5 text-right ${tActCls}">${fmt$(tActualDollar)}</td>
-                                <td class="px-2 py-1.5 text-right ${tBeDolCls}">${fmt$(tBeDollar)}</td>
-                                <td class="px-2 py-1.5 text-right ${tTotCls}">${fmt$(tDollar)}</td>
-                                <td class="px-2 py-1.5 ${tVCls}">${tVerdict}</td>
-                            </tr>`;
-                            _body.innerHTML = rowsHtml + totalRow;
-                        }
-                    }
-                }
-
-
                 // Pattern C Tracker (May 19, 2026 — observation-only)
                 // 4-Cohort Pattern Coverage (May 21 late ship)
                 if (data.pattern_4cohort_coverage) {
@@ -11745,111 +11415,6 @@
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_atr_pct == null ? '-' : r.entry_btc_atr_pct.toFixed(3)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_btc_trend_gap_pct)}</td>
                                     <td class="px-2 py-1 text-gray-500 text-xs">${r.close_reason || ''}</td>
-                                </tr>`;
-                            }).join('');
-                        }
-                    }
-                }
-
-                // Time-to-L1 Protection Tracker (May 27, 2026 — observation-only)
-                if (data.time_to_l1_analysis !== undefined) {
-                    const _t1 = data.time_to_l1_analysis || {};
-                    const fmt$ = (v) => v == null ? '$0.00' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
-                    const fmtN = (v, d=1) => v == null ? '-' : v.toFixed(d);
-
-                    // Summary line
-                    const _sumEl = document.getElementById('time-to-l1-summary');
-                    if (_sumEl) {
-                        const tot = _t1.total_trades || 0;
-                        const bx = _t1.best_x_min || 10;
-                        const l1 = _t1.l1_threshold_pct || 0.20;
-                        _sumEl.innerHTML = tot
-                            ? `<span class="text-gray-400">Pool:</span> <strong>${tot}</strong> trades · L1 = <strong>+${l1.toFixed(2)}%</strong> peak · Best-ratio X = <strong>${bx} min</strong> (see counterfactual table below)`
-                            : '<span class="text-gray-500">(no closed trades with peak data yet)</span>';
-                    }
-
-                    // Cohort table
-                    const _coBody = document.getElementById('time-to-l1-cohort-body');
-                    if (_coBody) {
-                        const rows = _t1.cohort_table || [];
-                        if (!rows.length) {
-                            _coBody.innerHTML = '<tr><td colspan="10" class="px-3 py-2 text-center text-gray-500">(no data)</td></tr>';
-                        } else {
-                            _coBody.innerHTML = rows.map(r => {
-                                const dirCls = r.direction === 'LONG' ? 'text-emerald-300'
-                                    : r.direction === 'SHORT' ? 'text-red-300'
-                                    : 'text-gray-300';
-                                const outCls = r.outcome === 'winner' ? 'text-emerald-400'
-                                    : r.outcome === 'loser' ? 'text-red-400'
-                                    : 'text-amber-400';
-                                const reachCls = r.reach_pct >= 70 ? 'text-emerald-400'
-                                    : r.reach_pct >= 40 ? 'text-amber-400'
-                                    : 'text-red-400';
-                                const nrTotCls = (r.never_total_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                return `<tr>
-                                    <td class="px-2 py-1 ${dirCls} font-semibold">${r.direction}</td>
-                                    <td class="px-2 py-1 ${outCls}">${r.outcome}</td>
-                                    <td class="px-2 py-1 text-right text-gray-200">${r.n}</td>
-                                    <td class="px-2 py-1 text-right ${reachCls} font-semibold">${r.reach_pct == null ? '-' : r.reach_pct.toFixed(1) + '%'}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${fmtN(r.med_time_min)}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${fmtN(r.p75_time_min)}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${fmtN(r.p90_time_min)}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${r.never_n}</td>
-                                    <td class="px-2 py-1 text-right text-gray-300">${fmtN(r.never_avg_dur_min)}</td>
-                                    <td class="px-2 py-1 text-right ${nrTotCls}">${fmt$(r.never_total_usd)}</td>
-                                </tr>`;
-                            }).join('');
-                        }
-                    }
-
-                    // Counterfactual table
-                    const _cfBody = document.getElementById('time-to-l1-cf-body');
-                    if (_cfBody) {
-                        const rows = _t1.time_exit_counterfactual || [];
-                        if (!rows.length) {
-                            _cfBody.innerHTML = '<tr><td colspan="8" class="px-3 py-2 text-center text-gray-500">(no data)</td></tr>';
-                        } else {
-                            _cfBody.innerHTML = rows.map(r => {
-                                const netCls = (r.net_usd || 0) >= 10 ? 'text-emerald-400 font-semibold'
-                                    : (r.net_usd || 0) >= 0 ? 'text-emerald-300'
-                                    : 'text-red-400';
-                                const ratioCls = (r.save_kill_ratio || 0) >= 3 ? 'text-emerald-400 font-semibold'
-                                    : (r.save_kill_ratio || 0) >= 1.5 ? 'text-amber-400'
-                                    : 'text-red-400';
-                                const ratioStr = r.save_kill_ratio == null ? '-'
-                                    : r.save_kill_ratio >= 999 ? '∞'
-                                    : r.save_kill_ratio.toFixed(1) + ':1';
-                                return `<tr>
-                                    <td class="px-2 py-1 text-right text-cyan-300 font-semibold">${r.x_min}</td>
-                                    <td class="px-2 py-1 text-right text-gray-200">${r.triggered}</td>
-                                    <td class="px-2 py-1 text-right text-red-300">${r.losers_caught}</td>
-                                    <td class="px-2 py-1 text-right text-emerald-300">${r.winners_cut}</td>
-                                    <td class="px-2 py-1 text-right text-emerald-400">${fmt$(r.saved_usd)}</td>
-                                    <td class="px-2 py-1 text-right text-red-400">${fmt$(r.killed_usd)}</td>
-                                    <td class="px-2 py-1 text-right ${netCls}">${fmt$(r.net_usd)}</td>
-                                    <td class="px-2 py-1 text-right ${ratioCls}">${ratioStr}</td>
-                                </tr>`;
-                            }).join('');
-                        }
-                    }
-
-                    // Per-pattern table
-                    const _ppBody = document.getElementById('time-to-l1-pattern-body');
-                    if (_ppBody) {
-                        const rows = _t1.per_pattern_impact_at_best_x || [];
-                        if (!rows.length) {
-                            _ppBody.innerHTML = '<tr><td colspan="6" class="px-3 py-2 text-center text-gray-500">(no data)</td></tr>';
-                        } else {
-                            _ppBody.innerHTML = rows.map(r => {
-                                const lossCls = (r.losers_total_usd || 0) < 0 ? 'text-red-400' : 'text-gray-300';
-                                const winCls = (r.winners_total_usd || 0) > 0 ? 'text-emerald-400' : 'text-gray-300';
-                                return `<tr>
-                                    <td class="px-2 py-1 text-gray-200">${r.cohort}</td>
-                                    <td class="px-2 py-1 text-right text-gray-200">${r.n_triggered}</td>
-                                    <td class="px-2 py-1 text-right text-red-300">${r.losers}</td>
-                                    <td class="px-2 py-1 text-right text-emerald-300">${r.winners}</td>
-                                    <td class="px-2 py-1 text-right ${lossCls}">${fmt$(r.losers_total_usd)}</td>
-                                    <td class="px-2 py-1 text-right ${winCls}">${fmt$(r.winners_total_usd)}</td>
                                 </tr>`;
                             }).join('');
                         }

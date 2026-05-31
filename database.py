@@ -431,11 +431,13 @@ async def init_db():
                 for _sc in ('shadow_tight_pnl','shadow_wide_pnl','shadow_tierA_pnl','shadow_tierB_pnl',
                             'shadow_strpk_pnl','shadow_stren_pnl','shadow_peak_stretch',
                             'shadow_tight_min','shadow_wide_min','shadow_tierA_min','shadow_tierB_min',
-                            'shadow_strpk_min','shadow_stren_min'):
+                            'shadow_strpk_min','shadow_stren_min',
+                            'shadow_strpk04_pnl','shadow_strpk04_min','shadow_strpk03_pnl','shadow_strpk03_min'):
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} FLOAT"))
                 for _sc in ('shadow_tight_reason','shadow_wide_reason','shadow_tierA_reason','shadow_tierB_reason',
-                            'shadow_strpk_reason','shadow_stren_reason'):
+                            'shadow_strpk_reason','shadow_stren_reason',
+                            'shadow_strpk04_reason','shadow_strpk03_reason'):
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} VARCHAR(15)"))
                 # ===== LEASH SHADOW END =====

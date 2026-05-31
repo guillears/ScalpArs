@@ -1,5 +1,41 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — strpk K-bracket (0.4 / 0.3 looser stretch-trail variants) — observation-only
+
+Added two looser stretch-trail leashes to the Leash Shadow tracker, bracketing the trail-tightness
+**K** the same way tierA/tierB bracket the price-trail params:
+- **strpk** (existing) = exit when live stretch ≤ **0.5×** peak stretch
+- **strpk04** (NEW) = ≤ **0.4×** peak stretch (looser → holds the runner longer)
+- **strpk03** (NEW) = ≤ **0.3×** peak stretch (loosest)
+
+Lower K = more capture on true runners, more giveback on fade-and-reversers. Only the **armed
+cohort** can settle the best K — never a single trade.
+
+### Why this exists (and the discipline lock)
+Driven by IDUSDT (N=1): actual trailing exited +1.07% but the path ran to +9.22% post-peak; strpk
+(0.5) caught **+6.80% (74% of max)** on the real dip-respecting path — the runner the live trailing
+shook us out of. That is the **proof-of-concept**, NOT a result. **Nothing tunes or ships from N=1.**
+The price leashes (tight/wide/tierA/tierB) stay as the control group + sanity anchor — they look
+"negative" on IDUSDT only because it was an extreme runner; on the median peak-and-fade trade they
+protect profit while strpk/stren give it back. The K is settled by the cohort's NET across runners
+AND reversers at the next batch (≥~10 armed trades) against the locked 6-condition gate — never by
+who caught the single biggest runner.
+
+### Surfaced
+- **Leash Shadow table:** strpk04 / strpk03 appear as new rows (AvgExit% / %MaxPk / Δ vs Act / Min)
+  — renderer is generic, auto-picks them up.
+- **Post-Exit Regret:** **Strpk04% / Strpk03%** columns next to Strpk% (pct only — the K-sweep's home
+  is the per-leash Leash Shadow rows; mins kept there).
+- Engine: generalized strpk firing to a `_STRPK_K = {strpk:0.5, strpk04:0.4, strpk03:0.3}` map;
+  `_STRETCH_NAMES` extended (init/finalize/fire-min auto-handle). Fenced, fail-silent, no trading touch.
+
+### Files changed
+- `models.py` (6 cols) · `database.py` (auto-migrate) · `services/trading_engine.py` (_STRPK_K +
+  firing + 6 persistence fields) · `main.py` (Leash Shadow 2 rows; Post-Exit 2 avg-pct) ·
+  `templates/index.html` (2 cols + exports) · `CLAUDE.md` — this entry
+
+---
+
 ## May 31, 2026 — Leash fire-minute capture (pre/post-close) — both tables (observation-only)
 
 Added per-leash **fire-minute** (minutes from open to the virtual leash exit) so we can tell

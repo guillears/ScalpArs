@@ -145,11 +145,13 @@ _LEASH_ACT = 0.45    # trailing activation (matches live tp_min=0.45 V_S/S_B; wa
 _LEASH_SL = -0.7    # hard SL floor (matches live)
 # Stretch-exit variants (May 30 ext): exit on EXTENSION fade, not price pullback.
 # Live stretch = signed %-distance of price from EMA5 (positive = favorable extension).
-#   strpk = exit when live stretch retraces to <= 0.5x PEAK stretch (stretch-trail from peak)
+#   strpk*  = exit when live stretch retraces to <= Kx PEAK stretch (stretch-trail from peak).
+#             K bracket (May 31): 0.5 (strpk) / 0.4 (strpk04) / 0.3 (strpk03) — LOWER K = looser
+#             trail = holds the runner longer (more on runners, more giveback on reversers).
+#             The cohort settles K the same way tierA/tierB bracket the price-trail params.
 #   stren = exit when live stretch falls back to <= ENTRY stretch (extension collapsed to entry)
-# Tests whether the move's own extension structure is a better exit than a fixed price %.
-_LEASH_STRETCH_RETAIN = 0.5
-_STRETCH_NAMES = ('strpk', 'stren')
+_STRPK_K = {'strpk': 0.5, 'strpk04': 0.4, 'strpk03': 0.3}
+_STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren')
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
@@ -207,9 +209,9 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     st['sexits'][sname] = (round(pnl_pct, 4), 'ema13'); continue
                 if signal_lost:
                     st['sexits'][sname] = (round(pnl_pct, 4), 'signal_lost'); continue
-                if sname == 'strpk':
+                if sname in _STRPK_K:
                     pk = st.get('pstretch')
-                    if pk is not None and pk > 0 and stretch <= pk * _LEASH_STRETCH_RETAIN:
+                    if pk is not None and pk > 0 and stretch <= pk * _STRPK_K[sname]:
                         st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
                 elif sname == 'stren':
                     es = st.get('estretch')
@@ -4432,6 +4434,12 @@ class TradingEngine:
                                 shadow_strpk_pnl=_leash_exits.get('strpk', (None, None))[0],
                                 shadow_strpk_reason=_leash_exits.get('strpk', (None, None))[1],
                                 shadow_strpk_min=_leash_exits.get('strpk_min'),
+                                shadow_strpk04_pnl=_leash_exits.get('strpk04', (None, None))[0],
+                                shadow_strpk04_reason=_leash_exits.get('strpk04', (None, None))[1],
+                                shadow_strpk04_min=_leash_exits.get('strpk04_min'),
+                                shadow_strpk03_pnl=_leash_exits.get('strpk03', (None, None))[0],
+                                shadow_strpk03_reason=_leash_exits.get('strpk03', (None, None))[1],
+                                shadow_strpk03_min=_leash_exits.get('strpk03_min'),
                                 shadow_stren_pnl=_leash_exits.get('stren', (None, None))[0],
                                 shadow_stren_reason=_leash_exits.get('stren', (None, None))[1],
                                 shadow_stren_min=_leash_exits.get('stren_min'),

@@ -455,6 +455,13 @@ class Order(Base):
     shadow_strpk_pnl = Column(Float, nullable=True)
     shadow_strpk_reason = Column(String(15), nullable=True)
     shadow_strpk_min = Column(Float, nullable=True)
+    # May 31: strpk K-bracket — 0.4 (strpk04) / 0.3 (strpk03) looser stretch-trail variants
+    shadow_strpk04_pnl = Column(Float, nullable=True)
+    shadow_strpk04_reason = Column(String(15), nullable=True)
+    shadow_strpk04_min = Column(Float, nullable=True)
+    shadow_strpk03_pnl = Column(Float, nullable=True)
+    shadow_strpk03_reason = Column(String(15), nullable=True)
+    shadow_strpk03_min = Column(Float, nullable=True)
     shadow_stren_pnl = Column(Float, nullable=True)
     shadow_stren_reason = Column(String(15), nullable=True)
     shadow_stren_min = Column(Float, nullable=True)

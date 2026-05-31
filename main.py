@@ -6308,6 +6308,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 stren_pe = [o.shadow_stren_pnl for o in group if getattr(o, 'shadow_stren_pnl', None) is not None]
                 avg_strpk_pe = sum(strpk_pe) / len(strpk_pe) if strpk_pe else None
                 avg_stren_pe = sum(stren_pe) / len(stren_pe) if stren_pe else None
+                # May 31: looser-K stretch-trail variants (0.4 / 0.3) — holds runners longer
+                strpk04_pe = [o.shadow_strpk04_pnl for o in group if getattr(o, 'shadow_strpk04_pnl', None) is not None]
+                strpk03_pe = [o.shadow_strpk03_pnl for o in group if getattr(o, 'shadow_strpk03_pnl', None) is not None]
+                avg_strpk04_pe = sum(strpk04_pe) / len(strpk04_pe) if strpk04_pe else None
+                avg_strpk03_pe = sum(strpk03_pe) / len(strpk03_pe) if strpk03_pe else None
                 # fire-minute (from open); compare to Duration → pre/post-close
                 strpk_min_pe = [o.shadow_strpk_min for o in group if getattr(o, 'shadow_strpk_min', None) is not None]
                 stren_min_pe = [o.shadow_stren_min for o in group if getattr(o, 'shadow_stren_min', None) is not None]
@@ -6367,6 +6372,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     "atr_sl_15x": round(atr_sl_widened_pe, 4) if atr_sl_widened_pe is not None else None,
                     # May 31: stretch-fade recoverable-regret band (observation-only)
                     "avg_strpk_pct": round(avg_strpk_pe, 4) if avg_strpk_pe is not None else None,
+                    "avg_strpk04_pct": round(avg_strpk04_pe, 4) if avg_strpk04_pe is not None else None,
+                    "avg_strpk03_pct": round(avg_strpk03_pe, 4) if avg_strpk03_pe is not None else None,
                     "avg_stren_pct": round(avg_stren_pe, 4) if avg_stren_pe is not None else None,
                     "avg_strpk_min": round(avg_strpk_min, 1) if avg_strpk_min is not None else None,
                     "avg_stren_min": round(avg_stren_min, 1) if avg_stren_min is not None else None,
@@ -8824,7 +8831,9 @@ def _compute_leash_shadow(orders):
         ('wide', 'shadow_wide_pnl', 'shadow_wide_reason', 'shadow_wide_min'),
         ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason', 'shadow_tierA_min'),
         ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason', 'shadow_tierB_min'),
-        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail from peak
+        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5
+        ('strpk04', 'shadow_strpk04_pnl', 'shadow_strpk04_reason', 'shadow_strpk04_min'),  # K=0.4 (looser)
+        ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest)
         ('stren', 'shadow_stren_pnl', 'shadow_stren_reason', 'shadow_stren_min'),  # stretch-to-entry
     ]
     # armed + shadow-populated cohort

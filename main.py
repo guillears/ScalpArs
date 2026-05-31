@@ -8830,6 +8830,7 @@ def _compute_leash_shadow(orders):
         if not coh:
             continue
         actual_total = sum((o.pnl_percentage or 0) for o in coh)
+        actual_avg_close = round(actual_total / len(coh), 3) if coh else 0.0
         leash_rows = []
         for name, pcol, rcol in LEASHES:
             evals = []
@@ -8857,6 +8858,19 @@ def _compute_leash_shadow(orders):
                 if mp > 0 and ev is not None:
                     mps.append(mp); evs.append(ev)
             delta = total - actual_total
+            # $ counterfactual: cf_$ = (leash% / 100) × notional_value (matches pnl=pct×notional/100)
+            cf_usd = 0.0
+            act_usd_m = 0.0
+            for o in coh:
+                ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
+                if ev is None:
+                    continue
+                if name == 'actual':
+                    cf_usd += (o.pnl or 0.0)
+                else:
+                    cf_usd += (ev / 100.0) * (getattr(o, 'notional_value', 0) or 0.0)
+                act_usd_m += (o.pnl or 0.0)
+            delta_usd = cf_usd - act_usd_m
             pct_max = (sum(evs) / sum(mps) * 100) if mps else 0.0
             if name == 'actual':
                 verdict = 'baseline'
@@ -8870,6 +8884,8 @@ def _compute_leash_shadow(orders):
                 verdict = '⚠ marginal'
             leash_rows.append({
                 'leash': name, 'n': n, 'avg': round(avg, 3), 'total': round(total, 2),
+                'actual_avg_close': actual_avg_close,
+                'act_usd': round(act_usd_m, 2), 'cf_usd': round(cf_usd, 2), 'delta_usd': round(delta_usd, 2),
                 'delta': round(delta, 2), 'clean': clean, 'trap': trap,
                 'avg_clean': round(sum(cwins) / len(cwins), 2) if cwins else 0.0,
                 'avg_trap': round(sum(ctraps) / len(ctraps), 2) if ctraps else 0.0,

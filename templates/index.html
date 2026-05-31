@@ -2226,8 +2226,12 @@
                                     <th class="px-2 py-2 font-medium">Slice / Leash</th>
                                     <th class="px-2 py-2 font-medium text-center">N</th>
                                     <th class="px-2 py-2 font-medium text-right">AvgExit%</th>
+                                    <th class="px-2 py-2 font-medium text-right">ActCls%</th>
                                     <th class="px-2 py-2 font-medium text-right">Total%</th>
                                     <th class="px-2 py-2 font-medium text-right">Δ vs Act</th>
+                                    <th class="px-2 py-2 font-medium text-right">Act$</th>
+                                    <th class="px-2 py-2 font-medium text-right">CF$</th>
+                                    <th class="px-2 py-2 font-medium text-right">Δ$</th>
                                     <th class="px-2 py-2 font-medium text-center">Clean</th>
                                     <th class="px-2 py-2 font-medium text-center">Trap</th>
                                     <th class="px-2 py-2 font-medium text-right">AvgClnΔ</th>
@@ -7489,15 +7493,15 @@
             const _ls1 = perf.leash_shadow || {};
             if (_ls1.slices && _ls1.slices.length) {
                 lines.push(`## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=${_ls1.cohort_n || 0}]`);
-                lines.push('  Leash           N   AvgExit%  Total%   Δvsact  Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk  Verdict');
-                lines.push('-'.repeat(100));
+                lines.push('  Leash           N   AvgExit%  ActCls%  Total%   Δvsact      Act$      CF$       Δ$   Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk  Verdict');
+                lines.push('-'.repeat(134));
                 const _lp = (v, w) => String(v == null ? '-' : v).padStart(w);
                 const _le = (v, w) => String(v == null ? '-' : v).padEnd(w);
                 _ls1.slices.forEach(sl => {
                     lines.push(sl.slice);
                     sl.rows.forEach(r => {
                         const a = r.leash === 'actual';
-                        lines.push(`  ${_le(r.leash, 14)}${_lp(r.n, 4)} ${_lp(r.avg.toFixed(3), 9)} ${_lp(r.total.toFixed(2), 8)} ${a ? '      -' : _lp((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${a ? '  -' : _lp(r.clean, 3)} ${a ? '  -' : _lp(r.trap, 3)} ${a ? '      -' : _lp(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp(r.sl_conv, 3)} ${_lp(r.pct_max + '%', 6)}  ${r.verdict}`);
+                        lines.push(`  ${_le(r.leash, 14)}${_lp(r.n, 4)} ${_lp(r.avg.toFixed(3), 9)} ${_lp(r.actual_avg_close.toFixed(3), 8)} ${_lp(r.total.toFixed(2), 8)} ${a ? '      -' : _lp((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${_lp('$' + Math.round(r.act_usd), 9)} ${_lp('$' + Math.round(r.cf_usd), 9)} ${a ? '       -' : _lp((r.delta_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.delta_usd)), 8)} ${a ? '  -' : _lp(r.clean, 3)} ${a ? '  -' : _lp(r.trap, 3)} ${a ? '      -' : _lp(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp(r.sl_conv, 3)} ${_lp(r.pct_max + '%', 6)}  ${r.verdict}`);
                     });
                 });
                 lines.push('');
@@ -9181,15 +9185,15 @@
                 const _ls2 = perf.leash_shadow || {};
                 if (_ls2.slices && _ls2.slices.length) {
                     lines.push(`## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=${_ls2.cohort_n || 0}]`);
-                    lines.push('  Leash           N   AvgExit%  Total%   Δvsact  Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk  Verdict');
-                    lines.push('-'.repeat(100));
+                    lines.push('  Leash           N   AvgExit%  ActCls%  Total%   Δvsact      Act$      CF$       Δ$   Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk  Verdict');
+                    lines.push('-'.repeat(134));
                     const _lp2 = (v, w) => String(v == null ? '-' : v).padStart(w);
                     const _le2 = (v, w) => String(v == null ? '-' : v).padEnd(w);
                     _ls2.slices.forEach(sl => {
                         lines.push(sl.slice);
                         sl.rows.forEach(r => {
                             const a = r.leash === 'actual';
-                            lines.push(`  ${_le2(r.leash, 14)}${_lp2(r.n, 4)} ${_lp2(r.avg.toFixed(3), 9)} ${_lp2(r.total.toFixed(2), 8)} ${a ? '      -' : _lp2((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${a ? '  -' : _lp2(r.clean, 3)} ${a ? '  -' : _lp2(r.trap, 3)} ${a ? '      -' : _lp2(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp2(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp2(r.sl_conv, 3)} ${_lp2(r.pct_max + '%', 6)}  ${r.verdict}`);
+                            lines.push(`  ${_le2(r.leash, 14)}${_lp2(r.n, 4)} ${_lp2(r.avg.toFixed(3), 9)} ${_lp2(r.actual_avg_close.toFixed(3), 8)} ${_lp2(r.total.toFixed(2), 8)} ${a ? '      -' : _lp2((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${_lp2('$' + Math.round(r.act_usd), 9)} ${_lp2('$' + Math.round(r.cf_usd), 9)} ${a ? '       -' : _lp2((r.delta_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.delta_usd)), 8)} ${a ? '  -' : _lp2(r.clean, 3)} ${a ? '  -' : _lp2(r.trap, 3)} ${a ? '      -' : _lp2(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp2(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp2(r.sl_conv, 3)} ${_lp2(r.pct_max + '%', 6)}  ${r.verdict}`);
                         });
                     });
                     lines.push('');
@@ -11859,11 +11863,15 @@
                         let html = '';
                         (_ls.slices || []).forEach(sl => {
                             const gateCls = sl.is_gate ? 'text-emerald-300 font-bold' : sl.is_sub ? 'text-gray-500' : 'text-gray-300 font-semibold';
-                            html += `<tr class="border-b border-white/5"><td colspan="12" class="px-2 pt-2 pb-1 ${gateCls}">${sl.slice}</td></tr>`;
+                            html += `<tr class="border-b border-white/5"><td colspan="16" class="px-2 pt-2 pb-1 ${gateCls}">${sl.slice}</td></tr>`;
                             (sl.rows || []).forEach(r => {
                                 const dCls = r.leash === 'actual' || r.leash === 'tight' ? 'text-gray-400'
                                     : r.delta > 0.5 ? 'text-emerald-400 font-semibold'
                                     : r.delta < -0.5 ? 'text-red-400 font-semibold' : 'text-gray-400';
+                                const dUsd = (v) => v == null ? '—' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(0);
+                                const duCls = r.leash === 'actual' ? 'text-gray-400'
+                                    : r.delta_usd > 0 ? 'text-emerald-400 font-semibold'
+                                    : r.delta_usd < 0 ? 'text-red-400 font-semibold' : 'text-gray-400';
                                 let vCls = 'text-gray-500';
                                 if (r.verdict.startsWith('★')) vCls = 'text-emerald-400 font-bold';
                                 else if (r.verdict.startsWith('✗')) vCls = 'text-red-400 font-bold';
@@ -11873,8 +11881,12 @@
                                     <td class="px-2 py-1 pl-6 text-gray-300">${r.leash}</td>
                                     <td class="px-2 py-1 text-center">${r.n}</td>
                                     <td class="px-2 py-1 text-right">${num(r.avg, 3)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${num(r.actual_avg_close, 3)}</td>
                                     <td class="px-2 py-1 text-right">${num(r.total)}</td>
                                     <td class="px-2 py-1 text-right ${dCls}">${r.leash === 'actual' ? '—' : num(r.delta)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${dUsd(r.act_usd)}</td>
+                                    <td class="px-2 py-1 text-right">${dUsd(r.cf_usd)}</td>
+                                    <td class="px-2 py-1 text-right ${duCls}">${r.leash === 'actual' ? '—' : dUsd(r.delta_usd)}</td>
                                     <td class="px-2 py-1 text-center text-emerald-400">${r.leash === 'actual' ? '—' : r.clean}</td>
                                     <td class="px-2 py-1 text-center text-red-400">${r.leash === 'actual' ? '—' : r.trap}</td>
                                     <td class="px-2 py-1 text-right">${r.leash === 'actual' ? '—' : num(r.avg_clean)}</td>
@@ -11885,7 +11897,7 @@
                                 </tr>`;
                             });
                         });
-                        _lsBody.innerHTML = html || '<tr><td colspan="12" class="px-2 py-2 text-gray-500">(no data)</td></tr>';
+                        _lsBody.innerHTML = html || '<tr><td colspan="16" class="px-2 py-2 text-gray-500">(no data)</td></tr>';
                     }
                     if (_lsDrill && (_ls.drill || []).length) {
                         const n2 = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2));

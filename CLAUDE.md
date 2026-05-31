@@ -1,5 +1,51 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — fan_ratio SHORT: floor lowered `1.02-1.65` → `1.00-1.65`
+
+Lowered the SHORT EMA-fan dead-zone block floor from 1.02 to **1.00**, adding the
+1.00–1.02 loser sliver to the block. The original May 29 SHORT ship picked 1.02 because it was
+the "0-winners-killed" cut *that batch* — but cross-batch shows 1.02 left a confirmed loser
+sliver open. The real winner/loser cliff is at ~1.01, not 1.02.
+
+### Cross-batch evidence (deduped May-27+ SHORT pool, 37 trades — fan cols exist May-27+)
+| band | N | WR | avg% | tot% |
+|---|---|---|---|---|
+| 0.85–1.00 | 12 | 67% | **+0.199** | +2.39 ← winner, STAYS allowed |
+| **1.00–1.02** (newly blocked) | **3** | **33%** | **−0.239** | **−0.72** |
+| 1.02–1.10 | 2 | 0% | −0.645 | −1.29 (already blocked) |
+| 1.10–1.65 | 3 | 0% | −0.745 | −2.23 (already blocked) |
+| 1.65+ | 2 | 100% | +0.758 | +1.52 (SHORT burst-winner zone, like LONG <0.85) |
+
+**The loser dead-zone is monotonic from 1.00 up** (−0.24 → −0.65 → −0.75 across 1.00→1.65),
+then flips positive at 1.65+. 1.00 aligns the filter with the actual cliff; 1.02 was arbitrary.
+
+### The 3 newly-blocked trades (boundary detail)
+- SUIUSDT fan=1.009 **+0.215** ← winner, CUT (the cost)
+- DOTUSDT fan=1.016 −0.401 ← loser, saved (this batch's near-miss that triggered the review)
+- ETHUSDT fan=1.018 −0.532 ← loser, saved
+
+Net cross-batch: **+0.72%** (2 losers > 1 small winner). Honest caveats: (1) **small N=3** in
+the new sliver; (2) **no longer "0 winners killed"** — sacrifices SUI (+0.215) sitting right on
+the boundary at 1.009; (3) the *pristine* cut would be ~1.013 (spare SUI, catch DOT+ETH) but
+that's curve-fitting to 3 trades — 1.00 is the principled round-number boundary of the
+monotonic loser band.
+
+### DISCIPLINE — small-N, locked revert gate
+Ship-able but small-N. **Locked revert:** next post-deploy batch, if SHORT fan in [1.00, 1.02)
+shows ≥55% WR on N≥5 → revert floor to 1.02. If ≤40% WR on N≥5 → keep. Also watch the
+0.85–1.00 winner band stays ≥60% WR (confirms we didn't move the floor too far).
+
+### Implementation — zero code (parser already multi-band)
+Pure config edit — engine fan filter loops comma-separated `lo-hi` bands. Single rule, floor
+shifted. LONG side untouched (`0.85-1.70,5.0-99`).
+
+### Files changed
+- `trading_config.json` — `fan_ratio_block_short: "1.02-1.65" → "1.00-1.65"`
+- `config.py` — default synced
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 31, 2026 — fan_ratio LONG: added >5.0 flat-base cap (`0.85-1.70` → `0.85-1.70,5.0-99`)
 
 Extended the active LONG EMA-fan dead-zone filter with a **high-side cap at fan_ratio > 5.0**.

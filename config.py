@@ -362,7 +362,7 @@ class SignalThresholds(BaseModel):
     # N=35 killed/batch is significant despite single batch; symmetric mechanism). LONG
     # cut [0.85,1.70) kills ~10 winners but the 25 losers dominate 3.4:1.
     fan_ratio_block_long: str = "0.85-1.70,5.0-99"   # dead-zone block (May 29) + >5.0 flat-base cap (May 31)
-    fan_ratio_block_short: str = "1.02-1.65"  # SHORT active dead-zone block
+    fan_ratio_block_short: str = "1.00-1.65"  # SHORT dead-zone block (floor 1.02->1.00 May 31)
     fan_ratio_filter_enabled: bool = True     # master toggle (same A/B pattern)
     # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
     # Block entry when both BTC RSI timeframes are in specified directions.

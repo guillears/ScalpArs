@@ -129,9 +129,9 @@ def _check_tick_momentum_fade(tick_buf, now, windows, per_window_deltas, directi
 # NEAR-trap-mirage that coarse snapshots can't). Each leash respects the SAME live exits
 # (hard SL, EMA13 cross, signal-lost) and only swaps the trailing width. NEVER affects
 # live trading — all logic is wrapped in try/except and isolated in this module dict.
-# TO REMOVE: delete every fenced "LEASH SHADOW" block (grep "LEASH SHADOW") + the 8
+# TO REMOVE: delete every fenced "LEASH SHADOW" block (grep "LEASH SHADOW") + all
 # shadow_* columns in models.py/database.py + the report block in main.py + the UI block
-# in templates/index.html. See CLAUDE.md May 30 entry.
+# in templates/index.html. See CLAUDE.md May 30 / May 31 entries.
 import time as _leash_time
 _LEASH_STATE = {}  # order_id -> {'rmax', 'ts', 'exits': {name: (pnl, reason)}}
 # spec: (name, kind, tight_width, wide_width, switch_threshold)
@@ -163,9 +163,11 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                 _cut = _leash_time.time() - 3600
                 for _k in [k for k, v in _LEASH_STATE.items() if v.get('ts', 0) < _cut]:
                     _LEASH_STATE.pop(_k, None)
-            st = {'rmax': pnl_pct, 'ts': _leash_time.time(),
+            st = {'rmax': pnl_pct, 'ts': _leash_time.time(), 'open_ts': _leash_time.time(),
                   'exits': {n: None for n, _, _, _, _ in _LEASH_SPECS},
+                  'exit_mins': {n: None for n, _, _, _, _ in _LEASH_SPECS},
                   'sexits': {n: None for n in _STRETCH_NAMES},
+                  'sexit_mins': {n: None for n in _STRETCH_NAMES},
                   'pstretch': None, 'estretch': entry_stretch}
             _LEASH_STATE[order_id] = st
         st['ts'] = _leash_time.time()
@@ -213,6 +215,14 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     es = st.get('estretch')
                     if es is not None and stretch <= es:
                         st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
+        # ---- stamp fire-minute (from open) on whichever leash just fired this tick ----
+        _emin = round((st['ts'] - st['open_ts']) / 60.0, 2)
+        for _n in st['exits']:
+            if st['exits'][_n] is not None and st['exit_mins'].get(_n) is None:
+                st['exit_mins'][_n] = _emin
+        for _sn in st['sexits']:
+            if st['sexits'][_sn] is not None and st['sexit_mins'].get(_sn) is None:
+                st['sexit_mins'][_sn] = _emin
     except Exception:
         pass  # observation-only: a shadow error must NEVER affect trading
 
@@ -224,13 +234,17 @@ def _leash_finalize(order_id, fallback_pnl):
         for name, _, _, _, _ in _LEASH_SPECS:
             if st and st['exits'].get(name) is not None:
                 out[name] = st['exits'][name]
+                out[name + '_min'] = st.get('exit_mins', {}).get(name)
             else:
                 out[name] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+                out[name + '_min'] = None  # unfired (held to window end)
         for sname in _STRETCH_NAMES:
             if st and st.get('sexits', {}).get(sname) is not None:
                 out[sname] = st['sexits'][sname]
+                out[sname + '_min'] = st.get('sexit_mins', {}).get(sname)
             else:
                 out[sname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+                out[sname + '_min'] = None
         out['_peak_stretch'] = round(st['pstretch'], 4) if (st and st.get('pstretch') is not None) else None
     except Exception:
         pass
@@ -4405,16 +4419,22 @@ class TradingEngine:
                                 # ===== LEASH SHADOW START =====
                                 shadow_tight_pnl=_leash_exits.get('tight', (None, None))[0],
                                 shadow_tight_reason=_leash_exits.get('tight', (None, None))[1],
+                                shadow_tight_min=_leash_exits.get('tight_min'),
                                 shadow_wide_pnl=_leash_exits.get('wide', (None, None))[0],
                                 shadow_wide_reason=_leash_exits.get('wide', (None, None))[1],
+                                shadow_wide_min=_leash_exits.get('wide_min'),
                                 shadow_tierA_pnl=_leash_exits.get('tierA', (None, None))[0],
                                 shadow_tierA_reason=_leash_exits.get('tierA', (None, None))[1],
+                                shadow_tierA_min=_leash_exits.get('tierA_min'),
                                 shadow_tierB_pnl=_leash_exits.get('tierB', (None, None))[0],
                                 shadow_tierB_reason=_leash_exits.get('tierB', (None, None))[1],
+                                shadow_tierB_min=_leash_exits.get('tierB_min'),
                                 shadow_strpk_pnl=_leash_exits.get('strpk', (None, None))[0],
                                 shadow_strpk_reason=_leash_exits.get('strpk', (None, None))[1],
+                                shadow_strpk_min=_leash_exits.get('strpk_min'),
                                 shadow_stren_pnl=_leash_exits.get('stren', (None, None))[0],
                                 shadow_stren_reason=_leash_exits.get('stren', (None, None))[1],
+                                shadow_stren_min=_leash_exits.get('stren_min'),
                                 shadow_peak_stretch=_leash_exits.get('_peak_stretch'),
                                 # ===== LEASH SHADOW END =====
                                 post_exit_peak_pnl=round(peak_pnl, 4),

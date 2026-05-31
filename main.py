@@ -6308,6 +6308,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                 stren_pe = [o.shadow_stren_pnl for o in group if getattr(o, 'shadow_stren_pnl', None) is not None]
                 avg_strpk_pe = sum(strpk_pe) / len(strpk_pe) if strpk_pe else None
                 avg_stren_pe = sum(stren_pe) / len(stren_pe) if stren_pe else None
+                # fire-minute (from open); compare to Duration → pre/post-close
+                strpk_min_pe = [o.shadow_strpk_min for o in group if getattr(o, 'shadow_strpk_min', None) is not None]
+                stren_min_pe = [o.shadow_stren_min for o in group if getattr(o, 'shadow_stren_min', None) is not None]
+                avg_strpk_min = sum(strpk_min_pe) / len(strpk_min_pe) if strpk_min_pe else None
+                avg_stren_min = sum(stren_min_pe) / len(stren_min_pe) if stren_min_pe else None
 
                 no_regain = [o for o in group if o.post_exit_signal_regained_minutes is None]
                 nr_count = len(no_regain)
@@ -6363,6 +6368,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
                     # May 31: stretch-fade recoverable-regret band (observation-only)
                     "avg_strpk_pct": round(avg_strpk_pe, 4) if avg_strpk_pe is not None else None,
                     "avg_stren_pct": round(avg_stren_pe, 4) if avg_stren_pe is not None else None,
+                    "avg_strpk_min": round(avg_strpk_min, 1) if avg_strpk_min is not None else None,
+                    "avg_stren_min": round(avg_stren_min, 1) if avg_stren_min is not None else None,
                 })
     except Exception as e:
         logger.error(f"[PERF] Error computing Post-Exit Regret deep dive: {e}\n{traceback.format_exc()}")
@@ -8812,13 +8819,13 @@ def _compute_leash_shadow(orders):
     TO REMOVE: delete this fenced block + the payload line + the UI block."""
     ACT = 0.45  # armed threshold — matches live tp_min=0.45 (was 0.5, stale)
     LEASHES = [
-        ('actual', None, None),
-        ('tight', 'shadow_tight_pnl', 'shadow_tight_reason'),
-        ('wide', 'shadow_wide_pnl', 'shadow_wide_reason'),
-        ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason'),
-        ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason'),
-        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason'),  # stretch-trail from peak
-        ('stren', 'shadow_stren_pnl', 'shadow_stren_reason'),  # stretch-to-entry
+        ('actual', None, None, None),
+        ('tight', 'shadow_tight_pnl', 'shadow_tight_reason', 'shadow_tight_min'),
+        ('wide', 'shadow_wide_pnl', 'shadow_wide_reason', 'shadow_wide_min'),
+        ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason', 'shadow_tierA_min'),
+        ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason', 'shadow_tierB_min'),
+        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail from peak
+        ('stren', 'shadow_stren_pnl', 'shadow_stren_reason', 'shadow_stren_min'),  # stretch-to-entry
     ]
     # armed + shadow-populated cohort
     rows = [o for o in orders
@@ -8844,8 +8851,12 @@ def _compute_leash_shadow(orders):
             continue
         actual_total = sum((o.pnl_percentage or 0) for o in coh)
         actual_avg_close = round(actual_total / len(coh), 3) if coh else 0.0
+        # actual-row "Min" = avg trade duration (open→real close). Each leash's fire-min vs
+        # this = pre-close (fired earlier) if <, post-close (held the runner) if >.
+        _durs = [(o.closed_at - o.opened_at).total_seconds() / 60.0 for o in coh if o.closed_at and o.opened_at]
+        actual_dur_min = round(sum(_durs) / len(_durs), 1) if _durs else None
         leash_rows = []
-        for name, pcol, rcol in LEASHES:
+        for name, pcol, rcol, mcol in LEASHES:
             evals = []
             for o in coh:
                 ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
@@ -8884,6 +8895,14 @@ def _compute_leash_shadow(orders):
                     cf_usd += (ev / 100.0) * (getattr(o, 'notional_value', 0) or 0.0)
                 act_usd_m += (o.pnl or 0.0)
             delta_usd = cf_usd - act_usd_m
+            # avg fire-minute (from open); actual row = avg trade duration
+            if name == 'actual':
+                fire_min = actual_dur_min
+            else:
+                _fm = [getattr(o, mcol, None) for o in coh if getattr(o, mcol, None) is not None]
+                fire_min = round(sum(_fm) / len(_fm), 1) if _fm else None
+            post_close = (name != 'actual' and fire_min is not None
+                          and actual_dur_min is not None and fire_min > actual_dur_min)
             pct_max = (sum(evs) / sum(mps) * 100) if mps else 0.0
             if name == 'actual':
                 verdict = 'baseline'
@@ -8898,6 +8917,7 @@ def _compute_leash_shadow(orders):
             leash_rows.append({
                 'leash': name, 'n': n, 'avg': round(avg, 3), 'total': round(total, 2),
                 'actual_avg_close': actual_avg_close,
+                'fire_min': fire_min, 'post_close': post_close,
                 'act_usd': round(act_usd_m, 2), 'cf_usd': round(cf_usd, 2), 'delta_usd': round(delta_usd, 2),
                 'delta': round(delta, 2), 'clean': clean, 'trap': trap,
                 'avg_clean': round(sum(cwins) / len(cwins), 2) if cwins else 0.0,

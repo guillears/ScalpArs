@@ -436,21 +436,28 @@ class Order(Base):
     #   wide  = flat 0.6% pullback whole trade
     #   tierA = tight 0.25 -> wide 0.8, switch @ running-peak >= 1.0%
     #   tierB = tight 0.30 -> wide 1.0, switch @ running-peak >= 1.0%
+    # May 31: *_min = minutes from open to the leash fire (vs trade duration = pre/post-close).
     shadow_tight_pnl = Column(Float, nullable=True)
     shadow_tight_reason = Column(String(15), nullable=True)
+    shadow_tight_min = Column(Float, nullable=True)
     shadow_wide_pnl = Column(Float, nullable=True)
     shadow_wide_reason = Column(String(15), nullable=True)
+    shadow_wide_min = Column(Float, nullable=True)
     shadow_tierA_pnl = Column(Float, nullable=True)
     shadow_tierA_reason = Column(String(15), nullable=True)
+    shadow_tierA_min = Column(Float, nullable=True)
     shadow_tierB_pnl = Column(Float, nullable=True)
     shadow_tierB_reason = Column(String(15), nullable=True)
+    shadow_tierB_min = Column(Float, nullable=True)
     # Stretch-exit variants (May 30 ext): exit on extension-fade not price pullback.
     #   strpk = exit when live stretch <= 0.5x peak stretch · stren = exit when stretch <= entry stretch
     #   peak_stretch = max favorable %-distance from EMA5 during the trade (moment-evolution signal)
     shadow_strpk_pnl = Column(Float, nullable=True)
     shadow_strpk_reason = Column(String(15), nullable=True)
+    shadow_strpk_min = Column(Float, nullable=True)
     shadow_stren_pnl = Column(Float, nullable=True)
     shadow_stren_reason = Column(String(15), nullable=True)
+    shadow_stren_min = Column(Float, nullable=True)
     shadow_peak_stretch = Column(Float, nullable=True)
     # ===== LEASH SHADOW END =====
 

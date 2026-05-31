@@ -429,7 +429,9 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN confirmed_cross_ema20_pnl_pct FLOAT"))
                 # ===== LEASH SHADOW START (May 30) — observation-only virtual leashes =====
                 for _sc in ('shadow_tight_pnl','shadow_wide_pnl','shadow_tierA_pnl','shadow_tierB_pnl',
-                            'shadow_strpk_pnl','shadow_stren_pnl','shadow_peak_stretch'):
+                            'shadow_strpk_pnl','shadow_stren_pnl','shadow_peak_stretch',
+                            'shadow_tight_min','shadow_wide_min','shadow_tierA_min','shadow_tierB_min',
+                            'shadow_strpk_min','shadow_stren_min'):
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} FLOAT"))
                 for _sc in ('shadow_tight_reason','shadow_wide_reason','shadow_tierA_reason','shadow_tierB_reason',

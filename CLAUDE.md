@@ -1,5 +1,32 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — Leash fire-minute capture (pre/post-close) — both tables (observation-only)
+
+Added per-leash **fire-minute** (minutes from open to the virtual leash exit) so we can tell
+whether a leash exit was **pre-close** (fired *before* the real exit → "exited earlier") or
+**post-close** (held *past* the real exit → "rode the runner"). This is the interpretation key:
+a leash like strpk +6.8% is meaningless without knowing it held past the real close (it did,
+for IDUSDT). The pre/post flag falls out for free — **leash fire-min vs the trade's duration**:
+`fire_min > duration` = post-close.
+
+- **Capture:** 6 new Float DB columns `shadow_{tight,wide,tierA,tierB,strpk,stren}_min`. The
+  fenced leash block stamps elapsed-from-open when each leash fires (state `open_ts` + a
+  backfill at the end of `_leash_update`). Observation-only, fail-silent, no trading touch.
+- **Leash Shadow table:** new **Min** column per leash row. The `actual` row's Min = avg trade
+  duration; each leash Min vs it = pre/post (post-close styled amber `·post`).
+- **Post-Exit Regret:** **Strpk Min / Stren Min** interleaved with Strpk%/Stren% (compare to the
+  Duration column for pre/post).
+- **Caveat:** post-deploy only — existing trades (incl. the IDUSDT cohort) never recorded
+  fire-times → Min reads `—` until fresh armed trades land. No backfill (price path gone).
+
+### Files changed
+- `models.py` (6 cols) · `database.py` (auto-migrate) · `services/trading_engine.py`
+  (open_ts + exit_mins/sexit_mins + finalize + 6 persistence fields) · `main.py`
+  (leash fire_min/post_close; regret avg_strpk_min/avg_stren_min) · `templates/index.html`
+  (Min column in both tables + 2 text exports each) · `CLAUDE.md` — this entry
+
+---
+
 ## May 31, 2026 — Leash Shadow calibration fix + Post-Exit Regret stretch-band columns (observation-only)
 
 Two report/observation changes, zero trading-logic touch.

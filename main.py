@@ -8890,10 +8890,14 @@ def _compute_leash_shadow(orders):
                 mp = max(o.peak_pnl or 0, o.post_exit_peak_pnl or 0)
                 if mp > 0 and ev is not None:
                     mps.append(mp); evs.append(ev)
-            delta = total - actual_total
             # $ counterfactual: cf_$ = (leash% / 100) × notional_value (matches pnl=pct×notional/100)
+            # matched_actual_pct = actual P&L% over ONLY the trades this leash covers — so an
+            # under-covered leash (fewer trades than the slice, e.g. a post-deploy-only variant on a
+            # mixed cohort) is compared apples-to-apples, not vs the full-slice actual (which produced
+            # phantom negatives / "✗ hurts"). Consistent with how delta_usd is already matched.
             cf_usd = 0.0
             act_usd_m = 0.0
+            matched_actual_pct = 0.0
             for o in coh:
                 ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
                 if ev is None:
@@ -8903,6 +8907,8 @@ def _compute_leash_shadow(orders):
                 else:
                     cf_usd += (ev / 100.0) * (getattr(o, 'notional_value', 0) or 0.0)
                 act_usd_m += (o.pnl or 0.0)
+                matched_actual_pct += (o.pnl_percentage or 0.0)
+            delta = total - matched_actual_pct
             delta_usd = cf_usd - act_usd_m
             # avg fire-minute (from open); actual row = avg trade duration
             if name == 'actual':

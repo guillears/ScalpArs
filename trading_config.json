@@ -160,7 +160,7 @@
     "rngpos_adx_delta_filter_long": "90-95:0.0-0.3",
     "rngpos_adx_delta_filter_short": "5-10:1.0-2.0",
     "rngpos_adx_delta_filter_enabled": true,
-    "fan_ratio_block_long": "0.85-1.70",
+    "fan_ratio_block_long": "0.85-1.70,5.0-99",
     "fan_ratio_block_short": "1.02-1.65",
     "fan_ratio_filter_enabled": true,
     "btc_1h_5m_rsi_dir_filter_long": "",

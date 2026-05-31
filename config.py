@@ -361,7 +361,7 @@ class SignalThresholds(BaseModel):
     # SHIPPED May 29: SHORT active. LONG promoted to active same day (operator call —
     # N=35 killed/batch is significant despite single batch; symmetric mechanism). LONG
     # cut [0.85,1.70) kills ~10 winners but the 25 losers dominate 3.4:1.
-    fan_ratio_block_long: str = "0.85-1.70"   # LONG active dead-zone block (promoted May 29)
+    fan_ratio_block_long: str = "0.85-1.70,5.0-99"   # dead-zone block (May 29) + >5.0 flat-base cap (May 31)
     fan_ratio_block_short: str = "1.02-1.65"  # SHORT active dead-zone block
     fan_ratio_filter_enabled: bool = True     # master toggle (same A/B pattern)
     # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).

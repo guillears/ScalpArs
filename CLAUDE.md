@@ -1,5 +1,56 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — fan_ratio LONG: added >5.0 flat-base cap (`0.85-1.70` → `0.85-1.70,5.0-99`)
+
+Extended the active LONG EMA-fan dead-zone filter with a **high-side cap at fan_ratio > 5.0**.
+`fan_ratio = |EMA5-EMA8 gap%| / |EMA8-EMA13 gap%|`. The existing mid-band block `[0.85,1.70)`
+(mature/late trend, no edge) is unchanged; the new `[5.0,99)` band blocks the **front-spiked-on-
+flat-base** cohort. SHORT side untouched (`1.02-1.65`).
+
+### The mechanism (why >5.0 is a real loser zone, not a curve-fit)
+fan_ratio explodes past 5 when the **denominator (EMA8-EMA13 base) is near-zero** — i.e. the slow
+trend base is flat/converged while the fast front (EMA5-EMA8) spiked. For a LONG that's *buying a
+vertical fast-move with no trend underneath* → mean-reversion / early-whip. The three cap targets
+all had a near-flat base: **TON g8-13=0.009, PENGU 0.019, FET 0.021.**
+
+### Evidence (deduped May-27+ pool, 68 LONG closed trades — fan_ratio cols only exist May-27+)
+| band | N | WR | avg% | tot% |
+|---|---|---|---|---|
+| <0.85 | 10 | 90% | +0.47 | +4.66 |
+| **0.85–1.70** (existing block) | 35 | 29% | −0.26 | **−9.09** ← filter confirmed cross-batch |
+| 1.70–2.00 | 7 | 71% | +0.51 | +3.58 |
+| 2.00–3.00 | 8 | 50% | +0.04 | +0.28 (≈flat — NOT a loser zone) |
+| **3.00–5.00** | 5 | 100% | +0.36 | +1.78 ← winners, SPARED by the 5.0 cap |
+| **> 5.00** | **3** | **0%** | **−0.85** | **−2.54** ← cap target |
+
+### Why 5.0 (not 5.5 / 6.0)
+- The cliff is **at 5.0**: `3.00–5.00` is 100% WR (winners) both this batch AND cross-batch; `>5.00`
+  is 0% WR. 5.0 is the boundary the data draws.
+- On current data there is an **empty gap between fan 3.50 (top winner IOUSDT) and 7.14 (lowest
+  loser PENGU)** — so 5.0/5.5/6.0/7.0 all block the SAME 3 trades. The choice is forward-
+  generalization: 5.0 is the **low edge of the safe gap** → widest forward catch of the flat-base
+  mechanism (a future whip at fan 5.3 slips a 6.0 cap but not a 5.0 cap), while keeping a full
+  1.5 margin above the highest observed winner (3.50). Below 5.0 starts eating the 3–5 winners.
+
+### DISCIPLINE — small-N, locked revert gate (NOT "validated")
+Cross-batch **confirmed the direction** (3/3 losers, spread across 2 dates May 29 + May 31, clean
+mechanism, spares a cross-batch-confirmed winner zone) but **did NOT grow N past 3** — the >5.0
+cohort is rare (3 of 68 ≈ 4.4%). This is a **clean, cheap, low-frequency cut**, not a big lever
+(~−2.54% over ~4 days). **Locked revert:** next post-deploy batch, if fan>5.0 LONG shows ≥45% WR
+on N≥5 → revert (drop the `5.0-99` band). If ≤40% WR on N≥5 → keep.
+
+### Implementation — zero code (parser already multi-band)
+The engine fan filter (`services/trading_engine.py`) already loops comma-separated `lo-hi` bands and
+blocks if fan_ratio falls in ANY. The UI band field is free-text + comma-aware. So the cap is a
+pure config edit. `99` = practical ceiling (anything ≥5.0 blocked).
+
+### Files changed
+- `trading_config.json` — `fan_ratio_block_long: "0.85-1.70" → "0.85-1.70,5.0-99"`
+- `config.py` — default synced to match
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 31, 2026 — strpk K-bracket (0.4 / 0.3 looser stretch-trail variants) — observation-only
 
 Added two looser stretch-trail leashes to the Leash Shadow tracker, bracketing the trail-tightness

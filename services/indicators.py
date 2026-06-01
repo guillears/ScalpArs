@@ -578,6 +578,8 @@ def check_exit_conditions(
     signal_active: bool = False,
     tp_trailing_enabled: bool = True,
     entry_atr_pct: float = None,  # May 7 Phase 1: ATR-normalized trailing
+    current_stretch: float = None,  # Jun 1: live |price−EMA5| stretch % (runner trail)
+    peak_stretch: float = None,     # Jun 1: peak stretch since entry (runner trail)
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -779,9 +781,25 @@ def check_exit_conditions(
     if not tp_trailing_enabled:
         return {"should_close": False, "reason": None, "peak_pnl": peak_pnl, "trough_pnl": trough_pnl}
 
+    # Jun 1: is this trade in the runner stretch-trail regime? If so, the
+    # trend-break exit below must DEFER to the stretch-trail (fires lower down),
+    # matching the validated shadow strpk (which respects EMA13 cross + hard SL,
+    # NOT the ema5/8/13/20 stack break). Otherwise a minor stack flip while above
+    # target would exit the runner early and defeat the whole handoff.
+    _runner_armed = False
+    try:
+        from config import trading_config as _rtc0
+        _runner_armed = (getattr(_rtc0.thresholds, 'runner_trail_enabled', False)
+                         and direction == "LONG"
+                         and entry_atr_pct is not None
+                         and entry_atr_pct >= float(getattr(_rtc0.thresholds, 'runner_trail_atr_min', 1.0) or 1.0)
+                         and peak_pnl >= float(getattr(_rtc0.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70))
+    except Exception:
+        _runner_armed = False
+
     # Check if we've reached the current TP target
-    if pnl_pct >= effective_tp_target:
-        
+    if pnl_pct >= effective_tp_target and not _runner_armed:
+
         # Check if trend continues (for potential TP extension)
         trend_continues = False
         if all(v is not None for v in [ema5, ema8, ema13, ema20, current_price]):
@@ -863,6 +881,39 @@ def check_exit_conditions(
                 logger.info(f"[EMA_STACK_HANDOFF] {direction} L{current_tp_level}: trailing suppressed (level={_es_level}, EMA Stack Cross will handle)")
     except Exception:
         # Fail safe: if config read fails, behave as before (handoff inactive)
+        pass
+
+    # Jun 1, 2026 — RUNNER STRETCH-TRAIL handoff (scoped high-ATR LONG runner exit).
+    # When a high-ATR LONG proves a runner (peak ≥ arm_peak), SUPPRESS the tight
+    # price-trailing and instead exit only when live stretch collapses to
+    # runner_trail_k × peak stretch. Lets IDU-class runners run. One-way: once
+    # armed it stays in stretch-trail mode. Backstops (hard SL, EMA13) still fire.
+    try:
+        from config import trading_config as _rtc
+        if (getattr(_rtc.thresholds, 'runner_trail_enabled', False)
+                and direction == "LONG"
+                and entry_atr_pct is not None
+                and entry_atr_pct >= float(getattr(_rtc.thresholds, 'runner_trail_atr_min', 1.0) or 1.0)
+                and peak_pnl >= float(getattr(_rtc.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70)):
+            _handoff_suppress_trailing = True  # take over the profit-taking side
+            _rt_k = float(getattr(_rtc.thresholds, 'runner_trail_k', 0.5) or 0.5)
+            # SIGNED stretch (matches the validated shadow strpk): fires when the
+            # favorable extension retraces to ≤ k× its peak — INCLUDING when price
+            # crosses back below EMA5 (signed goes negative). Do NOT use abs() here
+            # or it re-introduces the unsigned fader-ride bug (CLAUDE.md May 31).
+            if (current_stretch is not None and peak_stretch is not None
+                    and peak_stretch > 0 and current_stretch <= _rt_k * peak_stretch):
+                logger.info(f"[RUNNER_TRAIL] LONG L{current_tp_level}: stretch {current_stretch:.3f}% <= "
+                            f"{_rt_k}× peak {peak_stretch:.3f}% — runner banked, pnl={pnl_pct:.4f}%, peak={peak_pnl:.4f}%")
+                return {
+                    "should_close": True,
+                    "reason": f"RUNNER_TRAIL L{current_tp_level}",
+                    "peak_pnl": peak_pnl,
+                    "trough_pnl": trough_pnl,
+                    "tp_level": current_tp_level
+                }
+    except Exception:
+        # Fail safe: never block exits on a runner-trail config/compute error
         pass
 
     if trailing_stop_active and not _handoff_suppress_trailing:

@@ -6707,6 +6707,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pattern_w_batch_coverage": _compute_pattern_w_batch_coverage(orders),
         "pattern_w_unmatched_winners": _compute_unmatched_winners(orders, limit=20),
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
+        "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.
@@ -8503,22 +8504,25 @@ def _compute_leash_shadow(orders):
     Direction x stretch-bucket. Observation-only — see CLAUDE.md May 30.
     TO REMOVE: delete this fenced block + the payload line + the UI block."""
     ACT = 0.45  # armed threshold — matches live tp_min=0.45 (was 0.5, stale)
+    # Jun 1 redefine — runner-focused leash set. Dropped tight (sim validated;
+    # wide is the price-trail control now), tierA/tierB (FALSIFIED — prove-then-run,
+    # CLAUDE.md May 31), strpk04 (redundant mid-bracket), stren (redundant). Added
+    # strpk_signed (hold-until-EMA5-cross — the Type-B/HOME-capture candidate).
+    # Each remaining leash answers one question: wide=is a price-trail enough? /
+    # strpk=the shipped runner mechanism (K=0.5) / strpk03=does looser K catch the
+    # pullback-rerun monster? / strpk_signed=ride the full move to the EMA5 cross.
     LEASHES = [
         ('actual', None, None, None),
-        ('tight', 'shadow_tight_pnl', 'shadow_tight_reason', 'shadow_tight_min'),
         ('wide', 'shadow_wide_pnl', 'shadow_wide_reason', 'shadow_wide_min'),
-        ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason', 'shadow_tierA_min'),
-        ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason', 'shadow_tierB_min'),
-        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5
-        ('strpk04', 'shadow_strpk04_pnl', 'shadow_strpk04_reason', 'shadow_strpk04_min'),  # K=0.4 (looser)
-        ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest)
-        ('stren', 'shadow_stren_pnl', 'shadow_stren_reason', 'shadow_stren_min'),  # stretch-to-entry
+        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5 (SHIPPED runner mech)
+        ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest — Type-B candidate)
+        ('strpk_signed', 'shadow_strpk_signed_pnl', 'shadow_strpk_signed_reason', 'shadow_strpk_signed_min'),  # hold to EMA5 cross
     ]
     # armed + shadow-populated cohort
     rows = [o for o in orders
             if getattr(o, 'status', None) == 'CLOSED'
             and (getattr(o, 'peak_pnl', 0) or 0) >= ACT
-            and getattr(o, 'shadow_tight_pnl', None) is not None]
+            and getattr(o, 'shadow_wide_pnl', None) is not None]
     BUCKETS = [
         ('LONG ≥0.25 (GATE)', 'LONG', 0.25, 999.0, True, False),
         ('LONG <0.25 (control)', 'LONG', -999.0, 0.25, False, False),
@@ -8638,6 +8642,61 @@ def _compute_leash_shadow(orders):
                 })
     return {'slices': slices, 'drill': drill, 'cohort_n': len(rows)}
 # ====================== LEASH SHADOW END ======================
+
+
+# ====================== RUNNER TRAIL START (Jun 1) ======================
+def _compute_runner_trail_performance(orders):
+    """🏃 Runner Trail Performance — the ship-validation surface for the scoped
+    high-ATR LONG runner stretch-trail (CLAUDE.md Jun 1). One row per live
+    RUNNER_TRAIL exit. The Tight-trail CF column is the counterfactual of what the
+    old tight trailing would have banked (peak − ATR-floored pullback) — so each
+    row directly shows whether the handoff gained or lost vs doing nothing.
+    TO REMOVE: delete this fenced block + the payload line + the UI block."""
+    def _cr(o):
+        r = getattr(o, 'close_reason', '') or ''
+        return r.split(' ')[0] if r else ''
+    rt = [o for o in orders
+          if getattr(o, 'status', None) == 'CLOSED' and _cr(o).startswith('RUNNER_TRAIL')]
+    rows = []
+    tot_exit = tot_cf = tot_post = 0.0
+    n_better = 0
+    for o in sorted(rt, key=lambda x: getattr(x, 'closed_at', None) or 0):
+        atr = getattr(o, 'entry_atr_pct', None) or 0.0
+        peak = getattr(o, 'peak_pnl', None) or 0.0
+        exit_pct = o.pnl_percentage or 0.0
+        post = getattr(o, 'post_exit_peak_pnl', None)
+        post = post if post is not None else exit_pct
+        # tight-trail counterfactual pullback: max(0.25, ATR×0.50), ATR-floored mirror of live trailing
+        cf_pull = max(0.25, atr * 0.50)
+        cf = round(peak - cf_pull, 3)
+        ceiling = max(peak, post)
+        pct_max = round(100.0 * exit_pct / ceiling, 0) if ceiling > 0 else None
+        gain = round(exit_pct - cf, 3)
+        if gain > 0:
+            n_better += 1
+        tot_exit += exit_pct; tot_cf += cf; tot_post += post
+        if exit_pct >= 0.60 * ceiling and ceiling > 0:
+            verdict = '★ captured most'
+        elif ceiling > 0 and exit_pct >= 0.40 * ceiling:
+            verdict = '✓ partial'
+        else:
+            verdict = '⚠ left a lot'
+        rows.append({
+            'pair': o.pair,
+            'date': (o.closed_at.strftime('%m-%d %H:%M') if getattr(o, 'closed_at', None) else '—'),
+            'atr': round(atr, 2), 'peak': round(peak, 2), 'exit': round(exit_pct, 2),
+            'cf': cf, 'gain': gain, 'post': round(post, 2),
+            'pct_max': pct_max, 'verdict': verdict,
+        })
+    summary = {
+        'n': len(rows),
+        'tot_exit': round(tot_exit, 2),
+        'tot_cf': round(tot_cf, 2),
+        'tot_gain': round(tot_exit - tot_cf, 2),
+        'n_better': n_better,
+    } if rows else None
+    return {'rows': rows, 'summary': summary}
+# ====================== RUNNER TRAIL END ======================
 
 
 # Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).

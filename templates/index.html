@@ -2119,19 +2119,47 @@
                     </div>
                 </div>
 
+                <!-- ===== RUNNER TRAIL START (Jun 1) ===== -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">🏃 Runner Trail Performance (live RUNNER_TRAIL exits)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Scoped high-ATR LONG runner stretch-trail (LONG · entry ATR ≥ 1.0% · peak ≥ 0.70% → hand off tight trailing to stretch-trail K=0.5).
+                        <span class="text-cyan-300">Tight CF%</span> = what the OLD tight trailing would have banked (peak − ATR-floored pullback).
+                        <span class="text-cyan-300">Gain</span> = Exit − Tight CF (did the handoff bank more than doing nothing?).
+                        <span class="text-cyan-300">PostPk%</span> = how high it ran AFTER our exit. <span class="text-cyan-300">%Max</span> = fraction of the ultimate ceiling captured.
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="runner-trail-pool">(no RUNNER_TRAIL exits yet)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-white/10">
+                                <th class="px-2 py-2 text-left">Pair</th>
+                                <th class="px-2 py-2 text-left">Date</th>
+                                <th class="px-2 py-2 text-center">ATR%</th>
+                                <th class="px-2 py-2 text-center">Peak%</th>
+                                <th class="px-2 py-2 text-center">Exit%</th>
+                                <th class="px-2 py-2 text-center">Tight CF%</th>
+                                <th class="px-2 py-2 text-center">Gain</th>
+                                <th class="px-2 py-2 text-center">PostPk%</th>
+                                <th class="px-2 py-2 text-center">%Max</th>
+                                <th class="px-2 py-2 text-left">Verdict</th>
+                            </tr></thead>
+                            <tbody id="runner-trail-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- ===== RUNNER TRAIL END ===== -->
+
                 <!-- ===== LEASH SHADOW START (May 30, observation-only) ===== -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏃 Leash Shadow: Runner Exit Comparison (observation-only)</h3>
                     <p class="text-xs text-gray-400 mb-3">
                         Virtual trailing leashes run alongside the real exit (armed trades only, peak≥0.5%). Each leash
                         respects the same live exits (hard SL / EMA13 / signal-lost) — only the trailing width differs.
-                        <span class="text-emerald-300">tight</span>=0.25 flat (SANITY, should ≈ ACTUAL) ·
-                        <span class="text-emerald-300">wide</span>=0.6 flat ·
-                        <span class="text-emerald-300">tierA</span>=0.25→0.8@peak1.0 ·
-                        <span class="text-emerald-300">tierB</span>=0.3→1.0@peak1.0 ·
-                        <span class="text-cyan-300">strpk</span>=stretch-trail (exit when stretch ≤ 0.5× peak stretch) ·
-                        <span class="text-cyan-300">stren</span>=stretch-to-entry (exit when stretch ≤ entry stretch).
-                        The two <span class="text-cyan-300">str*</span> rows exit on <em>extension fade</em> (price vs EMA5), not a price pullback — tests whether the move's own stretch structure is a better exit.
+                        <span class="text-emerald-300">wide</span>=0.6 flat (price-trail control) ·
+                        <span class="text-cyan-300">strpk</span>=stretch-trail K=0.5 (the SHIPPED runner mechanism) ·
+                        <span class="text-cyan-300">strpk03</span>=stretch-trail K=0.3 (loosest — Type-B/HOME candidate) ·
+                        <span class="text-cyan-300">strpk_signed</span>=hold until price crosses back below EMA5 (full-ride).
+                        The <span class="text-cyan-300">str*</span> rows exit on <em>extension fade</em> (price vs EMA5), not a price pullback — tests whether the move's own stretch structure is a better exit. (Jun 1 redefine: dropped tight/tierA/tierB/strpk04/stren.)
                         <span class="text-emerald-300">Δ</span>=leash total% − actual total%. <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
                         <span class="text-emerald-300">SLconv</span>=small-win→−0.7% conversions. <span class="text-emerald-300">%MaxPk</span>=% of theoretical max peak captured.
                         Gate = LONG ≥0.25 armed.
@@ -7359,6 +7387,21 @@
                 lines.push('');
             }
 
+            // ===== RUNNER TRAIL START (Jun 1) =====
+            const _rt1 = perf.runner_trail_perf || {};
+            if (_rt1.summary) {
+                const _s = _rt1.summary;
+                lines.push(`## Runner Trail Performance (live RUNNER_TRAIL exits)  [N=${_s.n} · net gain vs tight ${_s.tot_gain >= 0 ? '+' : ''}${_s.tot_gain}% · beat tight ${_s.n_better}/${_s.n}]`);
+                lines.push('  Pair          Date          ATR%  Peak%   Exit%  TightCF%  Gain   PostPk%  %Max  Verdict');
+                lines.push('-'.repeat(96));
+                const _sg = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + Number(v).toFixed(2);
+                (_rt1.rows || []).forEach(r => {
+                    lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.date||'').padEnd(12)} ${String(r.atr).padStart(5)} ${_sg(r.peak).padStart(6)} ${_sg(r.exit).padStart(7)} ${_sg(r.cf).padStart(8)} ${_sg(r.gain).padStart(6)} ${_sg(r.post).padStart(8)} ${String(r.pct_max==null?'-':r.pct_max+'%').padStart(5)}  ${r.verdict}`);
+                });
+                lines.push('');
+            }
+            // ===== RUNNER TRAIL END =====
+
             // ===== LEASH SHADOW START (May 30, observation-only) =====
             const _ls1 = perf.leash_shadow || {};
             if (_ls1.slices && _ls1.slices.length) {
@@ -8997,6 +9040,18 @@
                 }
 
                 // ===== LEASH SHADOW START (May 30, observation-only) =====
+                const _rt2 = perf.runner_trail_perf || {};
+                if (_rt2.summary) {
+                    const _s = _rt2.summary;
+                    lines.push(`## Runner Trail Performance (live RUNNER_TRAIL exits)  [N=${_s.n} · net gain vs tight ${_s.tot_gain >= 0 ? '+' : ''}${_s.tot_gain}% · beat tight ${_s.n_better}/${_s.n}]`);
+                    lines.push('  Pair          Date          ATR%  Peak%   Exit%  TightCF%  Gain   PostPk%  %Max  Verdict');
+                    lines.push('-'.repeat(96));
+                    const _sg = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + Number(v).toFixed(2);
+                    (_rt2.rows || []).forEach(r => {
+                        lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.date||'').padEnd(12)} ${String(r.atr).padStart(5)} ${_sg(r.peak).padStart(6)} ${_sg(r.exit).padStart(7)} ${_sg(r.cf).padStart(8)} ${_sg(r.gain).padStart(6)} ${_sg(r.post).padStart(8)} ${String(r.pct_max==null?'-':r.pct_max+'%').padStart(5)}  ${r.verdict}`);
+                    });
+                    lines.push('');
+                }
                 const _ls2 = perf.leash_shadow || {};
                 if (_ls2.slices && _ls2.slices.length) {
                     lines.push(`## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=${_ls2.cohort_n || 0}]`);
@@ -11463,6 +11518,42 @@
                         }
                     }
                 }
+
+                // ===== RUNNER TRAIL START (Jun 1) =====
+                if (data.runner_trail_perf) {
+                    const _rt = data.runner_trail_perf;
+                    const _rtPool = document.getElementById('runner-trail-pool');
+                    const _rtBody = document.getElementById('runner-trail-body');
+                    const _s = _rt.summary;
+                    if (_rtPool) _rtPool.innerHTML = _s
+                        ? `RUNNER_TRAIL exits: <strong>${_s.n}</strong> · Exit total <strong>${_s.tot_exit >= 0 ? '+' : ''}${_s.tot_exit}%</strong> vs Tight-CF <strong>${_s.tot_cf >= 0 ? '+' : ''}${_s.tot_cf}%</strong> → net gain <strong class="${_s.tot_gain >= 0 ? 'text-emerald-400' : 'text-red-400'}">${_s.tot_gain >= 0 ? '+' : ''}${_s.tot_gain}%</strong> · beat tight on ${_s.n_better}/${_s.n}`
+                        : '(no RUNNER_TRAIL exits yet)';
+                    if (_rtBody) {
+                        const sg = (v, p=2) => v == null ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(p);
+                        let html = '';
+                        (_rt.rows || []).forEach(r => {
+                            let vCls = 'text-gray-400';
+                            if (r.verdict.startsWith('★')) vCls = 'text-emerald-400 font-bold';
+                            else if (r.verdict.startsWith('✓')) vCls = 'text-emerald-300';
+                            else if (r.verdict.startsWith('⚠')) vCls = 'text-amber-400';
+                            const gCls = r.gain > 0 ? 'text-emerald-400 font-semibold' : r.gain < 0 ? 'text-red-400 font-semibold' : 'text-gray-400';
+                            html += `<tr class="border-b border-white/5">
+                                <td class="px-2 py-1 text-left text-gray-200">${r.pair}</td>
+                                <td class="px-2 py-1 text-left text-gray-500">${r.date}</td>
+                                <td class="px-2 py-1 text-center text-gray-400">${r.atr}</td>
+                                <td class="px-2 py-1 text-center text-gray-300">${sg(r.peak)}</td>
+                                <td class="px-2 py-1 text-center text-cyan-300 font-semibold">${sg(r.exit)}</td>
+                                <td class="px-2 py-1 text-center text-gray-400">${sg(r.cf)}</td>
+                                <td class="px-2 py-1 text-center ${gCls}">${sg(r.gain)}</td>
+                                <td class="px-2 py-1 text-center text-gray-300">${sg(r.post)}</td>
+                                <td class="px-2 py-1 text-center text-gray-400">${r.pct_max == null ? '—' : r.pct_max + '%'}</td>
+                                <td class="px-2 py-1 text-left ${vCls}">${r.verdict}</td>
+                            </tr>`;
+                        });
+                        _rtBody.innerHTML = html || '<tr><td colspan="10" class="px-2 py-3 text-center text-gray-500">No RUNNER_TRAIL exits yet.</td></tr>';
+                    }
+                }
+                // ===== RUNNER TRAIL END =====
 
                 // ===== LEASH SHADOW START (May 30, observation-only) =====
                 if (data.leash_shadow) {

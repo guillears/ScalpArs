@@ -1,5 +1,103 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 1, 2026 — SHIPPED: Runner Stretch-Trail (scoped high-ATR LONG runner exit) + Leash Shadow redefine
+
+### What shipped (the runner-capture exit we kept leaving on the table)
+A LONG-scoped **stretch-trail handoff**: once a high-ATR LONG proves itself a runner,
+swap the tight price-trailing for a loose stretch-trail so IDU-class runners run.
+
+```
+RUNNER_TRAIL fires when ALL true:  direction==LONG · entry_atr_pct≥1.0 · peak≥0.70%
+  → hand off tight trailing → exit only when live SIGNED stretch ≤ 0.5× peak stretch
+Backstops UNCHANGED & live in both paths: ATR-widened hard SL (−1.20 floor) + EMA13 strict cross.
+Config: runner_trail_enabled / runner_trail_atr_min 1.0 / runner_trail_arm_peak 0.70 / runner_trail_k 0.5
+```
+
+### The two operator insights that cracked it (both corrected my earlier verdict)
+1. **Floor the leashes at the REAL hard SL.** Shadow leashes ignored the SL backstop
+   (HEI showed strpk −3.13, impossible — real SL caps at −1.20). Re-flooring flipped the
+   read: wide AND strpk both became viable; the May-31 "wide+fixed-floor −0.45 = +1.92
+   robust" finding was FALSIFIED (a fixed floor fires when trough<peak → kills early-dip
+   runners like IDU: dips −0.69 then runs +9.22). **No fixed floor. The loose ATR-widened
+   −1.20 SL IS the right floor.**
+2. **Raise the leash ARM from 0.45 → 0.70.** This is the key. The arm sweep (SL-floored,
+   shadow-armed LONG N=16):
+
+   | arm≥ | #leashed | strpk net | wide net | actual |
+   |---|---|---|---|---|
+   | 0.45 | 8 | +3.66 | −0.07 | −1.36 |
+   | **0.70** | **2** | **+4.57** ★ | −0.97 | −1.36 |
+
+   Raising the arm EXCLUDES the small-peak faders strpk bled on (HOME-small −0.76, IDU-small
+   −0.82). At 0.70 only the **proven** runners get the loose leash (~1-2/batch) → fader bleed
+   eliminated, downside bounded. strpk@0.70 (+4.57) beats wide@0.45 (−0.07). strpk and wide
+   want OPPOSITE arms (strpk high, wide low) — high arm is what makes strpk safe.
+
+### Why 0.70, ATR 1.0, signed stretch (locked design choices)
+- **arm 0.70**: clean cliff — peaks cluster at 0.65 (small movers) then GAP to 1.85 (monsters).
+  0.70 = low edge of the safe gap = widest forward catch. 0 trades live in [0.70, 0.80) so
+  0.70≡0.80 on current data; 0.70 chosen for forward generalization.
+- **ATR 1.0**: at arm 0.70, ZERO low-ATR(<1.0) pairs reach peak≥0.70 — the arm already implies
+  high-ATR. The explicit ATR≥1.0 guard is FREE insurance (Δ 0.00) against a future low-ATR
+  edge case getting the loose leash (tiny/noisy stretch).
+- **SIGNED stretch (not abs)**: the validated shadow strpk uses signed `(price−EMA5)/price`
+  (negative on reversal). Live impl MUST match — `abs()` would re-introduce the unsigned
+  fader-ride bug (CLAUDE.md May 31). Fires when stretch retraces to ≤k×peak INCLUDING the
+  EMA5 cross-back. Functional test confirms: holds while stretched, fires on collapse AND on
+  EMA5 cross, SL backstop intact, low-ATR/SHORT unscoped, trend-break defers to stretch.
+
+### Honest evidence + residual (the caveat that stays)
+N=16 shadow, **2 of 8 cross-batch monsters shadowed** (IDU ✓ +6.80, HOME ✗ +0.77 of +7.58 —
+strpk got shaken on HOME's pullback; 1-for-2). The +4.57 is still IDU-weighted; ex-IDU it's
+~break-even. BUT the high arm makes shipping safe at low N: only proven runners leashed, faders
+excluded, downside bounded. **HOME-class (Type-B: pull back then re-run) is still missed** —
+that's the next lever (strpk03/strpk_signed shadows test it). Cross-batch the IDU-profile is
+REGULAR not freak: 27 LONG left ≥+3% over 5 weeks, 8 ≥+5%, 3 ≥+8% (avg ATR 1.53). We won 25
+of 27 — the leak is capture, not entries.
+
+### Engine path (low-risk integration)
+Stretch exit lives in `check_exit_conditions` (monitor loop, 1-2s — fine for a gradual stretch
+collapse). Realtime tight-trailing is just SUPPRESSED when runner-armed (mirrors RSI/EMA-stack
+handoff guard). The trend-break/EXTEND_TP exit DEFERS to the stretch-trail when armed (a minor
+ema5/8 stack flip must not exit the runner early — matches shadow which respects only EMA13/SL).
+`runner_peak_stretch` tracked on Order (survives restart). New close tag `RUNNER_TRAIL` added to
+both post-exit tracking whitelists (live + recovery) → auto-appears in Post-Exit Regret.
+
+### Reporting
+- **NEW 🏃 Runner Trail Performance table** — per RUNNER_TRAIL exit: ATR / Peak / Exit / **Tight-CF**
+  (what the old tight trailing would have banked) / **Gain vs tight** / PostPk / %Max / verdict.
+  The ship-validation surface — read at next checkpoint.
+- **Leash Shadow redefined** to a 4-leash runner-focused set: **wide / strpk / strpk03 /
+  strpk_signed** (NEW: hold-until-EMA5-cross, the Type-B candidate). Dropped tight (sim
+  validated), tierA/tierB (FALSIFIED prove-then-run), strpk04 (redundant), stren (redundant).
+  Engine still computes the dropped ones (harmless, just unrendered — strip later if desired).
+
+### LOCKED revert/tune gates (next batch with RUNNER_TRAIL exits)
+- If Runner Trail table summary **net gain vs tight ≤ 0 on N≥5** → revert (`runner_trail_enabled: false`).
+- If runner-trail exits routinely show **%Max < 40% (PostPk ≫ Exit)** → the stretch-trail exits too
+  early; try strpk03 (k 0.3) via `runner_trail_k`, OR adopt strpk_signed if its shadow beats strpk.
+- If a fresh **low-ATR(<1.0) LONG somehow arms** (peak≥0.70) and the runner trail misbehaves → the
+  ATR guard caught nothing; investigate before widening.
+- strpk_signed shadow vs strpk shadow over the next ~6 monsters settles the Type-B/HOME capture.
+
+### NOTE — the May 31 high-ATR runner watchlist entry below is PARTIALLY SUPERSEDED
+Its "wide trail + fixed SL −0.45 = +1.92 robust" table is FALSIFIED (the fixed floor kills
+early-dip runners; leashes were not SL-floored). The correct finding is THIS entry: loose
+ATR-widened −1.20 SL + arm-0.70 stretch-trail, no fixed floor. The N≥30 gate it locked is
+overridden here by the arm-0.70 bounded-risk design (only proven runners leashed).
+
+### Files changed
+- `config.py` / `trading_config.json` — 4 runner_trail fields
+- `models.py` / `database.py` — `runner_peak_stretch` + `shadow_strpk_signed_*` columns + migrate
+- `services/indicators.py` — runner stretch-trail in `check_exit_conditions` (signed) + trend-break defer
+- `services/trading_engine.py` — monitor-loop stretch tracking + realtime suppress + RUNNER_TRAIL
+  whitelists (×2) + strpk_signed leash machinery + persistence
+- `main.py` — `_compute_runner_trail_performance` + payload + Leash Shadow leash-set redefine
+- `templates/index.html` — Runner Trail table (UI + 2 text exports) + Leash Shadow legend redefine
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 1, 2026 — SHIPPED SHORT entry: pair-ATR-min <0.25 + fan upper 1.65→1.90 (BEARISH batch)
 
 ### Batch analyzed

@@ -151,7 +151,11 @@ _LEASH_SL = -0.7    # hard SL floor (matches live)
 #             The cohort settles K the same way tierA/tierB bracket the price-trail params.
 #   stren = exit when live stretch falls back to <= ENTRY stretch (extension collapsed to entry)
 _STRPK_K = {'strpk': 0.5, 'strpk04': 0.4, 'strpk03': 0.3}
-_STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren')
+# Jun 1: strpk_signed = hold the runner FULLY while price stays above EMA5, exit
+# only when favorable stretch is lost (price crosses back below EMA5, signed ≤ 0).
+# Looser than strpk(K=0.5) on partial pullbacks — the candidate to catch Type-B
+# monsters (HOME: pulled back to +0.77 but stayed near EMA5, then re-ran +7.58).
+_STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren', 'strpk_signed')
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
@@ -213,6 +217,11 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     pk = st.get('pstretch')
                     if pk is not None and pk > 0 and stretch <= pk * _STRPK_K[sname]:
                         st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
+                elif sname == 'strpk_signed':
+                    # exit only when favorable extension is fully lost (EMA5 cross-back)
+                    pk = st.get('pstretch')
+                    if pk is not None and pk > 0 and stretch <= 0:
+                        st['sexits'][sname] = (round(pnl_pct, 4), 'ema5_cross')
                 elif sname == 'stren':
                     es = st.get('estretch')
                     if es is not None and stretch <= es:
@@ -731,6 +740,7 @@ class TradingEngine:
                     _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or
                     _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or
                     _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or
+                    _reason_base.startswith("RUNNER_TRAIL") or
                     _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or
                     _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or
                     _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or
@@ -4074,7 +4084,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -4443,6 +4453,9 @@ class TradingEngine:
                                 shadow_stren_pnl=_leash_exits.get('stren', (None, None))[0],
                                 shadow_stren_reason=_leash_exits.get('stren', (None, None))[1],
                                 shadow_stren_min=_leash_exits.get('stren_min'),
+                                shadow_strpk_signed_pnl=_leash_exits.get('strpk_signed', (None, None))[0],
+                                shadow_strpk_signed_reason=_leash_exits.get('strpk_signed', (None, None))[1],
+                                shadow_strpk_signed_min=_leash_exits.get('strpk_signed_min'),
                                 shadow_peak_stretch=_leash_exits.get('_peak_stretch'),
                                 # ===== LEASH SHADOW END =====
                                 post_exit_peak_pnl=round(peak_pnl, 4),
@@ -5037,6 +5050,22 @@ class TradingEngine:
                 order.direction, pair_data.ema5, pair_data.ema8, pair_data.ema20, pair_data.price
             )) if pair_data else False
             exit_conf_config = config.trading_config.confidence_levels.get(order.confidence)
+            # Jun 1: runner stretch-trail — track live |price−EMA5| stretch + peak.
+            # Only meaningful for LONG (the runner trail is LONG-scoped); cheap to
+            # always compute. Peak persisted on the Order so it survives restart.
+            _rt_stretch = None
+            try:
+                if ema5 and ema5 > 0 and current_price and current_price > 0:
+                    # SIGNED stretch, EXACT match to the shadow strpk formula
+                    # (/current_price denominator; + = favorable extension).
+                    _rt_stretch = (((current_price - ema5) / current_price) * 100.0
+                                   if order.direction == "LONG"
+                                   else ((ema5 - current_price) / current_price) * 100.0)
+                    _rt_prev_peak = getattr(order, 'runner_peak_stretch', None)
+                    if _rt_prev_peak is None or _rt_stretch > _rt_prev_peak:
+                        order.runner_peak_stretch = _rt_stretch
+            except Exception:
+                _rt_stretch = None
             exit_result = check_exit_conditions(
                 direction=order.direction,
                 entry_price=order.entry_price,
@@ -5060,8 +5089,10 @@ class TradingEngine:
                 signal_active=is_signal_active,
                 tp_trailing_enabled=exit_conf_config.tp_trailing_enabled if exit_conf_config else True,
                 entry_atr_pct=getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing
+                current_stretch=_rt_stretch,  # Jun 1: runner stretch-trail
+                peak_stretch=getattr(order, 'runner_peak_stretch', None),  # Jun 1: runner stretch-trail
             )
-            
+
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
             order.trough_pnl = exit_result.get("trough_pnl", order.trough_pnl)
             # May 14 — sync DB peak/trough updates back to realtime cache.
@@ -7753,6 +7784,19 @@ class TradingEngine:
                 if not _handoff_suppress and getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_enabled', False):
                     _esl = getattr(config.trading_config.thresholds, 'ema_stack_cross_exit_level', 2)
                     if order_info.get('current_tp_level', 1) >= _esl:
+                        _handoff_suppress = True
+                # Jun 1: runner stretch-trail — suppress the realtime tight-trailing
+                # for runner-armed high-ATR LONGs so the trade rides; the actual
+                # RUNNER_TRAIL exit fires from check_exit_conditions in the monitor
+                # loop. Backstops (hard SL / EMA13) below are NOT suppressed.
+                if (not _handoff_suppress
+                        and getattr(config.trading_config.thresholds, 'runner_trail_enabled', False)
+                        and direction == "LONG"):
+                    _rt_atr = order_info.get('entry_atr_pct')
+                    _rt_peak = order_info.get('peak_pnl', 0.0) or 0.0
+                    if (_rt_atr is not None
+                            and _rt_atr >= float(getattr(config.trading_config.thresholds, 'runner_trail_atr_min', 1.0) or 1.0)
+                            and _rt_peak >= float(getattr(config.trading_config.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70)):
                         _handoff_suppress = True
             except Exception:
                 pass

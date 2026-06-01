@@ -284,6 +284,19 @@ class SignalThresholds(BaseModel):
     # zero winners killed (all high-ATR winners had trough > -0.68%).
     # See CLAUDE.md May 23 entry for full rationale.
     sl_atr_widen_floor_pct: float = -1.20
+    # Jun 1, 2026 — RUNNER STRETCH-TRAIL (scoped high-ATR LONG runner exit).
+    # Once a high-ATR LONG proves itself a runner (peak ≥ arm_peak), HAND OFF
+    # from the tight price-trailing to a loose STRETCH-trail: hold until live
+    # |price−EMA5| stretch collapses to runner_trail_k × the peak stretch.
+    # Lets IDU-class runners run (shadow strpk +6.80 vs tight +1.47 on IDU);
+    # faders are excluded because they never reach the 0.70 arm. Backstops
+    # (ATR-widened hard SL −1.20 floor + EMA13 strict cross) stay live — the
+    # stretch-trail only governs the profit-taking side. See CLAUDE.md Jun 1.
+    # Validated: shadow-armed LONG arm-0.70 strpk net +4.57 vs actual −1.36 (N=16).
+    runner_trail_enabled: bool = True
+    runner_trail_atr_min: float = 1.0    # only pairs with entry ATR ≥ this get the loose leash
+    runner_trail_arm_peak: float = 0.70  # handoff point: peak P&L ≥ this swaps tight→stretch trail
+    runner_trail_k: float = 0.5          # exit when live stretch ≤ k × peak stretch (unsigned, matches shadow strpk)
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in

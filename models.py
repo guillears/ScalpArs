@@ -465,8 +465,17 @@ class Order(Base):
     shadow_stren_pnl = Column(Float, nullable=True)
     shadow_stren_reason = Column(String(15), nullable=True)
     shadow_stren_min = Column(Float, nullable=True)
+    shadow_strpk_signed_pnl = Column(Float, nullable=True)     # Jun 1: hold-until-EMA5-cross variant
+    shadow_strpk_signed_reason = Column(String(15), nullable=True)
+    shadow_strpk_signed_min = Column(Float, nullable=True)
     shadow_peak_stretch = Column(Float, nullable=True)
     # ===== LEASH SHADOW END =====
+
+    # Jun 1, 2026 — RUNNER STRETCH-TRAIL: live peak |price−EMA5| stretch since
+    # entry, tracked in the monitor loop while the runner trail is armed. Used to
+    # fire RUNNER_TRAIL when live stretch ≤ runner_trail_k × this. Persisted so it
+    # survives bot restart (re-arms cleanly otherwise). See CLAUDE.md Jun 1.
+    runner_peak_stretch = Column(Float, nullable=True)
 
     # Signal Lost Flag: trade was in signal-lost zone but kept open
     signal_lost_flagged = Column(Boolean, nullable=True, default=False)

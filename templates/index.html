@@ -2163,9 +2163,10 @@
                         respects the same live exits (hard SL / EMA13 / signal-lost) — only the trailing width differs.
                         <span class="text-emerald-300">wide</span>=0.6 flat (price-trail control) ·
                         <span class="text-cyan-300">strpk</span>=stretch-trail K=0.5 (the SHIPPED runner mechanism) ·
+                        <span class="text-cyan-300">strpk04</span>=stretch-trail K=0.4 (looser — holds longer than shipped) ·
                         <span class="text-cyan-300">strpk03</span>=stretch-trail K=0.3 (loosest — Type-B/HOME candidate) ·
                         <span class="text-cyan-300">strpk_signed</span>=hold until price crosses back below EMA5 (full-ride).
-                        The <span class="text-cyan-300">str*</span> rows exit on <em>extension fade</em> (price vs EMA5), not a price pullback — tests whether the move's own stretch structure is a better exit. (Jun 1 redefine: dropped tight/tierA/tierB/strpk04/stren.)
+                        The <span class="text-cyan-300">str*</span> rows exit on <em>extension fade</em> (price vs EMA5), not a price pullback — tests whether the move's own stretch structure is a better exit. Lower K = holds longer = captures more on true runners, gives back more on fade-reversers. (Jun 1 redefine: dropped tight/tierA/tierB/stren.)
                         <span class="text-emerald-300">Δ</span>=leash total% − actual total%. <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
                         <span class="text-emerald-300">SLconv</span>=small-win→−0.7% conversions. <span class="text-emerald-300">%MaxPk</span>=% of theoretical max peak captured.
                         Gate = LONG ≥0.25 armed.
@@ -11639,8 +11640,8 @@
                     }
                     if (_lsDrill && (_ls.drill || []).length) {
                         const n2 = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2));
-                        _lsDrill.innerHTML = '<span class="text-gray-400">Gate per-trade (top by post-exit peak) — str(entry→peak stretch), exits act/tierB/strpk/stren:</span> '
-                            + _ls.drill.map(d => `${d.pair}(str${d.stretch}→${d.pkstr == null ? '?' : d.pkstr}) act${n2(d.actual)}/tB${n2(d.tierB)}/<span class="text-cyan-300">sp${n2(d.strpk)}/se${n2(d.stren)}</span> pxpk${n2(d.pxpk)}`).join(' · ');
+                        _lsDrill.innerHTML = '<span class="text-gray-400">Runner cohort per-trade (top by post-exit peak) — str(entry→peak stretch), exits act / strpk K=.5/.4/.3 / signed:</span> '
+                            + _ls.drill.map(d => `${d.pair}(str${d.stretch}→${d.pkstr == null ? '?' : d.pkstr}) act${n2(d.actual)}/<span class="text-cyan-300">sp${n2(d.strpk)}/s04${n2(d.strpk04)}/s03${n2(d.strpk03)}/sig${n2(d.strpk_signed)}</span> pxpk${n2(d.pxpk)}`).join(' · ');
                     } else if (_lsDrill) { _lsDrill.innerHTML = ''; }
                 }
                 // ===== LEASH SHADOW END =====

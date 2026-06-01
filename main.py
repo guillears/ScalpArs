@@ -8539,6 +8539,7 @@ def _compute_leash_shadow(orders):
         ('actual', None, None, None),
         ('wide', 'shadow_wide_pnl', 'shadow_wide_reason', 'shadow_wide_min'),
         ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5 (SHIPPED runner mech)
+        ('strpk04', 'shadow_strpk04_pnl', 'shadow_strpk04_reason', 'shadow_strpk04_min'),  # K=0.4 (looser — holds longer than shipped)
         ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest — Type-B candidate)
         ('strpk_signed', 'shadow_strpk_signed_pnl', 'shadow_strpk_signed_reason', 'shadow_strpk_signed_min'),  # hold to EMA5 cross
     ]
@@ -8547,21 +8548,27 @@ def _compute_leash_shadow(orders):
             if getattr(o, 'status', None) == 'CLOSED'
             and (getattr(o, 'peak_pnl', 0) or 0) >= ACT
             and getattr(o, 'shadow_wide_pnl', None) is not None]
+    # Jun 1: re-sliced to the RUNNER cohort (ATR>=1.0 & peak>=0.70 - the actual arming
+    # condition of the shipped runner trail) so the K-comparison validates the mechanism
+    # we ship, not legacy entry-stretch buckets (which lumped real runners like STG with
+    # high-entry-stretch non-runners like HOME that never armed). <0.25-stretch LONG kept
+    # as the "leashes should do nothing here" control. Predicate-based for flexibility.
     BUCKETS = [
-        ('LONG ≥0.25 (GATE)', 'LONG', 0.25, 999.0, True, False),
-        ('LONG <0.25 (control)', 'LONG', -999.0, 0.25, False, False),
-        ('SHORT ≥0.25', 'SHORT', 0.25, 999.0, False, False),
-        ('SHORT <0.25', 'SHORT', -999.0, 0.25, False, False),
-        (' LONG 0.25-0.40', 'LONG', 0.25, 0.40, False, True),
-        (' LONG 0.40-0.60', 'LONG', 0.40, 0.60, False, True),
-        (' LONG 0.60+', 'LONG', 0.60, 999.0, False, True),
+        ('LONG RUNNER (ATR>=1.0 · peak>=0.70)',
+            lambda o: o.direction == 'LONG'
+                      and (getattr(o, 'entry_atr_pct', None) or 0) >= 1.0
+                      and (getattr(o, 'peak_pnl', None) or 0) >= 0.70,
+            True, False),
+        ('LONG <0.25 stretch (control)',
+            lambda o: o.direction == 'LONG'
+                      and getattr(o, 'entry_ema5_stretch', None) is not None
+                      and (o.entry_ema5_stretch or 0) < 0.25,
+            False, False),
     ]
     slices = []
     drill = []
-    for label, dir_, lo, hi, is_gate, is_sub in BUCKETS:
-        coh = [o for o in rows if o.direction == dir_
-               and getattr(o, 'entry_ema5_stretch', None) is not None
-               and lo <= o.entry_ema5_stretch < hi]
+    for label, pred, is_gate, is_sub in BUCKETS:
+        coh = [o for o in rows if pred(o)]
         if not coh:
             continue
         actual_total = sum((o.pnl_percentage or 0) for o in coh)
@@ -8658,10 +8665,10 @@ def _compute_leash_shadow(orders):
                     'pair': o.pair, 'stretch': round(o.entry_ema5_stretch or 0, 2),
                     'pkstr': round(o.shadow_peak_stretch, 2) if o.shadow_peak_stretch is not None else None,
                     'actual': round(o.pnl_percentage or 0, 2),
-                    'tierA': round(o.shadow_tierA_pnl, 2) if o.shadow_tierA_pnl is not None else None,
-                    'tierB': round(o.shadow_tierB_pnl, 2) if o.shadow_tierB_pnl is not None else None,
                     'strpk': round(o.shadow_strpk_pnl, 2) if o.shadow_strpk_pnl is not None else None,
-                    'stren': round(o.shadow_stren_pnl, 2) if o.shadow_stren_pnl is not None else None,
+                    'strpk04': round(o.shadow_strpk04_pnl, 2) if o.shadow_strpk04_pnl is not None else None,
+                    'strpk03': round(o.shadow_strpk03_pnl, 2) if o.shadow_strpk03_pnl is not None else None,
+                    'strpk_signed': round(o.shadow_strpk_signed_pnl, 2) if o.shadow_strpk_signed_pnl is not None else None,
                     'pxpk': round(o.post_exit_peak_pnl or 0, 2),
                 })
     return {'slices': slices, 'drill': drill, 'cohort_n': len(rows)}

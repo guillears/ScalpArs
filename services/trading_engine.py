@@ -5577,7 +5577,7 @@ class TradingEngine:
                 # moment have no EMA stack alignment → get_signal returns NOTHING
                 # without calling _record(). Default placeholder is overwritten
                 # the moment any filter actually fires.
-                self._last_pair_block_reason[pair] = "No setup (EMA stack not aligned)"
+                self._last_pair_block_reason[pair] = "No EMA Stack"
 
                 ohlcv = await binance_service.get_ohlcv(symbol, '5m', 100)
                 if not ohlcv:

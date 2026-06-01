@@ -8635,6 +8635,13 @@ def _compute_leash_shadow(orders):
 # ====================== LEASH SHADOW END ======================
 
 
+# Fast-exit counterfactual thresholds + windows (May 13 — Option A analytics).
+# (Restored May 31 — these module-level constants were accidentally swallowed
+#  when the adjacent Phantom-BE / Time-to-L1 functions were retired.)
+_FAST_EXIT_THRESHOLDS = [0.20, 0.30, 0.40]   # P&L % triggers to test (May 17: shifted from [0.10,0.15,0.20] now that 0.20 is live)
+_FAST_EXIT_WINDOWS = [1, 2, 5]               # minutes from entry (3min dropped May 13)
+_FAST_EXIT_DEFAULT_CELL = (0.20, 2)          # cell for close-reason breakdown
+_FAST_EXIT_FEE_PCT = 0.063                   # taker round-trip fee approx
 
 
 def _compute_fast_exit_counterfactual(orders):

@@ -1,5 +1,52 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — 🚨 POST-MORTEM + LOCKED CHECKLIST: removing a table can swallow shared module-level constants
+
+### What happened (prod dashboard went all-zeros)
+The Phantom-BE + Time-to-L1 retirement (entry below) deleted a 321-line contiguous span in
+`main.py` that contained the two retired functions — **but sandwiched BETWEEN them were 4
+module-level constants belonging to a *different, still-active* feature** (Fast-Exit
+Counterfactual):
+```
+_FAST_EXIT_THRESHOLDS, _FAST_EXIT_WINDOWS, _FAST_EXIT_DEFAULT_CELL, _FAST_EXIT_FEE_PCT
+```
+`_compute_fast_exit_counterfactual` then hit `NameError: _FAST_EXIT_THRESHOLDS is not defined`
+→ `_compute_performance` raised → the `/api/performance` handler's `try/except` returned its
+all-empty `{ "_error": str(e), "total_trades": 0, ... }` fallback → **every dashboard indicator
+rendered 0** while the bot itself kept trading fine (only that one endpoint was 500-ing silently).
+Fix: restored the 4 constants above `_compute_fast_exit_counterfactual`.
+
+### Why my removal guards MISSED it
+The splice script asserted the deleted span (a) contained the target functions and (b) did NOT
+contain the *next* function. It did **not** scan for **module-level (col-0) names defined inside
+the span that are referenced OUTSIDE it**. Adjacent feature code (constants, helpers) can live in
+the gap between two functions and get swallowed. `ast.parse` + import both passed (syntactically
+the file is fine — a NameError only fires at *runtime*), so static checks gave false confidence.
+
+### LOCKED CHECKLIST — before removing ANY function/section block (do all 4)
+1. **Scope the exact span**, then grep it for **col-0 definitions**:
+   `sed -n 'A,Bp' main.py | grep -nE '^[A-Za-z_][A-Za-z0-9_]* *='` and also `^def ` / `^class `.
+   For EACH name found, grep the WHOLE file for other references. If used outside the span →
+   it is NOT part of what you're removing; preserve it (move it out before deleting).
+2. **Runtime-exercise the affected endpoint**, not just `ast.parse`. Import is not enough —
+   `NameError` inside a function only fires when called. The repeatable harness that caught this:
+   load a recent orders CSV into a temp `sqlite+aiosqlite:///:memory:`, `Base.metadata.create_all`,
+   insert `models.Order(**coerced_row)`, then `await main._compute_performance(session)` and assert
+   `_error is None` AND `total_trades > 0`. (Run with `venv/bin/python`; `pip install python-multipart`
+   locally if the FastAPI app import trips on the `/login` Form route.)
+3. **Know the silent-failure mode:** `/api/performance` swallows exceptions into a 0-filled payload
+   with an `_error` key (frontend `console.warn`s it). All-zeros dashboard + bot still trading =
+   suspect a `_compute_performance` exception FIRST. Check `data._error` in the browser console
+   and `grep '\[PERF\]' /var/log/web.stdout.log` for the server-side traceback.
+4. **Don't trust `{}`/`()`/`[]` balance as proof of correctness** — it only proves you cut
+   *syntactically* balanced blocks, not that you didn't remove something used elsewhere.
+
+### Files changed (this fix)
+- `main.py` — restored 4 `_FAST_EXIT_*` module constants above `_compute_fast_exit_counterfactual`
+- `CLAUDE.md` — this post-mortem + checklist
+
+---
+
 ## May 31, 2026 — RETIRED 2 observation-only report surfaces (Phantom BE + Time-to-L1)
 
 Operator decision: **BE is permanently off — proven not to work, will never re-apply.** Removed
@@ -11,9 +58,11 @@ zero engine/trading touch.**
 | 🧪 Phantom BE 0.20/0.10 Counterfactual | `main.py` fn `_compute_phantom_be_aggr_by_close_reason` + payload; `index.html` UI table + JS renderer + 2 text-exports | **engine `_SHADOW_BE` phantom_be_aggr capture + 2 DB cols** (`phantom_be_aggr_triggered_at/_would_exit_pnl`) — harmless, just unused |
 | ⏱️ Time-to-L1 Protection Tracker | `main.py` fn `_compute_time_to_l1_analysis` + payload; `index.html` UI (3 tables) + JS renderer + 2 text-exports | — (was pure report; no engine hook per May 27 ship) |
 
-Verified: target identifiers grep to **0** refs in both files; main.py parses; index.html `{}`
-balanced and `()`/`[]` deltas identical to pre-edit (= balanced blocks cut); all neighboring
-sections (4-Cohort, Pattern C/W, Unmatched, Leash Shadow) intact. Engine phantom-BE capture left
+Verified at the time: target identifiers grep to **0** refs in both files; main.py parses;
+index.html `{}` balanced and `()`/`[]` deltas identical to pre-edit. **⚠ This verification was
+INSUFFICIENT — the main.py cut also swallowed 4 shared `_FAST_EXIT_*` constants and broke
+`/api/performance` (all-zeros dashboard). See the POST-MORTEM entry above for the fix + the
+locked removal checklist.** Engine phantom-BE capture left
 running but inert — strip later if zero-overhead desired (would touch trading_engine.py + need no
 migration since cols stay). **Also: stop surfacing BE in trade analyses going forward.**
 

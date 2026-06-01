@@ -685,3 +685,19 @@ class Investor(Base):
     total_deposited = Column(Float, nullable=False, default=0.0)
     total_withdrawn = Column(Float, nullable=False, default=0.0)
     created_at = Column(DateTime, nullable=False, default=func.now())
+
+
+class InvestorLedger(Base):
+    """Dated cash-flow ledger per investor (Jun 1, 2026). Audit trail — one row
+    per deposit / withdrawal / cash-out. The Investor.shares/NAV math stays the
+    source of truth for ownership; this is the dated history alongside it."""
+    __tablename__ = "investor_ledger"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    investor_id = Column(Integer, nullable=False, index=True)
+    type = Column(String(12), nullable=False)        # DEPOSIT | WITHDRAW | CASHOUT | OPENING
+    amount = Column(Float, nullable=False)            # USD moved (always positive)
+    nav_at_time = Column(Float, nullable=True)        # NAV/share at the moment
+    shares_delta = Column(Float, nullable=True)       # + on deposit, − on withdraw
+    note = Column(String(200), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())

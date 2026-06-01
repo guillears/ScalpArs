@@ -23,7 +23,7 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -200,7 +200,30 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("[STARTUP] Initializing database...")
     await init_db()
-    
+
+    # Jun 1, 2026 — one-time opening-balance seed for the investor ledger.
+    # Existing investors predate the ledger (no dated history). Seed ONE OPENING
+    # row per investor who has none yet, so their history isn't empty. Guarded by
+    # "has zero ledger rows" so it never double-seeds across restarts.
+    try:
+        async with AsyncSessionLocal() as _seed_db:
+            _existing = (await _seed_db.execute(select(Investor))).scalars().all()
+            for _inv in _existing:
+                _has = (await _seed_db.execute(
+                    select(func.count(InvestorLedger.id)).where(InvestorLedger.investor_id == _inv.id)
+                )).scalar()
+                if not _has:
+                    _seed_db.add(InvestorLedger(
+                        investor_id=_inv.id, type="OPENING",
+                        amount=round(_inv.total_deposited or 0.0, 2),
+                        nav_at_time=None, shares_delta=round(_inv.shares or 0.0, 6),
+                        note=f"Opening balance — pre-ledger (deposited ${_inv.total_deposited:.2f}, withdrawn ${_inv.total_withdrawn:.2f})",
+                        created_at=_inv.created_at,
+                    ))
+            await _seed_db.commit()
+    except Exception as _e:
+        logger.warning(f"[INVESTOR_LEDGER] opening-balance seed skipped: {_e}")
+
     # Clear any stale ban state from DB on startup (fresh deploy = fresh IP)
     async with AsyncSessionLocal() as db:
         ban_row = await db.execute(select(BotState).limit(1))
@@ -10222,6 +10245,21 @@ async def _get_nav_per_share(db: AsyncSession) -> float:
     return portfolio / total_shares
 
 
+def _log_investor_ledger(db: AsyncSession, investor_id: int, type_: str, amount: float,
+                         nav: float = None, shares_delta: float = None, note: str = None):
+    """Append a dated cash-flow row. Fail-open — a ledger error must NEVER break
+    the underlying deposit/withdrawal (the shares/NAV math is the source of truth)."""
+    try:
+        db.add(InvestorLedger(
+            investor_id=investor_id, type=type_, amount=round(abs(amount), 2),
+            nav_at_time=round(nav, 6) if nav is not None else None,
+            shares_delta=round(shares_delta, 6) if shares_delta is not None else None,
+            note=note,
+        ))
+    except Exception as e:
+        logger.warning(f"[INVESTOR_LEDGER] failed to log {type_} for investor {investor_id}: {e}")
+
+
 @app.get("/api/investors")
 async def list_investors(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Investor).order_by(Investor.id))
@@ -10254,6 +10292,26 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
     }
 
 
+@app.get("/api/investors/{investor_id}/ledger")
+async def investor_ledger(investor_id: int, db: AsyncSession = Depends(get_db)):
+    """Dated cash-flow history for one investor (most recent first)."""
+    result = await db.execute(
+        select(InvestorLedger).where(InvestorLedger.investor_id == investor_id)
+        .order_by(InvestorLedger.created_at.desc(), InvestorLedger.id.desc())
+    )
+    entries = result.scalars().all()
+    rows = [{
+        "id": e.id,
+        "type": e.type,
+        "amount": round(e.amount, 2),
+        "nav_at_time": round(e.nav_at_time, 6) if e.nav_at_time is not None else None,
+        "shares_delta": round(e.shares_delta, 6) if e.shares_delta is not None else None,
+        "note": e.note,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    } for e in entries]
+    return {"investor_id": investor_id, "entries": rows}
+
+
 @app.post("/api/investors")
 async def add_investor(body: InvestorCreate, db: AsyncSession = Depends(get_db)):
     name = body.name.strip()
@@ -10284,6 +10342,7 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
     inv.shares += new_shares
     inv.total_deposited += body.amount
     await db.flush()
+    _log_investor_ledger(db, inv.id, "DEPOSIT", body.amount, nav, new_shares)
 
     return {"ok": True, "new_shares": round(new_shares, 6), "nav": round(nav, 6)}
 
@@ -10307,6 +10366,7 @@ async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(g
     inv.shares = max(0.0, inv.shares - shares_needed)
     inv.total_withdrawn += body.amount
     await db.flush()
+    _log_investor_ledger(db, inv.id, "WITHDRAW", body.amount, nav, -shares_needed)
 
     return {"ok": True, "shares_removed": round(shares_needed, 6), "nav": round(nav, 6)}
 
@@ -10334,9 +10394,12 @@ async def remove_investor(investor_id: int, db: AsyncSession = Depends(get_db)):
         nav = await _get_nav_per_share(db)
         remaining_value = inv.shares * nav
         inv.total_withdrawn += remaining_value
+        _log_investor_ledger(db, inv.id, "CASHOUT", remaining_value, nav, -inv.shares,
+                             note="Auto cash-out on investor removal")
         inv.shares = 0.0
         await db.flush()
 
+    # keep the ledger rows for audit even after the investor is removed
     await db.execute(delete(Investor).where(Investor.id == investor_id))
     await db.flush()
 

@@ -494,6 +494,23 @@ async def init_db():
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """))
+            # Jun 1, 2026 — dated cash-flow ledger per investor
+            if 'investor_ledger' not in inspector.get_table_names():
+                connection.execute(text("""
+                    CREATE TABLE investor_ledger (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        investor_id INTEGER NOT NULL,
+                        type VARCHAR(12) NOT NULL,
+                        amount FLOAT NOT NULL,
+                        nav_at_time FLOAT,
+                        shares_delta FLOAT,
+                        note VARCHAR(200),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                connection.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_investor_ledger_investor_id ON investor_ledger (investor_id)"
+                ))
 
         await conn.run_sync(_migrate)
 

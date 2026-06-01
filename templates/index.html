@@ -3883,13 +3883,13 @@
                         <thead>
                             <tr class="text-gray-400 border-b border-white/10">
                                 <th class="px-3 py-2 text-left font-medium">Name</th>
+                                <th class="px-3 py-2 text-left font-medium">Joined</th>
                                 <th class="px-3 py-2 text-right font-medium">Shares</th>
                                 <th class="px-3 py-2 text-right font-medium">Ownership %</th>
                                 <th class="px-3 py-2 text-right font-medium">Value (USD)</th>
                                 <th class="px-3 py-2 text-right font-medium">Deposited</th>
                                 <th class="px-3 py-2 text-right font-medium">Withdrawn</th>
                                 <th class="px-3 py-2 text-right font-medium">P&L</th>
-                                <th class="px-3 py-2 text-right font-medium">Joined</th>
                                 <th class="px-3 py-2 text-center font-medium">Actions</th>
                             </tr>
                         </thead>
@@ -15376,13 +15376,13 @@
                         <td class="px-3 py-2 text-left text-white font-medium">
                             <button onclick="toggleInvestorLedger(${inv.id})" id="ledger-caret-${inv.id}" class="text-gray-500 hover:text-white mr-1 transition" title="Show cash-flow history">▸</button>${inv.name}
                         </td>
+                        <td class="px-3 py-2 text-left text-gray-500 text-xs">${fmtInvestorDate(inv.created_at)}</td>
                         <td class="px-3 py-2 text-right text-gray-300">${inv.shares.toFixed(4)}</td>
                         <td class="px-3 py-2 text-right text-cyan-400 font-medium">${inv.ownership_pct.toFixed(2)}%</td>
                         <td class="px-3 py-2 text-right text-white font-medium">$${inv.value_usd.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-right text-gray-400">$${inv.total_deposited.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-right text-gray-400">$${inv.total_withdrawn.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
                         <td class="px-3 py-2 text-right ${pnlCls} font-medium">${pnlSign}$${Math.abs(pnl).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} <span class="text-xs opacity-80">(${pnlPctStr})</span></td>
-                        <td class="px-3 py-2 text-right text-gray-500 text-xs">${fmtInvestorDate(inv.created_at)}</td>
                         <td class="px-3 py-2 text-center">
                             <div class="flex gap-1 justify-center">
                                 <button onclick="renameInvestor(${inv.id})" class="px-2 py-1 bg-purple-600/30 hover:bg-purple-600/50 text-purple-400 rounded text-xs transition" title="Edit name">✎</button>
@@ -15394,6 +15394,19 @@
                     </tr>
                     <tr id="ledger-row-${inv.id}" class="hidden"><td colspan="9" class="px-3 py-0 bg-black/20"><div id="ledger-body-${inv.id}" class="py-2 text-xs text-gray-400">Loading…</div></td></tr>`;
                 }).join('');
+                // Re-apply any rows the user had expanded (auto-refresh rebuilds the table).
+                // Restore cached HTML instantly (no "Loading…" flicker), then silently refresh.
+                _expandedLedgers.forEach(id => {
+                    const row = document.getElementById(`ledger-row-${id}`);
+                    const caret = document.getElementById(`ledger-caret-${id}`);
+                    const body = document.getElementById(`ledger-body-${id}`);
+                    if (row) {
+                        row.classList.remove('hidden');
+                        if (caret) caret.textContent = '▾';
+                        if (body && _ledgerHtmlCache[id]) body.innerHTML = _ledgerHtmlCache[id];
+                        renderLedgerInto(id);
+                    }
+                });
             } catch (e) {
                 console.error('Error loading investors:', e);
             }
@@ -15408,20 +15421,20 @@
                 : d.toLocaleDateString(undefined, {year:'numeric', month:'short', day:'numeric'});
         }
 
-        async function toggleInvestorLedger(id) {
-            const row = document.getElementById(`ledger-row-${id}`);
-            const caret = document.getElementById(`ledger-caret-${id}`);
-            if (!row) return;
-            const willShow = row.classList.contains('hidden');
-            row.classList.toggle('hidden');
-            if (caret) caret.textContent = willShow ? '▾' : '▸';
-            if (!willShow) return;  // collapsing — nothing to fetch
+        // Track which investor ledgers are expanded so the 10s auto-refresh
+        // (which rebuilds the table) doesn't collapse them. Cache rendered HTML
+        // to restore instantly on rebuild (no flicker).
+        const _expandedLedgers = new Set();
+        const _ledgerHtmlCache = {};
+
+        async function renderLedgerInto(id) {
             const body = document.getElementById(`ledger-body-${id}`);
+            if (!body) return;
             try {
                 const res = await fetch(`${API_BASE}/api/investors/${id}/ledger`);
                 const data = await res.json();
                 const entries = data.entries || [];
-                if (!entries.length) { body.innerHTML = '<span class="text-gray-500">No cash-flow entries yet.</span>'; return; }
+                if (!entries.length) { body.innerHTML = '<span class="text-gray-500">No cash-flow entries yet.</span>'; _ledgerHtmlCache[id] = body.innerHTML; return; }
                 const tc = t => t==='DEPOSIT'?'text-cyan-400':t==='WITHDRAW'?'text-orange-400':t==='CASHOUT'?'text-red-400':'text-gray-500';
                 body.innerHTML = `<table class="w-full text-xs">
                     <thead><tr class="text-gray-500 border-b border-white/5">
@@ -15437,9 +15450,21 @@
                         <td class="text-right pr-3 ${e.shares_delta>=0?'text-emerald-400':'text-red-400'}">${e.shares_delta!=null?(e.shares_delta>=0?'+':'')+e.shares_delta.toFixed(4):'—'}</td>
                         <td class="text-left text-gray-500">${e.note||''}</td>
                     </tr>`).join('')}</tbody></table>`;
+                _ledgerHtmlCache[id] = body.innerHTML;
             } catch (err) {
                 body.innerHTML = '<span class="text-red-400">Failed to load ledger.</span>';
             }
+        }
+
+        async function toggleInvestorLedger(id) {
+            const row = document.getElementById(`ledger-row-${id}`);
+            const caret = document.getElementById(`ledger-caret-${id}`);
+            if (!row) return;
+            const willShow = row.classList.contains('hidden');
+            row.classList.toggle('hidden');
+            if (caret) caret.textContent = willShow ? '▾' : '▸';
+            if (willShow) { _expandedLedgers.add(id); renderLedgerInto(id); }
+            else { _expandedLedgers.delete(id); }
         }
 
         async function renameInvestor(investorId) {

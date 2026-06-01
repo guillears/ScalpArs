@@ -1624,6 +1624,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
             "pattern_c_combo_tracker": {"rows": [], "tracker": "C"},
             "pattern_w_combo_tracker": {"rows": [], "tracker": "W"},
+            "pattern_cw_combo_tracker": {"rows": [], "tracker": "CW"},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -2860,6 +2861,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
             "pattern_c_combo_tracker": {"rows": [], "tracker": "C"},
             "pattern_w_combo_tracker": {"rows": [], "tracker": "W"},
+            "pattern_cw_combo_tracker": {"rows": [], "tracker": "CW"},
             "flagged_exits": [],
             "period_performance": [],
             "equity_curve": [],
@@ -6664,6 +6666,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Pattern Combo Trackers (May 26 evening — surface within-tracker combos like C2+C4 or W2+W4)
         "pattern_c_combo_tracker": _compute_pattern_combo_tracker(orders, tracker='C'),
         "pattern_w_combo_tracker": _compute_pattern_combo_tracker(orders, tracker='W'),
+        "pattern_cw_combo_tracker": _compute_pattern_combo_tracker(orders, tracker='CW'),
         # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
         "ema13_strict_performance": _compute_ema13_strict_performance(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
@@ -9393,7 +9396,15 @@ def _compute_pattern_combo_tracker(orders, tracker='C'):
                 pass
         return out
 
-    flags_fn = _c_flags_list if tracker == 'C' else _w_flags_list
+    def _cw_flags_list(o):
+        # Combined C+W signature: C flags then W flags, e.g. ['C2','C4','W2'].
+        # Surfaces the fine-grained "Both" cohort (Pattern C-loser sig co-firing
+        # with a W-winner sig) that the coarse 4-Cohort Coverage table only
+        # shows in aggregate. Lets us empirically check the C-blocks-W (Option C)
+        # conflict resolution: does a C4+W2 trade behave like the C or the W?
+        return _c_flags_list(o) + _w_flags_list(o)
+
+    flags_fn = _c_flags_list if tracker == 'C' else (_w_flags_list if tracker == 'W' else _cw_flags_list)
 
     # Group by (combo_signature, direction)
     groups = {}

@@ -1896,6 +1896,42 @@
                     </div>
                 </div>
 
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🧩 Pattern C + W Combination Tracker</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Groups trades by their full CROSS-family signature (e.g., "C4+W2" when a C-loser
+                        signature and a W-winner signature fire on the same trade). This is the fine-grained
+                        breakdown of the "Both" cohort from the 4-Cohort Coverage table. Use it to check the
+                        C-blocks-W (Option C) conflict empirically: does a C4+W2 trade behave like the C loser
+                        or the W winner? Sorted by Total $ ascending. Cross-family fragments N hard — read
+                        rows with N≥3-5; "⚠ Low N" rows are noise. "(none)" = no C and no W match (baseline).
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium">Combo</th>
+                                    <th class="px-2 py-2 font-medium">Dir</th>
+                                    <th class="px-2 py-2 font-medium">N</th>
+                                    <th class="px-2 py-2 font-medium">W/L</th>
+                                    <th class="px-2 py-2 font-medium">WR%</th>
+                                    <th class="px-2 py-2 font-medium">Avg%</th>
+                                    <th class="px-2 py-2 font-medium">Total $</th>
+                                    <th class="px-2 py-2 font-medium">NP%</th>
+                                    <th class="px-2 py-2 font-medium">AvgPk%</th>
+                                    <th class="px-2 py-2 font-medium">R:R</th>
+                                    <th class="px-2 py-2 font-medium">TP+SL Δ$</th>
+                                    <th class="px-2 py-2 font-medium">MULT 2× Δ$</th>
+                                    <th class="px-2 py-2 font-medium">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pattern-cw-combo-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Pattern C Tracker Validation (May 19, 2026 — observation-only) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🎯 Pattern C Tracker (observation-only)</h3>
@@ -6986,6 +7022,7 @@
             };
             _renderComboExport1('C', 'Pattern C Combination Tracker');
             _renderComboExport1('W', 'Pattern W Combination Tracker');
+            _renderComboExport1('CW', 'Pattern C + W Combination Tracker');
 
             // Pattern Cell Ship Performance (May 21 Phase 2)
             const _pcp1 = perf.pattern_cell_performance || {};
@@ -8625,6 +8662,7 @@
                 };
                 _renderComboExport2('C', 'Pattern C Combination Tracker');
                 _renderComboExport2('W', 'Pattern W Combination Tracker');
+                _renderComboExport2('CW', 'Pattern C + W Combination Tracker');
 
                 // Pattern Cell Ship Performance (May 21 Phase 2) — mirror of clipboard export above
                 const _pcp2 = perf.pattern_cell_performance || {};
@@ -11163,6 +11201,7 @@
                 };
                 _renderComboTable(data.pattern_c_combo_tracker, 'pattern-c-combo-body', 'text-amber-300');
                 _renderComboTable(data.pattern_w_combo_tracker, 'pattern-w-combo-body', 'text-emerald-300');
+                _renderComboTable(data.pattern_cw_combo_tracker, 'pattern-cw-combo-body', 'text-fuchsia-300');
 
                 if (data.pattern_c_validation) {
                     const _pcRows = data.pattern_c_validation || [];

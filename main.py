@@ -1112,6 +1112,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "opened_at": o.opened_at.isoformat(),
             "tp_level": o.current_tp_level or 1,
             "tp_target": o.dynamic_tp_target or 0,
+            "entry_atr_pct": getattr(o, 'entry_atr_pct', None),  # Jun 1: runner-trail badge check
             **_compute_be_level(o),
             "entry_order_type": getattr(o, 'entry_order_type', None) or "TAKER",
             "exit_order_type": getattr(o, 'exit_order_type', None) or "TAKER",

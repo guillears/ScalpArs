@@ -231,7 +231,7 @@
         <section>
             <div class="flex items-center space-x-2 mb-4">
                 <h2 class="text-lg font-semibold text-gray-300">Account Balance</h2>
-                <button id="balance-eye-btn" onclick="toggleBalancesHidden()" title="Hide/show balances" class="text-gray-400 hover:text-white transition text-lg leading-none">👁️</button>
+                <button id="balance-eye-btn" onclick="toggleBalancesHidden()" title="Hide/show balances" class="text-gray-400 hover:text-white transition text-lg leading-none">🐵</button>
             </div>
             <div id="balance-cards" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div class="glass rounded-xl p-5">
@@ -6480,7 +6480,7 @@
             const cards = document.getElementById('balance-cards');
             const btn = document.getElementById('balance-eye-btn');
             if (cards) cards.classList.toggle('balances-hidden', hidden);
-            if (btn) btn.textContent = hidden ? '🙈' : '👁️';
+            if (btn) btn.textContent = hidden ? '🙈' : '🐵';
         }
         function toggleBalancesHidden() {
             const hidden = !(localStorage.getItem('balancesHidden') === '1');
@@ -15008,9 +15008,23 @@
                     const _armed = _tpPeak >= _baseTpMin && _tpPeak > 0;
                     const _handoffActive = window._cachedConfig?.thresholds?.rsi_handoff_active === true;
                     const _handoffLvl = window._cachedConfig?.thresholds?.rsi_handoff_level || 3;
+                    // Jun 1: runner stretch-trail badge. Same scope as the engine:
+                    // LONG + entry ATR ≥ min + peak ≥ arm. When active the tight trailing
+                    // has handed off to the stretch-trail, so show 🏃 RUNNER instead of 🛡.
+                    const _rtTh = window._cachedConfig?.thresholds || {};
+                    const _runnerArmed = _rtTh.runner_trail_enabled === true
+                        && o.direction === 'LONG'
+                        && typeof o.entry_atr_pct === 'number'
+                        && o.entry_atr_pct >= (_rtTh.runner_trail_atr_min ?? 1.0)
+                        && _tpPeak >= (_rtTh.runner_trail_arm_peak ?? 0.70);
                     if (_armed) {
                         let bgClass, textClass, label, title;
-                        if (_handoffActive && _tpLvl >= _handoffLvl) {
+                        if (_runnerArmed) {
+                            const _rtK = _rtTh.runner_trail_k ?? 0.5;
+                            bgClass = 'bg-fuchsia-500/25'; textClass = 'text-fuchsia-300';
+                            label = `🏃 RUNNER L${_tpLvl}`;
+                            title = `Runner stretch-trail active (high-ATR LONG, peak ${_tpPeak.toFixed(2)}% ≥ ${(_rtTh.runner_trail_arm_peak ?? 0.70)}%). Tight trailing handed off — holding until stretch ≤ ${_rtK}× peak (or EMA13 / hard SL). Letting the runner run.`;
+                        } else if (_handoffActive && _tpLvl >= _handoffLvl) {
                             bgClass = 'bg-purple-500/25'; textClass = 'text-purple-300';
                             label = `🛡 L${_tpLvl}·RSI`;
                             title = `L${_tpLvl} — RSI handoff zone (trailing replaced by 2-drop RSI exit, threshold L≥${_handoffLvl}). Peak ${_tpPeak.toFixed(2)}%. Protected from full SL.`;

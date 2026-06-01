@@ -8683,22 +8683,42 @@ def _compute_runner_trail_performance(orders):
           if getattr(o, 'status', None) == 'CLOSED' and _cr(o).startswith('RUNNER_TRAIL')]
     rows = []
     tot_exit = tot_cf = tot_post = 0.0
+    tot_actual_usd = tot_gain_usd = 0.0
     n_better = 0
+    # Live-trailing pullback config (mirror indicators.py:644-688) so the Tight-CF
+    # counterfactual matches the REAL level-aware trailing, not a flat 0.25.
+    _th = config.trading_config.thresholds
+    _widen = float(getattr(_th, 'pullback_widening_per_level', 0.0) or 0.0)
+    _atr_mult = float(getattr(_th, 'trailing_atr_multiplier', 0.0) or 0.0)
+    _cl = config.trading_config.confidence_levels
     for o in sorted(rt, key=lambda x: getattr(x, 'closed_at', None) or 0):
         atr = getattr(o, 'entry_atr_pct', None) or 0.0
         peak = getattr(o, 'peak_pnl', None) or 0.0
         exit_pct = o.pnl_percentage or 0.0
         post = getattr(o, 'post_exit_peak_pnl', None)
         post = post if post is not None else exit_pct
-        # tight-trail counterfactual pullback: max(0.25, ATR×0.50), ATR-floored mirror of live trailing
-        cf_pull = max(0.25, atr * 0.50)
+        # Tight-trail CF pullback = the SAME formula the live trailing uses at this
+        # trade's TP level: max(base + widening×(L−1), ATR×atr_mult). (indicators.py)
+        _cc = _cl.get(getattr(o, 'confidence', '') or '') if isinstance(_cl, dict) else None
+        _base = float(getattr(_cc, 'pullback_trigger', 0.25)) if _cc is not None else 0.25
+        _lvl = getattr(o, 'current_tp_level', None) or 1
+        _fixed = _base + _widen * max(0, _lvl - 1)
+        _atr_floor = atr * _atr_mult if (atr and _atr_mult > 0) else 0.0
+        cf_pull = max(_fixed, _atr_floor)
         cf = round(peak - cf_pull, 3)
         ceiling = max(peak, post)
         pct_max = round(100.0 * exit_pct / ceiling, 0) if ceiling > 0 else None
         gain = round(exit_pct - cf, 3)
         if gain > 0:
             n_better += 1
+        # $ columns — internally consistent: actual_usd − gain_usd = cf_usd.
+        # gain_usd uses notional so it's fee-invariant (fees cancel in the Δ).
+        notional = getattr(o, 'notional_value', None) or (getattr(o, 'investment', 0.0) or 0.0) * (getattr(o, 'leverage', 1) or 1)
+        actual_usd = round(getattr(o, 'pnl', 0.0) or 0.0, 2)
+        gain_usd = round((exit_pct - cf) * notional / 100.0, 2)
+        cf_usd = round(actual_usd - gain_usd, 2)
         tot_exit += exit_pct; tot_cf += cf; tot_post += post
+        tot_actual_usd += actual_usd; tot_gain_usd += gain_usd
         if exit_pct >= 0.60 * ceiling and ceiling > 0:
             verdict = '★ captured most'
         elif ceiling > 0 and exit_pct >= 0.40 * ceiling:
@@ -8707,9 +8727,9 @@ def _compute_runner_trail_performance(orders):
             verdict = '⚠ left a lot'
         rows.append({
             'pair': o.pair,
-            'date': (o.closed_at.strftime('%m-%d %H:%M') if getattr(o, 'closed_at', None) else '—'),
             'atr': round(atr, 2), 'peak': round(peak, 2), 'exit': round(exit_pct, 2),
             'cf': cf, 'gain': gain, 'post': round(post, 2),
+            'actual_usd': actual_usd, 'cf_usd': cf_usd, 'gain_usd': gain_usd,
             'pct_max': pct_max, 'verdict': verdict,
         })
     summary = {
@@ -8717,6 +8737,8 @@ def _compute_runner_trail_performance(orders):
         'tot_exit': round(tot_exit, 2),
         'tot_cf': round(tot_cf, 2),
         'tot_gain': round(tot_exit - tot_cf, 2),
+        'tot_actual_usd': round(tot_actual_usd, 2),
+        'tot_gain_usd': round(tot_gain_usd, 2),
         'n_better': n_better,
     } if rows else None
     return {'rows': rows, 'summary': summary}

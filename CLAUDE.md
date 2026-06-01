@@ -1,5 +1,74 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — WATCHLIST: high-ATR LONG = the runner cohort + asymmetric runner exit (NOT shipped, N≥30 gate)
+
+### The question chain that produced this
+Operator wanted to CATCH runners on the LONG side (most LONGs go green then collapse).
+Tried `strpk` (stretch-trail) — failed. We then asked: is there an EXIT that catches
+runners, or is the runner edge actually at ENTRY? Answer: **the edge is at entry (ATR),
+and the exit that works is asymmetric (loose ceiling + tight fixed floor).**
+
+### Why strpk / wide / tierA all fail as runner-catchers (locked, don't re-try)
+- **strpk** keys off UNSIGNED stretch (|price−EMA5|), which stays high through a *reversal*
+  → never fires on faders → rides them down (HEI peaked +0.39 → strpk −3.13). Structurally broken.
+- **tierA/tierB "prove-then-run"** (widen only after peak ≥1.0%) FAILS because runners here
+  aren't flaggable by a high in-trade peak — INJ/PUNDIX/IO peaked <0.65 then ran *post-peak*.
+  The proof-gate filters out the very trades that run. Don't use an in-trade-peak runner gate.
+- **wide trail (flat 0.60)** catches the late-runners but, with no floor, bleeds faders to
+  negative. Net-positive ONLY via the single biggest runner; ex-runner it's negative.
+
+### The real finding — ATR is the runner discriminator (cross-batch validated)
+5-batch pool (May 26-29, 87 LONG). Runner-rate scales monotonically with ATR, and
+**ATR ≥ 1.0% is the ONLY net-positive LONG cohort in the entire pool:**
+
+| ATR% | N | WR | Avg% | Tot$ | runner-rate |
+|---|---|---|---|---|---|
+| 0-0.4 | 28 | 21% | −0.195 | −$543 | 7% |
+| 0.4-0.7 | 36 | 42% | −0.230 | −$1,191 | 33% |
+| 0.7-1.0 | 16 | 62% | −0.120 | −$194 | 56% |
+| **1.0-1.5** | **7** | **57%** | **+0.215** | **+$43** | **57%** |
+
+Stretch is messier — runner-SHAPED (0.6-0.9 = 57% runner-rate) but net −$283 (runs, exits
+don't bank it). So **ATR is the one that's both runner-shaped AND +EV; stretch ID's shape
+not profit.** Everything else (RSI, pADX, fan, RngPos) stays flat — same dead LONG pattern.
+
+### The runner exit that works = loose ceiling + tight FIXED floor (the missing piece)
+On the high-ATR armed cell (June-1 batch, N=8), the hard floor transforms the loose exits:
+
+| exit | Σ pnl% | ex-IDUSDT (robust) |
+|---|---|---|
+| ACTUAL | −0.34 | −1.41 |
+| higher TP +1.0 cap | +0.02 | — |
+| wide trail (no floor) | +0.41 | −1.06 |
+| **wide trail + fixed SL −0.45** | **+3.39** | **+1.92** ★ robust |
+| strpk + fixed SL −0.45 | +7.89 | +1.09 (fat-tail dependent) |
+
+The fixed −0.45% stop caps the reversal-faders inside the cell (HEI −3.13→−0.45) while the
+loose ceiling lets real runners run. **Wide+floor is the robust pick** (+1.92 even without the
+monster runner — beats strpk-ex-runner because it catches the *medium* late-runners). The
+asymmetry (loose up, tight fixed stop down) is the OPPOSITE of the general fade-heavy book
+(where tight-TP wins). **The −0.45 floor is a FIXED stop, not breakeven** — same family as the
+C1 SHORT −0.70 `fixed_sl_pct`; does NOT reopen BE.
+
+### What to ship (eventually) — NOT now
+A contained high-ATR LONG cell with: (a) wide trailing exit, (b) tight fixed SL ~−0.45
+(replacing the ATR-widened wide-SL), and possibly (c) a size bump. Contained to the small
+high-ATR subset so the loose-exit fader-bleed is bounded.
+
+### Locked gate (do NOT ship before this)
+- Accumulate the ATR≥1.0 LONG cell to **N≥30**. Current pool N=7 (+$43) — far too thin.
+- Re-test on N≥30: (1) does ATR≥1.0 stay net-positive at base sizing? (2) does wide+fixed-SL
+  beat actual on the cell *ex the single biggest runner* (robustness — don't tune to one fat tail)?
+- Known contaminant: HEI (ATR 1.83, faded to −1.20) — high-ATR is runner-*tilted* (~57-75%),
+  not clean. The fixed-SL floor is what makes the contaminant tolerable.
+- Shadow `wide`/`strpk` figures use idealized fills + my floor applied as a first-order cap
+  (not a true path sim). Before ship, validate with a real path-level sim or live shadow on the cell.
+
+### Files changed
+- `CLAUDE.md` — this watchlist entry only. NO config/engine changes.
+
+---
+
 ## May 31, 2026 — C1 SHORT: fixed SL −0.70% added (cap the ATR-widened tail, NOT an entry filter)
 
 ### The question

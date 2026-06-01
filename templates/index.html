@@ -1974,6 +1974,7 @@
                                     <th class="px-2 py-2 font-medium text-right">pADX</th>
                                     <th class="px-2 py-2 font-medium text-right">ADXΔ</th>
                                     <th class="px-2 py-2 font-medium text-right">Stretch</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Pair ATR % — runner-fuel signal">PairATR</th>
                                     <th class="px-2 py-2 font-medium text-right">RngPos</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Pair EMA13-EMA50 gap %">PairTGap</th>
                                     <th class="px-2 py-2 font-medium text-right">BTCRSI</th>
@@ -1984,7 +1985,7 @@
                                 </tr>
                             </thead>
                             <tbody id="unmatched-losers-body" class="divide-y divide-white/5">
-                                <tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched losers — Pattern C catches them all 🎉)</td></tr>
+                                <tr><td colspan="17" class="px-3 py-2 text-center text-gray-500">(no unmatched losers — Pattern C catches them all 🎉)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2065,6 +2066,7 @@
                                     <th class="px-2 py-2 font-medium text-right">pADX</th>
                                     <th class="px-2 py-2 font-medium text-right">ADXΔ</th>
                                     <th class="px-2 py-2 font-medium text-right">Stretch</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Pair ATR % — runner-fuel signal">PairATR</th>
                                     <th class="px-2 py-2 font-medium text-right">RngPos</th>
                                     <th class="px-2 py-2 font-medium text-right" title="Pair EMA13-EMA50 gap %">PairTGap</th>
                                     <th class="px-2 py-2 font-medium text-right">BTCRSI</th>
@@ -2075,7 +2077,7 @@
                                 </tr>
                             </thead>
                             <tbody id="unmatched-winners-body" class="divide-y divide-white/5">
-                                <tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched winners — Pattern W catches them all 🎉)</td></tr>
+                                <tr><td colspan="17" class="px-3 py-2 text-center text-gray-500">(no unmatched winners — Pattern W catches them all 🎉)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -7292,13 +7294,13 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Unmatched Winners Deep Dive (observation-only)');
                 lines.push('Closed winners NOT matching any W1-W5 signature. ≥3 sharing a signature → new W pattern candidate.\n');
-                lines.push('Pair         Dir   $Gain     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
-                lines.push('-'.repeat(155));
+                lines.push('Pair         Dir   $Gain     Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                lines.push('-'.repeat(163));
                 const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
                 const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
                 _uw1.forEach(r => {
                     const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
-                    lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
+                    lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                 });
                 lines.push('');
             }
@@ -7309,13 +7311,13 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Unmatched Losers Deep Dive (observation-only)');
                 lines.push('Closed losers NOT matching any C1-C9 signature. ≥3 sharing a signature → new pattern candidate.\n');
-                lines.push('Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
-                lines.push('-'.repeat(155));
+                lines.push('Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                lines.push('-'.repeat(163));
                 const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
                 const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
                 _ul1.forEach(r => {
                     const loss = ('-$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
-                    lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
+                    lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                 });
                 lines.push('');
             }
@@ -8928,13 +8930,13 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Unmatched Winners Deep Dive (observation-only)');
                     lines.push('Closed winners NOT matching any W1-W5 signature. ≥3 sharing a signature → new W pattern candidate.\n');
-                    lines.push('Pair         Dir   $Gain     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
-                    lines.push('-'.repeat(155));
+                    lines.push('Pair         Dir   $Gain     Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                    lines.push('-'.repeat(163));
                     const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
                     const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
                     _uw2.forEach(r => {
                         const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
-                        lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
+                        lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                     });
                     lines.push('');
                 }
@@ -8945,13 +8947,13 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Unmatched Losers Deep Dive (observation-only)');
                     lines.push('Closed losers NOT matching any C1-C9 signature. ≥3 sharing a signature → new pattern candidate.\n');
-                    lines.push('Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
-                    lines.push('-'.repeat(155));
+                    lines.push('Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                    lines.push('-'.repeat(163));
                     const fp = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
                     const fn = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
                     _ul2.forEach(r => {
                         const loss = ('-$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
-                        lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
+                        lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                     });
                     lines.push('');
                 }
@@ -11258,7 +11260,7 @@
                     const _ulBody = document.getElementById('unmatched-losers-body');
                     if (_ulBody) {
                         if (!_ulRows.length) {
-                            _ulBody.innerHTML = '<tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched losers — Pattern C catches them all 🎉)</td></tr>';
+                            _ulBody.innerHTML = '<tr><td colspan="17" class="px-3 py-2 text-center text-gray-500">(no unmatched losers — Pattern C catches them all 🎉)</td></tr>';
                         } else {
                             const fmtN = (v, d=2, suffix='') => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d) + suffix;
                             const fmtP = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
@@ -11275,6 +11277,7 @@
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_adx == null ? '-' : r.entry_adx.toFixed(1)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtN(r.entry_adx_delta, 2)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_ema5_stretch == null ? '-' : r.entry_ema5_stretch.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right ${r.entry_atr_pct != null && r.entry_atr_pct >= 1.0 ? 'text-amber-400 font-semibold' : 'text-gray-400'}">${r.entry_atr_pct == null ? '-' : r.entry_atr_pct.toFixed(3)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_range_position == null ? '-' : r.entry_range_position.toFixed(1)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_pair_ema20_ema50_gap_pct)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_rsi == null ? '-' : r.entry_btc_rsi.toFixed(1)}</td>
@@ -11391,7 +11394,7 @@
                     const _uwBody = document.getElementById('unmatched-winners-body');
                     if (_uwBody) {
                         if (!_uwRows.length) {
-                            _uwBody.innerHTML = '<tr><td colspan="16" class="px-3 py-2 text-center text-gray-500">(no unmatched winners — Pattern W catches them all 🎉)</td></tr>';
+                            _uwBody.innerHTML = '<tr><td colspan="17" class="px-3 py-2 text-center text-gray-500">(no unmatched winners — Pattern W catches them all 🎉)</td></tr>';
                         } else {
                             const fmtN = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d);
                             const fmtP = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
@@ -11408,6 +11411,7 @@
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_adx == null ? '-' : r.entry_adx.toFixed(1)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtN(r.entry_adx_delta, 2)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_ema5_stretch == null ? '-' : r.entry_ema5_stretch.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right ${r.entry_atr_pct != null && r.entry_atr_pct >= 1.0 ? 'text-amber-400 font-semibold' : 'text-gray-400'}">${r.entry_atr_pct == null ? '-' : r.entry_atr_pct.toFixed(3)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_range_position == null ? '-' : r.entry_range_position.toFixed(1)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_pair_ema20_ema50_gap_pct)}</td>
                                     <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_rsi == null ? '-' : r.entry_btc_rsi.toFixed(1)}</td>

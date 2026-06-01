@@ -1,5 +1,55 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 1, 2026 (later) — `range_position_max_long` 98 → 97.5 (boundary trim, not an edge play)
+
+### What changed
+`range_position_max_long: 98.0 → 97.5`. Blocks LONG when entry range_position ≥ 97.5
+(was ≥ 98). Triggered by an XMRUSDT LONG loser (rng 97.7, −$78.55) in the
+`scalpars_orders_paper_2026-06-01_18-00-07.csv` batch — it slipped under the old 98 cap.
+
+### Why 97.5 specifically (the band flips at exactly 97.5)
+FULL-pool LONG (650 closed) fine-bucketed near the cap:
+| RngPos | N | WR | Tot$ | NP% |
+|---|---|---|---|---|
+| 96-97 | 18 | 56% | +$160 | 28% |
+| **[97, 97.5)** | 10 | **90%** | **+$176** | 0% ★ KEPT |
+| **[97.5, 98)** | 4 | **50%** | **−$16** | — ✗ CUT |
+| 98-99 | 7 | 29% | −$45 | 71% |
+
+97.5 is the inflection: `[97, 97.5)` is a 90%-WR winner concentration (SUI +44, HBAR
++39, ONDO +38, TON +27 all live there); `[97.5, 98)` is a 50% coin-flip. The cut slice
+forfeits ~$1 of winners (BNB +0.4, LINK +0.7 — noise) to drop ~$17 of losers (PENGU
+−15.3 + SOL −1.6). XMR (97.7) is now blocked.
+
+### Rejected alternatives (logged so they aren't re-proposed)
+- **98 → 97**: WRONG. The `[97, 97.5)` band it eats is 90% WR / +$176 — destroys the
+  sweet spot. Net-negative.
+- **Range-top ADX floor (block RngPos≥95 × ADX<22)**: rejected. The 2D cell shows the
+  ADX≥22 discriminator ONLY holds at RngPos 95+ (at 75-90 ADX≥22 is the WORST cell, so a
+  global ADX floor is wrong), AND the cut forfeits +$475 of real winners (JUP +84, SUI
+  +44, LINK +43, ONDO +38 in the <18 sub-cell). Worse: the "−$998 losers saved" was
+  sized on the RAW pool WITHOUT applying the current filter stack — the filter-overlap
+  audit (CLAUDE.md May 11 / May 25) was skipped, so the real unique save is much smaller
+  and likely a wash-or-worse once netted against the killed winners. Operator caught this.
+
+### Honest framing
+This is a **boundary tidy-up, not a P&L mover.** The unique save is small (N=4 cut slice,
+PENGU-weighted) and the FULL pool is partly in-sample. Value = cleanly blocks XMR-class
+range-top LONGs at near-zero cost (the cut slice is a coin-flip), without touching the
+[97,97.5) winners. XMR itself was largely an **entry-twin outlier** — a normal-variance
+loser inside a winning band — not a flaggable pattern.
+
+### Locked revert gate (next ≥30-LONG checkpoint)
+If LONGs in `[97.5, 98)` (observation logs / would-have-been-blocked) show **≥60% WR on
+N≥6 fresh** → revert to 98.0. The [97,97.5) kept band staying ≥80% WR confirms the cut
+point is right.
+
+### Files changed
+- `trading_config.json` — `range_position_max_long` 98.0 → 97.5
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 1, 2026 — SHIPPED: Runner Stretch-Trail (scoped high-ATR LONG runner exit) + Leash Shadow redefine
 
 ### What shipped (the runner-capture exit we kept leaving on the table)

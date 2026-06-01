@@ -267,7 +267,7 @@
       {
         "pattern": "UNMATCHED",
         "direction": "LONG",
-        "inv_mult": 1.0,
+        "inv_mult": 2.0,
         "lev_mult": 1.0
       },
       {

@@ -1,5 +1,60 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 1, 2026 (later) — UNMATCHED LONG multiplier 1.0× → 2.0× (no fixed SL — deliberate)
+
+### What changed
+`pattern_cell_rules` UNMATCHED LONG: `inv_mult 1.0 → 2.0` (lev_mult stays 1.0, under the
+2.0 inv hard cap). The rule already existed at baseline; this is a one-field flip. SHORT
+side untouched.
+
+### Evidence — last-3 batches (N=23, the current-regime cohort)
+| Batch | N | WR | Avg% | Tot$ |
+|---|---|---|---|---|
+| 05-29 (83-tr) | 11 | 82% | +0.111% | +$91 |
+| 06-01 (14:11, 51-tr) | 6 | 83% | +0.361% | +$173 |
+| 06-01 (current runner, 7-tr) | 6 | 67% | +0.253% | +$156 |
+| **Combined** | **23** | **78%** | **+0.214%** | **+$421** |
+
+All 3 recent batches positive (direction-consistent). Passes 3 of 4 multiplier gates
+(WR≥70 ✓, Avg≥+0.10 ✓, Total$>0 ✓). At 2x ≈ +$841 over these 3 batches.
+
+### Discipline override (acknowledged)
+- **N=23 < 30** — below the strict MULTIPLIER CANDIDATE gate. Shipped at full 2.0×
+  (not the 1.5× Phase-3 staging I recommended) per operator decision, on the strength
+  of 3/3-batch consistency.
+- **FULL pool is −$347 / −0.010%** (N=44) — but that's almost entirely the 05-26 disaster
+  batch (−$514, 17% WR, older config). Ex-05-26 the full pool is ~break-even (+$167/N=38).
+  So the cohort is regime-sensitive; the bet is that the current regime holds.
+- **R:R is 1:1.8** (avg win $48 / avg loss $88.5) — the edge rides on the 78% WR.
+  Breakeven WR for 1:1.8 is ~64%, so a ~14pp WR regression flips it (and 2x amplifies it).
+
+### Why NO fixed SL was added (deliberate — operator asked, analysis rejected it)
+Modeled `2x + fixed SL −0.70`: it makes things WORSE, not better. A −0.70 SL clips the
+deep-wick-recovery winners — PUNDIX (wicked −0.85% → +0.12%) and HIVE (−0.72% → +0.09%)
+both become −0.70 losses, and IDU +$107 survives by a hair (trough −0.69). Clip cost
+(−$203) exceeds loser savings (+$98) → net −$104 at 1x. `2x+SL−0.70` (+$633) < plain 2x
+(+$841). This is the documented "deep-wick tolerance is the edge" lesson (C1 SHORT) — these
+winners earn their keep by surviving wicks, and the ATR-widened SL is protecting them.
+**Shipped 2x with the default ATR-widened SL untouched.**
+
+### Overlap note
+UNMATCHED LONG already contains the good high-ATR runners (STG, HOME, IDU), so this 2x
+sizes those up too — no separate high-ATR multiplier needed (and high-ATR LONG as its own
+cohort is FULL-pool −$891, fader-contaminated → explicitly rejected for 2x same session).
+
+### Locked revert gate (next ≥30-trade UNMATCHED-LONG checkpoint)
+- Next batch UNMATCHED LONG **<65% WR OR Total$ negative** → revert to 1.0×.
+- If WR holds ≥70% and cohort reaches N≥30 cumulative positive → keep 2.0×, consider it
+  validated.
+- Watch the Multiplier Cell Performance table: source `UNMATCHED`, ✗ HARMFUL (Total$ neg
+  on N≥5) → revert immediately.
+
+### Files changed
+- `trading_config.json` — UNMATCHED LONG inv_mult 1.0 → 2.0
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 1, 2026 (later) — `range_position_max_long` 98 → 97.5 (boundary trim, not an edge play)
 
 ### What changed

@@ -362,8 +362,15 @@ class SignalThresholds(BaseModel):
     # N=35 killed/batch is significant despite single batch; symmetric mechanism). LONG
     # cut [0.85,1.70) kills ~10 winners but the 25 losers dominate 3.4:1.
     fan_ratio_block_long: str = "0.85-1.70,5.0-99"   # dead-zone block (May 29) + >5.0 flat-base cap (May 31)
-    fan_ratio_block_short: str = "1.00-1.65"  # SHORT dead-zone block (floor 1.02->1.00 May 31)
+    fan_ratio_block_short: str = "1.00-1.90"  # SHORT dead-zone block (floor 1.02->1.00 May 31; upper 1.65->1.90 Jun 1, spares 2.076 winner)
     fan_ratio_filter_enabled: bool = True     # master toggle (same A/B pattern)
+    # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min
+    # — the dead-tape, no-fuel fade zone (mirror of the high-ATR runner finding).
+    # LONG <0.25%: 5-batch 12% WR / -$230 (cleanest loser sub-band), 0 overlap with
+    # fan>5 / BTC-RSI-50-55. SHORT side disabled (0 = off) pending evidence.
+    pair_atr_min_long: float = 0.0
+    pair_atr_min_short: float = 0.0   # Jun 1: SHORT <0.25% validated (5-batch 20% WR / -$257). trading_config.json = 0.25
+    pair_atr_filter_enabled: bool = True
     # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
     # Block entry when both BTC RSI timeframes are in specified directions.
     # Rule format: 2-char codes "RR" "RF" "FR" "FF" where first=1h dir, second=5m dir.

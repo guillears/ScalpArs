@@ -1,5 +1,204 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 1, 2026 — SHIPPED SHORT entry: pair-ATR-min <0.25 + fan upper 1.65→1.90 (BEARISH batch)
+
+### Batch analyzed
+`scalpars_orders_paper_2026-06-01_13-31-14.csv` BEARISH section — 25 SHORT, 18W/7L,
+**+$170.12**, DCR +2.00% (SHORT initial = 170.12/(1.0594−1) = **$2,864.0**; days 2.91).
+SHORT is already PROFITABLE (72% WR) and **FET-suppressed**: ex-FET = +$592. The single
+FETUSDT −$422 is half the gross losses.
+
+### The Winners-vs-Losers finding (same as LONG: entry-twins)
+Cohen's-d discriminant on the 18W/7L: max d≈0.6 on regime-noise dims (BTC slope, BTC ATR).
+The one real mechanism is **ADXΔ (d=0.51): winners accelerate (+0.71), losers flat (+0.02)**
+— but it yields no clean cut (NEAR won at ADXΔ −2.45, same as the AVAX/TAO losers).
+**FET (−$422) is the SHORT entry-twin** — winner-like on EVERY dim (its ADXΔ +1.86 is
+ABOVE the winner mean), so any in-sample loser-cell that contains it looks catastrophic.
+The exit (C1 SHORT `fixed_sl: -0.70`, shipped prior session) is FET's lever, not entry.
+
+### What SHIPPED (2 changes, overlap-corrected)
+
+**1. pair-ATR-min SHORT `0.0 → 0.25` (PAIR_ATR_MIN gate, SHORT side activated).**
+Symmetric mirror of the LONG <0.25 ship. Catches the dead-tape/no-fuel fade zone.
+
+| ATR% band (SHORT) | this batch | 5-batch (PRIMARY) | cross-batch |
+|---|---|---|---|
+| **<0.25** | 2 / 0% / −$130 | **10 / 20% / −$257** | 102 / 50% / −$663 |
+| 0.25-0.35 | 7 / 71% / +$40 | — | — |
+
+Cuts LTC (pATR 0.18, −$45) + AVAX (pATR 0.24, −$85). 0 winners cut this batch.
+
+**2. fan upper boundary `1.65 → 1.90` (block `1.00-1.65` → `1.00-1.90`).**
+Exact-fan inspection: the only SHORTs above 1.65 are **TAO (fan 1.835, −$90), AVAX (1.878,
+−$85), then NEAR (2.076, +$68 WINNER), NFP (9.745, +$56 WINNER)**. There are NO trades in
+(1.65, 1.835), so 1.70 would catch nothing. **1.90 is the clean cut** — sits in the
+(1.878, 2.076) gap, catches both losers, spares NEAR. Stops well short of 2.0 per the
+2.076 winner boundary. Mechanism mirrors LONG (which blocks to 1.70). Thin (N=2,
+**0 trades in 5-batch** at this band — no independent validation; the 2.076 winner
+boundary is the safety). The 2.00-3.00 SHORT zone is a confirmed winner (+$208 cross-batch).
+
+**Lower-boundary overlap noted:** DOT (fan 1.016) is already inside the current 1.00-1.65
+block — it only traded because it opened before the floor was lowered to 1.00 this batch
+(same as fan>5 on LONG). So DOT (−$42) is already-captured going forward; true
+current-config baseline is +$212, not +$170.
+
+### Overlap-corrected SHORT sequence (DCR vs $2,864)
+| Step | +cut (overlap-adj) | newTot$ | DCR |
+|---|---|---|---|
+| ACTUAL | — | +$170 | +2.00% |
+| Current config (DOT 1.016 already blocked) | 1 | +$212 | +2.48% |
+| + ATR < 0.25 (LTC, AVAX) | 2 (0W) | +$341 | +3.95% |
+| + fan 1.65→1.90 (TAO; AVAX already cut by ATR) | 1 | **+$432** | **+4.95%** |
+
+Fan extension's UNIQUE add = TAO (−$90); AVAX is double-counted-avoided (already in ATR cut).
+
+### REJECTED (5-batch contradicts — do NOT ship)
+- **RngPos<25 × RSI-Rising** (the operator's idea) — see locked watchlist below.
+- **ADXΔ < −2.0**: cuts NEAR (+$68 winner), redundant with fan-ext, 0 5-batch trades.
+- **RngPos 10-25%**: 5-batch 60% WR / −$43 (flat); this-batch −$304 is just FET.
+- **Pair RSI Rising alone**: 5-batch 66% WR (it WINS there).
+
+### LOCKED WATCHLIST: RngPos<25 × RSI-Rising SHORT (review next batch, do NOT ship now)
+Operator hypothesis: shorting the range floor while RSI ticks UP = bounce/squeeze starting.
+This-batch the cell IS the 2 worst trades (FET −$422, LTC −$45 = 0% WR / −$467) — looks
+perfect in-sample. **But it does NOT cross-validate:**
+
+| | this batch | **5-batch (PRIMARY)** | cross-batch |
+|---|---|---|---|
+| RngPos<25 × RSI-RISING | 2 / 0% / −$467 | **3 / 66% / −$14** | 7 / 42% / −$477 |
+
+Three reasons it's held, not shipped:
+1. **5-batch = 66% WR** — the cell wins on the primary yardstick.
+2. **FET contamination** — the −$467 (and the cross-batch −$477) is essentially the
+   SAME single fat-tail (FET-class) wherever it lands, not a consistent edge.
+3. **The RngPos<25 qualifier adds nothing** — ~92% of SHORTs are RngPos<25 anyway
+   (RngPos≥25 × Rising = N=1 cross-batch). The 2D cell ≈ "RSI-rising alone," which is
+   5-batch-positive. No real interaction.
+LTC is already caught by ATR<0.25; FET is the exit-twin (C1 fixed-SL). Note: CSV lacks
+`entry_rsi_prev2` (the report's exact definition); prev1 reproduces this batch exactly.
+
+**Floor sweep (tested the tighter <15 variant too — same reject):** sweeping the RngPos
+floor exposes the curve-fit directly. The cell's "edge" flips on/off based purely on
+whether the cutoff includes the single FET trade (RngP 13):
+| floor × RISING | 5-batch | cross-batch |
+|---|---|---|
+| <10 (FET excluded) | 1/100%/+$17 | 2/50%/−$28 |
+| <15 (FET included) | 2/50%/−$67 | 5/40%/−$516 |
+| <20 / <25 | 3/66%/−$14 | 7/42%/−$477 |
+At <15 the cross-batch −$516 is **100% FET** (ex-FET = GRASS/LTC/UNI/SUI = 50% WR / −$94,
+two winners inside: UNI +$17, SUI +$18). 5-batch stays 50% WR. A cell whose signal
+appears/vanishes with one trade's exact coordinates is fat-tail curve-fit, not edge.
+**Status: reviewed-and-REJECTED at every floor (10/15/20/25).** Do NOT re-test as an
+entry filter. FET-class losses are an EXIT problem — C1 SHORT fixed-SL −0.70 recovers
+~$210 of FET's −$422 without touching any entry.
+
+### Companion finding (winner thread, watchlist): RngPos 25-50 SHORT = sweet spot
+68% WR / +$229 cross-batch, +EV all 3 windows (vs the 0-25 floor: 60% WR but −$1,054
+cross-batch — high-WR-low-$ trap). RngPos-alone (not the RSI combo). Winner-identification
+(multiplier/sizing thread), below N≥30 gate. Not a clean block (would kill SHORT volume).
+
+### Locked revert gates (next ≥30-SHORT checkpoint)
+- pair ATR <0.25 SHORT: if blocked-zone shows ≥45% WR on N≥6 fresh → revert to 0.
+- fan 1.65-1.90: if a fresh SHORT winner lands in [1.65, 1.90) → re-tighten upper to ~1.80.
+
+### Files changed
+- `config.py` — `fan_ratio_block_short` default 1.00-1.90; `pair_atr_min_short` comment
+- `trading_config.json` — `pair_atr_min_short: 0.25`; `fan_ratio_block_short: "1.00-1.90"`
+- `CLAUDE.md` — this entry
+
+---
+
+## June 1, 2026 — SHIPPED LONG entry: BTC RSI 50-55 full block + NEW pair-ATR-min filter (<0.25)
+
+### Batch analyzed
+`scalpars_orders_paper_2026-06-01_13-09-53.csv` — 26 LONG, 13W/13L, **−$136.89**, DCR −1.51%.
+(LONG section: initial = total_pnl/(return_mult−1) = −136.89/(0.9568−1) = **$3,168.75**; days = **2.91**.)
+
+### The methodical Winners-vs-Losers finding (the headline, do NOT re-derive)
+Ran a full **Cohen's-d discriminant scan** across every captured dimension on the
+post-fan LONG set (23 trades). **Max separation = d≈0.5 (moderate), and ONLY on
+dimensions that flip sign cross-batch (GlobalVol, BTC slope, pair ADX, g8-13).**
+The structural dims (BTC RSI, fan, ATR, stretch) show **d≈0.0**. **LONG winners and
+losers are entry-twins** — the documented structural LONG problem. There is NO clean
+entry-side discriminator. The only things that work are **ZONE blocks of known
+macro-loser regions** (fan>5, BTC RSI 50-55), not winner/loser gradients. Tested the
+top-d band cuts (GVol<0.85, pADX>22, g813<0.04) — none beat BTC-RSI-50-55; they
+block winners net-positive (wrong sign) or are GVol (regime-flipper). **Conclusion:
+entry filters cannot solve entry-twins — the LONG lever is the EXIT (ATR runner-exit
+watchlist) + the structural ATR-min, not more entry filters.**
+
+### What SHIPPED (2 changes, both cross-validated, ZERO overlap)
+
+**1. BTC RSI 50-55 LONG → FULL BLOCK (via the BTC RSI × BTC ADX cross-filter).**
+Changed `btc_rsi_adx_filter_long` rule `50-55:22` → **`50-55:99-100`** (impossible
+ADX range = always block; established full-block pattern). Long-standing structural
+loser zone — CLAUDE.md April flagged "BTC RSI 50-55 LONG = consistent loser in all 4
+samples."
+
+| | this batch | 5-batch (PRIMARY) | cross-batch |
+|---|---|---|---|
+| N | 9 (3W/6L) | 10 | 53 |
+| WR | 33% | **40%** | **43%** |
+| Total$ | −$410 | **−$82** | **−$1,141** |
+
+**2. NEW pair-ATR-min filter: `pair_atr_min_long: 0.25` (PAIR_ATR_MIN gate).**
+No standalone pair-ATR entry filter existed before (all ATR fields were exit/trailing
+or BTC-ATR). The cliff is at 0.25, **sharper than at 0.40**:
+
+| ATR% band (LONG) | this batch | 5-batch | cross-batch |
+|---|---|---|---|
+| **<0.25** | **2 / 0% / −$24** | **8 / 12% / −$230** | 180 / 38% / −$636 |
+| 0.25-0.40 | 5 / 40% / +$31 | 20 / 25% / −$313 | 138 / 39% / −$1,640 |
+
+`<0.25` is the cleanest clean loser sub-band in the whole LONG book (5-batch **12% WR**,
+direction-consistent 0%→12%→38% all below ~48% baseline). It is the mirror of the
+high-ATR runner finding (low ATR = no fuel = fade). **Chose <0.25 over <0.40** because
+<0.25 **spares the low-ATR winners** (LTC at pATR 0.29 +$63, which a <0.40 cut clips)
+and is **fully additive** — both this-batch <0.25 LONGs (ETH, BTC) are UNIQUE, not
+caught by fan>5 or BTC-RSI-50-55 (zero double-count). Engine: new `PAIR_ATR_MIN` block
+in the pair-filter chain (after FAN_RATIO_GATE), reads `indicators['atr']/price*100`.
+SHORT side OFF (`pair_atr_min_short: 0.0`) pending evidence.
+
+### Counterfactual (overlap-corrected sequence)
+| Step | +cut (overlap-adj) | newTot$ | DCR |
+|---|---|---|---|
+| fan>5 (already shipped — 3 fan>5 trades opened pre-filter) | — | +$134 | +1.44% |
+| + BTC RSI 50-55 full block | 7 | +$334 | +3.50% |
+| **+ pair ATR < 0.25** | **2 (both unique)** | **+$358** | **+3.75%** |
+
+ACTUAL −$137 → **+$358** kept (14 trades), DCR −1.51% → **+3.75%**. 12 blocked, 3
+winners cut (HOME +73, PEPE +13, HIVE +11 — all BTC-RSI-50-55 band; don't curve-fit to
+spare them, no dim separates winners/losers within 50-55).
+
+### Cross-validation REJECTS (5-batch contradicts — do NOT ship)
+EMA8-13 min (redundant with fan>5 — flat-base losers ARE the fan>5 ones; cuts low-base
+*winners* otherwise); Pattern C2 LONG (5b 56% WR/+$70 winner; its losers already
+fan-blocked, remaining C2 = XMR +$105 winner); fan 2-3 (5b 67%/+$43 winner); BTC ATR
+0.15-0.20 (5b flat); ADXΔ −2..−1 (5b flat 50%); BTC ADX 35-40 (5b 67% winner); RngP>50
++ RSI-Falling (5b 47% mild). All apparent this-batch losses were heavy fan>5 / BTC-RSI
+overlap — why the no-double-count sequencing matters.
+
+### OBSERVATION watchlist: pair ATR < 0.40 LONG (NOT shipped — broader structural lever)
+5-batch **21% WR / −$543 (N=28)**, cross-batch 40% / −$2,164 (N=315) — the strongest
+clean loser-rate of any candidate, BUT **flat this batch** (+$7) because LTC won at
+low ATR. It's the broader version of the shipped <0.25. **Promotion gate:** if the
+0.25-0.40 band keeps losing (5b says 25% WR) on N≥15 fresh AND the low-ATR winners
+(LTC-class) stop appearing → widen `pair_atr_min_long: 0.25 → 0.40`. Start surgical at
+0.25, widen only after the 0.25-0.40 band proves out.
+
+### Locked revert gates (next ≥30-LONG checkpoint)
+- BTC RSI 50-55: if would-be-blocked LONGs show ≥55% WR on N≥10 fresh → revert rule to `50-55:22`.
+- pair ATR <0.25: if blocked-zone LONGs show ≥45% WR on N≥6 fresh → revert to 0.
+- Both are one-field reversible.
+
+### Files changed
+- `config.py` — `pair_atr_min_long/short`, `pair_atr_filter_enabled` fields
+- `trading_config.json` — `btc_rsi_adx_filter_long` 50-55:22→50-55:99-100; `pair_atr_min_long: 0.25`
+- `services/trading_engine.py` — PAIR_ATR_MIN filter block (after FAN_RATIO_GATE)
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 31, 2026 — WATCHLIST: high-ATR LONG = the runner cohort + asymmetric runner exit (NOT shipped, N≥30 gate)
 
 ### The question chain that produced this

@@ -6066,6 +6066,34 @@ class TradingEngine:
                             except (ValueError, TypeError):
                                 continue
 
+            # Pair ATR minimum filter (June 1, 2026). Block entries when pair
+            # ATR% < min — the dead-tape / no-fuel fade zone (mirror of the
+            # high-ATR runner finding). LONG <0.25%: 5-batch 12% WR / -$230
+            # (sharpest clean loser sub-band), zero overlap with fan>5 and
+            # BTC-RSI-50-55 (both this-batch <0.25 LONGs were unique). Spares
+            # the low-ATR winners that a <0.40 cut would clip (LTC at 0.29).
+            _patr_enabled = getattr(config.trading_config.thresholds,
+                                    'pair_atr_filter_enabled', True)
+            if _patr_enabled and signal in ["LONG", "SHORT"]:
+                _patr_min = getattr(
+                    config.trading_config.thresholds,
+                    'pair_atr_min_long' if signal == 'LONG' else 'pair_atr_min_short',
+                    0.0) or 0.0
+                if _patr_min > 0:
+                    _patr_atr = indicators.get('atr')
+                    _patr_price = indicators.get('price')
+                    if (_patr_atr is not None and _patr_price
+                            and _patr_price > 0):
+                        _patr_pct = (_patr_atr / _patr_price) * 100
+                        if _patr_pct < _patr_min:
+                            logger.info(
+                                f"[PAIR_ATR_MIN] {pair}: {signal} blocked — "
+                                f"pair ATR {_patr_pct:.3f}% < min {_patr_min}%"
+                            )
+                            self._record_filter_block("PAIR_ATR_MIN", signal, had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "PAIR_ATR_MIN"
+                            signal = "NO_TRADE"
+
             # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
             # Block entry when both BTC RSI timeframes are in specified
             # directions (Rising/Falling). Rule encoded as 2-char codes:

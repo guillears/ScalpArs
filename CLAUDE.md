@@ -1,5 +1,56 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## May 31, 2026 — C1 SHORT: fixed SL −0.70% added (cap the ATR-widened tail, NOT an entry filter)
+
+### The question
+FETUSDT SHORT lost **−$422** (−1.20%) on the C1 "Capitulation chase" cell (30× effective:
+2.0× inv × 1.5× lev). Operator asked: cross-check the loser against all C1 SHORT winners and
+build a conditional filter that keeps 30× on winners but blocks the losing shape.
+
+### What the data said — NO entry filter is possible
+C1 SHORT cohort = **27 trades, 22W/5L, 81% WR, +0.10%/trade expectancy (genuinely +EV).**
+The 5 losers are **entry-indistinguishable** from the 22 winners on every dimension (RngPos,
+RSI, ATR%, Bear%, pGap all fully overlap — there's even a *winner* FETUSDT at the *same*
+ATR 0.79 as the loser). The only difference is the 5 losers were all **Never-Positive (peak
+0.0%)** — but that's an *outcome*, not an entry signal. Every candidate conditional cut as
+many winners as losers; the "net +" was purely FET's fat tail dominating the arithmetic.
+**Filtering a cohort whose losers and winners are entry-identical = curve-fitting to one trade.**
+
+### A tight SL is ALSO impossible — winners need the room
+Trough-check on the 22 winners: **6 of them wick below −0.50% and then recover to close green**
+(CHZ −0.677→+0.27, SUI −0.669→+0.39, DASH −0.570, NEAR −0.567, XMR −0.535, 1000PEPE −0.513).
+The deep-wick tolerance **IS the edge.** Fixed-SL sim: −0.40 nets −$343, −0.50 nets −$138,
+−0.60 nets +$162, **−0.70 nets +$249 and clips ZERO winners** (deepest recovering winner
+trough = −0.677, just inside −0.70). Anything tighter than −0.60 is net-negative.
+
+### The real recoverable money = the ATR-widened exit, not the entry
+All 5 losers exit via `STOP_LOSS_WIDE L1`, and C1 had **no `fixed_sl_pct`** → it inherited the
+global ATR-widened wide-SL (`sl_atr_multiplier 1.5`, floor −1.20). Close depth tracks ATR almost
+exactly: FET ATR 0.79 → SL widened to −1.19 (hit the −1.20 floor); TON 0.51 → −0.76; DASH 0.42 →
+−0.63. **The ATR-widening is meant to give trades room to breathe — but C1 SHORT losers are 100%
+Never-Positive straight-line losers. They never breathe; the widening just lets them bleed an
+extra ~0.5% before stopping.** ATR-widening is structurally wrong for a straight-line-loser cell.
+
+### Shipped — `fixed_sl_pct: -0.70` on the C1 SHORT rule
+Overrides the ATR-widening for this cell only. Caps each loser at −0.70% (FET −1.20→−0.70,
+MMT −0.91→−0.70), **clips 0 winners**, keeps the 30× and the 81% WR fully intact. Recovers
+~$249 across the cohort (FET-dominated). Engine path: `_lookup_pattern_cell_rule` reads
+`fixed_sl_pct` (services/trading_engine.py:1821) → `pattern_fixed_sl_pct` on the Order.
+
+### Honest caveats / locked revert
+- **N=5 losers, FET-concentrated saving** — this is a tail-cap, not a validated edge. But it's
+  fully reversible (one config field) and clips no winners, so downside is bounded.
+- **Razor margin:** deepest recovering winner trough was −0.677; a future C1 SHORT that wicks to
+  −0.71 then recovers would be clipped by this −0.70 cap. If the next batch shows ≥2 C1 SHORT
+  winners with trough in [−0.70, −0.677] that recovered, loosen the cap to −0.75.
+- This does NOT touch the C1 entry, the 3.0× lev-stack, or the LONG-side C1 (mirror untouched).
+
+### Files changed
+- `trading_config.json` — added `"fixed_sl_pct": -0.7` to the C1 SHORT `pattern_cell_rules` entry
+- `CLAUDE.md` — this entry
+
+---
+
 ## May 31, 2026 — 🚨 POST-MORTEM + LOCKED CHECKLIST: removing a table can swallow shared module-level constants
 
 ### What happened (prod dashboard went all-zeros)

@@ -443,6 +443,13 @@ async def init_db():
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} VARCHAR(15)"))
                 # ===== LEASH SHADOW END =====
+                # Liquidity-aware sizing observability (Jun 2, 2026)
+                if 'entry_desired_notional' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_desired_notional FLOAT"))
+                if 'entry_liquidity_cap_notional' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_liquidity_cap_notional FLOAT"))
+                if 'liquidity_capped' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN liquidity_capped BOOLEAN DEFAULT 0"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

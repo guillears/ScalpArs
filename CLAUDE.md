@@ -1,5 +1,61 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 2, 2026 — SHIPPED: Liquidity-sizing reporting surface (pure observability)
+
+### What shipped
+Reporting/observability layer for the liquidity-aware sizing caps. **No sizing-logic change** — the
+only engine edit is two `None`-initializers (`_desired_notional`, `_liq_cap`) before the cap block so
+the `Order(...)` constructor can reference them on the caps-disabled path (NameError-safety, not a
+decision change).
+
+**① DB columns** (`models.py` + `database.py` auto-migrate, threaded in the `Order(...)` constructor):
+- `entry_desired_notional` (Float, nullable) — pre-cap notional (`investment × leverage`); NULL when caps off.
+- `entry_liquidity_cap_notional` (Float, nullable) — the ① per-pair cap value (`_liq_cap`); NULL if ① not configured.
+- `liquidity_capped` (Boolean, default False) — True when ①/② throttled the order below desired.
+- **Final notional is the existing `notional_value` column** (already = post-throttle `investment × leverage`).
+
+**② "💧 Liquidity Sizing" table** (`main.py` `_compute_liquidity_sizing` → `liquidity_sizing` payload;
+`index.html` UI + both text-export sites): CLOSED trades where `liquidity_capped` is true —
+columns **Pair / desired$ / final$ / throttle% / reason**.
+- `throttle% = 1 − final/desired`.
+- **reason is reconstructed from the 3 columns** (no reason column stored): `LIQ` ⇔ `liq_cap < desired`
+  (① reduced it); `GROSS` ⇔ `final < (liq_cap or desired)` (② reduced it further/instead); `LIQ+GROSS`
+  ⇔ both. Summary: "Capped N of M (X%) · avg throttle −Y% · LIQ a / GROSS b" (a/b count cap *involvement*,
+  so LIQ+GROSS increments both).
+
+**③ Live gross-notional gauge** (`main.py` status payload in `get_status` + `index.html` regime-bar chip):
+- `gross_open` = Σ `notional_value` of OPEN orders; `gross_budget` = balance × `max_gross_leverage`,
+  where **balance basis = `available + open margin`** — the same basis the engine's ② cap uses
+  (`total_portfolio`). Chip renders `Gross: $X / $Y (Z%)`, **green <70% · amber 70–90% · red >90%**,
+  `off` when the gross cap is disabled.
+
+### Notes
+- Pre-deploy CLOSED trades have NULL on all 3 new columns → excluded from the table (it only shows
+  `liquidity_capped == True` rows, which only exist post-deploy).
+- Paper fills show ~0 slippage, so ① rarely binds in paper; the table will mostly populate from ②
+  (gross cap) until live. This is risk-plumbing, not a paper P&L surface.
+
+### UI config inputs (D11 completion for the task-1 caps)
+Task 1 shipped the 5 cap fields to `config.py`/JSON/engine but with **no UI inputs** — a D11 checklist
+miss. Added now: a bordered **💧 Liquidity & Risk Caps** group inside Investment Settings with inputs
+for all 5 fields (`max_notional_pct_of_pair_volume`, `max_notional_hard_ceiling`, `max_gross_leverage`,
+`max_open_positions_hard`, `redeploy_leftover_enabled`) + load + save handlers + a config text-export
+line. **Save-safety verified:** `update_config` merges (`current_investment.update(...)`) and
+`ConfigUpdate.investment` is an untyped `Dict`, so omitting the caps from a save never wiped them — but
+they're now first-class editable. Also **boxed the Investment Settings params** (everything from
+Investment Mode through the new caps) in a bordered container; the Regime Change Exit + exit-behavior
+toggles deliberately sit below the box (they're exit settings, not investment).
+
+### Files changed
+- `models.py` — 3 Order columns · `database.py` — 3 auto-migrate `ADD COLUMN`
+- `services/trading_engine.py` — 2 `None`-inits + 3 fields threaded into `Order(...)` (no logic change)
+- `main.py` — `_compute_liquidity_sizing` helper + `liquidity_sizing` payload + gross-gauge in `get_status`
+- `templates/index.html` — Liquidity Sizing table + JS renderer + regime-bar Gross chip + 2 text-exports
+  + Liquidity & Risk Caps config inputs (box + load/save) + config-export line
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 2, 2026 — DEMOTED: PAIR_35-40_30-35 SHORT multiplier 2.0× → 1.0×
 
 ### What changed
@@ -46,7 +102,7 @@ the book), backing margin out as `notional / leverage`. Throttling a slot below
   the new order's notional to the remaining room. Logs `[GROSS_CAP]` (skip) / `[LIQ_CAP]` (throttle,
   reason `GROSS` or `LIQ+GROSS`).
 
-**③ Redeploy-leftover gate** (`redeploy_leftover_enabled: false`, `max_open_positions_hard: 12`) — **SHIPS OFF**
+**③ Redeploy-leftover gate** (`redeploy_leftover_enabled: false`, `max_open_positions_hard: 10`) — **SHIPS OFF**
 - When ① throttles a slot below its equal-split slice, freed capital sits idle. With this on, the
   position-count limit rises from `max_open_positions` to `max_open_positions_hard`, letting the bot
   open MORE slots to deploy the leftover — the real limiters then become ② (gross cap) + tradeable
@@ -61,7 +117,7 @@ correlated-dump exposure regardless of slippage model). ③ is sequencing infra,
 ### Files changed
 - `config.py` — 5 fields on `InvestmentConfig` (all default 0 / False = inert; live values in JSON)
 - `trading_config.json` — `max_notional_pct_of_pair_volume: 0.1`, `max_notional_hard_ceiling: 500000`,
-  `max_gross_leverage: 25.0`, `redeploy_leftover_enabled: false`, `max_open_positions_hard: 12`
+  `max_gross_leverage: 25.0`, `redeploy_leftover_enabled: false`, `max_open_positions_hard: 10`
 - `services/trading_engine.py` — `[LIQ_CAP]`/`[GROSS_CAP]` cap block in `open_position` +
   redeploy-aware position-count gate
 - `CLAUDE.md` — this entry

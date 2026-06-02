@@ -212,6 +212,9 @@
                 <span id="breadth-bull-value" class="text-gray-300 font-bold">--</span>
                 <span class="text-gray-500">/</span>
                 <span id="breadth-bear-value" class="text-gray-300 font-bold">--</span>
+                <span class="text-gray-500">|</span>
+                <span class="text-gray-400 font-medium">Gross:</span>
+                <span id="gross-gauge" class="text-gray-500 text-xs font-mono" title="Σ open-position notional ÷ (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%. 'off' = gross cap disabled.">--</span>
             </div>
             <div class="flex items-center space-x-4">
                 <span id="regime-pair-count" class="text-gray-500">--</span>
@@ -2196,6 +2199,32 @@
                 </div>
                 <!-- ===== RUNNER TRAIL END ===== -->
 
+                <!-- ===== LIQUIDITY SIZING START (Jun 2, observation-only) ===== -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-sky-300 mb-2">💧 Liquidity Sizing (throttled orders)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        CLOSED trades whose notional was throttled by the ① per-pair liquidity cap
+                        (slippage protection) and/or ② gross-notional cap (correlated-dump guard).
+                        <span class="text-sky-300">throttle%</span> = 1 − final/desired.
+                        <span class="text-sky-300">reason</span>: LIQ (① bound), GROSS (② bound), or LIQ+GROSS (both).
+                        Paper fills show ~0 slippage, so this is risk-plumbing for live.
+                    </p>
+                    <div class="text-xs text-gray-400 mb-2" id="liq-sizing-summary">(no throttled orders yet)</div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-white/10">
+                                <th class="px-2 py-2 text-left">Pair</th>
+                                <th class="px-2 py-2 text-center">desired $</th>
+                                <th class="px-2 py-2 text-center">final $</th>
+                                <th class="px-2 py-2 text-center">throttle %</th>
+                                <th class="px-2 py-2 text-left">reason</th>
+                            </tr></thead>
+                            <tbody id="liq-sizing-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- ===== LIQUIDITY SIZING END ===== -->
+
                 <!-- ===== LEASH SHADOW START (May 30, observation-only) ===== -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏃 Leash Shadow: Runner Exit Comparison (observation-only)</h3>
@@ -4017,6 +4046,8 @@
                         </svg>
                         Investment Settings
                     </h3>
+                    <!-- ===== INVESTMENT PARAMS BOX (Jun 2) — investment/sizing/pair-selection; exit-behavior toggles live below the box ===== -->
+                    <div class="border border-emerald-500/25 rounded-xl p-4 bg-emerald-500/[0.03]">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label class="block text-sm text-gray-400 mb-2">Investment Mode</label>
@@ -4217,6 +4248,57 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Auto-exclude pairs Binance flags as <span class="text-amber-400 font-mono">underlyingSubType: ["Alpha"]</span> (launchpad / Innovation Zone tier — high volatility, thin liquidity, "do your own research" warning). Catches pairs like LABUSDT before they ever trade. Independent of listing age.</p>
                         </div>
+                        <!-- ===== LIQUIDITY & RISK CAPS (Jun 2 — see CLAUDE.md) ===== -->
+                        <div class="md:col-span-4 mt-2 pt-3 border-t border-white/10">
+                            <span class="text-sm font-semibold text-sky-300">💧 Liquidity &amp; Risk Caps</span>
+                            <span class="text-xs text-gray-500 ml-2">Notional-level guards (slippage + correlated-dump protection). 0 = disabled.</span>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Per-Pair Liquidity Cap</label>
+                            <div class="flex">
+                                <input type="number" id="config-max-notional-pct-of-pair-volume" min="0" step="0.01" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="0">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400 text-xs">% 24h vol</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">① Cap order notional to this % of the pair's 24h volume (slippage protection). 0.1 = 0.10%.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Liquidity Hard Ceiling</label>
+                            <div class="flex">
+                                <input type="number" id="config-max-notional-hard-ceiling" min="0" step="1000" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="0">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">$</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">① Flat $ notional backstop even on deep (BTC-tier) pairs. 0 = no ceiling.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Max Gross Leverage</label>
+                            <div class="flex">
+                                <input type="number" id="config-max-gross-leverage" min="0" step="1" class="flex-1 bg-white/5 border border-white/10 rounded-l-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="0">
+                                <span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-4 py-2 text-gray-400">×</span>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">② Σ(open notional) ≤ balance × this (correlated-dump / liquidation guard). 0 = off.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Max Open Positions (Hard)</label>
+                            <input type="number" id="config-max-open-positions-hard" min="1" max="999" step="1" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500" value="10">
+                            <p class="text-xs text-gray-500 mt-1">③ Position-count ceiling used only when Redeploy Leftover is ON.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-2">Redeploy Leftover</label>
+                            <div class="flex items-center gap-4 py-2">
+                                <label class="flex items-center cursor-pointer">
+                                    <input type="checkbox" id="config-redeploy-leftover-enabled" class="sr-only peer">
+                                    <div class="w-9 h-5 bg-white/10 peer-checked:bg-sky-500/50 rounded-full relative transition-colors">
+                                        <div class="w-4 h-4 bg-white rounded-full absolute top-0.5 left-0.5 peer-checked:translate-x-4 transition-transform"></div>
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-300">Enabled</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">③ When ① throttles a slot, open more positions (up to Hard cap) to deploy the freed capital. Default OFF.</p>
+                        </div>
+                    </div>
+                    <!-- ===== INVESTMENT PARAMS BOX END — exit-behavior toggles below ===== -->
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Regime Change Exit</label>
                             <div class="flex items-center gap-4">
@@ -6551,6 +6633,21 @@
                 
                 _bnbBurnRate = data.bnb_burn_rate || 0;
 
+                // Jun 2: live gross-notional gauge — Σ open notional / (balance × max_gross_leverage)
+                const _grossEl = document.getElementById('gross-gauge');
+                if (_grossEl) {
+                    if (data.gross_enabled && data.gross_budget > 0) {
+                        const _pct = data.gross_pct || 0;
+                        const _fmt = (v) => '$' + Math.round(v || 0).toLocaleString();
+                        _grossEl.textContent = `${_fmt(data.gross_open)} / ${_fmt(data.gross_budget)} (${_pct.toFixed(0)}%)`;
+                        _grossEl.className = 'text-xs font-mono font-bold ' +
+                            (_pct < 70 ? 'text-emerald-400' : _pct <= 90 ? 'text-yellow-400' : 'text-red-400');
+                    } else {
+                        _grossEl.textContent = 'off';
+                        _grossEl.className = 'text-xs font-mono text-gray-500';
+                    }
+                }
+
                 // BTC EMA20 slope display
                 const slopeEl = document.getElementById('btc-ema20-slope');
                 const slope = data.btc_ema20_slope_pct;
@@ -7506,6 +7603,21 @@
             }
             // ===== RUNNER TRAIL END =====
 
+            // ===== LIQUIDITY SIZING START (Jun 2, observation-only) =====
+            const _liq1 = perf.liquidity_sizing || {};
+            if (_liq1.summary && _liq1.summary.capped > 0) {
+                const _lq = _liq1.summary;
+                lines.push(`## Liquidity Sizing (throttled orders)  [Capped ${_lq.capped} of ${_lq.total} (${_lq.capped_pct}%) · avg throttle -${_lq.avg_throttle_pct}% · LIQ ${_lq.liq_n} / GROSS ${_lq.gross_n}]`);
+                lines.push('  Pair          Dir       desired$        final$  throttle%  reason');
+                lines.push('-'.repeat(72));
+                const _lm$ = (v) => '$' + Math.round(v||0).toLocaleString();
+                (_liq1.rows || []).forEach(r => {
+                    lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${_lm$(r.desired).padStart(13)} ${_lm$(r.final).padStart(13)} ${('-'+r.throttle_pct+'%').padStart(9)}  ${r.reason}`);
+                });
+                lines.push('');
+            }
+            // ===== LIQUIDITY SIZING END =====
+
             // ===== LEASH SHADOW START (May 30, observation-only) =====
             const _ls1 = perf.leash_shadow || {};
             if (_ls1.slices && _ls1.slices.length) {
@@ -8412,6 +8524,7 @@
             lines.push(`  Burn Rate: $${_burnRate.toFixed(2)}/hr  |  Live Runway: ${_liveRunwayH}h  |  Emergency Threshold: $${(status && status.bnb_emergency_threshold) ? status.bnb_emergency_threshold.toFixed(2) : '0.00'}`);
             lines.push(`  Investment Mode: ${inv.mode || 'equal_split'}  |  Max Open Positions: ${inv.max_open_positions || '-'}  |  Trading Pairs: ${cfg.trading_pairs_limit || '-'}`);
             lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
+            lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
 
             lines.push(`\nFee & Maker Orders:`);
@@ -9178,6 +9291,19 @@
                     const _sd = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(Number(v)).toFixed(2);
                     (_rt2.rows || []).forEach(r => {
                         lines.push(`  ${(r.pair||'').padEnd(12)} ${String(r.atr).padStart(5)} ${_sg(r.peak).padStart(6)} ${_sg(r.exit).padStart(7)} ${_sg(r.cf).padStart(8)} ${_sg(r.gain).padStart(6)} ${_sd(r.actual_usd).padStart(10)} ${_sd(r.cf_usd).padStart(10)} ${_sd(r.gain_usd).padStart(9)} ${_sg(r.post).padStart(8)} ${String(r.pct_max==null?'-':r.pct_max+'%').padStart(5)}  ${r.verdict}`);
+                    });
+                    lines.push('');
+                }
+                // Liquidity Sizing (Jun 2, observation-only)
+                const _liq2 = perf.liquidity_sizing || {};
+                if (_liq2.summary && _liq2.summary.capped > 0) {
+                    const _lq = _liq2.summary;
+                    lines.push(`## Liquidity Sizing (throttled orders)  [Capped ${_lq.capped} of ${_lq.total} (${_lq.capped_pct}%) · avg throttle -${_lq.avg_throttle_pct}% · LIQ ${_lq.liq_n} / GROSS ${_lq.gross_n}]`);
+                    lines.push('  Pair          Dir       desired$        final$  throttle%  reason');
+                    lines.push('-'.repeat(72));
+                    const _lm$ = (v) => '$' + Math.round(v||0).toLocaleString();
+                    (_liq2.rows || []).forEach(r => {
+                        lines.push(`  ${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${_lm$(r.desired).padStart(13)} ${_lm$(r.final).padStart(13)} ${('-'+r.throttle_pct+'%').padStart(9)}  ${r.reason}`);
                     });
                     lines.push('');
                 }
@@ -11760,6 +11886,35 @@
                     }
                 }
                 // ===== RUNNER TRAIL END =====
+
+                // ===== LIQUIDITY SIZING START (Jun 2, observation-only) =====
+                {
+                    const _liq = data.liquidity_sizing || { rows: [], summary: null };
+                    const _liqSum = document.getElementById('liq-sizing-summary');
+                    const _liqBody = document.getElementById('liq-sizing-body');
+                    const _ls = _liq.summary;
+                    if (_liqSum) _liqSum.innerHTML = (_ls && _ls.capped > 0)
+                        ? `Capped <strong>${_ls.capped}</strong> of ${_ls.total} (${_ls.capped_pct}%) · avg throttle <strong class="text-amber-400">−${_ls.avg_throttle_pct}%</strong> · LIQ ${_ls.liq_n} / GROSS ${_ls.gross_n}`
+                        : '(no throttled orders yet)';
+                    if (_liqBody) {
+                        const _fmt$ = (v) => v == null ? '—' : '$' + Math.round(v).toLocaleString();
+                        let html = '';
+                        (_liq.rows || []).forEach(r => {
+                            const tCls = r.throttle_pct >= 50 ? 'text-red-400 font-semibold'
+                                       : r.throttle_pct >= 20 ? 'text-amber-400 font-semibold'
+                                       : 'text-gray-300';
+                            html += `<tr class="border-b border-white/5">
+                                <td class="px-2 py-1 text-left text-gray-200">${r.pair} <span class="text-gray-500">${r.direction || ''}</span></td>
+                                <td class="px-2 py-1 text-center text-gray-400">${_fmt$(r.desired)}</td>
+                                <td class="px-2 py-1 text-center text-sky-300 font-semibold">${_fmt$(r.final)}</td>
+                                <td class="px-2 py-1 text-center ${tCls}">−${r.throttle_pct}%</td>
+                                <td class="px-2 py-1 text-left text-gray-300">${r.reason}</td>
+                            </tr>`;
+                        });
+                        _liqBody.innerHTML = html || '<tr><td colspan="5" class="px-2 py-3 text-center text-gray-500">No throttled orders yet.</td></tr>';
+                    }
+                }
+                // ===== LIQUIDITY SIZING END =====
 
                 // ===== LEASH SHADOW START (May 30, observation-only) =====
                 if (data.leash_shadow) {
@@ -15865,6 +16020,15 @@
                 document.getElementById('config-max-holding-time').value = config.investment.max_holding_time_minutes !== undefined ? config.investment.max_holding_time_minutes : 180;
                 document.getElementById('config-no-expansion').value = config.investment.no_expansion_minutes !== undefined ? config.investment.no_expansion_minutes : 15;
 
+                // Liquidity & Risk Caps (Jun 2)
+                const _liqSet = (id, v, dflt) => { const el = document.getElementById(id); if (el) el.value = (v !== undefined && v !== null) ? v : dflt; };
+                _liqSet('config-max-notional-pct-of-pair-volume', config.investment.max_notional_pct_of_pair_volume, 0);
+                _liqSet('config-max-notional-hard-ceiling', config.investment.max_notional_hard_ceiling, 0);
+                _liqSet('config-max-gross-leverage', config.investment.max_gross_leverage, 0);
+                _liqSet('config-max-open-positions-hard', config.investment.max_open_positions_hard, 10);
+                const _rde = document.getElementById('config-redeploy-leftover-enabled');
+                if (_rde) _rde.checked = !!config.investment.redeploy_leftover_enabled;
+
                 // Trading pairs limit & blacklist + new-listing filter
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
                 document.getElementById('config-pair-blacklist').value = config.pair_blacklist || '';
@@ -17102,7 +17266,13 @@
                     min_investment_size: safeFloat(document.getElementById('config-min-investment').value) || 100,
                     max_investment_size: safeFloat(document.getElementById('config-max-investment').value) || 50000,
                     max_holding_time_minutes: parseInt(document.getElementById('config-max-holding-time').value) || 0,
-                    no_expansion_minutes: parseInt(document.getElementById('config-no-expansion').value) || 0
+                    no_expansion_minutes: parseInt(document.getElementById('config-no-expansion').value) || 0,
+                    // Liquidity & Risk Caps (Jun 2)
+                    max_notional_pct_of_pair_volume: safeFloat(document.getElementById('config-max-notional-pct-of-pair-volume')?.value) || 0,
+                    max_notional_hard_ceiling: safeFloat(document.getElementById('config-max-notional-hard-ceiling')?.value) || 0,
+                    max_gross_leverage: safeFloat(document.getElementById('config-max-gross-leverage')?.value) || 0,
+                    max_open_positions_hard: parseInt(document.getElementById('config-max-open-positions-hard')?.value) || 10,
+                    redeploy_leftover_enabled: !!document.getElementById('config-redeploy-leftover-enabled')?.checked
                 },
                 thresholds: {
                     long_rsi_extreme: safeFloat(document.getElementById('config-long-rsi-extreme').value),

@@ -211,6 +211,15 @@ class Order(Base):
     # rather than blacklisting one-by-one. NULL on pre-deploy trades.
     entry_pair_volume_24h_usd = Column(Float, nullable=True)
 
+    # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
+    # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).
+    # entry_liquidity_cap_notional = the ① per-pair liquidity cap value (_liq_cap); NULL if ① not configured.
+    # liquidity_capped             = True when ①/② throttled this order's notional below desired.
+    # Final notional is the existing notional_value column; throttle% = 1 − notional_value/entry_desired_notional.
+    entry_desired_notional = Column(Float, nullable=True)
+    entry_liquidity_cap_notional = Column(Float, nullable=True)
+    liquidity_capped = Column(Boolean, default=False)
+
     # Pair / BTC EMA20 vs EMA50 gap at EXIT (May 6). Captures multi-hour trend context
     # at close time — diagnostic for REGIME_CHANGE / FL_REGIME_CHANGE: did BTC's actual
     # 4h trend flip, or just the 5m regime classifier? Historical trades have NULL.

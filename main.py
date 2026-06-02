@@ -457,7 +457,34 @@ async def get_status(db: AsyncSession = Depends(get_db)):
         await trading_engine._recompute_bnb_burn_rate(db)
     except Exception as e:
         logger.debug(f"[STATUS] burn rate recompute skipped: {e}")
-    return trading_engine.get_status()
+    _status = trading_engine.get_status()
+    # Jun 2: live gross-notional gauge (observability). gross_open = Σ notional of
+    # OPEN orders; gross_budget = balance × max_gross_leverage (same balance basis
+    # the engine's ② gross cap uses: available + open margin). pct guards div0.
+    try:
+        _gl = float(getattr(config.trading_config.investment, 'max_gross_leverage', 0.0) or 0.0)
+        _avail = await trading_engine.get_available_balance(db)
+        _open_margin_r = await db.execute(
+            select(func.coalesce(func.sum(Order.investment), 0.0)).where(
+                and_(Order.status == "OPEN", Order.is_paper == trading_engine.is_paper_mode)
+            )
+        )
+        _open_notional_r = await db.execute(
+            select(func.coalesce(func.sum(Order.notional_value), 0.0)).where(
+                and_(Order.status == "OPEN", Order.is_paper == trading_engine.is_paper_mode)
+            )
+        )
+        _bal_basis = float(_avail or 0.0) + float(_open_margin_r.scalar() or 0.0)
+        _gross_open = float(_open_notional_r.scalar() or 0.0)
+        _gross_budget = _bal_basis * _gl if _gl > 0 else 0.0
+        _status["gross_open"] = _gross_open
+        _status["gross_budget"] = _gross_budget
+        _status["gross_pct"] = (_gross_open / _gross_budget * 100.0) if _gross_budget > 0 else 0.0
+        _status["gross_enabled"] = _gl > 0
+    except Exception as e:
+        logger.debug(f"[STATUS] gross gauge skipped: {e}")
+        _status["gross_enabled"] = False
+    return _status
 
 
 @app.post("/api/start")
@@ -2691,6 +2718,64 @@ def _compute_time_buckets(orders, bucket_minutes=15):
     except Exception as e:
         logger.error(f"[PERF] Error computing time buckets: {e}\n{traceback.format_exc()}")
         return []
+
+
+def _compute_liquidity_sizing(orders):
+    """Liquidity Sizing table (Jun 2, observation-only) — CLOSED trades whose notional
+    was throttled by the ① per-pair liquidity cap and/or ② gross-notional cap.
+    Reason is reconstructed from columns (no reason column stored):
+      desired = entry_desired_notional, final = notional_value, liq_cap = entry_liquidity_cap_notional.
+      LIQ bound   ⇔ liq_cap < desired (① reduced the order)
+      GROSS bound ⇔ final < (liq_cap or desired)   (② reduced it further/instead)
+    """
+    total = len(orders)
+    rows = []
+    throttles = []
+    liq_n = 0
+    gross_n = 0
+    for o in orders:
+        if not getattr(o, 'liquidity_capped', False):
+            continue
+        desired = getattr(o, 'entry_desired_notional', None)
+        final = getattr(o, 'notional_value', None)
+        liq_cap = getattr(o, 'entry_liquidity_cap_notional', None)
+        if not desired or desired <= 0 or final is None:
+            continue
+        throttle = 1.0 - (final / desired)
+        eps = max(1.0, abs(desired) * 1e-6)
+        liq_bound = (liq_cap is not None) and (liq_cap < desired - eps)
+        ref = liq_cap if liq_cap is not None else desired
+        gross_bound = final < ref - eps
+        if liq_bound and gross_bound:
+            reason = 'LIQ+GROSS'
+        elif gross_bound:
+            reason = 'GROSS'
+        else:
+            reason = 'LIQ'  # liq_bound (or fallback when flag set but unclassifiable)
+        if 'LIQ' in reason:
+            liq_n += 1
+        if 'GROSS' in reason:
+            gross_n += 1
+        throttles.append(throttle)
+        rows.append({
+            'pair': o.pair,
+            'direction': o.direction,
+            'desired': round(desired, 2),
+            'final': round(final, 2),
+            'throttle_pct': round(throttle * 100, 1),
+            'reason': reason,
+        })
+    rows.sort(key=lambda r: r['throttle_pct'], reverse=True)
+    n = len(rows)
+    summary = {
+        'capped': n,
+        'total': total,
+        'capped_pct': round(n / total * 100, 1) if total else 0.0,
+        'avg_throttle_pct': round(sum(throttles) / len(throttles) * 100, 1) if throttles else 0.0,
+        'liq_n': liq_n,
+        'gross_n': gross_n,
+    }
+    return {'rows': rows, 'summary': summary}
 
 
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
@@ -6733,6 +6818,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pattern_truly_unmatched": _compute_truly_unmatched(orders, limit=20),  # TRULY UNMATCHED (no C, no W) — Jun 1
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
+        "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
         # Tests: "what if we exited at +X% the moment P&L reached it within N min?"
         # Compares real outcome vs hypothetical fast-exit across (threshold × window) grid.

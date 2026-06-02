@@ -2885,6 +2885,8 @@ class TradingEngine:
         # Both operate on NOTIONAL (what hits the book); margin is backed out as
         # notional / leverage. Throttling below min_investment_size → skip the trade.
         _liq_capped = False
+        _desired_notional = None  # observability: pre-cap notional (stays None when caps off)
+        _liq_cap = None           # observability: ① per-pair cap value (stays None when caps off)
         _inv_cfg = config.trading_config.investment
         _liq_pct = getattr(_inv_cfg, 'max_notional_pct_of_pair_volume', 0.0) or 0.0
         _liq_ceiling = getattr(_inv_cfg, 'max_notional_hard_ceiling', 0.0) or 0.0
@@ -3175,6 +3177,10 @@ class TradingEngine:
             entry_btc_1h_slope=entry_btc_1h_slope,
             # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
+            # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)
+            entry_desired_notional=_desired_notional,
+            entry_liquidity_cap_notional=_liq_cap,
+            liquidity_capped=_liq_capped,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,

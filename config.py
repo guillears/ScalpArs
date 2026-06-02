@@ -742,7 +742,7 @@ class InvestmentConfig(BaseModel):
     #    allow opening MORE positions (overrule max_open_positions up to the hard
     #    ceiling) to deploy the freed capital — gated by ② + tradeable margin.
     redeploy_leftover_enabled: bool = False
-    max_open_positions_hard: int = 12  # absolute ceiling when redeploying
+    max_open_positions_hard: int = 10  # absolute ceiling when redeploying
 
 
 class TradingConfig(BaseModel):

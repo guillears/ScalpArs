@@ -1,5 +1,29 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 2, 2026 — DEMOTED: PAIR_35-40_30-35 SHORT multiplier 2.0× → 1.0×
+
+### What changed
+`thresholds.rsi_adx_multiplier_short`: `35-40:30-35:2.0` → **`35-40:30-35:1.0`**. Cell kept (not
+deleted) — Pair RSI 35-40 × Pair ADX 30-35 SHORT stays visible in the Multiplier Cell Performance
+table for ongoing observation; it just no longer amplifies.
+
+### Reason
+Thin **1-sample** cell. At 2.0× it lost **−$114 on FETUSDT (05-27 batch)** — the multiplier doubled
+a single-trade loss with no cross-batch backing. Per the locked May 4 verdict matrix (✗ HARMFUL =
+Total $ negative on N≥5, but here even N<5 with a fat-tail loss justifies a pre-emptive demote on a
+1-sample cell), revert to 1.0× rather than wait for the cell to bleed further at amplified size.
+
+### Locked re-promotion gate (next ≥5-trade SHORT checkpoint on this cell)
+- **N ≥ 5 fresh AND ≥ 70% WR** → reconsider re-promotion (1.5× staging first, then 2.0× per Phase-3).
+- N < 5 OR WR < 70% → keep at 1.0×.
+- Any single fresh trade Δ$ ≤ −$60 on this cell at 1.0× → leave at 1.0× indefinitely (cell is fragile).
+
+### Files changed
+- `trading_config.json` — `rsi_adx_multiplier_short` `35-40:30-35:2.0` → `35-40:30-35:1.0`
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 2, 2026 — SHIPPED: Liquidity-aware position sizing (3 caps, all under `investment`)
 
 ### What shipped

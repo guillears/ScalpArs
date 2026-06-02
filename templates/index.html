@@ -192,12 +192,8 @@
                 <span id="btc-global-tag" class="hidden px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-400 uppercase tracking-wide">Global Filter</span>
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC Trend:</span>
-                <span class="text-xs text-gray-500 font-medium">E13</span>
-                <span id="btc-trend-gap" class="text-xs font-mono text-gray-400" title="EMA13/EMA50 gap %">--</span>
+                <span id="btc-trend-gap" class="text-xs font-mono text-gray-400" title="BTC EMA13/EMA50 gap % — active filter (May 6+)">--</span>
                 <span id="btc-trend-badge" class="px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 leading-tight" title="EMA13 vs EMA50 — active filter (May 6+)">--</span>
-                <span class="text-xs text-gray-500 font-medium ml-2">E20</span>
-                <span id="btc-trend-gap-e20" class="text-xs font-mono text-gray-400" title="EMA20/EMA50 gap %">--</span>
-                <span id="btc-trend-badge-e20" class="px-1.5 py-0 rounded text-[9px] font-bold bg-gray-500/20 text-gray-400 leading-tight" title="EMA20 vs EMA50 — historical reference (pre-May 6 baseline). Disagreement with E13 = trend shift in progress.">--</span>
                 <span class="text-gray-500">|</span>
                 <span class="text-gray-400 font-medium">BTC ADX:</span>
                 <span id="btc-adx-value" class="text-gray-300 font-bold">--</span>
@@ -6710,12 +6706,6 @@
                 };
                 // E13 (active filter) — dimmed when filter is OFF
                 renderTrendBadge('btc-trend-badge', 'btc-trend-gap', data.btc_trend_gap_pct, !filterOn);
-                // E20 (reference) — always dimmed since not the active filter
-                let gapE20 = null;
-                if (data.btc_ema20 != null && data.btc_ema50 != null && data.btc_ema50 !== 0) {
-                    gapE20 = ((data.btc_ema20 - data.btc_ema50) / data.btc_ema50) * 100;
-                }
-                renderTrendBadge('btc-trend-badge-e20', 'btc-trend-gap-e20', gapE20, true);
 
                 // Filter Blocks panel (May 5) — pre-entry filter rejection counters
                 renderFilterBlocks(data.filter_block_counts);

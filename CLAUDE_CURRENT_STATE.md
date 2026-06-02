@@ -9,7 +9,7 @@ Paper. Balance **$2,500 + $500 BNB ≈ $3,000**. 5 max positions, equal-split, r
 EMA5/8/13 + RSI + ADX scalper on 5m, BTC-macro-gated. Entry passes a BTC/pair filter stack → sized by liquidity caps × multiplier/pattern-cell rules → exited by a tiered ladder.
 
 ### Exit stack (current)
-- **FAST_EXIT L1**: lock +0.20% within 2min. (FAST_EXIT L2 OFF.)
+- **FAST_EXIT OFF** (both L1 +0.20%/2min and L2 disabled).
 - **Trailing**: arms at peak ≥ **0.45%** (tp_min), exits at peak − **0.25%** (pullback).
 - **Runner Stretch-Trail** (LONG, high-ATR) **ON**: entry_atr≥1.0 & peak≥0.70% → hands tight trailing off to a 0.5×-peak *signed*-stretch trail (lets IDU-class runners run).
 - **EMA13 strict cross exit.**
@@ -62,7 +62,7 @@ Unproven forward; read before each live checkpoint. All signals in UI (Gross gau
 - **LONG book structurally weak** (negative in most cross-batch dimensions); LONG vol floor occasionally clips high-ATR runners.
 
 ## Do not change for now
-- **BE stays OFF** (proven not to help; runner-trail + FAST_EXIT + trailing is the current exit thesis).
+- **BE stays OFF** (proven not to help; runner-trail + trailing is the current exit thesis (FAST_EXIT OFF too)).
 - **SHORT volume rescue stays $0** (mirroring LONG $50M would un-block dead-tape SHORTs like SEI).
 - **Don't add more entry filters reflexively** — 15+ already, diminishing returns. Exit-side + sizing is the active lever.
 

@@ -1,5 +1,68 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 2, 2026 — Liquidity-sizing skip + redeploy counters (Filter Blocks, observation-only)
+
+### Why
+The Liquidity Sizing table only shows trades that were THROTTLED-and-opened. The cap **rejections**
+(`return None` before any `Order` exists) were invisible except in server logs — exactly the events
+worth watching now that the gross cap is active with redeploy on. Surfaced via the existing in-memory
+Filter Blocks counter (`_record_filter_block`), so they appear in the Filter Blocks panel + both text
+exports with no schema change and no new UI (the panel renders the counter dict generically).
+
+### Three new counters (per direction)
+- **`GROSS_CAP_SKIP`** — ② gross cap had zero room (`gross_room ≤ 0`) → entry rejected.
+- **`LIQ_CAP_SKIP`** — ① liquidity throttle pushed margin below `min_investment_size` → entry rejected.
+- **`REDEPLOY_OPEN`** — a position opened in the *redeploy band* (open-count ≥ `max_open_positions`,
+  only reachable because ③ raised the ceiling). **Positive-event counter** (not a block) — rides the
+  same panel for cheapness; "REDEPLOY_OPEN: N" = redeploy fired N times. Recorded only after the Order
+  commits, and only when `redeploy_leftover_enabled`.
+
+### Coverage loop now complete
+throttled-and-opened = **Liquidity Sizing table** · rejected = **GROSS_CAP_SKIP / LIQ_CAP_SKIP** ·
+redeploy fired = **REDEPLOY_OPEN** · live utilization = **Gross gauge**. Counters are in-memory (reset
+on restart) + persisted to BotState like the other filter blocks.
+
+### Files changed
+- `services/trading_engine.py` — 3 `_record_filter_block` calls + redeploy-band flag (no sizing-logic change)
+- `CLAUDE.md` — this entry
+
+---
+
+## June 2, 2026 — TUNED: Redeploy Leftover ON + max_gross_leverage 25 → 30
+
+### What changed (`trading_config.json` only)
+- `redeploy_leftover_enabled: false → true` — ③ redeploy armed.
+- `max_gross_leverage: 25.0 → 30.0` — ② gross-notional budget widened.
+- `max_open_positions_hard` stays 10.
+
+### Why
+**25× was tight.** Base full book = 5 slots × 20× lev ÷ 5 = **20× equity** (always-on floor), so 25×
+left only 5× equity of headroom — redeploy (just enabled) would have almost no room to deploy the
+capital that ① frees. **30× → 10× equity headroom**, roughly doubling the working room so redeploy
+is actually useful.
+
+### The mechanism interaction (locked understanding)
+- **② gross cap** = NOTIONAL ceiling. When `Σ open notional ≥ equity × 30`, new trades are **skipped**
+  (`return None`), independent of position count.
+- **③ `max_open_positions_hard` (10)** = COUNT ceiling, active only when redeploy is ON. The equal-split
+  divisor stays `max_open_positions = 5` (does NOT rise to 10), so each slot is still `equity/5`.
+  Positions 6-10 can only open when ① has throttled slots 1-5 below their equal-split share, freeing
+  margin. **At the current ~$2,500 balance ① is dormant → redeploy is dormant → no behavior change
+  today.** It arms for larger balance / thin pairs.
+- The two limiters bound redeploy jointly: stop at 10 positions OR the gross ceiling, whichever first.
+
+### Risk acknowledgment (the gross cap is the biggest systemic knob)
+Worst-case correlated-gap loss ≈ `gap% × gross_leverage`. 25× → a −4.0% simultaneous gap = −100% equity;
+**30× → a −3.3% gap = −100% equity (+20% tail).** Per-position −0.70% SLs are the primary protection;
+the gross cap is flash-crash tail insurance. 30× accepts a 20%-larger flash-crash tail. Revert to 25
+(or lower) if a correlated-dump event shows the book over-exposed.
+
+### Files changed
+- `trading_config.json` — 2 fields
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 2, 2026 — SHIPPED: Liquidity-sizing reporting surface (pure observability)
 
 ### What shipped

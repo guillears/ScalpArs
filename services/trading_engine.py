@@ -2688,11 +2688,17 @@ class TradingEngine:
         # real limiters. Default (redeploy off) keeps the plain max_open_positions.
         _inv_cfg = config.trading_config.investment
         _eff_max_pos = _inv_cfg.max_open_positions
-        if getattr(_inv_cfg, 'redeploy_leftover_enabled', False):
+        _redeploy_on = getattr(_inv_cfg, 'redeploy_leftover_enabled', False)
+        if _redeploy_on:
             _eff_max_pos = max(_eff_max_pos, getattr(_inv_cfg, 'max_open_positions_hard', _eff_max_pos))
-        if total_open.scalar() >= _eff_max_pos:
+        _open_count_now = total_open.scalar()
+        if _open_count_now >= _eff_max_pos:
             logger.warning(f"[SKIP] {pair}: Max open positions ({_eff_max_pos}) reached")
             return None
+        # Jun 2: this open sits in the "redeploy band" if it's beyond the normal
+        # max_open_positions — only reachable because redeploy raised the ceiling.
+        # Recorded as REDEPLOY_OPEN after the Order commits (positive-event counter).
+        _is_redeploy_open = _redeploy_on and _open_count_now >= _inv_cfg.max_open_positions
         
         # Check if we already have a position for this pair
         result = await db.execute(
@@ -2923,6 +2929,7 @@ class TradingEngine:
                         f"[GROSS_CAP] {pair}: open notional ${_open_notional:,.0f} >= budget "
                         f"${_gross_budget:,.0f} (balance ${(_bal_for_gross or 0):,.0f} x {_gross_lev:g}x) — skip"
                     )
+                    self._record_filter_block('GROSS_CAP_SKIP', direction)  # Jun 2: surface gross-full rejections in Filter Blocks
                     return None
                 if _final_notional > _gross_room:
                     _final_notional = _gross_room
@@ -2935,6 +2942,7 @@ class TradingEngine:
                         f"[LIQ_CAP] {pair} {direction}: {_cap_reason} cap -> ${_new_investment:.2f} margin "
                         f"< min ${_inv_cfg.min_investment_size:.0f} (pair too thin / no gross room) — skip"
                     )
+                    self._record_filter_block('LIQ_CAP_SKIP', direction)  # Jun 2: surface liquidity-below-min rejections in Filter Blocks
                     return None
                 logger.info(
                     f"[LIQ_CAP] {pair} {direction}: {_cap_reason} notional ${_desired_notional:,.0f}->${_final_notional:,.0f} "
@@ -3243,6 +3251,11 @@ class TradingEngine:
 
         await db.commit()
         await db.refresh(order)
+
+        # Jun 2: count a redeploy-band open (position beyond normal max_open_positions,
+        # only reachable because ① throttling freed margin + redeploy raised the ceiling).
+        if _is_redeploy_open:
+            self._record_filter_block('REDEPLOY_OPEN', direction)
 
         # Broker-side protective stops feature REMOVED Apr 17 after 4 failed
         # hotfix attempts — Binance repeatedly rejected with -4120 "Order type

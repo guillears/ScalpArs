@@ -32,8 +32,8 @@
     "no_expansion_minutes": 180,
     "max_notional_pct_of_pair_volume": 0.1,
     "max_notional_hard_ceiling": 500000,
-    "max_gross_leverage": 25.0,
-    "redeploy_leftover_enabled": false,
+    "max_gross_leverage": 30.0,
+    "redeploy_leftover_enabled": true,
     "max_open_positions_hard": 10
   },
   "thresholds": {

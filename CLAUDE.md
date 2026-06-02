@@ -1,5 +1,62 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 2, 2026 — RE-ENABLED ADX Δ × BTC ADX Cross-Filter (both directions) — ends May 18 A/B
+
+### What changed
+`adx_delta_btc_adx_filter_enabled: false → true`. Both preserved rules go live (no rule-string
+edits):
+- **SHORT** `2.0-99:24-99` — block SHORT when pair ADXΔ ≥ 2.0 AND BTC ADX ≥ 24.
+- **LONG** `1.0-2.0:18-30` — block LONG when pair ADXΔ ∈ [1.0, 2.0) AND BTC ADX ∈ [18, 30).
+
+This ends the May 18 A/B disable (the master toggle was flipped off to test whether the new exit
+stack made the filter redundant). It does NOT.
+
+### Trigger — the SOLUSDT −$240 SHORT (06-02 batch)
+SOL SHORT was a **C1 capitulation-chase at 3.0× effective** (inv 2.0 × lev 1.5) entered at a
+climactic ADX spike (ADXΔ +2.00) into a strong BTC trend (BTC ADX 31.8), RngPos 2.0, RSI 27 —
+the exact `ADXΔ≥2.0 × BTC ADX≥24` SHORT cell. It slipped under `rngpos_adx_delta_filter_short`
+(`5-10:1.0-2.0` — RngPos 2.0 below the floor, ADXΔ 2.0035 above the ceiling). The disabled
+ADX Δ × BTC ADX filter would have blocked it. The −$240 is −0.57% × the 3× lev-stack ($42k
+notional); base-1× equiv ≈ −$80.
+
+### Cross-batch evidence — last 4 batches (05-27 23tr, 05-29 83tr, 06-01 51tr, 06-02 11tr)
+
+**SHORT cell (ΔADX≥2.0 × BTC ADX≥24):** N=4, 25% WR (1W/3L), **−$456 actual / −$201 base**.
+| Batch | Trade | $ | note |
+|---|---|---|---|
+| 05-27 | ONDOUSDT | +$89 | C1 3× WIN (the only winner the filter cuts; +$30 base) |
+| 05-27 | UNIUSDT | −$73 | Never-Positive SL (non-C1) |
+| 05-27 | TONUSDT | −$232 | C1 3× SL |
+| 06-02 | SOLUSDT | −$240 | C1 3× EMA13 cross |
+
+Save:cut = **6.1 : 1**. 3 of 4 are C1 capitulation chases; the losers are lev-stacked 3×, which
+is why each is −$230/−$240. The filter surgically removes the *climactic-ADX + strong-BTC*
+squeeze subset of C1 while leaving C1's 81%-WR core intact. Cross-batch prior (CLAUDE.md May 28):
+ADXΔ≥2.0 SHORT = N=53, 51% WR, −$907 → strong loser backing.
+
+**LONG cell (ΔADX 1.0-2.0 × BTC ADX 18-30):** N=9, 22% WR (2W/7L), **−$211** (no lev-stack).
+- Winners cut: NIL +$20, TON +$27 = +$47 (modest TRAILING L2).
+- Losers saved: AVAX/SOL/XRP/LTC/RENDER/HBAR/FET = −$258 (4 of 7 Never-Positive SL hits).
+- Save:cut = **5.5 : 1**. Own ship backing: CLAUDE.md May 11 (−$358 cross-batch).
+
+### Why BOTH (not SHORT-only)
+The master toggle enables both rules. Both cells are net losers in the last 4 batches with strong
+save:cut ratios; neither is a winner cell. No case for blanking the LONG rule. Honest collateral:
+the SHORT cell is NOT zero-cut — it removes ONDO (+$89). 6:1 justifies it.
+
+### Locked revert gates (next ≥30-trade checkpoint, per direction)
+- **SHORT rule:** would-be-blocked SHORTs (obs logs) show **≥50% WR on N≥6** fresh → revert
+  (blank `adx_delta_btc_adx_filter_short` or re-disable toggle).
+- **LONG rule:** would-be-blocked LONGs show **≥55% WR on N≥10** fresh → blank the LONG rule
+  string (keep SHORT active).
+- Watch the `ADX_DELTA_BTC_ADX_CROSS` Filter Blocks counter: confirm both directions fire.
+
+### Files changed
+- `trading_config.json` — `adx_delta_btc_adx_filter_enabled: false → true` (rules unchanged)
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 1, 2026 (later) — UNMATCHED LONG multiplier 1.0× → 2.0× (no fixed SL — deliberate)
 
 ### What changed

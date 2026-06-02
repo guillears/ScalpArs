@@ -3130,6 +3130,18 @@ class TradingEngine:
         _pw1_m, _pw2_m, _pw3_m, _pw4_m, _pw5_m, _pw6_m, _pw_any_m = (
             _pw1_e, _pw2_e, _pw3_e, _pw4_e, _pw5_e, _pw6_e, _pw_any_e
         )
+        # Jun 2: entry-fill slippage (signed, positive = filled WORSE than the decision price).
+        # ~0 in paper (sim fills at signal price); meaningful live. Gives ① a slippage verdict.
+        _entry_slippage_pct = None
+        try:
+            if current_price and current_price > 0 and actual_price and actual_price > 0:
+                if direction == "LONG":
+                    _entry_slippage_pct = round((actual_price - current_price) / current_price * 100, 4)
+                else:
+                    _entry_slippage_pct = round((current_price - actual_price) / current_price * 100, 4)
+        except Exception:
+            _entry_slippage_pct = None
+
         # Create order record
         order = Order(
             binance_order_id=binance_order_id,
@@ -3189,6 +3201,7 @@ class TradingEngine:
             entry_desired_notional=_desired_notional,
             entry_liquidity_cap_notional=_liq_cap,
             liquidity_capped=_liq_capped,
+            entry_slippage_pct=_entry_slippage_pct,
             entry_fee=entry_fee,
             entry_order_type=entry_order_type,
             peak_pnl=0.0,

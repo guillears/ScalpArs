@@ -6639,11 +6639,14 @@
                     if (data.gross_enabled && data.gross_budget > 0) {
                         const _pct = data.gross_pct || 0;
                         const _fmt = (v) => '$' + Math.round(v || 0).toLocaleString();
-                        _grossEl.textContent = `${_fmt(data.gross_open)} / ${_fmt(data.gross_budget)} (${_pct.toFixed(0)}%)`;
+                        // Compact: show % only (the at-a-glance signal); full $ in the tooltip.
+                        _grossEl.textContent = `${_pct.toFixed(0)}%`;
+                        _grossEl.title = `Open notional ${_fmt(data.gross_open)} / budget ${_fmt(data.gross_budget)} (balance × max_gross_leverage). Green <70% · amber 70–90% · red >90%.`;
                         _grossEl.className = 'text-xs font-mono font-bold ' +
                             (_pct < 70 ? 'text-emerald-400' : _pct <= 90 ? 'text-yellow-400' : 'text-red-400');
                     } else {
                         _grossEl.textContent = 'off';
+                        _grossEl.title = 'Gross cap disabled (max_gross_leverage = 0).';
                         _grossEl.className = 'text-xs font-mono text-gray-500';
                     }
                 }
@@ -7608,6 +7611,10 @@
             if (_liq1.summary && _liq1.summary.capped > 0) {
                 const _lq = _liq1.summary;
                 lines.push(`## Liquidity Sizing (throttled orders)  [Capped ${_lq.capped} of ${_lq.total} (${_lq.capped_pct}%) · avg throttle -${_lq.avg_throttle_pct}% · LIQ ${_lq.liq_n} / GROSS ${_lq.gross_n}]`);
+                if (_lq.capped_slip_avg != null && _lq.uncapped_slip_avg != null) {
+                    const _sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
+                    lines.push(`  ① entry slip (live-only): capped ${_sg(_lq.capped_slip_avg)} (n=${_lq.capped_slip_n}) vs uncapped ${_sg(_lq.uncapped_slip_avg)} (n=${_lq.uncapped_slip_n})`);
+                }
                 lines.push('  Pair          Dir       desired$        final$  throttle%  reason');
                 lines.push('-'.repeat(72));
                 const _lm$ = (v) => '$' + Math.round(v||0).toLocaleString();
@@ -9299,6 +9306,10 @@
                 if (_liq2.summary && _liq2.summary.capped > 0) {
                     const _lq = _liq2.summary;
                     lines.push(`## Liquidity Sizing (throttled orders)  [Capped ${_lq.capped} of ${_lq.total} (${_lq.capped_pct}%) · avg throttle -${_lq.avg_throttle_pct}% · LIQ ${_lq.liq_n} / GROSS ${_lq.gross_n}]`);
+                    if (_lq.capped_slip_avg != null && _lq.uncapped_slip_avg != null) {
+                        const _sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
+                        lines.push(`  ① entry slip (live-only): capped ${_sg(_lq.capped_slip_avg)} (n=${_lq.capped_slip_n}) vs uncapped ${_sg(_lq.uncapped_slip_avg)} (n=${_lq.uncapped_slip_n})`);
+                    }
                     lines.push('  Pair          Dir       desired$        final$  throttle%  reason');
                     lines.push('-'.repeat(72));
                     const _lm$ = (v) => '$' + Math.round(v||0).toLocaleString();
@@ -11893,8 +11904,15 @@
                     const _liqSum = document.getElementById('liq-sizing-summary');
                     const _liqBody = document.getElementById('liq-sizing-body');
                     const _ls = _liq.summary;
+                    // ① entry-slippage verdict (live-only; ~0 in paper). Read the gap directionally.
+                    let _slipClause = '';
+                    if (_ls && _ls.capped_slip_avg != null && _ls.uncapped_slip_avg != null) {
+                        const _sg = (v) => (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
+                        const _tighter = _ls.capped_slip_avg < _ls.uncapped_slip_avg;
+                        _slipClause = ` · <span class="${_tighter ? 'text-emerald-400' : 'text-gray-400'}">entry slip: capped ${_sg(_ls.capped_slip_avg)} (${_ls.capped_slip_n}) vs uncapped ${_sg(_ls.uncapped_slip_avg)} (${_ls.uncapped_slip_n})</span>`;
+                    }
                     if (_liqSum) _liqSum.innerHTML = (_ls && _ls.capped > 0)
-                        ? `Capped <strong>${_ls.capped}</strong> of ${_ls.total} (${_ls.capped_pct}%) · avg throttle <strong class="text-amber-400">−${_ls.avg_throttle_pct}%</strong> · LIQ ${_ls.liq_n} / GROSS ${_ls.gross_n}`
+                        ? `Capped <strong>${_ls.capped}</strong> of ${_ls.total} (${_ls.capped_pct}%) · avg throttle <strong class="text-amber-400">−${_ls.avg_throttle_pct}%</strong> · LIQ ${_ls.liq_n} / GROSS ${_ls.gross_n}${_slipClause}`
                         : '(no throttled orders yet)';
                     if (_liqBody) {
                         const _fmt$ = (v) => v == null ? '—' : '$' + Math.round(v).toLocaleString();

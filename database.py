@@ -450,6 +450,8 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_liquidity_cap_notional FLOAT"))
                 if 'liquidity_capped' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN liquidity_capped BOOLEAN DEFAULT 0"))
+                if 'entry_slippage_pct' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_slippage_pct FLOAT"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

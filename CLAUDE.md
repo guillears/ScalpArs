@@ -1,5 +1,60 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 2, 2026 — 🚨 LOCKED GO-LIVE WATCH: liquidity-aware sizing (gross 30× + redeploy + ① cap)
+
+Anchored at the top because the liquidity-sizing stack is **unproven forward** and the 30× gross cap
+is the single biggest systemic-risk knob in the book. Read this BEFORE the first live session and at
+every live checkpoint. Numbers below are **proposed defaults (Claude's) — tune to operator risk
+tolerance**; once confirmed they are mechanical revert gates, no goalpost-moving.
+
+### What's testable in paper vs live-only
+- **Paper CAN validate**: ② gross cap arithmetic, ③ redeploy machinery, all 3 Filter Blocks counters,
+  the Gross gauge. These are pure notional/count logic — exercise them in paper before live.
+- **Live-ONLY**: ① per-pair cap (slippage protection). Paper fills at ~0 slippage, so `entry_slippage_pct`
+  is ≈0 in paper and ① changes nothing in the numbers. Its verdict only exists live.
+
+### The signals to read (all now in the UI — no logs needed)
+| Signal | Where | Healthy |
+|---|---|---|
+| ② gross utilization | regime-bar **Gross** chip (% + color; $ in tooltip) | mostly green/amber |
+| gross rejections | **Filter Blocks → `GROSS_CAP_SKIP`** | occasional, only with multiplier stacks |
+| liq rejections | **Filter Blocks → `LIQ_CAP_SKIP`** | ~0 until thin-pair / large balance |
+| redeploy fires | **Filter Blocks → `REDEPLOY_OPEN`** | **0 at current small balance** |
+| throttled-and-opened | **Liquidity Sizing table** | small N, sensible reasons |
+| ① slippage verdict | Liquidity Sizing summary: `entry slip capped vs uncapped` | (live) capped ≤ uncapped |
+
+### Locked revert/act gates (PROPOSED defaults — confirm before relying on them)
+1. **② gross 30× → revert to 25× (or lower)** if a single correlated event causes **≥ 25% equity
+   drawdown in < 15 min**. Context: if every position hits its −0.70% SL cleanly, drawdown ≈
+   `gross_lev × 0.70% = 30 × 0.70% ≈ 21%` of equity. So ≥25% means SLs **gapped through** (flash
+   crash) — exactly the tail the gross cap exists to bound, and the signal that 30× is too hot.
+2. **`GROSS_CAP_SKIP` starving the book**: if it exceeds **~20% of entry attempts** over a batch with
+   the Gross gauge pinned red → the 30× budget is the binding limiter; decide raise-gross vs accept.
+   < 5% = fine.
+3. **① slippage verdict** (live, N ≥ 10 capped fills): if capped fills do **NOT** show tighter entry
+   slippage than uncapped → ① isn't earning its keep; re-tune the `0.10%` threshold or drop ①.
+   **Confound (read first):** capped orders skew to thin pairs / large desired size, which carry MORE
+   slippage anyway — so a raw `capped > uncapped` reading is EXPECTED and does not by itself condemn ①.
+   The clean signal is **same-pair capped-vs-uncapped** (needs more data); the aggregate clause is a
+   first directional read, not a verdict.
+4. **`REDEPLOY_OPEN` sanity**: must stay **0** until ① is actually throttling (large balance / thin
+   pairs). If it fires at the current ~$2,500 balance → bug, investigate (equal-split divisor / margin gate).
+
+### Instrumentation shipped to support this (Jun 2)
+- `Order.entry_slippage_pct` — signed entry-fill slippage (positive = filled worse than decision price).
+  ≈0 in paper; meaningful live. Surfaced as the capped-vs-uncapped clause in the Liquidity Sizing summary.
+- Gross gauge **compacted** to `%`-only (color) with full `$open / $budget` in the hover tooltip — the
+  regime bar was overcrowded and the 3-number string wrapped.
+
+### Files changed
+- `models.py` / `database.py` — `entry_slippage_pct` column + migrate
+- `services/trading_engine.py` — compute entry slippage at fill, thread into `Order(...)`
+- `main.py` — capped-vs-uncapped slippage in `_compute_liquidity_sizing` summary
+- `templates/index.html` — compact Gross gauge + slippage clause (UI + 2 text exports)
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 2, 2026 — Liquidity-sizing skip + redeploy counters (Filter Blocks, observation-only)
 
 ### Why

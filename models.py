@@ -275,6 +275,11 @@ class Order(Base):
 
     # Slippage tracking: difference between decision price (WebSocket) and actual Binance fill
     exit_slippage_pct = Column(Float, nullable=True)  # positive = filled worse than expected
+    # Entry-fill slippage (Jun 2): signed % the entry filled WORSE than the decision price.
+    # positive = paid more (LONG) / sold cheaper (SHORT). ~0 in paper (sim fills at signal price);
+    # only meaningful live. Used to give ① the per-pair liquidity cap a real slippage verdict
+    # (slice by liquidity_capped: do capped fills come in tighter?).
+    entry_slippage_pct = Column(Float, nullable=True)
 
     # Reconciler race guard (Apr 16 — SUIUSDT incident).
     # The bot sets closing_in_progress=True and close_initiated_at=NOW() BEFORE

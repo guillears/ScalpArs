@@ -2767,6 +2767,13 @@ def _compute_liquidity_sizing(orders):
         })
     rows.sort(key=lambda r: r['throttle_pct'], reverse=True)
     n = len(rows)
+    # ① live verdict (Jun 2): entry-fill slippage, capped vs uncapped cohort. ~0 in paper;
+    # only meaningful live. Confound noted in CLAUDE.md — capped orders skew to thin pairs / big
+    # desired size, which carry more slippage anyway, so read the gap directionally, not absolutely.
+    _cap_slips = [o.entry_slippage_pct for o in orders
+                  if getattr(o, 'liquidity_capped', False) and getattr(o, 'entry_slippage_pct', None) is not None]
+    _unc_slips = [o.entry_slippage_pct for o in orders
+                  if not getattr(o, 'liquidity_capped', False) and getattr(o, 'entry_slippage_pct', None) is not None]
     summary = {
         'capped': n,
         'total': total,
@@ -2774,6 +2781,10 @@ def _compute_liquidity_sizing(orders):
         'avg_throttle_pct': round(sum(throttles) / len(throttles) * 100, 1) if throttles else 0.0,
         'liq_n': liq_n,
         'gross_n': gross_n,
+        'capped_slip_avg': round(sum(_cap_slips) / len(_cap_slips), 4) if _cap_slips else None,
+        'capped_slip_n': len(_cap_slips),
+        'uncapped_slip_avg': round(sum(_unc_slips) / len(_unc_slips), 4) if _unc_slips else None,
+        'uncapped_slip_n': len(_unc_slips),
     }
     return {'rows': rows, 'summary': summary}
 

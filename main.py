@@ -6730,6 +6730,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # Pattern W batch coverage + unmatched-winners deep dive (May 20 latest+3)
         "pattern_w_batch_coverage": _compute_pattern_w_batch_coverage(orders),
         "pattern_w_unmatched_winners": _compute_unmatched_winners(orders, limit=20),
+        "pattern_truly_unmatched": _compute_truly_unmatched(orders, limit=20),  # TRULY UNMATCHED (no C, no W) — Jun 1
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -8519,6 +8520,56 @@ def _compute_unmatched_losers(orders, limit=20):
     return rows[:limit]
 
 
+
+
+def _compute_truly_unmatched(orders, limit=20):
+    """TRULY UNMATCHED Deep Dive (Jun 1 - observation).
+
+    Lists CLOSED trades that matched NEITHER any C signature (c1..c9) NOR any W
+    signature (w1..w6) - i.e. pattern_cell_source == 'UNMATCHED'. This is the exact
+    cohort the UNMATCHED LONG 2x multiplier sizes up. Unlike the C-losers / W-winners
+    tables, this shows wins AND losses together so you can watch the composition the
+    multiplier amplifies (runner winners vs faders). Sorted by $ (worst first), cap limit.
+    """
+    rows = []
+    for o in orders:
+        if o.status != 'CLOSED':
+            continue
+        c_any = False
+        for k in ('c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'):
+            if getattr(o, f'entry_pattern_{k}_match', None) is True:
+                c_any = True
+                break
+        if c_any:
+            continue
+        try:
+            w_any = _compute_pattern_w_match(o)[-1]
+        except Exception:
+            w_any = False
+        if w_any:
+            continue
+        rows.append({
+            'pair': o.pair,
+            'direction': o.direction,
+            'opened_at': o.opened_at.isoformat() if o.opened_at else None,
+            'pnl': round(o.pnl or 0, 2),
+            'peak_pnl': round(o.peak_pnl, 3) if o.peak_pnl is not None else None,
+            'pnl_percentage': round(o.pnl_percentage, 3) if o.pnl_percentage is not None else None,
+            'entry_rsi': round(o.entry_rsi, 1) if o.entry_rsi is not None else None,
+            'entry_adx': round(o.entry_adx, 1) if o.entry_adx is not None else None,
+            'entry_adx_delta': round(o.entry_adx_delta, 2) if getattr(o, 'entry_adx_delta', None) is not None else None,
+            'entry_ema5_stretch': round(o.entry_ema5_stretch, 3) if o.entry_ema5_stretch is not None else None,
+            'entry_range_position': round(o.entry_range_position, 1) if getattr(o, 'entry_range_position', None) is not None else None,
+            'entry_pair_ema20_ema50_gap_pct': round(o.entry_pair_ema20_ema50_gap_pct, 3) if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None else None,
+            'entry_atr_pct': round(o.entry_atr_pct, 3) if getattr(o, 'entry_atr_pct', None) is not None else None,
+            'entry_btc_rsi': round(o.entry_btc_rsi, 1) if o.entry_btc_rsi is not None else None,
+            'entry_btc_adx': round(o.entry_btc_adx, 1) if o.entry_btc_adx is not None else None,
+            'entry_btc_atr_pct': round(o.entry_btc_atr_pct, 3) if getattr(o, 'entry_btc_atr_pct', None) is not None else None,
+            'entry_btc_trend_gap_pct': round(o.entry_btc_trend_gap_pct, 3) if getattr(o, 'entry_btc_trend_gap_pct', None) is not None else None,
+            'close_reason': o.close_reason or '',
+        })
+    rows.sort(key=lambda r: r['pnl'])
+    return rows[:limit]
 
 
 # ===================== LEASH SHADOW START (May 30, 2026 — observation-only) =====================

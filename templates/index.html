@@ -2123,6 +2123,47 @@
                     </div>
                 </div>
 
+                <!-- TRULY UNMATCHED Deep Dive (Jun 1 — the no-C, no-W cohort the UNMATCHED 2x sizes up) -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-sky-300 mb-2">🔷 TRULY UNMATCHED (no C, no W) Deep Dive (observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Closed trades that matched <strong>NEITHER any C signature NOR any W signature</strong>
+                        (<code>pattern_cell_source = UNMATCHED</code>) — distinct from the C-losers / W-winners
+                        tables above, which only filter one side. This is the exact cohort the
+                        <strong>UNMATCHED LONG 2× multiplier</strong> sizes up, so wins AND losses are shown
+                        together: watch the composition the 2× amplifies (runner winners vs faders). Sorted by
+                        $ (worst first → the faders the 2× doubles are at the top), capped at 20 rows.
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                    <th class="px-2 py-2 font-medium">Pair</th>
+                                    <th class="px-2 py-2 font-medium">Dir</th>
+                                    <th class="px-2 py-2 font-medium text-right">$</th>
+                                    <th class="px-2 py-2 font-medium text-right">Peak%</th>
+                                    <th class="px-2 py-2 font-medium text-right">Close%</th>
+                                    <th class="px-2 py-2 font-medium text-right">RSI</th>
+                                    <th class="px-2 py-2 font-medium text-right">pADX</th>
+                                    <th class="px-2 py-2 font-medium text-right">ADXΔ</th>
+                                    <th class="px-2 py-2 font-medium text-right">Stretch</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Pair ATR % — runner-fuel signal">PairATR</th>
+                                    <th class="px-2 py-2 font-medium text-right">RngPos</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Pair EMA13-EMA50 gap %">PairTGap</th>
+                                    <th class="px-2 py-2 font-medium text-right">BTCRSI</th>
+                                    <th class="px-2 py-2 font-medium text-right">BTCADX</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="BTC ATR %">BTCATR</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="BTC EMA13-EMA50 gap %">BTCTGap</th>
+                                    <th class="px-2 py-2 font-medium">Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="truly-unmatched-body" class="divide-y divide-white/5">
+                                <tr><td colspan="17" class="px-3 py-2 text-center text-gray-500">(no truly-unmatched trades — every trade matched a C or W pattern)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- ===== RUNNER TRAIL START (Jun 1) ===== -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-2">🏃 Runner Trail Performance (live RUNNER_TRAIL exits)</h3>
@@ -6825,6 +6866,19 @@
             }
         }
 
+        // Shared AVG summary line for the Unmatched/Truly-Unmatched deep-dive text exports (Jun 1).
+        // 17-col aligned to those tables: label takes the Pair slot, N= the Dir slot.
+        function _umAvgTextLine(rows, label) {
+            if (!rows || !rows.length) return null;
+            const n = rows.length;
+            const av = (k) => { const vs = rows.map(r => r[k]).filter(v => v != null); return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null; };
+            const fP = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
+            const fN = (v, d = 1) => v == null ? '  -' : v.toFixed(d).padStart(5);
+            const pa = av('pnl');
+            const pl = ((pa >= 0 ? '+$' : '-$') + Math.abs(pa).toFixed(2)).padStart(8);
+            return `${label.padEnd(12)} ${('N=' + n).padEnd(5)} ${pl}  ${fP(av('peak_pnl'))} ${fP(av('pnl_percentage'))} ${fN(av('entry_rsi'))} ${fN(av('entry_adx'))} ${fN(av('entry_adx_delta'), 2)} ${fN(av('entry_ema5_stretch'), 3)} ${fN(av('entry_atr_pct'), 3)} ${fN(av('entry_range_position'))} ${fP(av('entry_pair_ema20_ema50_gap_pct'))} ${fN(av('entry_btc_rsi'))} ${fN(av('entry_btc_adx'))} ${fN(av('entry_btc_atr_pct'), 3)} ${fP(av('entry_btc_trend_gap_pct'))}`;
+        }
+
         function _buildPerfLines(perf, hr, hr2) {
             const lines = [];
             lines.push(`\n${hr}`);
@@ -7392,6 +7446,8 @@
                     const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
                     lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                 });
+                lines.push('-'.repeat(163));
+                lines.push(_umAvgTextLine(_uw1, 'AVG·Winners'));
                 lines.push('');
             }
 
@@ -7409,6 +7465,28 @@
                     const loss = ('-$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
                     lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                 });
+                lines.push('-'.repeat(163));
+                lines.push(_umAvgTextLine(_ul1, 'AVG·Losers'));
+                lines.push('');
+            }
+
+            // TRULY UNMATCHED (no C, no W) Deep Dive
+            const _tu1 = perf.pattern_truly_unmatched || [];
+            if (_tu1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push('## TRULY UNMATCHED (no C, no W) Deep Dive (observation-only)');
+                lines.push('Closed trades matching NEITHER any C1-C9 NOR any W1-W6 signature (wins + losses). Worst first.\n');
+                lines.push('Pair         Dir   $P&L      Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                lines.push('-'.repeat(163));
+                const fpu = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
+                const fnu = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
+                _tu1.forEach(r => {
+                    const pl = ((r.pnl >= 0 ? '+$' : '-$') + Math.abs(r.pnl).toFixed(2)).padStart(8);
+                    lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${pl}  ${fpu(r.peak_pnl)} ${fpu(r.pnl_percentage)} ${fnu(r.entry_rsi)} ${fnu(r.entry_adx)} ${fnu(r.entry_adx_delta,2)} ${fnu(r.entry_ema5_stretch,3)} ${fnu(r.entry_atr_pct,3)} ${fnu(r.entry_range_position)} ${fpu(r.entry_pair_ema20_ema50_gap_pct)} ${fnu(r.entry_btc_rsi)} ${fnu(r.entry_btc_adx)} ${fnu(r.entry_btc_atr_pct,3)} ${fpu(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
+                });
+                lines.push('-'.repeat(163));
+                { const _aw = _umAvgTextLine(_tu1.filter(r => (r.pnl || 0) >= 0), 'AVG·Winners'); if (_aw) lines.push(_aw); }
+                { const _al = _umAvgTextLine(_tu1.filter(r => (r.pnl || 0) < 0), 'AVG·Losers'); if (_al) lines.push(_al); }
                 lines.push('');
             }
 
@@ -9045,6 +9123,8 @@
                         const gain = ('+$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
                         lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${gain}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                     });
+                    lines.push('-'.repeat(163));
+                    lines.push(_umAvgTextLine(_uw2, 'AVG·Winners'));
                     lines.push('');
                 }
 
@@ -9062,6 +9142,28 @@
                         const loss = ('-$' + Math.abs(r.pnl).toFixed(2)).padStart(8);
                         lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${loss}  ${fp(r.peak_pnl)} ${fp(r.pnl_percentage)} ${fn(r.entry_rsi)} ${fn(r.entry_adx)} ${fn(r.entry_adx_delta,2)} ${fn(r.entry_ema5_stretch,3)} ${fn(r.entry_atr_pct,3)} ${fn(r.entry_range_position)} ${fp(r.entry_pair_ema20_ema50_gap_pct)} ${fn(r.entry_btc_rsi)} ${fn(r.entry_btc_adx)} ${fn(r.entry_btc_atr_pct,3)} ${fp(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
                     });
+                    lines.push('-'.repeat(163));
+                    lines.push(_umAvgTextLine(_ul2, 'AVG·Losers'));
+                    lines.push('');
+                }
+
+                // TRULY UNMATCHED (no C, no W) Deep Dive
+                const _tu2 = perf.pattern_truly_unmatched || [];
+                if (_tu2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## TRULY UNMATCHED (no C, no W) Deep Dive (observation-only)');
+                    lines.push('Closed trades matching NEITHER any C1-C9 NOR any W1-W6 signature (wins + losses). Worst first.\n');
+                    lines.push('Pair         Dir   $P&L      Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason');
+                    lines.push('-'.repeat(163));
+                    const fput = (v) => v == null ? '   -  ' : ((v >= 0 ? '+' : '') + v.toFixed(3) + '%').padStart(7);
+                    const fnut = (v, d=1) => v == null ? '  -' : v.toFixed(d).padStart(5);
+                    _tu2.forEach(r => {
+                        const pl = ((r.pnl >= 0 ? '+$' : '-$') + Math.abs(r.pnl).toFixed(2)).padStart(8);
+                        lines.push(`${(r.pair||'').padEnd(12)} ${(r.direction||'').padEnd(5)} ${pl}  ${fput(r.peak_pnl)} ${fput(r.pnl_percentage)} ${fnut(r.entry_rsi)} ${fnut(r.entry_adx)} ${fnut(r.entry_adx_delta,2)} ${fnut(r.entry_ema5_stretch,3)} ${fnut(r.entry_atr_pct,3)} ${fnut(r.entry_range_position)} ${fput(r.entry_pair_ema20_ema50_gap_pct)} ${fnut(r.entry_btc_rsi)} ${fnut(r.entry_btc_adx)} ${fnut(r.entry_btc_atr_pct,3)} ${fput(r.entry_btc_trend_gap_pct)}  ${r.close_reason || ''}`);
+                    });
+                    lines.push('-'.repeat(163));
+                    { const _aw = _umAvgTextLine(_tu2.filter(r => (r.pnl || 0) >= 0), 'AVG·Winners'); if (_aw) lines.push(_aw); }
+                    { const _al = _umAvgTextLine(_tu2.filter(r => (r.pnl || 0) < 0), 'AVG·Losers'); if (_al) lines.push(_al); }
                     lines.push('');
                 }
 
@@ -11374,6 +11476,40 @@
                     }
                 }
 
+                // Shared AVG summary row for the three Unmatched/Truly-Unmatched deep-dive tables (Jun 1).
+                // Averages over the rows shown in the table (N reflects the displayed cohort).
+                const _umAvgRow = (rows, label, labelCls) => {
+                    if (!rows || !rows.length) return '';
+                    const n = rows.length;
+                    const av = (k) => { const vs = rows.map(r => r[k]).filter(v => v != null); return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null; };
+                    const fN = (v, d) => v == null ? '-' : v.toFixed(d);
+                    const fS = (v, d) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d);
+                    const fP = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
+                    const fD = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    const pa = av('pnl');
+                    const pCls = (pa || 0) >= 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold';
+                    const atr = av('entry_atr_pct');
+                    return `<tr class="border-t-2 border-white/25 bg-white/5">
+                        <td class="px-2 py-1 font-bold ${labelCls}">${label}</td>
+                        <td class="px-2 py-1 text-gray-400 text-xs">N=${n}</td>
+                        <td class="px-2 py-1 text-right ${pCls}">${fD(pa)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fP(av('peak_pnl'))}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fP(av('pnl_percentage'))}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fN(av('entry_rsi'), 1)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fN(av('entry_adx'), 1)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fS(av('entry_adx_delta'), 2)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fN(av('entry_ema5_stretch'), 3)}</td>
+                        <td class="px-2 py-1 text-right ${atr != null && atr >= 1.0 ? 'text-amber-400 font-bold' : 'text-gray-200'}">${fN(atr, 3)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fN(av('entry_range_position'), 1)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fP(av('entry_pair_ema20_ema50_gap_pct'))}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fN(av('entry_btc_rsi'), 1)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fN(av('entry_btc_adx'), 1)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fN(av('entry_btc_atr_pct'), 3)}</td>
+                        <td class="px-2 py-1 text-right text-gray-200">${fP(av('entry_btc_trend_gap_pct'))}</td>
+                        <td class="px-2 py-1"></td>
+                    </tr>`;
+                };
+
                 // Item 3 (May 20-late): Unmatched Losers Deep Dive — losers OUTSIDE any C pattern.
                 // When ≥3 share a recognizable signature → define new pattern (C10, C11...).
                 if (data.pattern_c_unmatched_losers !== undefined) {
@@ -11407,7 +11543,45 @@
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_btc_trend_gap_pct)}</td>
                                     <td class="px-2 py-1 text-gray-500 text-xs">${r.close_reason || ''}</td>
                                 </tr>`;
-                            }).join('');
+                            }).join('') + _umAvgRow(_ulRows, 'AVG · Losers', 'text-amber-300');
+                        }
+                    }
+                }
+
+                // TRULY UNMATCHED Deep Dive (Jun 1) — no C AND no W; the cohort the UNMATCHED 2x sizes up.
+                if (data.pattern_truly_unmatched !== undefined) {
+                    const _tuRows = data.pattern_truly_unmatched || [];
+                    const _tuBody = document.getElementById('truly-unmatched-body');
+                    if (_tuBody) {
+                        if (!_tuRows.length) {
+                            _tuBody.innerHTML = '<tr><td colspan="17" class="px-3 py-2 text-center text-gray-500">(no truly-unmatched trades — every trade matched a C or W pattern)</td></tr>';
+                        } else {
+                            const fmtN = (v, d=2) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(d);
+                            const fmtP = (v) => v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(3) + '%';
+                            const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                            _tuBody.innerHTML = _tuRows.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const pnlCls = (r.pnl || 0) >= 0 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold';
+                                return `<tr>
+                                    <td class="px-2 py-1 text-gray-200">${r.pair}</td>
+                                    <td class="px-2 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right ${pnlCls}">${fmt$(r.pnl)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.peak_pnl)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.pnl_percentage)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_rsi == null ? '-' : r.entry_rsi.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_adx == null ? '-' : r.entry_adx.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtN(r.entry_adx_delta, 2)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_ema5_stretch == null ? '-' : r.entry_ema5_stretch.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right ${r.entry_atr_pct != null && r.entry_atr_pct >= 1.0 ? 'text-amber-400 font-semibold' : 'text-gray-400'}">${r.entry_atr_pct == null ? '-' : r.entry_atr_pct.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_range_position == null ? '-' : r.entry_range_position.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_pair_ema20_ema50_gap_pct)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_rsi == null ? '-' : r.entry_btc_rsi.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_adx == null ? '-' : r.entry_btc_adx.toFixed(1)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${r.entry_btc_atr_pct == null ? '-' : r.entry_btc_atr_pct.toFixed(3)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_btc_trend_gap_pct)}</td>
+                                    <td class="px-2 py-1 text-gray-500 text-xs">${r.close_reason || ''}</td>
+                                </tr>`;
+                            }).join('') + _umAvgRow(_tuRows.filter(r => (r.pnl || 0) >= 0), 'AVG · Winners', 'text-emerald-300') + _umAvgRow(_tuRows.filter(r => (r.pnl || 0) < 0), 'AVG · Losers', 'text-red-300');
                         }
                     }
                 }
@@ -11541,7 +11715,7 @@
                                     <td class="px-2 py-1 text-right text-gray-400">${fmtP(r.entry_btc_trend_gap_pct)}</td>
                                     <td class="px-2 py-1 text-gray-500 text-xs">${r.close_reason || ''}</td>
                                 </tr>`;
-                            }).join('');
+                            }).join('') + _umAvgRow(_uwRows, 'AVG · Winners', 'text-emerald-300');
                         }
                     }
                 }

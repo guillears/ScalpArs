@@ -2683,8 +2683,15 @@ class TradingEngine:
                 and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
             )
         )
-        if total_open.scalar() >= config.trading_config.investment.max_open_positions:
-            logger.warning(f"[SKIP] {pair}: Max open positions ({config.trading_config.investment.max_open_positions}) reached")
+        # Jun 2: when redeploy_leftover is on, the count limit rises to the hard
+        # ceiling and the gross-notional cap (below) + tradeable margin become the
+        # real limiters. Default (redeploy off) keeps the plain max_open_positions.
+        _inv_cfg = config.trading_config.investment
+        _eff_max_pos = _inv_cfg.max_open_positions
+        if getattr(_inv_cfg, 'redeploy_leftover_enabled', False):
+            _eff_max_pos = max(_eff_max_pos, getattr(_inv_cfg, 'max_open_positions_hard', _eff_max_pos))
+        if total_open.scalar() >= _eff_max_pos:
+            logger.warning(f"[SKIP] {pair}: Max open positions ({_eff_max_pos}) reached")
             return None
         
         # Check if we already have a position for this pair
@@ -2869,6 +2876,71 @@ class TradingEngine:
             )
         if (cell_mult != 1.0 or cell_lev_mult != 1.0) and not cell_capped:
             logger.info(f"[CELL_MULT] {pair} {direction}: applied inv={cell_mult}x lev={cell_lev_mult}x via {cell_src} ({_mult_target} target)")
+
+        # ── Liquidity-aware sizing caps (Jun 2 — see CLAUDE.md) ──────────────────
+        # ① per-pair liquidity cap: throttle this order's NOTIONAL to a small slice
+        #    of the pair's 24h volume (slippage protection — the order stays
+        #    absorbable). ② gross-notional cap: keep Σ(open notional) under
+        #    balance × max_gross_leverage (correlated-dump / liquidation guard).
+        # Both operate on NOTIONAL (what hits the book); margin is backed out as
+        # notional / leverage. Throttling below min_investment_size → skip the trade.
+        _liq_capped = False
+        _inv_cfg = config.trading_config.investment
+        _liq_pct = getattr(_inv_cfg, 'max_notional_pct_of_pair_volume', 0.0) or 0.0
+        _liq_ceiling = getattr(_inv_cfg, 'max_notional_hard_ceiling', 0.0) or 0.0
+        _gross_lev = getattr(_inv_cfg, 'max_gross_leverage', 0.0) or 0.0
+        if investment > 0 and leverage > 0 and (_liq_pct > 0 or _liq_ceiling > 0 or _gross_lev > 0):
+            _desired_notional = investment * leverage
+            _final_notional = _desired_notional
+            _cap_reason = None
+            # ① per-pair liquidity cap
+            _liq_cap = None
+            if _liq_pct > 0 and entry_pair_volume_24h_usd and entry_pair_volume_24h_usd > 0:
+                _liq_cap = (_liq_pct / 100.0) * entry_pair_volume_24h_usd
+            if _liq_ceiling > 0:
+                _liq_cap = _liq_ceiling if _liq_cap is None else min(_liq_cap, _liq_ceiling)
+            if _liq_cap is not None and _final_notional > _liq_cap:
+                _final_notional = _liq_cap
+                _cap_reason = 'LIQ'
+            # ② gross-notional cap
+            if _gross_lev > 0:
+                _bal_for_gross = total_portfolio if total_portfolio else available
+                try:
+                    _gross_q = await db.execute(
+                        select(func.coalesce(func.sum(Order.notional_value), 0.0)).where(
+                            and_(Order.status == "OPEN", Order.is_paper == self.is_paper_mode)
+                        )
+                    )
+                    _open_notional = float(_gross_q.scalar() or 0.0)
+                except Exception:
+                    _open_notional = 0.0
+                _gross_budget = (_bal_for_gross or 0.0) * _gross_lev
+                _gross_room = max(0.0, _gross_budget - _open_notional)
+                if _gross_room <= 0:
+                    logger.warning(
+                        f"[GROSS_CAP] {pair}: open notional ${_open_notional:,.0f} >= budget "
+                        f"${_gross_budget:,.0f} (balance ${(_bal_for_gross or 0):,.0f} x {_gross_lev:g}x) — skip"
+                    )
+                    return None
+                if _final_notional > _gross_room:
+                    _final_notional = _gross_room
+                    _cap_reason = 'GROSS' if _cap_reason is None else 'LIQ+GROSS'
+            # apply throttle: shrink margin to fit the capped notional
+            if _final_notional < _desired_notional - 0.01:
+                _new_investment = _final_notional / leverage
+                if _new_investment < _inv_cfg.min_investment_size:
+                    logger.warning(
+                        f"[LIQ_CAP] {pair} {direction}: {_cap_reason} cap -> ${_new_investment:.2f} margin "
+                        f"< min ${_inv_cfg.min_investment_size:.0f} (pair too thin / no gross room) — skip"
+                    )
+                    return None
+                logger.info(
+                    f"[LIQ_CAP] {pair} {direction}: {_cap_reason} notional ${_desired_notional:,.0f}->${_final_notional:,.0f} "
+                    f"(investment ${investment:.2f}->${_new_investment:.2f}, lev {leverage}x)"
+                )
+                investment = _new_investment
+                _liq_capped = True
+
         logger.info(f"[TRADE] {pair}: {direction} {confidence} - Investment: ${investment:.2f}, Leverage: {leverage}x")
         
         if investment <= 0:

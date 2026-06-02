@@ -1,5 +1,54 @@
 # SCALPARS - Automated Crypto Futures Trading Platform
 
+## June 2, 2026 — SHIPPED: Liquidity-aware position sizing (3 caps, all under `investment`)
+
+### What shipped
+Three NOTIONAL-level guards in `open_position` (after the cell-multiplier block, before the
+`[TRADE]` sizing log). All operate on **notional** (`investment × leverage` — what actually hits
+the book), backing margin out as `notional / leverage`. Throttling a slot below
+`min_investment_size` → **skip the trade** (don't ship a dust order).
+
+**① Per-pair liquidity cap** (`max_notional_pct_of_pair_volume: 0.1`, `max_notional_hard_ceiling: 500000`)
+- `liq_cap = min( pct% × pair_24h_vol , hard_ceiling )`. Caps a single order's notional to a small
+  slice of the pair's 24h volume so the order is **absorbable** → **slippage protection**.
+- `0.1` means **0.10% of 24h volume** (engine divides by 100). Hard ceiling is a flat-$ backstop so
+  even a BTC-tier pair can't take an arbitrarily huge clip.
+- Logs `[LIQ_CAP]` on throttle, or on skip when the throttled margin < `min_investment_size`.
+
+**② Gross-notional cap** (`max_gross_leverage: 25.0`)
+- Keeps `Σ(open notional) ≤ balance × max_gross_leverage`. **Correlated-dump / liquidation guard**:
+  a −X% correlated dump across the book costs `X% × gross_leverage` of the account, so bounding gross
+  leverage bounds the worst-case correlated drawdown. If there's zero gross room → skip; else throttle
+  the new order's notional to the remaining room. Logs `[GROSS_CAP]` (skip) / `[LIQ_CAP]` (throttle,
+  reason `GROSS` or `LIQ+GROSS`).
+
+**③ Redeploy-leftover gate** (`redeploy_leftover_enabled: false`, `max_open_positions_hard: 12`) — **SHIPS OFF**
+- When ① throttles a slot below its equal-split slice, freed capital sits idle. With this on, the
+  position-count limit rises from `max_open_positions` to `max_open_positions_hard`, letting the bot
+  open MORE slots to deploy the leftover — the real limiters then become ② (gross cap) + tradeable
+  margin, not the raw count. **Default OFF** — count limit stays at the plain `max_open_positions`.
+
+### Honest framing — ① is risk-plumbing for LIVE, not a paper P&L mover
+Paper fills show **~0 slippage** (the sim doesn't model book depth), so ① changes nothing in paper
+backtests. Its value is **forward live**: it stops the bot from clipping more than a pair can absorb,
+which is exactly the failure mode paper can't surface. ② is the genuine portfolio guard (bounds
+correlated-dump exposure regardless of slippage model). ③ is sequencing infra, shipped dormant.
+
+### Files changed
+- `config.py` — 5 fields on `InvestmentConfig` (all default 0 / False = inert; live values in JSON)
+- `trading_config.json` — `max_notional_pct_of_pair_volume: 0.1`, `max_notional_hard_ceiling: 500000`,
+  `max_gross_leverage: 25.0`, `redeploy_leftover_enabled: false`, `max_open_positions_hard: 12`
+- `services/trading_engine.py` — `[LIQ_CAP]`/`[GROSS_CAP]` cap block in `open_position` +
+  redeploy-aware position-count gate
+- `CLAUDE.md` — this entry
+
+### Locked next step (observability — separate commit)
+Reporting surface (DB columns `entry_desired_notional` / `entry_liquidity_cap_notional` /
+`liquidity_capped`, a "Liquidity Sizing" table, and a live `Gross: $X / $Y (Z%)` header gauge) ships
+separately as pure observability — no sizing-logic change.
+
+---
+
 ## June 2, 2026 — RE-ENABLED ADX Δ × BTC ADX Cross-Filter (both directions) — ends May 18 A/B
 
 ### What changed
@@ -50,6 +99,21 @@ the SHORT cell is NOT zero-cut — it removes ONDO (+$89). 6:1 justifies it.
 - **LONG rule:** would-be-blocked LONGs show **≥55% WR on N≥10** fresh → blank the LONG rule
   string (keep SHORT active).
 - Watch the `ADX_DELTA_BTC_ADX_CROSS` Filter Blocks counter: confirm both directions fire.
+
+### WATCHLIST (future review) — the filter is BLIND to the falling-ADX tail (by design)
+The match is on **signed** ΔADX (`_pair_adx_now - _pair_adx_pre`, no `abs()`), so the rules
+(`SHORT 2.0-99`, `LONG 1.0-2.0`) only catch **rising/accelerating** ADX (the climax/over-extension
+entries). **ADX *collapsing* mid-setup (negative ΔADX, e.g. −3.0 = trend dying) is NOT blocked** —
+it falls below the 2.0/1.0 floor and passes through. Current evidence does NOT point there — every
+loser in the −$456 SHORT / −$211 LONG cohort was on the rising/climax side, so no change made. But
+if a future batch shows SHORTs/LONGs bleeding when ADX is *falling sharply* (trend collapsing after
+entry), this filter can't catch them. Fixes when/if that happens:
+- **abs() variant** (block on |ΔADX| ≥ X) — broader, would catch both tails, but risks over-blocking.
+- **separate negative-range rule** — e.g. add a SHORT rule `-99--2.0:24-99` (block when ΔADX ≤ −2.0
+  AND BTC ADX ≥ 24). Cleaner/surgical; preferred if the falling-ADX tail proves to be a real loser
+  zone. Validate cross-batch (N≥10, WR≤45%) before shipping per locked methodology.
+- **Pre-req:** confirm the parser handles negative `lo-hi` (the `map(float, part.split('-'))` split
+  would mis-parse `-99--2.0` — needs a signed-range parse fix first).
 
 ### Files changed
 - `trading_config.json` — `adx_delta_btc_adx_filter_enabled: false → true` (rules unchanged)

@@ -727,6 +727,23 @@ class InvestmentConfig(BaseModel):
     max_holding_time_minutes: int = 180  # Max time to hold a trade (minutes), 0 = disabled
     no_expansion_minutes: int = 15  # Close if no expansion after N minutes (peak < BE trigger & current < BE offset), 0 = disabled
 
+    # ── Liquidity-aware sizing (Jun 2, 2026 — see CLAUDE.md) ──────────────────
+    # ① Per-pair liquidity cap: cap a single order's NOTIONAL to a small slice of
+    #    the pair's 24h volume so the order is absorbable (slippage protection).
+    #    max_notional = min(pct_of_pair_volume × pair_24h_vol, hard_ceiling).
+    #    0 = disabled. Notional, not margin — what actually hits the book.
+    max_notional_pct_of_pair_volume: float = 0.0  # e.g. 0.10 = 0.10% of 24h vol; 0 = off
+    max_notional_hard_ceiling: float = 0.0  # flat $ notional backstop even on BTC-tier; 0 = off
+    # ② Gross-notional cap: Σ(open notional) ≤ balance × max_gross_leverage.
+    #    Portfolio liquidation/correlation guard (a -X% correlated dump costs
+    #    X% × gross_leverage of the account). 0 = disabled.
+    max_gross_leverage: float = 0.0  # e.g. 25.0; 0 = off
+    # ③ Redeploy leftover: when ① throttles a slot below its equal-split slice,
+    #    allow opening MORE positions (overrule max_open_positions up to the hard
+    #    ceiling) to deploy the freed capital — gated by ② + tradeable margin.
+    redeploy_leftover_enabled: bool = False
+    max_open_positions_hard: int = 12  # absolute ceiling when redeploying
+
 
 class TradingConfig(BaseModel):
     """Main trading configuration"""

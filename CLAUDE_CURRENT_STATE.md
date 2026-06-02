@@ -23,6 +23,7 @@ EMA5/8/13 + RSI + ADX scalper on 5m, BTC-macro-gated. Entry passes a BTC/pair fi
 ## Active entry filters
 - **Global Volume Filter ON** (re-enabled 2026-06-02): Min L 0.70 · Min S 0.50 · Max S 1.10 + capitulation override (BTC RSI<30 & slope<0 & GV≤2) · LONG rescue $50M/ceiling 0.60 · **SHORT rescue $0 (load-bearing — do NOT add)**.
 - **ADX Δ × BTC ADX ON**: SHORT block ΔADX≥2.0 & BTC ADX≥24 · LONG block ΔADX 1.0-2.0 & BTC ADX 18-30.
+- **Pair ADX Direction = `rising` BOTH sides** (shipped 2026-06-02): blocks any entry where pair ADX ≤ prev (falling-ADX = momentum exhaustion). Re-activation of the May 28 `rising` setting; counter = PAIR_ADX_DIR.
 - BTC RSI×ADX LONG `70-100:40,60-65:22-25,60-65:27-30,55-60:20-25,50-55:99-100` · SHORT `30-35:30,35-40:20-26,45-50:25,0-30:25-30`.
 - BTC ADX gate L/S [18,40] · BTC Gap×ADX LONG `0.10-0.20:0-22` · RngPos×ADXΔ LONG `90-95:0.0-0.3` / SHORT `5-10:1.0-2.0` · SHORT EMA20-slope-min 0.06 · Entry Quality Score filter ON.
 - Full filter list = `trading_config.json`. No pair blacklist currently active.
@@ -47,6 +48,7 @@ Unproven forward; read before each live checkpoint. All signals in UI (Gross gau
 
 ## Active watchlist & locked revert gates (pending — apply at next ≥30-trade checkpoint)
 - **Global Vol filter (Jun 2):** revert a SHORT side if would-be-blocked SHORTs ≥55% WR on N≥10 fresh · drop LONG floor→0 if it clips ≥3 runner winners (peak≥+3%)/batch with no offsetting saves. Watch VOL_GATE / VOL_GATE_MAX_SHORT counters fire.
+- **Pair ADX Direction = `rising` (Jun 2, below-gate re-activation):** evidence = falling-ADX entries 1W/9L cross-batch+today (LONG 1/8, SHORT 0/2), all samples 06-02 + prior May 28 A/B (`rising` beat `both`). **Revert a side to `both` if would-be-blocked (falling-ADX) entries on that side show ≥50% WR on N≥6 fresh.** Also: if PAIR_ADX_DIR blocks >15% of that side's attempts (vs ~1% historical base rate) → regime shift, re-examine. Watch PAIR_ADX_DIR counter.
 - **ADX Δ filter (Jun 2):** SHORT would-be-blocked ≥50% WR on N≥6 → blank SHORT rule / re-disable · LONG ≥55% WR on N≥10 → blank LONG rule. WATCHLIST: filter is **blind to FALLING ADX** (signed match, only catches rising/climax). If a batch bleeds on sharply-falling-ADX entries → add a signed negative-range rule (parser needs signed lo-hi fix first).
 - **PAIR_35-40_30-35 SHORT demote:** re-promote 1.5×→2.0× only if N≥5 fresh AND ≥70% WR. Any single fresh Δ$≤−$60 → keep 1.0× indefinitely.
 - **UNMATCHED LONG 2× (Jun 1):** revert to 1.0× if next batch <65% WR OR Total$ negative; ✗ HARMFUL in Multiplier Cell table → revert immediately.

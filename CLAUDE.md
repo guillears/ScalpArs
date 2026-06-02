@@ -55,6 +55,53 @@ tolerance**; once confirmed they are mechanical revert gates, no goalpost-moving
 
 ---
 
+## June 2, 2026 — RE-ENABLED Global Volume Filter (as-is) + resolved the May 30 fan-redundancy A/B
+
+### What changed
+`global_volume_filter_enabled: false → true`. **Single field. No parameter changes** — all
+thresholds/rescues/override left exactly as configured (Min L 0.70 · Min S 0.50 · Max S 1.10 +
+capitulation override BTC RSI<30 AND BTC slope<0 AND GV≤2 · LONG rescue $50M ceiling 0.60 ·
+**SHORT rescue $0 / disabled**).
+
+### Trigger — SEIUSDT SHORT −$370 (06-02 batch)
+SEI SHORT (W2 cell, 3.0× effective) lost −$370 at **GlobalVol 0.3623** — dead tape, BTC 1h RSI 16.5
+(extreme oversold → bounce). The Min S 0.50 floor was *configured* to block it but the master toggle
+had been off since the **May 30 fan-redundancy A/B** (`global_volume_filter_enabled` disabled to test
+whether the high-GV SHORT losers are redundant with the fan filter — that A/B was never closed).
+SEI passed every other active filter; the dead-tape GlobalVol was its only flag.
+
+### Cross-batch validation of the 3 gates the toggle re-activates (full dedup pool)
+| Gate | Blocked zone | Kept zone | Verdict |
+|---|---|---|---|
+| SHORT Min 0.50 (SEI-catcher) | N=12 · 33% WR · −$531 · 6 dates | — | ✓ clean loser |
+| SHORT Max 1.10 (ex-capitulation) | N=43 · **28% WR** · −$1,183 · 14 dates | capitulation kept: N=54 · 59% WR | ✓✓ strongest — **closes the May 30 A/B in favor of KEEP** (28%-WR/14-date zone is worth cutting regardless of any fan overlap; override preserves the 59%-WR capitulation cohort) |
+| LONG Min 0.70 | N=218 · 46% WR · −$1,562 · 29 dates | GV≥0.70: 51% WR | ◑ directionally right but blunt (cuts ⅓ of LONGs for ~5pp); occasionally clips high-ATR runners |
+
+### Counterfactual on the May 26–Jun 1 6-batch pool (207 trades, book −$1,941)
+**5 trades killed (2%) → net +$367 (−$1,941 → −$1,574).**
+- SHORT Max 1.10: −3 (TON −$232, FET −$114, UNI −$73, all 05-27, GV >5) = **+$419 saved** (the whole benefit)
+- LONG Min 0.70: −2 (IDU +$22, IO +$30, both GV just under floor) = **−$52 cost** — clipped 2 runner winners
+- SHORT Min 0.50: 0 fires this window (SEI is 06-02, outside this pool)
+
+### Honest read
+On this window the value is **entirely the SHORT Max 1.10 cap**; the LONG floor is a small drag that
+occasionally eats high-ATR runners (IDU/IO). Re-enabled as-is anyway: the SHORT cap + SHORT floor are
+the validated workhorses, the LONG floor is within its 29-date "mildly helpful" noise, and one toggle
+beats hand-tuning. **DO NOT add a SHORT rescue** — SEI's pair did $54.7M/24h, so mirroring the LONG
+$50M rescue onto SHORT would rescue SEI and defeat the block. The LONG/SHORT rescue asymmetry
+($50M / $0) is load-bearing.
+
+### Locked revert gate (next ≥30-trade checkpoint)
+- If would-be-blocked SHORTs in the 0.50-floor or 1.10-cap zones show **≥55% WR on N≥10 fresh** → re-disable that side.
+- If the LONG 0.70 floor clips ≥3 runner-class winners (peak ≥+3%) per batch with no offsetting loser saves → drop `global_volume_threshold_long` to 0 (SHORT-only config).
+- Watch the `VOL_GATE` / `VOL_GATE_MAX_SHORT` Filter Blocks counters confirm all three gates fire.
+
+### Files changed
+- `trading_config.json` — `global_volume_filter_enabled: false → true` (single field)
+- `CLAUDE.md` — this entry
+
+---
+
 ## June 2, 2026 — Liquidity-sizing skip + redeploy counters (Filter Blocks, observation-only)
 
 ### Why

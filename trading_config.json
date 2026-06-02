@@ -344,7 +344,7 @@
     "fast_exit_l2_atr_multiplier": 0.5,
     "fast_exit_l1_atr_floor_cap_pct": 0.6,
     "fast_exit_l2_atr_floor_cap_pct": 0.8,
-    "global_volume_filter_enabled": false,
+    "global_volume_filter_enabled": true,
     "global_volume_threshold_long": 0.7,
     "global_volume_threshold_short": 0.5,
     "global_volume_max_short": 1.1,

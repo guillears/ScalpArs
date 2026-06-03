@@ -104,6 +104,13 @@ class SignalThresholds(BaseModel):
     # SHORT side disabled by default (no clean cliff observed yet).
     btc_1h_slope_max_long: float = 0.0
     btc_1h_slope_max_short: float = 0.0
+    # Jun 3: minimum BTC 1h slope FLOOR (block entries when 1h slope is too steeply
+    # NEGATIVE = shorting into a steep 1h crash = exhaustion/bounce). 0 = disabled;
+    # a negative value activates. SHORT cross-batch: 1h slope < -0.60 = 0W/4L
+    # (SEI, XRP, BTC, JTO). LONG left disabled (its loser zone is the FLAT band, not
+    # the steep band — a different mechanism, not shipped here).
+    btc_1h_slope_min_long: float = 0.0
+    btc_1h_slope_min_short: float = 0.0
     # May 10: minimum ADX delta (current ADX − ADX 1 candle ago).
     # Cross-sample validated 2-sample finding (May 4 224tr survivors + May 10 34tr):
     # ADXΔ <0.10 = ~17% WR / -0.42% Avg; ADXΔ ≥0.10 = ~62% WR / +0.03% Avg.

@@ -6447,6 +6447,17 @@ class TradingEngine:
                         self._last_pair_block_reason[pair] = "BTC_1H_SLOPE_MAX_GATE"
                         signal = "NO_TRADE"
 
+                # Jun 3 — BTC 1h Slope MIN floor (higher-TF macro). Blocks entries when the
+                # 1h slope is too steeply NEGATIVE = entering into a steep 1h crash =
+                # exhaustion/mean-reversion bounce. 0 = disabled; a negative value activates.
+                # SHORT cross-batch: 1h slope < -0.60 = 0W/4L (SEI, XRP, BTC, JTO). LONG off.
+                _btc_1h_min = getattr(_th, f'btc_1h_slope_min_{signal.lower()}', 0) if signal in ["LONG", "SHORT"] else 0
+                if _btc_1h_min and _current_btc_1h_slope < _btc_1h_min:
+                    logger.info(f"[BTC_1H_SLOPE_MIN_GATE] {pair}: {signal} blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% < min {_btc_1h_min}% (exhaustion: entering steep 1h crash)")
+                    self._record_filter_block("BTC_1H_SLOPE_MIN_GATE", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_1H_SLOPE_MIN_GATE"
+                    signal = "NO_TRADE"
+
             # May 2: per-pair EMA20 slope MAX guard. Block over-extended pair trends.
             # Computes the slope locally from indicators (pair_ema20_slope_pct is
             # only computed later in the entry-payload section). Matches the

@@ -10,6 +10,7 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 
 ## Historical index (pre-2026-06-02, see HISTORY_FULL for full text)
 
+- [NEW ENTRIES] June 3, 2026 — WHITELISTED BTCUSDT (user override of the blacklist, AGAINST evidence; revert gate locked)
 - [NEW ENTRIES] June 3, 2026 — TRIMMED pair_blacklist 23→11: RELEASED 12 thin-N pairs for forward re-test (kept 5 evidenced losers + commodities + no-data)
 - [NEW ENTRIES] June 3, 2026 — BLACKLISTED BTCUSDT (structural low-vol loser: edge < fee)
 - [NEW ENTRIES] June 3, 2026 — SHIPPED: BTC-Accel Chase Filter (STATEFUL, LONG only) — block LONG when BTC EMA20 slope > last-LONG within 30min (chasing)
@@ -290,6 +291,14 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 ---
 
 ## NEW ENTRIES (2026-06-02 onward — full text)
+
+### 2026-06-03 — WHITELISTED BTCUSDT (user override; removed from blacklist same day it was added)
+
+**Change:** removed `BTCUSDT` from `pair_blacklist` (now 10 pairs). Reverses the BTC blacklist shipped earlier today.
+
+**Discipline note (override, flagged):** This is **against the evidence.** BTC was the single best-evidenced structural loser: N=27, 26% WR, −0.208% avg, −5.62% total, with the deciding mechanism being edge < fee (avg favorable excursion ~0.19% vs 0.077% roundtrip fee → no extractable edge after costs). Tight-exit and lower-TP simulations both failed to make it profitable. Shipped per explicit user direction as a deliberate override. Mitigants: (1) current filters block ~83% of BTC trades historically, so it should rarely fire; (2) the per-pair revert gate applies — re-blacklist at ≤35% WR on N≥10 fresh, which BTC's 26% historical WR is near-certain to trip if it trades meaningfully. **Watch BTC per-pair WR closely; expect to re-blacklist.**
+
+**Blacklist now (10):** BNBUSDT, ENAUSDT, FILUSDT, MUSDT, RAVEUSDT, TRUMPUSDT, VVVUSDT, XAGUSDT, XAUUSDT, ZECUSDT. **Released total (13):** the 12 thin-N pairs + BTCUSDT.
 
 ### 2026-06-03 — TRIMMED pair_blacklist 23 → 11 (released 12 thin-evidence pairs for forward re-test)
 

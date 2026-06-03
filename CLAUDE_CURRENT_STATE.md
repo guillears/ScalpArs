@@ -28,7 +28,7 @@ EMA5/8/13 + RSI + ADX scalper on 5m, BTC-macro-gated. Entry passes a BTC/pair fi
 - **BTC-Accel Chase Filter (shipped 2026-06-03, STATEFUL, LONG only):** `evo_chase_filter_long_enabled=true`, `evo_chase_window_min=30`. Blocks a LONG when live BTC EMA20 slope > the slope at the most recent LONG opened within 30min = BTC accelerated since last entry = chasing a maturing move. Engine tracks `_last_long_open_ts/_btc_ema20_slope` (set in `open_position` on LONG open). SHORT side `evo_chase_filter_short_enabled=false` (untested, plumbed-off). Counter = BTC_ACCEL_CHASE_LONG.
 - BTC RSI×ADX LONG `70-100:40,60-65:22-25,60-65:27-30,55-60:20-25,50-55:99-100` · SHORT `30-35:30,35-40:20-26,45-50:25,0-30:25-30`.
 - BTC ADX gate L/S [18,40] · BTC Gap×ADX LONG `0.10-0.20:0-22` · RngPos×ADXΔ LONG `90-95:0.0-0.3` / SHORT `5-10:1.0-2.0` · SHORT EMA20-slope-min 0.06 · Entry Quality Score filter ON.
-- Full filter list = `trading_config.json`. No pair blacklist currently active.
+- Full filter list = `trading_config.json`. **Pair blacklist ACTIVE** (23 pairs incl. BTCUSDT added 2026-06-03 — structural low-vol loser: 26% WR / -0.21% avg / N=27, BTC's ~0.19% avg peak ≈ the 0.077% fee so no extractable edge; BNBUSDT its low-vol peer already blacklisted). Note: blacklisting BTCUSDT (tradeable) is separate from BTC-as-macro-reference (regime/RSI/ADX/slope still computed).
 
 ## Active multipliers (target "both"; inv cap 2× · lev cap 2×)
 - **BTC_60-65_22-25 LONG = 2.0×inv × 1.5×lev = 3.0× eff** (lev-stacked; cross-batch 73.7% WR / N=38). · BTC_60-65_28-30 LONG 2.0×.

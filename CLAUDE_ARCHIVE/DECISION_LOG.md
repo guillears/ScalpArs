@@ -10,6 +10,7 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 
 ## Historical index (pre-2026-06-02, see HISTORY_FULL for full text)
 
+- [NEW ENTRIES] June 3, 2026 — REVERTED `adx_dir_long` rising→both (LONG side was backwards on proper proxy; shipped on broken full-pool adx_delta). SHORT stays rising.
 - [NEW ENTRIES] June 3, 2026 — SHIPPED: `no_trade_pairs` track-only mechanism + put BTCUSDT in it (visible in volume list, entries blocked)
 - [NEW ENTRIES] June 3, 2026 — WHITELISTED BTCUSDT (user override of the blacklist, AGAINST evidence; revert gate locked)
 - [NEW ENTRIES] June 3, 2026 — TRIMMED pair_blacklist 23→11: RELEASED 12 thin-N pairs for forward re-test (kept 5 evidenced losers + commodities + no-data)
@@ -292,6 +293,19 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 ---
 
 ## NEW ENTRIES (2026-06-02 onward — full text)
+
+### 2026-06-03 — REVERTED `adx_dir_long` rising → both (LONG side was backwards; SHORT keeps rising)
+
+**Change:** `adx_dir_long` "rising" → "both" in trading_config.json. `adx_dir_short` stays "rising".
+
+**Why (error correction):** the Jun-2 ship set both sides to "rising" (block falling-pair-ADX = exhaustion). On the proper **7-batch proxy** (which has correctly-signed `adx_delta`: 59 of 222 falling), the LONG side is **backwards**:
+- LONG FALLING-ADX (cut by rising): N=48, **50% WR, Avg +0.002** (breakeven) — the filter was removing these.
+- LONG RISING-ADX (kept): N=72, **39% WR, Avg −0.174** — the filter was keeping the actual losers.
+- SHORT FALLING (cut): N=11, 45% WR, **−0.239** (loser ✓); SHORT RISING (kept): N=91, **62% WR** ✓ — short side is correct, kept.
+
+**Root cause:** the original LONG ship's "falling-ADX LONG = 1W/9L" evidence came from `dedupe_pool.csv` (full pool), whose `entry_adx_delta` is **broken** — only **6 negative of 558**, vs **59 of 222** in `dedupe_pool_7batches`. The two pool files compute/populate adx_delta inconsistently; the 7-batch file is the trustworthy one. So the LONG ship rested on a bad field. (Methodology flag: earlier cross-pool adx_delta comparisons were apples-to-oranges — trust the 7-batch file for adx_delta.)
+
+**Net:** SHORT-side falling-ADX block retained (evidence-backed, −0.24 losers cut). LONG-side reverted to no-direction-filter. Caveat: 7-pool N=48/72, single pool; the "rising-LONG=loser" split may carry confounds, but the direction clearly contradicts the (broken-data) ship rationale, so revert is the defensible call.
 
 ### 2026-06-03 — SHIPPED: `no_trade_pairs` (track-only) mechanism — BTCUSDT visible but non-trading
 

@@ -10,6 +10,7 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 
 ## Historical index (pre-2026-06-02, see HISTORY_FULL for full text)
 
+- [NEW ENTRIES] June 3, 2026 — TRIMMED pair_blacklist 23→11: RELEASED 12 thin-N pairs for forward re-test (kept 5 evidenced losers + commodities + no-data)
 - [NEW ENTRIES] June 3, 2026 — BLACKLISTED BTCUSDT (structural low-vol loser: edge < fee)
 - [NEW ENTRIES] June 3, 2026 — SHIPPED: BTC-Accel Chase Filter (STATEFUL, LONG only) — block LONG when BTC EMA20 slope > last-LONG within 30min (chasing)
 - [NEW ENTRIES] June 3, 2026 — SHIPPED: BTC 1h Slope MIN floor `btc_1h_slope_min_short = -0.60` (SHORT only; LONG plumbed-but-off)
@@ -289,6 +290,24 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 ---
 
 ## NEW ENTRIES (2026-06-02 onward — full text)
+
+### 2026-06-03 — TRIMMED pair_blacklist 23 → 11 (released 12 thin-evidence pairs for forward re-test)
+
+**Change:** `pair_blacklist` reduced from 23 to 11 pairs.
+
+**Why:** Audit of the 23 blacklisted pairs found only **5 had solid evidence** (N≥15 losers). The blacklist was built on **raw pre-filter performance, never re-simulated under the current 15+ filter stack** — and blacklisted pairs have NO post-blacklist data (they stopped trading), so the thin-evidence entries can't be validated from history. Twelve were blacklisted on N<15 (violating the locked "never ship from <N=15" discipline) — e.g. **LABUSDT on N=1**, **ADAUSDT at −0.033% (≈breakeven)**. The only honest way to re-evaluate is to release them and observe forward, now that the current filters gate entries.
+
+**KEPT BLACKLISTED (11):**
+- Evidenced losers (N≥15): `BTCUSDT` (27/26%/−5.62), `FILUSDT` (31/55%/−3.36), `VVVUSDT` (17/41%/−4.40), `BNBUSDT` (16/38%/−2.20), `TRUMPUSDT` (15/33%/−3.83).
+- Commodities (different asset class, intentional): `XAGUSDT`, `XAUUSDT`.
+- No-data / preemptive (new-listing/illiquid, likely also covered by new_listing/alpha_subtype filters): `ENAUSDT`, `MUSDT`, `RAVEUSDT`, `ZECUSDT`.
+
+**RELEASED / WHITELISTED (12) — now tradeable again, under current filters:**
+`ADAUSDT, ASTERUSDT, BCHUSDT, DOGEUSDT, ERAUSDT, HYPEUSDT, ICPUSDT, LABUSDT, LINKUSDT, PUMPUSDT, SKYAIUSDT, WLFIUSDT`. (All had N<15 pre-filter; full table: ADA 12/42%/−0.033, HYPE 13/38%/−0.173, LINK 13/31%/−0.175, WLFI 8/38%/−0.431, DOGE 6/0%/−0.743, BCH 6/33%/−0.250, ICP 6/17%/−0.421, PUMP 6/17%/−0.307, SKYAI 6/33%/−0.285, ASTER 4/25%/−0.104, ERA 3/33%/−0.304, LAB 1/0%/−1.192.)
+
+**LOCKED REVERT GATE (per released pair):** re-blacklist any released pair that shows **≤35% WR on N≥10 fresh** (current-stack) trades. Track per-pair WR as fresh trades accumulate. This converts 12 overfit pre-filter blacklists into a controlled forward re-test.
+
+**Caveat acknowledged:** releasing adds pairs whose *historical* (pre-filter) numbers look poor (DOGE 0%, ICP 17%, LAB −1.19) — but on N=1–6, those are noise, and the current filter stack should gate the bad entries. The revert gate is the safety net. This is a deliberate "trust the filters + re-test" move, not an assertion these pairs are good.
 
 ### 2026-06-03 — BLACKLISTED BTCUSDT (added to `pair_blacklist`)
 

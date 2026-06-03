@@ -111,6 +111,16 @@ class SignalThresholds(BaseModel):
     # the steep band — a different mechanism, not shipped here).
     btc_1h_slope_min_long: float = 0.0
     btc_1h_slope_min_short: float = 0.0
+    # Jun 3: BTC-ACCELERATION CHASE filter (STATEFUL, evolution-vs-last-entry).
+    # Blocks a LONG when the live BTC EMA20 slope is HIGHER than it was at the most
+    # recent LONG that actually opened within `evo_chase_window_min` minutes — i.e.
+    # BTC has accelerated since the last entry = chasing a maturing move = late.
+    # Cross-batch (7-batch proxy, 30min): block cohort 30.8% WR / Σ-3.1% (net-losing,
+    # the 4-loss clusters). Caught the 4 consecutive LONG losses on 06-03 (0/4) while
+    # keeping both winners. LONG only; SHORT plumbed-but-disabled (untested side).
+    evo_chase_filter_long_enabled: bool = False
+    evo_chase_filter_short_enabled: bool = False
+    evo_chase_window_min: int = 30
     # May 10: minimum ADX delta (current ADX − ADX 1 candle ago).
     # Cross-sample validated 2-sample finding (May 4 224tr survivors + May 10 34tr):
     # ADXΔ <0.10 = ~17% WR / -0.42% Avg; ADXΔ ≥0.10 = ~62% WR / +0.03% Avg.

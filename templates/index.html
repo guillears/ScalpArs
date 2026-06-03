@@ -5168,6 +5168,18 @@
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
+                        <!-- Jun 3: BTC-Acceleration Chase filter (stateful, evolution vs last LONG). Block LONG when BTC EMA20 slope is higher than at the last LONG within the window = chasing a maturing move. LONG only. -->
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
+                            <label class="flex items-center cursor-pointer" title="STATEFUL evolution filter. Blocks a LONG when the live BTC EMA20 slope is HIGHER than it was at the most recent LONG opened within the window below = BTC accelerated since your last entry = chasing a maturing move (late). Cross-batch 7-batch proxy (30min): 30.8% WR block cohort, Σ-3.1%. Caught the 06-03 4-loss cluster (0/4) while keeping both winners. LONG only; SHORT side untested.">
+                                <input type="checkbox" id="config-evo-chase-filter-long" class="mr-1">
+                                <span class="text-xs text-gray-300">🏃 BTC-Accel Chase Filter (LONG)</span>
+                            </label>
+                            <span class="text-xs text-gray-500 ml-2">Window:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="1" max="120" id="config-evo-chase-window-min" class="w-16 ml-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="30">
+                                <span class="ml-1 text-gray-500">min</span>
+                            </label>
+                        </div>
                         <!-- BTC ADX Direction — moved from the Macro Trend block into BTC Independent Filters
                              (Phase 1c Option B refactor, Apr 17). Works standalone regardless of
                              the BTC Global toggle. 3-sample confirmed: Rising BTC ADX > Falling for SHORTs. -->
@@ -8489,6 +8501,7 @@
             lines.push(`  BTC EMA20 Slope Max L: ${th.btc_ema20_slope_max_long !== undefined ? th.btc_ema20_slope_max_long : 0}%  |  S: ${th.btc_ema20_slope_max_short !== undefined ? th.btc_ema20_slope_max_short : 0}%  (May 2: 0 = disabled)`);
             lines.push(`  BTC 1h Slope Max L: ${th.btc_1h_slope_max_long !== undefined ? th.btc_1h_slope_max_long : 0}%  |  S: ${th.btc_1h_slope_max_short !== undefined ? th.btc_1h_slope_max_short : 0}%  (May 24: 0 = disabled; LONG ship at 0.15)`);
             lines.push(`  BTC 1h Slope Min L: ${th.btc_1h_slope_min_long !== undefined ? th.btc_1h_slope_min_long : 0}%  |  S: ${th.btc_1h_slope_min_short !== undefined ? th.btc_1h_slope_min_short : 0}%  (Jun 3: neg = active, 0 = disabled; SHORT ship at -0.60)`);
+            lines.push(`  BTC-Accel Chase Filter (LONG): ${th.evo_chase_filter_long_enabled ? 'ON' : 'OFF'}  |  Window: ${th.evo_chase_window_min !== undefined ? th.evo_chase_window_min : 30}min  (Jun 3: block LONG when BTC EMA20 slope > last-LONG = chasing)`);
             lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
             lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
             const rsiAdxL = th.rsi_adx_filter_long || '(none)';
@@ -16192,6 +16205,10 @@
                 if (_b1hMinL) _b1hMinL.value = config.thresholds.btc_1h_slope_min_long !== undefined ? config.thresholds.btc_1h_slope_min_long : 0;
                 const _b1hMinS = document.getElementById('config-btc-1h-slope-min-short');
                 if (_b1hMinS) _b1hMinS.value = config.thresholds.btc_1h_slope_min_short !== undefined ? config.thresholds.btc_1h_slope_min_short : 0;
+                const _evoL = document.getElementById('config-evo-chase-filter-long');
+                if (_evoL) _evoL.checked = config.thresholds.evo_chase_filter_long_enabled !== undefined ? config.thresholds.evo_chase_filter_long_enabled : false;
+                const _evoW = document.getElementById('config-evo-chase-window-min');
+                if (_evoW) _evoW.value = config.thresholds.evo_chase_window_min !== undefined ? config.thresholds.evo_chase_window_min : 30;
                 document.getElementById('config-ema-gap-5-20-enabled').checked = config.thresholds.ema_gap_5_20_enabled !== undefined ? config.thresholds.ema_gap_5_20_enabled : true;
                 document.getElementById('config-ema-gap-5-20-min-long').value = config.thresholds.ema_gap_5_20_min_long !== undefined ? config.thresholds.ema_gap_5_20_min_long : 0.15;
                 document.getElementById('config-ema-gap-5-20-min-short').value = config.thresholds.ema_gap_5_20_min_short !== undefined ? config.thresholds.ema_gap_5_20_min_short : 0.15;
@@ -17398,6 +17415,8 @@
                     btc_1h_slope_max_short: safeFloat((document.getElementById('config-btc-1h-slope-max-short')||{}).value || 0),
                     btc_1h_slope_min_long: safeFloat((document.getElementById('config-btc-1h-slope-min-long')||{}).value || 0),
                     btc_1h_slope_min_short: safeFloat((document.getElementById('config-btc-1h-slope-min-short')||{}).value || 0),
+                    evo_chase_filter_long_enabled: (document.getElementById('config-evo-chase-filter-long')||{}).checked || false,
+                    evo_chase_window_min: parseInt((document.getElementById('config-evo-chase-window-min')||{}).value || 30),
                     ema_gap_5_20_enabled: document.getElementById('config-ema-gap-5-20-enabled').checked,
                     ema_gap_5_20_min_long: safeFloat(document.getElementById('config-ema-gap-5-20-min-long').value),
                     ema_gap_5_20_min_short: safeFloat(document.getElementById('config-ema-gap-5-20-min-short').value),

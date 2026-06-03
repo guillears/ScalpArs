@@ -578,7 +578,11 @@ class TradingEngine:
         # /api/pairs to show Block Reason column without re-enumerating
         # 40+ filters in UI code (single source of truth).
         self._last_pair_block_reason: Dict[str, str] = {}
-    
+        # Jun 3: BTC-acceleration-chase filter state (stateful evolution filter).
+        # Tracks the BTC EMA20 slope at the most recent LONG that actually opened.
+        self._last_long_open_ts: Optional[datetime] = None
+        self._last_long_open_btc_ema20_slope: Optional[float] = None
+
     async def initialize(self, db: AsyncSession):
         """Initialize engine state from database (only on first call).
 
@@ -3460,7 +3464,14 @@ class TradingEngine:
             _open_orders_cache[pair].append(order_cache_entry)
         
         logger.info(f"[ORDER CREATED] {pair}: {direction} {confidence} - ID={order.id}, Investment=${investment:.2f}")
-        
+
+        # Jun 3: update the BTC-acceleration-chase reference on every LONG that actually
+        # opens (blocked LONGs never reach here, so the reference stays the last REAL
+        # entry). Stores the same global the filter reads, for an apples-to-apples compare.
+        if direction == "LONG":
+            self._last_long_open_ts = datetime.utcnow()
+            self._last_long_open_btc_ema20_slope = _btc_ema20_slope_pct
+
         return order
     
     async def close_position(
@@ -6456,6 +6467,24 @@ class TradingEngine:
                     logger.info(f"[BTC_1H_SLOPE_MIN_GATE] {pair}: {signal} blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% < min {_btc_1h_min}% (exhaustion: entering steep 1h crash)")
                     self._record_filter_block("BTC_1H_SLOPE_MIN_GATE", signal, had_room=_had_room)
                     self._last_pair_block_reason[pair] = "BTC_1H_SLOPE_MIN_GATE"
+                    signal = "NO_TRADE"
+
+            # Jun 3 — BTC-ACCELERATION CHASE filter (STATEFUL, evolution vs last entry).
+            # Block a LONG when live BTC EMA20 slope is HIGHER than at the most recent
+            # LONG that opened within the window = BTC accelerated since the last entry
+            # = chasing a maturing move. Cross-batch (7-batch, 30min): 30.8% WR block
+            # cohort. LONG only (SHORT side untested). Reference auto-expires after window.
+            _th_evo = config.trading_config.thresholds
+            if signal == "LONG" and getattr(_th_evo, 'evo_chase_filter_long_enabled', False):
+                _evo_win = getattr(_th_evo, 'evo_chase_window_min', 30)
+                _last_ts = self._last_long_open_ts
+                _last_slp = self._last_long_open_btc_ema20_slope
+                if (_last_ts is not None and _last_slp is not None
+                        and (datetime.utcnow() - _last_ts).total_seconds() <= _evo_win * 60
+                        and _btc_ema20_slope_pct > _last_slp):
+                    logger.info(f"[BTC_ACCEL_CHASE_LONG] {pair}: LONG blocked — BTC EMA20 slope {_btc_ema20_slope_pct:.4f} > last-LONG {_last_slp:.4f} (chasing accelerating BTC)")
+                    self._record_filter_block("BTC_ACCEL_CHASE_LONG", "LONG", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_ACCEL_CHASE_LONG"
                     signal = "NO_TRADE"
 
             # May 2: per-pair EMA20 slope MAX guard. Block over-extended pair trends.

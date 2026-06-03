@@ -10,6 +10,7 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 
 ## Historical index (pre-2026-06-02, see HISTORY_FULL for full text)
 
+- [NEW ENTRIES] June 3, 2026 — SHIPPED: `no_trade_pairs` track-only mechanism + put BTCUSDT in it (visible in volume list, entries blocked)
 - [NEW ENTRIES] June 3, 2026 — WHITELISTED BTCUSDT (user override of the blacklist, AGAINST evidence; revert gate locked)
 - [NEW ENTRIES] June 3, 2026 — TRIMMED pair_blacklist 23→11: RELEASED 12 thin-N pairs for forward re-test (kept 5 evidenced losers + commodities + no-data)
 - [NEW ENTRIES] June 3, 2026 — BLACKLISTED BTCUSDT (structural low-vol loser: edge < fee)
@@ -291,6 +292,18 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 ---
 
 ## NEW ENTRIES (2026-06-02 onward — full text)
+
+### 2026-06-03 — SHIPPED: `no_trade_pairs` (track-only) mechanism — BTCUSDT visible but non-trading
+
+**Change:** new config field `no_trade_pairs` (comma-separated, top-level, mirrors `pair_blacklist`) + `BTCUSDT` placed in it. **The distinction:**
+- `pair_blacklist` → pair removed from the top-pair/volume universe entirely (not subscribed, scanned, or displayed). Applied at universe-fetch (`trading_engine.py:5433`).
+- `no_trade_pairs` → pair STAYS in the universe (subscribed, scanned, **shown in Top-Pair-by-Volume**) but every LONG/SHORT signal is forced to NO_TRADE at the per-pair eval (`trading_engine.py:~5811`), counter `PAIR_NO_TRADE`.
+
+**Why:** user wants BTCUSDT visible/tracked on the dashboard for reference but not trading (consistent with the edge<fee evidence — BTC shouldn't open positions, but should stay in view). The blacklist removes it from sight; this keeps it visible while blocking entries. BTC's macro reference (regime/RSI/ADX/slope) was already fetched independently (`get_ohlcv('BTC/USDT:USDT')`), so this is purely about the *tradeable/displayed* universe.
+
+**Full D11:** config.py (`no_trade_pairs: str = ""` + comment), trading_config.json (`"BTCUSDT"`), engine (per-pair entry block + PAIR_NO_TRADE counter), main.py ConfigUpdate field, UI (text input + helper text + load/save + summary line). Generic config-merge apply (model_dump) — no special handler needed, mirrors pair_blacklist. Verified: py+json syntax OK, input IDs wired (input=1, load+save). Could not runtime-test locally (pydantic_settings is deploy-only) — verify PAIR_NO_TRADE fires on BTC post-deploy.
+
+**State note:** BTCUSDT is now in `no_trade_pairs`, NOT `pair_blacklist`, and NOT freely tradeable — a distinct third state. Supersedes the same-day "whitelisted BTC" entry (BTC is now track-only, not tradeable).
 
 ### 2026-06-03 — WHITELISTED BTCUSDT (user override; removed from blacklist same day it was added)
 

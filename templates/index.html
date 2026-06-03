@@ -4221,7 +4221,12 @@
                         <div class="md:col-span-3">
                             <label class="block text-sm text-gray-400 mb-2">Pair Blacklist</label>
                             <input type="text" id="config-pair-blacklist" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. XRPUSDT, DOGEUSDT" value="">
-                            <p class="text-xs text-gray-500 mt-1">Comma-separated pairs to exclude from trading (only blocks new entries)</p>
+                            <p class="text-xs text-gray-500 mt-1">Comma-separated pairs to REMOVE from the universe entirely (not subscribed, scanned, or shown)</p>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-sm text-gray-400 mb-2">No-Trade Pairs (track-only)</label>
+                            <input type="text" id="config-no-trade-pairs" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-emerald-500" placeholder="e.g. BTCUSDT" value="">
+                            <p class="text-xs text-gray-500 mt-1">Comma-separated pairs that STAY in the Top-Pair-by-Volume list (subscribed, scanned, displayed) but never open a position. Counter: PAIR_NO_TRADE.</p>
                         </div>
                         <div class="md:col-span-1">
                             <label class="block text-sm text-gray-400 mb-2">New-Listing Filter</label>
@@ -8550,6 +8555,7 @@
             lines.push(`  Cooldown After Any Close: ${inv.cooldown_after_loss_minutes || 0}min  |  No Expansion: ${inv.no_expansion_minutes || 0}min`);
             lines.push(`  Liquidity Caps: ① ${inv.max_notional_pct_of_pair_volume || 0}% 24h vol / ceiling $${inv.max_notional_hard_ceiling || 0}  |  ② max gross lev ${inv.max_gross_leverage || 0}×  |  ③ redeploy ${inv.redeploy_leftover_enabled ? 'ON (hard ' + (inv.max_open_positions_hard || 0) + ')' : 'off'}`);
             if (cfg.pair_blacklist) lines.push(`  Pair Blacklist: ${cfg.pair_blacklist}`);
+            if (cfg.no_trade_pairs) lines.push(`  No-Trade Pairs (track-only): ${cfg.no_trade_pairs}`);
 
             lines.push(`\nFee & Maker Orders:`);
             lines.push(`  Taker Fee: ${((cfg.taker_fee || cfg.trading_fee) * 100).toFixed(3)}%  |  Maker Fee: ${((cfg.maker_fee ?? 0.00018) * 100).toFixed(3)}%`);
@@ -16067,6 +16073,7 @@
                 // Trading pairs limit & blacklist + new-listing filter
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
                 document.getElementById('config-pair-blacklist').value = config.pair_blacklist || '';
+                { const _nt=document.getElementById('config-no-trade-pairs'); if(_nt) _nt.value = config.no_trade_pairs || ''; }
                 const _nlf = document.getElementById('config-new-listing-filter-days');
                 if (_nlf) _nlf.value = config.new_listing_filter_days !== undefined ? config.new_listing_filter_days : 0;
                 const _asf = document.getElementById('config-alpha-subtype-filter-enabled');
@@ -17291,6 +17298,7 @@
                 maker_exit_offset_ticks: parseInt(document.getElementById('config-maker-exit-offset-ticks').value) || 2,
                 paper_balance: safeFloat(document.getElementById('config-paper-balance').value),
                 pair_blacklist: document.getElementById('config-pair-blacklist').value.trim(),
+                no_trade_pairs: (document.getElementById('config-no-trade-pairs')||{}).value !== undefined ? (document.getElementById('config-no-trade-pairs').value||'').trim() : '',
                 new_listing_filter_days: parseInt(document.getElementById('config-new-listing-filter-days')?.value) || 0,
                 alpha_subtype_filter_enabled: !!document.getElementById('config-alpha-subtype-filter-enabled')?.checked,
                 bnb_swap_enabled: document.getElementById('config-bnb-swap-enabled').value === 'true',

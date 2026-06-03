@@ -369,6 +369,7 @@ class ConfigUpdate(BaseModel):
     # (Pydantic v2 default: extras ignored).  Adding them here makes UI
     # updates to these fields actually persist.  Backfilled Apr 17.
     pair_blacklist: Optional[str] = None
+    no_trade_pairs: Optional[str] = None
     trading_pairs_limit: Optional[int] = None
     new_listing_filter_days: Optional[int] = None
     alpha_subtype_filter_enabled: Optional[bool] = None

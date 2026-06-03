@@ -803,7 +803,12 @@ class TradingConfig(BaseModel):
     
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 20  # 5, 10, 20, or 50
-    pair_blacklist: str = ""  # Comma-separated pairs to exclude, e.g. "XRPUSDT,DOGEUSDT"
+    pair_blacklist: str = ""  # Comma-separated pairs to exclude ENTIRELY (removed from the top-pair/volume universe)
+    # Jun 3: comma-separated pairs to TRACK but NOT TRADE — they stay in the top-pair/volume
+    # list (subscribed, scanned, displayed) but entries are blocked. Use for a pair you want
+    # visible (e.g. BTCUSDT for reference) without opening positions. Distinct from pair_blacklist
+    # (which removes the pair from the universe completely). Counter: PAIR_NO_TRADE.
+    no_trade_pairs: str = ""
     # Skip pairs whose Binance futures onboardDate is within the last N days.
     # Binance flags early-stage pairs ("Seed Tag" / "Monitoring Tag") as
     # higher-risk: low liquidity, wider spreads, manipulation-prone — poor fit

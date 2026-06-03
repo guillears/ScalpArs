@@ -5809,6 +5809,19 @@ class TradingEngine:
             volume_24h = _cr['volume_24h']
             _pair_volume_ratio = _cr['pair_volume_ratio']
 
+            # Jun 3: NO-TRADE pairs — stay in the top-pair/volume universe (subscribed,
+            # scanned, displayed) but entries are blocked. Distinct from pair_blacklist
+            # (which removes the pair from the universe entirely). Used for BTCUSDT: visible
+            # for reference, never opens a position.
+            if signal in ["LONG", "SHORT"]:
+                _nt_str = getattr(config.trading_config, 'no_trade_pairs', '') or ''
+                _nt = set(p.strip() for p in _nt_str.split(',') if p.strip())
+                if pair in _nt:
+                    logger.info(f"[PAIR_NO_TRADE] {pair}: {signal} blocked — pair is track-only (no_trade_pairs)")
+                    self._record_filter_block("PAIR_NO_TRADE", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "PAIR_NO_TRADE"
+                    signal = "NO_TRADE"
+
             if signal in ["LONG", "SHORT"] and not self.is_paper_mode:
                 _symbol_check = pair.replace('USDT', '/USDT:USDT')
                 if _symbol_check in _leverage_blocked_pairs:

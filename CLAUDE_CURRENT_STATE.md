@@ -42,6 +42,7 @@ EMA5/8/13 + RSI + ADX scalper on 5m, BTC-macro-gated. Entry passes a BTC/pair fi
 - **C1 SHORT** = 2.0×inv × 1.5×lev (3× eff) + fixed_sl −0.70%.
 - **W2 SHORT** = 2.0× × 1.5× (3× eff) · **W6 SHORT** = 2.0× · **UNMATCHED LONG** = 2.0× (no fixed exits — deliberate, Jun 1).
 - C4/C8 L+S, W1 L+S, W2 LONG, W4 L+S, W6 LONG, UNMATCHED SHORT = all baseline 1.0× (observation).
+- **Extension multiplier (LONG) Ext0.4-0.6_L family = 1.0× (DEMOTED 2026-06-04 from 2×)** — tags kept for tracking, sizing killed. Cross-batch FULL turned ✗ HARMFUL (base N=5/−$235, +QuietVol N=5/−$252); +SlowADX N=3 noise. Long side has no gross edge → "caps for losers."
 
 ## 🚨 LOCKED GO-LIVE WATCH — liquidity sizing (gross 30× = biggest systemic knob)
 Unproven forward; read before each live checkpoint. All signals in UI (Gross gauge, Filter Blocks, Liquidity Sizing table).
@@ -59,6 +60,9 @@ Unproven forward; read before each live checkpoint. All signals in UI (Gross gau
 - **ADX Δ filter (Jun 2):** SHORT would-be-blocked ≥50% WR on N≥6 → blank SHORT rule / re-disable · LONG ≥55% WR on N≥10 → blank LONG rule. WATCHLIST: filter is **blind to FALLING ADX** (signed match, only catches rising/climax). If a batch bleeds on sharply-falling-ADX entries → add a signed negative-range rule (parser needs signed lo-hi fix first).
 - **PAIR_35-40_30-35 SHORT demote:** re-promote 1.5×→2.0× only if N≥5 fresh AND ≥70% WR. Any single fresh Δ$≤−$60 → keep 1.0× indefinitely.
 - **UNMATCHED LONG 2× (Jun 1):** revert to 1.0× if next batch <65% WR OR Total$ negative; ✗ HARMFUL in Multiplier Cell table → revert immediately.
+- **Extension multiplier LONG demote (Jun 4):** RESTORE 2× only if `Ext0.4-0.6_L` reaches **N≥15 fresh AND Total$>0** (current stack). Watch the Extension Multiplier Performance table — now fires at 1.0× but stays tagged, so the cohort's true 1× edge is observable before any re-promote.
+- **C1+C6 SHORT toxic-combo (Jun 4, WATCHLIST — observation only, NOT shipped):** by C-signature (UI Pattern-C Combination Tracker convention, W ignored) the 7-pool C6-SHORT bleed is NOT C6 itself (C6-sig N=24, 67% WR, ≈flat −$135) — it's the **C1+C6 co-occurrence: N=3, 0W/3L, −0.69%, −$667, NP 67%** (capitulation that's also macro-over-extended → bounces; both are multiplied cells so the loss is amplified). N=3 ≪ gate. **GATE: cap effective multiplier to 1.0× on C1+C6 SHORT if it holds ≤30% WR on N≥6 fresh.** Until then track in the Pattern-C Combination Tracker; do nothing.
+- **C7 LONG-alone / no-W (Jun 4, WATCHLIST — observation only, NOT shipped):** C7 = Pair Countertrend Bounce; a LONG on a countertrend bounce with no W (trend) confirmation = buying a falling knife. Recent (7-pool+batch, BE-off), **C7 LONG with no W: N=3, 0W/3L, ≈−$265** (1000LUNC, ONDO, HOME — HOME this batch). Cross-ref: UI C-signature "C7" LONG row (W-ignored) = N=5, 20% WR, −$245. Definition matters — the *block target* is **C7 present AND no W match** (don't block C7 trades that carry trend confirmation). N=3 ≪ gate. **GATE: ship a LONG entry-block on "C7-match AND w_any=False" only if it holds ≤30% WR on N≥8 fresh.** Until then observe; do nothing.
 - **Runner Stretch-Trail (Jun 1):** revert if Runner Trail table net-gain-vs-tight ≤0 on N≥5; if %Max<40% try k=0.3.
 - **BTC_60-65_22-25 LONG 3× eff:** keep if N≥5 & WR≥70% & Total$+ · WR 55-70% → drop lev to 2.0× inv-only · WR≤55% → drop both. Any single leveraged Δ$≤−$60 → drop lev immediately.
 

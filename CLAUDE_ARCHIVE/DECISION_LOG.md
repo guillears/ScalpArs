@@ -402,3 +402,55 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 
 **Expected behavior:** very low fire-rate (~1% of historical entries), asymmetric payoff — blocks a 1W/9L cohort. Main downside: occasionally clips a falling-ADX mean-reversion winner (e.g. ORDI +0.60% today) — 1 such winner vs 9 losers in-sample.
 
+
+---
+
+### 2026-06-04 — DEMOTED LONG Extension Multiplier (Ext0.4-0.6_L family) 2× → 1×
+
+**Change:** `extension_multiplier_rules` — all 3 LONG rules (`Ext0.4-0.6_L`, `Ext_QuietVol_L`, `Ext_SlowADX_L`) `inv_mult` 2.0 → **1.0** (lev_mult already 1.0). Tags KEPT (rules still fire and label `EXT_*` for tracking) — only the sizing is neutralized. config.py comment + trading_config.json + CURRENT_STATE updated. No engine/UI change (UI uses generic load/save rules editor; runtime reads inv_mult live).
+
+**Trigger:** 2026-06-04 batch (12:10 report). RENDERUSDT LONG closed **−$171.87** — a 2×-multiplied extension cell (`EXT_Ext0.4-0.6_L+Ext_QuietVol_L+Ext_SlowADX_L`). At 1× this is ~−$86. Forensic: late entry (rngPos 83%, +0.53% above EMA13) into a fading move (ADX falling, adxΔ −0.64), BTC RSI falling 5m+30m, BTC 1h slope −0.57; peaked only +0.32%, never armed trailing, EMA13-cross exit saved it from a −3.96% post-exit crater. The multiplier doubled a no-edge late long.
+
+**Cross-batch evidence (FULL pool, deduped, CLOSED, per-cell):**
+- `Ext0.4-0.6_L` (base): N=5, WR 40%, Avg −0.216%, Tot **−$235** → ✗ HARMFUL (Total$<0, N≥5)
+- `Ext0.4-0.6_L + QuietVol`: N=5, WR 40%, Avg −0.352%, Tot **−$252** → ✗ HARMFUL
+- `Ext0.4-0.6_L + SlowADX`: N=3, +$21 → ⚠ low-N noise (positive but below 5)
+- Whole LONG-2× class context: 7POOL N=27 −0.194% −$788 · FULL N=131 −0.174% −$3360 (long side carries no gross edge; amplifying it is structurally backwards). Most other harmful pooled LONG-2× cells (`PAIR_60-65_15-18` −$561, `STRETCH_*`) were ALREADY at 1× in current config (`rsi_adx_multiplier_long` empty) — historical, moot. The extension family was the only still-active harmful LONG 2×.
+
+**Verdict basis:** Locked multiplier-cell rule — "✗ HARMFUL (Total$ negative on N≥5) → revert to 1.0×." Base + QuietVol both qualify. Conservative direction (2×→1× on a no-edge losing cohort cuts loss/variance, never amplifies), so the borderline N (=5, at the gate) is acceptable. "Caps for losers, multipliers for winners" — never multiply a side with no edge.
+
+**LOCKED REVERT GATE:** RESTORE 2× only if `Ext0.4-0.6_L` reaches **N≥15 fresh (current-stack) AND Total$ > 0** in the Extension Multiplier Performance table. Until then it fires at 1.0× but stays tagged, so the cohort's true 1× edge is observable.
+
+**Method note (per-batch vs pool):** In the 2026-06-04 batch itself the LONG 2× looked fine (+~$24 net — RENDER −172 offset by SKYAI +158 / HYPE +38, both 2×). Damage is only visible cross-batch — reaffirms core principle: judge multipliers on the pool, never a single batch.
+
+---
+
+### 2026-06-04 — WATCHLIST gate: C1+C6 SHORT toxic-combo (observation only, NOT shipped)
+
+**Context:** Investigating the 2026-06-04 batch Pattern-C tables + cross-batch. Initial pass conflated "any C6 SHORT" (N=27, −$802) with a C6 problem. Re-run by **C-signature (UI Pattern-C Combination Tracker convention — group by which C's fire, W ignored)** on the 7-batch pool (BE-off proxy) corrected it:
+
+- **C6 SHORT (C6 the only C):** N=24, 67% WR, Avg +0.011%, **−$135**, NP 8% → ≈flat, high-WR, NOT a loser cohort.
+- **C1+C6 SHORT:** N=3, **0W/3L**, Avg −0.693%, **−$667**, NP 67% → the real bleed. Mechanism: C1 (capitulation chase) + C6 (macro over-extended) co-occur = shorting an over-extended capitulation that bounces. BOTH are multiplied cells (C1 = 3× eff), so the fat-tail losses are amplified (JTO −$320, SOL −$240, TON −$232 in the C6 audit were all 2× and mostly C1+C6 / C6+W stacks).
+- For reference, LONG worst C-signatures same pool: C7 N=5 20% WR −$245 (countertrend bad-long), C4 N=12 42% −$314.
+
+**Method note (definition mismatch that triggered this):** I had been computing "Cx alone" as *Cx only-C AND no W at all*, which gave C6-SHORT-alone = 0 and contradicted the UI (where TON shows under "C6" because the tracker groups by C-signature and ignores W). Corrected to the UI convention. Lesson logged: **match the UI's grouping convention when the user is reading off the UI.**
+
+**Status:** WATCHLIST — N=3 ≪ N≥30 ship gate (and ≪ the ≥6 needed to act on a multiplier verdict). Direction-consistent (0/3 across 3 dates) so it clears the watchlist bar, not the ship bar. No config change.
+
+**LOCKED GATE:** Cap effective multiplier to **1.0× on C1+C6 SHORT** if the combo holds **≤30% WR on N≥6 fresh** (current-stack). Track via the Pattern-C Combination Tracker row "C1+C6 SHORT". Until then, do nothing — C6 alone is fine and must not be blocked.
+
+---
+
+### 2026-06-04 — WATCHLIST gate: C7 LONG-alone / no-W (observation only, NOT shipped)
+
+**Finding:** C7 = "Pair Countertrend Bounce." A LONG on a countertrend bounce with NO W (trend) confirmation = buying a dead-cat bounce / falling knife. Recent BE-off data (7-batch pool + 2026-06-04 batch, deduped):
+
+- **C7 LONG with no W: N=3, 0W/3L, ≈−$265** — 1000LUNC (−$130, SL), ONDO (−$15, EMA13 cross), HOME (−$121, SL, this batch). 3 separate dates (May 28 / May 30 / Jun 4) → direction-consistent, not a single fat tail.
+- Cross-ref (UI C-signature convention, W ignored): "C7" LONG row = N=5, 20% WR, −$245. The 2 extra are C7-with-W (trend-confirmed) and should NOT be blocked.
+- Mechanism match: HOME was the batch's "textbook bad-long" (pairGap −1.44% countertrend, +0.90% over EMA13, BTC 1h −1.00); C7-alone *is* that bad-long isolated as a signature.
+
+**Definition note:** block target = **C7-match AND `entry_pattern_w_any_match`=False** (countertrend long lacking trend confirmation). Distinct from the UI "C7" row, which groups by C-signature and ignores W (hence N=5 not N=3). Stated explicitly to avoid the alone-vs-C-signature confusion from earlier this session.
+
+**Status:** WATCHLIST — N=3 ≪ N≥30 ship gate; clears the ≥3-sample direction-consistent watchlist bar only. C7 LONG is observation-only (no multiplier), so the only lever is an entry filter. No config change.
+
+**LOCKED GATE:** Ship a LONG entry-block on "C7-match AND w_any=False" only if the cohort holds **≤30% WR on N≥8 fresh** (current stack). Would have blocked HOME this batch — but one batch is not enough.

@@ -490,6 +490,12 @@ class SignalThresholds(BaseModel):
     #   L2b L1b × ADXΔ<0.3:        N=3  / 100% / +$274 / 1 date / no losers
     # All cells below the locked N≥30 gate but BE-compatible under new filter regime.
     # Operator-directed ship accepting the discipline override.
+    # 2026-06-04 DEMOTED 2x->1x (all 3 LONG ext rules): cross-batch FULL pool turned
+    #   negative — Ext0.4-0.6_L N=5/-0.216%/-$235, +QuietVol N=5/-0.352%/-$252 (both
+    #   ✗ HARMFUL per Total$<0 N>=5 verdict); +SlowADX N=3/+$21 noise. Triggered by
+    #   RENDER -$172 (2x-amplified; ~-$86 at 1x). Tags KEPT for tracking, sizing killed.
+    #   "Caps for losers" — long side has no gross edge, so amplifying it is backwards.
+    #   REVERT GATE: restore 2x only if Ext0.4-0.6_L reaches N>=15 fresh AND Total$>0.
     extension_multiplier_rules: List = []
     # BTC 1h Slope × BTC ADX Multiplier Rules (May 24 evening, 2026) — NEW dimension.
     # Sister to btc_rsi_adx_multiplier (existing) and extension_multiplier (today).

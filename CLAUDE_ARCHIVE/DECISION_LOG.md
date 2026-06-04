@@ -499,3 +499,18 @@ Re-evaluate at next ≥30-trade checkpoint.
 - C1-alone (only C1, no W): N=1 BE-off (MMTUSDT −$182); historically BE-inflated (91% WR = breakeven/fast-exit locks) → unreliable, do not act.
 
 **GATES (observation only):** (1) C1+C6 SHORT → BLOCK ENTRY if ≤30% WR on N≥6 fresh. (2) Any winner C1 combo flips net-negative on N≥5 fresh → review/demote its multiplier. Next batch: report the full C+W C1 table.
+
+---
+
+### 2026-06-04 — OBSERVATION added: W2 LONG + W3 LONG/SHORT (next-batch tracking)
+
+**W2 LONG (NOT a winner — W2 value is short-side only):**
+- 7-pool: SHORT N=55, 76% WR, +0.109%, **+$634** (multiplied 3× eff, winning — keep). LONG N=14, 36% WR, −0.048%, **−$47** (baseline 1×, ≈breakeven).
+- 2026-06-04 batch: SHORT N=4, 75% WR, +$718. LONG N=5, **0W/5L, −0.673%, −$337, 4 NP (DOA)**.
+- W2-long losers this batch (AAVE/SOL/XRP/1000PEPE) overlap the C6/Neither DOA bleed → regime, not a standalone W2-long signal. W2-LONG is 1× (not multiplied), so the only lever is an entry block.
+- **GATE:** consider a LONG entry-block on W2 only if ≤35% WR on N≥10 fresh AND net-negative. Do NOT touch W2 SHORT.
+
+**W3 LONG & SHORT (too thin — no verdict):**
+- W3 = "Energetic volatility." LONG: 7-pool N=3 33% −$96, batch N=1 −$129 (XPL DOA). SHORT: 7-pool N=2 0% −$232, batch N=0.
+- Mildly negative both directions but N=1–3 everywhere → no statistical weight.
+- **NO gate. Accumulate to N≥8 per side before any verdict.** Track in Pattern-W Combination Tracker.

@@ -454,3 +454,17 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 **Status:** WATCHLIST — N=3 ≪ N≥30 ship gate; clears the ≥3-sample direction-consistent watchlist bar only. C7 LONG is observation-only (no multiplier), so the only lever is an entry filter. No config change.
 
 **LOCKED GATE:** Ship a LONG entry-block on "C7-match AND w_any=False" only if the cohort holds **≤30% WR on N≥8 fresh** (current stack). Would have blocked HOME this batch — but one batch is not enough.
+
+---
+
+### 2026-06-04 — OBSERVATION-tracking added: C6 LONG (NOT a loser — do not block)
+
+**Request:** track C6 LONG in detail. **Finding (recent 7-batch pool + 2026-06-04 batch, BE-off, deduped):**
+- C6 LONG (all with C6 match): **N=7, 4W/3L, 57% WR, Avg ≈−0.002% (flat), Tot −$46.6, de-multiplied +$18.9 (positive), NP 14%.**
+- By C-signature: C6 (only-C) N=6 50% −$85 (1×: −$19.5); C6+C7 N=1 +$38 (PORTAL).
+- By W: **C6 LONG always fires no-W (N=0 with W)** — macro-over-extended longs carry no trend confirmation, yet still win 57% and are de-mux positive.
+- Trades: RENDER −172 (2×), FET −117 (2×), HOME −28 (1×), INJ +36 (1×), SWARMS +38 (1×), PORTAL +38 (1×), SKYAI +158 (2×). The −$46.6 as-sized is ENTIRELY the 2× amplification on RENDER+FET; RENDER's 2× = the extension multiplier demoted earlier today, so the main amplifier is already handled.
+
+**Verdict:** C6 LONG is NOT a loser cohort. Flat-to-positive, 57% WR, de-mux positive. No cap, no block — blocking would mislabel a breakeven cohort (high-WR-net-losing trap is about *sizing*, and the sizing culprit is already demoted). Observation-tracking only.
+
+**WATCH-FOR-DETERIORATION GATE:** revisit (consider cap/block) only if C6 LONG turns net-negative **DE-MULTIPLIED** with **≤35% WR on N≥10 fresh**. Track the Pattern-C Combination Tracker "C6 LONG" row.

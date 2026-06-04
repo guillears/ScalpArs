@@ -468,3 +468,18 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 **Verdict:** C6 LONG is NOT a loser cohort. Flat-to-positive, 57% WR, de-mux positive. No cap, no block — blocking would mislabel a breakeven cohort (high-WR-net-losing trap is about *sizing*, and the sizing culprit is already demoted). Observation-tracking only.
 
 **WATCH-FOR-DETERIORATION GATE:** revisit (consider cap/block) only if C6 LONG turns net-negative **DE-MULTIPLIED** with **≤35% WR on N≥10 fresh**. Track the Pattern-C Combination Tracker "C6 LONG" row.
+
+---
+
+### 2026-06-04 — DISABLED BTC-Accel Chase Filter (LONG) — A/B test, C-levels hypothesis
+
+**Change:** `evo_chase_filter_long_enabled` true → **false** (trading_config.json). config.py default was already False; `evo_chase_window_min=30` retained for if re-enabled. Counter BTC_ACCEL_CHASE_LONG will read 0 while off.
+
+**Rationale (operator-directed):** Hypothesis that the LONG-side bleed is driven by **C-pattern levels (C4 low-vol chop, C6 macro-over-extended, C7 countertrend-bounce), NOT by BTC-chasing.** The BTC-Accel Chase filter was a below-gate Jun-3 ship (N=26, 30.8% WR proxy). Turning it OFF isolates the variable: with chase-blocking removed, if the LONG losers still cluster on C-levels, the C-level filters (C7-no-W block, C1+C6 cap, C6-LONG watch) are the real lever and the chase filter was noise.
+
+**RE-ENABLE / KEEP-OFF GATE:** Track LONGs that the chase filter WOULD have blocked (live BTC EMA20 slope > slope at last LONG within 30min) now that they can open:
+- ≤35% WR on N≥10 fresh → chase signal is real → RE-ENABLE.
+- ≥50% WR on N≥10 fresh → chase was a false signal → KEEP OFF, pursue C-level filters instead.
+Re-evaluate at next ≥30-trade checkpoint.
+
+**Note:** one change at a time for clean attribution — this is the only live toggle this step; the C-level items remain observation-only watchlist until their own gates trip.

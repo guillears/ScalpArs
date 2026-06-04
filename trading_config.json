@@ -74,7 +74,7 @@
     "btc_1h_slope_max_short": 0.1,
     "btc_1h_slope_min_long": 0.0,
     "btc_1h_slope_min_short": -0.6,
-    "evo_chase_filter_long_enabled": true,
+    "evo_chase_filter_long_enabled": false,
     "evo_chase_filter_short_enabled": false,
     "evo_chase_window_min": 30,
     "min_adx_delta_long": 0.0,

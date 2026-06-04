@@ -483,3 +483,19 @@ Chronological record of every ship / demote / revert / A-B / batch decision.
 Re-evaluate at next ≥30-trade checkpoint.
 
 **Note:** one change at a time for clean attribution — this is the only live toggle this step; the C-level items remain observation-only watchlist until their own gates trip.
+
+---
+
+### 2026-06-04 — REDEFINED C1+C6 gate → full C1 SHORT combination review (incl. W)
+
+**Change:** the Jun-4 "C1+C6 SHORT cap" watchlist gate is broadened to a **full C1 SHORT combination review** carried into the next batch, tracking **C+W signatures** (not just C), with de-mux 1× alongside as-sized. Two refinements vs the original:
+1. **cap → BLOCK ENTRY** for C1+C6 — de-multiplied it still loses (−$333, 0% WR, 2 NP), so the entry is bad, not merely over-sized; a cap would only lose less.
+2. **W dimension added** and shown not to matter — C6 is the clean driver.
+
+**7-pool baseline (BE-off, beW=0):**
+- C1+C6: N=3, 0W/3L, −$667 (de-mux −$333), 2 NP → TOXIC (loses under W1 / W1+W2 / W1+W2+W6 alike).
+- C1-only N=9 78% +$48 · C1+C3 N=2 100% +$202 · C1+C2 N=2 100% +$441 → all winners (win under every W overlay).
+- Cross-tab: **C1·has-C6 = 0% WR / −$667 vs C1·no-C6 = 85% WR / +$691** (razor-clean). C1·has-W2 78% vs C1·no-W2 57% (muddy, and its negativity is C6-contaminated — 2/3 C1+C6 losers carry W2). ⇒ block target = **C1+C6, W-agnostic**.
+- C1-alone (only C1, no W): N=1 BE-off (MMTUSDT −$182); historically BE-inflated (91% WR = breakeven/fast-exit locks) → unreliable, do not act.
+
+**GATES (observation only):** (1) C1+C6 SHORT → BLOCK ENTRY if ≤30% WR on N≥6 fresh. (2) Any winner C1 combo flips net-negative on N≥5 fresh → review/demote its multiplier. Next batch: report the full C+W C1 table.

@@ -60,8 +60,8 @@ SL_PCT = -0.70         # stop loss threshold (net%)
 # Pool selection
 START_DATE = "2026-05-04"
 
-REPORTS_DIR = "/Users/guillearslanian/Downloads/NOFA AI/reports"
-LIVE_CSV_DIR = "/Users/guillearslanian/Downloads"
+REPORTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "reports")
+LIVE_CSV_DIR = os.path.expanduser("~/Downloads")
 LIVE_GLOB = "scalpars_orders_paper_*.csv"
 
 

@@ -120,7 +120,7 @@ def build_pool(reports_dir, downloads_dir, from_date=None, quiet=False):
 if __name__ == '__main__':
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument('--reports-dir', default='/Users/guillearslanian/Downloads/NOFA AI/reports')
+    p.add_argument('--reports-dir', default=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'reports'))
     p.add_argument('--downloads-dir', default=os.path.expanduser('~/Downloads'))
     p.add_argument('--from-date', default=None, help='Cutoff like 2026-05-04 (inclusive)')
     p.add_argument('--quiet', action='store_true')

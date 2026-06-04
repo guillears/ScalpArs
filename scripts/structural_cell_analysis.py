@@ -63,7 +63,7 @@ Usage:
 import csv, os, sys, argparse
 from collections import Counter
 
-POOL_PATH = '/Users/guillearslanian/Downloads/NOFA AI/reports/dedupe_pool_FULL.csv'
+POOL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'reports', 'dedupe_pool_FULL.csv')
 
 
 def f(v, d=None):

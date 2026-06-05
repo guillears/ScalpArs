@@ -514,3 +514,28 @@ Re-evaluate at next ≥30-trade checkpoint.
 - W3 = "Energetic volatility." LONG: 7-pool N=3 33% −$96, batch N=1 −$129 (XPL DOA). SHORT: 7-pool N=2 0% −$232, batch N=0.
 - Mildly negative both directions but N=1–3 everywhere → no statistical weight.
 - **NO gate. Accumulate to N≥8 per side before any verdict.** Track in Pattern-W Combination Tracker.
+
+---
+
+### 2026-06-05 — SHIP: 6-change stack (chase ON · ATR-split LONG · gvol-override removed · ETH no-trade) + pool rename 7→8
+
+**Derived from the 6-05 batch autopsy** (60 closed Jun 3–5, 44L −$2,321 / 16S +$714). LONG side proven to have no durable edge; only entry-removal (chase) + cohort-correct exits/sizing help. Operator-directed ship, batch-derived (in-sample) — gates below carry the haircut.
+
+**Shipped (all 6, D11-complete: config.py + trading_config.json + engine + UI + load/save):**
+1. **Chase filter ON** (`evo_chase_filter_long_enabled=true`) — was OFF since Jun 4 A/B. Re-enabled: on the batch it blocks 13 longs, removing −$853 of realized loss (the only lever that removes losers). Stateful: blocks a LONG when live BTC EMA20 slope > slope at last LONG opened within 30min.
+2. **ATR-LOW Fixed TP (LONG)** (`atr_low_fixed_tp_long_enabled=true`, ATR<1.1 → TP +0.25%). New engine exit `ATR_FIXED_TP L1` — a profit-LOCK (fires only on a green trade; never cuts a DOA loser). Low-ATR longs have no runners (batch: high-ATR reach trailing arm ~80% vs ~30%, all 6 RUNNER_TRAIL longs ATR≥1.0) → lock the pop. Wired into both post-exit-tracking whitelists (live reg 4238 + recovery 751) → appears as its own row in Post-Exit Regret Deep Dive.
+3. **ATR-HIGH multiplier (LONG)** (`atr_high_mult_long_enabled=true`, ATR>1.1 → inv ×2.0). New `_lookup_atr_multiplier` dimensional candidate (max-wins, **pattern-blocked** so 2× stays off C-pattern/DOA high-ATR longs like INJ, hard-capped 2×). Note: near-neutral on the batch (doubles INJ/STO losers ≈ +$13 net) — operator accepted; tight revert gate.
+4. *(Fast-exit 0.20%/5min — DROPPED.)* Operator chose fix-TP-only after I flagged FAST_EXIT/PATTERN_FIXED_TP are profit-LOCKS in the engine, not loss-cuts. The earlier "+$1,040 modeled" assumed fast-exit cut DOA longs — WRONG; corrected realistic batch ≈ breakeven, chase-driven.
+5. **Remove gvol capitulation override (SHORT)** (`global_volume_max_short_capitulation_override_enabled=false`). New master toggle; when off, high-GV shorts always blocked regardless of BTC capitulation. **No-op unless `global_volume_max_short>0`** (cap currently disabled) — flagged in config + UI. $0 effect on this batch (no capitulation event Jun 3–5; the override's historical losers were May-27 / 7-pool).
+6. **ETH → no-trade (track-only)** (`no_trade_pairs="BTCUSDT,ETHUSDT"`). ETH stays visible/scanned, entries blocked (counter PAIR_NO_TRADE). Evidence: ETH shorts −$230 this batch (3 trades, squeezed on the bounce) AND −$230 prior batch — recurring squeeze pair. Track-only (not blacklist) so the would-be record stays observable.
+
+**Corrected expectation (stated to operator):** full stack ≈ breakeven on the batch (chase −$853 does the real work; exit caps reduce give-back on the few low-ATR winners; 2× ATR neutral; gvol-removal $0; ETH-track +$230). NOT the earlier +$1,040.
+
+**REVERT GATES (locked):**
+- **ATR-HIGH 2× LONG:** drop to 1.0× if Total$<0 on N≥5 fresh ATR>1.1 longs.
+- **ATR-LOW Fixed TP:** watch the `ATR_FIXED_TP L1` row in Post-Exit Regret — if avg Post-Peak is high (cohort kept running after the cap), 0.25% is too tight → raise/disable. If Post-Peak ≈ 0, lock is correct.
+- **Chase ON:** keep while would-be-blocked LONGs run ≤50% WR; the Jun-4 re-enable gate is now resolved (re-enabled).
+- **gvol override removed:** re-enable only if would-be-passed capitulation shorts (high-GV + BTC RSI<30 & slope<0) show ≥55% WR on N≥6 fresh.
+- **ETH no-trade:** revisit if ETH (either side) would-have-won ≥55% WR on N≥8 fresh while track-only.
+
+**Pools:** added the 60 batch trades to the pool. **`dedupe_pool_7batches_may26-jun2.csv` (222) renamed → `dedupe_pool_8batches_may26-jun5.csv` (282, May26→Jun5, 164L/118S)** (batch aligned to the 196-col schema). `dedupe_pool_FULL.csv` rebuilt → 1,193 closed (Apr28→Jun5). Batch text report saved to `reports/batch_report_2026-06-05.txt`.

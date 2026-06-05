@@ -4578,6 +4578,37 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Closes trade immediately at the first tick where P&L reaches threshold WITHIN the window from open. Fires FIRST in the exit chain (wins against EMA13_CROSS / trailing / handoffs). Close reason: <code class="text-violet-300">FAST_EXIT L1</code>. <span class="text-amber-400">Live behavior differs from the Fast-Exit Counterfactual table:</span> the table uses peak-time as proxy (conservative); live fires on first qualifying tick → expect SMALLER locked profits than the counterfactual implied on big peakers. Validates Post-Exit Regret tracking (whitelist updated).</p>
                         </div>
+                        <div class="md:col-span-2 border border-emerald-500/20 rounded p-2">
+                            <label class="block text-sm text-emerald-400 mb-2">ATR-Split LONG treatment <span class="text-xs text-gray-400 font-normal">(Jun 5 — batch 6-05: ATR = runner-potential. Low-ATR = pop-and-fade → lock TP; high-ATR = runners → 2×)</span></label>
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <label class="flex items-center cursor-pointer" title="LONG only: when entry ATR% < the max, exit at the fixed TP%. Profit-LOCK only — never cuts a losing/DOA trade. Close reason ATR_FIXED_TP L1.">
+                                    <input type="checkbox" id="config-atr-low-fixed-tp-enabled" class="mr-1">
+                                    <span class="text-sm text-gray-300">Low-ATR Fixed TP</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">ATR &lt;
+                                    <input type="number" step="0.01" min="0" id="config-atr-low-fixed-tp-atr-max" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.1">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">TP ≥
+                                    <input type="number" step="0.01" min="0" id="config-atr-low-fixed-tp-pct" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.25">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                            </div>
+                            <div class="flex items-center gap-3 flex-wrap mt-2">
+                                <label class="flex items-center cursor-pointer" title="LONG only: when entry ATR% > the min, multiply investment. Dimensional candidate — BLOCKED by any pattern-cell match (keeps 2× off C-pattern/DOA longs). Clamped by the inv hard cap.">
+                                    <input type="checkbox" id="config-atr-high-mult-enabled" class="mr-1">
+                                    <span class="text-sm text-gray-300">High-ATR Multiplier</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">ATR &gt;
+                                    <input type="number" step="0.01" min="0" id="config-atr-high-mult-atr-min" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.1">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">inv ×
+                                    <input type="number" step="0.1" min="0" id="config-atr-high-mult-inv" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2.0">
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">LONG-only ATR split. Low-ATR (no runners) → lock the pop at TP. High-ATR (runner cohort) → 2× size. Revert gate: drop the 2× if Total$&lt;0 on N≥5 fresh ATR&gt;min longs.</p>
+                        </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Fast Exit L2 <span class="text-xs text-violet-400 font-normal">(May 19 — slow-climber tier between L1 and trailing)</span></label>
                             <div class="flex items-center gap-4 flex-wrap">
@@ -4938,6 +4969,9 @@
                                 <input type="number" id="config-global-vol-max-short-cap-slope" step="0.01" class="bg-white/5 border border-amber-500/30 rounded px-2 py-1 text-white text-xs w-16" value="0" title="Allow SHORT if BTC EMA20 slope is below this (negative = falling)">
                                 <span class="text-xs text-gray-500 ml-1">AND GV ≤</span>
                                 <input type="number" id="config-global-vol-max-short-cap-gv-cap" step="0.1" min="0" class="bg-white/5 border border-amber-500/30 rounded px-2 py-1 text-white text-xs w-16" value="0" title="GV CAP on capitulation override (May 27): even with capitulation, block SHORT if GV exceeds this. 0 = disabled. Today TON SHORT at GV 5.24 + capitulation = -$232.">
+                                <label class="text-xs text-amber-400 ml-3 flex items-center" title="Jun 5: master toggle. UNCHECKED = REMOVE the override entirely — high-GV SHORTs are always blocked regardless of capitulation. No-op unless Max S > 0.">
+                                    <input type="checkbox" id="config-global-vol-max-short-cap-override-enabled" class="mr-1" checked> Override ON
+                                </label>
                             </div>
                             <p class="text-xs text-cyan-400 mt-3" title="Intersection rescue clause (May 10 evening). When Global Vol Filter would block, override and ALLOW the trade if pair's absolute 24h USD volume is at or above this threshold. Large-cap pairs can sustain their own momentum even in quiet global markets. 0 = disabled.">📊 Rescue from Global Vol block if Pair Vol ≥</p>
                             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
@@ -8515,7 +8549,7 @@
             lines.push(`  Macro Trend Filter: ${th.macro_trend_filter_enabled}  |  BTC Global: ${th.btc_global_filter_enabled}  |  Neutral Mode: ${th.macro_trend_neutral_mode}`);
             lines.push(`  BTC RSI L: ${th.btc_rsi_min_long||0}-${th.btc_rsi_max_long||100}  |  BTC RSI S: ${th.btc_rsi_min_short||0}-${th.btc_rsi_max_short||100}  |  BTC ADX L: ${th.btc_adx_min_long||0}-${th.btc_adx_max_long||100}  |  BTC ADX S: ${th.btc_adx_min_short||0}-${th.btc_adx_max_short||100}  |  ADX Dir L: ${th.btc_adx_dir_long||'both'}  |  ADX Dir S: ${th.btc_adx_dir_short||'both'}`);
             lines.push(`  Pair ADX Dir L: ${th.adx_dir_long||'both'}  |  Pair ADX Dir S: ${th.adx_dir_short||'both'}`);
-            lines.push(`  Global Vol Filter: ${th.global_volume_filter_enabled}  |  Min L: ${th.global_volume_threshold_long||0.95}  |  Min S: ${th.global_volume_threshold_short||0}  |  Max S: ${th.global_volume_max_short||0} (override: BTC RSI<${th.global_volume_max_short_capitulation_rsi||30} AND slope<${th.global_volume_max_short_capitulation_slope||0})  |  Lookback: ${th.global_volume_lookback_bars||48} bars`);
+            lines.push(`  Global Vol Filter: ${th.global_volume_filter_enabled}  |  Min L: ${th.global_volume_threshold_long||0.95}  |  Min S: ${th.global_volume_threshold_short||0}  |  Max S: ${th.global_volume_max_short||0} (capitulation override: ${th.global_volume_max_short_capitulation_override_enabled === false ? 'REMOVED' : 'ON'} — BTC RSI<${th.global_volume_max_short_capitulation_rsi||30} AND slope<${th.global_volume_max_short_capitulation_slope||0})  |  Lookback: ${th.global_volume_lookback_bars||48} bars`);
             lines.push(`  Pair Vol Filter: ${th.pair_volume_filter_enabled}  |  Thresh L: ${th.pair_volume_threshold_long||1.10}  |  Thresh S: ${th.pair_volume_threshold_short||1.10}  |  Lookback: ${th.pair_volume_lookback_bars||20} bars`);
             const _rL = th.pair_volume_usd_rescue_long || 0;
             const _rS = th.pair_volume_usd_rescue_short || 0;
@@ -8570,6 +8604,7 @@
             lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
             lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  |  ATR× ${th.fast_exit_l1_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l1_atr_floor_cap_pct ?? 0.60}%  (eff = min(cap, max(fixed, ATR×mult)))`);
+            lines.push(`  ATR-Split LONG (Jun 5):  Low-ATR Fixed TP: ${th.atr_low_fixed_tp_long_enabled ? 'ON' : 'OFF'} (ATR<${th.atr_low_fixed_tp_atr_max ?? 1.1}% → TP ≥ ${th.atr_low_fixed_tp_pct ?? 0.25}%)  |  High-ATR Mult: ${th.atr_high_mult_long_enabled ? 'ON' : 'OFF'} (ATR>${th.atr_high_mult_atr_min ?? 1.1}% → inv ×${th.atr_high_mult_inv ?? 2.0}, pattern-blocked, hard-capped)`);
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
@@ -16159,6 +16194,14 @@
                 if (document.getElementById('config-global-vol-max-short-cap-gv-cap')) {
                     document.getElementById('config-global-vol-max-short-cap-gv-cap').value = config.thresholds.global_volume_max_short_capitulation_gv_cap !== undefined ? config.thresholds.global_volume_max_short_capitulation_gv_cap : 0;
                 }
+                { const _ov=document.getElementById('config-global-vol-max-short-cap-override-enabled'); if(_ov) _ov.checked = config.thresholds.global_volume_max_short_capitulation_override_enabled !== undefined ? !!config.thresholds.global_volume_max_short_capitulation_override_enabled : true; }
+                // Jun 5 — ATR-split LONG treatment
+                { const _e=document.getElementById('config-atr-low-fixed-tp-enabled'); if(_e) _e.checked = !!config.thresholds.atr_low_fixed_tp_long_enabled; }
+                { const _e=document.getElementById('config-atr-low-fixed-tp-atr-max'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_atr_max !== undefined ? config.thresholds.atr_low_fixed_tp_atr_max : 1.1; }
+                { const _e=document.getElementById('config-atr-low-fixed-tp-pct'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_pct !== undefined ? config.thresholds.atr_low_fixed_tp_pct : 0.25; }
+                { const _e=document.getElementById('config-atr-high-mult-enabled'); if(_e) _e.checked = !!config.thresholds.atr_high_mult_long_enabled; }
+                { const _e=document.getElementById('config-atr-high-mult-atr-min'); if(_e) _e.value = config.thresholds.atr_high_mult_atr_min !== undefined ? config.thresholds.atr_high_mult_atr_min : 1.1; }
+                { const _e=document.getElementById('config-atr-high-mult-inv'); if(_e) _e.value = config.thresholds.atr_high_mult_inv !== undefined ? config.thresholds.atr_high_mult_inv : 2.0; }
                 if (document.getElementById('config-btc-adx-block-min-short')) {
                     document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
                 }
@@ -17391,6 +17434,13 @@
                     global_volume_max_short_capitulation_rsi: safeFloat(document.getElementById('config-global-vol-max-short-cap-rsi').value),
                     global_volume_max_short_capitulation_slope: safeFloat(document.getElementById('config-global-vol-max-short-cap-slope').value),
                     global_volume_max_short_capitulation_gv_cap: safeFloat(document.getElementById('config-global-vol-max-short-cap-gv-cap')?.value || 0),
+                    global_volume_max_short_capitulation_override_enabled: (document.getElementById('config-global-vol-max-short-cap-override-enabled')||{checked:true}).checked,
+                    atr_low_fixed_tp_long_enabled: (document.getElementById('config-atr-low-fixed-tp-enabled')||{}).checked || false,
+                    atr_low_fixed_tp_atr_max: safeFloat(document.getElementById('config-atr-low-fixed-tp-atr-max')?.value || 1.1),
+                    atr_low_fixed_tp_pct: safeFloat(document.getElementById('config-atr-low-fixed-tp-pct')?.value || 0.25),
+                    atr_high_mult_long_enabled: (document.getElementById('config-atr-high-mult-enabled')||{}).checked || false,
+                    atr_high_mult_atr_min: safeFloat(document.getElementById('config-atr-high-mult-atr-min')?.value || 1.1),
+                    atr_high_mult_inv: safeFloat(document.getElementById('config-atr-high-mult-inv')?.value || 2.0),
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
                     btc_rsi_band_atr_block_long: (document.getElementById('config-btc-rsi-band-atr-block-long')?.value || '').trim(),

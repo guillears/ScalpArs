@@ -497,6 +497,27 @@ class SignalThresholds(BaseModel):
     #   "Caps for losers" — long side has no gross edge, so amplifying it is backwards.
     #   REVERT GATE: restore 2x only if Ext0.4-0.6_L reaches N>=15 fresh AND Total$>0.
     extension_multiplier_rules: List = []
+    # ATR-SPLIT LONG treatment (Jun 5, 2026 — see DECISION_LOG). Batch 6-05 autopsy:
+    # ATR = runner-potential / signal-quality on the LONG side. High-ATR longs reach
+    # the trailing arm (~80% vs ~30%), peak ~+0.91% vs +0.38%, 0% DOA vs 17-19%; all 6
+    # RUNNER_TRAIL longs were ATR≥1.0. Low-ATR longs "pop and fade" — no runners there,
+    # so cap the give-back with a fixed TP. Two complementary levers, LONG-only:
+    #   (a) ATR-HIGH multiplier: entry_atr_pct > atr_min  → inv × atr_high_mult_inv.
+    #       Implemented as a dimensional multiplier candidate (max() vs other dims,
+    #       BLOCKED by any pattern-cell match — "pattern is the conviction signal";
+    #       this also keeps 2× off C-pattern/DOA high-ATR longs like INJ). Clamped by
+    #       rsi_adx_multiplier_hard_cap. Ship 2.0× (operator-directed, batch-derived;
+    #       carries the standard Total$<0 on N≥5 revert gate).
+    #   (b) ATR-LOW fixed TP: entry_atr_pct < atr_max AND pnl_pct ≥ tp_pct → exit
+    #       "ATR_FIXED_TP L1" (a profit-LOCK; does NOT cut DOA losers — those ride to
+    #       stop). Locks the pop on the cohort that has no runners.
+    # REVERT GATE: drop atr_high mult to 1.0× if Total$<0 on N≥5 fresh ATR>atr_min longs.
+    atr_high_mult_long_enabled: bool = False
+    atr_high_mult_atr_min: float = 1.1     # entry_atr_pct strictly greater than this = "runner" cohort
+    atr_high_mult_inv: float = 2.0         # investment multiplier for the runner cohort (clamped by hard cap)
+    atr_low_fixed_tp_long_enabled: bool = False
+    atr_low_fixed_tp_atr_max: float = 1.1  # entry_atr_pct strictly less than this = "pop-and-fade" cohort
+    atr_low_fixed_tp_pct: float = 0.25     # LONG exits at this pnl% (profit-lock; never cuts a losing trade)
     # BTC 1h Slope × BTC ADX Multiplier Rules (May 24 evening, 2026) — NEW dimension.
     # Sister to btc_rsi_adx_multiplier (existing) and extension_multiplier (today).
     # JSON-list format (not the string-CSV format used by btc_rsi_adx_multiplier_*)
@@ -691,6 +712,13 @@ class SignalThresholds(BaseModel):
     # blow-off-the-top volume that overpowers capitulation continuation. 0 = disabled (legacy behavior).
     # Default 2.0 = override fires only when GlobalVol ≤ 2.0; SHORT blocked when GV > 2 regardless.
     global_volume_max_short_capitulation_gv_cap: float = 0.0
+    # Jun 5, 2026 — master toggle to REMOVE the SHORT capitulation override entirely.
+    # When False, the override never fires: a SHORT at GlobalVol > global_volume_max_short
+    # is ALWAYS blocked, regardless of BTC capitulation (RSI/slope). Rationale: the override
+    # let through violent-spike SHORTs (the May-27 TON/FET/UNI/AVAX cohort) that bounced.
+    # NOTE: this is a no-op unless global_volume_max_short > 0 (the cap must be active for
+    # there to be an override to remove). Default True = legacy behavior (override active).
+    global_volume_max_short_capitulation_override_enabled: bool = True
     pair_volume_filter_enabled: bool = False  # Gate trades when per-pair volume is below its own average
     pair_volume_threshold_long: float = 1.10  # Min pair volume ratio to allow LONGs
     pair_volume_threshold_short: float = 1.10  # Min pair volume ratio to allow SHORTs

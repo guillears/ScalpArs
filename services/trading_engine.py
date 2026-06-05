@@ -749,6 +749,7 @@ class TradingEngine:
                     _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or
                     _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or
                     _reason_base.startswith("FAST_EXIT") or
+                    _reason_base.startswith("ATR_FIXED_TP") or
                     _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
                 continue
 
@@ -1678,6 +1679,38 @@ class TradingEngine:
         names = '+'.join(r.get('name', '?') for r in matches)
         label = f"EXT_{names}"
         return inv, lev, label
+
+    def _lookup_atr_multiplier(
+        self,
+        direction: str,
+        atr_pct: Optional[float],
+    ) -> Tuple[float, float, Optional[str]]:
+        """ATR-HIGH multiplier (Jun 5, 2026) — LONG-only "runner cohort" sizing.
+
+        When enabled and direction is LONG and entry_atr_pct > atr_high_mult_atr_min,
+        returns (atr_high_mult_inv, 1.0, "ATR_HI"). ATR is runner-potential on the
+        LONG side (high-ATR longs reach the trailing arm and carry the runners).
+
+        Like every other dimensional multiplier, this is a CANDIDATE that competes
+        via max() and is BLOCKED by any pattern-cell match (pattern is the conviction
+        signal — keeps the 2× off C-pattern/DOA high-ATR longs). Clamped by the
+        existing rsi_adx_multiplier_hard_cap downstream.
+
+        Returns (1.0, 1.0, None) on no match / disabled / missing ATR.
+        """
+        try:
+            _th = config.trading_config.thresholds
+            if not getattr(_th, 'atr_high_mult_long_enabled', False):
+                return 1.0, 1.0, None
+            if direction != "LONG" or atr_pct is None:
+                return 1.0, 1.0, None
+            atr_min = float(getattr(_th, 'atr_high_mult_atr_min', 1.1))
+            if atr_pct > atr_min:
+                inv = float(getattr(_th, 'atr_high_mult_inv', 2.0))
+                return inv, 1.0, "ATR_HI"
+        except (ValueError, TypeError):
+            return 1.0, 1.0, None
+        return 1.0, 1.0, None
 
     def _lookup_btc_1h_slope_btc_adx_multiplier(
         self,
@@ -2823,6 +2856,8 @@ class TradingEngine:
             _current_btc_1h_slope,
             entry_btc_adx,
         )
+        # ATR-HIGH multiplier (Jun 5) — LONG runner cohort (entry_atr_pct > atr_min).
+        _atr_inv, _atr_lev, _atr_src = self._lookup_atr_multiplier(direction, entry_atr_pct)
 
         # Conflict resolution (May 21 — extended for "both" mode):
         # When pair-level AND BTC-level cells both match, the HIGHER candidate wins.
@@ -2858,6 +2893,7 @@ class TradingEngine:
                 (_btc_inv, _btc_lev, _btc_src),
                 (_ext_inv, _ext_lev, _ext_src),
                 (_btc1h_inv, _btc1h_lev, _btc1h_src),
+                (_atr_inv, _atr_lev, _atr_src),
             ]
             _winner = max(_candidates, key=lambda c: _score_candidate(c[0], c[1]))
             cell_mult, cell_lev_mult, cell_src = _winner
@@ -4199,7 +4235,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -6601,7 +6637,10 @@ class TradingEngine:
                         # the override's protective rationale. If gv_cap > 0, override only fires
                         # when GlobalVol ≤ gv_cap. SHORT blocked when GV > gv_cap regardless of capitulation.
                         _cap_gv_cap = getattr(_th, 'global_volume_max_short_capitulation_gv_cap', 0.0)
-                        _cap_match = (btc_rsi is not None and btc_ema20_slope_pct is not None
+                        # Jun 5 2026: master toggle — when disabled, the override never fires
+                        # (high-GV SHORTs always blocked, no capitulation rescue).
+                        _cap_override_enabled = getattr(_th, 'global_volume_max_short_capitulation_override_enabled', True)
+                        _cap_match = (_cap_override_enabled and btc_rsi is not None and btc_ema20_slope_pct is not None
                                       and btc_rsi < _cap_rsi_thresh and btc_ema20_slope_pct < _cap_slope_thresh)
                         _gv_cap_exceeded = (_cap_gv_cap > 0 and _global_volume_ratio > _cap_gv_cap)
                         if _cap_match and not _gv_cap_exceeded:
@@ -7055,6 +7094,42 @@ class TradingEngine:
                                         _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
                     except Exception as e:
                         logger.error(f"[PATTERN_FIXED_EXIT] Error closing {pair}: {e}")
+                    continue  # Trade closed; skip remaining checks
+
+            # ════════════════════════════════════════════════════════════════
+            # ATR-LOW Fixed TP (Jun 5, 2026) — LONG "pop-and-fade" cohort lock.
+            # When enabled, a LONG opened on a low-ATR pair (entry_atr_pct <
+            # atr_low_fixed_tp_atr_max) exits the moment pnl_pct ≥ tp_pct. This is
+            # a profit-LOCK only — it can never fire on a losing/DOA trade (those
+            # ride to their stop). Low-ATR longs have no runners (batch 6-05 autopsy),
+            # so we lock the pop and forgo the (non-existent) tail. Fires before
+            # Fast Exit / trailing / EMA13. Close reason "ATR_FIXED_TP L1".
+            # ════════════════════════════════════════════════════════════════
+            _atr_tp_enabled = getattr(config.trading_config.thresholds, 'atr_low_fixed_tp_long_enabled', False)
+            if (_atr_tp_enabled and direction == "LONG"
+                    and not order_info.get('_closing_in_progress')):
+                _atr_e = order_info.get('entry_atr_pct')
+                _atr_tp_max = float(getattr(config.trading_config.thresholds, 'atr_low_fixed_tp_atr_max', 1.1))
+                _atr_tp_pct = float(getattr(config.trading_config.thresholds, 'atr_low_fixed_tp_pct', 0.25))
+                if _atr_e is not None and _atr_e < _atr_tp_max and pnl_pct >= _atr_tp_pct:
+                    logger.warning(
+                        f"[ATR_FIXED_TP] {pair} LONG: pnl={pnl_pct:.4f}% >= tp={_atr_tp_pct}% "
+                        f"(entry_atr={_atr_e:.3f} < {_atr_tp_max}) — CLOSING NOW!"
+                    )
+                    order_info['_closing_in_progress'] = True
+                    try:
+                        async with AsyncSessionLocal() as db:
+                            result = await db.execute(
+                                select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                            )
+                            order = result.scalar_one_or_none()
+                            if order:
+                                closed = await self.close_position(db, order, current_price, "ATR_FIXED_TP L1")
+                                if closed:
+                                    async with _cache_lock:
+                                        _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                    except Exception as e:
+                        logger.error(f"[ATR_FIXED_TP] Error closing {pair}: {e}")
                     continue  # Trade closed; skip remaining checks
 
             # ════════════════════════════════════════════════════════════════

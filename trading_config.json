@@ -17,7 +17,7 @@
   "paper_bnb_initial_usd": 500.0,
   "trading_pairs_limit": 50,
   "pair_blacklist": "BNBUSDT,ENAUSDT,FILUSDT,MUSDT,RAVEUSDT,TRUMPUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT",
-  "no_trade_pairs": "BTCUSDT",
+  "no_trade_pairs": "BTCUSDT,ETHUSDT",
   "new_listing_filter_days": 180,
   "alpha_subtype_filter_enabled": true,
   "investment": {
@@ -74,7 +74,7 @@
     "btc_1h_slope_max_short": 0.1,
     "btc_1h_slope_min_long": 0.0,
     "btc_1h_slope_min_short": -0.6,
-    "evo_chase_filter_long_enabled": false,
+    "evo_chase_filter_long_enabled": true,
     "evo_chase_filter_short_enabled": false,
     "evo_chase_window_min": 30,
     "min_adx_delta_long": 0.0,
@@ -383,7 +383,14 @@
     "btc_rsi_band_atr_block_short": "",
     "pair_atr_min_long": 0.25,
     "pair_atr_min_short": 0.25,
-    "pair_atr_filter_enabled": true
+    "pair_atr_filter_enabled": true,
+    "atr_high_mult_long_enabled": true,
+    "atr_high_mult_atr_min": 1.1,
+    "atr_high_mult_inv": 2.0,
+    "atr_low_fixed_tp_long_enabled": true,
+    "atr_low_fixed_tp_atr_max": 1.1,
+    "atr_low_fixed_tp_pct": 0.25,
+    "global_volume_max_short_capitulation_override_enabled": false
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

@@ -384,13 +384,20 @@
     "pair_atr_min_long": 0.25,
     "pair_atr_min_short": 0.25,
     "pair_atr_filter_enabled": true,
-    "atr_high_mult_long_enabled": true,
-    "atr_high_mult_atr_min": 1.1,
-    "atr_high_mult_inv": 2.0,
     "atr_low_fixed_tp_long_enabled": true,
     "atr_low_fixed_tp_atr_max": 1.1,
     "atr_low_fixed_tp_pct": 0.25,
-    "global_volume_max_short_capitulation_override_enabled": false
+    "global_volume_max_short_capitulation_override_enabled": false,
+    "atr_multiplier_rules": [
+      {
+        "name": "Runner",
+        "direction": "LONG",
+        "atr_min": 1.1,
+        "atr_max": 99.0,
+        "inv_mult": 2.0,
+        "lev_mult": 1.0
+      }
+    ]
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

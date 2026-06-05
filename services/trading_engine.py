@@ -1685,32 +1685,51 @@ class TradingEngine:
         direction: str,
         atr_pct: Optional[float],
     ) -> Tuple[float, float, Optional[str]]:
-        """ATR-HIGH multiplier (Jun 5, 2026) — LONG-only "runner cohort" sizing.
+        """ATR Multiplier (Jun 5, 2026) — entry-ATR sizing dimension.
 
-        When enabled and direction is LONG and entry_atr_pct > atr_high_mult_atr_min,
-        returns (atr_high_mult_inv, 1.0, "ATR_HI"). ATR is runner-potential on the
-        LONG side (high-ATR longs reach the trailing arm and carry the runners).
+        Walks `atr_multiplier_rules` and returns (inv_mult, lev_mult, source_label)
+        for the matching cell. Rule: {name, direction, atr_min, atr_max, inv_mult,
+        lev_mult}. Matching: direction matches AND atr_pct in [atr_min, atr_max).
+        ATR is runner-potential on the LONG side (high-ATR longs reach the trailing
+        arm and carry the runners).
 
-        Like every other dimensional multiplier, this is a CANDIDATE that competes
-        via max() and is BLOCKED by any pattern-cell match (pattern is the conviction
-        signal — keeps the 2× off C-pattern/DOA high-ATR longs). Clamped by the
-        existing rsi_adx_multiplier_hard_cap downstream.
+        Conflict resolution: HIGHER inv_mult wins across matching rules; combined
+        names joined as "ATR_{name1}+{name2}". Like every dimensional multiplier this
+        is a CANDIDATE (max-wins vs other dims) and is BLOCKED by any pattern-cell
+        match (pattern is the conviction signal — keeps the boost off C-pattern/DOA
+        high-ATR longs). Clamped by rsi_adx_multiplier_hard_cap/_lev_hard_cap downstream.
 
-        Returns (1.0, 1.0, None) on no match / disabled / missing ATR.
+        Returns (1.0, 1.0, None) on no match / missing ATR.
         """
         try:
-            _th = config.trading_config.thresholds
-            if not getattr(_th, 'atr_high_mult_long_enabled', False):
-                return 1.0, 1.0, None
-            if direction != "LONG" or atr_pct is None:
-                return 1.0, 1.0, None
-            atr_min = float(getattr(_th, 'atr_high_mult_atr_min', 1.1))
-            if atr_pct > atr_min:
-                inv = float(getattr(_th, 'atr_high_mult_inv', 2.0))
-                return inv, 1.0, "ATR_HI"
-        except (ValueError, TypeError):
+            rules = getattr(config.trading_config.thresholds, 'atr_multiplier_rules', []) or []
+        except Exception:
             return 1.0, 1.0, None
-        return 1.0, 1.0, None
+        if not rules or atr_pct is None:
+            return 1.0, 1.0, None
+
+        matches = []
+        for r in rules:
+            try:
+                if r.get('direction') != direction:
+                    continue
+                atr_min = float(r.get('atr_min', -999))
+                atr_max = float(r.get('atr_max', 999))
+                if not (atr_min <= atr_pct < atr_max):
+                    continue
+                matches.append(r)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[ATR_MULT] Failed to parse rule {r}: {e}, skipping")
+                continue
+
+        if not matches:
+            return 1.0, 1.0, None
+
+        best = max(matches, key=lambda r: float(r.get('inv_mult', 1.0)))
+        inv = float(best.get('inv_mult', 1.0))
+        lev = float(best.get('lev_mult', 1.0))
+        names = '+'.join(r.get('name', '?') for r in matches)
+        return inv, lev, f"ATR_{names}"
 
     def _lookup_btc_1h_slope_btc_adx_multiplier(
         self,

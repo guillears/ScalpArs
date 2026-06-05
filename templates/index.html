@@ -1079,6 +1079,44 @@
                     <div id="btc1h-mult-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- ATR Multiplier Performance (Jun 5, 2026) — NEW dim -->
+                <div class="mt-6 pt-6 border-t border-emerald-900/40">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">📊 ATR Multiplier Performance</h3>
+                    <p class="text-xs text-gray-500 mb-3">
+                        Per-cell breakdown of the entry-ATR multiplier impact.
+                        Source label = "ATR_{name}" (e.g. "ATR_Runner"). HIGHER inv_mult wins on overlap; pattern-blocked.
+                        Verdict uses ★ WORKING / ⚠ DRAG / ✗ HARMFUL via Δ$ vs baseline. L≥0.20 tracks BE-compatibility.
+                        <span class="text-amber-400">REVERT GATE: drop a cell to 1.0× if Total$&lt;0 on N≥5 fresh.</span>
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Source</th>
+                                    <th class="text-left px-2">Brief</th>
+                                    <th class="text-left px-2">Dir</th>
+                                    <th class="text-right px-2">Inv</th>
+                                    <th class="text-right px-2">Lev</th>
+                                    <th class="text-right px-2">Eff</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Avg P&amp;L%</th>
+                                    <th class="text-right px-2" title="Average intra-trade peak P&amp;L%">AvgPk%</th>
+                                    <th class="text-right px-2">Total$</th>
+                                    <th class="text-right px-2">PF</th>
+                                    <th class="text-right px-2">Δ$ vs BL</th>
+                                    <th class="text-right px-2" title="Losers peaking ≥+0.20% / total losers">L≥0.20</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="atr-mult-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="15" class="py-3 text-center text-gray-500">No ATR multiplier trades yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="atr-mult-perf-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+
                 <!-- EMA13 Strict-Mode Performance (May 8, 2026 — tracks ema13_cross_requires_stack_flip toggle) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🛡️ EMA13 Strict-Mode Performance</h3>
@@ -4579,14 +4617,14 @@
                             <p class="text-xs text-gray-500 mt-1">Closes trade immediately at the first tick where P&L reaches threshold WITHIN the window from open. Fires FIRST in the exit chain (wins against EMA13_CROSS / trailing / handoffs). Close reason: <code class="text-violet-300">FAST_EXIT L1</code>. <span class="text-amber-400">Live behavior differs from the Fast-Exit Counterfactual table:</span> the table uses peak-time as proxy (conservative); live fires on first qualifying tick → expect SMALLER locked profits than the counterfactual implied on big peakers. Validates Post-Exit Regret tracking (whitelist updated).</p>
                         </div>
                         <div class="md:col-span-2 border border-emerald-500/20 rounded p-2">
-                            <label class="block text-sm text-emerald-400 mb-2">ATR-Split LONG treatment <span class="text-xs text-gray-400 font-normal">(Jun 5 — batch 6-05: ATR = runner-potential. Low-ATR = pop-and-fade → lock TP; high-ATR = runners → 2×)</span></label>
+                            <label class="block text-sm text-emerald-400 mb-2">Low-ATR Fixed TP (LONG) <span class="text-xs text-gray-400 font-normal">(Jun 5 — batch 6-05: low-ATR longs are pop-and-fade with no runners → lock the pop)</span></label>
                             <div class="flex items-center gap-3 flex-wrap">
                                 <label class="flex items-center cursor-pointer" title="LONG only: when entry ATR% < the max, exit at the fixed TP%. Profit-LOCK only — never cuts a losing/DOA trade. Close reason ATR_FIXED_TP L1.">
                                     <input type="checkbox" id="config-atr-low-fixed-tp-enabled" class="mr-1">
-                                    <span class="text-sm text-gray-300">Low-ATR Fixed TP</span>
+                                    <span class="text-sm text-gray-300">Enabled — ATR &lt;</span>
                                 </label>
-                                <label class="flex items-center text-sm text-gray-400">ATR &lt;
-                                    <input type="number" step="0.01" min="0" id="config-atr-low-fixed-tp-atr-max" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.1">
+                                <label class="flex items-center text-sm text-gray-400">
+                                    <input type="number" step="0.01" min="0" id="config-atr-low-fixed-tp-atr-max" class="w-16 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.1">
                                     <span class="ml-1 text-xs text-gray-500">%</span>
                                 </label>
                                 <label class="flex items-center text-sm text-gray-400">TP ≥
@@ -4594,20 +4632,7 @@
                                     <span class="ml-1 text-xs text-gray-500">%</span>
                                 </label>
                             </div>
-                            <div class="flex items-center gap-3 flex-wrap mt-2">
-                                <label class="flex items-center cursor-pointer" title="LONG only: when entry ATR% > the min, multiply investment. Dimensional candidate — BLOCKED by any pattern-cell match (keeps 2× off C-pattern/DOA longs). Clamped by the inv hard cap.">
-                                    <input type="checkbox" id="config-atr-high-mult-enabled" class="mr-1">
-                                    <span class="text-sm text-gray-300">High-ATR Multiplier</span>
-                                </label>
-                                <label class="flex items-center text-sm text-gray-400">ATR &gt;
-                                    <input type="number" step="0.01" min="0" id="config-atr-high-mult-atr-min" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.1">
-                                    <span class="ml-1 text-xs text-gray-500">%</span>
-                                </label>
-                                <label class="flex items-center text-sm text-gray-400">inv ×
-                                    <input type="number" step="0.1" min="0" id="config-atr-high-mult-inv" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="2.0">
-                                </label>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">LONG-only ATR split. Low-ATR (no runners) → lock the pop at TP. High-ATR (runner cohort) → 2× size. Revert gate: drop the 2× if Total$&lt;0 on N≥5 fresh ATR&gt;min longs.</p>
+                            <p class="text-xs text-gray-500 mt-1">Profit-lock on the no-runner cohort (never cuts a DOA loser). <span class="text-emerald-400">The High-ATR runner <strong>multiplier</strong> now lives in the Multiplier section → ATR Multiplier Rules (so it can carry leverage + a performance table).</span></p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Fast Exit L2 <span class="text-xs text-violet-400 font-normal">(May 19 — slow-climber tier between L1 and trailing)</span></label>
@@ -5729,6 +5754,35 @@
                             </table>
                         </div>
                         <button type="button" onclick="addBtc1hMultRow()" class="mt-2 text-xs text-cyan-400 hover:text-cyan-300">+ Add rule</button>
+                    </div>
+
+                    <!-- ATR Multiplier Rules (Jun 5, 2026) — NEW dimension -->
+                    <div class="mt-4 p-4 bg-emerald-900/10 border border-emerald-500/30 rounded">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-emerald-300 font-semibold">📊 ATR Multiplier Rules</span>
+                            <span class="text-xs text-gray-500">Entry ATR sizing (`entry_atr_pct`) — runner-potential</span>
+                        </div>
+                        <p class="text-xs text-gray-400 mb-3">
+                            Each rule applies a multiplier when the trade's entry ATR% ∈ [atr_min, atr_max).
+                            <span class="text-emerald-300">HIGHER wins</span> on overlap with other multiplier dims;
+                            <span class="text-amber-300">BLOCKED by any pattern-cell match</span> (keeps the boost off C-pattern/DOA longs).
+                            Hard caps reuse RSI×ADX caps above. Batch 6-05: high-ATR longs are the runner cohort (reach the trailing arm ~80% vs ~30%).
+                        </p>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead><tr class="text-gray-500">
+                                    <th class="text-left px-1">Name</th>
+                                    <th class="text-left px-1">Direction</th>
+                                    <th class="text-left px-1" title="Min entry ATR%">ATR Min</th>
+                                    <th class="text-left px-1" title="Max entry ATR% (exclusive)">ATR Max</th>
+                                    <th class="text-left px-1">Inv Mult</th>
+                                    <th class="text-left px-1">Lev Mult</th>
+                                    <th></th>
+                                </tr></thead>
+                                <tbody id="atr-mult-rules-body"></tbody>
+                            </table>
+                        </div>
+                        <button type="button" onclick="addAtrMultRow()" class="mt-2 text-xs text-emerald-400 hover:text-emerald-300">+ Add rule</button>
                     </div>
 
                     <div class="mt-3 mb-2 px-4">
@@ -7343,6 +7397,25 @@
                 }
             }
 
+            // ATR Multiplier Performance (Jun 5)
+            const _amp1 = perf.atr_multiplier_performance || {};
+            const _ampRows1 = _amp1.rules || [];
+            if (_ampRows1.length) {
+                lines.push(`\n${hr2}`);
+                lines.push(`## ATR Multiplier Performance\n`);
+                lines.push(`${'Source'.padEnd(14)} ${'Dir'.padEnd(6)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'AvgPk%'.padEnd(9)} ${'Total$'.padEnd(11)} ${'PF'.padEnd(6)} ${'Δ$ vs BL'.padEnd(10)} ${'L≥0.20'.padEnd(8)} ${'Verdict'}`);
+                for (const r of _ampRows1) {
+                    const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                    const dvbStr = (r.n === 0 || (r.effective_multiplier || 1.0) === 1.0) ? '—' : (r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2);
+                    const lk20 = `${r.loser_peak_ge_20_count || 0}/${r.loser_count || 0}`;
+                    lines.push(`${(r.source || '').padEnd(14)} ${(r.direction || '').padEnd(6)} ${((r.inv_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.lev_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.effective_multiplier || 1.0).toFixed(2)+'x').padEnd(7)} ${String(r.n || 0).padEnd(5)} ${(r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—').padEnd(7)} ${(r.n > 0 ? ((r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%') : '—').padEnd(10)} ${(r.n > 0 ? ((r.avg_peak_pct >= 0 ? '+' : '') + (r.avg_peak_pct || 0).toFixed(3) + '%') : '—').padEnd(9)} ${(r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—').padEnd(11)} ${(r.n > 0 ? pfStr : '—').padEnd(6)} ${dvbStr.padEnd(10)} ${lk20.padEnd(8)} ${r.verdict || ''}`);
+                }
+                if (_amp1.summary) {
+                    const s = _amp1.summary;
+                    lines.push(`\nBoosted: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)}`);
+                }
+            }
+
             // Entry Extension / Late Entry Risk (May 13 PM)
             const _ext1 = perf.ema13_extension_performance || {};
             const _extPvol1 = perf.ema13_extension_pvol_crosstab || {};
@@ -8604,7 +8677,8 @@
             lines.push(`  RSI Handoff (Phase 1d-ExitTest): ${th.rsi_handoff_active !== undefined ? th.rsi_handoff_active : false}  |  Handoff at L≥${th.rsi_handoff_level !== undefined ? th.rsi_handoff_level : 3}  (disables trailing past level, uses 2-drop RSI exit)`);
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
             lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  |  ATR× ${th.fast_exit_l1_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l1_atr_floor_cap_pct ?? 0.60}%  (eff = min(cap, max(fixed, ATR×mult)))`);
-            lines.push(`  ATR-Split LONG (Jun 5):  Low-ATR Fixed TP: ${th.atr_low_fixed_tp_long_enabled ? 'ON' : 'OFF'} (ATR<${th.atr_low_fixed_tp_atr_max ?? 1.1}% → TP ≥ ${th.atr_low_fixed_tp_pct ?? 0.25}%)  |  High-ATR Mult: ${th.atr_high_mult_long_enabled ? 'ON' : 'OFF'} (ATR>${th.atr_high_mult_atr_min ?? 1.1}% → inv ×${th.atr_high_mult_inv ?? 2.0}, pattern-blocked, hard-capped)`);
+            lines.push(`  Low-ATR Fixed TP LONG (Jun 5): ${th.atr_low_fixed_tp_long_enabled ? 'ON' : 'OFF'} (ATR<${th.atr_low_fixed_tp_atr_max ?? 1.1}% → TP ≥ ${th.atr_low_fixed_tp_pct ?? 0.25}%)`);
+            { const _ar = th.atr_multiplier_rules || []; lines.push(`  ATR Multiplier Rules (Jun 5): ${_ar.length ? _ar.map(r => `${r.name}[${r.direction} ${r.atr_min}-${r.atr_max}% inv×${r.inv_mult} lev×${r.lev_mult}]`).join('  ') : 'none'}  (pattern-blocked, hard-capped)`); }
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
             lines.push(`  Signal Lost Exit: ${th.signal_lost_exit_enabled}  |  Signal Lost Range: [${th.signal_lost_min_profit}%, ${th.signal_lost_max_profit !== undefined ? th.signal_lost_max_profit : 999}%]`);
@@ -9043,6 +9117,25 @@
                     }
                     if (_bmp2.summary) {
                         const s = _bmp2.summary;
+                        lines.push(`\nBoosted: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)}`);
+                    }
+                }
+
+                // ATR Multiplier Performance (Jun 5) — saved-file export
+                const _amp2 = perf.atr_multiplier_performance || {};
+                const _ampRows2 = _amp2.rules || [];
+                if (_ampRows2.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push(`## ATR Multiplier Performance\n`);
+                    lines.push(`${'Source'.padEnd(14)} ${'Dir'.padEnd(6)} ${'Inv'.padEnd(6)} ${'Lev'.padEnd(6)} ${'Eff'.padEnd(7)} ${'N'.padEnd(5)} ${'WR%'.padEnd(7)} ${'AvgP&L%'.padEnd(10)} ${'AvgPk%'.padEnd(9)} ${'Total$'.padEnd(11)} ${'PF'.padEnd(6)} ${'Δ$ vs BL'.padEnd(10)} ${'L≥0.20'.padEnd(8)} ${'Verdict'}`);
+                    for (const r of _ampRows2) {
+                        const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                        const dvbStr = (r.n === 0 || (r.effective_multiplier || 1.0) === 1.0) ? '—' : (r.delta_vs_baseline_dollars >= 0 ? '+$' : '-$') + Math.abs(r.delta_vs_baseline_dollars).toFixed(2);
+                        const lk20 = `${r.loser_peak_ge_20_count || 0}/${r.loser_count || 0}`;
+                        lines.push(`${(r.source || '').padEnd(14)} ${(r.direction || '').padEnd(6)} ${((r.inv_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.lev_multiplier || 1.0).toFixed(2)+'x').padEnd(6)} ${((r.effective_multiplier || 1.0).toFixed(2)+'x').padEnd(7)} ${String(r.n || 0).padEnd(5)} ${(r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—').padEnd(7)} ${(r.n > 0 ? ((r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%') : '—').padEnd(10)} ${(r.n > 0 ? ((r.avg_peak_pct >= 0 ? '+' : '') + (r.avg_peak_pct || 0).toFixed(3) + '%') : '—').padEnd(9)} ${(r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—').padEnd(11)} ${(r.n > 0 ? pfStr : '—').padEnd(6)} ${dvbStr.padEnd(10)} ${lk20.padEnd(8)} ${r.verdict || ''}`);
+                    }
+                    if (_amp2.summary) {
+                        const s = _amp2.summary;
                         lines.push(`\nBoosted: ${s.boosted_trades_n || 0} trades, uplift ${(s.boosted_uplift_dollars >= 0 ? '+$' : '-$') + Math.abs(s.boosted_uplift_dollars).toFixed(2)}`);
                     }
                 }
@@ -11219,6 +11312,70 @@
                         const s = bmp.summary;
                         const upCls = (s.boosted_uplift_dollars || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         bmSum.innerHTML = `Boosted trades: ${s.boosted_trades_n || 0}, actual ${fmt$(s.boosted_actual_dollars)}, simulated baseline ${fmt$(s.boosted_baseline_dollars)}, uplift <span class="font-semibold ${upCls}">${fmt$(s.boosted_uplift_dollars)}</span>`;
+                    }
+                }
+
+                // ATR Multiplier Performance (Jun 5 — NEW dim)
+                if (data.atr_multiplier_performance) {
+                    const amp = data.atr_multiplier_performance;
+                    const tb = document.getElementById('atr-mult-perf-body');
+                    const fmt$ = (v) => v == null ? '-' : (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                    const rules = amp.rules || [];
+                    if (tb) {
+                        if (!rules.length) {
+                            tb.innerHTML = '<tr><td colspan="15" class="py-3 text-center text-gray-500">No ATR Multiplier rules configured yet — see config panel above</td></tr>';
+                        } else {
+                            tb.innerHTML = rules.map(r => {
+                                const dirCls = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const totalCls = r.total_dollars >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const avgCls = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const dvbCls = r.delta_vs_baseline_dollars > 0 ? 'text-emerald-400'
+                                    : r.delta_vs_baseline_dollars < 0 ? 'text-red-400'
+                                    : 'text-gray-500';
+                                const verdictColor =
+                                    r.verdict.includes('★') ? 'text-emerald-400 font-semibold'
+                                    : r.verdict.includes('✗') ? 'text-red-500'
+                                    : r.verdict.includes('DRAG') ? 'text-red-400'
+                                    : r.verdict.includes('⏳') ? 'text-gray-400 italic'
+                                    : r.verdict.includes('✓') ? 'text-blue-400'
+                                    : r.verdict.includes('Low N') ? 'text-amber-400'
+                                    : 'text-gray-500';
+                                const _multTier = (v) => v >= 2.5 ? 'text-red-400' : v >= 1.5 ? 'text-amber-300' : v === 1.0 ? 'text-gray-500' : 'text-gray-400';
+                                const invColor = _multTier(r.inv_multiplier || 1.0);
+                                const levColor = _multTier(r.lev_multiplier || 1.0);
+                                const effColor = _multTier(r.effective_multiplier || 1.0);
+                                const pfStr = r.profit_factor === 999.99 ? '∞' : (r.profit_factor || 0).toFixed(2);
+                                const sourceLabel = `<span class="text-emerald-300 font-mono font-semibold">${r.source}</span>`;
+                                const briefLabel = `<span class="text-gray-500 text-xs">${r.brief || ''}</span>`;
+                                const lk20 = `${r.loser_peak_ge_20_count || 0}/${r.loser_count || 0}`;
+                                const lk20Cls = (r.loser_count || 0) === 0 ? 'text-gray-500'
+                                    : (r.loser_peak_ge_20_count / r.loser_count) >= 0.60 ? 'text-emerald-400'
+                                    : 'text-amber-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1">${sourceLabel}</td>
+                                    <td class="px-2 py-1">${briefLabel}</td>
+                                    <td class="px-2 py-1 ${dirCls} font-semibold">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right ${invColor}">${(r.inv_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${levColor}">${(r.lev_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${effColor} font-semibold">${(r.effective_multiplier || 1.0).toFixed(2)}x</td>
+                                    <td class="px-2 py-1 text-right ${r.n === 0 ? 'text-gray-500' : 'text-gray-200'}">${r.n}</td>
+                                    <td class="px-2 py-1 text-right">${r.n > 0 ? (r.wr_pct || 0).toFixed(1) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${avgCls}">${r.n > 0 ? (r.avg_pnl_pct >= 0 ? '+' : '') + (r.avg_pnl_pct || 0).toFixed(3) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${r.n > 0 ? (r.avg_peak_pct >= 0 ? '+' : '') + (r.avg_peak_pct || 0).toFixed(3) + '%' : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${totalCls}">${r.n > 0 ? '$' + (r.total_dollars || 0).toFixed(2) : '—'}</td>
+                                    <td class="px-2 py-1 text-right">${r.n > 0 ? pfStr : '—'}</td>
+                                    <td class="px-2 py-1 text-right ${dvbCls}">${r.n === 0 || r.effective_multiplier === 1.0 ? '—' : fmt$(r.delta_vs_baseline_dollars)}</td>
+                                    <td class="px-2 py-1 text-right ${lk20Cls}">${lk20}</td>
+                                    <td class="px-2 py-1 ${verdictColor} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                    const amSum = document.getElementById('atr-mult-perf-summary');
+                    if (amSum && amp.summary) {
+                        const s = amp.summary;
+                        const upCls = (s.boosted_uplift_dollars || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        amSum.innerHTML = `Boosted trades: ${s.boosted_trades_n || 0}, actual ${fmt$(s.boosted_actual_dollars)}, simulated baseline ${fmt$(s.boosted_baseline_dollars)}, uplift <span class="font-semibold ${upCls}">${fmt$(s.boosted_uplift_dollars)}</span>`;
                     }
                 }
 
@@ -16199,9 +16356,7 @@
                 { const _e=document.getElementById('config-atr-low-fixed-tp-enabled'); if(_e) _e.checked = !!config.thresholds.atr_low_fixed_tp_long_enabled; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-atr-max'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_atr_max !== undefined ? config.thresholds.atr_low_fixed_tp_atr_max : 1.1; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-pct'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_pct !== undefined ? config.thresholds.atr_low_fixed_tp_pct : 0.25; }
-                { const _e=document.getElementById('config-atr-high-mult-enabled'); if(_e) _e.checked = !!config.thresholds.atr_high_mult_long_enabled; }
-                { const _e=document.getElementById('config-atr-high-mult-atr-min'); if(_e) _e.value = config.thresholds.atr_high_mult_atr_min !== undefined ? config.thresholds.atr_high_mult_atr_min : 1.1; }
-                { const _e=document.getElementById('config-atr-high-mult-inv'); if(_e) _e.value = config.thresholds.atr_high_mult_inv !== undefined ? config.thresholds.atr_high_mult_inv : 2.0; }
+                if (typeof loadAtrMultRules === 'function') loadAtrMultRules(config.thresholds.atr_multiplier_rules || []);
                 if (document.getElementById('config-btc-adx-block-min-short')) {
                     document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
                 }
@@ -17267,6 +17422,61 @@
             return rules;
         }
 
+        // ATR Multiplier Rules (Jun 5, 2026)
+        function addAtrMultRow(name='', direction='LONG', atrMin='1.1', atrMax='99', invMult='2.0', levMult='1.0') {
+            const tbody = document.getElementById('atr-mult-rules-body');
+            if (!tbody) return;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="px-1 py-1"><input type="text" class="w-16 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs atr-name" value="${name}" placeholder="Runner"></td>
+                <td class="px-1 py-1">
+                    <select class="bg-white/5 border border-white/10 rounded px-1 py-0.5 text-white text-xs atr-dir">
+                        <option value="LONG" ${direction==='LONG'?'selected':''}>LONG</option>
+                        <option value="SHORT" ${direction==='SHORT'?'selected':''}>SHORT</option>
+                    </select>
+                </td>
+                <td class="px-1 py-1"><input type="number" step="0.05" class="w-16 bg-white/5 border border-emerald-500/40 rounded px-1 py-0.5 text-emerald-300 text-center text-xs atr-atr-min" value="${atrMin}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.05" class="w-16 bg-white/5 border border-emerald-500/40 rounded px-1 py-0.5 text-emerald-300 text-center text-xs atr-atr-max" value="${atrMax}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-16 bg-white/5 border border-fuchsia-500/40 rounded px-1 py-0.5 text-fuchsia-300 text-center text-xs font-semibold atr-inv" value="${invMult}"></td>
+                <td class="px-1 py-1"><input type="number" step="0.1" min="0.5" max="5" class="w-16 bg-white/5 border border-fuchsia-500/40 rounded px-1 py-0.5 text-fuchsia-300 text-center text-xs font-semibold atr-lev" value="${levMult}"></td>
+                <td class="px-1 py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 hover:text-red-300 text-xs">x</button></td>`;
+            tbody.appendChild(tr);
+        }
+        function loadAtrMultRules(rules) {
+            const tbody = document.getElementById('atr-mult-rules-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+            if (!Array.isArray(rules)) return;
+            for (const r of rules) {
+                addAtrMultRow(
+                    r.name || '',
+                    r.direction || 'LONG',
+                    String(r.atr_min != null ? r.atr_min : 1.1),
+                    String(r.atr_max != null ? r.atr_max : 99),
+                    String(r.inv_mult != null ? r.inv_mult : 2.0),
+                    String(r.lev_mult != null ? r.lev_mult : 1.0),
+                );
+            }
+        }
+        function collectAtrMultRules() {
+            const rows = document.querySelectorAll('#atr-mult-rules-body tr');
+            const rules = [];
+            rows.forEach(row => {
+                const nm = row.querySelector('.atr-name').value.trim();
+                const d = row.querySelector('.atr-dir').value.trim();
+                if (!nm || !d) return;
+                rules.push({
+                    name: nm,
+                    direction: d,
+                    atr_min: parseFloat(row.querySelector('.atr-atr-min').value) || 0,
+                    atr_max: parseFloat(row.querySelector('.atr-atr-max').value) || 0,
+                    inv_mult: parseFloat(row.querySelector('.atr-inv').value) || 1.0,
+                    lev_mult: parseFloat(row.querySelector('.atr-lev').value) || 1.0,
+                });
+            });
+            return rules;
+        }
+
 
         // Update investment unit display
         function updateInvestmentUnit() {
@@ -17438,9 +17648,7 @@
                     atr_low_fixed_tp_long_enabled: (document.getElementById('config-atr-low-fixed-tp-enabled')||{}).checked || false,
                     atr_low_fixed_tp_atr_max: safeFloat(document.getElementById('config-atr-low-fixed-tp-atr-max')?.value || 1.1),
                     atr_low_fixed_tp_pct: safeFloat(document.getElementById('config-atr-low-fixed-tp-pct')?.value || 0.25),
-                    atr_high_mult_long_enabled: (document.getElementById('config-atr-high-mult-enabled')||{}).checked || false,
-                    atr_high_mult_atr_min: safeFloat(document.getElementById('config-atr-high-mult-atr-min')?.value || 1.1),
-                    atr_high_mult_inv: safeFloat(document.getElementById('config-atr-high-mult-inv')?.value || 2.0),
+                    atr_multiplier_rules: (typeof collectAtrMultRules === 'function') ? collectAtrMultRules() : [],
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
                     btc_rsi_band_atr_block_long: (document.getElementById('config-btc-rsi-band-atr-block-long')?.value || '').trim(),

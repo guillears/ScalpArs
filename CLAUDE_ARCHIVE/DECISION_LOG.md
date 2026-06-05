@@ -539,3 +539,35 @@ Re-evaluate at next ≥30-trade checkpoint.
 - **ETH no-trade:** revisit if ETH (either side) would-have-won ≥55% WR on N≥8 fresh while track-only.
 
 **Pools:** added the 60 batch trades to the pool. **`dedupe_pool_7batches_may26-jun2.csv` (222) renamed → `dedupe_pool_8batches_may26-jun5.csv` (282, May26→Jun5, 164L/118S)** (batch aligned to the 196-col schema). `dedupe_pool_FULL.csv` rebuilt → 1,193 closed (Apr28→Jun5). Batch text report saved to `reports/batch_report_2026-06-05.txt`.
+
+---
+
+### 2026-06-05 — WATCHLIST (NOT shipped): BTC RSI×ADX Cross-Filter simplification
+
+**Proposal (queued for next-batch review, operator-directed hold):**
+1. **Delete dead rule 3** — `RSI 60-65 × ADX 27-30`. First-match-wins by RSI band means rule 2 (`60-65 × 22-25`) claims the 60-65 band first, so rule 3 never evaluates. Pure dead config. (Side note: the cell it *intended* to allow, 60-65×27-30, is actually a decent FULL-pool cell — N=14/79% WR/+$78 — but that's contaminated/thin, not a re-open trigger.)
+2. **Replace the 5 RSI×ADX rules with two RSI-only blocks** (drop the ADX axis entirely):
+   - `RSI 50-55 → block`
+   - `RSI 60-100 → block`
+   - Net effective LONG surface: allowed = **RSI 40-50 + 55-60** (all ADX 18-40); blocked = 50-55 & ≥60.
+
+**Why drop ADX:** it does not separate within any RSI band — every ADX slice of a band carries the band's sign:
+- RSI 50-55: ADX 18-25 −$394 / 25-32 −$551 / 32-40 −$196 (all negative).
+- RSI 65-70: ADX 18-25 −$1,564 / 25-32 −$1,251 / 32-40 −$829 (all negative).
+The per-ADX carve-outs (rules 2 & 4) are fitting noise.
+
+**Theoretical critique:** the filter triangulates "good BTC regime for longs" from BTC RSI (momentum *level*) × BTC ADX (trend *strength*) — neither encodes BTC *direction*, which is what a long needs. Hence it barely separates (blocked −0.194 vs allowed −0.174). It is also internally inconsistent: it blocks ≥70 (overbought) but ALLOWS 65-70 — the same "long into BTC near-exhaustion" mechanism one notch earlier, and the biggest LONG loser.
+
+**Band sign-consistency (FULL pool vs last-4-batch):**
+- 40-50: +$293 / +$61 → **+ both** (the only consistent winner; tiny N — longs rarely fire <50 BTC RSI).
+- 50-55: −$1,141 / −$450 → **− both** (keep blocked).
+- 55-60: −$733 / +$524 → **FLIPS** (non-stationary — allow as least-bad firing band, do NOT bank).
+- 60-65: −$1,976 / −$745 → **− both** (currently only sliver-blocked → block fully).
+- 65-70: −$3,644 (N=184) / −$1,643 (N=48) → **− both, biggest loser, currently WIDE OPEN** ← the hole.
+- ≥70: −$168 / — → − (already blocked).
+
+**Last-4-batch impact (as-traded):** current surface allows 115 longs / −$1,860; new surface allows 26 / +$585. **Kills 89 longs (77%)** — all from 60-65 (41 / −$802) + 65-70 (48 / −$1,643) = **−$2,445 of loss removed**. 0 measurable adds (the 55-60-full opening has no historical trades — those cells were live-blocked; forward-only). The surviving +$585 rides the non-stationary 55-60 streak → NOT durable; the durable piece is the −$2,445 of 60-70 losers.
+
+**Caveats:** big volume cut (77% of longs) ≈ near-shutdown of longs in the BTC-mid-RSI regime; losses partly overlap with chase + ATR-low fix-TP already live (incremental benefit < raw −$2,445); 55-60 non-stationary; FULL pool BE-on-contaminated (recent confirms the 65-70 finding, which is the load-bearing one).
+
+**SHIP GATE (next batch):** ship the `60-100 → block` simplification IF 60-65 AND 65-70 longs are net-negative AGAIN (3rd-window confirmation of the both-window pattern). Delete rule 3 anytime (zero-risk cleanup). **Post-ship revert:** re-open 60-65 if would-be-blocked 60-65 longs show ≥50% WR on N≥10 fresh. Keep 55-60 allowed regardless (least-bad firing band) but treat its P&L as noise.

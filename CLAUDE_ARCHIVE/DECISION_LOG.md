@@ -571,3 +571,29 @@ The per-ADX carve-outs (rules 2 & 4) are fitting noise.
 **Caveats:** big volume cut (77% of longs) ≈ near-shutdown of longs in the BTC-mid-RSI regime; losses partly overlap with chase + ATR-low fix-TP already live (incremental benefit < raw −$2,445); 55-60 non-stationary; FULL pool BE-on-contaminated (recent confirms the 65-70 finding, which is the load-bearing one).
 
 **SHIP GATE (next batch):** ship the `60-100 → block` simplification IF 60-65 AND 65-70 longs are net-negative AGAIN (3rd-window confirmation of the both-window pattern). Delete rule 3 anytime (zero-risk cleanup). **Post-ship revert:** re-open 60-65 if would-be-blocked 60-65 longs show ≥50% WR on N≥10 fresh. Keep 55-60 allowed regardless (least-bad firing band) but treat its P&L as noise.
+
+---
+
+### 2026-06-06 — SHIP: SLWide widen `signal_active_sl` −0.70 → −1.00 (STOP_LOSS_WIDE only)
+
+**Change:** `confidence_levels.{VERY_STRONG,STRONG_BUY}.signal_active_sl` −0.70 → **−1.00**. `stop_loss` kept −0.70. Lower confidence levels (−0.35) untouched (they barely trade).
+
+**Level chosen from a sweep (the first counterfactual used −1.20; corrected here).** Modeling the real `signal_active_sl`×ATR-widen(×1.5)×−1.20-floor interaction (signal_active_sl only bites for ATR<0.60 — above that the ATR-widen already exceeds it): NET Δ is **monotonic to −1.20 (EV-max)** — 9-pool: −0.90 +$861 · −1.00 +$939 · −1.10 +$1,459 · −1.20 +$1,532; last-4+06-06: −0.90 +$1,044 · −1.00 +$1,149 · −1.20 +$2,020. Past −0.90 the marginal survivors troughed −1.0/−1.1% (proxy-soft recovery) and the deepening tail grows + is leveraged (2-3× cells). **Operator chose −1.00 (middle): ~60% of −1.20 EV, short of the deepest-trough trades.** −1.20 stage-up watchlisted for next batch.
+
+**Mechanism (engine trading_engine.py:7551-7612):** `effective_sl` defaults to `stop_loss`; when the entry signal is STILL active at the stop, it's overridden to `signal_active_sl`. ATR-widen (×1.5) + floor (−1.20) are applied to whichever base, THEN the label is set: signal-active → **STOP_LOSS_WIDE**, signal-dead → **STOP_LOSS**. So `signal_active_sl` moves ONLY STOP_LOSS_WIDE; `stop_loss` governs STOP_LOSS. They were both −0.70 (identical fire level) until now. This is the dedicated lever to widen the signal-active stop independently.
+
+**Thesis:** STOP_LOSS_WIDE = "stopped while the setup was still valid" — the reversal/regret population. Give it +0.20% more room so a wick/pullback within a still-valid signal doesn't kill the trade before it plays out. Signal-DEAD stops (STOP_LOSS) stay tight — those are correct exits (thesis gone, nothing to ride).
+
+**Evidence (widen-to-−1.20 counterfactual, fix-TP applied to lo-ATR long survivors):**
+- 8-pool (May26-Jun5): STOP_LOSS_WIDE N=56, −$6,554 → Δ **+$434** (survive 19 +$1,537 / deepen 35 −$1,103). Reverse rate 28%.
+- last-4-batch (May29-Jun5): N=41, −$4,643 → Δ **+$922** (survive 18 +$1,464 / deepen 23 −$542, 2.7:1). Reverse rate 32%.
+- Positive in BOTH windows (sign robust); magnitude regime-dependent (bigger in choppy-bounce, smaller in trend-crash because deepeners grow — May26-28 crash days shrink the 8-pool figure). After in-sample haircut ≈ +$250 (8-pool) to +$500 (last-4).
+- Direction: last-4 SHORT Δ+$591 (9 save / 8 deepen) > LONG Δ+$331 (9 save / 15 deepen) — both positive.
+
+**Lever choice — base SL, NOT the ATR multiplier:** the reversers are LOW-ATR (DOGE/WLFI/UNI, ATR<0.5) → ATR×1.5 < 0.70, so the ATR-widen never engages for them and they stop at the −0.70 base. Raising `sl_atr_multiplier` barely moves them; raising the base `signal_active_sl` widens them directly. ATR mult stays 1.5 (it's for high-ATR pairs, already handled).
+
+**Caveats:** (1) widens into the LEVERAGED tail — the 35 (8-pool) deepeners are 2-3× cells too. (2) Regime-fragile in magnitude (not sign): a severe cascade could grow the deepen side. (3) Symmetric L/S — current SL config is per-confidence, not per-direction; split into `_long`/`_short` only if data diverges.
+
+**REVERT GATE:** revert `signal_active_sl`→−0.70 if (a) STOP_LOSS_WIDE survive-vs-deepen goes net-negative over N≥30 fresh, OR (b) a single correlated-crash window adds ≥−$300 of deepened STOP_LOSS_WIDE loss vs the −0.70 baseline. Drawdown-tied, not just net-$, because the risk is the leveraged crash tail.
+
+**Pools/report:** saved `reports/orders_2026-06-06_13L_10S.csv`; `dedupe_pool_8batches_may26-jun5.csv` (282) renamed → `dedupe_pool_9batches_may26-jun6.csv` (305, May26→Jun6, 177L/128S); `dedupe_pool_FULL.csv` rebuilt → 1,216 closed (Apr28→Jun6); batch report template `reports/batch_report_2026-06-06.txt`. Operator will reset and start a fresh batch on this config.

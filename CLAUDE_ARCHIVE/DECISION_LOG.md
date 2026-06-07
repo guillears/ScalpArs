@@ -618,3 +618,15 @@ The per-ADX carve-outs (rules 2 & 4) are fitting noise.
 **Attribution caveat:** stacks with the just-shipped SLWide −1.00 (entry-mix vs exit — separable but flagged).
 
 **Addendum (same experiment):** also DISABLED the **Pair-Extension floor** via master toggle (`entry_dist_from_ema13_filter_enabled`→false; LONG min ext 0.20 value retained for one-flip re-enable). Same profile as the cross-filter — thin (N=9, same as ship), deadlocked (zero data since May 22), rare/tiny-save cohort, immaterial to LONG P&L (allowed longs lose −$5,669 vs this saving $237). The <0.20 band IS the worst-per-trade extension (−0.304% / 22% WR), so expect those longs to lose — the point is fresh data on whether bottom-of-pullback longs still die under the current stack. Post-run: re-enable the toggle if ext<0.20 confirms loser; leave off if it surprises. (Toggle disables both directions; SHORT was already 0.)
+
+---
+
+### 2026-06-06 — DISABLE: Runner Stretch-Trail exit (`runner_trail_enabled`→false); + UI toggle added
+
+**Change:** `runner_trail_enabled` true → false. High-ATR LONG runners now exit via normal tight trailing (the stretch-trail handoff no longer fires). Also added a UI control row (toggle + atr_min/arm_peak/k) — none existed before; flippable from the dashboard now.
+
+**Evidence (Runner Trail Performance table, all 6 live RUNNER_TRAIL exits since the Jun-1 ship):** net gain vs tight = **+$30** (3/6 beat tight = coin flip). The mechanism WON on the small "runners" (ORDI/SKYAI/RENDER, peaks 0.76-1.23) but LOST on the bigger ones (VIC −$15 / NEAR −$14 / PORTAL −$45) — those peaked 1.34-1.55% then FADED, and the stretch-trail gave back more than tight would have (PORTAL: peak +1.51 → exit +0.39, 26% of max; tight CF +0.84). Root cause: arms at peak≥0.70 which catches non-runners that fade; built for IDU-class monsters (peak >2-3%), none of which appeared in 6 fires. So it's a wash that quietly hurts the 1.0-1.5% peakers → disabled.
+
+**Independence verified:** the high-ATR **2× ATR Multiplier** (`atr_multiplier_rules` "Runner", entry SIZING) is a SEPARATE code path (`_lookup_atr_multiplier` at entry) and does NOT reference `runner_trail_enabled`; the exit (`indicators.py`) does NOT reference the sizing multiplier. Disabling the exit leaves the 2× sizing fully intact (operator confirmed intent: "keep the multiplier").
+
+**Re-enable gate:** turn back on only if a true monster runner (peak >2-3%) appears where the stretch-trail clearly out-captures tight. UI toggle exposed for one-click flip. (Stacks with the open-filter run, but separable — high-ATR LONG runners are rare and the P&L impact is ~$0, so it won't muddy the entry-band read.)

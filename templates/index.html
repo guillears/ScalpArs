@@ -4634,6 +4634,27 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Profit-lock on the no-runner cohort (never cuts a DOA loser). <span class="text-emerald-400">The High-ATR runner <strong>multiplier</strong> now lives in the Multiplier section → ATR Multiplier Rules (so it can carry leverage + a performance table).</span></p>
                         </div>
+                        <div class="md:col-span-2 border border-cyan-500/20 rounded p-2">
+                            <label class="block text-sm text-cyan-300 mb-2">🏃 Runner Stretch-Trail (LONG) <span class="text-xs text-gray-400 font-normal">(Jun 1 — high-ATR runner exit; OFF → runners use normal tight trailing)</span></label>
+                            <div class="flex items-center gap-3 flex-wrap">
+                                <label class="flex items-center cursor-pointer" title="When ON, a high-ATR LONG that proves a runner (peak >= arm) hands tight trailing off to a loose stretch-trail (exit when live stretch <= k x peak stretch). OFF = high-ATR runners fall back to normal tight trailing.">
+                                    <input type="checkbox" id="config-runner-trail-enabled" class="mr-1" checked>
+                                    <span class="text-sm text-gray-300">Enabled</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">ATR ≥
+                                    <input type="number" step="0.05" min="0" id="config-runner-trail-atr-min" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">arm peak ≥
+                                    <input type="number" step="0.05" min="0" id="config-runner-trail-arm-peak" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.70">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                                <label class="flex items-center text-sm text-gray-400">k ×
+                                    <input type="number" step="0.05" min="0" max="1" id="config-runner-trail-k" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Hand off tight trailing → stretch-trail once a high-ATR LONG peaks ≥ arm; exit when live |price−EMA5| stretch ≤ k × peak stretch (or EMA13 / hard SL). Close reason <code class="text-cyan-300">RUNNER_TRAIL</code>. Track results in the 🏃 Runner Trail Performance table (net-gain-vs-tight).</p>
+                        </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Fast Exit L2 <span class="text-xs text-violet-400 font-normal">(May 19 — slow-climber tier between L1 and trailing)</span></label>
                             <div class="flex items-center gap-4 flex-wrap">
@@ -16356,6 +16377,11 @@
                 { const _e=document.getElementById('config-atr-low-fixed-tp-enabled'); if(_e) _e.checked = !!config.thresholds.atr_low_fixed_tp_long_enabled; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-atr-max'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_atr_max !== undefined ? config.thresholds.atr_low_fixed_tp_atr_max : 1.1; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-pct'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_pct !== undefined ? config.thresholds.atr_low_fixed_tp_pct : 0.25; }
+                // Jun 6 — Runner Stretch-Trail control
+                { const _e=document.getElementById('config-runner-trail-enabled'); if(_e) _e.checked = config.thresholds.runner_trail_enabled !== undefined ? !!config.thresholds.runner_trail_enabled : true; }
+                { const _e=document.getElementById('config-runner-trail-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_atr_min !== undefined ? config.thresholds.runner_trail_atr_min : 1.0; }
+                { const _e=document.getElementById('config-runner-trail-arm-peak'); if(_e) _e.value = config.thresholds.runner_trail_arm_peak !== undefined ? config.thresholds.runner_trail_arm_peak : 0.70; }
+                { const _e=document.getElementById('config-runner-trail-k'); if(_e) _e.value = config.thresholds.runner_trail_k !== undefined ? config.thresholds.runner_trail_k : 0.5; }
                 if (typeof loadAtrMultRules === 'function') loadAtrMultRules(config.thresholds.atr_multiplier_rules || []);
                 if (document.getElementById('config-btc-adx-block-min-short')) {
                     document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
@@ -17648,6 +17674,10 @@
                     atr_low_fixed_tp_long_enabled: (document.getElementById('config-atr-low-fixed-tp-enabled')||{}).checked || false,
                     atr_low_fixed_tp_atr_max: safeFloat(document.getElementById('config-atr-low-fixed-tp-atr-max')?.value || 1.1),
                     atr_low_fixed_tp_pct: safeFloat(document.getElementById('config-atr-low-fixed-tp-pct')?.value || 0.25),
+                    runner_trail_enabled: (document.getElementById('config-runner-trail-enabled')||{checked:true}).checked,
+                    runner_trail_atr_min: safeFloat(document.getElementById('config-runner-trail-atr-min')?.value || 1.0),
+                    runner_trail_arm_peak: safeFloat(document.getElementById('config-runner-trail-arm-peak')?.value || 0.70),
+                    runner_trail_k: safeFloat(document.getElementById('config-runner-trail-k')?.value || 0.5),
                     atr_multiplier_rules: (typeof collectAtrMultRules === 'function') ? collectAtrMultRules() : [],
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),

@@ -7321,6 +7321,13 @@ class TradingEngine:
                         # alone is not enough — also require the EMA5/EMA8 stack to
                         # have flipped against trade direction. Filters single-candle
                         # price wicks from firing the exit. Fail-closed on missing data.
+                        # Jun 7: per-direction gate. When this side is disabled, the
+                        # EMA13 cross records a PHANTOM (would-have-exited pnl) instead
+                        # of closing — the trade rides to its real exit.
+                        _e13c_th = config.trading_config.thresholds
+                        _e13_dir_enabled = (getattr(_e13c_th, 'ema13_cross_exit_long_enabled', True)
+                                            if direction == "LONG"
+                                            else getattr(_e13c_th, 'ema13_cross_exit_short_enabled', True))
                         _e13_strict = getattr(config.trading_config.thresholds, 'ema13_cross_requires_stack_flip', False)
                         _e13_stack_confirms = True  # default: not required
                         if _e13_strict:
@@ -7358,7 +7365,26 @@ class TradingEngine:
                                                 )
                                     except Exception as _hexc:
                                         logger.warning(f"[EMA13_STRICT_FIRST_HOLD] Failed to persist for {pair}: {_hexc}")
-                        if _e13_stack_confirms:
+                        if _e13_stack_confirms and not _e13_dir_enabled:
+                            # PHANTOM: EMA13 cross is OFF for this direction — record the
+                            # would-have-exited pnl at the FIRST fire (don't close).
+                            if not order_info.get('_phantom_ema13_recorded'):
+                                order_info['_phantom_ema13_recorded'] = True
+                                logger.info(f"[PHANTOM_EMA13_CROSS] {pair} {direction}: EMA13 cross fired but disabled for {direction} — phantom pnl={pnl_pct:.4f}% (holding)")
+                                try:
+                                    async with AsyncSessionLocal() as _pdb:
+                                        _p_result = await _pdb.execute(
+                                            select(Order).where(and_(Order.id == order_id, Order.status == "OPEN"))
+                                        )
+                                        _p_order = _p_result.scalar_one_or_none()
+                                        if _p_order is not None and _p_order.phantom_ema13_cross_pnl is None:
+                                            _p_order.phantom_ema13_cross_pnl = float(pnl_pct)
+                                            _p_order.phantom_ema13_cross_at = datetime.utcnow()
+                                            await _pdb.commit()
+                                except Exception as _pexc:
+                                    logger.warning(f"[PHANTOM_EMA13_CROSS] persist failed for {pair}: {_pexc}")
+                            # fall through to other exit checks (no close)
+                        elif _e13_stack_confirms and _e13_dir_enabled:
                             _tp_lvl_for_exit = order_info.get('current_tp_level', 1) or 1
                             _close_reason_e13 = f"EMA13_CROSS_EXIT L{_tp_lvl_for_exit}"
                             logger.warning(

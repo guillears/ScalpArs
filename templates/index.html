@@ -1142,6 +1142,31 @@
                     <div id="ema13-strict-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
+                <!-- EMA13 Cross Disabled-Direction Counterfactual (Jun 7, 2026) -->
+                <div class="mt-6 pt-6 border-t border-emerald-900/40">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🔀 EMA13 Cross — Disabled-Direction CF</h3>
+                    <p class="text-xs text-gray-500 mb-3">For trades where the EMA13 cross FIRED but the exit is OFF for that direction (per-direction toggle) — the trade rode to its real exit and we recorded the would-have-exited (phantom) pnl. Compares <strong>phantom (the cut)</strong> vs <strong>actual (held to real exit)</strong>. <span class="text-emerald-400">★ DISABLE wins</span> = held beat the cross (keep it disabled); <span class="text-amber-400">⚠ KEEP cross</span> = the cross would've banked more (re-enable). This is the live evidence for the disable decision.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Direction</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="Avg pnl% the EMA13 cross WOULD have exited at (the cut)">Avg Phantom%</th>
+                                    <th class="text-right px-2" title="Avg pnl% of the real exit the trade rode to (held)">Avg Actual%</th>
+                                    <th class="text-right px-2" title="Actual − Phantom. Positive = holding beat the cross (disabling helps).">Δ pct</th>
+                                    <th class="text-right px-2" title="# trades where held beat the cross">held&gt;cut</th>
+                                    <th class="text-right px-2" title="Total $ Δ = sum of (actual $ − would-have-cut $)">Total $ Δ</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ema13-cross-cf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="py-3 text-center text-gray-500">No disabled-direction EMA13 cross fires yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-2">⏱️ Trailing Confirmation Performance</h3>
@@ -4573,6 +4598,18 @@
                                     </div>
                                     <span class="ml-2 text-sm text-gray-300">Strict (require EMA5/EMA8 stack flip)</span>
                                 </label>
+                            </div>
+                            <div class="flex items-center gap-4 mt-2">
+                                <span class="text-xs text-gray-500">Per-direction:</span>
+                                <label class="flex items-center cursor-pointer" title="When OFF, EMA13 cross does NOT close LONGs — it records a phantom (would-have-exited pnl) and the long rides to its real exit. See the EMA13 Cross Disabled-CF table.">
+                                    <input type="checkbox" id="config-ema13-cross-exit-long-enabled" class="mr-1" checked>
+                                    <span class="text-sm text-gray-300">LONG</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer" title="When OFF, EMA13 cross does NOT close SHORTs — records phantom instead.">
+                                    <input type="checkbox" id="config-ema13-cross-exit-short-enabled" class="mr-1" checked>
+                                    <span class="text-sm text-gray-300">SHORT</span>
+                                </label>
+                                <span class="text-xs text-emerald-400">(Jun 7: LONG OFF = phantom-CF mode — measure disable vs keep live, zero blind risk)</span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Closes trade on first tick where price crosses EMA13 against direction (LONG: price &lt; EMA13, SHORT: price &gt; EMA13). No profit gate — fires at any P&L. Runs in parallel to FL flags / RSI Handoff / trailing — first-to-fire wins. Cascade-close: when toggled ON, any open trade currently on wrong side closes on next tick. Close reason: <code class="text-violet-300">EMA13_CROSS_EXIT L&lt;level&gt;</code>. <span class="text-amber-400">Strict mode (May 8): also require EMA5/EMA8 stack flip — filters single-candle wicks. Adds 1-3 candles latency.</span></p>
                         </div>
@@ -12271,6 +12308,36 @@
                     }
                 }
 
+                // EMA13 Cross — Disabled-Direction CF (Jun 7, 2026)
+                if (data.ema13_cross_disabled_cf) {
+                    const _ecf = data.ema13_cross_disabled_cf;
+                    const _ecfBody = document.getElementById('ema13-cross-cf-body');
+                    if (_ecfBody) {
+                        if (!_ecf.rows || !_ecf.rows.length) {
+                            _ecfBody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-500">No disabled-direction EMA13 cross fires yet</td></tr>';
+                        } else {
+                            _ecfBody.innerHTML = _ecf.rows.map(r => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const phC = r.avg_phantom_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const acC = r.avg_actual_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const dC = r.avg_delta_pct > 0.05 ? 'text-emerald-400' : (r.avg_delta_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const usdC = r.total_dollar_delta > 1 ? 'text-emerald-400' : (r.total_dollar_delta < -1 ? 'text-red-400' : 'text-gray-400');
+                                const vC = r.verdict.includes('★') ? 'text-emerald-400 font-semibold' : (r.verdict.includes('KEEP') ? 'text-amber-400' : (r.verdict.includes('Marginal') ? 'text-blue-400' : 'text-gray-400'));
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${phC}">${r.avg_phantom_pct >= 0 ? '+' : ''}${r.avg_phantom_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${acC}">${r.avg_actual_pct >= 0 ? '+' : ''}${r.avg_actual_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${dC}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${r.held_better}/${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${usdC}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${vC} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                }
+
                 // Trailing Confirmation Performance (May 9, 2026)
                 if (data.trailing_confirmation_performance) {
                     const _tcp = data.trailing_confirmation_performance;
@@ -16663,6 +16730,9 @@
                 // May 8: strict mode — require EMA5/EMA8 stack flip too
                 const _e13rsf = document.getElementById('config-ema13-cross-requires-stack-flip');
                 if (_e13rsf) _e13rsf.checked = config.thresholds.ema13_cross_requires_stack_flip === true;
+                // Jun 7: per-direction EMA13 cross gates (default true)
+                { const _e=document.getElementById('config-ema13-cross-exit-long-enabled'); if(_e) _e.checked = config.thresholds.ema13_cross_exit_long_enabled !== undefined ? !!config.thresholds.ema13_cross_exit_long_enabled : true; }
+                { const _e=document.getElementById('config-ema13-cross-exit-short-enabled'); if(_e) _e.checked = config.thresholds.ema13_cross_exit_short_enabled !== undefined ? !!config.thresholds.ema13_cross_exit_short_enabled : true; }
                 // EMA Stack Cross Exit (May 6) — default OFF, level default 2
                 const _esce = document.getElementById('config-ema-stack-cross-exit-enabled');
                 if (_esce) _esce.checked = config.thresholds.ema_stack_cross_exit_enabled === true;
@@ -17795,6 +17865,8 @@
                     rsi_momentum_exit_max_profit: safeFloat(document.getElementById('config-rsi-momentum-exit-max-profit').value),
                     ema13_cross_exit_enabled: (document.getElementById('config-ema13-cross-exit-enabled') ? document.getElementById('config-ema13-cross-exit-enabled').checked : false),
                     ema13_cross_requires_stack_flip: (document.getElementById('config-ema13-cross-requires-stack-flip') ? document.getElementById('config-ema13-cross-requires-stack-flip').checked : false),
+                    ema13_cross_exit_long_enabled: (document.getElementById('config-ema13-cross-exit-long-enabled')||{checked:true}).checked,
+                    ema13_cross_exit_short_enabled: (document.getElementById('config-ema13-cross-exit-short-enabled')||{checked:true}).checked,
                     ema_stack_cross_exit_enabled: (document.getElementById('config-ema-stack-cross-exit-enabled') ? document.getElementById('config-ema-stack-cross-exit-enabled').checked : false),
                     ema_stack_cross_exit_level: parseInt(document.getElementById('config-ema-stack-cross-exit-level') ? document.getElementById('config-ema-stack-cross-exit-level').value : 2) || 2,
                     fast_exit_enabled: ((document.getElementById('config-fast-exit-enabled') || {}).checked === true),

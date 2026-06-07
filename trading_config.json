@@ -397,7 +397,9 @@
         "inv_mult": 2.0,
         "lev_mult": 1.0
       }
-    ]
+    ],
+    "ema13_cross_exit_long_enabled": false,
+    "ema13_cross_exit_short_enabled": true
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

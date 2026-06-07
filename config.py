@@ -260,6 +260,14 @@ class SignalThresholds(BaseModel):
     # reversals also flip the stack). Adds 1-3 candles of latency vs
     # EMA13-only. Fail-closed on missing EMA5/EMA8 data.
     ema13_cross_requires_stack_flip: bool = False
+    # Jun 7: per-direction gates for EMA13 cross exit (under the master
+    # ema13_cross_exit_enabled toggle). When a side is False, the EMA13 cross
+    # does NOT close that side — instead it records a PHANTOM (phantom_ema13_cross_pnl/_at)
+    # of where it would have exited, and the trade rides to its real exit. Lets us
+    # measure "disable EMA13 cross for LONGs" live (phantom vs held CF) at zero
+    # blind risk. Both default True = fire for whichever direction the master enables.
+    ema13_cross_exit_long_enabled: bool = True
+    ema13_cross_exit_short_enabled: bool = True
     # EMA Stack Cross Exit (May 6) — closes trade when EMA5 crosses EMA8 against
     # trade direction (LONG: ema5 < ema8, SHORT: ema5 > ema8) past the configured
     # TP level.  Mirrors RSI Handoff architecture: at current_tp_level >= level,

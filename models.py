@@ -376,6 +376,11 @@ class Order(Base):
     # hypothetical new exit fired?"
     post_exit_ema13_cross_minutes = Column(Float, nullable=True)
     post_exit_ema13_cross_pnl = Column(Float, nullable=True)
+    # Jun 7: phantom EMA13 cross — when EMA13 cross exit is DISABLED for this
+    # direction, record the pnl% at the FIRST would-have-fired cross (without
+    # closing). CF: phantom (would-have-exited) vs actual (held to real exit).
+    phantom_ema13_cross_pnl = Column(Float, nullable=True)
+    phantom_ema13_cross_at = Column(DateTime, nullable=True)
     # May 23: post-exit regime-flip tracker. After trade closes, post-exit
     # watcher continues to read live BTC regime classification each tick.
     # When BTC regime first transitions to OPPOSITE-of-trade-direction

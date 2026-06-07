@@ -630,3 +630,22 @@ The per-ADX carve-outs (rules 2 & 4) are fitting noise.
 **Independence verified:** the high-ATR **2× ATR Multiplier** (`atr_multiplier_rules` "Runner", entry SIZING) is a SEPARATE code path (`_lookup_atr_multiplier` at entry) and does NOT reference `runner_trail_enabled`; the exit (`indicators.py`) does NOT reference the sizing multiplier. Disabling the exit leaves the 2× sizing fully intact (operator confirmed intent: "keep the multiplier").
 
 **Re-enable gate:** turn back on only if a true monster runner (peak >2-3%) appears where the stretch-trail clearly out-captures tight. UI toggle exposed for one-click flip. (Stacks with the open-filter run, but separable — high-ATR LONG runners are rare and the P&L impact is ~$0, so it won't muddy the entry-band read.)
+
+---
+
+### 2026-06-07 — SHIP (as measurement): EMA13-cross-LONG phantom-CF + per-direction toggle
+
+**Change:** added per-direction gates `ema13_cross_exit_long_enabled` / `ema13_cross_exit_short_enabled` under the master `ema13_cross_exit_enabled`. Set **LONG=false, SHORT=true**. When a side is off, the EMA13 cross no longer closes — it records a **phantom** (`phantom_ema13_cross_pnl` / `_at`, NEW DB cols) of the would-have-exited pnl and the trade rides to its real exit.
+
+**Why (overrides the Jun-7 model-rejection):** the 9-pool model said disabling EMA13-cross-LONG is net-negative (−$65 at SLWide −1.00; coin-flip 22/22; cross protects reversing longs from the wider stop). Operator's call: don't argue the model — **measure it live at zero blind risk** via the phantom CF. This is the bot's shadow/phantom pattern applied to the EMA13 cross, mirroring the 🛡️ EMA13 Strict-Mode table.
+
+**Build (full D11 + DB):**
+- config.py: 2 per-direction fields (default True).
+- models.py + database.py auto-migrate: `phantom_ema13_cross_pnl` (Float) + `phantom_ema13_cross_at` (DateTime).
+- trading_engine.py (7368): per-direction gate in the EMA13 cross block — `_e13_stack_confirms and not _e13_dir_enabled` → record phantom (first-fire only) + fall through (no close); `... and _e13_dir_enabled` → close as before.
+- main.py: `_compute_ema13_cross_disabled_cf(orders)` (phantom vs actual per direction, verdict ★ DISABLE-wins / ⚠ KEEP-cross) + payload wire.
+- templates/index.html: LONG/SHORT sub-toggles (load+save, IDs verified 3×) + 🔀 EMA13 Cross Disabled-Direction CF table + render.
+
+**READ GATE:** at N≥20 fresh LONG phantom-fires — ⚠ KEEP (cross beats held, net-$ neg) → re-enable LONG; ★ DISABLE-wins (held beats cut) → keep off (model was wrong). Self-contained (phantom vs held per trade), so it answers the EMA13 question cleanly even amid the open-surface run.
+
+**Caveat:** stacks a 3rd live change on the open run (open entry + SLWide −1.00 + EMA13-cross-LONG-off), but the CF is per-trade-isolated so attribution holds for this specific question. Modest expected cost (model −$65) bought with real data.

@@ -597,3 +597,22 @@ The per-ADX carve-outs (rules 2 & 4) are fitting noise.
 **REVERT GATE:** revert `signal_active_sl`→−0.70 if (a) STOP_LOSS_WIDE survive-vs-deepen goes net-negative over N≥30 fresh, OR (b) a single correlated-crash window adds ≥−$300 of deepened STOP_LOSS_WIDE loss vs the −0.70 baseline. Drawdown-tied, not just net-$, because the risk is the leveraged crash tail.
 
 **Pools/report:** saved `reports/orders_2026-06-06_13L_10S.csv`; `dedupe_pool_8batches_may26-jun5.csv` (282) renamed → `dedupe_pool_9batches_may26-jun6.csv` (305, May26→Jun6, 177L/128S); `dedupe_pool_FULL.csv` rebuilt → 1,216 closed (Apr28→Jun6); batch report template `reports/batch_report_2026-06-06.txt`. Operator will reset and start a fresh batch on this config.
+
+---
+
+### 2026-06-06 — EXPERIMENT: BTC RSI×ADX Cross-Filter OFF (both sides, ~24h open run)
+
+**Change:** blanked `btc_rsi_adx_filter_long` and `btc_rsi_adx_filter_short` (both → ""). Operator-directed time-boxed exploration. NOT a permanent removal.
+
+**Archived for re-add (verbatim):**
+- LONG: `70-100:40,60-65:22-25,60-65:27-30,55-60:20-25,50-55:99-100`
+- SHORT: `30-35:30,35-40:20-26,45-50:25,0-30:25-30`
+- (Pair-level `rsi_adx_filter_long`=`60-65:0-25` / `rsi_adx_filter_short`=`30-35:25,35-50:30` LEFT INTACT — different filter.)
+
+**Rationale — break the measurement deadlock.** All session we've been blocked: the blocked-cell cohorts can't be validated because they're blocked (no recent data), and the historical pools are BE-on contaminated. The open BTC RSI×ADX simplification (ship `60-100→block` IF net-negative a 3rd window) is stuck for exactly this reason. A deliberate, time-boxed open run generates fresh current-stack per-band data on the LONG (50-55, 55-65, ≥70) and SHORT surfaces. Paper, so cost is bounded.
+
+**Guardrails:** only the RSI×ADX surface opens — chase, ADX-delta, pair-ADX-dir, BTC-1h-slope, pair-level rsi_adx_filter, ADX [18,40] gate, quality score all STAY on (chase + ATR-low fix-TP still protect). Abort early if opened-band entries ≤30% WR on N≥20, or drawdown past comfort. **SHORT = the money-maker → tighter watch** (its cross-filter cells were validated winners historically; removing them is higher-risk than the no-edge LONG side — re-add SHORT immediately if the open short book degrades).
+
+**Post-run analysis (pre-committed):** bucket fresh longs + shorts by BTC RSI band × ADX; re-add the cross-filter rules ONLY for bands confirming net-negative on fresh data; leave open any that surprise positive. Feeds the BTC RSI×ADX simplification watchlist directly. Judge on per-band breakdown, NOT the run P&L (LONG expected worse — the cost of the data).
+
+**Attribution caveat:** stacks with the just-shipped SLWide −1.00 (entry-mix vs exit — separable but flagged).

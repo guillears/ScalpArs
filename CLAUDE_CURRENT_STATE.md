@@ -54,6 +54,13 @@ Unproven forward; read before each live checkpoint. All signals in UI (Gross gau
 - **REDEPLOY_OPEN must stay 0 at ~$3k balance** (① dormant here). If it fires → bug (equal-split divisor / margin gate).
 - ① per-pair cap is dormant at this balance + paper-invisible (paper fills ~0 slippage); ② gross cap is the one that can bind now via multiplier stacks. ① verdict is **live-only**.
 
+## 🧪 ACTIVE EXPERIMENT — BTC RSI×ADX Cross-Filter OFF, both sides (Jun 6, ~24h open run)
+**`btc_rsi_adx_filter_long` and `btc_rsi_adx_filter_short` BLANKED** to break the measurement deadlock (can't validate blocked cells while they're blocked). Only the BTC ADX [18,40] gate + all OTHER entry filters (chase, ADX-delta, pair-ADX-dir, BTC-1h-slope, pair-level `rsi_adx_filter_*`, quality score) remain → LONG + SHORT RSI surfaces fully open across 40-100 / 0-60.
+- **ARCHIVED for instant re-add:** LONG = `70-100:40,60-65:22-25,60-65:27-30,55-60:20-25,50-55:99-100` · SHORT = `30-35:30,35-40:20-26,45-50:25,0-30:25-30`.
+- **ABORT GATE (don't dogmatically run 24h):** re-add early if opened-band entries hit ≤30% WR on N≥20 that side, OR the side draws down past operator comfort. **SHORT is the money-maker → tighter watch:** if the open SHORT book degrades vs its filtered baseline (WR drop / net-neg on N≥15), re-add SHORT immediately (don't dilute a working side).
+- **POST-RUN ANALYSIS (pre-committed):** bucket fresh longs AND shorts by BTC RSI band (×ADX); re-add the cross-filter rules ONLY for bands that confirm net-negative on the fresh current-stack data; leave open any that surprise positive. This is the deliverable — judge on per-band breakdown, NOT the run's bottom line (LONG P&L expected worse; that's the cost of the data).
+- **ATTRIBUTION CAVEAT:** stacks with the just-shipped SLWide −1.00. Separable (entry-mix vs exit) but flag when reading: "more/worse entries got in" (cross-filter) vs "stops gave room" (SLWide).
+
 ## Active watchlist & locked revert gates (pending — apply at next ≥30-trade checkpoint)
 - **Global Vol filter (Jun 2):** revert a SHORT side if would-be-blocked SHORTs ≥55% WR on N≥10 fresh · drop LONG floor→0 if it clips ≥3 runner winners (peak≥+3%)/batch with no offsetting saves. Watch VOL_GATE / VOL_GATE_MAX_SHORT counters fire.
 - **ATR Multiplier `Runner` 2× LONG (Jun 5, in-sample ship — tight gate):** ATR 1.1-99 → ×2 inv, pattern-blocked, hard-capped. Near-neutral on the batch (doubles INJ/STO losers; ≈ +$13 net). **REVERT to 1.0× if Total$<0 on N≥5 fresh `ATR_Runner` trades.** Watch the **ATR Multiplier Performance** table (verdict ★/⚠/✗).

@@ -375,7 +375,7 @@
     "spike_guard_max_ema20_distance_pct": 2.0,
     "entry_dist_from_ema13_min_long": 0.2,
     "entry_dist_from_ema13_min_short": 0.0,
-    "entry_dist_from_ema13_filter_enabled": true,
+    "entry_dist_from_ema13_filter_enabled": false,
     "global_volume_max_short_capitulation_gv_cap": 2.0,
     "btc_adx_block_min_short": 24.0,
     "btc_adx_block_max_short": 30.0,

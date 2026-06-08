@@ -6796,6 +6796,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "ema13_cross_disabled_cf": _compute_ema13_cross_disabled_cf(orders),
         # Trailing Min-Profit Gate CF (Jun 8, 2026 — suppressed-fire would-have-cut vs held-to-exit)
         "trail_gate_cf": _compute_trail_gate_cf(orders),
+        # Gap-Expanding relaxation A/B cohort (Jun 8, 2026 — MARGINAL vs STRICT)
+        "gap_expand_cohort": _compute_gap_expand_cohort(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
         "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
         # Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE (May 12 LATE PM)
@@ -9349,6 +9351,60 @@ def _compute_ema13_cross_disabled_cf(orders):
             'total_dollar_delta': round(sum_dollar, 2),
             'verdict': verdict,
         })
+    return {'rows': rows_out}
+
+
+def _compute_gap_expand_cohort(orders):
+    """Gap-Expanding relaxation A/B (Jun 8, 2026).
+
+    Splits CLOSED trades into MARGINAL (entry_gap_expand_marginal=True — admitted by
+    ema_gap_expanding_mode='prev2_only', would have been blocked by the strict prev1
+    check) vs STRICT (False — passed prev1 too) per direction. Compares WR / Avg P&L% /
+    Total$ so the newly-admitted cohort's edge is isolated against the always-allowed one.
+    Verdict on the MARGINAL rows: ★ relaxation wins (WR & $ ≥ strict-ish), ⚠ revert, etc.
+    """
+    buckets = {}  # (dir, 'MARGINAL'|'STRICT') -> list
+    for o in orders:
+        if getattr(o, 'status', None) != "CLOSED":
+            continue
+        marg = getattr(o, 'entry_gap_expand_marginal', None)
+        if marg is None:
+            continue  # pre-feature trades — not part of the A/B
+        d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
+        key = (d, 'MARGINAL' if marg else 'STRICT')
+        buckets.setdefault(key, []).append(o)
+
+    def _demux(o):
+        m = (getattr(o, 'cell_multiplier', 1.0) or 1.0) * (getattr(o, 'cell_lev_multiplier', 1.0) or 1.0)
+        return (o.pnl or 0.0) / m if m else (o.pnl or 0.0)
+
+    rows_out = []
+    for d in ("LONG", "SHORT"):
+        strict = buckets.get((d, 'STRICT'), [])
+        strict_wr = (sum(1 for o in strict if (o.pnl or 0) > 0) / len(strict) * 100) if strict else None
+        for cohort in ('STRICT', 'MARGINAL'):
+            rs = buckets.get((d, cohort), [])
+            n = len(rs)
+            if n == 0:
+                continue
+            wr = sum(1 for o in rs if (o.pnl or 0) > 0) / n * 100
+            avg_pct = sum((o.pnl_percentage or 0.0) for o in rs) / n
+            tot_demux = sum(_demux(o) for o in rs)
+            verdict = ""
+            if cohort == 'MARGINAL':
+                if n < 20:
+                    verdict = f"⏳ building ({n}/20)"
+                elif wr >= (strict_wr if strict_wr is not None else 50.0) and tot_demux > 0:
+                    verdict = "★ relaxation wins (keep prev2_only)"
+                elif tot_demux < 0 or (strict_wr is not None and wr < strict_wr - 10):
+                    verdict = "⚠ REVERT (restore prev1 / 'both')"
+                else:
+                    verdict = "✓ neutral"
+            rows_out.append({
+                'direction': d, 'cohort': cohort, 'n': n,
+                'wr': round(wr, 1), 'avg_pct': round(avg_pct, 4),
+                'total_demux': round(tot_demux, 2), 'verdict': verdict,
+            })
     return {'rows': rows_out}
 
 

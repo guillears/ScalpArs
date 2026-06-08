@@ -15,7 +15,7 @@ from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
 from services.binance_service import binance_service, _leverage_blocked_pairs
-from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active
+from services.indicators import calculate_indicators, get_signal, check_exit_conditions, calculate_pnl, determine_macro_regime, is_signal_direction_active, gap_expand_marginal
 from services.regime import classify_btc_regime
 from services.websocket_tracker import websocket_tracker
 
@@ -2721,6 +2721,8 @@ class TradingEngine:
         entry_btc_1h_slope: float = None,
         # May 10: capture absolute pair 24h USD volume at entry for size-bucket analysis
         entry_pair_volume_24h_usd: float = None,
+        # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
+        entry_gap_expand_marginal: bool = None,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -3256,6 +3258,8 @@ class TradingEngine:
             entry_btc_1h_slope=entry_btc_1h_slope,
             # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
+            # Jun 8: gap-expanding relaxation A/B cohort tag
+            entry_gap_expand_marginal=entry_gap_expand_marginal,
             # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)
             entry_desired_notional=_desired_notional,
             entry_liquidity_cap_notional=_liq_cap,
@@ -6897,6 +6901,9 @@ class TradingEngine:
                     entry_btc_1h_slope=_current_btc_1h_slope,
                     # May 10: absolute pair 24h USD volume — sourced from binance scan
                     entry_pair_volume_24h_usd=volume_24h,
+                    # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
+                    # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
+                    entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),
                 )
 
                 if order:

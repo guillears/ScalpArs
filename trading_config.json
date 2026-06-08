@@ -127,6 +127,7 @@
     "pnl_trailing_ratio": 0.5,
     "pnl_trailing_ratio_signal_active": 0.4,
     "ema_gap_expanding_filter": true,
+    "ema_gap_expanding_mode": "prev2_only",
     "ema_gap_5_20_enabled": true,
     "ema_gap_5_20_min_long": 0.05,
     "ema_gap_5_20_min_short": 0.05,

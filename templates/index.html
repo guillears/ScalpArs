@@ -1192,6 +1192,30 @@
                     </div>
                 </div>
 
+                <!-- Gap-Expanding Relaxation A/B Cohort (Jun 8, 2026) -->
+                <div class="mt-6 pt-6 border-t border-emerald-900/40">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🪟 Gap-Expand Relaxation — MARGINAL vs STRICT</h3>
+                    <p class="text-xs text-gray-500 mb-3">When <strong>EMA Gap Expanding mode = prev2_only</strong>, entries are tagged: <span class="text-amber-300">MARGINAL</span> = admitted by the relaxed rule but would have FAILED the strict prev1 check (the newly-allowed cohort); <span class="text-gray-300">STRICT</span> = passed prev1 too (would've traded anyway). Compares the two so the relaxation's edge is isolated. <span class="text-emerald-400">★ relaxation wins</span> = MARGINAL WR ≥ STRICT &amp; $ positive (keep prev2_only); <span class="text-amber-400">⚠ REVERT</span> = MARGINAL net-negative or WR ≫ below STRICT (restore 'both'). Read gate at N≥20 MARGINAL.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Direction</th>
+                                    <th class="text-left px-2">Cohort</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2" title="Avg pnl% (leverage-invariant)">Avg P&L%</th>
+                                    <th class="text-right px-2" title="Total $ de-multiplied to 1× base">Total $ (1×)</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="gap-expand-cohort-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="py-3 text-center text-gray-500">No tagged entries yet (enable prev2_only mode)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-2">⏱️ Trailing Confirmation Performance</h3>
@@ -5892,14 +5916,21 @@
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">EMA Gap Expanding Filter</span>
-                        <div class="flex items-center gap-6 mt-1">
+                        <div class="flex items-center gap-6 mt-1 flex-wrap">
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="config-ema-gap-expanding-filter" class="sr-only peer" checked>
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
                                 <span class="ml-2 text-sm text-gray-400">Enabled</span>
                             </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-400">
+                                <span>Mode</span>
+                                <select id="config-ema-gap-expanding-mode" class="bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200">
+                                    <option value="both">both (strict — beat prev1 AND prev2)</option>
+                                    <option value="prev2_only">prev2_only (relaxed — beat prev2 only)</option>
+                                </select>
+                            </label>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1">Block entry if EMA5-EMA13 gap is compressing vs 1 or 2 candles ago. Catches late-trend entries where momentum is decelerating. (May 8: switched from EMA5-EMA8 to EMA5-EMA13 — less restrictive, allows pullback entries within an intact trend.)</p>
+                        <p class="text-xs text-gray-500 mt-1">Block entry if the EMA5-EMA13 gap is compressing — catches late-trend entries where momentum is decelerating. <strong>Mode = both</strong> (strict): the gap must beat BOTH the prev-1 and prev-2 candle (a fresh 3-bar expansion high) — this is the single biggest entry blocker (~31% of all blocks). <strong>Mode = prev2_only</strong> (relaxed): the gap need only beat the prev-2 candle, tolerating a 1-candle pause within an intact trend; entries that pass prev2 but fail prev1 are tagged <span class="text-amber-300">MARGINAL</span> and measured in the <strong>🪟 Gap-Expand Relaxation</strong> table (read gate N≥20: keep if the MARGINAL cohort wins, revert to 'both' if it loses). (May 8: gap switched from EMA5-EMA8 to EMA5-EMA13 — allows pullback entries within an intact trend.)</p>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">EMA5-EMA20 Gap Filter</span>
@@ -8727,7 +8758,7 @@
             lines.push(`  Min ADX Delta L: ${th.min_adx_delta_long || 0}  |  S: ${th.min_adx_delta_short || 0}  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)`);
             lines.push(`  Entry Quality Score Filter: ${th.entry_quality_score_filter_enabled ? 'ON' : 'OFF'}  |  Block when score ≤ ${th.entry_quality_score_block_max ?? 1}  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)`);
             lines.push(`  RSI Momentum Filter: ${th.rsi_momentum_filter_enabled}  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)`);
-            lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  (block entry if EMA5-EMA13 gap compressing vs prev 1 or 2 candles)`);
+            lines.push(`  EMA Gap Expanding Filter: ${th.ema_gap_expanding_filter !== undefined ? th.ema_gap_expanding_filter : true}  |  Mode: ${th.ema_gap_expanding_mode || 'both'}  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])`);
 
             const inv = cfg.investment || {};
             lines.push(`\nGeneral Settings:`);
@@ -12397,6 +12428,35 @@
                                     <td class="px-2 py-1 text-right ${dC}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
                                     <td class="px-2 py-1 text-right text-gray-300">${r.held_better}/${r.n}</td>
                                     <td class="px-2 py-1 text-right ${usdC}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${vC} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                }
+
+                // Gap-Expand Relaxation Cohort (Jun 8, 2026)
+                if (data.gap_expand_cohort) {
+                    const _gec = data.gap_expand_cohort;
+                    const _gecBody = document.getElementById('gap-expand-cohort-body');
+                    if (_gecBody) {
+                        if (!_gec.rows || !_gec.rows.length) {
+                            _gecBody.innerHTML = '<tr><td colspan="7" class="py-3 text-center text-gray-500">No tagged entries yet (enable prev2_only mode)</td></tr>';
+                        } else {
+                            _gecBody.innerHTML = _gec.rows.map(r => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const cohC = r.cohort === 'MARGINAL' ? 'text-amber-300 font-semibold' : 'text-gray-300';
+                                const wrC = r.wr >= 55 ? 'text-emerald-400' : (r.wr < 40 ? 'text-red-400' : 'text-gray-300');
+                                const acC = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const usdC = r.total_demux > 1 ? 'text-emerald-400' : (r.total_demux < -1 ? 'text-red-400' : 'text-gray-400');
+                                const vC = r.verdict.includes('★') ? 'text-emerald-400 font-semibold' : (r.verdict.includes('REVERT') ? 'text-amber-400' : (r.verdict.includes('building') ? 'text-blue-400' : 'text-gray-400'));
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 ${cohC}">${r.cohort}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${wrC}">${r.wr.toFixed(1)}%</td>
+                                    <td class="px-2 py-1 text-right ${acC}">${r.avg_pct >= 0 ? '+' : ''}${r.avg_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${usdC}">${r.total_demux >= 0 ? '+$' : '-$'}${Math.abs(r.total_demux).toFixed(2)}</td>
                                     <td class="px-2 py-1 ${vC} text-xs">${r.verdict}</td>
                                 </tr>`;
                             }).join('');
@@ -16551,6 +16611,7 @@
                 document.getElementById('config-momentum-adx-max').value = config.thresholds.momentum_adx_max !== undefined ? config.thresholds.momentum_adx_max : 100;
                 document.getElementById('config-rsi-momentum-filter-enabled').checked = config.thresholds.rsi_momentum_filter_enabled !== undefined ? config.thresholds.rsi_momentum_filter_enabled : true;
                 document.getElementById('config-ema-gap-expanding-filter').checked = config.thresholds.ema_gap_expanding_filter !== undefined ? config.thresholds.ema_gap_expanding_filter : true;
+                { const _e=document.getElementById('config-ema-gap-expanding-mode'); if(_e) _e.value = config.thresholds.ema_gap_expanding_mode || 'both'; }
                 // May 2: split EMA5-EMA8 max with auto-fallback to legacy single field
                 const _legacy_gap58_max = config.thresholds.ema_gap_5_8_max !== undefined ? config.thresholds.ema_gap_5_8_max : 0;
                 document.getElementById('config-ema-gap-5-8-max-long').value = config.thresholds.ema_gap_5_8_max_long !== undefined ? config.thresholds.ema_gap_5_8_max_long : _legacy_gap58_max;
@@ -17837,6 +17898,7 @@
                     momentum_adx_max: safeFloat(document.getElementById('config-momentum-adx-max').value),
                     rsi_momentum_filter_enabled: document.getElementById('config-rsi-momentum-filter-enabled').checked,
                     ema_gap_expanding_filter: document.getElementById('config-ema-gap-expanding-filter').checked,
+                    ema_gap_expanding_mode: document.getElementById('config-ema-gap-expanding-mode')?.value || 'both',
                     // May 2: split EMA5-EMA8 max + new pair/BTC slope max guards
                     ema_gap_5_8_max_long: safeFloat(document.getElementById('config-ema-gap-5-8-max-long').value),
                     ema_gap_5_8_max_short: safeFloat(document.getElementById('config-ema-gap-5-8-max-short').value),

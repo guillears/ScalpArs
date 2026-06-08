@@ -216,6 +216,13 @@ class SignalThresholds(BaseModel):
     pnl_trailing_ratio: float = 0.5  # Ratio when signal lost (MOMENTUM_EXIT) -- tighter
     pnl_trailing_ratio_signal_active: float = 0.3  # Ratio when signal active (PNL_TRAILING) -- wider
     ema_gap_expanding_filter: bool = True  # Block entry if EMA5-EMA8 gap is compressing (current <= previous candle)
+    # Jun 8: strictness mode for the gap-expanding filter. 'both' (legacy) = block unless the
+    # EMA5-EMA13 gap beats BOTH prev1 AND prev2 candles (a fresh 3-bar expansion high — very
+    # strict, the #1 entry blocker at 31% of all blocks). 'prev2_only' = block only if the gap
+    # fails prev2 (tolerates a 1-candle pause within an intact trend; admits "MARGINAL" entries
+    # the strict rule rejected). Trades admitted by prev2_only that would have failed prev1 are
+    # tagged entry_gap_expand_marginal=True so the cohort's WR can be isolated. Default 'both'.
+    ema_gap_expanding_mode: str = 'both'  # 'both' | 'prev2_only'
     # EMA5-EMA20 Gap Filter (signal quality gate — separate for longs/shorts)
     ema_gap_5_20_enabled: bool = True  # Master toggle for EMA5-EMA20 gap requirement
     ema_gap_5_20_min_long: float = 0.15  # Min EMA5-EMA20 gap % for LONG entries

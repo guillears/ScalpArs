@@ -385,6 +385,10 @@ class Order(Base):
     # record the would-have-cut pnl% (CF: this vs the actual exit the trade rode to).
     phantom_trail_suppress_pnl = Column(Float, nullable=True)
     phantom_trail_suppress_at = Column(DateTime, nullable=True)
+    # Jun 8: gap-expanding relaxation A/B. True = this entry was admitted by
+    # ema_gap_expanding_mode='prev2_only' but would have failed the strict prev1 check
+    # (the MARGINAL cohort). False = clean expander. NULL = pre-feature / undefined.
+    entry_gap_expand_marginal = Column(Boolean, nullable=True)
     # May 23: post-exit regime-flip tracker. After trade closes, post-exit
     # watcher continues to read live BTC regime classification each tick.
     # When BTC regime first transitions to OPPOSITE-of-trade-direction

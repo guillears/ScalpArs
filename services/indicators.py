@@ -158,6 +158,36 @@ def _passes_rsi_adx_filter(direction: str, rsi: float, adx: float, th) -> bool:
     return True
 
 
+def gap_expand_marginal(indicators: dict, direction: str):
+    """Jun 8: tag for the gap-expanding relaxation A/B.
+
+    Returns True iff this entry would have been BLOCKED by the strict prev1 check
+    (current EMA5-EMA13 gap <= prev1) but PASSES the relaxed prev2 check (gap > prev2)
+    — i.e. exactly the cohort admitted by `ema_gap_expanding_mode='prev2_only'` that
+    the legacy 'both' rule rejected. False = clean expander (passed prev1 too).
+    None = insufficient data or undefined. Pure read of the same gaps get_signal uses.
+    """
+    try:
+        e5 = indicators.get('ema5'); e13 = indicators.get('ema13')
+        e5p1 = indicators.get('ema5_prev1'); e13p1 = indicators.get('ema13_prev1')
+        e5p2 = indicators.get('ema5_prev2'); e13p2 = indicators.get('ema13_prev2')
+        if direction == "LONG":
+            gap = (e5 - e13) / e13 * 100 if e5 and e13 and e13 > 0 else None
+            p1 = (e5p1 - e13p1) / e13p1 * 100 if e5p1 and e13p1 and e13p1 > 0 else None
+            p2 = (e5p2 - e13p2) / e13p2 * 100 if e5p2 and e13p2 and e13p2 > 0 else None
+        elif direction == "SHORT":
+            gap = (e13 - e5) / e5 * 100 if e5 and e13 and e5 > 0 else None
+            p1 = (e13p1 - e5p1) / e5p1 * 100 if e5p1 and e13p1 and e5p1 > 0 else None
+            p2 = (e13p2 - e5p2) / e5p2 * 100 if e5p2 and e13p2 and e5p2 > 0 else None
+        else:
+            return None
+        if gap is None or p1 is None or p2 is None:
+            return None
+        return bool(gap > p2 and gap <= p1)
+    except Exception:
+        return None
+
+
 def get_signal(
     ema5: float,
     ema8: float,
@@ -346,6 +376,10 @@ def get_signal(
     adx_max_long = getattr(th, 'momentum_adx_max_long', adx_max)
     rsi_momentum_enabled = getattr(th, 'rsi_momentum_filter_enabled', True)
     gap_expanding_enabled = getattr(th, 'ema_gap_expanding_filter', True)
+    # Jun 8: 'both' (legacy) blocks unless gap beats prev1 AND prev2; 'prev2_only' drops the
+    # prev1 check (tolerates a 1-candle pause). prev1 branch active only in 'both' mode.
+    _gap_expand_mode = getattr(th, 'ema_gap_expanding_mode', 'both')
+    _gap_prev1_active = gap_expanding_enabled and _gap_expand_mode != 'prev2_only'
 
     if ema8 and ema8 > 0:
         if ema5 > ema8:
@@ -398,7 +432,7 @@ def get_signal(
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max_long', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 long_gap_min = getattr(th, 'ema_gap_threshold_long', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= long_gap_min
-                if gap_expanding_enabled and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
+                if _gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
                     logger.debug(f"[MOMENTUM] LONG skipped: EMA5-13 gap compressing vs 1 candle ({exp_prev_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "LONG")
                 elif gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct:
@@ -466,7 +500,7 @@ def get_signal(
                 ema_gap_max = getattr(th, 'ema_gap_5_8_max_short', 0) or getattr(th, 'ema_gap_5_8_max', 0)
                 short_gap_min = getattr(th, 'ema_gap_threshold_short', th.ema_gap_threshold)
                 gap_threshold_met = ema_gap_pct >= short_gap_min
-                if gap_expanding_enabled and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
+                if _gap_prev1_active and exp_gap_pct is not None and exp_prev_gap_pct is not None and exp_gap_pct <= exp_prev_gap_pct:
                     logger.debug(f"[MOMENTUM] SHORT skipped: EMA5-13 gap compressing vs 1 candle ({exp_prev_gap_pct:.4f}% -> {exp_gap_pct:.4f}%)")
                     _record("PAIR_EMA_GAP_NOT_EXPANDING", "SHORT")
                 elif gap_expanding_enabled and exp_gap_pct is not None and exp_prev2_gap_pct is not None and exp_gap_pct <= exp_prev2_gap_pct:

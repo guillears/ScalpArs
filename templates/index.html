@@ -1167,6 +1167,31 @@
                     </div>
                 </div>
 
+                <!-- Trailing Min-Profit Gate CF (Jun 8, 2026) -->
+                <div class="mt-6 pt-6 border-t border-emerald-900/40">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🛡️ Trailing Min-Profit Gate — Suppressed-Fire CF</h3>
+                    <p class="text-xs text-gray-500 mb-3">For trades where the gate SUPPRESSED a trailing fire (its exit level peak−pullback was below the +0.10% floor — the whipsaw L1 case) the trade rode on and we recorded the would-have-cut (phantom) pnl. Compares <strong>phantom (the cut)</strong> vs <strong>actual (held to real exit)</strong>. <span class="text-emerald-400">★ SUPPRESS wins</span> = holding beat the cut (keep the gate); <span class="text-amber-400">⚠ REVERT</span> = the cut would've banked more (set gate back to −99). Live evidence for the gate decision.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Direction</th>
+                                    <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="Avg pnl% the L1 trailing WOULD have cut at (the whipsaw exit)">Avg Phantom%</th>
+                                    <th class="text-right px-2" title="Avg pnl% of the real exit the trade rode to (held)">Avg Actual%</th>
+                                    <th class="text-right px-2" title="Actual − Phantom. Positive = holding beat the cut (gate helps).">Δ pct</th>
+                                    <th class="text-right px-2" title="# trades where held beat the cut">held&gt;cut</th>
+                                    <th class="text-right px-2" title="Total $ Δ = sum of (actual $ − would-have-cut $)">Total $ Δ</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trail-gate-cf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="py-3 text-center text-gray-500">No gate-suppressed trailing fires yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Trailing Confirmation Performance (May 9, 2026) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-2">⏱️ Trailing Confirmation Performance</h3>
@@ -4425,6 +4450,17 @@
                                 <span id="config-trailing-atr-preview" class="text-xs text-gray-500"></span>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">ATR-normalized pullback floor: <code>effective_pullback = max(fixed_pullback, entry_atr_pct × multiplier)</code>. Volatile pairs (high ATR) get wider pullback proportional to their normal candle noise. 0.50 = "half a candle of noise". Set to 0 to disable.</p>
+                        </div>
+                        <div class="md:col-span-2 border border-emerald-500/20 rounded p-2">
+                            <label class="block text-sm text-emerald-300 mb-2">🛡️ Trailing Min-Profit Gate <span class="text-xs text-gray-400 font-normal">(Jun 8 — never trail into a loss)</span></label>
+                            <div class="flex items-center gap-4 flex-wrap">
+                                <label class="flex items-center text-sm text-gray-400" title="The price-drop trailing fires only when its exit level (peak − pullback) is >= this. Below it, the trailing is SUPPRESSED (dormant); the trade rides the hard SL until the peak climbs enough to lock >= this, then the trailing re-arms and trails the new peak. -99 = disabled.">
+                                    fire only if (peak − pullback) ≥
+                                    <input type="number" step="0.01" id="config-trailing-min-profit-to-fire" class="w-20 ml-2 bg-white/5 border border-emerald-500/40 rounded px-2 py-1 text-emerald-200 text-center" value="0.10">
+                                    <span class="ml-1 text-xs text-gray-500">%</span>
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Fixes high-ATR L1 whipsaws where the ATR-widened pullback exceeds the peak (e.g. peak +0.45 − pullback 0.67 = −0.22 → trailing exits red on a pair that recovers). Suppressed trades ride to the hard SL or re-arm on recovery, capturing the run instead of being cut at breakeven. Self-scopes to L1 (L2+ always clears it). <strong>−99 = disabled.</strong></p>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">SL ATR Multiplier <span class="text-xs text-amber-400">(May 22)</span></label>
@@ -12338,6 +12374,36 @@
                     }
                 }
 
+                // Trailing Min-Profit Gate — Suppressed-Fire CF (Jun 8, 2026)
+                if (data.trail_gate_cf) {
+                    const _tgf = data.trail_gate_cf;
+                    const _tgfBody = document.getElementById('trail-gate-cf-body');
+                    if (_tgfBody) {
+                        if (!_tgf.rows || !_tgf.rows.length) {
+                            _tgfBody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-500">No gate-suppressed trailing fires yet</td></tr>';
+                        } else {
+                            _tgfBody.innerHTML = _tgf.rows.map(r => {
+                                const dirColor = r.direction === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                const phC = r.avg_phantom_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const acC = r.avg_actual_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const dC = r.avg_delta_pct > 0.05 ? 'text-emerald-400' : (r.avg_delta_pct < -0.05 ? 'text-red-400' : 'text-gray-400');
+                                const usdC = r.total_dollar_delta > 1 ? 'text-emerald-400' : (r.total_dollar_delta < -1 ? 'text-red-400' : 'text-gray-400');
+                                const vC = r.verdict.includes('★') ? 'text-emerald-400 font-semibold' : (r.verdict.includes('REVERT') ? 'text-amber-400' : (r.verdict.includes('Marginal') ? 'text-blue-400' : 'text-gray-400'));
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${dirColor} font-medium">${r.direction}</td>
+                                    <td class="px-2 py-1 text-right">${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${phC}">${r.avg_phantom_pct >= 0 ? '+' : ''}${r.avg_phantom_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${acC}">${r.avg_actual_pct >= 0 ? '+' : ''}${r.avg_actual_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1 text-right ${dC}">${r.avg_delta_pct >= 0 ? '+' : ''}${r.avg_delta_pct.toFixed(3)}pp</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${r.held_better}/${r.n}</td>
+                                    <td class="px-2 py-1 text-right ${usdC}">${r.total_dollar_delta >= 0 ? '+$' : '-$'}${Math.abs(r.total_dollar_delta).toFixed(2)}</td>
+                                    <td class="px-2 py-1 ${vC} text-xs">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        }
+                    }
+                }
+
                 // Trailing Confirmation Performance (May 9, 2026)
                 if (data.trailing_confirmation_performance) {
                     const _tcp = data.trailing_confirmation_performance;
@@ -16614,6 +16680,7 @@
                 // Trailing Pullback Confirmation (May 9)
                 const _tpcInput = document.getElementById('config-trailing-pullback-confirmation-seconds');
                 if (_tpcInput) _tpcInput.value = config.thresholds.trailing_pullback_confirmation_seconds !== undefined ? config.thresholds.trailing_pullback_confirmation_seconds : 15;
+                { const _e=document.getElementById('config-trailing-min-profit-to-fire'); if(_e) _e.value = config.thresholds.trailing_min_profit_to_fire !== undefined ? config.thresholds.trailing_min_profit_to_fire : -99; }
                 const _atrMultInput = document.getElementById('config-trailing-atr-multiplier');
                 if (_atrMultInput) {
                     _atrMultInput.value = config.thresholds.trailing_atr_multiplier !== undefined ? config.thresholds.trailing_atr_multiplier : 0.50;
@@ -17837,6 +17904,7 @@
                     rsi_handoff_level: parseInt(document.getElementById('config-rsi-handoff-level').value) || 3,
                     pullback_widening_per_level: safeFloat(document.getElementById('config-pullback-widening').value),
                     trailing_atr_multiplier: safeFloat(document.getElementById('config-trailing-atr-multiplier')?.value || 0.50),
+                    trailing_min_profit_to_fire: safeFloat(document.getElementById('config-trailing-min-profit-to-fire')?.value ?? -99),
                     sl_atr_multiplier: safeFloat(document.getElementById('config-sl-atr-multiplier')?.value || 1.5),
                     sl_atr_widen_floor_pct: safeFloat(document.getElementById('config-sl-atr-widen-floor-pct')?.value || -1.20),
                     trailing_pullback_confirmation_seconds: parseInt(document.getElementById('config-trailing-pullback-confirmation-seconds')?.value || 15) || 0,

@@ -916,11 +916,21 @@ def check_exit_conditions(
         # Fail safe: never block exits on a runner-trail config/compute error
         pass
 
+    # Jun 8: trailing min-profit GATE. Suppress the (price-drop) trailing stop when its
+    # exit level (peak_pnl − pullback) is below the configured min — i.e. when it would
+    # realize a loss/sub-min exit. The trade then rides on the hard SL until the peak
+    # climbs enough to lock >= the min, at which point this re-engages and trails normally.
+    try:
+        _trail_min_profit = float(getattr(config_module.trading_config.thresholds, 'trailing_min_profit_to_fire', -99.0))
+    except Exception:
+        _trail_min_profit = -99.0
+    _trail_level_ok = (peak_pnl - pullback_trigger) >= _trail_min_profit
+    _trail_suppressed_pnl = None  # set to the would-have-cut pnl% if the gate blocks a trailing fire this tick
     if trailing_stop_active and not _handoff_suppress_trailing:
         if direction == "LONG" and high_price and high_price > 0:
             # For LONG: check if price dropped X% from highest
             price_drop_pct = ((high_price - current_price) / high_price) * 100
-            if price_drop_pct >= pullback_trigger:
+            if price_drop_pct >= pullback_trigger and _trail_level_ok:
                 # May 6 — bug fix: removed `if pnl_pct < 0` safeguard.  The original
                 # intent was to prevent corrupted high_price tracking from forcing a
                 # bad close, but it conflated "current pnl negative" with "tracking
@@ -936,10 +946,13 @@ def check_exit_conditions(
                     "trough_pnl": trough_pnl,
                     "tp_level": current_tp_level
                 }
+            elif price_drop_pct >= pullback_trigger and not _trail_level_ok:
+                # Gate suppressed this fire — record the would-have-cut pnl (phantom CF).
+                _trail_suppressed_pnl = pnl_pct
         elif direction == "SHORT" and low_price and low_price > 0:
             # For SHORT: check if price rose X% from lowest
             price_rise_pct = ((current_price - low_price) / low_price) * 100
-            if price_rise_pct >= pullback_trigger:
+            if price_rise_pct >= pullback_trigger and _trail_level_ok:
                 # May 6 — bug fix: removed `if pnl_pct < 0` safeguard (see LONG branch comment).
                 logger.info(f"[TRAILING_STOP] SHORT L{current_tp_level} triggered: low={low_price}, current={current_price}, rise={price_rise_pct:.4f}% >= {pullback_trigger}%, pnl={pnl_pct:.4f}%")
                 return {
@@ -949,8 +962,10 @@ def check_exit_conditions(
                     "trough_pnl": trough_pnl,
                     "tp_level": current_tp_level
                 }
-    
-    return {"should_close": False, "reason": None, "peak_pnl": peak_pnl, "trough_pnl": trough_pnl}
+            elif price_rise_pct >= pullback_trigger and not _trail_level_ok:
+                _trail_suppressed_pnl = pnl_pct
+
+    return {"should_close": False, "reason": None, "peak_pnl": peak_pnl, "trough_pnl": trough_pnl, "trail_suppressed_pnl": _trail_suppressed_pnl}
 
 
 def calculate_pnl(

@@ -381,6 +381,10 @@ class Order(Base):
     # closing). CF: phantom (would-have-exited) vs actual (held to real exit).
     phantom_ema13_cross_pnl = Column(Float, nullable=True)
     phantom_ema13_cross_at = Column(DateTime, nullable=True)
+    # Jun 8: trailing min-profit gate — when the gate suppresses a trailing fire,
+    # record the would-have-cut pnl% (CF: this vs the actual exit the trade rode to).
+    phantom_trail_suppress_pnl = Column(Float, nullable=True)
+    phantom_trail_suppress_at = Column(DateTime, nullable=True)
     # May 23: post-exit regime-flip tracker. After trade closes, post-exit
     # watcher continues to read live BTC regime classification each tick.
     # When BTC regime first transitions to OPPOSITE-of-trade-direction

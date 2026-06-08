@@ -6794,6 +6794,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # EMA13 strict-mode performance (May 8, 2026 — tracks impact of ema13_cross_requires_stack_flip)
         "ema13_strict_performance": _compute_ema13_strict_performance(orders),
         "ema13_cross_disabled_cf": _compute_ema13_cross_disabled_cf(orders),
+        # Trailing Min-Profit Gate CF (Jun 8, 2026 — suppressed-fire would-have-cut vs held-to-exit)
+        "trail_gate_cf": _compute_trail_gate_cf(orders),
         # Trailing pullback confirmation performance (May 9, 2026)
         "trailing_confirmation_performance": _compute_trailing_confirmation_performance(orders),
         # Post-exit P&L snapshots for EMA13_CROSS_EXIT and STOP_LOSS_WIDE (May 12 LATE PM)
@@ -9336,6 +9338,66 @@ def _compute_ema13_cross_disabled_cf(orders):
             verdict = "★ DISABLE wins (held beats cross)"
         elif avg_delta <= -0.05 or sum_dollar < 0:
             verdict = "⚠ KEEP cross (cross beats held)"
+        else:
+            verdict = "✓ Marginal"
+        rows_out.append({
+            'direction': d, 'n': n,
+            'avg_phantom_pct': round(avg_phantom, 4),
+            'avg_actual_pct': round(avg_actual, 4),
+            'avg_delta_pct': round(avg_delta, 4),
+            'held_better': held_better,
+            'total_dollar_delta': round(sum_dollar, 2),
+            'verdict': verdict,
+        })
+    return {'rows': rows_out}
+
+
+def _compute_trail_gate_cf(orders):
+    """Trailing Min-Profit Gate CF (Jun 8, 2026).
+
+    For trades where the gate SUPPRESSED a trailing fire (`phantom_trail_suppress_pnl
+    IS NOT NULL`), compares:
+      phantom_pct = pnl% the L1 trailing WOULD have cut at (the whipsaw exit)
+      actual_pct  = pnl% of the real exit the trade rode to (after suppression)
+    delta = actual − phantom. Positive = HOLDING beat the cut (gate helps); negative =
+    the cut would have been better (raise gate / revert). One row per direction.
+    """
+    by_dir = {"LONG": [], "SHORT": []}
+    for o in orders:
+        if getattr(o, 'status', None) != "CLOSED":
+            continue
+        phantom = getattr(o, 'phantom_trail_suppress_pnl', None)
+        if phantom is None:
+            continue
+        d = (o.direction.value if hasattr(o.direction, 'value') else o.direction) or "LONG"
+        if d not in by_dir:
+            continue
+        actual_pct = o.pnl_percentage if o.pnl_percentage is not None else 0.0
+        delta_pct = actual_pct - phantom
+        if actual_pct and abs(actual_pct) > 1e-9 and o.pnl is not None:
+            dollar_delta = o.pnl * (delta_pct / actual_pct)
+        else:
+            dollar_delta = (delta_pct / 100.0) * (o.investment or 0.0) * (o.leverage or 1)
+        by_dir[d].append({'phantom_pct': phantom, 'actual_pct': actual_pct,
+                          'delta_pct': delta_pct, 'dollar_delta': dollar_delta})
+
+    rows_out = []
+    for d in ("LONG", "SHORT"):
+        rs = by_dir[d]
+        n = len(rs)
+        if n == 0:
+            continue
+        avg_phantom = sum(r['phantom_pct'] for r in rs) / n
+        avg_actual = sum(r['actual_pct'] for r in rs) / n
+        avg_delta = sum(r['delta_pct'] for r in rs) / n
+        sum_dollar = sum(r['dollar_delta'] for r in rs)
+        held_better = sum(1 for r in rs if r['delta_pct'] > 0.02)
+        if n < 5:
+            verdict = "⚠ Low N"
+        elif avg_delta >= 0.05 and sum_dollar > 0:
+            verdict = "★ SUPPRESS wins (held beats cut)"
+        elif avg_delta <= -0.05 or sum_dollar < 0:
+            verdict = "⚠ REVERT (cut beats held)"
         else:
             verdict = "✓ Marginal"
         rows_out.append({

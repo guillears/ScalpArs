@@ -458,6 +458,11 @@ async def init_db():
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_ema13_cross_pnl FLOAT"))
                 if 'phantom_ema13_cross_at' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_ema13_cross_at DATETIME"))
+                # Jun 8: trailing min-profit gate phantom CF
+                if 'phantom_trail_suppress_pnl' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_trail_suppress_pnl FLOAT"))
+                if 'phantom_trail_suppress_at' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN phantom_trail_suppress_at DATETIME"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

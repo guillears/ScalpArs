@@ -5265,6 +5265,12 @@ class TradingEngine:
 
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
             order.trough_pnl = exit_result.get("trough_pnl", order.trough_pnl)
+            # Jun 8: trailing min-profit gate — record the would-have-cut pnl the FIRST
+            # time the gate suppresses a trailing fire (phantom CF: cut vs held-to-exit).
+            _ts_supp = exit_result.get("trail_suppressed_pnl")
+            if _ts_supp is not None and getattr(order, 'phantom_trail_suppress_pnl', None) is None:
+                order.phantom_trail_suppress_pnl = float(_ts_supp)
+                order.phantom_trail_suppress_at = datetime.utcnow()
             # May 14 — sync DB peak/trough updates back to realtime cache.
             # Without this, the realtime callback's phantom BE / BE / FL checks
             # use a stale cached peak/trough and miss extremes that monitor saw

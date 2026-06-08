@@ -288,6 +288,15 @@ class SignalThresholds(BaseModel):
     # pairs (high ATR) get wider pullback; calm pairs use the fixed pullback.
     # Set to 0.0 to disable ATR floor entirely.
     trailing_atr_multiplier: float = 0.50
+    # Jun 8: trailing min-profit GATE. The price-drop trailing stop only fires when its
+    # exit level (peak_pnl − effective_pullback) is ≥ this. Below it, the trailing is
+    # SUPPRESSED (dormant) — it does NOT realize a loss/sub-min exit; the trade rides on
+    # the hard SL until the peak climbs enough to lock ≥ this, then the trailing re-arms
+    # and trails the new peak normally. Fixes high-ATR L1 whipsaws where the ATR-widened
+    # pullback exceeds the peak (e.g. peak +0.45 − pullback 0.67 = −0.22 → exits red on a
+    # pair that recovers). Default −99 = disabled (current behavior, fires at any level).
+    # Cross-batch (9-pool+batch, N=16 whipsaw trades): suppress+ride = +$1,506 vs +$190.
+    trailing_min_profit_to_fire: float = -99.0
     # May 22: ATR-adjusted SL floor (analog of trailing_atr_multiplier but for SL).
     # Widens the hard SL on high-ATR pairs to prevent wicks from stopping trades
     # whose signal is still valid. Only WIDENS (more negative); never tightens.

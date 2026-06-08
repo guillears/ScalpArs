@@ -399,7 +399,8 @@
       }
     ],
     "ema13_cross_exit_long_enabled": false,
-    "ema13_cross_exit_short_enabled": true
+    "ema13_cross_exit_short_enabled": true,
+    "trailing_min_profit_to_fire": 0.1
   },
   "post_exit_tracking_enabled": true,
   "post_exit_tracking_minutes": 45,

@@ -2862,6 +2862,16 @@ class TradingEngine:
             btc_gap=_btc_gap_for_pc,
             pair_vol_ratio=entry_pair_volume_ratio,
         )
+        # Jun 9: "keep only unmatched longs" — the LONG pattern library selects for losers
+        # (every C/W pattern net-negative); the edge is the no-pattern runner cohort (85% WR).
+        # Block any LONG that matches ANY C or W pattern. Counter LONG_UNMATCHED_ONLY.
+        if direction == "LONG" and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
+            logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
+            try:
+                self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
+            except Exception:
+                pass
+            return None
         _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = self._lookup_pattern_cell_rule(
             direction=direction,
             c_flags={'C1': _pc1_e, 'C2': _pc2_e, 'C3': _pc3_e, 'C4': _pc4_e, 'C5': _pc5_e,

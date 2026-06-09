@@ -551,6 +551,15 @@ class SignalThresholds(BaseModel):
     atr_low_fixed_tp_long_enabled: bool = False
     atr_low_fixed_tp_atr_max: float = 1.1  # entry_atr_pct strictly less than this = "pop-and-fade" cohort
     atr_low_fixed_tp_pct: float = 0.25     # LONG exits at this pnl% (profit-lock; never cuts a losing trade)
+    # Jun 9, 2026 — "keep only unmatched longs". 4-cohort analysis (10-pool, current stack):
+    # the LONG pattern library uniformly selects for LOSERS (every C/W pattern net-negative:
+    # W6 −$574, W2 −$480, C7 −$261 demux), while TRULY-UNMATCHED longs (no C, no W) are the
+    # edge (N=39, 85% WR, +$471 demux). When True, block any LONG matching ANY C or W pattern
+    # (counter LONG_UNMATCHED_ONLY) — keep only the unmatched runner cohort. Pair this with
+    # atr_low_fixed_tp_long_enabled=False: the fix-TP caps the pop-and-fade (matched) cohort,
+    # but unmatched longs RUN (54% peak ≥0.40) — capping them at +0.25 strangles the edge, so
+    # disable it and let them trail. (Coupling: if you re-enable matched longs, re-enable fix-TP.)
+    long_unmatched_only: bool = False
     # BTC 1h Slope × BTC ADX Multiplier Rules (May 24 evening, 2026) — NEW dimension.
     # Sister to btc_rsi_adx_multiplier (existing) and extension_multiplier (today).
     # JSON-list format (not the string-CSV format used by btc_rsi_adx_multiplier_*)

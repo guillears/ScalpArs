@@ -4731,6 +4731,14 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Profit-lock on the no-runner cohort (never cuts a DOA loser). <span class="text-emerald-400">The High-ATR runner <strong>multiplier</strong> now lives in the Multiplier section → ATR Multiplier Rules (so it can carry leverage + a performance table).</span></p>
                         </div>
+                        <div class="md:col-span-2 border border-fuchsia-500/30 rounded p-2">
+                            <label class="block text-sm text-fuchsia-300 mb-2">🧬 Keep ONLY Unmatched Longs <span class="text-xs text-gray-400 font-normal">(Jun 9 — long patterns select for losers; the no-pattern runner cohort is the edge)</span></label>
+                            <label class="flex items-center cursor-pointer" title="When ON, block any LONG matching ANY C or W pattern. Keep only truly-unmatched longs (no C, no W). Counter LONG_UNMATCHED_ONLY. Pair with fix-TP OFF so the unmatched runners trail.">
+                                <input type="checkbox" id="config-long-unmatched-only" class="mr-2">
+                                <span class="text-sm text-gray-300">Block all pattern-matched longs (keep only unmatched)</span>
+                            </label>
+                            <p class="text-xs text-gray-500 mt-1">4-cohort (10-pool, current stack): every long C/W pattern is net-negative (W6 −$574, W2 −$480, C7 −$261 demux); truly-unmatched longs = 85% WR, +$471. Unmatched longs RUN (54% peak ≥0.40) → keep fix-TP <strong>OFF</strong> so they trail. <span class="text-amber-400">Coupling: if you turn this OFF (re-enable matched longs), turn the fix-TP back ON.</span></p>
+                        </div>
                         <div class="md:col-span-2 border border-cyan-500/20 rounded p-2">
                             <label class="block text-sm text-cyan-300 mb-2">🏃 Runner Stretch-Trail (LONG) <span class="text-xs text-gray-400 font-normal">(Jun 1 — high-ATR runner exit; OFF → runners use normal tight trailing)</span></label>
                             <div class="flex items-center gap-3 flex-wrap">
@@ -8805,6 +8813,7 @@
             lines.push(`  EMA13 Cross Exit: ${th.ema13_cross_exit_enabled !== undefined ? th.ema13_cross_exit_enabled : false}  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): ${th.ema13_cross_requires_stack_flip !== undefined ? th.ema13_cross_requires_stack_flip : false}`);
             lines.push(`  Fast Exit: ${th.fast_exit_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_threshold_pct ?? 0.20}%  |  Window ≤ ${th.fast_exit_window_minutes ?? 2}min  |  ATR× ${th.fast_exit_l1_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l1_atr_floor_cap_pct ?? 0.60}%  (eff = min(cap, max(fixed, ATR×mult)))`);
             lines.push(`  Low-ATR Fixed TP LONG (Jun 5): ${th.atr_low_fixed_tp_long_enabled ? 'ON' : 'OFF'} (ATR<${th.atr_low_fixed_tp_atr_max ?? 1.1}% → TP ≥ ${th.atr_low_fixed_tp_pct ?? 0.25}%)`);
+            lines.push(`  Keep ONLY Unmatched Longs (Jun 9): ${th.long_unmatched_only ? 'ON — block all pattern-matched longs' : 'OFF'}  (counter LONG_UNMATCHED_ONLY)`);
             { const _ar = th.atr_multiplier_rules || []; lines.push(`  ATR Multiplier Rules (Jun 5): ${_ar.length ? _ar.map(r => `${r.name}[${r.direction} ${r.atr_min}-${r.atr_max}% inv×${r.inv_mult} lev×${r.lev_mult}]`).join('  ') : 'none'}  (pattern-blocked, hard-capped)`); }
             lines.push(`  Fast Exit L2: ${th.fast_exit_l2_enabled ? 'ON' : 'OFF'}  |  Threshold ≥ ${th.fast_exit_l2_threshold_pct ?? 0.40}%  |  Window ≤ ${th.fast_exit_l2_window_minutes ?? 5}min  |  ATR× ${th.fast_exit_l2_atr_multiplier ?? 0.50}  |  cap ≤ ${th.fast_exit_l2_atr_floor_cap_pct ?? 0.80}%  (May 25 evening: cap protects extreme-ATR pairs)`);
             lines.push(`  EMA Stack Cross Exit: ${th.ema_stack_cross_exit_enabled !== undefined ? th.ema_stack_cross_exit_enabled : false}  |  Handoff at L≥${th.ema_stack_cross_exit_level !== undefined ? th.ema_stack_cross_exit_level : 2}  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)`);
@@ -16572,6 +16581,7 @@
                 { const _e=document.getElementById('config-atr-low-fixed-tp-enabled'); if(_e) _e.checked = !!config.thresholds.atr_low_fixed_tp_long_enabled; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-atr-max'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_atr_max !== undefined ? config.thresholds.atr_low_fixed_tp_atr_max : 1.1; }
                 { const _e=document.getElementById('config-atr-low-fixed-tp-pct'); if(_e) _e.value = config.thresholds.atr_low_fixed_tp_pct !== undefined ? config.thresholds.atr_low_fixed_tp_pct : 0.25; }
+                { const _e=document.getElementById('config-long-unmatched-only'); if(_e) _e.checked = !!config.thresholds.long_unmatched_only; }
                 // Jun 6 — Runner Stretch-Trail control
                 { const _e=document.getElementById('config-runner-trail-enabled'); if(_e) _e.checked = config.thresholds.runner_trail_enabled !== undefined ? !!config.thresholds.runner_trail_enabled : true; }
                 { const _e=document.getElementById('config-runner-trail-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_atr_min !== undefined ? config.thresholds.runner_trail_atr_min : 1.0; }
@@ -17874,6 +17884,7 @@
                     global_volume_max_short_capitulation_gv_cap: safeFloat(document.getElementById('config-global-vol-max-short-cap-gv-cap')?.value || 0),
                     global_volume_max_short_capitulation_override_enabled: (document.getElementById('config-global-vol-max-short-cap-override-enabled')||{checked:true}).checked,
                     atr_low_fixed_tp_long_enabled: (document.getElementById('config-atr-low-fixed-tp-enabled')||{}).checked || false,
+                    long_unmatched_only: (document.getElementById('config-long-unmatched-only')||{}).checked || false,
                     atr_low_fixed_tp_atr_max: safeFloat(document.getElementById('config-atr-low-fixed-tp-atr-max')?.value || 1.1),
                     atr_low_fixed_tp_pct: safeFloat(document.getElementById('config-atr-low-fixed-tp-pct')?.value || 0.25),
                     runner_trail_enabled: (document.getElementById('config-runner-trail-enabled')||{checked:true}).checked,

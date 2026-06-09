@@ -694,6 +694,16 @@ The per-ADX carve-outs (rules 2 & 4) are fitting noise.
 
 **Quant decision — do NOT block truly-unmatched shorts.** Against the locked Pattern-C→FILTER gate (N≥30 AND WR≤40% AND Avg≤−0.20% AND NP≥60%) the cohort fails 3 of 4: N=23<30, WR 43%>40%, NP 26%<60% (only Avg −0.222% passes). It carries 7 runners (peak≥0.60); blocking forfeits them. Fix-TP also rejected — sim shows it chops the runners (the cohort's only value) to "save" a minority of poppers (+$115 in-sample but fragile, against "don't chop a winner"). The methodology-correct treatment is a CAP: fix-SL ~−0.50 (sim +$151 in-sample / ~+$90 haircut, kills 1 of 10 winners, targets the non-recovering loser tail). Even that waits for N≥30 on the RESIDUAL after the re-added BTC cross-filter thins the squeeze-shorts (overlap), plus a per-pair concentration check.
 
+### 2026-06-09 — SHIP: max_open_positions 5→4 (+25% per-position capital)
+
+**Evidence:** time-weighted concurrency on the 10-pool + 06-09 partial — all 5 slots simultaneously in use only **5.9%** of open-time historically and **0.3%** under the post-cut config (06-08+); 1–3 concurrent positions = ~94% of open-time. The 5th slot was reserving 20% of capital for a state that almost never occurs after the throughput cuts (keep-only-unmatched longs + short filters).
+
+**Change:** `investment.max_open_positions` 5→4 (one line, trading_config.json). equal_split sizing = (balance − reserve)/max_pos → per-position **$505 → $631 (+25%)**. Max total exposure UNCHANGED (5×20% = 4×25% = 100% of balance when full) — only granularity coarsens. `max_open_positions_hard` (redeploy ceiling 10) untouched; redeploy band now starts at ≥4.
+
+**Trade-off accepted:** per-stopped-trade equity hit ~4%→~5%; a correlated 4-cluster = ~20% equity vs 16% before (mitigated: the Jun-8/9 filters specifically target the correlated-cluster entries). Sizing is %-metric-invariant so the keep-only-unmatched forward-test read gates (WR / Avg% / demux) stay clean; only batch $ totals scale.
+
+**Deferred siblings (memory: project_scaling_roadmap):** de-lever-as-balance-grows + drawdown caps — revisit after the forward test passes. **REVERT: back to 5 if the bot measurably hits the 4-cap and forgoes entries on ≥3 sessions (watch had_room=False blocks), or if cluster drawdowns at the bigger size breach operator comfort.**
+
 ### 2026-06-09 — SHIP (in-sample, forward-test): KEEP ONLY UNMATCHED LONGS + disable fix-TP
 
 **Finding (the session's biggest):** the 4-Cohort Pattern Coverage, re-simulated on the 10-pool under the **full current stack** (fix-TP +0.25, EMA13-cross-OFF→post-exit ride, wide-SL −1.00 floor, ATR/cell multipliers — both demux and as-sized), shows the cohort edge is **inverted by direction**:

@@ -3,7 +3,7 @@
 > Read at every session start (together with CLAUDE.md). **Edited in place** on every ship/revert (never appended — the archive grows, this stays small). Snapshot as of **2026-06-05**.
 
 ## Mode & capital
-Paper. Balance **$2,500 + $500 BNB ≈ $3,000**. 5 max positions, equal-split, reserve 0. Leverage **20×** (both VERY_STRONG + STRONG_BUY).
+Paper. Balance **$2,500 + $500 BNB ≈ $3,000**. **4 max positions** (5→4 on 2026-06-09: the 5th slot was in use only 0.3% of open-time under the post-cut config — 5→4 = +25% capital per position at near-zero opportunity cost; per-stop equity hit rises 4%→5%; redeploy hard ceiling 10 unchanged), equal-split, reserve $500 fixed. Leverage **20×** (both VERY_STRONG + STRONG_BUY).
 
 ## Strategy in brief
 EMA5/8/13 + RSI + ADX scalper on 5m, BTC-macro-gated. Entry passes a BTC/pair filter stack → sized by liquidity caps × multiplier/pattern-cell rules → exited by a tiered ladder.

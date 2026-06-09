@@ -484,12 +484,21 @@ class SignalThresholds(BaseModel):
     rsi_adx_multiplier_lev_hard_cap: float = 2.0  # Leverage-side hard cap (NEW May 21)
     # Pattern Cell Ship Rules (May 21, NEW dimension) — per-pattern multipliers + fixed exits.
     # JSON list of objects with fields:
-    #   pattern: "C4" | "C8" | "W1" | "W2" | "W4" | etc.
+    #   pattern: signature to match. Supports (Jun 8 generalization):
+    #       single code   "C4" | "W2"                    — fires when that C/W matches
+    #       UNMATCHED     "UNMATCHED"                     — fires when NO C and NO W match
+    #       combo (AND)   "C1+C6" | "C7+W2"               — fires when ALL listed codes match;
+    #                                                        a mixed C+W combo resolves to the C
+    #                                                        side (C-blocks-W priority)
     #   direction: "LONG" | "SHORT"
     #   inv_mult: float (default 1.0)            — investment multiplier
     #   lev_mult: float (default 1.0)            — leverage multiplier
     #   fixed_tp_pct: Optional[float]            — pnl% above which trade exits via PATTERN_FIXED_TP
     #   fixed_sl_pct: Optional[float]            — pnl% below which trade exits via PATTERN_FIXED_SL (negative value)
+    #   block: Optional[bool] (Jun 8)            — if true, BLOCK entry entirely (counter PATTERN_CELL_BLOCK).
+    #                                              Use for confirmed loser signatures (gate: N≥30, WR≤40%,
+    #                                              Avg≤−0.20%, NP≥60%). Caps (fixed_sl) preferred for cohorts
+    #                                              that still carry winners/runners — block only true junk.
     # Conflict resolution at engine: a trade matching ANY C pattern blocks all W-side
     # multiplier rules ("C presence blocks W treatment" — Option C from CLAUDE.md May 21
     # design discussion). Forward Unmatched cells NOT in initial ship (will be added

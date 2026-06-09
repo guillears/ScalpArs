@@ -286,7 +286,8 @@
         "pattern": "UNMATCHED",
         "direction": "SHORT",
         "inv_mult": 1.0,
-        "lev_mult": 1.0
+        "lev_mult": 1.0,
+        "block": true
       }
     ],
     "btc_1h_slope_btc_adx_multiplier_rules": [

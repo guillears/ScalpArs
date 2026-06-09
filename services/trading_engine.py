@@ -1789,7 +1789,7 @@ class TradingEngine:
 
     def _lookup_pattern_cell_rule(
         self, direction: str, c_flags: dict, w_flags: dict,
-    ) -> Tuple[float, float, Optional[str], Optional[float], Optional[float]]:
+    ) -> Tuple[float, float, Optional[str], Optional[float], Optional[float], bool]:
         """Pattern Cell Ship Rules — May 21, NEW dimension per CLAUDE.md May 21 ship plan.
 
         Walks pattern_cell_rules config, collects rules matching this trade's
@@ -1816,8 +1816,10 @@ class TradingEngine:
           - inv_mult / lev_mult: HIGHER-wins (max — not multiplied)
           - fixed_tp_pct / fixed_sl_pct: most aggressive (lowest TP, tightest SL)
 
-        Returns (inv_mult, lev_mult, source_label, fixed_tp_pct, fixed_sl_pct)
-        where source_label is comma-joined matched patterns (e.g., "C4+C8" or "W1+W2").
+        Returns (inv_mult, lev_mult, source_label, fixed_tp_pct, fixed_sl_pct, block)
+        where source_label is comma-joined matched patterns (e.g., "C4+C8" or "W1+W2")
+        and block=True if any matching rule carries block:true (entry should be skipped).
+        Jun 8: pattern may be a single code, "UNMATCHED", or an AND-combo ("C1+C6").
         """
         rules = getattr(config.trading_config.thresholds, 'pattern_cell_rules', []) or []
         if not rules:
@@ -1852,31 +1854,49 @@ class TradingEngine:
             sides_to_try.append(('W', set(matched_w)))
         sides_to_try.append(('UNMATCHED', {'UNMATCHED'}))
 
+        # Jun 8: generalized signature matching — single code, UNMATCHED, or combo (AND).
+        _mc = set(matched_c)
+        _mw = set(matched_w)
+
+        def _rule_side_and_match(p):
+            """Map a rule pattern to (side, matched_bool). 'UNMATCHED' = no C and no W.
+            Combo 'C1+C6' = AND of all component codes. A mixed C+W combo resolves to
+            the 'C' side (C-blocks-W priority). Single code = combo of one part."""
+            if not p:
+                return None, False
+            if p == 'UNMATCHED':
+                return 'UNMATCHED', (not _mc and not _mw)
+            parts = [x.strip() for x in str(p).split('+') if x.strip()]
+            if not parts:
+                return None, False
+            side = 'C' if any(x.startswith('C') for x in parts) else 'W'
+            for x in parts:
+                if x.startswith('C') and x not in _mc:
+                    return side, False
+                if x.startswith('W') and x not in _mw:
+                    return side, False
+            return side, True
+
         def _walk_side(active_side: str, matched_patterns: set):
             """Walk rules for one active side. Returns (applied_inv, applied_lev,
-            applied_sources, applied_tp, applied_sl)."""
+            applied_sources, applied_tp, applied_sl, applied_block)."""
             applied_sources = []
             applied_inv = 1.0
             applied_lev = 1.0
             applied_tp = None
             applied_sl = None
+            applied_block = False
             for rule in rules:
                 try:
                     if rule.get('direction') != direction:
                         continue
                     p = rule.get('pattern')
-                    if p not in matched_patterns:
-                        continue
-                    is_c_rule = p.startswith('C')
-                    is_w_rule = p.startswith('W')
-                    is_unm_rule = (p == 'UNMATCHED')
-                    if active_side == 'C' and not is_c_rule:
-                        continue
-                    if active_side == 'W' and not is_w_rule:
-                        continue
-                    if active_side == 'UNMATCHED' and not is_unm_rule:
+                    side, is_match = _rule_side_and_match(p)
+                    if not is_match or side != active_side:
                         continue
                     applied_sources.append(p)
+                    if bool(rule.get('block', False)):
+                        applied_block = True
                     r_inv = float(rule.get('inv_mult', 1.0) or 1.0)
                     r_lev = float(rule.get('lev_mult', 1.0) or 1.0)
                     if r_inv > applied_inv:
@@ -1896,23 +1916,23 @@ class TradingEngine:
                 except (KeyError, TypeError, ValueError) as e:
                     logger.warning(f"[PATTERN_CELL] Malformed rule {rule}: {e}, skipping")
                     continue
-            return applied_inv, applied_lev, applied_sources, applied_tp, applied_sl
+            return applied_inv, applied_lev, applied_sources, applied_tp, applied_sl, applied_block
 
         for active_side, matched_patterns in sides_to_try:
-            applied_inv, applied_lev, applied_sources, applied_tp, applied_sl = _walk_side(
+            applied_inv, applied_lev, applied_sources, applied_tp, applied_sl, applied_block = _walk_side(
                 active_side, matched_patterns
             )
             if applied_sources:
                 source_label = '+'.join(sorted(applied_sources))
-                return applied_inv, applied_lev, source_label, applied_tp, applied_sl
+                return applied_inv, applied_lev, source_label, applied_tp, applied_sl, applied_block
             # May 23 Option D: strict C-blocks-W. If C matched but no C rule fired,
             # return baseline immediately — DON'T fall through to W (which would
             # apply co-matched W multipliers and amplify a loser-shape trade).
             # Operator opts into C multiplier by explicitly configuring a C rule.
             if active_side == 'C':
-                return 1.0, 1.0, None, None, None
+                return 1.0, 1.0, None, None, None, False
 
-        return 1.0, 1.0, None, None, None
+        return 1.0, 1.0, None, None, None, False
 
     async def _revalidate_entry_signal(
         self, symbol: str, pair: str, original_direction: str, original_confidence: str
@@ -2842,12 +2862,21 @@ class TradingEngine:
             btc_gap=_btc_gap_for_pc,
             pair_vol_ratio=entry_pair_volume_ratio,
         )
-        _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl = self._lookup_pattern_cell_rule(
+        _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = self._lookup_pattern_cell_rule(
             direction=direction,
             c_flags={'C1': _pc1_e, 'C2': _pc2_e, 'C3': _pc3_e, 'C4': _pc4_e, 'C5': _pc5_e,
                      'C6': _pc6_e, 'C7': _pc7_e, 'C8': _pc8_e, 'C9': _pc9_e},
             w_flags={'W1': _pw1_e, 'W2': _pw2_e, 'W3': _pw3_e, 'W4': _pw4_e, 'W5': _pw5_e, 'W6': _pw6_e},
         )
+        # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
+        # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
+        if _pcell_block:
+            logger.info(f"[PATTERN_CELL_BLOCK] {pair} {direction}: entry blocked by pattern-cell rule (signature={_pcell_src})")
+            try:
+                self._record_filter_block("PATTERN_CELL_BLOCK", direction)
+            except Exception:
+                pass
+            return None
 
         # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
         # Look up cell multiplier from BOTH pair-level (Pair RSI × Pair ADX) and BTC-level

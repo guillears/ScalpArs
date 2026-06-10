@@ -1,0 +1,1903 @@
+================================================================================
+TRADING BOT SPLIT ANALYTICS REPORT
+Generated: 2026-06-10 12:24:52 UTC-3
+================================================================================
+
+## CONFIGURATION
+
+Signal Thresholds:
+  EMA Gap Threshold L: 0.06  |  S: 0.08  |  L Max: 0.35  |  S Max: 0.35
+  Pair EMA20 Slope Max L: 0.4%  |  S: 0.4%  (May 2: 0 = disabled)
+  BTC EMA20 Slope Max L: 0.35%  |  S: 0.35%  (May 2: 0 = disabled)
+  BTC 1h Slope Max L: 0.15%  |  S: 0.1%  (May 24: 0 = disabled; LONG ship at 0.15)
+  BTC 1h Slope Min L: 0%  |  S: -0.6%  (Jun 3: neg = active, 0 = disabled; SHORT ship at -0.60)
+  BTC-Accel Chase Filter (LONG): ON  |  Window: 30min  (Jun 3: block LONG when BTC EMA20 slope > last-LONG = chasing)
+  ADX Very Strong: L>22 S>30  |  ADX Strong: L>15 S>20  |  ADX Max: L30 S35
+  LONG RSI: 40 - 65  |  SHORT RSI: 25 - 50
+  RSI x ADX Filter L: 60-65:0-25  |  S: 30-35:25,35-50:30
+  Macro Trend Filter: false  |  BTC Global: false  |  Neutral Mode: none
+  BTC RSI L: 40-65  |  BTC RSI S: 25-60  |  BTC ADX L: 18-40  |  BTC ADX S: 18-40  |  ADX Dir L: both  |  ADX Dir S: both
+  Pair ADX Dir L: both  |  Pair ADX Dir S: rising
+  Global Vol Filter: true  |  Min L: 0.7  |  Min S: 0.5  |  Max S: 1.1 (capitulation override: REMOVED — BTC RSI<30 AND slope<0)  |  Lookback: 48 bars
+  Pair Vol Filter: false  |  Thresh L: 1.1  |  Thresh S: 1.1  |  Lookback: 20 bars
+  Rescue from Global Vol block if Pair Vol ≥ L: $50M  |  S: $disabled  (May 10: intersection rescue clause)
+  Market Breadth Filter: false  |  Bull% ≥ 30% (LONGs)  |  Bear% ≥ 45% (SHORTs)  |  Flat Th: 0.02%
+  EMA20 Filter Long: true  |  Short: true
+  EMA20 Slope Long: true  |  Short: true  |  Min Slope L: 0%  |  Min Slope S: 0.06%
+  Min ADX Delta L: 0  |  S: 0  (May 10: cross-sample validated; ADXΔ <0.10 LONG = ~17% WR vs ≥0.10 = ~62% WR)
+  Entry Quality Score Filter: ON  |  Block when score ≤ 1  (May 15 PM opt-in. Score ≤ 1 cross-sample = N=95, 34.7% WR, −$684)
+  RSI Momentum Filter: false  (block LONG if RSI falling, block SHORT if RSI rising vs 2 candles ago)
+  EMA Gap Expanding Filter: true  |  Mode: prev2_only  (both = beat prev1 AND prev2 [strict]; prev2_only = beat prev2 only [relaxed, tags MARGINAL])
+
+General Settings:
+  Paper Trading: ON (runtime)  |  Paper Balance: $1550.676727769223
+  BNB Auto-Swap: ON  |  Paper BNB (live): $347.66  |  Initial: $500  |  Check: 6h  |  Target Runway: 24h
+  Burn Rate: $15.16/hr  |  Live Runway: 22.9h  |  Emergency Threshold: $181.93
+  Investment Mode: equal_split  |  Max Open Positions: 5  |  Trading Pairs: 50
+  Cooldown After Any Close: 5min  |  No Expansion: 180min
+  Liquidity Caps: ① 0.1% 24h vol / ceiling $500000  |  ② max gross lev 30×  |  ③ redeploy ON (hard 10)
+  Pair Blacklist: BNBUSDT,ENAUSDT,FILUSDT,MUSDT,RAVEUSDT,TRUMPUSDT,VVVUSDT,XAGUSDT,XAUUSDT,ZECUSDT
+  No-Trade Pairs (track-only): BTCUSDT,ETHUSDT
+
+Fee & Maker Orders:
+  Taker Fee: 0.045%  |  Maker Fee: 0.018%
+  Maker Entry: ON  |  Timeout: 20s  |  Offset: 1 ticks
+  Maker Exit: OFF  |  Timeout: 10s  |  Offset: 1 ticks
+  Roundtrip: 0.063%  |  Full taker: 0.090%
+
+Exit Settings:
+  Regime Change Exit: false  (close on opposite BTC regime shift)
+  RSI Handoff (Phase 1d-ExitTest): false  |  Handoff at L≥2  (disables trailing past level, uses 2-drop RSI exit)
+  EMA13 Cross Exit: true  (first-tick close when price crosses EMA13 against direction; runs in parallel to FL/RSI Handoff/trailing) | Strict (require EMA5/EMA8 stack flip): true
+  Fast Exit: OFF  |  Threshold ≥ 0.2%  |  Window ≤ 2min  |  ATR× 0.5  |  cap ≤ 0.6%  (eff = min(cap, max(fixed, ATR×mult)))
+  Low-ATR Fixed TP LONG (Jun 5): OFF (ATR<1.1% → TP ≥ 0.25%)
+  Keep ONLY Unmatched Longs (Jun 9): ON — block all pattern-matched longs  (counter LONG_UNMATCHED_ONLY)
+  ATR Multiplier Rules (Jun 5): Runner[LONG 1.1-99% inv×2 lev×1]  (pattern-blocked, hard-capped)
+  Fast Exit L2: OFF  |  Threshold ≥ 0.4%  |  Window ≤ 5min  |  ATR× 0.5  |  cap ≤ 0.8%  (May 25 evening: cap protects extreme-ATR pairs)
+  EMA Stack Cross Exit: false  |  Handoff at L≥2  (closes when EMA5 crosses EMA8 against direction; SUPPRESSES trailing past level)
+  Signal Lost Exit: false  |  Signal Lost Range: [-0.9%, -0.5%]
+  Signal Lost Flag: false  |  Security Gap: [-0.9%, -0.8%]  |  TM Min P&L (Flagged): -0.25%
+  FL1[WIDE_SL]: false  |  Emergency Backstop: -0.95%  ||  FL2: false  |  Recovery: -0.4%  |  Deep Stop: -0.8%
+  RSI Momentum Exit: false  |  Range: [-0.8%, -0.45%]  (close on 2 consecutive RSI drops/rises)
+  Tick Momentum Exit: false  |  Min Profit: 0.03%  |  Min Deltas: 0.12%  |  Windows: 15,30,45s
+  Spike Guard: true  |  Vol Multiplier: 3x  |  Price Move: 1.5%
+  EMA5-20 Gap Filter: true  |  L Min: 0.05  L Max: 0.6  |  S Min: 0.05  S Max: 0.8
+
+Confidence Levels:
+  Level          Mode       Lev  SL      SigSL   L1Trig  L1Off   L2Trig  L2Off   L3Trig  L3Off   L4Trig  L4Off   L5Trig  L5Off   Stretch  TP Trail
+  VERY_STRONG    both       20x  -0.7%  -1%  BE:N  99%   99%  99%   99%  99%   99%  99%   2.5%  99%   4%  0.3    Y
+  STRONG_BUY     both       20x  -0.7%  -1%  BE:N  99%   99%  99%   99%  99%   99%  99%   2.5%  99%   4%  0.3    Y
+
+------------------------------------------------------------
+## CONFIG CHANGE LOG
+
+Time                 Field                                    Old             New
+08 Jun, 15:16        thresholds.momentum_long_rsi_max         70.0            65.0
+08 Jun, 15:14        thresholds.rsi_adx_multiplier_short      35-40:30-35:1.0 35-40:30-35:1.0:1.0
+08 Jun, 15:14        thresholds.ema_gap_threshold             0.05            0.06
+08 Jun, 15:14        investment.fixed_amount                  200.0           100.0
+08 Jun, 15:14        ce_levels.VERY_STRONG.max_ema5_stretch   0.3             0.0
+08 Jun, 15:14        thresholds.btc_rsi_adx_multiplier_long   60-65:28-30:2.0,60-65:22-25:2.0:1.5 60-65:28-30:2.0:1.0,60-65:22-25:2.0:1.5
+08 Jun, 15:14        thresholds.momentum_long_rsi_max         65.0            70.0
+08 Jun, 15:14        hresholds.btc_rsi_adx_multiplier_short   35-40:33-36:2.0,25-30:28-30:2.0 35-40:33-36:2.0:1.0,25-30:28-30:2.0:1.0
+08 Jun, 15:14        investment.percentage                    30.0            5.0
+08 Jun, 15:14        nce_levels.STRONG_BUY.max_ema5_stretch   0.3             0.0
+23 May, 13:57        thresholds.rsi_adx_multiplier_short      25-50:30-33:1.0,30-35:28-30:1.0 25-50:30-33:1.0:1.0,30-35:28-30:1.0:1.0
+23 May, 13:57        nce_levels.STRONG_BUY.max_ema5_stretch   0.3             0.0
+23 May, 13:57        thresholds.ema_gap_threshold             0.05            0.06
+23 May, 13:57        ce_levels.VERY_STRONG.be_level1_offset   0.1             99.0
+23 May, 13:57        nce_levels.STRONG_BUY.be_level1_offset   0.1             99.0
+23 May, 13:57        investment.percentage                    30.0            5.0
+23 May, 13:57        thresholds.btc_rsi_adx_multiplier_long   60-65:20-25:1.0,55-60:22-25:1.0,60-65:28-30:2.0,60-65:22-25:2.0:1.5 60-65:20-25:1.0:1.0,55-60:22-25:1.0:1.0,60-65:28-30:2.0:1.0,60-65:22-25:2.0:1.5
+23 May, 13:57        hresholds.btc_rsi_adx_multiplier_short   25-30:20-25:1.0,35-40:33-36:2.0 25-30:20-25:1.0:1.0,35-40:33-36:2.0:1.0
+23 May, 13:57        thresholds.rsi_adx_multiplier_long       60-65:18-22:1.0,55-60:22-25:1.0 60-65:18-22:1.0:1.0,55-60:22-25:1.0:1.0
+23 May, 13:57        thresholds.trailing_atr_multiplier       0.5             0.3
+23 May, 13:57        ce_levels.STRONG_BUY.be_level1_trigger   0.2             99.0
+23 May, 13:57        ce_levels.VERY_STRONG.max_ema5_stretch   0.3             0.0
+23 May, 13:57        e_levels.VERY_STRONG.be_level1_trigger   0.2             99.0
+23 May, 13:57        investment.fixed_amount                  200.0           100.0
+22 May, 17:45        thresholds.rsi_adx_multiplier_long       60-65:18-22:1.0,55-60:22-25:1.0 60-65:18-22:1.0:1.0,55-60:22-25:1.0:1.0
+22 May, 17:45        nce_levels.STRONG_BUY.be_level1_offset   0.1             99.0
+22 May, 17:45        hresholds.btc_rsi_adx_multiplier_short   25-30:20-25:1.0,35-40:33-36:2.0 25-30:20-25:1.0:1.0,35-40:33-36:2.0:1.0
+22 May, 17:45        thresholds.ema_gap_threshold             0.05            0.06
+22 May, 17:45        ce_levels.STRONG_BUY.be_level1_trigger   0.2             99.0
+22 May, 17:45        ce_levels.VERY_STRONG.max_ema5_stretch   0.3             0.0
+22 May, 17:45        thresholds.btc_rsi_adx_multiplier_long   60-65:20-25:1.0,55-60:22-25:1.0,60-65:28-30:2.0,60-65:22-25:2.0:1.5 60-65:20-25:1.0:1.0,55-60:22-25:1.0:1.0,60-65:28-30:2.0:1.0,60-65:22-25:2.0:1.5
+22 May, 17:45        e_levels.VERY_STRONG.be_level1_trigger   0.2             99.0
+22 May, 17:45        thresholds.rsi_adx_multiplier_short      25-50:30-33:1.0,30-35:28-30:1.0 25-50:30-33:1.0:1.0,30-35:28-30:1.0:1.0
+22 May, 17:45        nce_levels.STRONG_BUY.max_ema5_stretch   0.3             0.0
+22 May, 17:45        investment.fixed_amount                  200.0           100.0
+22 May, 17:45        ce_levels.VERY_STRONG.be_level1_offset   0.1             99.0
+22 May, 17:45        investment.percentage                    30.0            5.0
+22 May, 17:34        ce_levels.VERY_STRONG.be_level1_offset   0.1             99.0
+22 May, 17:34        nce_levels.STRONG_BUY.be_level1_offset   0.1             99.0
+22 May, 17:34        ce_levels.STRONG_BUY.be_level1_trigger   0.2             99.0
+22 May, 17:34        e_levels.VERY_STRONG.be_level1_trigger   0.2             99.0
+22 May, 17:33        investment.fixed_amount                  200.0           100.0
+22 May, 17:33        investment.percentage                    30.0            5.0
+22 May, 17:33        thresholds.ema_gap_threshold             0.05            0.04
+22 May, 17:33        thresholds.rsi_adx_multiplier_short      25-50:30-33:1.0,30-35:28-30:1.0 25-50:30-33:1.0:1.0,30-35:28-30:1.0:1.0
+22 May, 17:33        ce_levels.STRONG_BUY.be_levels_enabled   True            False
+22 May, 17:33        e_levels.VERY_STRONG.be_levels_enabled   True            False
+22 May, 17:33        thresholds.btc_rsi_adx_multiplier_long   60-65:20-25:1.0,55-60:22-25:1.0,60-65:28-30:2.0,60-65:22-25:2.0:1.5 60-65:20-25:1.0:1.0,55-60:22-25:1.0:1.0,60-65:28-30:2.0:1.0,60-65:22-25:2.0:1.5
+22 May, 17:33        hresholds.btc_rsi_adx_multiplier_short   25-30:20-25:1.0,35-40:33-36:2.0 25-30:20-25:1.0:1.0,35-40:33-36:2.0:1.0
+22 May, 17:33        nce_levels.STRONG_BUY.max_ema5_stretch   0.3             0.0
+
+================================================================================
+## BNB SWAP HISTORY & STATUS
+
+Auto-Swap: ON  |  Burn Rate: $15.16/hr [MATURE — swaps active]  |  Projected Need: $363.92  |  Emergency Threshold: $181.96
+Check Interval: 6h  |  Target Runway: 24h  |  Last Check: 2026-06-10 10:53:31 UTC
+
+No swaps recorded yet.
+
+################################################################################
+### BULLISH REGIME
+################################################################################
+
+================================================================================
+## OVERALL PERFORMANCE
+
+Total Trades: 4  (4L / 0S)
+Wins: 1  |  Losses: 3  |  Win Rate: 25%
+Win Rate Longs: 25%  |  Shorts: 0%
+Avg Win: $29.01  (L:$29.01 S:$0)
+Avg Loss: $-194.78  (L:$-194.78 S:$0)
+Expectancy: $-138.83 (-0.86%)/trade
+Best Win L:$29.01 S:$0  |  Worst Loss L:$-219.7 S:$0
+Total P&L: $-555.33 (-16.59%)  |  Fees: $45.61
+Avg Duration: 00:08:42 (L:00:08:42 S:00:00:00)
+Avg Leverage: 20x  |  Return Multiple: 0.7737x
+Daily Compound Return: 0%  |  Runtime: 0.37 days
+Investment L:$3346.48 S:$0
+
+------------------------------------------------------------
+## Period Performance
+
+Period       #      Dir        WinRate   AvgP&L%      TotInv       TotNot         P&L/Inv                P&L/Not                  PF     Fees       Slip%   
+Last 6h      4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+Last 12h     4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+1 Day        4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+2 Days       4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+3 Days       4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+5 Days       4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+7 Days       4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+15 Days      4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+30 Days      4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+Total        4      4L/0S      25.0%     -0.86%       $3,346       $66,930        -$555 (-16.59%)        -$555 (-0.83%)           0.05   $46        -       
+
+------------------------------------------------------------
+## Performance by Macro Trend
+
+Trend      Trades             AvgP&L%   Win%    R:R    Long P&L     L Win%   Short P&L    S Win%  
+BULLISH    4L/0S              -0.86%    25%      0.15   $   -555.33 25%      $      0.00 0%      
+BEARISH    0L/10S             -0.35%    30%      0.41   $      0.00 0%       $   -546.33 30%     
+NEUTRAL    0L/0S              +0.00%    0%      0      $      0.00 0%       $      0.00 0%      
+
+------------------------------------------------------------
+## Performance by Confidence Level
+
+Confidence     Trades             AvgP&L%   Win%    R:R    Total P&L    L P&L      L %      L Win%   S P&L      S %      S Win%   Avg Gap 
+VERY_STRONG    1L/0S              -1.20%    0%      0      $   -219.70 $ -219.70 -23.98%  0.0%     $    0.00 +0.00%   0.0%     0.401%
+STRONG_BUY     3L/0S              -0.75%    33.33%      0.16   $   -335.62 $ -335.62 -13.81%  33.3%    $    0.00 +0.00%   0.0%     0.318%
+
+------------------------------------------------------------
+## Performance by BTC Regime (at Entry)
+
+Regime             #      Dir      Win%     Total$       Avg$       Avg%       AvgPeak%   Conf
+HEALTHY_BULL       4      LONG     25%         $-555.33  $-138.83    -0.86%   0.2170% S:3 V:1
+
+------------------------------------------------------------
+## Regime Transition Performance
+
+Transition       #      Win%     Total$       Avg$       Avg%      
+SAME_REGIME      3      0%          $-584.33  $-194.78    -1.20%
+REGIME_SHIFT     1      100%          $29.01    $29.01     0.16%
+
+------------------------------------------------------------
+## Closing Reason Summary
+
+Reason               #     %       Dir          Conf           Avg P&L%   Avg$       AvgPeak%   AvgTrough%  WorstTrough%  Pullback%  PostPeak%  PostTrough% Total$       Duration   Signal   AvgGap   AvgRSI     RSI2%   RSI2P&L  RSI2Min  BTCTrend(exit)
+STOP_LOSS_WIDE L1    2     50.0%   2L/0S        V:1 S:1           -1.20%  $-191.66   0.1447%   -1.2002%     -1.2016%   1.3425%   3.3305%   -4.1277%    $-383.32 00:02:33   2/0      0.37%    56.3        0.0%         -        -          -0.04%
+TRAILING_STOP L2     1     25.0%   1L/0S        S:1                0.16%    $29.01   0.5145%   -0.2573%     -0.2573%   0.3543%   0.4284%   -1.2509%      $29.01 00:27:18   1/0      0.40%    63.8      100.0%  -0.1170%      8.0          -0.04%
+STOP_LOSS L1         1     25.0%   1L/0S        S:1               -1.21%  $-201.01   0.0641%   -1.2066%     -1.2066%   1.2696%  -0.6562%   -5.1901%    $-201.01 00:02:24   0/1      0.22%    54.0        0.0%         -        -          -0.09%
+
+------------------------------------------------------------
+## Entry Conditions by Close Reason
+
+Reason                     #     Conf           AvgRSI   AvgADX   ADXDir   RSIDir   AvgGap   Gap5-8   Gap8-13   FanR   Stretch   EMA20Slp   BTCSlp    BTCRSI   BTCADX   BTCADXDir  BTCRSIDir  ADXΔ     RngPos   Breadth   ATR%     BTCTrend   BTCTrend(exit)  GlobalVol  PairVol$   AvgExt%   AvgBTCExt%  Avg1hSlope  AvgPeak%   AvgTrough%  WorstTrough%  AvgP&L%    Total$       SLProf         Duration
+STOP_LOSS_WIDE L1 (L)      2     V:1 S:1        56.3     22.2     0R/2F    2R/0F    0.37%    0.24%    0.12%     1.97   0.99%     0.24%      0.10%     64.5     21.4     1R/1F      1R/1F      -0.41    59%      62.8%     3.00%    -0.04%     -0.04%          1.42       $112M      +1.264%   +0.424%     -0.176%     +0.1447%   -1.2002%    -1.2016%      -1.2002%   $-383.32     P:2 N:0        00:02:33
+STOP_LOSS L1 (L)           1     S:1            54.0     17.1     0R/1F    1R/0F    0.22%    0.14%    0.07%     1.99   0.41%     0.15%      0.02%     55.5     21.3     0R/1F      1R/0F      -0.10    61%      44.2%     1.44%    -0.10%     -0.09%          0.73       $77M       +0.630%   +0.146%     -0.206%     +0.0641%   -1.2066%    -1.2066%      -1.2066%   $-201.01     P:1 N:0        00:02:24
+TRAILING_STOP L2 (L)       1     S:1            63.8     18.1     0R/1F    1R/0F    0.40%    0.11%    0.17%     0.68   0.22%     0.15%      0.03%     56.7     21.3     0R/1F      1R/0F      -0.37    96%      37.2%     0.43%    -0.10%     -0.04%          0.77       $119M      +0.502%   +0.173%     -0.203%     +0.5145%   -0.2573%    -0.2573%      +0.1583%   $29.01       -              00:27:18
+
+------------------------------------------------------------
+## Entry Conditions by Outcome (Winners vs Losers)
+
+Outcome        #     Conf           AvgRSI   AvgADX   ADXDir   RSIDir   AvgGap   Gap5-8   Gap8-13   FanR   Stretch   EMA20Slp   BTCSlp    BTCRSI   BTCADX   BTCADXDir  BTCRSIDir  ADXΔ     RngPos   Breadth   ATR%     BTCTrend   BTCTrend(exit)  GlobalVol  PairVol$   AvgExt%   AvgBTCExt%  Avg1hSlope  AvgPeak%   AvgTrough%  WorstTrough%  AvgP&L%    Total$       SLProf         Duration
+Winners L      1     S:1            63.8     18.1     0R/1F    1R/0F    0.40%    0.11%    0.17%     0.68   0.22%     0.15%      0.03%     56.7     21.3     0R/1F      1R/0F      -0.37    96%      37.2%     0.43%    -0.10%     -0.04%          0.77       $119M      +0.502%   +0.173%     -0.203%     +0.5145%   -0.2573%    -0.2573%      +0.1583%   $29.01       -              00:27:18
+Losers L       3     S:2 V:1        55.5     20.5     0R/3F    3R/0F    0.32%    0.21%    0.11%     1.98   0.80%     0.21%      0.07%     61.5     21.4     1R/2F      2R/1F      -0.31    60%      56.6%     2.48%    -0.06%     -0.06%          1.19       $101M      +1.053%   +0.331%     -0.186%     +0.1178%   -1.2023%    -1.2066%      -1.2023%   $-584.33     P:3 N:0        00:02:30
+
+------------------------------------------------------------
+## Multiplier Cell Performance — LONGs
+
+Source                       Inv    Lev    Eff     N     WR%     AvgP&L%    Total$      Expect$    PF      BL Avg%    Δ$ vs BL   Capped  Verdict
+UNMATCHED                    2.00x  1.00x  2.00x   4     25.0%   -0.862%    $-555.33    $-138.832  0.05    -          -$277.66   0       ⚠ Low N
+
+Total uplift from multipliers: -$277.67 (actual $-555.33 vs simulated baseline (1× multi) $-277.67 on 4 multiplied trades)
+
+------------------------------------------------------------
+## Multiplier Cell Performance — SHORTs
+
+Source                       Inv    Lev    Eff     N     WR%     AvgP&L%    Total$      Expect$    PF      BL Avg%    Δ$ vs BL   Capped  Verdict
+  (no multiplied trades yet)
+
+------------------------------------------------------------
+## 4-Cohort Pattern Coverage
+
+Cohort                             N     %batch   W    L    WR%     Total $     Avg $/tr    LONG                   SHORT
+Both C and W match (crossed)       0     0.0%     0    0    0.0%    +$0.00      +$0.00      0(0/0) +$0.00          0(0/0) +$0.00
+C only (no W match)                0     0.0%     0    0    0.0%    +$0.00      +$0.00      0(0/0) +$0.00          0(0/0) +$0.00
+W only (no C match)                0     0.0%     0    0    0.0%    +$0.00      +$0.00      0(0/0) +$0.00          0(0/0) +$0.00
+TRULY UNMATCHED (no C, no W)       4     100.0%   1    3    25.0%   -$555.33    -$138.83    4(1/3) -$555.33        0(0/0) +$0.00
+Batch total: 4 trades, 1W/3L, -$555.33
+
+------------------------------------------------------------
+## Pattern C Combination Tracker
+
+Combo                Dir    N    W/L      WR%     Avg%      Total$      NP      AvgPk%    R:R     TP+SL Δ$             MULT 2× Δ$  Verdict
+(none)               LONG   4    1/3      25.0%   -0.86%    -$555.33    0/0%    +0.22%    1:6.7   +$522.29(3/1/0)      -$555.33    ⚠ Low N
+
+------------------------------------------------------------
+## Pattern W Combination Tracker
+
+Combo                Dir    N    W/L      WR%     Avg%      Total$      NP      AvgPk%    R:R     TP+SL Δ$             MULT 2× Δ$  Verdict
+(none)               LONG   4    1/3      25.0%   -0.86%    -$555.33    0/0%    +0.22%    1:6.7   +$522.29(3/1/0)      -$555.33    ⚠ Low N
+
+------------------------------------------------------------
+## Pattern C + W Combination Tracker
+
+Combo                Dir    N    W/L      WR%     Avg%      Total$      NP      AvgPk%    R:R     TP+SL Δ$             MULT 2× Δ$  Verdict
+(none)               LONG   4    1/3      25.0%   -0.86%    -$555.33    0/0%    +0.22%    1:6.7   +$522.29(3/1/0)      -$555.33    ⚠ Low N
+
+------------------------------------------------------------
+## Pattern Cell Ship Performance
+
+Pattern  Brief                              Dir    Inv    Lev    Eff     FixTP    FixSL    N     tpFr  slFr  WR%     AvgP&L%    Total$      PF     Δ$ vs BL   Verdict
+UNMATCHED UNMATCHED                          LONG   2.00x  1.00x  2.00x   —        —        4     0     0     25.0%   -0.862%    $-555.33    0.05   -$277.66   ⚠ Low N
+C4       Low-vol chop                       LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+C8       Oversold/Overbought Chop           LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W1       HighConv trend                     LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W2       Macro tailwind                     LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W4       Pullback aligned                   LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W6       BTC Tailwind/Bear                  LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+C1       Capitulation chase                 SHORT  2.00x  1.50x  3.00x   —        -0.70%   0     0     0     —       —          —           —      —          ⏳ No trades yet
+C4       Low-vol chop                       SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+C8       Oversold/Overbought Chop           SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W1       HighConv trend                     SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W2       Macro tailwind                     SHORT  2.00x  1.50x  3.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W4       Pullback aligned                   SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W6       BTC Tailwind/Bear                  SHORT  2.00x  1.00x  2.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+
+Sized cells: 4 trades, uplift -$277.67 | Pure-exit cells: 0 trades, total +$0.00
+
+------------------------------------------------------------
+## Extension Multiplier Performance
+
+Source         Dir    Inv    Lev    Eff     N     WR%     AvgP&L%    AvgPk%    Total$      PF     Δ$ vs BL   L≥0.20   Verdict
+EXT_Ext0.4-0.6_L LONG   1.00x  1.00x  1.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+EXT_Ext_QuietVol_L LONG   1.00x  1.00x  1.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+EXT_Ext_SlowADX_L LONG   1.00x  1.00x  1.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+
+Boosted: 0 trades, uplift +$0.00
+
+------------------------------------------------------------
+## BTC 1h Slope × BTC ADX Multiplier Performance
+
+Source         Dir    Inv    Lev    Eff     N     WR%     AvgP&L%    AvgPk%    Total$      PF     Δ$ vs BL   L≥0.20   Verdict
+BTC1H_1hPullback_L LONG   2.00x  1.00x  2.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+BTC1H_1hMildRise_S SHORT  2.00x  1.00x  2.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+
+Boosted: 0 trades, uplift +$0.00
+
+------------------------------------------------------------
+## ATR Multiplier Performance
+
+Source         Dir    Inv    Lev    Eff     N     WR%     AvgP&L%    AvgPk%    Total$      PF     Δ$ vs BL   L≥0.20   Verdict
+ATR_Runner     LONG   2.00x  1.00x  2.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+
+Boosted: 0 trades, uplift +$0.00
+
+------------------------------------------------------------
+## Entry Extension / Late Entry Risk — pool 4 trades (post-deploy only)
+
+### LONGS
+Range              Tag           N    WR%    Avg%       Avg$       Total$     Peak%      DOA%
+-----------------------------------------------------------------------------------------------
++0.50 to +0.60%    very extended   1  100.0  +   0.158  +$  29.01  +$  29.01  +  0.514    0.0
++0.60 to +0.70%    extreme         1    0.0    -1.207  -$ 201.01  -$ 201.01  +  0.064  100.0
+> +1.00%           parabolic       2    0.0    -1.200  -$ 191.66  -$ 383.32  +  0.145    0.0
+
+### LONGS — Extension × Pair Vol Ratio
+Extension        PVol         N    WR%    Avg%       Total$
+----------------------------------------------------------------------
++0.40 to +0.60%  < 0.95         1  100.0  +   0.158  +$  29.01
+> +0.60%         < 0.95         3    0.0    -1.202  -$ 584.33
+
+### LONGS — Extension × ADX Delta
+Extension        ADX Δ        N    WR%    Avg%       Total$
+----------------------------------------------------------------------
++0.40 to +0.60%  < 0.3          1  100.0  +   0.158  +$  29.01    0 (0.0%)
+> +0.60%         < 0.3          3    0.0    -1.202  -$ 584.33    0 (0.0%)
+
+### LONGS — Extension × Pair ADX
+Extension        Pair ADX     N    WR%    Avg%       Total$    NP
+---------------------------------------------------------------------------
++0.40 to +0.60%  18-22          1  100.0  +   0.158  +$  29.01    0 (0.0%)
++0.60 to +0.80%  15-18          1    0.0    -1.207  -$ 201.01    0 (0.0%)
+> +1.00%         15-18          1    0.0    -1.202  -$ 163.61    0 (0.0%)
+> +1.00%         28-30          1    0.0    -1.199  -$ 219.70    0 (0.0%)
+
+
+------------------------------------------------------------
+## BTC Market Extension / BTC Late Regime Risk — pool 4 trades (post-May-14 deploy only)
+
+### LONGS
+Range              Tag           N    WR%    Avg%       Avg$       Total$     Peak%      DOA%    NP%
+-------------------------------------------------------------------------------------------------------
++0.10 to +0.20%    late            3   33.3    -0.749  -$ 130.57  -$ 391.71  +  0.234   33.3    0 (0.0%)
+> +0.60%           extreme         1    0.0    -1.202  -$ 163.61  -$ 163.61  +  0.167    0.0    0 (0.0%)
+
+### LONGS — BTC Extension × Global Vol Ratio
+BTC Ext          GlobalVol    N    WR%    Avg%       Total$     NP%
+------------------------------------------------------------------------------
+0 to +0.20%      < 0.85         3   33.3    -0.749  -$ 391.71    0 (0.0%)
+> +0.60%         > 1.20         1    0.0    -1.202  -$ 163.61    0 (0.0%)
+
+### LONGS — DOUBLE-STRETCH: BTC Extension × Pair Extension
+BTC Ext          Pair Ext     N    WR%    Avg%       Total$     NP%
+------------------------------------------------------------------------------
+0 to +0.20%      +0.40 to +0.60%   1  100.0  +   0.158  +$  29.01    0 (0.0%)
+0 to +0.20%      +0.60 to +0.80%   1    0.0    -1.207  -$ 201.01    0 (0.0%)
+0 to +0.20%      > +1.00%       1    0.0    -1.199  -$ 219.70    0 (0.0%)
+> +0.40%         > +1.00%       1    0.0    -1.202  -$ 163.61    0 (0.0%)
+
+
+------------------------------------------------------------
+## BTC 1h Slope Analytics — pool 4 trades (post-May-14 deploy only)
+
+### LONGS — Performance by BTC 1h Slope (signed)
+Slope               N    WR%    Avg%       Total$     Peak%      NP%
+--------------------------------------------------------------------------------
+-0.30 to -0.20%       3   33.3    -0.749  -$ 391.71  +  0.234    0 (0.0%)
+-0.20 to -0.15%       1    0.0    -1.202  -$ 163.61  +  0.167    0 (0.0%)
+
+### LONGS — 5m × 1h Slope Alignment (counter-trend detector)
+Alignment                                     N    WR%    Avg%       Total$     NP%
+------------------------------------------------------------------------------------------
+5m UP / 1h DOWN (counter-trend)                4   25.0    -0.862  -$ 555.33    0 (0.0%)
+
+### LONGS — BTC 1h Slope × BTC ADX
+1h Slope         BTC ADX    N    WR%    Avg%       Total$     NP%
+--------------------------------------------------------------------------------
+< -0.10%         20-25       4   25.0    -0.862  -$ 555.33    0 (0.0%)
+
+
+------------------------------------------------------------
+## BTC 1h × BTC 30m RSI Direction Cross-Tab — pool 4 trades (post-May-15 deploy)
+
+### LONGS
+1h Dir     30m Dir    N    WR%    Avg%       Total$     NP (n/%)
+---------------------------------------------------------------------------
+Rising     Rising       4   25.0    -0.862  -$ 555.33    0 (0.0%)
+
+
+------------------------------------------------------------
+## Unmatched Winners Deep Dive (observation-only)
+Closed winners NOT matching any W1-W5 signature. ≥3 sharing a signature → new W pattern candidate.
+
+Pair         Dir   $Gain     Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+XLMUSDT      LONG   +$29.01  +0.514% +0.158%  63.8  18.1 -0.37 0.220 0.427  95.6 -0.008%  56.7  21.3 0.225 -0.102%  TRAILING_STOP L2
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+AVG·Winners  N=1    +$29.01  +0.514% +0.158%  63.8  18.1 -0.37 0.220 0.427  95.6 -0.008%  56.7  21.3 0.225 -0.102%
+
+
+------------------------------------------------------------
+## Unmatched Losers Deep Dive (observation-only)
+Closed losers NOT matching any C1-C9 signature. ≥3 sharing a signature → new pattern candidate.
+
+Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ESPORTSUSDT  LONG  -$219.70  +0.123% -1.199%  54.3  28.1 -0.52 1.135 4.680  39.2 +6.346%  57.5  21.3 0.225 -0.099%  STOP_LOSS_WIDE L1
+PIPPINUSDT   LONG  -$201.01  +0.064% -1.207%  54.0  17.1 -0.10 0.412 1.443  60.7 +0.685%  55.5  21.3 0.225 -0.105%  STOP_LOSS L1
+PIPPINUSDT   LONG  -$163.61  +0.167% -1.202%  58.3  16.2 -0.30 0.855 1.329  79.6 -0.433%  71.6  21.5 0.290 +0.018%  STOP_LOSS_WIDE L1
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+AVG·Losers   N=3   -$194.77  +0.118% -1.203%  55.5  20.5 -0.31 0.801 2.484  59.8 +2.199%  61.5  21.4 0.247 -0.062%
+
+
+------------------------------------------------------------
+## TRULY UNMATCHED (no C, no W) Deep Dive (observation-only)
+Closed trades matching NEITHER any C1-C9 NOR any W1-W6 signature (wins + losses). Worst first.
+
+Pair         Dir   $P&L      Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ESPORTSUSDT  LONG  -$219.70  +0.123% -1.199%  54.3  28.1 -0.52 1.135 4.680  39.2 +6.346%  57.5  21.3 0.225 -0.099%  STOP_LOSS_WIDE L1
+PIPPINUSDT   LONG  -$201.01  +0.064% -1.207%  54.0  17.1 -0.10 0.412 1.443  60.7 +0.685%  55.5  21.3 0.225 -0.105%  STOP_LOSS L1
+PIPPINUSDT   LONG  -$163.61  +0.167% -1.202%  58.3  16.2 -0.30 0.855 1.329  79.6 -0.433%  71.6  21.5 0.290 +0.018%  STOP_LOSS_WIDE L1
+XLMUSDT      LONG   +$29.01  +0.514% +0.158%  63.8  18.1 -0.37 0.220 0.427  95.6 -0.008%  56.7  21.3 0.225 -0.102%  TRAILING_STOP L2
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+AVG·Winners  N=1    +$29.01  +0.514% +0.158%  63.8  18.1 -0.37 0.220 0.427  95.6 -0.008%  56.7  21.3 0.225 -0.102%
+AVG·Losers   N=3   -$194.77  +0.118% -1.203%  55.5  20.5 -0.31 0.801 2.484  59.8 +2.199%  61.5  21.4 0.247 -0.062%
+
+## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=1]
+  Leash           N   Avg Cls%  ActCls%  Total%   Δvsact      Act$      CF$       Δ$   Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk     Min  Verdict
+--------------------------------------------------------------------------------------------------------------------------------------
+LONG <0.25 stretch (control)
+  actual           1     0.158    0.158     0.16       -       $29       $29        -   -   -       -       -   -    31%   27.3m  baseline
+  wide             1    -0.086    0.158    -0.09   -0.24       $29      $-16     -$45   0   1    0.00   -0.24   0   -17%  29.7mp  ⚠ marginal
+  strpk            1     0.331    0.158     0.33   +0.17       $29       $61     +$32   1   0    0.17    0.00   0    64%   26.5m  ⚠ marginal
+  strpk04          1     0.282    0.158     0.28   +0.12       $29       $52     +$23   1   0    0.12    0.00   0    55%   26.6m  ⚠ marginal
+  strpk03          1     0.234    0.158     0.23   +0.08       $29       $43     +$14   0   0    0.00    0.00   0    45%   26.8m  ⚠ marginal
+  strpk_signed     1     0.180    0.158     0.18   +0.02       $29       $33      +$4   0   0    0.00    0.00   0    35%   27.2m  ⚠ marginal
+
+
+------------------------------------------------------------
+## EMA13 Strict-Mode Performance (delta P&L vs hypothetical EMA13-only exit at first wick)
+
+Direction        N    AvgHeld%   AvgClose%   ΔPct      Total$Δ    Verdict
+----------------------------------------------------------------------
+LONG               1    -0.486%     -1.207%  -0.720pp   -$119.96 ⚠ Low N
+
+Total: 1 trades held · Avg Δ -0.720pp · -$119.96 $ delta vs EMA13-only
+
+------------------------------------------------------------
+## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)
+
+Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     AvgATR%   ATR-Act% CF@0.30Δ   ΔPct      Total$Δ    +1min%      PB→1m       +2min%      PB→2m       +5min%      PB→5m       +15min%     PB→15m      +30min%     PB→30m      Verdict
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+LONG       L2        1      0    +0.514%    +0.158%     +0.158%     0.356%    0.427%       0%          -  +0.000pp     +$0.00   +0.29%(1)       0.23%   +0.40%(1)       0.12%   -0.59%(1)       1.10%   -0.01%(1)       0.53%   -0.76%(1)       1.27% ⚠ Low N
+LONG       TOTAL     1      0    +0.514%    +0.158%     +0.158%     0.356%    0.427%       0%          -  +0.000pp     +$0.00   +0.29%(1)       0.23%   +0.40%(1)       0.12%   -0.59%(1)       1.10%   -0.01%(1)       0.53%   -0.76%(1)       1.27% ⚠ Low N
+
+Total: 1 trades · 0 saved by reset · Avg Δ +0.000pp · +$0.00 $ delta vs immediate-fire
+
+------------------------------------------------------------
+## Fast-Exit Counterfactual (May 13)
+
+"What if we exited at +X% the moment P&L reached it within N min of ENTRY?"
+May 18: consults post-exit snapshots inside window-from-entry budget (higher thresholds now honest even when live Fast Exit fired earlier). Pool spans multiple configs; Net% leverage-invariant, $ approximate.
+
+### Grid (aggregate)
+Thr%    Win    #Fire   WinFire%   LosFire%   WinCut   LosSav    GiveUp%    Saved%     Net%     Real$       CF$        Δ$   Verdict
+-----------------------------------------------------------------------------------------------------------------------------
+0.20%   1min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.20%   2min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.20%   5min       1       0.0%      33.3%        0        1      0.00%    +1.40%   +1.40%     -$220      +$25     +$245   ✓ Positive
+0.30%   1min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.30%   2min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.30%   5min       1       0.0%      33.3%        0        1      0.00%    +1.50%   +1.50%     -$220      +$43     +$263   ✓ Positive
+0.40%   1min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.40%   2min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.40%   5min       1       0.0%      33.3%        0        1      0.00%    +1.60%   +1.60%     -$220      +$62     +$281   ★ Best Net%+Δ$
+
+### Direction split
+Thr%    Win     LongN     LongΔ$   ShortN    ShortΔ$   Verdict
+----------------------------------------------------------------------
+0.20%   1min        0          -        0          -   Negative both
+0.20%   2min        0          -        0          -   Negative both
+0.20%   5min        1      +$245        0          -   LONG only (no SHORT data)
+0.30%   1min        0          -        0          -   Negative both
+0.30%   2min        0          -        0          -   Negative both
+0.30%   5min        1      +$263        0          -   LONG only (no SHORT data)
+0.40%   1min        0          -        0          -   Negative both
+0.40%   2min        0          -        0          -   Negative both
+0.40%   5min        1      +$281        0          -   LONG only (no SHORT data)
+
+------------------------------------------------------------
+## Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss (May 12 LATE PM)
+
+For each exit type: avg P&L% at 1/2/5/15/30 min AFTER trade closed (avg(N) per cell).
+EMA13: ★ EXIT TOO EARLY = +5min ≥ close + 0.20pp · STOP_LOSS: ⚠ SL ON NOISE = +5min > -0.50% · ★ SL CORRECT = +5min ≤ -0.70%.
+
+Close Reason           Dir       N   AvgPeak%   AvgClose%       +1min%     PB→1m       +2min%     PB→2m       +5min%     PB→5m      +15min%    PB→15m      +30min%    PB→30m   Verdict
+--------------------------------------------------------------------------------------------------------------------------------------------
+STOP_LOSS_WIDE         LONG      2    +0.145%     -1.200%   -1.03%(2)     1.18%   +0.11%(2)     0.03%   -0.36%(2)     0.50%   -2.96%(2)     3.11%   +0.74%(2)     0.00%   ⚠ Low N
+
+------------------------------------------------------------
+## Entry Type Performance
+
+Type               #     %       WR      Avg P&L%   Avg$       Total$       AvgEntryFee  TotalFees    Savings    Conf
+MAKER              3     75%     33.3%      -0.75%  $-130.57    $-391.71     $3.1988      $33.43    $14.39 S:2 V:1
+TAKER_FALLBACK     1     25%     0%         -1.20%  $-163.61    $-163.61     $6.1276      $12.19     $0.00 S:1
+
+------------------------------------------------------------
+## Exit Type Performance
+
+Type               #     %       WR      Avg P&L%   Avg$       Total$       AvgExitFee   TotalFees    Savings    Conf
+TAKER              4     100%    25%        -0.86%  $-138.83    $-555.33     $7.4722      $45.61     $0.00 S:3 V:1
+
+------------------------------------------------------------
+## Filter Blocks (since bot start, in-memory)
+
+Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).
+L% / S% / T% = this filter's share of total LONG / SHORT / overall blocks.
+Filter                 L-Real  L-Free  L-All   L%     S-Real  S-Free  S-All   S%     T-Real  T-Free  Total   T%
+PAIR_EMA_GAP_NOT_EXPANDING 932     0       932     23%    1024    0       1024    35%    1956    0       1956    28%
+PAIR_RSI_RANGE         1326    0       1326    33%    46      0       46      2%     1372    0       1372    20%
+PAIR_ADX_MAX           365     0       365     9%     359     0       359     12%    724     0       724     11%
+PAIR_EMA_GAP_MIN       192     0       192     5%     263     0       263     9%     455     0       455     7%
+PAIR_RSI_ADX_CROSS     32      0       32      1%     396     0       396     14%    428     0       428     6%
+PAIR_EMA20_SLOPE_MIN   0       0       0       0%     311     0       311     11%    311     0       311     5%
+BTC_ADX_GATE_LOW       295     0       295     7%     12      0       12      0%     307     0       307     4%
+PAIR_EMA20_FILTER      147     0       147     4%     107     0       107     4%     254     0       254     4%
+BTC_RSI_ADX_CROSS      120     0       120     3%     112     0       112     4%     232     0       232     3%
+FAN_RATIO_GATE         170     0       170     4%     7       0       7       0%     177     0       177     3%
+PAIR_RANGE_POSITION_MAX 169     0       169     4%     0       0       0       0%     169     0       169     2%
+PAIR_EMA20_SLOPE       79      0       79      2%     38      0       38      1%     117     0       117     2%
+PAIR_EMA_GAP_MAX       38      0       38      1%     49      0       49      2%     87      0       87      1%
+PAIR_RANGE_POSITION_MIN 0       0       0       0%     79      0       79      3%     79      0       79      1%
+LONG_UNMATCHED_ONLY    45      0       45      1%     0       0       0       0%     45      0       45      1%
+BTC_SLOPE_GATE         33      0       33      1%     6       0       6       0%     39      0       39      1%
+BTC_ADX_BLOCK_SHORT    0       0       0       0%     28      0       28      1%     28      0       28      0%
+PAIR_NO_TRADE          4       0       4       0%     14      0       14      0%     18      0       18      0%
+ADX_DELTA_BTC_ADX_CROSS 18      0       18      0%     0       0       0       0%     18      0       18      0%
+BTC_ACCEL_CHASE_LONG   18      0       18      0%     0       0       0       0%     18      0       18      0%
+RNGPOS_ADX_DELTA_CROSS 8       0       8       0%     9       0       9       0%     17      0       17      0%
+PAIR_ADX_DIR           0       0       0       0%     16      0       16      1%     16      0       16      0%
+BTC_GAP_BTC_ADX_CROSS  6       0       6       0%     0       0       0       0%     6       0       6       0%
+VOL_GATE_MAX_SHORT     0       0       0       0%     5       0       5       0%     5       0       5       0%
+PAIR_ATR_MIN           2       0       2       0%     1       0       1       0%     3       0       3       0%
+VOL_GATE               3       0       3       0%     0       0       0       0%     3       0       3       0%
+PATTERN_CELL_BLOCK     0       0       0       0%     3       0       3       0%     3       0       3       0%
+ENTRY_QUALITY_SCORE    2       0       2       0%     0       0       0       0%     2       0       2       0%
+BTC_1H_5M_RSI_DIR_GATE 0       0       0       0%     1       0       1       0%     1       0       1       0%
+BTC_SLOPE_MAX_GATE     1       0       1       0%     0       0       0       0%     1       0       1       0%
+TOTAL                  4005    0       4005    100%   2886    0       2886    100%   6891    0       6891    100%
+
+------------------------------------------------------------
+## Trade Outcome Distribution
+
+Range              #     Avg P&L   
+> +1.0%            0     $0.00
++0.5% to +1.0%     0     $0.00
++0.3% to +0.5%     0     $0.00
++0.15% to +0.3%    1     $29.01
+0% to +0.15%       0     $0.00
+-0.25% to 0%       0     $0.00
+-0.40% to -0.25%   0     $0.00
+< -0.40%           3     $-194.78
+
+------------------------------------------------------------
+## Stop Loss Deep Dive
+
+Category           #     %       Dir        Conf           AvgGap   AvgRSI   Avg Peak%   PostArmMin%  AvgTrough%  Worst%     Avg Close%  Pullback%  Total$       Duration   Signal  
+Positive, No BE    3     100.0%  3L/0S      V:1 S:2        0.32%    55.5        0.1178%           -   -1.2023%  -1.2066%   -1.2023%   1.3182%    $-584.33 00:02:30   2/1     
+All SL Trades      3     100%    3L/0S PostArmMin: - (N=0)
+
+------------------------------------------------------------
+## Winning Trades Drawdown
+
+Reason             #     %       Dir        Conf           AvgGap   AvgRSI   Avg Trough%  Worst%     Avg Peak%   PostArmMin%  Avg Close%  Pullback%  PostPeak%  PostTrough% Total$       Duration   Signal  
+TRAILING_STOP L2   1     100.0%  1L/0S      S:1            0.40%    63.8        -0.2573%  -0.2573%    0.5145%           -    0.1583%   0.3543%   0.4284%   -1.2509%      $29.01 00:27:18   1/0     
+ALL WINNERS        1     100%    1L/0S                        -0.2573%  -0.2573%    0.5145%    0.1583%   0.3543%         -          -      $29.01            1/0     
+
+------------------------------------------------------------
+## Post-Exit Regret Deep Dive
+
+Reason               #    Dir      Duration    AvgATR% ATR-SL@1.5x    Close%  PostPeak%  PeakMin    Strpk%  StrpkMin  Strpk04%  Strpk03%    Stren%  StrenMin  PostTrgh%  TrghMin  PkFirst%    Final%  SigLost%   SLMin    P&L@SL  ReachPk%   RSIEx%  RSIMin    RSIP&L  EMA13X% EMA13XMin  EMA13XP&L  RegFlMin   RegFlP&L   R-.20%   R-.10%   R-.05%   R+.05%   R+.10%  SigReg%  RegMin    RegP&L    Flr@SR  NR-.20%  NR-.10%  NR-.05%    EMA5Dst    EMA5Slp   EMA5X%
+STOP_LOSS L1         1    1L/0S    00:02:24     1.443%    -2.165%  -1.2066%   -0.6562%     2.0m  -2.7325%         -  -2.7325%  -2.7325%  -2.7325%         -   -5.1901%    27.2m    100.0%  -2.7325%    100.0%     0.0  -1.2494%  +0.0000%   100.0%     3.2  -1.2494%   100.0%       3.2   -1.2494%       2.6   -0.9528%     0.0%     0.0%     0.0%     0.0%     0.0%     0.0%       -         -         -     0.0%     0.0%     0.0%   -0.6106%   +0.3160%     0.0%
+STOP_LOSS_WIDE L1    2    2L/0S    00:02:33     3.004%    -4.507%  -1.2002%   +3.3305%    18.1m  +1.4711%     14.1m  +1.2542%  +1.3213%  +1.3213%     15.7m   -4.1277%    10.4m     50.0%  +1.7963%    100.0%     7.6  -1.9097%  +1.3012%   100.0%     7.1  -3.0749%    50.0%      10.6   -3.6994%       5.6   +1.1973%   100.0%   100.0%   100.0%   100.0%   100.0%     0.0%       -         -         -   100.0%   100.0%   100.0%   +0.0954%   +1.2274%     0.0%
+TRAILING_STOP L2     1    1L/0S    00:27:18     0.427%    -0.641%  +0.1583%   +0.4284%     1.9m  +0.3310%     26.5m  +0.2824%  +0.2338%  -0.3438%     31.4m   -1.2509%    38.5m    100.0%  -0.5436%    100.0%     4.1  -0.3438%  +0.4284%   100.0%     4.1  -0.3438%   100.0%       4.1   -0.3438%       2.5   -0.1008%   100.0%   100.0%   100.0%   100.0%   100.0%     0.0%       -         -         -   100.0%   100.0%   100.0%   -0.0233%   +0.2739%   100.0%
+
+------------------------------------------------------------
+## Hold-Time Expectancy
+
+Duration   #     Dir      Win%       AvgWin$   AvgLoss$    Expect$   AvgPeak%    AvgP&L%       Total$ Confidence          
+<3m        2     2L/0S    0.0%         $0.00   $-210.36   $-210.36   +0.0935%   -1.2027%     $-420.72 V:1 S:1
+3-8m       1     1L/0S    0.0%         $0.00   $-163.61   $-163.61   +0.1665%   -1.2016%     $-163.61 S:1
+15-30m     1     1L/0S    100.0%      $29.01      $0.00     $29.01   +0.5145%   +0.1583%       $29.01 S:1
+
+------------------------------------------------------------
+## Performance Over Time (15min buckets)
+
+Time     #     Dir        Win%     P&L          AvgP&L     Cumulative   AvgRSI   AvgADX   AvgGap   EMA5-8  
+07:34    2     2L/0S      0%          $-420.72  $-210.36    $-420.72    54.2    22.6   0.31%  0.1774%
+07:49    1     1L/0S      100%          $29.01    $29.01    $-391.71    63.8    18.1   0.40%  0.1139%
+09:34    1     1L/0S      0%          $-163.61  $-163.61    $-555.33    58.3    16.2   0.33%  0.2750%
+
+------------------------------------------------------------
+## Performance by Day of Week (UTC-3)
+
+Day       # Dir        Win%    Avg P&L%
+Wed       4 4L/0S     25.0%    -0.8622%
+
+------------------------------------------------------------
+## Day x Time Heatmap (UTC-3, 4h blocks)
+
+Day           00-04        04-08        08-12        12-16        16-20        20-24
+Mon               -            -            -            -            -            -
+Tue               -            -            -            -            -            -
+Wed               - 2t 0%W -1.20% 2t 50%W -0.52%            -            -            -
+Thu               -            -            -            -            -            -
+Fri               -            -            -            -            -            -
+Sat               -            -            -            -            -            -
+Sun               -            -            -            -            -            -
+
+------------------------------------------------------------
+## Performance by Entry Gap 5-20
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+0.20 - 0.25%     1     LONG    0%        $-201.01  $-201.01    -1.21% S:1           
+0.30 - 0.35%     1     LONG    0%        $-163.61  $-163.61    -1.20% S:1           
+0.40 - 0.50%     2     LONG    50%       $-190.70   $-95.35    -0.52% V:1 S:1       
+
+------------------------------------------------------------
+## Performance by Entry Gap EMA5-EMA8
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       NP         Conf          
+0.10 - 0.12%     1     LONG    100%        $29.01    $29.01    +0.16% 0 (0%)     S:1           
+0.14 - 0.16%     1     LONG    0%        $-201.01  $-201.01    -1.21% 0 (0%)     S:1           
+> 0.20%          2     LONG    0%        $-383.32  $-191.66    -1.20% 0 (0%)     V:1 S:1       
+
+------------------------------------------------------------
+## Performance by Entry Gap EMA8-EMA13 (May 27 — vs trend reference)
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       NP         Conf          
+0.06 - 0.08%     1     LONG    0%        $-201.01  $-201.01    -1.21% 0 (0%)     S:1           
+0.10 - 0.12%     1     LONG    0%        $-219.70  $-219.70    -1.20% 0 (0%)     V:1           
+0.12 - 0.14%     1     LONG    0%        $-163.61  $-163.61    -1.20% 0 (0%)     S:1           
+0.16 - 0.18%     1     LONG    100%        $29.01    $29.01    +0.16% 0 (0%)     S:1           
+
+------------------------------------------------------------
+## Performance by EMA Fan Acceleration (5-8 vs 8-13) — May 28
+
+Fan Ratio              #     Dir     AvgR   Win%   Total$       Avg$       Avg%       NP         Conf          
+<0.85                  1     LONG    0.68   100%        $29.01    $29.01    +0.16% 0 (0%)     S:1           
+1.65-2.00              2     LONG    1.96   0%        $-420.72  $-210.36    -1.20% 0 (0%)     V:1 S:1       
+2.00-3.00              1     LONG    2.02   0%        $-163.61  $-163.61    -1.20% 0 (0%)     S:1           
+
+------------------------------------------------------------
+## Performance by Entry RSI
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+50 - 55      2     LONG    0%        $-420.72  $-210.36    -1.20% V:1 S:1       
+55 - 60      1     LONG    0%        $-163.61  $-163.61    -1.20% S:1           
+60 - 65      1     LONG    100%        $29.01    $29.01    +0.16% S:1           
+
+------------------------------------------------------------
+## Performance by Range Position
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+25-50%       1     LONG    0%        $-219.70  $-219.70    -1.20% 00:01:56   V:1           
+50-75%       1     LONG    0%        $-201.01  $-201.01    -1.21% 00:02:24   S:1           
+75-85%       1     LONG    0%        $-163.61  $-163.61    -1.20% 00:03:09   S:1           
+95-98%       1     LONG    100%        $29.01    $29.01    +0.16% 00:27:18   S:1           
+
+------------------------------------------------------------
+## Range Position x BTC RSI Direction Cross-Tab
+
+RangePos     BtcRsiDir  #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+25-50%       Rising     1     LONG    0%        $-219.70  $-219.70    -1.20% V:1
+50-75%       Rising     1     LONG    0%        $-201.01  $-201.01    -1.21% S:1
+75-85%       Falling    1     LONG    0%        $-163.61  $-163.61    -1.20% S:1
+95-98%       Rising     1     LONG    100%        $29.01    $29.01    +0.16% S:1
+
+------------------------------------------------------------
+## Range Position x Pair RSI Direction Cross-Tab (vs rsi_prev2)
+
+RangePos     PairRsiDir  #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+25-50%       Rising      1     LONG    0%        $-219.70  $-219.70    -1.20% V:1
+50-75%       Rising      1     LONG    0%        $-201.01  $-201.01    -1.21% S:1
+75-85%       Rising      1     LONG    0%        $-163.61  $-163.61    -1.20% S:1
+95-98%       Rising      1     LONG    100%        $29.01    $29.01    +0.16% S:1
+
+------------------------------------------------------------
+## Performance by ADX Delta
+
+Delta            #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+-1.0 to -0.5     1     LONG    0%        $-219.70  $-219.70    -1.20% V:1           
+-0.5 to -0.3     1     LONG    100%        $29.01    $29.01    +0.16% S:1           
+-0.3 to -0.1     2     LONG    0%        $-364.63  $-182.31    -1.20% S:2           
+
+------------------------------------------------------------
+## Performance by Entry ADX
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+15-18        2     LONG    0%        $-364.63  $-182.31    -1.20% S:2           
+18-22        1     LONG    100%        $29.01    $29.01    +0.16% S:1           
+28-30        1     LONG    0%        $-219.70  $-219.70    -1.20% V:1           
+
+------------------------------------------------------------
+## Performance by ADX Direction at Entry
+
+ADX Dir    #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Falling    4     LONG    25%       $-555.33  $-138.83    -0.86% 00:08:42   V:1 S:3       
+
+------------------------------------------------------------
+## Performance by RSI Direction at Entry (vs rsi_prev2 — matches RSI Momentum Filter)
+
+RSI Dir    #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising     4     LONG    25%       $-555.33  $-138.83    -0.86% 00:08:42   V:1 S:3       
+
+------------------------------------------------------------
+## Performance by EMA5 Stretch
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+0.20 - 0.25%     1     LONG    100%        $29.01    $29.01    +0.16% S:1           
+> 0.30%          3     LONG    0%        $-584.33  $-194.78    -1.20% V:1 S:2       
+
+------------------------------------------------------------
+## Performance by Entry Quality Score
+
+Score    #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+2        1     LONG    0%        $-201.01  $-201.01    -1.21% S:1           
+3        2     LONG    50%       $-190.70   $-95.35    -0.52% V:1 S:1       
+5        1     LONG    0%        $-163.61  $-163.61    -1.20% S:1           
+
+------------------------------------------------------------
+## Performance by Pair EMA20 Slope (signed)
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP        
++0.14 to +0.16%  2     LONG    50%       $-172.01   $-86.00    -0.52% S:2            58.9     17.6     0.31%    0 (0%)    
++0.20 to +0.25%  1     LONG    0%        $-163.61  $-163.61    -1.20% S:1            58.3     16.2     0.33%    0 (0%)    
++0.25 to +0.30%  1     LONG    0%        $-219.70  $-219.70    -1.20% V:1            54.3     28.1     0.40%    0 (0%)    
+
+------------------------------------------------------------
+## Performance by BTC EMA20 Slope (signed)
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP        
++0.02 to +0.03%  3     LONG    33.3%     $-391.71  $-130.57    -0.75% V:1 S:2        57.4     21.1     0.34%    0 (0%)    
++0.16 to +0.18%  1     LONG    0%        $-163.61  $-163.61    -1.20% S:1            58.3     16.2     0.33%    0 (0%)    
+
+------------------------------------------------------------
+## Performance by Pair EMA13-EMA50 Gap (observation-only)
+
+Gap Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP         AvgDur    
+-0.50 to -0.40%  1     LONG    0%        $-163.61  $-163.61    -1.20% S:1            58.3     16.2     0.33%    0 (0%)     00:03:09  
+-0.05 to 0%      1     LONG    100%        $29.01    $29.01    +0.16% S:1            63.8     18.1     0.40%    0 (0%)     00:27:18  
++0.60 to +0.80%  1     LONG    0%        $-201.01  $-201.01    -1.21% S:1            54.0     17.1     0.22%    0 (0%)     00:02:24  
+> +1.00%         1     LONG    0%        $-219.70  $-219.70    -1.20% V:1            54.3     28.1     0.40%    0 (0%)     00:01:56  
+
+------------------------------------------------------------
+## Performance by BTC EMA13-EMA50 Gap (observation-only)
+
+Gap Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP         AvgDur    
+-0.15 to -0.10%  2     LONG    50%       $-172.01   $-86.00    -0.52% S:2            58.9     17.6     0.31%    0 (0%)     00:14:51  
+-0.10 to -0.05%  1     LONG    0%        $-219.70  $-219.70    -1.20% V:1            54.3     28.1     0.40%    0 (0%)     00:01:56  
+0 to +0.05%      1     LONG    0%        $-163.61  $-163.61    -1.20% S:1            58.3     16.2     0.33%    0 (0%)     00:03:09  
+
+------------------------------------------------------------
+## Performance by BTC ADX
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap  
+20-25            4     LONG    25%       $-555.33  $-138.83    -0.86% V:1 S:3        57.6     19.9     0.34%   
+
+------------------------------------------------------------
+## Performance by BTC ADX Direction at Entry
+
+BTC ADX Dir  #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising       1     LONG    0%        $-163.61  $-163.61    -1.20% 00:03:09   S:1           
+Falling      3     LONG    33.3%     $-391.71  $-130.57    -0.75% 00:10:33   V:1 S:2       
+
+------------------------------------------------------------
+## Performance by BTC RSI Direction at Entry
+
+BTC RSI Dir  #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising       3     LONG    33.3%     $-391.71  $-130.57    -0.75% 00:10:33   V:1 S:2       
+Falling      1     LONG    0%        $-163.61  $-163.61    -1.20% 00:03:09   S:1           
+
+------------------------------------------------------------
+## Performance by BTC RSI Direction 30m (sustained-momentum, vs btc_rsi_prev6)
+
+BTC RSI 30m  #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising       4     LONG    25%       $-555.33  $-138.83    -0.86% 00:08:42   V:1 S:3       
+
+------------------------------------------------------------
+## BTC RSI 30m x BTC RSI 5m Cross-Tab (sustained vs flicker)
+
+RSI30m     RSI5m      #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Rising     Rising     3     LONG    33.3%     $-391.71  $-130.57    -0.75% S:2 V:1
+Rising     Falling    1     LONG    0%        $-163.61  $-163.61    -1.20% S:1
+
+------------------------------------------------------------
+## Performance by BTC Volatility Regime (ATR%) — May 15 PM observation-only
+
+BTC ATR%         #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+0.20 - 0.30%     4     LONG    25%       $-555.33  $-138.83    -0.86% 00:08:42   V:1 S:3       
+
+------------------------------------------------------------
+## Performance by BTC 1h RSI Direction — May 15 PM observation-only
+
+BTC 1h Dir   #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising       4     LONG    25%       $-555.33  $-138.83    -0.86% 00:08:42   V:1 S:3       
+
+------------------------------------------------------------
+## BTC Volatility x BTC ADX Cross-Tab — violent-chop detector (May 15 PM)
+
+BTC ATR%         BTC ADX      #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Mid 0.15-0.30%   Mid 20-30    4     LONG    25%       $-555.33  $-138.83    -0.86% S:3 V:1
+
+------------------------------------------------------------
+## BTC 1h RSI x BTC 5m RSI Cross-Tab — multi-TF alignment (May 15 PM)
+
+BTC 1h     BTC 5m     #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Rising     Rising     3     LONG    33.3%     $-391.71  $-130.57    -0.75% S:2 V:1
+Rising     Falling    1     LONG    0%        $-163.61  $-163.61    -1.20% S:1
+
+------------------------------------------------------------
+## Volume Cross-Tab (Global x Pair)
+
+Dir    GlobalVol    PairVol      #     Win%    Avg$       Avg%      Total$       AvgDur  
+L      0.70-0.85    < 0.50       1     0%        $-201.01    -1.21%     $-201.01 00:02:25
+L      0.70-0.85    0.50-0.70    2     50%        $-95.35    -0.52%     $-190.70 00:14:38
+L      > 1.50       0.70-0.85    1     0%        $-163.61    -1.20%     $-163.61 00:03:09
+
+------------------------------------------------------------
+## Volume Intersection Cross-Tab (Global Vol Ratio × Pair Vol USD — May 10)
+
+Dir    GlobalVol    Pair Vol $    #    WR%    Avg%      Total$      
+L      0.70-0.85    $50-80M       1    0.0%     -1.207%     $-201.01
+L      0.70-0.85    $100-150M     1    100.0%   +0.158%       $29.01
+L      0.70-0.85    $150-250M     1    0.0%     -1.199%     $-219.70
+L      > 1.50       $50-80M       1    0.0%     -1.202%     $-163.61
+
+------------------------------------------------------------
+## Performance by Market Breadth at Entry
+
+Dir    Breadth      #     Win%    Avg$       Avg%      Total$       AvgDur  
+L      30-50%       3     33.3%     $-130.57    -0.75%     $-391.71 00:10:33
+L      85%+         1     0%        $-163.61    -1.20%     $-163.61 00:03:09
+
+------------------------------------------------------------
+## Performance by Pair
+
+Pair             Direction  #     Win%    Avg$       Avg%      Total$       AvgATR%  AvgDur   Slip%   
+XLMUSDT          1L/0S      1     100%        $29.01    +0.16%       $29.01    0.43% 00:27:19        -
+ESPORTSUSDT      1L/0S      1     0%        $-219.70    -1.20%     $-219.70    4.68% 00:01:57        -
+PIPPINUSDT       2L/0S      2     0%        $-182.31    -1.20%     $-364.63    1.39% 00:02:47        -
+
+------------------------------------------------------------
+## Performance by Pair 24h Volume (USD at entry — May 10)
+
+Bucket        #    L/S      Win%    AvgVol     Avg$       Avg%      Total$       AvgRSI  AvgADX 
+$50-80M       2    2L/0S    0.0%          $75M   $-182.31   -1.204%     $-364.63    56.2   16.68
+$100-150M     1    1L/0S    100.0%       $119M     $29.01   +0.158%       $29.01    63.8   18.13
+$150-250M     1    1L/0S    0.0%         $153M   $-219.70   -1.199%     $-219.70    54.3   28.12
+
+------------------------------------------------------------
+## Performance by Pair ATR(14)% (entry volatility — May 9)
+
+Range          #     Dir      Win%    AvgATR%   Avg%      Avg$       Total$       AvgRSI  AvgADX 
+0.35-0.45%     1     1L/0S    100.0%     0.427%   +0.158%     $29.01       $29.01    63.8    18.1
+1.25-1.50%     2     2L/0S    0.0%       1.386%   -1.204%   $-182.31     $-364.63    56.2    16.7
+>2.00%         1     1L/0S    0.0%       4.680%   -1.199%   $-219.70     $-219.70    54.3    28.1
+
+------------------------------------------------------------
+## Performance by BTC Entry RSI
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap  
+55-60        3     LONG    33.3%     $-391.71  $-130.57    -0.75% V:1 S:2        57.4     21.1     0.34%   
+70+          1     LONG    0%        $-163.61  $-163.61    -1.20% S:1            58.3     16.2     0.33%   
+
+------------------------------------------------------------
+## Pair ADX Dir x BTC ADX Dir Cross-Tab
+
+PairADX    BtcADX     #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Falling    Rising     1     LONG    0%        $-163.61  $-163.61    -1.20% S:1
+Falling    Falling    3     LONG    33.3%     $-391.71  $-130.57    -0.75% S:2 V:1
+
+------------------------------------------------------------
+## Pair RSI Dir x BTC RSI Dir Cross-Tab
+
+PairRSI    BtcRSI     #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Rising     Rising     3     LONG    33.3%     $-391.71  $-130.57    -0.75% S:2 V:1
+Rising     Falling    1     LONG    0%        $-163.61  $-163.61    -1.20% S:1
+
+------------------------------------------------------------
+## Pair EMA20 Slope x Pair ADX Cross-Tab
+
+Dir     Slope        ADX      #     Win%    Avg$       Avg%      Total$       NP         Conf
+LONG    0.10-0.16%   15-18    1     0%       $-201.01    -1.21%    $-201.01 0 (0%)     S:1
+LONG    0.10-0.16%   18-22    1     100%       $29.01    +0.16%      $29.01 0 (0%)     S:1
+LONG    0.16-0.25%   15-18    1     0%       $-163.61    -1.20%    $-163.61 0 (0%)     S:1
+LONG    0.25-0.40%   28-30    1     0%       $-219.70    -1.20%    $-219.70 0 (0%)     V:1
+
+------------------------------------------------------------
+## BTC Slope x BTC ADX Cross-Tab
+
+Dir     Slope        ADX      #     Win%    Avg$       Avg%      Total$       NP         Conf
+LONG    0.02-0.04%   20-25    3     33.3%    $-130.57    -0.75%    $-391.71 0 (0%)     S:2 V:1
+LONG    0.16-0.25%   20-25    1     0%       $-163.61    -1.20%    $-163.61 0 (0%)     S:1
+
+------------------------------------------------------------
+## ADX Delta x BTC ADX Cross-Tab
+
+Dir     ADX Δ      BTC ADX    #     Win%    Avg$       Avg%      Total$       NP         Conf
+LONG    <0         18-25      4     25%      $-138.83    -0.86%    $-555.33 0 (0%)     S:3 V:1
+
+------------------------------------------------------------
+## BTC EMA13-EMA50 Gap x BTC ADX Cross-Tab
+
+Dir     BTC Gap            BTC ADX    #     Win%    Avg$       Avg%      Total$       NP         Conf
+LONG    -0.15 to -0.10%    18-25      2     50%       $-86.00    -0.52%    $-172.01 0 (0%)     S:2
+LONG    -0.10 to -0.05%    18-25      1     0%       $-219.70    -1.20%    $-219.70 0 (0%)     V:1
+LONG    0 to +0.05%        18-25      1     0%       $-163.61    -1.20%    $-163.61 0 (0%)     S:1
+
+------------------------------------------------------------
+## Pair EMA13-EMA50 Gap x Pair ADX Cross-Tab
+
+Dir     Pair Gap           Pair ADX   #     Win%    Avg$       Avg%      Total$       NP         Conf
+LONG    -0.50 to -0.40%    15-18      1     0%       $-163.61    -1.20%    $-163.61 0 (0%)     S:1
+LONG    -0.05 to 0%        18-22      1     100%       $29.01    +0.16%      $29.01 0 (0%)     S:1
+LONG    +0.60 to +0.80%    15-18      1     0%       $-201.01    -1.21%    $-201.01 0 (0%)     S:1
+LONG    > +1.00%           28-30      1     0%       $-219.70    -1.20%    $-219.70 0 (0%)     V:1
+
+------------------------------------------------------------
+## Performance by RSI x ADX
+
+Dir     RSI     ADX     #     Win%    Avg$       Avg%      Total$       NP        
+LONG    50-55   15-18   1     0%       $-201.01    -1.21%    $-201.01 0 (0%)    
+LONG    50-55   28-30   1     0%       $-219.70    -1.20%    $-219.70 0 (0%)    
+LONG    55-60   15-18   1     0%       $-163.61    -1.20%    $-163.61 0 (0%)    
+LONG    60-65   18-22   1     100%       $29.01    +0.16%      $29.01 0 (0%)    
+
+------------------------------------------------------------
+## Performance by BTC RSI x BTC ADX
+
+Dir     BTCRSI  BTCADX  #     Win%    Avg$       Avg%      Total$       NP        
+LONG    55-60   20-25   3     33.3%    $-130.57    -0.75%    $-391.71 0 (0%)    
+LONG    70+     20-25   1     0%       $-163.61    -1.20%    $-163.61 0 (0%)    
+
+################################################################################
+### BEARISH REGIME
+################################################################################
+
+================================================================================
+## OVERALL PERFORMANCE
+
+Total Trades: 10  (0L / 10S)
+Wins: 3  |  Losses: 7  |  Win Rate: 30%
+Win Rate Longs: 0%  |  Shorts: 30%
+Avg Win: $38.87  (L:$0 S:$38.87)
+Avg Loss: $-94.71  (L:$0 S:$-94.71)
+Expectancy: $-54.63 (-0.35%)/trade
+Best Win L:$0 S:$64.95  |  Worst Loss L:$0 S:$-205.59
+Total P&L: $-546.33 (-9.4%)  |  Fees: $106.72
+Avg Duration: 00:25:53 (L:00:00:00 S:00:25:53)
+Avg Leverage: 24x  |  Return Multiple: 0.7765x
+Daily Compound Return: 0%  |  Runtime: 0.37 days
+Investment L:$0 S:$5812.44
+
+------------------------------------------------------------
+## Period Performance
+
+Period       #      Dir        WinRate   AvgP&L%      TotInv       TotNot         P&L/Inv                P&L/Not                  PF     Fees       Slip%   
+Last 6h      4      0L/4S      25.0%     -0.49%       $1,903       $45,788        -$261 (-13.74%)        -$261 (-0.57%)           0.01   $31        -       
+Last 12h     10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+1 Day        10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+2 Days       10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+3 Days       10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+5 Days       10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+7 Days       10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+15 Days      10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+30 Days      10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+Total        10     0L/10S     30.0%     -0.35%       $5,812       $148,633       -$546 (-9.40%)         -$546 (-0.37%)           0.18   $107       -       
+
+------------------------------------------------------------
+## Performance by Macro Trend
+
+Trend      Trades             AvgP&L%   Win%    R:R    Long P&L     L Win%   Short P&L    S Win%  
+BULLISH    4L/0S              -0.86%    25%      0.15   $   -555.33 25%      $      0.00 0%      
+BEARISH    0L/10S             -0.35%    30%      0.41   $      0.00 0%       $   -546.33 30%     
+NEUTRAL    0L/0S              +0.00%    0%      0      $      0.00 0%       $      0.00 0%      
+
+------------------------------------------------------------
+## Performance by Confidence Level
+
+Confidence     Trades             AvgP&L%   Win%    R:R    Total P&L    L P&L      L %      L Win%   S P&L      S %      S Win%   Avg Gap 
+VERY_STRONG    0L/5S              -0.01%    60%      0.99   $     38.42 $    0.00 +0.00%   0.0%     $   38.42 +1.43%   60.0%    0.561%
+STRONG_BUY     0L/5S              -0.69%    0%      0      $   -584.76 $    0.00 +0.00%   0.0%     $ -584.76 -18.71%  0.0%     0.556%
+
+------------------------------------------------------------
+## Performance by BTC Regime (at Entry)
+
+Regime             #      Dir      Win%     Total$       Avg$       Avg%       AvgPeak%   Conf
+HEALTHY_BEAR       5      SHORT    40%         $-196.48   $-39.30    -0.25%   0.4631% V:3 S:2
+STRONG_BEAR        5      SHORT    20%         $-349.85   $-69.97    -0.44%   0.2349% S:3 V:2
+
+------------------------------------------------------------
+## Regime Transition Performance
+
+Transition       #      Win%     Total$       Avg$       Avg%      
+SAME_REGIME      4      25%         $-338.19   $-84.55    -0.55%
+REGIME_SHIFT     6      33.3%       $-208.15   $-34.69    -0.21%
+
+------------------------------------------------------------
+## Closing Reason Summary
+
+Reason               #     %       Dir          Conf           Avg P&L%   Avg$       AvgPeak%   AvgTrough%  WorstTrough%  Pullback%  PostPeak%  PostTrough% Total$       Duration   Signal   AvgGap   AvgRSI     RSI2%   RSI2P&L  RSI2Min  BTCTrend(exit)
+TRAILING_STOP L2     3     30.0%   0L/3S        V:3                0.31%    $38.87   0.7887%   -0.2337%     -0.3485%   0.4823%   0.6414%   -0.9673%     $116.62 00:11:34   3/0      0.61%    31.2       33.3%  -0.0121%     13.4          -0.27%
+EMA13_CROSS_EXIT L1  3     30.0%   0L/3S        V:1 S:2           -0.39%   $-43.87   0.2270%   -0.5652%     -0.7837%   0.6181%  -0.0060%   -1.2765%    $-131.62 00:36:22   0/3      0.45%    30.4      100.0%  -0.2938%      7.2          -0.20%
+STOP_LOSS_WIDE L1    1     10.0%   0L/1S        S:1               -1.00%  $-100.12   0.0000%   -1.0012%     -1.0012%   0.9722%  -0.7962%   -2.2966%    $-100.12 00:08:02   1/0      0.57%    34.8        0.0%         -        -          -0.31%
+PATTERN_FIXED_SL L1  2     20.0%   0L/2S        S:2               -0.71%  $-184.08   0.1112%   -0.7054%     -0.7098%   0.7915%  -0.1306%   -1.9312%    $-368.16 00:24:17   2/0      0.59%    29.0      100.0%  -0.3881%     11.2          -0.17%
+STOP_LOSS L1         1     10.0%   0L/1S        V:1               -0.82%   $-63.05   0.2210%   -0.8157%     -0.8157%   1.0395%  -0.7636%   -2.9916%     $-63.05 00:58:27   0/1      0.66%    32.1      100.0%  -0.5047%     14.6          -0.17%
+
+------------------------------------------------------------
+## Entry Conditions by Close Reason
+
+Reason                     #     Conf           AvgRSI   AvgADX   ADXDir   RSIDir   AvgGap   Gap5-8   Gap8-13   FanR   Stretch   EMA20Slp   BTCSlp    BTCRSI   BTCADX   BTCADXDir  BTCRSIDir  ADXΔ     RngPos   Breadth   ATR%     BTCTrend   BTCTrend(exit)  GlobalVol  PairVol$   AvgExt%   AvgBTCExt%  Avg1hSlope  AvgPeak%   AvgTrough%  WorstTrough%  AvgP&L%    Total$       SLProf         Duration
+EMA13_CROSS_EXIT L1 (S)    3     S:2 V:1        30.4     28.8     3R/0F    0R/3F    0.45%    0.13%    0.16%     0.76   0.23%     0.18%      0.10%     34.0     28.0     3R/0F      1R/2F      +1.12    6%       84.5%     0.36%    -0.27%     -0.20%          0.76       $72M       +0.520%   +0.222%     -0.276%     +0.2270%   -0.5652%    -0.7837%      -0.3896%   $-131.62     P:3 N:0        00:36:22
+TRAILING_STOP L2 (S)       3     V:3            31.2     33.7     3R/0F    0R/3F    0.61%    0.16%    0.21%     0.77   0.36%     0.25%      0.08%     36.4     24.8     2R/1F      1R/2F      +1.57    16%      71.3%     0.67%    -0.21%     -0.27%          0.79       $79M       +0.719%   +0.180%     -0.229%     +0.7887%   -0.2337%    -0.3485%      +0.3104%   $116.62      -              00:11:34
+PATTERN_FIXED_SL L1 (S)    2     S:2            29.0     26.1     2R/0F    0R/2F    0.59%    0.16%    0.21%     0.80   0.27%     0.24%      0.06%     39.6     25.9     1R/1F      0R/2F      +1.38    8%       76.8%     0.47%    -0.26%     -0.17%          0.91       $57M       +0.640%   +0.148%     -0.261%     +0.1112%   -0.7054%    -0.7098%      -0.7054%   $-368.16     P:1 N:1        00:24:17
+STOP_LOSS L1 (S)           1     V:1            32.1     30.9     1R/0F    0R/1F    0.66%    0.17%    0.24%     0.71   0.21%     0.27%      0.09%     40.0     20.1     1R/0F      1R/0F      +1.70    16%      81.4%     0.51%    -0.22%     -0.17%          1.07       $37M       +0.617%   +0.197%     -0.224%     +0.2210%   -0.8157%    -0.8157%      -0.8157%   $-63.05      P:1 N:0        00:58:27
+STOP_LOSS_WIDE L1 (S)      1     S:1            34.8     28.1     1R/0F    0R/1F    0.57%    0.14%    0.18%     0.76   0.34%     0.23%      0.10%     30.5     31.7     1R/0F      0R/1F      +0.94    19%      83.7%     0.66%    -0.29%     -0.31%          0.81       $52M       +0.665%   +0.263%     -0.302%     +0.0000%   -1.0012%    -1.0012%      -1.0012%   $-100.12     P:0 N:1        00:08:02
+
+------------------------------------------------------------
+## Entry Conditions by Outcome (Winners vs Losers)
+
+Outcome        #     Conf           AvgRSI   AvgADX   ADXDir   RSIDir   AvgGap   Gap5-8   Gap8-13   FanR   Stretch   EMA20Slp   BTCSlp    BTCRSI   BTCADX   BTCADXDir  BTCRSIDir  ADXΔ     RngPos   Breadth   ATR%     BTCTrend   BTCTrend(exit)  GlobalVol  PairVol$   AvgExt%   AvgBTCExt%  Avg1hSlope  AvgPeak%   AvgTrough%  WorstTrough%  AvgP&L%    Total$       SLProf         Duration
+Winners S      3     V:3            31.2     33.7     3R/0F    0R/3F    0.61%    0.16%    0.21%     0.77   0.36%     0.25%      0.08%     36.4     24.8     2R/1F      1R/2F      +1.57    16%      71.3%     0.67%    -0.21%     -0.27%          0.79       $79M       +0.719%   +0.180%     -0.229%     +0.7887%   -0.2337%    -0.3485%      +0.3104%   $116.62      -              00:11:34
+Losers S       7     S:5 V:2        30.9     28.2     7R/0F    0R/7F    0.54%    0.15%    0.19%     0.76   0.26%     0.22%      0.09%     36.0     26.8     6R/1F      2R/5F      +1.25    10%      81.7%     0.45%    -0.26%     -0.20%          0.85       $60M       +0.589%   +0.203%     -0.268%     +0.1606%   -0.7033%    -1.0012%      -0.6281%   $-662.96     P:5 N:2        00:32:01
+
+------------------------------------------------------------
+## Multiplier Cell Performance — LONGs
+
+Source                       Inv    Lev    Eff     N     WR%     AvgP&L%    Total$      Expect$    PF      BL Avg%    Δ$ vs BL   Capped  Verdict
+  (no multiplied trades yet)
+
+------------------------------------------------------------
+## Multiplier Cell Performance — SHORTs
+
+Source                       Inv    Lev    Eff     N     WR%     AvgP&L%    Total$      Expect$    PF      BL Avg%    Δ$ vs BL   Capped  Verdict
+C1                           2.00x  1.50x  3.00x   4     25.0%   -0.442%    $-397.16    $-99.291   0.11    -0.283%    -$264.78   1       ⚠ Low N
+W1                           1.00x  1.00x  1.00x   4     50.0%   -0.136%    $-33.91     $-8.477    0.67    -0.283%    +$0.00     0       ⚠ Low N
+[Default 1.0x]               1.00x  1.00x  1.00x   2     0.0%    -0.576%    $-115.26    $-57.631   0.00    -0.283%    -          0       (baseline reference)
+
+Total uplift from multipliers: -$264.77 (actual $-397.16 vs simulated baseline (1× multi) $-132.39 on 4 multiplied trades)
+
+------------------------------------------------------------
+## 4-Cohort Pattern Coverage
+
+Cohort                             N     %batch   W    L    WR%     Total $     Avg $/tr    LONG                   SHORT
+Both C and W match (crossed)       6     60.0%    1    5    16.7%   -$512.43    -$85.40     0(0/0) +$0.00          6(1/5) -$512.43
+C only (no W match)                0     0.0%     0    0    0.0%    +$0.00      +$0.00      0(0/0) +$0.00          0(0/0) +$0.00
+W only (no C match)                4     40.0%    2    2    50.0%   -$33.91     -$8.48      0(0/0) +$0.00          4(2/2) -$33.91
+TRULY UNMATCHED (no C, no W)       0     0.0%     0    0    0.0%    +$0.00      +$0.00      0(0/0) +$0.00          0(0/0) +$0.00
+Batch total: 10 trades, 3W/7L, -$546.33
+
+------------------------------------------------------------
+## Pattern C Combination Tracker
+
+Combo                Dir    N    W/L      WR%     Avg%      Total$      NP      AvgPk%    R:R     TP+SL Δ$             MULT 2× Δ$  Verdict
+C1                   SHORT  2    0/2      0.0%    -0.70%    -$368.16    1/50%   +0.11%    1:∞     +$281.18(1/1/0)      -$368.16    ⚠ Low N
+C6                   SHORT  2    0/2      0.0%    -0.58%    -$115.26    1/50%   +0.20%    1:∞     +$75.26(1/1/0)       -$115.26    ⚠ Low N
+C1+C6                SHORT  2    1/1      50.0%   -0.18%    -$29.00     0/0%    +0.28%    1:1.6   -$16.00(1/1/0)       -$29.00     ⚠ Low N
+(none)               SHORT  4    2/2      50.0%   -0.14%    -$33.91     0/0%    +0.58%    1:1.5   +$65.39(4/0/0)       -$33.91     ⚠ Low N
+
+------------------------------------------------------------
+## Pattern W Combination Tracker
+
+Combo                Dir    N    W/L      WR%     Avg%      Total$      NP      AvgPk%    R:R     TP+SL Δ$             MULT 2× Δ$  Verdict
+W1+W2                SHORT  4    0/4      0.0%    -0.60%    -$398.94    1/25%   +0.17%    1:∞     +$312.90(2/2/0)      -$398.94    ⚠ Low N
+W1                   SHORT  5    2/3      40.0%   -0.25%    -$196.48    1/20%   +0.46%    1:2.6   +$112.01(4/1/0)      -$196.48    ✓ Inconclusive
+W2                   SHORT  1    1/0      100.0%  +0.16%    +$49.08     0/0%    +0.51%    1:0.0   -$19.08(1/0/0)       +$49.08     ⚠ Low N
+
+------------------------------------------------------------
+## Pattern C + W Combination Tracker
+
+Combo                Dir    N    W/L      WR%     Avg%      Total$      NP      AvgPk%    R:R     TP+SL Δ$             MULT 2× Δ$  Verdict
+C1+W1+W2             SHORT  1    0/1      0.0%    -0.71%    -$205.59    0/0%    +0.22%    1:∞     +$234.55(1/0/0)      -$205.59    ⚠ Low N
+C1+W1                SHORT  1    0/1      0.0%    -0.70%    -$162.57    1/100%  +0.00%    1:∞     +$46.62(0/1/0)       -$162.57    ⚠ Low N
+C6+W1+W2             SHORT  2    0/2      0.0%    -0.58%    -$115.26    1/50%   +0.20%    1:∞     +$75.26(1/1/0)       -$115.26    ⚠ Low N
+C1+C6+W1+W2          SHORT  1    0/1      0.0%    -0.52%    -$78.09     0/0%    +0.04%    1:∞     +$3.09(0/1/0)        -$78.09     ⚠ Low N
+W1                   SHORT  4    2/2      50.0%   -0.14%    -$33.91     0/0%    +0.58%    1:1.5   +$65.39(4/0/0)       -$33.91     ⚠ Low N
+C1+C6+W2             SHORT  1    1/0      100.0%  +0.16%    +$49.08     0/0%    +0.51%    1:0.0   -$19.08(1/0/0)       +$49.08     ⚠ Low N
+
+------------------------------------------------------------
+## Pattern Cell Ship Performance
+
+Pattern  Brief                              Dir    Inv    Lev    Eff     FixTP    FixSL    N     tpFr  slFr  WR%     AvgP&L%    Total$      PF     Δ$ vs BL   Verdict
+C4       Low-vol chop                       LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+C8       Oversold/Overbought Chop           LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+UNMATCHED UNMATCHED                          LONG   2.00x  1.00x  2.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W2       Macro tailwind                     LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W4       Pullback aligned                   LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W6       BTC Tailwind/Bear                  LONG   1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+C1       Capitulation chase                 SHORT  2.00x  1.50x  3.00x   —        -0.70%   4     0     2     25.0%   -0.442%    $-397.16    0.11   -$264.78   ⚠ Low N
+W1       HighConv trend                     SHORT  1.00x  1.00x  1.00x   —        —        4     0     0     50.0%   -0.136%    $-33.91     0.67   —          ⚠ Low N
+C4       Low-vol chop                       SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+C8       Oversold/Overbought Chop           SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+UNMATCHED UNMATCHED                          SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W2       Macro tailwind                     SHORT  2.00x  1.50x  3.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W4       Pullback aligned                   SHORT  1.00x  1.00x  1.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+W6       BTC Tailwind/Bear                  SHORT  2.00x  1.00x  2.00x   —        —        0     0     0     —       —          —           —      —          ⏳ No trades yet
+
+Sized cells: 4 trades, uplift -$264.77 | Pure-exit cells: 0 trades, total +$0.00
+
+------------------------------------------------------------
+## Extension Multiplier Performance
+
+Source         Dir    Inv    Lev    Eff     N     WR%     AvgP&L%    AvgPk%    Total$      PF     Δ$ vs BL   L≥0.20   Verdict
+EXT_Ext0.4-0.6_L LONG   1.00x  1.00x  1.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+EXT_Ext_QuietVol_L LONG   1.00x  1.00x  1.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+EXT_Ext_SlowADX_L LONG   1.00x  1.00x  1.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+
+Boosted: 0 trades, uplift +$0.00
+
+------------------------------------------------------------
+## BTC 1h Slope × BTC ADX Multiplier Performance
+
+Source         Dir    Inv    Lev    Eff     N     WR%     AvgP&L%    AvgPk%    Total$      PF     Δ$ vs BL   L≥0.20   Verdict
+BTC1H_1hPullback_L LONG   2.00x  1.00x  2.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+BTC1H_1hMildRise_S SHORT  2.00x  1.00x  2.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+
+Boosted: 0 trades, uplift +$0.00
+
+------------------------------------------------------------
+## ATR Multiplier Performance
+
+Source         Dir    Inv    Lev    Eff     N     WR%     AvgP&L%    AvgPk%    Total$      PF     Δ$ vs BL   L≥0.20   Verdict
+ATR_Runner     LONG   2.00x  1.00x  2.00x   0     —       —          —         —           —      —          0/0      ⏳ No trades yet
+
+Boosted: 0 trades, uplift +$0.00
+
+------------------------------------------------------------
+## Entry Extension / Late Entry Risk — pool 10 trades (post-deploy only)
+
+### SHORTS
+Range              Tag           N    WR%    Avg%       Avg$       Total$     Peak%      DOA%
+-----------------------------------------------------------------------------------------------
++0.40 to +0.50%    very extended   3   33.3    -0.170  -$  14.72  -$  44.15  +  0.318   33.3
++0.50 to +0.60%    very extended   1    0.0    -0.701  -$ 162.57  -$ 162.57  +  0.000  100.0
++0.60 to +0.70%    extreme         4   25.0    -0.449  -$  75.95  -$ 303.81  +  0.416   25.0
++0.70 to +0.80%    extreme         1    0.0    -0.497  -$  38.39  -$  38.39  +  0.242    0.0
+> +1.00%           parabolic       1  100.0  +   0.036  +$   2.59  +$   2.59  +  0.632    0.0
+
+### SHORTS — Extension × Pair Vol Ratio
+Extension        PVol         N    WR%    Avg%       Total$
+----------------------------------------------------------------------
++0.40 to +0.60%  0.95-1.10      1  100.0  +   0.164  +$  49.08
++0.40 to +0.60%  1.10-1.25      1    0.0    -0.521  -$  78.09
++0.40 to +0.60%  > 1.25         2    0.0    -0.426  -$ 177.72
+> +0.60%         < 0.95         2    0.0    -0.749  -$ 138.51
+> +0.60%         0.95-1.10      1    0.0    -0.816  -$  63.05
+> +0.60%         1.10-1.25      3   66.7  +   0.019  -$ 138.05
+
+### SHORTS — Extension × ADX Delta
+Extension        ADX Δ        N    WR%    Avg%       Total$
+----------------------------------------------------------------------
++0.40 to +0.60%  0.3-0.7        1    0.0    -0.151  -$  15.14    0 (0.0%)
++0.40 to +0.60%  1.2-1.8        2    0.0    -0.611  -$ 240.66   1 (50.0%)
++0.40 to +0.60%  > 1.8          1  100.0  +   0.164  +$  49.08    0 (0.0%)
+> +0.60%         0.7-1.2        2   50.0    -0.482  -$  97.53   1 (50.0%)
+> +0.60%         1.2-1.8        3    0.0    -0.674  -$ 307.03    0 (0.0%)
+> +0.60%         > 1.8          1  100.0  +   0.731  +$  64.95    0 (0.0%)
+
+### SHORTS — Extension × Pair ADX
+Extension        Pair ADX     N    WR%    Avg%       Total$    NP
+---------------------------------------------------------------------------
++0.40 to +0.60%  25-28          1    0.0    -0.701  -$ 162.57  1 (100.0%)
++0.40 to +0.60%  28-30          1    0.0    -0.521  -$  78.09    0 (0.0%)
++0.40 to +0.60%  30-33          1    0.0    -0.151  -$  15.14    0 (0.0%)
++0.40 to +0.60%  > 33           1  100.0  +   0.164  +$  49.08    0 (0.0%)
++0.60 to +0.80%  25-28          2    0.0    -0.603  -$ 243.98    0 (0.0%)
++0.60 to +0.80%  28-30          1    0.0    -1.001  -$ 100.12  1 (100.0%)
++0.60 to +0.80%  30-33          2   50.0    -0.042  +$   1.89    0 (0.0%)
+> +1.00%         > 33           1  100.0  +   0.036  +$   2.59    0 (0.0%)
+
+
+------------------------------------------------------------
+## BTC Market Extension / BTC Late Regime Risk — pool 10 trades (post-May-14 deploy only)
+
+### SHORTS
+Range              Tag           N    WR%    Avg%       Avg$       Total$     Peak%      DOA%    NP%
+-------------------------------------------------------------------------------------------------------
+0 to +0.10%        mild late       2   50.0    -0.337  -$ 101.50  -$ 203.00  +  0.427    0.0    0 (0.0%)
++0.10 to +0.20%    late            3    0.0    -0.679  -$ 101.24  -$ 303.72  +  0.086   66.7   1 (33.3%)
++0.20 to +0.40%    extended        5   40.0    -0.151  -$   7.92  -$  39.62  +  0.476   20.0   1 (20.0%)
+
+### SHORTS — BTC Extension × Global Vol Ratio
+BTC Ext          GlobalVol    N    WR%    Avg%       Total$     NP%
+------------------------------------------------------------------------------
+0 to +0.20%      < 0.85         2   50.0    -0.337  -$ 203.00    0 (0.0%)
+0 to +0.20%      0.85-1.00      1    0.0    -0.521  -$  78.09    0 (0.0%)
+0 to +0.20%      1.00-1.20      2    0.0    -0.758  -$ 225.63   1 (50.0%)
++0.20 to +0.40%  < 0.85         4   25.0    -0.371  -$ 104.57   1 (25.0%)
++0.20 to +0.40%  0.85-1.00      1  100.0  +   0.731  +$  64.95    0 (0.0%)
+
+### SHORTS — DOUBLE-STRETCH: BTC Extension × Pair Extension
+BTC Ext          Pair Ext     N    WR%    Avg%       Total$     NP%
+------------------------------------------------------------------------------
+0 to +0.20%      +0.40 to +0.60%   2    0.0    -0.611  -$ 240.66   1 (50.0%)
+0 to +0.20%      +0.60 to +0.80%   2    0.0    -0.763  -$ 268.64    0 (0.0%)
+0 to +0.20%      > +1.00%       1  100.0  +   0.036  +$   2.59    0 (0.0%)
++0.20 to +0.40%  +0.40 to +0.60%   2   50.0  +   0.006  +$  33.94    0 (0.0%)
++0.20 to +0.40%  +0.60 to +0.80%   3   33.3    -0.256  -$  73.56   1 (33.3%)
+
+
+------------------------------------------------------------
+## BTC 1h Slope Analytics — pool 10 trades (post-May-14 deploy only)
+
+### SHORTS — Performance by BTC 1h Slope (signed)
+Slope               N    WR%    Avg%       Total$     Peak%      NP%
+--------------------------------------------------------------------------------
+-0.40 to -0.30%       2    0.0    -0.576  -$ 115.26  +  0.201   1 (50.0%)
+-0.30 to -0.20%       7   28.6    -0.435  -$ 496.02  +  0.267   1 (14.3%)
+-0.20 to -0.15%       1  100.0  +   0.731  +$  64.95  +  1.220    0 (0.0%)
+
+### SHORTS — 5m × 1h Slope Alignment (counter-trend detector)
+Alignment                                     N    WR%    Avg%       Total$     NP%
+------------------------------------------------------------------------------------------
+Aligned DOWN                                  10   30.0    -0.346  -$ 546.33   2 (20.0%)
+
+### SHORTS — BTC 1h Slope × BTC ADX
+1h Slope         BTC ADX    N    WR%    Avg%       Total$     NP%
+--------------------------------------------------------------------------------
+< -0.10%         20-25       5   40.0    -0.249  -$ 196.48   1 (20.0%)
+< -0.10%         30-35       5   20.0    -0.444  -$ 349.85   1 (20.0%)
+
+
+------------------------------------------------------------
+## BTC 1h × BTC 30m RSI Direction Cross-Tab — pool 10 trades (post-May-15 deploy)
+
+### SHORTS
+1h Dir     30m Dir    N    WR%    Avg%       Total$     NP (n/%)
+---------------------------------------------------------------------------
+Falling    Rising       3   33.3    -0.496  -$ 266.05    0 (0.0%)
+Falling    Falling      6   16.7    -0.357  -$ 329.37   2 (33.3%)
+Falling    Flat         1  100.0  +   0.164  +$  49.08    0 (0.0%)
+
+
+------------------------------------------------------------
+## Pattern C Tracker (observation-only) — 9 signatures × LONG/SHORT
+Gate: N ≥ 30 per pattern AND WR ≤ 40% AND Avg P&L % ≤ -0.20% → promote to filter
+Loser%: precision = % of matches that closed as losers. ≥70% = filter candidate.
+TP CF: simulates fixed TP cap (0.05% / 0.10% net). Cell shows NewTotal$ | Δ$ | (f/s/k).
+  NP trades unaddressable by TP. Ship TP override at N≥30 + Δ$≥+$80 + kills ≤ saves/2.
+
+  SHORT Batch Coverage: 3W / 7L total · 5 of 7 losers matched (71%) · 2 OUTSIDE
+
+Dir    Pattern                       N    WR    Loser%   Avg%     Total$    AvgPeak%  NP (n/%)   TP0.10  NewTot$ | Δ$ (f/s/k)         SL0.50  NewTot$ | Δ$ (f/s/cw)        TP+SL  NewTot$ | Δ$ (tpf/slf/cw)     BatchAct  BatchShip  Verdict
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SHORT  C1 Capitulation chase           4   25.0%     75%   -0.442%   -$397.16   +0.193%      2/50%    -$181.70 | +$215.47 (2/1/1)        -$286.69 | +$110.48 (3/3/0)        -$131.99 | +$265.18 (2/2/0)        -$546.33   -$281.16  ⚠ Low N
+SHORT  C6 Macro over-extended          4   25.0%     75%   -0.377%   -$144.26   +0.238%      2/50%    -$138.21 |   +$6.06 (2/1/1)         -$91.06 |  +$53.21 (2/2/0)         -$85.00 |  +$59.26 (2/2/0)        -$546.33   -$487.07  ⚠ Low N
+SHORT  ANY (C1∨…∨C9)                   6   16.7%     83%   -0.487%   -$512.43   +0.196%      3/50%    -$271.82 | +$240.61 (3/2/1)        -$351.83 | +$160.60 (4/4/0)        -$171.99 | +$340.44 (3/3/0)        -$546.33   -$205.89  ⚠ Low N
+
+
+------------------------------------------------------------
+## Pattern W Tracker (observation-only) — 5 WINNER signatures × LONG/SHORT
+Gate: N ≥ 30 per pattern AND WR ≥ 70% AND Avg P&L % ≥ +0.20% → MULTIPLIER candidate
+MULT 2×: Total $ if cohort had been at 2.0× sizing. Δ$ = improvement vs actual.
+Computed at report time from existing entry features (no schema change).
+  SHORT Winner Coverage: 3W / 7L total · 3 of 3 winners matched (100%) · 0 OUTSIDE
+
+Dir    Pattern                       N    WR    Win%   Avg%     Total$    AvgPeak%  NP (n/%)   MULT 2x  NewTot$ | Δ$ (w/l)        BatchAct  BatchShip  Verdict
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SHORT  W1 HighConv trend               9   22.2%    22%   -0.403%   -$595.42   +0.331%      3/33%   -$1190.84 | -$595.42 (2w/7l)      -$546.33  -$1141.75  ⚠ Low N
+SHORT  W2 Macro tailwind               5   20.0%    20%   -0.444%   -$349.85   +0.235%      2/40%    -$699.70 | -$349.85 (1w/4l)      -$546.33   -$896.18  ⚠ Low N
+SHORT  ANY (W1∨…∨W6)                  10   30.0%    30%   -0.347%   -$546.33   +0.349%      3/30%   -$1092.67 | -$546.33 (3w/7l)      -$546.33  -$1092.67  ✗ Anti-pattern (winners cohort showing losses) — drop from tracker
+
+
+------------------------------------------------------------
+## Unmatched Losers Deep Dive (observation-only)
+Closed losers NOT matching any C1-C9 signature. ≥3 sharing a signature → new pattern candidate.
+
+Pair         Dir   $Loss     Peak%   Close%   RSI   pADX  ADXΔ  Stretch PairATR RngPos PairTGap BTCRSI BTCADX BTCATR BTCTGap  Reason
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+FETUSDT      SHORT  -$63.05  +0.221% -0.816%  32.1  30.9  1.70 0.215 0.509  16.4 -0.896%  40.0  20.1 0.266 -0.221%  STOP_LOSS L1
+TONUSDT      SHORT  -$38.39  +0.242% -0.497%  30.6  26.1  1.44 0.258 0.489  12.9 -0.495%  38.2  20.6 0.262 -0.242%  EMA13_CROSS_EXIT L1
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+AVG·Losers   N=2    -$50.72  +0.231% -0.656%  31.4  28.5  1.57 0.236 0.499  14.6 -0.696%  39.1  20.4 0.264 -0.231%
+
+
+------------------------------------------------------------
+## EMA13 Strict-Mode Performance (delta P&L vs hypothetical EMA13-only exit at first wick)
+
+Direction        N    AvgHeld%   AvgClose%   ΔPct      Total$Δ    Verdict
+----------------------------------------------------------------------
+SHORT              6    -0.482%     -0.616%  -0.134pp   -$127.66 ⚠ HURTING
+
+Total: 6 trades held · Avg Δ -0.134pp · -$127.66 $ delta vs EMA13-only
+
+------------------------------------------------------------
+## Trailing Confirmation Performance (delta P&L vs hypothetical immediate-fire trailing)
+
+Direction   TP     N    Reset  AvgPeak%   Avg1stPB%  AvgClose%   PBUsed     AvgATR%   ATR-Act% CF@0.30Δ   ΔPct      Total$Δ    +1min%      PB→1m       +2min%      PB→2m       +5min%      PB→5m       +15min%     PB→15m      +30min%     PB→30m      Verdict
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+SHORT      L2        3      0    +0.789%    +0.310%     +0.310%     0.478%    0.670%      33%   +0.000pp  +0.000pp     +$0.00   +0.17%(3)       0.61%   +0.14%(3)       0.65%   -0.16%(3)       0.94%   -0.30%(3)       1.09%   -0.07%(3)       0.86% ⚠ Low N
+SHORT      TOTAL     3      0    +0.789%    +0.310%     +0.310%     0.478%    0.670%      33%   +0.000pp  +0.000pp     +$0.00   +0.17%(3)       0.61%   +0.14%(3)       0.65%   -0.16%(3)       0.94%   -0.30%(3)       1.09%   -0.07%(3)       0.86% ⚠ Low N
+
+Total: 3 trades · 0 saved by reset · Avg Δ +0.000pp · +$0.00 $ delta vs immediate-fire
+
+------------------------------------------------------------
+## Fast-Exit Counterfactual (May 13)
+
+"What if we exited at +X% the moment P&L reached it within N min of ENTRY?"
+May 18: consults post-exit snapshots inside window-from-entry budget (higher thresholds now honest even when live Fast Exit fired earlier). Pool spans multiple configs; Net% leverage-invariant, $ approximate.
+
+### Grid (aggregate)
+Thr%    Win    #Fire   WinFire%   LosFire%   WinCut   LosSav    GiveUp%    Saved%     Net%     Real$       CF$        Δ$   Verdict
+-----------------------------------------------------------------------------------------------------------------------------
+0.20%   1min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.20%   2min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.20%   5min       2      33.3%      20.0%        1        1      0.16%    +0.35%   +0.52%      -$13      +$23      +$36   ✓ Positive
+0.30%   1min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.30%   2min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.30%   5min       2      33.3%      20.0%        1        1      0.26%    +0.45%   +0.72%      -$13      +$41      +$53   ✓ Positive
+0.40%   1min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.40%   2min       0       0.0%       0.0%        0        0      0.00%    +0.00%   +0.00%       +$0       +$0       +$0   · Neutral
+0.40%   5min       2      33.3%      20.0%        1        1      0.36%    +0.55%   +0.92%      -$13      +$58      +$70   ★ Best Net%+Δ$
+
+### Direction split
+Thr%    Win     LongN     LongΔ$   ShortN    ShortΔ$   Verdict
+----------------------------------------------------------------------
+0.20%   1min        0          -        0          -   Negative both
+0.20%   2min        0          -        0          -   Negative both
+0.20%   5min        0          -        2       +$36   SHORT only
+0.30%   1min        0          -        0          -   Negative both
+0.30%   2min        0          -        0          -   Negative both
+0.30%   5min        0          -        2       +$53   SHORT only
+0.40%   1min        0          -        0          -   Negative both
+0.40%   2min        0          -        0          -   Negative both
+0.40%   5min        0          -        2       +$70   SHORT only
+
+------------------------------------------------------------
+## Post-Exit P&L Snapshots — EMA13 Cross & Stop Loss (May 12 LATE PM)
+
+For each exit type: avg P&L% at 1/2/5/15/30 min AFTER trade closed (avg(N) per cell).
+EMA13: ★ EXIT TOO EARLY = +5min ≥ close + 0.20pp · STOP_LOSS: ⚠ SL ON NOISE = +5min > -0.50% · ★ SL CORRECT = +5min ≤ -0.70%.
+
+Close Reason           Dir       N   AvgPeak%   AvgClose%       +1min%     PB→1m       +2min%     PB→2m       +5min%     PB→5m      +15min%    PB→15m      +30min%    PB→30m   Verdict
+--------------------------------------------------------------------------------------------------------------------------------------------
+EMA13_CROSS_EXIT       SHORT     3    +0.227%     -0.390%   -0.34%(3)     0.57%   -0.38%(3)     0.61%   -0.24%(3)     0.47%   -0.54%(3)     0.77%   -0.82%(3)     1.05%   ⚠ Low N
+STOP_LOSS_WIDE         SHORT     1    +0.000%     -1.001%   -0.83%(1)     0.83%   -0.95%(1)     0.95%   -1.38%(1)     1.38%   -1.48%(1)     1.48%   -1.75%(1)     1.75%   ⚠ Low N
+
+------------------------------------------------------------
+## Entry Type Performance
+
+Type               #     %       WR      Avg P&L%   Avg$       Total$       AvgEntryFee  TotalFees    Savings    Conf
+TAKER_FALLBACK     3     30%     33.3%      -0.27%    $-9.70     $-29.11     $7.1595      $42.95     $0.00 V:3
+MAKER              7     70%     28.6%      -0.38%   $-73.89    $-517.22     $2.5947      $63.77    $27.24 S:5 V:2
+
+------------------------------------------------------------
+## Exit Type Performance
+
+Type               #     %       WR      Avg P&L%   Avg$       Total$       AvgExitFee   TotalFees    Savings    Conf
+TAKER              10    100%    30%        -0.35%   $-54.63    $-546.33     $6.7083     $106.72     $0.00 V:5 S:5
+
+------------------------------------------------------------
+## Filter Blocks (since bot start, in-memory)
+
+Real = filter blocked an entry the bot could have opened. Free = blocked at max_open_positions (no trade prevented).
+L% / S% / T% = this filter's share of total LONG / SHORT / overall blocks.
+Filter                 L-Real  L-Free  L-All   L%     S-Real  S-Free  S-All   S%     T-Real  T-Free  Total   T%
+PAIR_EMA_GAP_NOT_EXPANDING 932     0       932     23%    1024    0       1024    35%    1956    0       1956    28%
+PAIR_RSI_RANGE         1326    0       1326    33%    46      0       46      2%     1372    0       1372    20%
+PAIR_ADX_MAX           365     0       365     9%     359     0       359     12%    724     0       724     11%
+PAIR_EMA_GAP_MIN       192     0       192     5%     263     0       263     9%     455     0       455     7%
+PAIR_RSI_ADX_CROSS     32      0       32      1%     396     0       396     14%    428     0       428     6%
+PAIR_EMA20_SLOPE_MIN   0       0       0       0%     311     0       311     11%    311     0       311     5%
+BTC_ADX_GATE_LOW       295     0       295     7%     12      0       12      0%     307     0       307     4%
+PAIR_EMA20_FILTER      147     0       147     4%     107     0       107     4%     254     0       254     4%
+BTC_RSI_ADX_CROSS      120     0       120     3%     112     0       112     4%     232     0       232     3%
+FAN_RATIO_GATE         170     0       170     4%     7       0       7       0%     177     0       177     3%
+PAIR_RANGE_POSITION_MAX 169     0       169     4%     0       0       0       0%     169     0       169     2%
+PAIR_EMA20_SLOPE       79      0       79      2%     38      0       38      1%     117     0       117     2%
+PAIR_EMA_GAP_MAX       38      0       38      1%     49      0       49      2%     87      0       87      1%
+PAIR_RANGE_POSITION_MIN 0       0       0       0%     79      0       79      3%     79      0       79      1%
+LONG_UNMATCHED_ONLY    45      0       45      1%     0       0       0       0%     45      0       45      1%
+BTC_SLOPE_GATE         33      0       33      1%     6       0       6       0%     39      0       39      1%
+BTC_ADX_BLOCK_SHORT    0       0       0       0%     28      0       28      1%     28      0       28      0%
+PAIR_NO_TRADE          4       0       4       0%     14      0       14      0%     18      0       18      0%
+ADX_DELTA_BTC_ADX_CROSS 18      0       18      0%     0       0       0       0%     18      0       18      0%
+BTC_ACCEL_CHASE_LONG   18      0       18      0%     0       0       0       0%     18      0       18      0%
+RNGPOS_ADX_DELTA_CROSS 8       0       8       0%     9       0       9       0%     17      0       17      0%
+PAIR_ADX_DIR           0       0       0       0%     16      0       16      1%     16      0       16      0%
+BTC_GAP_BTC_ADX_CROSS  6       0       6       0%     0       0       0       0%     6       0       6       0%
+VOL_GATE_MAX_SHORT     0       0       0       0%     5       0       5       0%     5       0       5       0%
+PAIR_ATR_MIN           2       0       2       0%     1       0       1       0%     3       0       3       0%
+VOL_GATE               3       0       3       0%     0       0       0       0%     3       0       3       0%
+PATTERN_CELL_BLOCK     0       0       0       0%     3       0       3       0%     3       0       3       0%
+ENTRY_QUALITY_SCORE    2       0       2       0%     0       0       0       0%     2       0       2       0%
+BTC_1H_5M_RSI_DIR_GATE 0       0       0       0%     1       0       1       0%     1       0       1       0%
+BTC_SLOPE_MAX_GATE     1       0       1       0%     0       0       0       0%     1       0       1       0%
+TOTAL                  4005    0       4005    100%   2886    0       2886    100%   6891    0       6891    100%
+
+------------------------------------------------------------
+## Trade Outcome Distribution
+
+Range              #     Avg P&L   
+> +1.0%            0     $0.00
++0.5% to +1.0%     1     $64.95
++0.3% to +0.5%     0     $0.00
++0.15% to +0.3%    1     $49.08
+0% to +0.15%       1     $2.59
+-0.25% to 0%       1     $-15.14
+-0.40% to -0.25%   0     $0.00
+< -0.40%           6     $-107.97
+
+------------------------------------------------------------
+## Stop Loss Deep Dive
+
+Category           #     %       Dir        Conf           AvgGap   AvgRSI   Avg Peak%   PostArmMin%  AvgTrough%  Worst%     Avg Close%  Pullback%  Total$       Duration   Signal  
+Positive, No BE    4     80.0%   0L/4S      V:2 S:2        0.50%    30.8        0.2255%           -   -0.6278%  -0.8157%   -0.4961%   0.7234%    $-194.68 00:41:53   0/4     
+Never Positive     1     20.0%   0L/1S      S:1            0.57%    34.8        0.0000%           -   -1.0012%  -1.0012%   -1.0012%   0.9722%    $-100.12 00:08:02   1/0     
+All SL Trades      5     100%    0L/5S PostArmMin: - (N=0)
+
+------------------------------------------------------------
+## Winning Trades Drawdown
+
+Reason             #     %       Dir        Conf           AvgGap   AvgRSI   Avg Trough%  Worst%     Avg Peak%   PostArmMin%  Avg Close%  Pullback%  PostPeak%  PostTrough% Total$       Duration   Signal  
+TRAILING_STOP L2   3     100.0%  0L/3S      V:3            0.61%    31.2        -0.2337%  -0.3485%    0.7887%           -    0.3104%   0.4823%   0.6414%   -0.9673%     $116.62 00:11:34   3/0     
+ALL WINNERS        3     100%    0L/3S                        -0.2337%  -0.3485%    0.7887%    0.3104%   0.4823%         -          -     $116.62            3/0     
+
+------------------------------------------------------------
+## Post-Exit Regret Deep Dive
+
+Reason               #    Dir      Duration    AvgATR% ATR-SL@1.5x    Close%  PostPeak%  PeakMin    Strpk%  StrpkMin  Strpk04%  Strpk03%    Stren%  StrenMin  PostTrgh%  TrghMin  PkFirst%    Final%  SigLost%   SLMin    P&L@SL  ReachPk%   RSIEx%  RSIMin    RSIP&L  EMA13X% EMA13XMin  EMA13XP&L  RegFlMin   RegFlP&L   R-.20%   R-.10%   R-.05%   R+.05%   R+.10%  SigReg%  RegMin    RegP&L    Flr@SR  NR-.20%  NR-.10%  NR-.05%    EMA5Dst    EMA5Slp   EMA5X%
+EMA13_CROSS_EXIT L1  3    0L/3S    00:36:22     0.356%    -0.535%  -0.3896%   -0.0060%    22.0m  -0.9961%         -  -0.9961%  -0.9961%  -0.9961%         -   -1.2765%    13.2m     33.3%  -0.9961%    100.0%     0.0  -0.3993%  +0.0000%   100.0%     0.0  -0.3993%   100.0%       0.0   -0.3993%       4.3   -0.3283%    66.7%    66.7%    33.3%    33.3%    33.3%     0.0%       -         -         -    66.7%    66.7%    33.3%   -0.0898%   +0.1332%   100.0%
+PATTERN_FIXED_SL L1  2    0L/2S    00:24:17     0.469%    -0.704%  -0.7054%   -0.1306%    32.1m  -1.2901%         -  -1.2901%  -1.2901%  -1.2901%         -   -1.9312%    14.4m      0.0%  -1.2901%    100.0%    11.6  -0.6511%  +0.0000%    50.0%     0.0  -0.7008%   100.0%      11.6   -0.6511%       9.6   -0.5970%   100.0%     0.0%     0.0%     0.0%     0.0%     0.0%       -         -         -   100.0%     0.0%     0.0%   -0.3207%   +0.0184%   100.0%
+STOP_LOSS L1         1    0L/1S    00:58:27     0.509%    -0.763%  -0.8157%   -0.7636%     3.3m  -2.0589%         -  -2.0589%  -2.0589%  -2.0589%         -   -2.9916%     0.0m      0.0%  -2.0589%    100.0%     0.0  -0.7636%  +0.0000%   100.0%     0.0  -0.7636%   100.0%       0.0   -0.7636%       0.0   -0.7636%     0.0%     0.0%     0.0%     0.0%     0.0%     0.0%       -         -         -     0.0%     0.0%     0.0%   -0.5147%   +0.1494%   100.0%
+STOP_LOSS_WIDE L1    1    0L/1S    00:08:02     0.655%    -0.983%  -1.0012%   -0.7962%    42.9m  -1.8703%         -  -1.8703%  -1.8703%  -1.8703%         -   -2.2966%     1.2m      0.0%  -1.8703%    100.0%     0.1  -0.9326%  +0.0000%   100.0%     0.1  -0.9326%   100.0%       2.3   -1.0008%      17.4   -1.2906%     0.0%     0.0%     0.0%     0.0%     0.0%     0.0%       -         -         -     0.0%     0.0%     0.0%   -0.4929%   -0.2326%   100.0%
+TRAILING_STOP L2     3    0L/3S    00:11:34     0.670%    -1.006%  +0.3104%   +0.6414%    18.2m  +0.2217%      9.4m  +0.1936%  +0.1371%  -0.0102%     12.6m   -0.9673%    16.1m     66.7%  -0.0896%     66.7%    15.7  -0.9955%  +0.5211%   100.0%     3.6  -0.0689%    66.7%      15.7   -0.9955%      13.4   -0.1854%   100.0%   100.0%   100.0%   100.0%   100.0%     0.0%       -         -         -   100.0%   100.0%   100.0%   +0.3799%   -0.5539%    33.3%
+
+------------------------------------------------------------
+## Hold-Time Expectancy
+
+Duration   #     Dir      Win%       AvgWin$   AvgLoss$    Expect$   AvgPeak%    AvgP&L%       Total$ Confidence          
+3-8m       1     0L/1S    100.0%       $2.59      $0.00      $2.59   +0.6321%   +0.0363%        $2.59 V:1
+8-15m      4     0L/4S    25.0%       $49.08   $-113.59    $-72.92   +0.1377%   -0.5148%     $-291.70 S:3 V:1
+15-30m     1     0L/1S    100.0%      $64.95      $0.00     $64.95   +1.2201%   +0.7313%       $64.95 V:1
+30-60m     3     0L/3S    0.0%         $0.00   $-102.34   $-102.34   +0.2286%   -0.6741%     $-307.03 S:2 V:1
+60m+       1     0L/1S    0.0%         $0.00    $-15.14    $-15.14   +0.4015%   -0.1514%      $-15.14 V:1
+
+------------------------------------------------------------
+## Never Positive Deep Dive
+
+Dimension          Value          Dir    #     %Tot   Avg P&L%   Avg$      Total$      AvgRSI  AvgADX  AvgGap   Gap5-8   Gap8-13   Duration   Signal   Conf        
+Direction          SHORT          SHORT  1     10.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Confidence         STRONG_BUY     SHORT  1     20.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+ADX                28-30          SHORT  1     50.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Extension          > +0.60%       SHORT  1     16.7%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC Ext            +0.20 to +0.40% SHORT  1     20.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+RSI                30-35          SHORT  1     12.5%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+EMA5-EMA8 Gap      0.12-0.14%     SHORT  1     100.0%  -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Fan Accel          <0.85          SHORT  1     12.5%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Entry Gap          0.50-0.80%     SHORT  1     12.5%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+EMA5 Stretch       >0.30%         SHORT  1     50.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+EMA20 Slope        -0.25 to -0.20% SHORT  1     50.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC EMA20 Slope    -0.10 to -0.08% SHORT  1     14.3%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC ADX            30-35          SHORT  1     20.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC RSI            30-35          SHORT  1     25.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+ADX Direction      Rising         SHORT  1     10.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+ADX Delta          0.5 to 1.0     SHORT  1     33.3%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC ADX Direction  Rising         SHORT  1     12.5%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+RSI Direction      Falling        SHORT  1     10.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC RSI Direction  Falling        SHORT  1     14.3%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC RSI Direction 30m Falling        SHORT  1     14.3%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC 1h RSI Direction Falling        SHORT  1     10.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC Volatility     0.15 - 0.20%   SHORT  1     16.7%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Breadth            80-85%         SHORT  1     16.7%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Pair EMA13-EMA50 Gap < -1.00%       SHORT  1     33.3%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+BTC EMA13-EMA50 Gap -0.30 to -0.25% SHORT  1     16.7%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+ATR%               0.65-0.85%     SHORT  1     100.0%  -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Pair 24h Volume    $50-80M        SHORT  1     25.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Global Vol Ratio   0.70-0.85      SHORT  1     25.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Range Position     15-25%         SHORT  1     25.0%   -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+Close Reason       STOP_LOSS_WIDE SHORT  1     100.0%  -1.0012% $-100.12   $-100.12   34.8   28.1   0.57% 0.1392%  0.1830% 00:08:02   1/0      S:1         
+
+------------------------------------------------------------
+## Performance Over Time (15min buckets)
+
+Time     #     Dir        Win%     P&L          AvgP&L     Cumulative   AvgRSI   AvgADX   AvgGap   EMA5-8  
+02:21    3     0L/3S      33.3%       $-129.12   $-43.04    $-129.12    32.2    30.7   0.48%  0.1166%
+03:06    2     0L/2S      0%          $-220.73  $-110.37    $-349.85    30.4    29.0   0.50%  0.1250%
+06:06    1     0L/1S      100%          $64.95    $64.95    $-284.90    27.5    32.2   0.69%  0.1820%
+08:36    1     0L/1S      0%          $-162.57  $-162.57    $-447.48    27.8    25.1   0.52%  0.1616%
+08:51    1     0L/1S      100%           $2.59     $2.59    $-444.89    34.5    34.2   0.63%  0.1748%
+09:06    1     0L/1S      0%           $-38.39   $-38.39    $-483.28    30.6    26.1   0.66%  0.2032%
+09:21    1     0L/1S      0%           $-63.05   $-63.05    $-546.33    32.1    30.9   0.66%  0.1681%
+
+------------------------------------------------------------
+## Performance by Day of Week (UTC-3)
+
+Day       # Dir        Win%    Avg P&L%
+Wed      10 0L/10S    30.0%    -0.3465%
+
+------------------------------------------------------------
+## Day x Time Heatmap (UTC-3, 4h blocks)
+
+Day           00-04        04-08        08-12        12-16        16-20        20-24
+Mon               -            -            -            -            -            -
+Tue               -            -            -            -            -            -
+Wed    5t 20%W -0.44% 1t 100%W +0.73% 4t 25%W -0.49%            -            -            -
+Thu               -            -            -            -            -            -
+Fri               -            -            -            -            -            -
+Sat               -            -            -            -            -            -
+Sun               -            -            -            -            -            -
+
+------------------------------------------------------------
+## Performance by Entry Gap 5-20
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+0.30 - 0.35%     1     SHORT   0%         $-15.14   $-15.14    -0.15% V:1           
+0.35 - 0.40%     1     SHORT   0%         $-78.09   $-78.09    -0.52% S:1           
+0.50 - 0.60%     3     SHORT   33.3%     $-213.61   $-71.20    -0.51% V:1 S:2       
+0.60 - 0.70%     5     SHORT   40%       $-239.49   $-47.90    -0.25% S:2 V:3       
+
+------------------------------------------------------------
+## Performance by Entry Gap EMA5-EMA8
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       NP         Conf          
+0.08 - 0.10%     2     SHORT   0%         $-93.23   $-46.61    -0.34% 0 (0%)     V:1 S:1       
+0.10 - 0.12%     1     SHORT   100%        $49.08    $49.08    +0.16% 0 (0%)     V:1           
+0.12 - 0.14%     1     SHORT   0%        $-100.12  $-100.12    -1.00% 1 (100%)   S:1           
+0.16 - 0.18%     4     SHORT   25%       $-428.62  $-107.16    -0.55% 1 (25%)    S:2 V:2       
+0.18 - 0.20%     1     SHORT   100%        $64.95    $64.95    +0.73% 0 (0%)     V:1           
+> 0.20%          1     SHORT   0%         $-38.39   $-38.39    -0.50% 0 (0%)     S:1           
+
+------------------------------------------------------------
+## Performance by Entry Gap EMA8-EMA13 (May 27 — vs trend reference)
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       NP         Conf          
+0.10 - 0.12%     1     SHORT   0%         $-15.14   $-15.14    -0.15% 0 (0%)     V:1           
+0.12 - 0.14%     1     SHORT   0%         $-78.09   $-78.09    -0.52% 0 (0%)     S:1           
+0.18 - 0.20%     4     SHORT   50%       $-211.02   $-52.75    -0.38% 2 (50%)    V:2 S:2       
+> 0.20%          4     SHORT   25%       $-242.09   $-60.52    -0.32% 0 (0%)     S:2 V:2       
+
+------------------------------------------------------------
+## Performance by EMA Fan Acceleration (5-8 vs 8-13) — May 28
+
+Fan Ratio              #     Dir     AvgR   Win%   Total$       Avg$       Avg%       NP         Conf          
+<0.85                  8     SHORT   0.73   25%       $-386.35   $-48.29    -0.35% 1 (13%)    V:4 S:4       
+0.85-1.00              2     SHORT   0.91   50%       $-159.98   $-79.99    -0.33% 1 (50%)    S:1 V:1       
+
+------------------------------------------------------------
+## Performance by Entry RSI
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+20 - 30      2     SHORT   50%        $-97.63   $-48.81    +0.02% V:1 S:1       
+30 - 35      8     SHORT   25%       $-448.71   $-56.09    -0.44% V:4 S:4       
+
+------------------------------------------------------------
+## Performance by Range Position
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+2-5%         4     SHORT   25%       $-249.73   $-62.43    -0.30% 00:30:35   V:2 S:2       
+10-15%       2     SHORT   0%        $-200.97  $-100.48    -0.60% 00:21:43   S:2           
+15-25%       4     SHORT   50%        $-95.64   $-23.91    -0.26% 00:23:17   S:1 V:3       
+
+------------------------------------------------------------
+## Range Position x BTC RSI Direction Cross-Tab
+
+RangePos     BtcRsiDir  #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+2-5%         Rising     1     SHORT   0%         $-78.09   $-78.09    -0.52% S:1
+2-5%         Falling    3     SHORT   33.3%     $-171.65   $-57.22    -0.23% V:2 S:1
+10-15%       Falling    2     SHORT   0%        $-200.97  $-100.48    -0.60% S:2
+15-25%       Rising     2     SHORT   50%          $1.89     $0.95    -0.04% V:2
+15-25%       Falling    2     SHORT   50%        $-97.53   $-48.76    -0.48% S:1 V:1
+
+------------------------------------------------------------
+## Range Position x Pair RSI Direction Cross-Tab (vs rsi_prev2)
+
+RangePos     PairRsiDir  #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+2-5%         Falling     4     SHORT   25%       $-249.73   $-62.43    -0.30% V:2 S:2
+10-15%       Falling     2     SHORT   0%        $-200.97  $-100.48    -0.60% S:2
+15-25%       Falling     4     SHORT   50%        $-95.64   $-23.91    -0.26% V:3 S:1
+
+------------------------------------------------------------
+## Performance by ADX Delta
+
+Delta            #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+0.5 to 1.0       3     SHORT   33.3%     $-112.67   $-37.56    -0.37% V:2 S:1       
+1.0 to 2.0       7     SHORT   28.6%     $-433.66   $-61.95    -0.34% V:3 S:4       
+
+------------------------------------------------------------
+## Performance by Entry ADX
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+25-28        3     SHORT   0%        $-406.55  $-135.52    -0.64% S:3           
+28-30        2     SHORT   0%        $-178.21   $-89.10    -0.76% S:2           
+30-33        3     SHORT   33.3%      $-13.25    $-4.42    -0.08% V:3           
+33-35        2     SHORT   100%        $51.68    $25.84    +0.10% V:2           
+
+------------------------------------------------------------
+## Performance by ADX Direction at Entry
+
+ADX Dir    #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising     10    SHORT   30%       $-546.33   $-54.63    -0.35% 00:25:53   V:5 S:5       
+
+------------------------------------------------------------
+## Performance by RSI Direction at Entry (vs rsi_prev2 — matches RSI Momentum Filter)
+
+RSI Dir    #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Falling    10    SHORT   30%       $-546.33   $-54.63    -0.35% 00:25:53   V:5 S:5       
+
+------------------------------------------------------------
+## Performance by EMA5 Stretch
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+0.16 - 0.20%     1     SHORT   100%        $49.08    $49.08    +0.16% V:1           
+0.20 - 0.25%     5     SHORT   20%       $-253.91   $-50.78    -0.29% V:3 S:2       
+0.25 - 0.30%     2     SHORT   0%        $-243.98  $-121.99    -0.60% S:2           
+> 0.30%          2     SHORT   50%        $-97.53   $-48.76    -0.48% S:1 V:1       
+
+------------------------------------------------------------
+## Performance by Entry Quality Score
+
+Score    #     Dir     Win%   Total$       Avg$       Avg%       Conf          
+2        1     SHORT   100%        $64.95    $64.95    +0.73% V:1           
+3        3     SHORT   33.3%     $-223.04   $-74.35    -0.49% V:2 S:1       
+4        2     SHORT   50%         $10.69     $5.35    -0.17% V:1 S:1       
+5        3     SHORT   0%        $-320.85  $-106.95    -0.62% V:1 S:2       
+6        1     SHORT   0%         $-78.09   $-78.09    -0.52% S:1           
+
+------------------------------------------------------------
+## Performance by Pair EMA20 Slope (signed)
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP        
+-0.30 to -0.25%  5     SHORT   40%       $-239.49   $-47.90    -0.25% S:2 V:3        31.0     30.1     0.66%    0 (0%)    
+-0.25 to -0.20%  2     SHORT   0%        $-262.69  $-131.35    -0.85% S:2            31.3     26.6     0.54%    2 (100%)  
+-0.20 to -0.18%  1     SHORT   100%        $49.08    $49.08    +0.16% V:1            31.7     34.6     0.50%    0 (0%)    
+-0.16 to -0.14%  1     SHORT   0%         $-78.09   $-78.09    -0.52% S:1            30.1     29.3     0.37%    0 (0%)    
+-0.14 to -0.12%  1     SHORT   0%         $-15.14   $-15.14    -0.15% V:1            30.6     30.9     0.32%    0 (0%)    
+
+------------------------------------------------------------
+## Performance by BTC EMA20 Slope (signed)
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP        
+-0.12 to -0.10%  1     SHORT   100%        $64.95    $64.95    +0.73% V:1            27.5     32.2     0.69%    0 (0%)    
+-0.10 to -0.08%  7     SHORT   14.3%     $-408.28   $-58.33    -0.50% V:3 S:4        31.1     29.3     0.51%    2 (29%)   
+-0.06 to -0.04%  1     SHORT   100%         $2.59     $2.59    +0.04% V:1            34.5     34.2     0.63%    0 (0%)    
+-0.04 to -0.03%  1     SHORT   0%        $-205.59  $-205.59    -0.71% S:1            30.1     27.0     0.67%    0 (0%)    
+
+------------------------------------------------------------
+## Performance by Pair EMA13-EMA50 Gap (observation-only)
+
+Gap Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP         AvgDur    
+< -1.00%         3     SHORT   33.3%     $-303.11  $-101.04    -0.56% S:2 V:1        33.1     29.8     0.62%    1 (33%)    00:17:35  
+-1.00 to -0.80%  1     SHORT   0%         $-63.05   $-63.05    -0.82% V:1            32.1     30.9     0.66%    0 (0%)     00:58:27  
+-0.80 to -0.60%  2     SHORT   100%       $114.03    $57.02    +0.45% V:2            29.6     33.4     0.59%    0 (0%)     00:15:02  
+-0.60 to -0.50%  3     SHORT   0%        $-255.80   $-85.27    -0.46% V:1 S:2        29.5     28.4     0.40%    1 (33%)    00:27:33  
+-0.50 to -0.40%  1     SHORT   0%         $-38.39   $-38.39    -0.50% S:1            30.6     26.1     0.66%    0 (0%)     00:34:56  
+
+------------------------------------------------------------
+## Performance by BTC EMA13-EMA50 Gap (observation-only)
+
+Gap Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap   NP         AvgDur    
+-0.30 to -0.25%  6     SHORT   33.3%     $-347.26   $-57.88    -0.36% V:3 S:3        32.0     30.7     0.51%    1 (17%)    00:22:30  
+-0.25 to -0.20%  3     SHORT   0%        $-264.02   $-88.01    -0.67% V:1 S:2        30.2     27.4     0.61%    1 (33%)    00:33:57  
+-0.10 to -0.05%  1     SHORT   100%        $64.95    $64.95    +0.73% V:1            27.5     32.2     0.69%    0 (0%)     00:21:58  
+
+------------------------------------------------------------
+## Performance by BTC ADX
+
+Range            #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap  
+20-25            5     SHORT   40%       $-196.48   $-39.30    -0.25% V:3 S:2        30.5     29.7     0.63%   
+30-35            5     SHORT   20%       $-349.85   $-69.97    -0.44% V:2 S:3        31.5     30.0     0.49%   
+
+------------------------------------------------------------
+## Performance by BTC ADX Direction at Entry
+
+BTC ADX Dir  #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising       8     SHORT   25%       $-343.34   $-42.92    -0.35% 00:26:46   V:4 S:4       
+Falling      2     SHORT   50%       $-203.00  $-101.50    -0.34% 00:22:22   S:1 V:1       
+
+------------------------------------------------------------
+## Performance by BTC RSI Direction at Entry
+
+BTC RSI Dir  #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising       3     SHORT   33.3%      $-76.19   $-25.40    -0.20% 00:30:32   S:1 V:2       
+Falling      7     SHORT   28.6%     $-470.14   $-67.16    -0.41% 00:23:53   V:3 S:4       
+
+------------------------------------------------------------
+## Performance by BTC RSI Direction 30m (sustained-momentum, vs btc_rsi_prev6)
+
+BTC RSI 30m  #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Rising       3     SHORT   33.3%     $-266.05   $-88.68    -0.50% 00:34:23   S:1 V:2       
+Falling      7     SHORT   28.6%     $-280.28   $-40.04    -0.28% 00:22:14   V:3 S:4       
+
+------------------------------------------------------------
+## BTC RSI 30m x BTC RSI 5m Cross-Tab (sustained vs flicker)
+
+RSI30m     RSI5m      #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Rising     Rising     1     SHORT   0%         $-63.05   $-63.05    -0.82% V:1
+Rising     Falling    2     SHORT   50%       $-203.00  $-101.50    -0.34% S:1 V:1
+Falling    Rising     2     SHORT   50%        $-13.14    $-6.57    +0.11% S:1 V:1
+Falling    Falling    5     SHORT   20%       $-267.14   $-53.43    -0.44% S:3 V:2
+
+------------------------------------------------------------
+## Performance by BTC Volatility Regime (ATR%) — May 15 PM observation-only
+
+BTC ATR%         #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+0.15 - 0.20%     6     SHORT   33.3%     $-284.90   $-47.48    -0.25% 00:25:23   V:3 S:3       
+0.20 - 0.30%     4     SHORT   25%       $-261.43   $-65.36    -0.49% 00:26:38   V:2 S:2       
+
+------------------------------------------------------------
+## Performance by BTC 1h RSI Direction — May 15 PM observation-only
+
+BTC 1h Dir   #     Dir     Win%   Total$       Avg$       Avg%       Duration   Conf          
+Falling      10    SHORT   30%       $-546.33   $-54.63    -0.35% 00:25:53   V:5 S:5       
+
+------------------------------------------------------------
+## BTC Volatility x BTC ADX Cross-Tab — violent-chop detector (May 15 PM)
+
+BTC ATR%         BTC ADX      #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Mid 0.15-0.30%   Mid 20-30    5     SHORT   40%       $-196.48   $-39.30    -0.25% V:3 S:2
+Mid 0.15-0.30%   High >30     5     SHORT   20%       $-349.85   $-69.97    -0.44% S:3 V:2
+
+------------------------------------------------------------
+## BTC 1h RSI x BTC 5m RSI Cross-Tab — multi-TF alignment (May 15 PM)
+
+BTC 1h     BTC 5m     #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Falling    Rising     3     SHORT   33.3%      $-76.19   $-25.40    -0.20% V:2 S:1
+Falling    Falling    7     SHORT   28.6%     $-470.14   $-67.16    -0.41% S:4 V:3
+
+------------------------------------------------------------
+## Volume Cross-Tab (Global x Pair)
+
+Dir    GlobalVol    PairVol      #     Win%    Avg$       Avg%      Total$       AvgDur  
+S      0.50-0.70    1.10-1.25    1     100%         $2.59    +0.04%        $2.59 00:04:40
+S      0.50-0.70    1.25-1.50    1     0%         $-15.14    -0.15%      $-15.14 01:02:58
+S      0.70-0.85    0.85-0.95    2     0%         $-69.25    -0.75%     $-138.51 00:21:29
+S      0.70-0.85    1.05-1.10    1     100%        $49.08    +0.16%       $49.08 00:08:05
+S      0.70-0.85    1.10-1.25    1     0%        $-205.59    -0.71%     $-205.59 00:40:05
+S      0.85-0.95    1.10-1.25    1     0%         $-78.09    -0.52%      $-78.09 00:11:12
+S      0.95-1.05    1.10-1.25    1     100%        $64.95    +0.73%       $64.95 00:21:59
+S      0.95-1.05    1.25-1.50    1     0%        $-162.57    -0.70%     $-162.57 00:08:30
+S      1.05-1.10    0.95-1.05    1     0%         $-63.05    -0.82%      $-63.05 00:58:27
+
+------------------------------------------------------------
+## Volume Intersection Cross-Tab (Global Vol Ratio × Pair Vol USD — May 10)
+
+Dir    GlobalVol    Pair Vol $    #    WR%    Avg%      Total$      
+S      0.50-0.70    $50-80M       1    100.0%   +0.036%        $2.59
+S      0.50-0.70    $80-100M      1    0.0%     -0.151%      $-15.14
+S      0.70-0.85    $50-80M       2    0.0%     -0.855%     $-305.71
+S      0.70-0.85    $80-100M      2    50.0%    -0.167%       $10.69
+S      0.85-0.95    $30-50M       1    0.0%     -0.521%      $-78.09
+S      0.95-1.05    $50-80M       1    0.0%     -0.701%     $-162.57
+S      0.95-1.05    $80-100M      1    100.0%   +0.731%       $64.95
+S      1.05-1.10    $30-50M       1    0.0%     -0.816%      $-63.05
+
+------------------------------------------------------------
+## Performance by Market Breadth at Entry
+
+Dir    Breadth      #     Win%    Avg$       Avg%      Total$       AvgDur  
+S      60-70%       3     66.7%      $-46.02    +0.02%     $-138.05 00:22:14
+S      80-85%       6     16.7%      $-65.52    -0.56%     $-393.14 00:21:32
+S      85%+         1     0%         $-15.14    -0.15%      $-15.14 01:02:58
+
+------------------------------------------------------------
+## Performance by Pair
+
+Pair             Direction  #     Win%    Avg$       Avg%      Total$       AvgATR%  AvgDur   Slip%   
+BCHUSDT          0L/1S      1     100%        $64.95    +0.73%       $64.95    0.46% 00:21:59        -
+TONUSDT          0L/2S      2     50%          $5.35    -0.17%       $10.69    0.43% 00:21:31        -
+PLAYUSDT         0L/1S      1     100%         $2.59    +0.04%        $2.59    1.17% 00:04:40        -
+AVAXUSDT         0L/1S      1     0%         $-15.14    -0.15%      $-15.14    0.27% 01:02:58        -
+FETUSDT          0L/1S      1     0%         $-63.05    -0.82%      $-63.05    0.51% 00:58:27        -
+AAVEUSDT         0L/1S      1     0%         $-78.09    -0.52%      $-78.09    0.31% 00:11:12        -
+JTOUSDT          0L/1S      1     0%        $-100.12    -1.00%     $-100.12    0.66% 00:08:02        -
+DOTUSDT          0L/1S      1     0%        $-162.57    -0.70%     $-162.57    0.43% 00:08:30        -
+INJUSDT          0L/1S      1     0%        $-205.59    -0.71%     $-205.59    0.51% 00:40:05        -
+
+------------------------------------------------------------
+## Performance by Pair 24h Volume (USD at entry — May 10)
+
+Bucket        #    L/S      Win%    AvgVol     Avg$       Avg%      Total$       AvgRSI  AvgADX 
+$30-50M       2    0L/2S    0.0%          $42M    $-70.57   -0.668%     $-141.14    31.1   30.11
+$50-80M       4    0L/4S    25.0%         $55M   $-116.42   -0.594%     $-465.69    31.8   28.61
+$80-100M      4    0L/4S    50.0%         $88M     $15.12   +0.062%       $60.50    30.1   30.94
+
+------------------------------------------------------------
+## Performance by Pair ATR(14)% (entry volatility — May 9)
+
+Range          #     Dir      Win%    AvgATR%   Avg%      Avg$       Total$       AvgRSI  AvgADX 
+0.25-0.35%     2     0L/2S    0.0%       0.290%   -0.336%    $-46.61      $-93.23    30.3    30.1
+0.35-0.45%     2     0L/2S    50.0%      0.406%   -0.269%    $-56.75     $-113.49    29.8    29.9
+0.45-0.55%     4     0L/4S    25.0%      0.492%   -0.323%    $-60.52     $-242.09    30.1    29.0
+0.65-0.75%     1     0L/1S    0.0%       0.655%   -1.001%   $-100.12     $-100.12    34.8    28.1
+1.00-1.25%     1     0L/1S    100.0%     1.166%   +0.036%      $2.59        $2.59    34.5    34.2
+
+------------------------------------------------------------
+## Performance by BTC Entry RSI
+
+Range        #     Dir     Win%   Total$       Avg$       Avg%       Conf           AvgRSI   AvgADX   AvgGap  
+30-35        4     SHORT   25%       $-144.26   $-36.07    -0.38% V:2 S:2        31.8     30.7     0.44%   
+35-40        3     SHORT   33.3%     $-136.02   $-45.34    -0.16% V:1 S:2        28.6     27.8     0.62%   
+40-45        3     SHORT   33.3%     $-266.05   $-88.68    -0.50% S:1 V:2        32.2     30.7     0.65%   
+
+------------------------------------------------------------
+## Pair ADX Dir x BTC ADX Dir Cross-Tab
+
+PairADX    BtcADX     #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Rising     Rising     8     SHORT   25%       $-343.34   $-42.92    -0.35% V:4 S:4
+Rising     Falling    2     SHORT   50%       $-203.00  $-101.50    -0.34% S:1 V:1
+
+------------------------------------------------------------
+## Pair RSI Dir x BTC RSI Dir Cross-Tab
+
+PairRSI    BtcRSI     #     Dir     Win%   Total$       Avg$       Avg%      Confidence          
+Falling    Rising     3     SHORT   33.3%      $-76.19   $-25.40    -0.20% V:2 S:1
+Falling    Falling    7     SHORT   28.6%     $-470.14   $-67.16    -0.41% S:4 V:3
+
+------------------------------------------------------------
+## Pair EMA20 Slope x Pair ADX Cross-Tab
+
+Dir     Slope        ADX      #     Win%    Avg$       Avg%      Total$       NP         Conf
+SHORT   0.10-0.16%   28-30    1     0%        $-78.09    -0.52%     $-78.09 0 (0%)     S:1
+SHORT   0.10-0.16%   30-33    1     0%        $-15.14    -0.15%     $-15.14 0 (0%)     V:1
+SHORT   0.16-0.25%   25-28    1     0%       $-162.57    -0.70%    $-162.57 1 (100%)   S:1
+SHORT   0.16-0.25%   28-30    1     0%       $-100.12    -1.00%    $-100.12 1 (100%)   S:1
+SHORT   0.16-0.25%   33+      1     100%       $49.08    +0.16%      $49.08 0 (0%)     V:1
+SHORT   0.25-0.40%   25-28    2     0%       $-121.99    -0.60%    $-243.98 0 (0%)     S:2
+SHORT   0.25-0.40%   30-33    2     50%         $0.95    -0.04%       $1.89 0 (0%)     V:2
+SHORT   0.25-0.40%   33+      1     100%        $2.59    +0.04%       $2.59 0 (0%)     V:1
+
+------------------------------------------------------------
+## BTC Slope x BTC ADX Cross-Tab
+
+Dir     Slope        ADX      #     Win%    Avg$       Avg%      Total$       NP         Conf
+SHORT   0.02-0.04%   30-35    1     0%       $-205.59    -0.71%    $-205.59 0 (0%)     S:1
+SHORT   0.04-0.06%   20-25    1     100%        $2.59    +0.04%       $2.59 0 (0%)     V:1
+SHORT   0.06-0.10%   20-25    3     0%        $-88.01    -0.67%    $-264.02 1 (33%)    S:2 V:1
+SHORT   0.06-0.10%   30-35    3     33.3%     $-14.72    -0.17%     $-44.15 0 (0%)     V:2 S:1
+SHORT   0.10-0.16%   20-25    1     100%       $64.95    +0.73%      $64.95 0 (0%)     V:1
+SHORT   0.10-0.16%   30-35    1     0%       $-100.12    -1.00%    $-100.12 1 (100%)   S:1
+
+------------------------------------------------------------
+## ADX Delta x BTC ADX Cross-Tab
+
+Dir     ADX Δ      BTC ADX    #     Win%    Avg$       Avg%      Total$       NP         Conf
+SHORT   0.5-1.0    18-25      1     100%        $2.59    +0.04%       $2.59 0 (0%)     V:1
+SHORT   0.5-1.0    30-35      2     0%        $-57.63    -0.58%    $-115.26 1 (50%)    V:1 S:1
+SHORT   1.0-2.0    18-25      4     25%       $-49.77    -0.32%    $-199.07 1 (25%)    V:2 S:2
+SHORT   1.0-2.0    30-35      3     33.3%     $-78.20    -0.36%    $-234.59 0 (0%)     S:2 V:1
+
+------------------------------------------------------------
+## BTC EMA13-EMA50 Gap x BTC ADX Cross-Tab
+
+Dir     BTC Gap            BTC ADX    #     Win%    Avg$       Avg%      Total$       NP         Conf
+SHORT   -0.30 to -0.25%    18-25      1     100%        $2.59    +0.04%       $2.59 0 (0%)     V:1
+SHORT   -0.30 to -0.25%    30-35      5     20%       $-69.97    -0.44%    $-349.85 1 (20%)    S:3 V:2
+SHORT   -0.25 to -0.20%    18-25      3     0%        $-88.01    -0.67%    $-264.02 1 (33%)    S:2 V:1
+SHORT   -0.10 to -0.05%    18-25      1     100%       $64.95    +0.73%      $64.95 0 (0%)     V:1
+
+------------------------------------------------------------
+## Pair EMA13-EMA50 Gap x Pair ADX Cross-Tab
+
+Dir     Pair Gap           Pair ADX   #     Win%    Avg$       Avg%      Total$       NP         Conf
+SHORT   < -1.00%           25-28      1     0%       $-205.59    -0.71%    $-205.59 0 (0%)     S:1
+SHORT   < -1.00%           28-30      1     0%       $-100.12    -1.00%    $-100.12 1 (100%)   S:1
+SHORT   < -1.00%           33+        1     100%        $2.59    +0.04%       $2.59 0 (0%)     V:1
+SHORT   -1.00 to -0.80%    30-33      1     0%        $-63.05    -0.82%     $-63.05 0 (0%)     V:1
+SHORT   -0.80 to -0.60%    30-33      1     100%       $64.95    +0.73%      $64.95 0 (0%)     V:1
+SHORT   -0.80 to -0.60%    33+        1     100%       $49.08    +0.16%      $49.08 0 (0%)     V:1
+SHORT   -0.60 to -0.50%    25-28      1     0%       $-162.57    -0.70%    $-162.57 1 (100%)   S:1
+SHORT   -0.60 to -0.50%    28-30      1     0%        $-78.09    -0.52%     $-78.09 0 (0%)     S:1
+SHORT   -0.60 to -0.50%    30-33      1     0%        $-15.14    -0.15%     $-15.14 0 (0%)     V:1
+SHORT   -0.50 to -0.40%    25-28      1     0%        $-38.39    -0.50%     $-38.39 0 (0%)     S:1
+
+------------------------------------------------------------
+## Performance by RSI x ADX
+
+Dir     RSI     ADX     #     Win%    Avg$       Avg%      Total$       NP        
+SHORT   20-30   25-28   1     0%       $-162.57    -0.70%    $-162.57 1 (100%)  
+SHORT   20-30   30-33   1     100%       $64.95    +0.73%      $64.95 0 (0%)    
+SHORT   30-35   25-28   2     0%       $-121.99    -0.60%    $-243.98 0 (0%)    
+SHORT   30-35   28-30   2     0%        $-89.10    -0.76%    $-178.21 1 (50%)   
+SHORT   30-35   30-33   2     0%        $-39.10    -0.48%     $-78.20 0 (0%)    
+SHORT   30-35   33-35   2     100%       $25.84    +0.10%      $51.68 0 (0%)    
+
+------------------------------------------------------------
+## Performance by BTC RSI x BTC ADX
+
+Dir     BTCRSI  BTCADX  #     Win%    Avg$       Avg%      Total$       NP        
+SHORT   30-35   30-35   4     25%       $-36.07    -0.38%    $-144.26 1 (25%)   
+SHORT   35-40   20-25   3     33.3%     $-45.34    -0.16%    $-136.02 1 (33%)   
+SHORT   40-45   20-25   2     50%       $-30.23    -0.39%     $-60.46 0 (0%)    
+SHORT   40-45   30-35   1     0%       $-205.59    -0.71%    $-205.59 0 (0%)    
+
+================================================================================
+END OF SPLIT REPORT
+================================================================================

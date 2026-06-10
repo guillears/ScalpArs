@@ -6356,20 +6356,22 @@ class TradingEngine:
                             self._record_filter_block("PAIR_ATR_MIN", signal, had_room=_had_room)
                             self._last_pair_block_reason[pair] = "PAIR_ATR_MIN"
                             signal = "NO_TRADE"
-                # Jun 10 — pair ATR CEILING (LONG): distribution guard. Historic max
-                # unmatched-long winner = ATR 2.49 (HOME); ESPORTS at 4.68 (p100 outlier
-                # meme) was a -$220 DOA. Blocks only out-of-distribution pairs. 0 = off.
-                if signal == "LONG":
-                    _patr_max = getattr(config.trading_config.thresholds, 'pair_atr_max_long', 0.0) or 0.0
-                    if _patr_max > 0:
-                        _patr_atr2 = indicators.get('atr'); _patr_price2 = indicators.get('price')
-                        if _patr_atr2 is not None and _patr_price2 and _patr_price2 > 0:
-                            _patr_pct2 = (_patr_atr2 / _patr_price2) * 100
-                            if _patr_pct2 >= _patr_max:
-                                logger.info(f"[PAIR_ATR_MAX] {pair}: LONG blocked — pair ATR {_patr_pct2:.3f}% >= max {_patr_max}% (out-of-distribution volatility)")
-                                self._record_filter_block("PAIR_ATR_MAX", "LONG", had_room=_had_room)
-                                self._last_pair_block_reason[pair] = "PAIR_ATR_MAX"
-                                signal = "NO_TRADE"
+            # Jun 10 — pair ATR CEILING (LONG): distribution guard. Historic max
+            # unmatched-long winner = ATR 2.49 (HOME); ESPORTS at 4.68 (p100 outlier
+            # meme) was a -$220 DOA. Blocks only out-of-distribution pairs. 0 = off.
+            # Jun 10 review fix: stands ALONE (not under pair_atr_filter_enabled) — the
+            # master toggle governs the MIN filter; this ceiling must survive it being off.
+            if signal == "LONG":
+                _patr_max = getattr(config.trading_config.thresholds, 'pair_atr_max_long', 0.0) or 0.0
+                if _patr_max > 0:
+                    _patr_atr2 = indicators.get('atr'); _patr_price2 = indicators.get('price')
+                    if _patr_atr2 is not None and _patr_price2 and _patr_price2 > 0:
+                        _patr_pct2 = (_patr_atr2 / _patr_price2) * 100
+                        if _patr_pct2 >= _patr_max:
+                            logger.info(f"[PAIR_ATR_MAX] {pair}: LONG blocked — pair ATR {_patr_pct2:.3f}% >= max {_patr_max}% (out-of-distribution volatility)")
+                            self._record_filter_block("PAIR_ATR_MAX", "LONG", had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "PAIR_ATR_MAX"
+                            signal = "NO_TRADE"
 
             # Jun 10 — RSI-SPIKE GUARD (LONG): block when the pair's RSI one candle ago was
             # below the floor = RSI teleported from neutral into the entry zone in a single

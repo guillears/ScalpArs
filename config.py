@@ -111,6 +111,11 @@ class SignalThresholds(BaseModel):
     # the steep band — a different mechanism, not shipped here).
     btc_1h_slope_min_long: float = 0.0
     btc_1h_slope_min_short: float = 0.0
+    # Jun 10: BTC 1h RSI FLOOR for SHORTs — block shorting when BTC's HOURLY RSI is already
+    # deep-oversold (= shorting into the hourly bounce zone; the 1h twin of the 5m
+    # climax-oversold block). Cross-batch matched shorts: 1hRSI<30 = -$940, 30-35 = -$382,
+    # 35-40 = +$651 (monotonic; blocking <35 = NET +$1,322, helps 5 of 7 dates). 0 = disabled.
+    btc_rsi_1h_min_short: float = 0.0
     # Jun 3: BTC-ACCELERATION CHASE filter (STATEFUL, evolution-vs-last-entry).
     # Blocks a LONG when the live BTC EMA20 slope is HIGHER than it was at the most
     # recent LONG that actually opened within `evo_chase_window_min` minutes — i.e.
@@ -425,6 +430,17 @@ class SignalThresholds(BaseModel):
     pair_atr_min_long: float = 0.0
     pair_atr_min_short: float = 0.0   # Jun 1: SHORT <0.25% validated (5-batch 20% WR / -$257). trading_config.json = 0.25
     pair_atr_filter_enabled: bool = True
+    # Jun 10: pair ATR CEILING for LONGs — distribution guard. Historic max unmatched-long
+    # winner = HOME at ATR 2.49; ESPORTS (ATR 4.68, p100 outlier meme) was a -$220 DOA.
+    # Blocks only pairs outside everything ever validated. 0 = disabled. Live = 2.5.
+    pair_atr_max_long: float = 0.0
+    # Jun 10: RSI-SPIKE GUARD (LONG) — block when the pair's RSI one candle ago was below
+    # this floor, i.e. RSI teleported from neutral into the entry zone in a single candle =
+    # first-candle pump chase (VVV 44.6->65, PIPPIN 45.5->58.3). Complements the fan-window
+    # block (fan sees candles 2-5 of a spike; this sees candle 1). Cross-batch: blocks the
+    # ESPORTS/PIPPIN/PEPE/VVV meme spikes, kills only $60 of winners. 0 = disabled. Live = 50.
+    # GATE: drop if it blocks >=3 would-be winners with no loser saves on fresh data.
+    rsi_prev_min_long: float = 0.0
     # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
     # Block entry when both BTC RSI timeframes are in specified directions.
     # Rule format: 2-char codes "RR" "RF" "FR" "FF" where first=1h dir, second=5m dir.

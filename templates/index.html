@@ -5358,6 +5358,22 @@
                                 <span class="ml-1 text-gray-500">%</span>
                             </label>
                         </div>
+                        <!-- Jun 10 guards: BTC 1h RSI floor (SHORT, hourly-oversold bounce risk) · Pair ATR ceiling (LONG, out-of-distribution memes) · RSI Spike Guard (LONG, first-candle pump chase). 0 = disabled. -->
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 border-t border-white/5 pt-2">
+                            <span class="text-xs text-amber-300 w-32" title="Block SHORT when BTC's HOURLY RSI is below this = shorting into the hourly bounce zone (the 1h twin of the 5m climax-oversold block). Cross-batch: 1hRSI<30 = -$940, 30-35 = -$382, 35-40 = +$651 (monotonic). 0 = disabled. Live = 35.">Min BTC 1h RSI S:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" id="config-btc-rsi-1h-min-short" class="w-16 ml-1 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="35">
+                            </label>
+                            <span class="text-xs text-amber-300 ml-2" title="Block LONG when pair ATR% >= this ceiling — out-of-distribution volatility guard (historic max winner ATR 2.49; ESPORTS 4.68 was a -$220 DOA meme). 0 = disabled. Live = 2.5.">Max Pair ATR L:</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="0.1" min="0" id="config-pair-atr-max-long" class="w-16 ml-1 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="2.5">
+                                <span class="ml-1 text-gray-500">%</span>
+                            </label>
+                            <span class="text-xs text-amber-300 ml-2" title="RSI SPIKE GUARD: block LONG if the pair's RSI one candle ago was below this floor = RSI teleported from neutral in a single candle = first-candle pump chase (VVV 44.6->65). Complements the fan-window block (fan sees candles 2-5; this sees candle 1). 0 = disabled. Live = 50. GATE: drop if it blocks >=3 would-be winners with no loser saves.">RSI Spike Guard L (min RSI prev):</span>
+                            <label class="flex items-center text-sm text-gray-400">
+                                <input type="number" step="1" min="0" id="config-rsi-prev-min-long" class="w-16 ml-1 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="50">
+                            </label>
+                        </div>
                         <!-- Jun 3: BTC-Acceleration Chase filter (stateful, evolution vs last LONG). Block LONG when BTC EMA20 slope is higher than at the last LONG within the window = chasing a maturing move. LONG only. -->
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
                             <label class="flex items-center cursor-pointer" title="STATEFUL evolution filter. Blocks a LONG when the live BTC EMA20 slope is HIGHER than it was at the most recent LONG opened within the window below = BTC accelerated since your last entry = chasing a maturing move (late). Cross-batch 7-batch proxy (30min): 30.8% WR block cohort, Σ-3.1%. Caught the 06-03 4-loss cluster (0/4) while keeping both winners. LONG only; SHORT side untested.">
@@ -8748,6 +8764,7 @@
             lines.push(`  BTC EMA20 Slope Max L: ${th.btc_ema20_slope_max_long !== undefined ? th.btc_ema20_slope_max_long : 0}%  |  S: ${th.btc_ema20_slope_max_short !== undefined ? th.btc_ema20_slope_max_short : 0}%  (May 2: 0 = disabled)`);
             lines.push(`  BTC 1h Slope Max L: ${th.btc_1h_slope_max_long !== undefined ? th.btc_1h_slope_max_long : 0}%  |  S: ${th.btc_1h_slope_max_short !== undefined ? th.btc_1h_slope_max_short : 0}%  (May 24: 0 = disabled; LONG ship at 0.15)`);
             lines.push(`  BTC 1h Slope Min L: ${th.btc_1h_slope_min_long !== undefined ? th.btc_1h_slope_min_long : 0}%  |  S: ${th.btc_1h_slope_min_short !== undefined ? th.btc_1h_slope_min_short : 0}%  (Jun 3: neg = active, 0 = disabled; SHORT ship at -0.60)`);
+            lines.push(`  Jun-10 Guards: BTC 1h RSI Min S: ${th.btc_rsi_1h_min_short ?? 0} (hourly-oversold bounce)  |  Pair ATR Max L: ${th.pair_atr_max_long ?? 0}% (meme guard)  |  RSI Spike Guard L (min rsi_prev): ${th.rsi_prev_min_long ?? 0}`);
             lines.push(`  BTC-Accel Chase Filter (LONG): ${th.evo_chase_filter_long_enabled ? 'ON' : 'OFF'}  |  Window: ${th.evo_chase_window_min !== undefined ? th.evo_chase_window_min : 30}min  (Jun 3: block LONG when BTC EMA20 slope > last-LONG = chasing)`);
             lines.push(`  ADX Very Strong: L>${th.adx_very_strong_long || th.adx_very_strong} S>${th.adx_very_strong}  |  ADX Strong: L>${th.adx_strong_long || th.adx_strong} S>${th.adx_strong}  |  ADX Max: L${th.momentum_adx_max_long || th.momentum_adx_max} S${th.momentum_adx_max}`);
             lines.push(`  LONG RSI: ${th.momentum_long_rsi_min} - ${th.momentum_long_rsi_max}  |  SHORT RSI: ${th.momentum_short_rsi_min} - ${th.momentum_short_rsi_max}`);
@@ -16642,6 +16659,9 @@
                 if (_b1hMinL) _b1hMinL.value = config.thresholds.btc_1h_slope_min_long !== undefined ? config.thresholds.btc_1h_slope_min_long : 0;
                 const _b1hMinS = document.getElementById('config-btc-1h-slope-min-short');
                 if (_b1hMinS) _b1hMinS.value = config.thresholds.btc_1h_slope_min_short !== undefined ? config.thresholds.btc_1h_slope_min_short : 0;
+                { const _e=document.getElementById('config-btc-rsi-1h-min-short'); if(_e) _e.value = config.thresholds.btc_rsi_1h_min_short !== undefined ? config.thresholds.btc_rsi_1h_min_short : 0; }
+                { const _e=document.getElementById('config-pair-atr-max-long'); if(_e) _e.value = config.thresholds.pair_atr_max_long !== undefined ? config.thresholds.pair_atr_max_long : 0; }
+                { const _e=document.getElementById('config-rsi-prev-min-long'); if(_e) _e.value = config.thresholds.rsi_prev_min_long !== undefined ? config.thresholds.rsi_prev_min_long : 0; }
                 const _evoL = document.getElementById('config-evo-chase-filter-long');
                 if (_evoL) _evoL.checked = config.thresholds.evo_chase_filter_long_enabled !== undefined ? config.thresholds.evo_chase_filter_long_enabled : false;
                 const _evoW = document.getElementById('config-evo-chase-window-min');
@@ -17925,6 +17945,9 @@
                     btc_1h_slope_max_short: safeFloat((document.getElementById('config-btc-1h-slope-max-short')||{}).value || 0),
                     btc_1h_slope_min_long: safeFloat((document.getElementById('config-btc-1h-slope-min-long')||{}).value || 0),
                     btc_1h_slope_min_short: safeFloat((document.getElementById('config-btc-1h-slope-min-short')||{}).value || 0),
+                    btc_rsi_1h_min_short: safeFloat((document.getElementById('config-btc-rsi-1h-min-short')||{}).value || 0),
+                    pair_atr_max_long: safeFloat((document.getElementById('config-pair-atr-max-long')||{}).value || 0),
+                    rsi_prev_min_long: safeFloat((document.getElementById('config-rsi-prev-min-long')||{}).value || 0),
                     evo_chase_filter_long_enabled: (document.getElementById('config-evo-chase-filter-long')||{}).checked || false,
                     evo_chase_window_min: parseInt((document.getElementById('config-evo-chase-window-min')||{}).value || 30),
                     ema_gap_5_20_enabled: document.getElementById('config-ema-gap-5-20-enabled').checked,

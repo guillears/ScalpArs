@@ -6356,6 +6356,34 @@ class TradingEngine:
                             self._record_filter_block("PAIR_ATR_MIN", signal, had_room=_had_room)
                             self._last_pair_block_reason[pair] = "PAIR_ATR_MIN"
                             signal = "NO_TRADE"
+                # Jun 10 — pair ATR CEILING (LONG): distribution guard. Historic max
+                # unmatched-long winner = ATR 2.49 (HOME); ESPORTS at 4.68 (p100 outlier
+                # meme) was a -$220 DOA. Blocks only out-of-distribution pairs. 0 = off.
+                if signal == "LONG":
+                    _patr_max = getattr(config.trading_config.thresholds, 'pair_atr_max_long', 0.0) or 0.0
+                    if _patr_max > 0:
+                        _patr_atr2 = indicators.get('atr'); _patr_price2 = indicators.get('price')
+                        if _patr_atr2 is not None and _patr_price2 and _patr_price2 > 0:
+                            _patr_pct2 = (_patr_atr2 / _patr_price2) * 100
+                            if _patr_pct2 >= _patr_max:
+                                logger.info(f"[PAIR_ATR_MAX] {pair}: LONG blocked — pair ATR {_patr_pct2:.3f}% >= max {_patr_max}% (out-of-distribution volatility)")
+                                self._record_filter_block("PAIR_ATR_MAX", "LONG", had_room=_had_room)
+                                self._last_pair_block_reason[pair] = "PAIR_ATR_MAX"
+                                signal = "NO_TRADE"
+
+            # Jun 10 — RSI-SPIKE GUARD (LONG): block when the pair's RSI one candle ago was
+            # below the floor = RSI teleported from neutral into the entry zone in a single
+            # candle = first-candle pump chase (VVV 44.6->65, PIPPIN 45.5->58.3). Complements
+            # the fan-window block (fan sees candles 2-5 of a spike; this sees candle 1).
+            # 0 = disabled. GATE: drop if it blocks >=3 would-be winners w/ no loser saves.
+            if signal == "LONG":
+                _rsiprev_min = getattr(config.trading_config.thresholds, 'rsi_prev_min_long', 0.0) or 0.0
+                _rsi_prev1 = indicators.get('rsi_prev1')
+                if _rsiprev_min > 0 and _rsi_prev1 is not None and _rsi_prev1 < _rsiprev_min:
+                    logger.info(f"[RSI_SPIKE_GUARD] {pair}: LONG blocked — RSI one candle ago {_rsi_prev1:.1f} < min {_rsiprev_min} (single-candle RSI spike = pump chase)")
+                    self._record_filter_block("RSI_SPIKE_GUARD", "LONG", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "RSI_SPIKE_GUARD"
+                    signal = "NO_TRADE"
 
             # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
             # Block entry when both BTC RSI timeframes are in specified
@@ -6584,6 +6612,18 @@ class TradingEngine:
                     logger.info(f"[BTC_1H_SLOPE_MIN_GATE] {pair}: {signal} blocked — BTC 1h slope {_current_btc_1h_slope:+.4f}% < min {_btc_1h_min}% (exhaustion: entering steep 1h crash)")
                     self._record_filter_block("BTC_1H_SLOPE_MIN_GATE", signal, had_room=_had_room)
                     self._last_pair_block_reason[pair] = "BTC_1H_SLOPE_MIN_GATE"
+                    signal = "NO_TRADE"
+
+            # Jun 10 — BTC 1h RSI FLOOR (SHORT). Block shorting when BTC's HOURLY RSI is
+            # already deep-oversold = shorting into the hourly bounce zone (the 1h twin of
+            # the 5m climax-oversold cross-filter block). Cross-batch matched shorts:
+            # 1hRSI<30 = -$940 · 30-35 = -$382 · 35-40 = +$651 (monotonic). 0 = disabled.
+            if signal == "SHORT" and btc_rsi_1h is not None:
+                _rsi1h_min = getattr(config.trading_config.thresholds, 'btc_rsi_1h_min_short', 0) or 0
+                if _rsi1h_min > 0 and btc_rsi_1h < _rsi1h_min:
+                    logger.info(f"[BTC_1H_RSI_MIN_GATE] {pair}: SHORT blocked — BTC 1h RSI {btc_rsi_1h:.1f} < min {_rsi1h_min} (hourly oversold: bounce risk)")
+                    self._record_filter_block("BTC_1H_RSI_MIN_GATE", "SHORT", had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "BTC_1H_RSI_MIN_GATE"
                     signal = "NO_TRADE"
 
             # Jun 3 — BTC-ACCELERATION CHASE filter (STATEFUL, evolution vs last entry).

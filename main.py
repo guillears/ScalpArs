@@ -10558,6 +10558,59 @@ def _compute_btc_1h_slope_btc_adx_multiplier_performance(orders):
     return {'rules': rows, 'summary': summary}
 
 
+
+
+# ----- Investor Portfolio -----
+
+class InvestorCreate(BaseModel):
+    name: str
+
+class InvestorDeposit(BaseModel):
+    investor_id: int
+    amount: float
+
+class InvestorWithdraw(BaseModel):
+    investor_id: int
+    amount: float
+
+class InvestorRename(BaseModel):
+    name: str
+
+
+async def _get_portfolio_value(db: AsyncSession) -> float:
+    """Return the total USDT portfolio value (balance + open positions margin)."""
+    await trading_engine.initialize(db)
+    if trading_engine.is_paper_mode:
+        balance = await trading_engine._recalculate_paper_balance(db)
+        result = await db.execute(
+            select(Order).where(and_(Order.status == "OPEN", Order.is_paper == True))
+        )
+        open_orders = result.scalars().all()
+        used_margin = sum(o.investment for o in open_orders)
+        bnb_usd = trading_engine.paper_bnb_balance_usd
+        return balance + used_margin + bnb_usd
+    else:
+        bal = await binance_service.get_balance()
+        bnb_price = await binance_service.get_bnb_price()
+        bnb_usd = bal['bnb_total'] * bnb_price if bnb_price > 0 else 0
+        return bal['usdt_total'] + bnb_usd
+
+
+async def _get_total_shares(db: AsyncSession) -> float:
+    result = await db.execute(select(func.coalesce(func.sum(Investor.shares), 0.0)))
+    return result.scalar()
+
+
+async def _get_nav_per_share(db: AsyncSession) -> float:
+    total_shares = await _get_total_shares(db)
+    if total_shares <= 0:
+        return 1.0
+    portfolio = await _get_portfolio_value(db)
+    return portfolio / total_shares
+
+
+
+
 def _log_investor_ledger(db: AsyncSession, investor_id: int, type_: str, amount: float,
                          nav: float = None, shares_delta: float = None, note: str = None):
     """Append a dated cash-flow row. Fail-open — a ledger error must NEVER break

@@ -6378,12 +6378,18 @@ class TradingEngine:
             # 0 = disabled. GATE: drop if it blocks >=3 would-be winners w/ no loser saves.
             if signal == "LONG":
                 _rsiprev_min = getattr(config.trading_config.thresholds, 'rsi_prev_min_long', 0.0) or 0.0
+                _spike_min_jump = getattr(config.trading_config.thresholds, 'rsi_spike_min_jump_long', 0.0) or 0.0
                 _rsi_prev1 = indicators.get('rsi_prev1')
+                _rsi_now = indicators.get('rsi')
                 if _rsiprev_min > 0 and _rsi_prev1 is not None and _rsi_prev1 < _rsiprev_min:
-                    logger.info(f"[RSI_SPIKE_GUARD] {pair}: LONG blocked — RSI one candle ago {_rsi_prev1:.1f} < min {_rsiprev_min} (single-candle RSI spike = pump chase)")
-                    self._record_filter_block("RSI_SPIKE_GUARD", "LONG", had_room=_had_room)
-                    self._last_pair_block_reason[pair] = "RSI_SPIKE_GUARD"
-                    signal = "NO_TRADE"
+                    # Jun 10 refinement: require a real 1-candle JUMP too (>= min_jump), so a
+                    # 49.8->51 non-spike passes. 0 = jump condition off (pure floor).
+                    _jump = (_rsi_now - _rsi_prev1) if _rsi_now is not None else None
+                    if _spike_min_jump <= 0 or (_jump is not None and _jump >= _spike_min_jump):
+                        logger.info(f"[RSI_SPIKE_GUARD] {pair}: LONG blocked — RSI {_rsi_prev1:.1f}->{(_rsi_now if _rsi_now is not None else 0):.1f} (jump {(_jump if _jump is not None else 0):+.1f}) from below {_rsiprev_min} = single-candle pump chase")
+                        self._record_filter_block("RSI_SPIKE_GUARD", "LONG", had_room=_had_room)
+                        self._last_pair_block_reason[pair] = "RSI_SPIKE_GUARD"
+                        signal = "NO_TRADE"
 
             # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
             # Block entry when both BTC RSI timeframes are in specified

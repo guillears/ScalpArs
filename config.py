@@ -441,6 +441,13 @@ class SignalThresholds(BaseModel):
     # ESPORTS/PIPPIN/PEPE/VVV meme spikes, kills only $60 of winners. 0 = disabled. Live = 50.
     # GATE: drop if it blocks >=3 would-be winners with no loser saves on fresh data.
     rsi_prev_min_long: float = 0.0
+    # Jun 10 (refinement): the spike guard fires only when BOTH (a) rsi_prev < rsi_prev_min_long
+    # AND (b) the 1-candle jump (rsi - rsi_prev) >= this. Historic behavior identical (every
+    # prev<50 entry jumped >=4 mechanically — entries need RSI ~54+), but formally excludes the
+    # 49.8->51 non-spike case. Jump SIZE alone does NOT separate (winner avg +5.6 vs loser +5.8;
+    # jump>=5 = NET -$318) — the signal is "momentum born from below the 50 neutral line".
+    # 0 = jump condition off (pure floor).
+    rsi_spike_min_jump_long: float = 0.0
     # BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26, 2026 PM).
     # Block entry when both BTC RSI timeframes are in specified directions.
     # Rule format: 2-char codes "RR" "RF" "FR" "FF" where first=1h dir, second=5m dir.

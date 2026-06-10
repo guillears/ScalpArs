@@ -91,6 +91,7 @@
     "macro_trend_flat_threshold_short": 0.03,
     "momentum_long_rsi_min": 40.0,
     "rsi_prev_min_long": 50.0,
+    "rsi_spike_min_jump_long": 4.0,
     "momentum_long_rsi_max": 65.0,
     "momentum_short_rsi_max": 50.0,
     "momentum_short_rsi_min": 25.0,

@@ -1673,7 +1673,6 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
             "btc_1h_slope_btc_adx_multiplier_performance": {"rules": [], "summary": {}},
-            "atr_multiplier_performance": {"rules": [], "summary": {}},
             "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
             "pattern_c_combo_tracker": {"rows": [], "tracker": "C"},
             "pattern_w_combo_tracker": {"rows": [], "tracker": "W"},
@@ -2980,7 +2979,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
             "btc_1h_slope_btc_adx_multiplier_performance": {"rules": [], "summary": {}},
-            "atr_multiplier_performance": {"rules": [], "summary": {}},
             "pattern_4cohort_coverage": {"cohorts": [], "total": {}},
             "pattern_c_combo_tracker": {"rows": [], "tracker": "C"},
             "pattern_w_combo_tracker": {"rows": [], "tracker": "W"},
@@ -6784,7 +6782,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pattern_cell_performance": _compute_pattern_cell_performance(orders),
         "extension_multiplier_performance": _compute_extension_multiplier_performance(orders),
         "btc_1h_slope_btc_adx_multiplier_performance": _compute_btc_1h_slope_btc_adx_multiplier_performance(orders),
-        "atr_multiplier_performance": _compute_atr_multiplier_performance(orders),
         # 4-Cohort Pattern Coverage (May 21 late — split Unm.L/Unm.W into Both/C-only/W-only/Truly)
         "pattern_4cohort_coverage": _compute_pattern_4cohort_coverage(orders),
         # Pattern Combo Trackers (May 26 evening — surface within-tracker combos like C2+C4 or W2+W4)
@@ -10559,229 +10556,6 @@ def _compute_btc_1h_slope_btc_adx_multiplier_performance(orders):
     }
 
     return {'rules': rows, 'summary': summary}
-
-
-def _compute_atr_multiplier_performance(orders):
-    """ATR Multiplier Performance (Jun 5, 2026).
-
-    Sister to BTC 1h Slope Multiplier Performance. Groups closed trades by
-    cell_multiplier_source starting with "ATR_" and computes per-cell verdicts.
-    """
-    closed = [o for o in orders if o.status == 'CLOSED' and o.pnl is not None]
-    if not closed:
-        return {'rules': [], 'summary': {}}
-
-    try:
-        cfg_rules = getattr(config.trading_config.thresholds, 'atr_multiplier_rules', []) or []
-    except Exception:
-        cfg_rules = []
-
-    def _rule_brief(rule):
-        am = rule.get('atr_min', 0)
-        ax = rule.get('atr_max', 0)
-        return f"ATR {am:.2f}-{ax:.2f}%"
-
-    rule_index = {}
-    for r in cfg_rules:
-        try:
-            name = r.get('name', '')
-            d = r.get('direction', '')
-            if not name or not d:
-                continue
-            rule_index[(name, d)] = r
-        except Exception:
-            continue
-
-    def _direction_baseline(direction):
-        base = [o for o in closed if o.direction == direction
-                and (o.cell_multiplier or 1.0) == 1.0
-                and not (getattr(o, 'cell_multiplier_source', '') or '').startswith('ATR_')
-                and (getattr(o, 'pattern_cell_source', None) is None)
-                and o.pnl_percentage is not None]
-        if not base:
-            return None
-        return sum(o.pnl_percentage for o in base) / len(base)
-
-    bl_long = _direction_baseline('LONG')
-    bl_short = _direction_baseline('SHORT')
-
-    groups = {}
-    for o in closed:
-        src = getattr(o, 'cell_multiplier_source', '') or ''
-        if not src.startswith('ATR_'):
-            continue
-        key = (o.direction, src)
-        groups.setdefault(key, []).append(o)
-
-    rows = []
-    for (direction, src), os_ in groups.items():
-        n = len(os_)
-        wins = [o for o in os_ if (o.pnl or 0) > 0]
-        losses = [o for o in os_ if (o.pnl or 0) <= 0]
-        wr = 100.0 * len(wins) / n if n else 0.0
-        avg_pct = sum((o.pnl_percentage or 0) for o in os_) / n if n else 0
-        total_d = sum((o.pnl or 0) for o in os_)
-        expect_d = total_d / n if n else 0
-        win_d = sum((o.pnl or 0) for o in wins)
-        loss_d = abs(sum((o.pnl or 0) for o in losses))
-        pf = (win_d / loss_d) if loss_d > 0 else (float('inf') if win_d > 0 else 0)
-        capped = sum(1 for o in os_ if getattr(o, 'cell_multiplier_capped', False))
-
-        inv_mults = [o.cell_multiplier for o in os_ if o.cell_multiplier is not None]
-        lev_mults = [getattr(o, 'cell_lev_multiplier', None) or 1.0 for o in os_]
-        avg_inv = sum(inv_mults) / max(len(inv_mults), 1)
-        avg_lev = sum(lev_mults) / max(len(lev_mults), 1)
-        avg_eff = avg_inv * avg_lev
-
-        peaks = [o.peak_pnl for o in os_ if o.peak_pnl is not None]
-        avg_peak = sum(peaks) / max(len(peaks), 1) if peaks else 0.0
-        loser_pks = [o.peak_pnl or 0 for o in losses]
-        loser_pk20 = sum(1 for p in loser_pks if p >= 0.20)
-
-        delta_dollars = total_d * (1.0 - 1.0 / avg_eff) if avg_eff != 1.0 else 0.0
-
-        bare = src[4:] if src.startswith('ATR_') else src
-        names = bare.split('+')
-        rule_briefs = []
-        for nm in names:
-            r = rule_index.get((nm, direction))
-            if r:
-                rule_briefs.append(f"{nm}: {_rule_brief(r)}")
-            else:
-                rule_briefs.append(nm)
-        brief = ' | '.join(rule_briefs)
-
-        if n < 5:
-            verdict = '⚠ Low N'
-        elif total_d < 0:
-            verdict = '✗ HARMFUL'
-        elif wr >= 70 and delta_dollars > 1.0:
-            verdict = '★ WORKING'
-        elif delta_dollars > 1.0:
-            verdict = '✓ Marginal'
-        elif delta_dollars < -1.0:
-            verdict = '⚠ DRAG'
-        else:
-            verdict = '✓ Marginal'
-
-        baseline = bl_long if direction == 'LONG' else bl_short
-
-        rows.append({
-            'source': src,
-            'brief': brief,
-            'direction': direction,
-            'inv_multiplier': round(avg_inv, 2),
-            'lev_multiplier': round(avg_lev, 2),
-            'effective_multiplier': round(avg_eff, 2),
-            'n': n,
-            'wr_pct': round(wr, 1),
-            'avg_pnl_pct': round(avg_pct, 4),
-            'avg_peak_pct': round(avg_peak, 3),
-            'total_dollars': round(total_d, 2),
-            'expect_per_trade': round(expect_d, 3),
-            'profit_factor': round(pf, 2) if pf != float('inf') else 999.99,
-            'baseline_avg_pct': round(baseline, 4) if baseline is not None else None,
-            'delta_vs_baseline_dollars': round(delta_dollars, 2),
-            'capped_count': capped,
-            'loser_count': len(losses),
-            'loser_peak_ge_20_count': loser_pk20,
-            'verdict': verdict,
-        })
-
-    # Synthesize rows for configured rules that haven't traded yet
-    traded_sources = {r['source'] for r in rows}
-    for (nm, d), rule in rule_index.items():
-        bare = f"ATR_{nm}"
-        if bare in traded_sources:
-            continue
-        if any(nm in (s[4:].split('+') if s.startswith('ATR_') else []) for s in traded_sources):
-            continue
-        inv = float(rule.get('inv_mult', 1.0) or 1.0)
-        lev = float(rule.get('lev_mult', 1.0) or 1.0)
-        rows.append({
-            'source': bare,
-            'brief': f"{nm}: {_rule_brief(rule)}",
-            'direction': d,
-            'inv_multiplier': round(inv, 2),
-            'lev_multiplier': round(lev, 2),
-            'effective_multiplier': round(inv * lev, 2),
-            'n': 0,
-            'wr_pct': 0.0,
-            'avg_pnl_pct': 0.0,
-            'avg_peak_pct': 0.0,
-            'total_dollars': 0.0,
-            'expect_per_trade': 0.0,
-            'profit_factor': 0,
-            'baseline_avg_pct': None,
-            'delta_vs_baseline_dollars': 0.0,
-            'capped_count': 0,
-            'loser_count': 0,
-            'loser_peak_ge_20_count': 0,
-            'verdict': '⏳ No trades yet',
-        })
-
-    rows.sort(key=lambda r: (r['direction'], -r['n'], r['source']))
-
-    boosted = [r for r in rows if r['n'] > 0 and (r.get('effective_multiplier') or 1.0) != 1.0]
-    actual_total = sum(r['total_dollars'] for r in boosted)
-    sim_baseline = sum(r['total_dollars'] / (r.get('effective_multiplier') or 1.0) for r in boosted)
-    summary = {
-        'boosted_trades_n': sum(r['n'] for r in boosted),
-        'boosted_actual_dollars': round(actual_total, 2),
-        'boosted_baseline_dollars': round(sim_baseline, 2),
-        'boosted_uplift_dollars': round(actual_total - sim_baseline, 2),
-    }
-
-    return {'rules': rows, 'summary': summary}
-
-
-# ----- Investor Portfolio -----
-
-class InvestorCreate(BaseModel):
-    name: str
-
-class InvestorDeposit(BaseModel):
-    investor_id: int
-    amount: float
-
-class InvestorWithdraw(BaseModel):
-    investor_id: int
-    amount: float
-
-class InvestorRename(BaseModel):
-    name: str
-
-
-async def _get_portfolio_value(db: AsyncSession) -> float:
-    """Return the total USDT portfolio value (balance + open positions margin)."""
-    await trading_engine.initialize(db)
-    if trading_engine.is_paper_mode:
-        balance = await trading_engine._recalculate_paper_balance(db)
-        result = await db.execute(
-            select(Order).where(and_(Order.status == "OPEN", Order.is_paper == True))
-        )
-        open_orders = result.scalars().all()
-        used_margin = sum(o.investment for o in open_orders)
-        bnb_usd = trading_engine.paper_bnb_balance_usd
-        return balance + used_margin + bnb_usd
-    else:
-        bal = await binance_service.get_balance()
-        bnb_price = await binance_service.get_bnb_price()
-        bnb_usd = bal['bnb_total'] * bnb_price if bnb_price > 0 else 0
-        return bal['usdt_total'] + bnb_usd
-
-
-async def _get_total_shares(db: AsyncSession) -> float:
-    result = await db.execute(select(func.coalesce(func.sum(Investor.shares), 0.0)))
-    return result.scalar()
-
-
-async def _get_nav_per_share(db: AsyncSession) -> float:
-    total_shares = await _get_total_shares(db)
-    if total_shares <= 0:
-        return 1.0
-    portfolio = await _get_portfolio_value(db)
-    return portfolio / total_shares
 
 
 def _log_investor_ledger(db: AsyncSession, investor_id: int, type_: str, amount: float,

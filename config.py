@@ -553,21 +553,11 @@ class SignalThresholds(BaseModel):
     #   "Caps for losers" — long side has no gross edge, so amplifying it is backwards.
     #   REVERT GATE: restore 2x only if Ext0.4-0.6_L reaches N>=15 fresh AND Total$>0.
     extension_multiplier_rules: List = []
-    # ATR Multiplier Rules (Jun 5, 2026 — see DECISION_LOG). NEW sizing dimension,
-    # sister to extension_multiplier_rules / btc_1h_slope_btc_adx_multiplier_rules.
-    # Batch 6-05 autopsy: ATR = runner-potential on the LONG side. High-ATR longs
-    # reach the trailing arm (~80% vs ~30%), peak ~+0.91% vs +0.38%, 0% DOA vs 17-19%;
-    # all 6 RUNNER_TRAIL longs were ATR≥1.0. JSON-list, each rule:
-    #   {"name": str, "direction": "LONG"/"SHORT",
-    #    "atr_min": float, "atr_max": float,   # range on entry_atr_pct, half-open [min,max)
-    #    "inv_mult": float, "lev_mult": float}
-    # Dimensional candidate: HIGHER (by mode metric) wins on overlap with other dims,
-    # BLOCKED by any pattern-cell match ("pattern is the conviction signal" — keeps the
-    # boost off C-pattern/DOA high-ATR longs like INJ). Source label "ATR_{name}".
-    # Clamped by rsi_adx_multiplier_hard_cap / _lev_hard_cap.
-    # Shipped LONG "Runner" ATR 1.1-99 inv 2.0× (operator-directed, batch-derived).
-    # REVERT GATE: drop a cell to 1.0× if Total$<0 on N≥5 fresh trades in that cell.
-    atr_multiplier_rules: List = []
+    # ATR Multiplier Rules dimension REMOVED Jun 10, 2026 (was atr_multiplier_rules,
+    # Jun 5 ship). All-time survivors of the Jun-10 guard stack in the Runner zone
+    # (ATR 1.1-1.5): N=14, 36% WR, -$328 demux; current-era survivors above ATR 0.8:
+    # N=0 (the ATR cap + fan + spike guards fence the zone). The May promotion was
+    # earned under the pre-guard entry regime that no longer exists.
     # ATR-LOW fixed TP (Jun 5, 2026) — LONG exit, NOT a multiplier. entry_atr_pct <
     # atr_max AND pnl_pct ≥ tp_pct → exit "ATR_FIXED_TP L1" (a profit-LOCK; does NOT cut
     # DOA losers — those ride to stop). Locks the pop on the no-runner cohort.

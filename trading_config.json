@@ -171,7 +171,7 @@
     "rsi_handoff_level": 2,
     "rsi_adx_filter_long": "60-65:0-25",
     "rsi_adx_filter_short": "30-35:25,35-50:30",
-    "btc_rsi_adx_filter_long": "50-55:99-100,70-100:40",
+    "btc_rsi_adx_filter_long": "50-55:99-100,55-60:20-25,70-100:40",
     "btc_rsi_adx_filter_short": "30-35:30-32,35-40:20-26,45-50:25,0-30:25-30",
     "adx_delta_btc_adx_filter_long": "1.0-2.0:18-30",
     "adx_delta_btc_adx_filter_short": "2.0-99:24-99",
@@ -237,7 +237,7 @@
         "lev_mult": 1.0
       },
       {
-        "pattern": "W2",
+        "pattern": "W2+W1",
         "direction": "SHORT",
         "inv_mult": 2.0,
         "lev_mult": 1.5
@@ -261,10 +261,11 @@
         "lev_mult": 1.0
       },
       {
-        "pattern": "W6",
+        "pattern": "W6+!W1",
         "direction": "SHORT",
-        "inv_mult": 2.0,
-        "lev_mult": 1.0
+        "inv_mult": 1.0,
+        "lev_mult": 1.0,
+        "block": true
       },
       {
         "pattern": "W1",
@@ -395,16 +396,6 @@
     "atr_low_fixed_tp_pct": 0.25,
     "long_unmatched_only": true,
     "global_volume_max_short_capitulation_override_enabled": false,
-    "atr_multiplier_rules": [
-      {
-        "name": "Runner",
-        "direction": "LONG",
-        "atr_min": 1.1,
-        "atr_max": 99.0,
-        "inv_mult": 2.0,
-        "lev_mult": 1.0
-      }
-    ],
     "ema13_cross_exit_long_enabled": false,
     "ema13_cross_exit_short_enabled": true,
     "trailing_min_profit_to_fire": 0.1

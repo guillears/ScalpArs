@@ -1680,57 +1680,6 @@ class TradingEngine:
         label = f"EXT_{names}"
         return inv, lev, label
 
-    def _lookup_atr_multiplier(
-        self,
-        direction: str,
-        atr_pct: Optional[float],
-    ) -> Tuple[float, float, Optional[str]]:
-        """ATR Multiplier (Jun 5, 2026) — entry-ATR sizing dimension.
-
-        Walks `atr_multiplier_rules` and returns (inv_mult, lev_mult, source_label)
-        for the matching cell. Rule: {name, direction, atr_min, atr_max, inv_mult,
-        lev_mult}. Matching: direction matches AND atr_pct in [atr_min, atr_max).
-        ATR is runner-potential on the LONG side (high-ATR longs reach the trailing
-        arm and carry the runners).
-
-        Conflict resolution: HIGHER inv_mult wins across matching rules; combined
-        names joined as "ATR_{name1}+{name2}". Like every dimensional multiplier this
-        is a CANDIDATE (max-wins vs other dims) and is BLOCKED by any pattern-cell
-        match (pattern is the conviction signal — keeps the boost off C-pattern/DOA
-        high-ATR longs). Clamped by rsi_adx_multiplier_hard_cap/_lev_hard_cap downstream.
-
-        Returns (1.0, 1.0, None) on no match / missing ATR.
-        """
-        try:
-            rules = getattr(config.trading_config.thresholds, 'atr_multiplier_rules', []) or []
-        except Exception:
-            return 1.0, 1.0, None
-        if not rules or atr_pct is None:
-            return 1.0, 1.0, None
-
-        matches = []
-        for r in rules:
-            try:
-                if r.get('direction') != direction:
-                    continue
-                atr_min = float(r.get('atr_min', -999))
-                atr_max = float(r.get('atr_max', 999))
-                if not (atr_min <= atr_pct < atr_max):
-                    continue
-                matches.append(r)
-            except (ValueError, TypeError) as e:
-                logger.warning(f"[ATR_MULT] Failed to parse rule {r}: {e}, skipping")
-                continue
-
-        if not matches:
-            return 1.0, 1.0, None
-
-        best = max(matches, key=lambda r: float(r.get('inv_mult', 1.0)))
-        inv = float(best.get('inv_mult', 1.0))
-        lev = float(best.get('lev_mult', 1.0))
-        names = '+'.join(r.get('name', '?') for r in matches)
-        return inv, lev, f"ATR_{names}"
-
     def _lookup_btc_1h_slope_btc_adx_multiplier(
         self,
         direction: str,
@@ -1820,6 +1769,7 @@ class TradingEngine:
         where source_label is comma-joined matched patterns (e.g., "C4+C8" or "W1+W2")
         and block=True if any matching rule carries block:true (entry should be skipped).
         Jun 8: pattern may be a single code, "UNMATCHED", or an AND-combo ("C1+C6").
+        Jun 10: a part may carry a '!' prefix to negate it ("W6+!W1" = W6 AND NOT W1).
         """
         rules = getattr(config.trading_config.thresholds, 'pattern_cell_rules', []) or []
         if not rules:
@@ -1860,8 +1810,11 @@ class TradingEngine:
 
         def _rule_side_and_match(p):
             """Map a rule pattern to (side, matched_bool). 'UNMATCHED' = no C and no W.
-            Combo 'C1+C6' = AND of all component codes. A mixed C+W combo resolves to
-            the 'C' side (C-blocks-W priority). Single code = combo of one part."""
+            Combo 'C1+C6' = AND of all component codes. A '!' prefix negates a part
+            (Jun 10: 'W6+!W1' = W6 matched AND W1 NOT matched — lets a rule target
+            e.g. macro-tag-only shorts without pair-momentum confirmation). A mixed
+            C+W combo resolves to the 'C' side (C-blocks-W priority); side comes
+            from the positive parts. Single code = combo of one part."""
             if not p:
                 return None, False
             if p == 'UNMATCHED':
@@ -1869,11 +1822,22 @@ class TradingEngine:
             parts = [x.strip() for x in str(p).split('+') if x.strip()]
             if not parts:
                 return None, False
-            side = 'C' if any(x.startswith('C') for x in parts) else 'W'
-            for x in parts:
+            pos = [x for x in parts if not x.startswith('!')]
+            neg = [x[1:].strip() for x in parts if x.startswith('!')]
+            if not pos:
+                # All-negated pattern has no anchor cohort — refuse rather than
+                # silently matching everything outside the negated codes.
+                return None, False
+            side = 'C' if any(x.startswith('C') for x in pos) else 'W'
+            for x in pos:
                 if x.startswith('C') and x not in _mc:
                     return side, False
                 if x.startswith('W') and x not in _mw:
+                    return side, False
+            for x in neg:
+                if x.startswith('C') and x in _mc:
+                    return side, False
+                if x.startswith('W') and x in _mw:
                     return side, False
             return side, True
 
@@ -2916,8 +2880,6 @@ class TradingEngine:
             _current_btc_1h_slope,
             entry_btc_adx,
         )
-        # ATR-HIGH multiplier (Jun 5) — LONG runner cohort (entry_atr_pct > atr_min).
-        _atr_inv, _atr_lev, _atr_src = self._lookup_atr_multiplier(direction, entry_atr_pct)
 
         # Conflict resolution (May 21 — extended for "both" mode):
         # When pair-level AND BTC-level cells both match, the HIGHER candidate wins.
@@ -2953,7 +2915,6 @@ class TradingEngine:
                 (_btc_inv, _btc_lev, _btc_src),
                 (_ext_inv, _ext_lev, _ext_src),
                 (_btc1h_inv, _btc1h_lev, _btc1h_src),
-                (_atr_inv, _atr_lev, _atr_src),
             ]
             _winner = max(_candidates, key=lambda c: _score_candidate(c[0], c[1]))
             cell_mult, cell_lev_mult, cell_src = _winner

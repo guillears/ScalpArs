@@ -6735,6 +6735,7 @@
 
             // month aggregates + max |pnl| for color grading
             let monthTotal = 0, greenDays = 0, redDays = 0, greenSum = 0, redSum = 0, maxAbs = 0;
+            let monthCompound = 1, hasPct = false, pctDays = 0;
             const monthCells = [];
             for (let d = 1; d <= daysInMonth; d++) {
                 const key = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
@@ -6744,8 +6745,18 @@
                     monthTotal += e.pnl;
                     if (e.pnl > 0) { greenDays++; greenSum += e.pnl; } else if (e.pnl < 0) { redDays++; redSum += e.pnl; }
                     maxAbs = Math.max(maxAbs, Math.abs(e.pnl));
+                    if (e.day_return_pct !== null && e.day_return_pct !== undefined) {
+                        monthCompound *= (1 + e.day_return_pct / 100);
+                        hasPct = true;
+                        pctDays++;
+                    }
                 }
             }
+            const monthPct = hasPct ? (monthCompound - 1) * 100 : null;
+            // Geometric mean per TRADING day (calendar-day convention; the performance
+            // table's DCR uses bot runtime-days instead, so the two can differ slightly)
+            const avgDayPct = (hasPct && pctDays > 0 && monthCompound > 0)
+                ? (Math.pow(monthCompound, 1 / pctDays) - 1) * 100 : null;
 
             let html = '';
             for (let i = 0; i < firstDow; i++) html += '<div></div>';
@@ -6771,10 +6782,14 @@
             }
             grid.innerHTML = html;
 
-            // month header line
+            // month header line ($ + compounded day-% + avg %/trading-day)
             const totEl = document.getElementById('pnl-cal-month-total');
-            totEl.textContent = `${_pnlCalFmt$(monthTotal)} this month`;
+            const pctStr2 = monthPct !== null ? `  (${monthPct >= 0 ? '+' : ''}${monthPct.toFixed(2)}% compounded)` : '';
+            const avgStr = avgDayPct !== null
+                ? `  · ≈${avgDayPct >= 0 ? '+' : ''}${avgDayPct.toFixed(2)}%/day over ${pctDays} trading day${pctDays === 1 ? '' : 's'}` : '';
+            totEl.textContent = `${_pnlCalFmt$(monthTotal)} this month${pctStr2}${avgStr}`;
             totEl.className = 'font-bold ' + (monthTotal >= 0 ? 'text-emerald-400' : 'text-red-400');
+            totEl.title = 'avg %/day = geometric mean over calendar trading days; the performance table’s Daily Compound Return uses bot runtime-days, so the two can differ slightly';
             document.getElementById('pnl-cal-month-counts').innerHTML =
                 `<span class="text-emerald-400">${greenDays} / ${_pnlCalFmt$(greenSum)}</span> · <span class="text-red-400">${redDays} / ${_pnlCalFmt$(Math.abs(redSum) === 0 ? 0 : redSum)}</span>`;
 

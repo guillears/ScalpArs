@@ -1152,11 +1152,62 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
     return orders_data
 
 
+@app.get("/api/pnl-calendar")
+async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(get_db)):
+    """Daily P&L Calendar (Jun 11, 2026 — Option A: computed live from CLOSED orders;
+    paper resets clear it together with the orders table by design — each reset is a
+    new rule-regime experiment. In live mode orders are never deleted, so this gives
+    full lifetime history natively.
+
+    tz_offset_min: minutes to ADD to UTC to get the operator's local day boundary
+    (e.g. UTC-3 -> -180). Day-return % baseline = portfolio value back-walked from the
+    current value minus subsequent days' P&L (deposits/withdrawals not modeled)."""
+    await trading_engine.initialize(db)
+
+    result = await db.execute(
+        select(Order.closed_at, Order.pnl)
+        .where(and_(
+            Order.status == "CLOSED",
+            Order.is_paper == trading_engine.is_paper_mode,
+            Order.closed_at.isnot(None),
+        ))
+    )
+    rows = result.all()
+    offset = timedelta(minutes=tz_offset_min)
+    days: Dict[str, dict] = {}
+    for closed_at, pnl in rows:
+        d = (closed_at + offset).date().isoformat()
+        e = days.setdefault(d, {"pnl": 0.0, "trades": 0, "wins": 0})
+        e["pnl"] += (pnl or 0.0)
+        e["trades"] += 1
+        if (pnl or 0.0) > 0:
+            e["wins"] += 1
+
+    portfolio_now = None
+    try:
+        portfolio_now = await _get_portfolio_value(db)
+    except Exception:
+        pass
+    if portfolio_now is not None:
+        running = portfolio_now
+        for d in sorted(days.keys(), reverse=True):
+            e = days[d]
+            start = running - e["pnl"]
+            e["day_return_pct"] = round(e["pnl"] / start * 100.0, 2) if start > 0 else None
+            running = start
+
+    for e in days.values():
+        e["pnl"] = round(e["pnl"], 2)
+        e["wr"] = round(100.0 * e["wins"] / e["trades"], 0) if e["trades"] else 0.0
+
+    return {"days": days, "portfolio_now": round(portfolio_now, 2) if portfolio_now is not None else None}
+
+
 @app.get("/api/orders/closed")
 async def get_closed_orders(db: AsyncSession = Depends(get_db)):
     """Get all closed orders"""
     await trading_engine.initialize(db)
-    
+
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))

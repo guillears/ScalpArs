@@ -2488,7 +2488,7 @@ def _compute_pair_rank_performance(orders):
     buckets = [
         ("1-10", 1, 10), ("11-20", 11, 20), ("21-30", 21, 30),
         ("31-40", 31, 40), ("41-50", 41, 50),
-        ("51-60", 51, 60), ("61-75", 61, 75), (">75", 76, 10_000),
+        (">50", 51, 10_000),
     ]
     closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
     rows = []

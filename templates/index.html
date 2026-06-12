@@ -263,8 +263,8 @@
                         <option value="5">Top 5</option>
                         <option value="10">Top 10</option>
                         <option value="20">Top 20</option>
-                        <option value="50">Top 50</option>
-                        <option value="75" selected>Top 75</option>
+                        <option value="50" selected>Top 50</option>
+                        <option value="75">Top 75</option>
                     </select>
                     <span class="text-xs text-yellow-400/80 ml-2">← Only these pairs can open trades</span>
                 </div>
@@ -3925,7 +3925,7 @@
                 <!-- Performance by Pair Rank (Jun 12, 2026) — 50->75 universe expansion read gate -->
                 <div class="mt-6 pt-6 border-t border-cyan-900/40">
                     <h3 class="text-sm font-semibold text-cyan-300 mb-1">🏅 Performance by Pair Rank (volume rank at entry)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Rank 1 = highest 24h volume in the eligible universe at entry (stamped pre-blacklist). <span class="text-amber-400">READ GATE: at N≥20 trades on rank 51-75 pairs, compare WR / Avg P&L% vs rank ≤50 — revert the pair limit to 50 if materially worse.</span> Pre-Jun-12 trades have NULL rank and are excluded.</p>
+                    <p class="text-xs text-gray-500 mb-3">Rank 1 = highest 24h volume in the eligible universe at entry (stamped pre-blacklist). Reveals rank structure inside the Top-50 universe (1-20 vs 21-50). <span class="text-amber-400">&gt;50 only populates if the pair limit is ever raised above 50 (75 reverted Jun 12 — eligible rank-75 reached $24M after the new-listing filter).</span> Pre-Jun-12 trades have NULL rank and are excluded.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead>
@@ -15385,7 +15385,7 @@
                             const pctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const totCls = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const avgCls = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const newTier = (r.bucket === '51-60' || r.bucket === '61-75' || r.bucket === '>75');
+                            const newTier = (r.bucket === '>50');
                             return `<tr class="hover:bg-white/5 ${newTier ? 'bg-amber-500/5' : ''}">
                                 <td class="px-2 py-1.5 ${newTier ? 'text-amber-300' : 'text-cyan-300'} font-medium">${r.bucket}${newTier ? ' ✦' : ''}</td>
                                 <td class="px-2 py-1.5 text-right">${r.n}</td>

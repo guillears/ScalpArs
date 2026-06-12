@@ -11018,8 +11018,8 @@ async def update_pairs_limit(data: dict):
     # Validate limit (Jun 12: 100 replaced by 75 — see 50->75 expansion audit;
     # 100 caused a rate-limit ban in the pre-batching era and Tier B $27-49M
     # pairs are long-hostile + liquidity-cap-pinched)
-    if limit not in [5, 10, 20, 50, 75]:
-        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, 50, or 75")
+    if limit not in [5, 10, 20, 50]:
+        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, or 50")
     
     current_config = load_trading_config()
     current_config.trading_pairs_limit = limit

@@ -7400,6 +7400,26 @@ class TradingEngine:
                         _e13_dir_enabled = (getattr(_e13c_th, 'ema13_cross_exit_long_enabled', True)
                                             if direction == "LONG"
                                             else getattr(_e13c_th, 'ema13_cross_exit_short_enabled', True))
+                        # Jun 12: SHORT runner stretch-trail handoff — once armed
+                        # (peak >= arm, ATR gate if configured), the EMA13 cross must
+                        # NOT close the trade (the measured shadow-strpk uplift comes
+                        # from riding through the first cross). Records a phantom via
+                        # the same path as a disabled direction; RUNNER_TRAIL/hard SL
+                        # own the exit from here.
+                        if _e13_dir_enabled and direction == "SHORT":
+                            try:
+                                if getattr(_e13c_th, 'runner_trail_short_enabled', False):
+                                    _e13rt_amin = float(getattr(_e13c_th, 'runner_trail_short_atr_min', 0.0) or 0.0)
+                                    _e13rt_arm = float(getattr(_e13c_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
+                                    _e13rt_atr = order_info.get('entry_atr_pct')
+                                    _e13rt_peak = order_info.get('peak_pnl', 0.0) or 0.0
+                                    if (_e13rt_peak >= _e13rt_arm
+                                            and (_e13rt_amin <= 0
+                                                 or (_e13rt_atr is not None and _e13rt_atr >= _e13rt_amin))):
+                                        _e13_dir_enabled = False  # phantom path below
+                                        logger.info(f"[EMA13_RUNNER_SUPPRESS] {pair} SHORT: cross fired but runner armed (peak={_e13rt_peak:.2f}>= {_e13rt_arm}) — phantom + ride")
+                            except Exception:
+                                pass
                         _e13_strict = getattr(config.trading_config.thresholds, 'ema13_cross_requires_stack_flip', False)
                         _e13_stack_confirms = True  # default: not required
                         if _e13_strict:
@@ -8138,14 +8158,20 @@ class TradingEngine:
                 # for runner-armed high-ATR LONGs so the trade rides; the actual
                 # RUNNER_TRAIL exit fires from check_exit_conditions in the monitor
                 # loop. Backstops (hard SL / EMA13) below are NOT suppressed.
-                if (not _handoff_suppress
-                        and getattr(config.trading_config.thresholds, 'runner_trail_enabled', False)
-                        and direction == "LONG"):
+                if not _handoff_suppress:
+                    _rt_th = config.trading_config.thresholds
+                    if direction == "LONG":
+                        _rt_en = getattr(_rt_th, 'runner_trail_enabled', False)
+                        _rt_amin = float(getattr(_rt_th, 'runner_trail_atr_min', 1.0) or 0.0)
+                        _rt_arm = float(getattr(_rt_th, 'runner_trail_arm_peak', 0.70) or 0.70)
+                    else:  # Jun 12: SHORT runner trail (no ATR gate, arm 0.45)
+                        _rt_en = getattr(_rt_th, 'runner_trail_short_enabled', False)
+                        _rt_amin = float(getattr(_rt_th, 'runner_trail_short_atr_min', 0.0) or 0.0)
+                        _rt_arm = float(getattr(_rt_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
                     _rt_atr = order_info.get('entry_atr_pct')
                     _rt_peak = order_info.get('peak_pnl', 0.0) or 0.0
-                    if (_rt_atr is not None
-                            and _rt_atr >= float(getattr(config.trading_config.thresholds, 'runner_trail_atr_min', 1.0) or 1.0)
-                            and _rt_peak >= float(getattr(config.trading_config.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70)):
+                    if (_rt_en and _rt_peak >= _rt_arm
+                            and (_rt_amin <= 0 or (_rt_atr is not None and _rt_atr >= _rt_amin))):
                         _handoff_suppress = True
             except Exception:
                 pass

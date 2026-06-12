@@ -343,6 +343,18 @@ class SignalThresholds(BaseModel):
     runner_trail_atr_min: float = 1.0    # only pairs with entry ATR ≥ this get the loose leash
     runner_trail_arm_peak: float = 0.70  # handoff point: peak P&L ≥ this swaps tight→stretch trail
     runner_trail_k: float = 0.5          # exit when live stretch ≤ k × peak stretch (unsigned, matches shadow strpk)
+    # Jun 12 — SHORT-side runner stretch-trail (DISCIPLINE-OVERRIDE ship, N=20<30).
+    # Evidence: shadow strpk on current-stack book shorts = Δ+5.1pp/+$996 vs actual
+    # (N=20, 13/7 better); recent era (Jun 9+) 8/0 better, +$979. Shorts are
+    # capitulation cascades — live exits fire on the first micro-bounce.
+    # Params MUST match the measured leash sim: arm at peak>=0.45 (leash ACT),
+    # NO ATR gate (atr_min=0 — book shorts enter at ATR 0.4-1.0), K=0.5.
+    # Once armed: tight trailing suppressed AND the EMA13-short cross records a
+    # phantom instead of closing (the sim's uplift comes from riding through it).
+    runner_trail_short_enabled: bool = True
+    runner_trail_short_atr_min: float = 0.0   # 0 = no ATR gate (shadow had none)
+    runner_trail_short_arm_peak: float = 0.45 # matches leash ACT + live trailing arm
+    runner_trail_short_k: float = 0.5         # shadow strpk K=0.5
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in

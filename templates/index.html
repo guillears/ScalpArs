@@ -2328,19 +2328,17 @@
 
                 <!-- ===== LEASH SHADOW START (May 30, observation-only) ===== -->
                 <div class="mt-6 pt-6 border-t border-white/10">
-                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏃 Leash Shadow: Runner Exit Comparison (observation-only)</h3>
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🏃 Leash Shadow: Exit Capture by Direction (observation-only)</h3>
                     <p class="text-xs text-gray-400 mb-3">
-                        Virtual trailing leashes run alongside the real exit (armed trades only, peak≥0.5%). Each leash
-                        respects the same live exits (hard SL / EMA13 / signal-lost) — only the trailing width differs.
-                        <span class="text-emerald-300">wide</span>=0.6 flat (price-trail control) ·
-                        <span class="text-cyan-300">strpk</span>=stretch-trail K=0.5 (the SHIPPED runner mechanism) ·
-                        <span class="text-cyan-300">strpk04</span>=stretch-trail K=0.4 (looser — holds longer than shipped) ·
-                        <span class="text-cyan-300">strpk03</span>=stretch-trail K=0.3 (loosest — Type-B/HOME candidate) ·
+                        Virtual trailing leashes run alongside the real exit (armed trades only, peak≥0.45%) and keep tracking past the actual close — each row answers "what if we'd held with this policy?".
+                        <span class="text-cyan-300">tight</span>=0.25 flat (sanity vs live exit chain) ·
+                        <span class="text-emerald-300">wide</span>=0.60 flat ·
+                        <span class="text-cyan-300">tierA/B</span>=tight→loose after +1.0 ·
+                        <span class="text-cyan-300">strpk/strpk03</span>=stretch-trail from peak (K=0.5/0.3, lower=looser) ·
+                        <span class="text-cyan-300">stren</span>=exit when extension collapses to entry level ·
                         <span class="text-cyan-300">strpk_signed</span>=hold until price crosses back below EMA5 (full-ride).
-                        The <span class="text-cyan-300">str*</span> rows exit on <em>extension fade</em> (price vs EMA5), not a price pullback — tests whether the move's own stretch structure is a better exit. Lower K = holds longer = captures more on true runners, gives back more on fade-reversers. (Jun 1 redefine: dropped tight/tierA/tierB/stren.)
                         <span class="text-emerald-300">Δ</span>=leash total% − actual total%. <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
-                        <span class="text-emerald-300">SLconv</span>=small-win→−0.7% conversions. <span class="text-emerald-300">%MaxPk</span>=% of theoretical max peak captured.
-                        Gate = LONG ≥0.25 armed.
+                        <span class="text-amber-400">SHIPPED Jun 12 (override): strpk is now the LIVE SHORT exit (Runner Stretch-Trail SHORT — arm 0.45, K=0.5, no ATR gate, EMA13 suppressed once armed). This table is now the REVERT MONITOR: the strpk row should ≈ actual (sanity); if shadow_tight beats actual cumulatively on N≥8 fresh armed shorts → revert. LONGS expected ~baseline (trail already optimal).</span>
                     </p>
                     <div class="text-xs text-gray-400 mb-2" id="leash-shadow-pool">(no post-deploy armed trades yet)</div>
                     <div class="overflow-x-auto">
@@ -4777,6 +4775,27 @@
                                 </label>
                             </div>
                             <p class="text-xs text-gray-500 mt-1">Hand off tight trailing → stretch-trail once a high-ATR LONG peaks ≥ arm; exit when live |price−EMA5| stretch ≤ k × peak stretch (or EMA13 / hard SL). Close reason <code class="text-cyan-300">RUNNER_TRAIL</code>. Track results in the 🏃 Runner Trail Performance table (net-gain-vs-tight).</p>
+                            <div class="border-t border-cyan-500/20 mt-3 pt-2">
+                                <label class="block text-sm text-red-300 mb-2">🏃 Runner Stretch-Trail (SHORT) <span class="text-xs text-gray-400 font-normal">(Jun 12 — shadow-strpk promotion, DISCIPLINE-OVERRIDE N=20)</span></label>
+                                <div class="flex items-center gap-3 flex-wrap">
+                                    <label class="flex items-center cursor-pointer" title="When ON, a SHORT that proves a runner (peak >= arm) hands tight trailing off to the stretch-trail AND suppresses the EMA13-cross close (records a phantom instead) — exits when live stretch <= k x peak stretch, or hard SL.">
+                                        <input type="checkbox" id="config-runner-trail-short-enabled" class="mr-1" checked>
+                                        <span class="text-sm text-gray-300">Enabled</span>
+                                    </label>
+                                    <label class="flex items-center text-sm text-gray-400" title="0 = no ATR gate (the measured shadow had none — book shorts enter at ATR 0.4-1.0)">ATR ≥
+                                        <input type="number" step="0.05" min="0" id="config-runner-trail-short-atr-min" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                        <span class="ml-1 text-xs text-gray-500">% (0=off)</span>
+                                    </label>
+                                    <label class="flex items-center text-sm text-gray-400" title="Must stay 0.45 to match the measured leash sim (arms with the live trailing)">arm peak ≥
+                                        <input type="number" step="0.05" min="0" id="config-runner-trail-short-arm-peak" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.45">
+                                        <span class="ml-1 text-xs text-gray-500">%</span>
+                                    </label>
+                                    <label class="flex items-center text-sm text-gray-400">k ×
+                                        <input type="number" step="0.05" min="0" max="1" id="config-runner-trail-short-k" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
+                                    </label>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">Shadow-strpk on book shorts: Δ+5.1pp/+$996 (N=20, 13/7) · recent era 8/0 +$979. <span class="text-amber-400">Once armed the EMA13-short cross is SUPPRESSED (phantom recorded) — the measured uplift comes from riding through the first cross.</span> Backstop: hard SL. <span class="text-amber-400">REVERT GATE: shadow_tight keeps running as the old-policy proxy — if actual − tight &lt; 0 cumulative on N≥8 fresh armed shorts, turn this OFF.</span></p>
+                            </div>
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm text-gray-400 mb-2">Fast Exit L2 <span class="text-xs text-violet-400 font-normal">(May 19 — slow-climber tier between L1 and trailing)</span></label>
@@ -16678,6 +16697,10 @@
                 { const _e=document.getElementById('config-runner-trail-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_atr_min !== undefined ? config.thresholds.runner_trail_atr_min : 1.0; }
                 { const _e=document.getElementById('config-runner-trail-arm-peak'); if(_e) _e.value = config.thresholds.runner_trail_arm_peak !== undefined ? config.thresholds.runner_trail_arm_peak : 0.70; }
                 { const _e=document.getElementById('config-runner-trail-k'); if(_e) _e.value = config.thresholds.runner_trail_k !== undefined ? config.thresholds.runner_trail_k : 0.5; }
+                { const _e=document.getElementById('config-runner-trail-short-enabled'); if(_e) _e.checked = config.thresholds.runner_trail_short_enabled !== undefined ? !!config.thresholds.runner_trail_short_enabled : true; }
+                { const _e=document.getElementById('config-runner-trail-short-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_short_atr_min !== undefined ? config.thresholds.runner_trail_short_atr_min : 0.0; }
+                { const _e=document.getElementById('config-runner-trail-short-arm-peak'); if(_e) _e.value = config.thresholds.runner_trail_short_arm_peak !== undefined ? config.thresholds.runner_trail_short_arm_peak : 0.45; }
+                { const _e=document.getElementById('config-runner-trail-short-k'); if(_e) _e.value = config.thresholds.runner_trail_short_k !== undefined ? config.thresholds.runner_trail_short_k : 0.5; }
                 if (document.getElementById('config-btc-adx-block-min-short')) {
                     document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
                 }
@@ -17931,6 +17954,10 @@
                     runner_trail_atr_min: safeFloat(document.getElementById('config-runner-trail-atr-min')?.value || 1.0),
                     runner_trail_arm_peak: safeFloat(document.getElementById('config-runner-trail-arm-peak')?.value || 0.70),
                     runner_trail_k: safeFloat(document.getElementById('config-runner-trail-k')?.value || 0.5),
+                    runner_trail_short_enabled: (document.getElementById('config-runner-trail-short-enabled')||{checked:true}).checked,
+                    runner_trail_short_atr_min: safeFloat(document.getElementById('config-runner-trail-short-atr-min')?.value || 0),
+                    runner_trail_short_arm_peak: safeFloat(document.getElementById('config-runner-trail-short-arm-peak')?.value || 0.45),
+                    runner_trail_short_k: safeFloat(document.getElementById('config-runner-trail-short-k')?.value || 0.5),
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
                     btc_rsi_band_atr_block_long: (document.getElementById('config-btc-rsi-band-atr-block-long')?.value || '').trim(),

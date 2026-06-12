@@ -823,11 +823,19 @@ def check_exit_conditions(
     _runner_armed = False
     try:
         from config import trading_config as _rtc0
-        _runner_armed = (getattr(_rtc0.thresholds, 'runner_trail_enabled', False)
-                         and direction == "LONG"
-                         and entry_atr_pct is not None
-                         and entry_atr_pct >= float(getattr(_rtc0.thresholds, 'runner_trail_atr_min', 1.0) or 1.0)
-                         and peak_pnl >= float(getattr(_rtc0.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70))
+        # Jun 12: per-direction params. SHORT side ships with NO ATR gate
+        # (atr_min=0) + arm 0.45 — must match the measured shadow strpk policy.
+        if direction == "LONG":
+            _ra_en = getattr(_rtc0.thresholds, 'runner_trail_enabled', False)
+            _ra_amin = float(getattr(_rtc0.thresholds, 'runner_trail_atr_min', 1.0) or 0.0)
+            _ra_arm = float(getattr(_rtc0.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70)
+        else:
+            _ra_en = getattr(_rtc0.thresholds, 'runner_trail_short_enabled', False)
+            _ra_amin = float(getattr(_rtc0.thresholds, 'runner_trail_short_atr_min', 0.0) or 0.0)
+            _ra_arm = float(getattr(_rtc0.thresholds, 'runner_trail_short_arm_peak', 0.45) or 0.45)
+        _runner_armed = (_ra_en and peak_pnl >= _ra_arm
+                         and (_ra_amin <= 0
+                              or (entry_atr_pct is not None and entry_atr_pct >= _ra_amin)))
     except Exception:
         _runner_armed = False
 
@@ -924,20 +932,29 @@ def check_exit_conditions(
     # armed it stays in stretch-trail mode. Backstops (hard SL, EMA13) still fire.
     try:
         from config import trading_config as _rtc
-        if (getattr(_rtc.thresholds, 'runner_trail_enabled', False)
-                and direction == "LONG"
-                and entry_atr_pct is not None
-                and entry_atr_pct >= float(getattr(_rtc.thresholds, 'runner_trail_atr_min', 1.0) or 1.0)
-                and peak_pnl >= float(getattr(_rtc.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70)):
-            _handoff_suppress_trailing = True  # take over the profit-taking side
+        # Jun 12: direction-aware. LONG keeps its (currently OFF) Jun-1 config;
+        # SHORT ships ON (no ATR gate, arm 0.45, K=0.5 — the measured strpk).
+        if direction == "LONG":
+            _rh_en = getattr(_rtc.thresholds, 'runner_trail_enabled', False)
+            _rh_amin = float(getattr(_rtc.thresholds, 'runner_trail_atr_min', 1.0) or 0.0)
+            _rh_arm = float(getattr(_rtc.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70)
             _rt_k = float(getattr(_rtc.thresholds, 'runner_trail_k', 0.5) or 0.5)
+        else:
+            _rh_en = getattr(_rtc.thresholds, 'runner_trail_short_enabled', False)
+            _rh_amin = float(getattr(_rtc.thresholds, 'runner_trail_short_atr_min', 0.0) or 0.0)
+            _rh_arm = float(getattr(_rtc.thresholds, 'runner_trail_short_arm_peak', 0.45) or 0.45)
+            _rt_k = float(getattr(_rtc.thresholds, 'runner_trail_short_k', 0.5) or 0.5)
+        if (_rh_en and peak_pnl >= _rh_arm
+                and (_rh_amin <= 0
+                     or (entry_atr_pct is not None and entry_atr_pct >= _rh_amin))):
+            _handoff_suppress_trailing = True  # take over the profit-taking side
             # SIGNED stretch (matches the validated shadow strpk): fires when the
             # favorable extension retraces to ≤ k× its peak — INCLUDING when price
             # crosses back below EMA5 (signed goes negative). Do NOT use abs() here
             # or it re-introduces the unsigned fader-ride bug (CLAUDE.md May 31).
             if (current_stretch is not None and peak_stretch is not None
                     and peak_stretch > 0 and current_stretch <= _rt_k * peak_stretch):
-                logger.info(f"[RUNNER_TRAIL] LONG L{current_tp_level}: stretch {current_stretch:.3f}% <= "
+                logger.info(f"[RUNNER_TRAIL] {direction} L{current_tp_level}: stretch {current_stretch:.3f}% <= "
                             f"{_rt_k}× peak {peak_stretch:.3f}% — runner banked, pnl={pnl_pct:.4f}%, peak={peak_pnl:.4f}%")
                 return {
                     "should_close": True,

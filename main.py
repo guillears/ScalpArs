@@ -8784,10 +8784,13 @@ def _compute_leash_shadow(orders):
     # pullback-rerun monster? / strpk_signed=ride the full move to the EMA5 cross.
     LEASHES = [
         ('actual', None, None, None),
-        ('wide', 'shadow_wide_pnl', 'shadow_wide_reason', 'shadow_wide_min'),
-        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5 (SHIPPED runner mech)
-        ('strpk04', 'shadow_strpk04_pnl', 'shadow_strpk04_reason', 'shadow_strpk04_min'),  # K=0.4 (looser — holds longer than shipped)
-        ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest — Type-B candidate)
+        ('tight', 'shadow_tight_pnl', 'shadow_tight_reason', 'shadow_tight_min'),  # 0.25 flat — sanity vs live exit chain
+        ('wide', 'shadow_wide_pnl', 'shadow_wide_reason', 'shadow_wide_min'),      # 0.60 flat
+        ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason', 'shadow_tierA_min'),  # 0.25->0.80 after +1.0
+        ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason', 'shadow_tierB_min'),  # 0.30->1.00 after +1.0
+        ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5
+        ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest stretch-trail)
+        ('stren', 'shadow_stren_pnl', 'shadow_stren_reason', 'shadow_stren_min'),  # exit when stretch collapses to entry level
         ('strpk_signed', 'shadow_strpk_signed_pnl', 'shadow_strpk_signed_reason', 'shadow_strpk_signed_min'),  # hold to EMA5 cross
     ]
     # armed + shadow-populated cohort
@@ -8800,16 +8803,19 @@ def _compute_leash_shadow(orders):
     # we ship, not legacy entry-stretch buckets (which lumped real runners like STG with
     # high-entry-stretch non-runners like HOME that never armed). <0.25-stretch LONG kept
     # as the "leashes should do nothing here" control. Predicate-based for flexibility.
+    # Jun 12 repurpose (operator-directed): the runner-trail question is resolved
+    # (runner trail OFF, ATR mult removed). The table now answers the CURRENT exit
+    # question — "are the live exits leaving money on the table, per direction?" —
+    # two plain slices, no ATR/stretch sub-cohorts. SHORT is the gate slice
+    # (Jun-12 read: every leash beat actual on book shorts; promotion gate at
+    # N>=30 armed shorts: Δ>=+0.15pp/trade AND clean:trap >=2:1 → ship best leash
+    # as the SHORT exit policy. LONGS expected ~baseline — trail already optimal).
     BUCKETS = [
-        ('LONG RUNNER (ATR>=1.0 · peak>=0.70)',
-            lambda o: o.direction == 'LONG'
-                      and (getattr(o, 'entry_atr_pct', None) or 0) >= 1.0
-                      and (getattr(o, 'peak_pnl', None) or 0) >= 0.70,
+        ('ALL SHORTS (gate: N>=30 armed)',
+            lambda o: o.direction == 'SHORT',
             True, False),
-        ('LONG <0.25 stretch (control)',
-            lambda o: o.direction == 'LONG'
-                      and getattr(o, 'entry_ema5_stretch', None) is not None
-                      and (o.entry_ema5_stretch or 0) < 0.25,
+        ('ALL LONGS (expect ~baseline)',
+            lambda o: o.direction == 'LONG',
             False, False),
     ]
     slices = []

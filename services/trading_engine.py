@@ -2705,6 +2705,7 @@ class TradingEngine:
         entry_btc_1h_slope: float = None,
         # May 10: capture absolute pair 24h USD volume at entry for size-bucket analysis
         entry_pair_volume_24h_usd: float = None,
+        entry_pair_rank: int = None,
         # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
         entry_gap_expand_marginal: bool = None,
     ) -> Optional[Order]:
@@ -3258,6 +3259,7 @@ class TradingEngine:
             entry_btc_1h_slope=entry_btc_1h_slope,
             # May 10: absolute pair 24h USD volume at entry (size-bucket analytics)
             entry_pair_volume_24h_usd=entry_pair_volume_24h_usd,
+            entry_pair_rank=entry_pair_rank,
             # Jun 8: gap-expanding relaxation A/B cohort tag
             entry_gap_expand_marginal=entry_gap_expand_marginal,
             # Jun 2: liquidity-aware sizing observability (final notional = notional_value above)
@@ -5492,6 +5494,11 @@ class TradingEngine:
             new_listing_filter_days=_new_listing_days,
             alpha_subtype_filter_enabled=_alpha_filter,
         )
+        # Jun 12: stamp the eligible-universe volume rank (1 = highest 24h vol)
+        # BEFORE blacklist removal, so ranks stay comparable across config changes.
+        # Persisted per-trade as entry_pair_rank (read gate for the 50->75 expansion).
+        for _rank_i, _rank_p in enumerate(top_pairs):
+            _rank_p['rank'] = _rank_i + 1
         _blacklist_str = getattr(config.trading_config, 'pair_blacklist', '')
         _blacklist = set(p.strip() for p in _blacklist_str.split(',') if p.strip())
         if _blacklist:
@@ -5822,6 +5829,7 @@ class TradingEngine:
                     'pair': pair, 'symbol': symbol, 'volume_24h': volume_24h,
                     'indicators': indicators, 'signal': signal, 'confidence': confidence,
                     'pair_volume_ratio': _pair_volume_ratio, 'breadth_regime': breadth_regime,
+                    'rank': pair_info.get('rank'),
                 })
 
             if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
@@ -5873,6 +5881,7 @@ class TradingEngine:
             confidence = _cr['confidence']
             volume_24h = _cr['volume_24h']
             _pair_volume_ratio = _cr['pair_volume_ratio']
+            _pair_rank = _cr.get('rank')
 
             # Jun 3: NO-TRADE pairs — stay in the top-pair/volume universe (subscribed,
             # scanned, displayed) but entries are blocked. Distinct from pair_blacklist
@@ -6949,6 +6958,8 @@ class TradingEngine:
                     entry_btc_1h_slope=_current_btc_1h_slope,
                     # May 10: absolute pair 24h USD volume — sourced from binance scan
                     entry_pair_volume_24h_usd=volume_24h,
+                    # Jun 12: eligible-universe volume rank at entry (50->75 read gate)
+                    entry_pair_rank=_pair_rank,
                     # Jun 8: gap-expanding relaxation A/B tag — True if this entry was admitted
                     # by prev2_only but would have failed the strict prev1 check (MARGINAL cohort).
                     entry_gap_expand_marginal=gap_expand_marginal(indicators, signal),

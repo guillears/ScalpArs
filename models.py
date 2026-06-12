@@ -211,6 +211,11 @@ class Order(Base):
     # rather than blacklisting one-by-one. NULL on pre-deploy trades.
     entry_pair_volume_24h_usd = Column(Float, nullable=True)
 
+    # Jun 12: pair's volume rank (1 = highest 24h vol) in the eligible top-N list
+    # at entry, captured BEFORE blacklist removal. Read gate for the 50->75
+    # universe expansion: rank>50 cohort vs rank<=50 at N>=20. NULL pre-deploy.
+    entry_pair_rank = Column(Integer, nullable=True)
+
     # Liquidity-aware sizing observability (Jun 2, 2026 — see CLAUDE.md).
     # entry_desired_notional       = notional the order WOULD have opened at pre-cap (investment×leverage).
     # entry_liquidity_cap_notional = the ① per-pair liquidity cap value (_liq_cap); NULL if ① not configured.

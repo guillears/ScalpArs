@@ -2475,6 +2475,47 @@ def _compute_volume_intersection_crosstab(orders):
     }
 
 
+def _compute_pair_rank_performance(orders):
+    """Jun 12: Bucket trades by the pair's volume rank at entry (entry_pair_rank,
+    1 = highest 24h volume in the eligible universe, stamped pre-blacklist).
+
+    Read gate for the 50->75 universe expansion: at N>=20 closed trades on
+    rank>50 pairs, compare WR / Avg P&L% vs the rank<=50 cohort — revert the
+    limit to 50 if materially worse. Also reveals rank structure inside the
+    old universe (1-20 vs 21-50) for the first time. Pre-deploy trades have
+    NULL entry_pair_rank and are excluded.
+    """
+    buckets = [
+        ("1-10", 1, 10), ("11-20", 11, 20), ("21-30", 21, 30),
+        ("31-40", 31, 40), ("41-50", 41, 50),
+        ("51-60", 51, 60), ("61-75", 61, 75), (">75", 76, 10_000),
+    ]
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
+    rows = []
+    for name, lo, hi in buckets:
+        b = [o for o in closed
+             if getattr(o, 'entry_pair_rank', None) is not None
+             and lo <= o.entry_pair_rank <= hi]
+        if not b:
+            continue
+        n = len(b)
+        wins = sum(1 for o in b if o.pnl > 0)
+        n_long = sum(1 for o in b if (o.direction.value if hasattr(o.direction, 'value') else o.direction) == "LONG")
+        vols = [o.entry_pair_volume_24h_usd for o in b if getattr(o, 'entry_pair_volume_24h_usd', None)]
+        rows.append({
+            "bucket": name,
+            "n": n,
+            "n_long": n_long,
+            "n_short": n - n_long,
+            "win_rate": round(100 * wins / n, 1),
+            "avg_pnl": round(sum(o.pnl for o in b) / n, 2),
+            "avg_pct": round(sum(o.pnl_percentage or 0 for o in b) / n, 3),
+            "total_pnl": round(sum(o.pnl for o in b), 2),
+            "avg_volume_usd": round(sum(vols) / len(vols), 0) if vols else None,
+        })
+    return rows
+
+
 def _compute_pair_volume_bucket_performance(orders):
     """May 10: Bucket trades by absolute pair 24h USD volume at entry.
 
@@ -6825,6 +6866,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pair_performance": _compute_pair_performance(orders),
         # May 10: pair 24h USD volume bucket performance — find structural size threshold
         "pair_volume_bucket_performance": _compute_pair_volume_bucket_performance(orders),
+        "pair_rank_performance": _compute_pair_rank_performance(orders),
         # May 9: ATR bucket performance — tests "high volatility = loss driver" hypothesis
         "atr_bucket_performance": _compute_atr_bucket_performance(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
@@ -10973,9 +11015,11 @@ async def update_pairs_limit(data: dict):
     import config
     
     limit = data.get('limit', 50)
-    # Validate limit
-    if limit not in [5, 10, 20, 50, 100]:
-        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, 50, or 100")
+    # Validate limit (Jun 12: 100 replaced by 75 — see 50->75 expansion audit;
+    # 100 caused a rate-limit ban in the pre-batching era and Tier B $27-49M
+    # pairs are long-hostile + liquidity-cap-pinched)
+    if limit not in [5, 10, 20, 50, 75]:
+        raise HTTPException(status_code=400, detail="Limit must be 5, 10, 20, 50, or 75")
     
     current_config = load_trading_config()
     current_config.trading_pairs_limit = limit

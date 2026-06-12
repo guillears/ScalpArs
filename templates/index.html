@@ -263,7 +263,8 @@
                         <option value="5">Top 5</option>
                         <option value="10">Top 10</option>
                         <option value="20">Top 20</option>
-                        <option value="50" selected>Top 50</option>
+                        <option value="50">Top 50</option>
+                        <option value="75" selected>Top 75</option>
                     </select>
                     <span class="text-xs text-yellow-400/80 ml-2">← Only these pairs can open trades</span>
                 </div>
@@ -3916,6 +3917,31 @@
                             </thead>
                             <tbody id="pair-volume-bucket-body" class="divide-y divide-white/5">
                                 <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No volume bucket data yet (pre-May-10 trades have NULL volume — only post-deploy entries appear)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Performance by Pair Rank (Jun 12, 2026) — 50->75 universe expansion read gate -->
+                <div class="mt-6 pt-6 border-t border-cyan-900/40">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-1">🏅 Performance by Pair Rank (volume rank at entry)</h3>
+                    <p class="text-xs text-gray-500 mb-3">Rank 1 = highest 24h volume in the eligible universe at entry (stamped pre-blacklist). <span class="text-amber-400">READ GATE: at N≥20 trades on rank 51-75 pairs, compare WR / Avg P&L% vs rank ≤50 — revert the pair limit to 50 if materially worse.</span> Pre-Jun-12 trades have NULL rank and are excluded.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-white/10">
+                                    <th class="px-2 py-1 text-left">Rank</th>
+                                    <th class="px-2 py-1 text-right">#</th>
+                                    <th class="px-2 py-1 text-right">L/S</th>
+                                    <th class="px-2 py-1 text-right">Win%</th>
+                                    <th class="px-2 py-1 text-right">AvgVol</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L</th>
+                                    <th class="px-2 py-1 text-right">Avg P&L %</th>
+                                    <th class="px-2 py-1 text-right">Total P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pair-rank-perf-body" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No rank data yet (only entries after the Jun-12 deploy carry a rank)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -9021,6 +9047,18 @@
                     const _to = (document.getElementById('window-to-date') || {}).value || '';
                     if (_from && _to) { _params1.push(`from_date=${_from}`); _params1.push(`to_date=${_to}`); }
                 }
+
+                // --- Pair Rank Performance (Jun 12) ---
+                if (perf.pair_rank_performance && perf.pair_rank_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Pair Rank (volume rank at entry — Jun 12)\n');
+                    lines.push(`${'Rank'.padEnd(8)} ${'#'.padEnd(4)} ${'L/S'.padEnd(8)} ${'Win%'.padEnd(7)} ${'AvgVol'.padEnd(9)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)}`);
+                    for (const r of perf.pair_rank_performance) {
+                        const dir = `${r.n_long}L/${r.n_short}S`;
+                        const av = r.avg_volume_usd != null ? '$' + (r.avg_volume_usd/1e6).toFixed(0) + 'M' : '-';
+                        lines.push(`${r.bucket.padEnd(8)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${av.padStart(9)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
+                    }
+                }
                 const regimeParam = _params1.length ? '?' + _params1.join('&') : '';
                 const [perfRes, cfgRes, logRes, statusRes, bnbRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance${regimeParam}`),
@@ -10441,6 +10479,18 @@
                     for (const r of perf.pair_volume_bucket_performance) {
                         const dir = `${r.n_long}L/${r.n_short}S`;
                         lines.push(`${r.bucket.padEnd(13)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${_fmtVolUSD2(r.avg_volume_usd).padStart(10)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${(r.avg_rsi !== null ? r.avg_rsi.toFixed(1) : '-').padStart(7)} ${(r.avg_adx !== null ? r.avg_adx.toFixed(2) : '-').padStart(7)}`);
+                    }
+                }
+
+                // --- Pair Rank Performance (Jun 12) ---
+                if (perf.pair_rank_performance && perf.pair_rank_performance.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Performance by Pair Rank (volume rank at entry — Jun 12)\n');
+                    lines.push(`${'Rank'.padEnd(8)} ${'#'.padEnd(4)} ${'L/S'.padEnd(8)} ${'Win%'.padEnd(7)} ${'AvgVol'.padEnd(9)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(9)} ${'Total$'.padEnd(12)}`);
+                    for (const r of perf.pair_rank_performance) {
+                        const dir = `${r.n_long}L/${r.n_short}S`;
+                        const av = r.avg_volume_usd != null ? '$' + (r.avg_volume_usd/1e6).toFixed(0) + 'M' : '-';
+                        lines.push(`${r.bucket.padEnd(8)} ${String(r.n).padEnd(4)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${av.padStart(9)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${((r.avg_pct >= 0 ? '+' : '') + r.avg_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)}`);
                     }
                 }
 
@@ -15324,6 +15374,33 @@
                     }
                 }
 
+
+                // Performance by Pair Rank (Jun 12 — 50->75 expansion read gate)
+                const prBody = document.getElementById('pair-rank-perf-body');
+                if (prBody) {
+                    if (data.pair_rank_performance && data.pair_rank_performance.length > 0) {
+                        const _fmtVolR = (v) => v == null ? '-' : (v >= 1e9 ? '$' + (v/1e9).toFixed(2) + 'B' : '$' + (v/1e6).toFixed(0) + 'M');
+                        prBody.innerHTML = data.pair_rank_performance.map(r => {
+                            const wrCls = r.win_rate >= 55 ? 'text-emerald-400' : (r.win_rate < 45 ? 'text-red-400' : 'text-gray-300');
+                            const pctCls = (r.avg_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const totCls = (r.total_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const avgCls = (r.avg_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const newTier = (r.bucket === '51-60' || r.bucket === '61-75' || r.bucket === '>75');
+                            return `<tr class="hover:bg-white/5 ${newTier ? 'bg-amber-500/5' : ''}">
+                                <td class="px-2 py-1.5 ${newTier ? 'text-amber-300' : 'text-cyan-300'} font-medium">${r.bucket}${newTier ? ' ✦' : ''}</td>
+                                <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right"><span class="text-emerald-400">${r.n_long}L</span>/<span class="text-red-400">${r.n_short}S</span></td>
+                                <td class="px-2 py-1.5 text-right ${wrCls}">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${_fmtVolR(r.avg_volume_usd)}</td>
+                                <td class="px-2 py-1.5 text-right ${avgCls}">$${r.avg_pnl.toFixed(2)}</td>
+                                <td class="px-2 py-1.5 text-right ${pctCls}">${r.avg_pct >= 0 ? '+' : ''}${r.avg_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1.5 text-right ${totCls} font-bold">$${r.total_pnl.toFixed(2)}</td>
+                            </tr>`;
+                        }).join('');
+                    } else {
+                        prBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No rank data yet (only entries after the Jun-12 deploy carry a rank)</td></tr>';
+                    }
+                }
                 // ATR(14)% Bucket Performance (May 9)
                 const atrBucketBody = document.getElementById('atr-bucket-perf-body');
                 if (atrBucketBody) {

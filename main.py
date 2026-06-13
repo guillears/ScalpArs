@@ -8808,7 +8808,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
         }
 
     rows = []
-    sources = ["FAN_RATIO_GATE", "ATR_GAP_LONG", "PAIR_TREND_FILTER", "BTC_RSI_ADX_CROSS"]
+    sources = ["FAN_RATIO_GATE", "ATR_GAP_LONG", "PAIR_TREND_FILTER", "BTC_RSI_ADX_CROSS", "LONG_UNMATCHED_ONLY"]
     for src in sources:
         for fd in ("LONG", "SHORT"):
             sub = [r for r in flips if r.source_filter == src and r.flip_direction == fd]

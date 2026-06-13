@@ -2881,6 +2881,11 @@ class TradingEngine:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
             except Exception:
                 pass
+            # Jun 13: phantom flip — matched longs are countertrend/exhaustion signatures
+            # (C7 dead-cat bounce, W6 top) that fail as longs → fade to SHORT. Strongest
+            # flip candidate (historical N=271, +0.142pp/trade proxy; C7 sub-cell +0.259).
+            # Measures REALIZED matched-long→short P&L. Blocked dir LONG → flip SHORT.
+            _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY")
             return None
         _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = self._lookup_pattern_cell_rule(
             direction=direction,

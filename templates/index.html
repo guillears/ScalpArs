@@ -2385,6 +2385,8 @@
                                 <th class="px-2 py-1 text-left">Blocked by</th>
                                 <th class="px-2 py-1 text-left">Flip dir</th>
                                 <th class="px-2 py-1 text-right">N</th>
+                                <th class="px-2 py-1 text-right" title="distinct pairs in this cell — N spread across pairs, not 1-2 sticky ones">Pairs</th>
+                                <th class="px-2 py-1 text-right" title="% of N from the single most common pair — ≥60% = concentrated, not a real edge">Top%</th>
                                 <th class="px-2 py-1 text-right">WR%</th>
                                 <th class="px-2 py-1 text-right">Avg %</th>
                                 <th class="px-2 py-1 text-right">Total %</th>
@@ -2394,7 +2396,7 @@
                                 <th class="px-2 py-1 text-left">Verdict</th>
                             </tr></thead>
                             <tbody id="phantom-flip-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No phantom flips yet (only entries blocked after the Jun-13 deploy seed virtual fades)</td></tr>
+                                <tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No phantom flips yet (only entries blocked after the Jun-13 deploy seed virtual fades)</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -8105,10 +8107,12 @@
             if (_pf1.rows && _pf1.rows.length) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Phantom Flip Tracker (observation-only) — fade the block: blocked entry -> opposite virtual position, REALIZED P&L (base SL -0.70/arm 0.45/trail 0.25)\n');
-                lines.push('Blocked by            Flip   N    WR%   Avg%      Total%    SL%   AvgPk    AvgTr    Verdict');
-                lines.push('-'.repeat(98));
+                lines.push('Blocked by            Flip   N   Pairs   Top%   WR%   Avg%      Total%    SL%   AvgPk    AvgTr    Verdict');
+                lines.push('-'.repeat(116));
                 _pf1.rows.forEach(r => {
-                    lines.push(`${(r.source||'').padEnd(21)} ${(r.flip_direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${('+'+r.avg_peak.toFixed(2)).padStart(6)}  ${r.avg_trough.toFixed(2).padStart(6)}  ${r.verdict}`);
+                    const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
+                    const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
+                    lines.push(`${(r.source||'').padEnd(21)} ${(r.flip_direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${('+'+r.avg_peak.toFixed(2)).padStart(6)}  ${r.avg_trough.toFixed(2).padStart(6)}  ${r.verdict}`);
                 });
                 if (_pf1.total && _pf1.total.n) {
                     const t = _pf1.total;
@@ -9832,10 +9836,12 @@
                 if (_pf1.rows && _pf1.rows.length) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Phantom Flip Tracker (observation-only) — fade the block: blocked entry -> opposite virtual position, REALIZED P&L (base SL -0.70/arm 0.45/trail 0.25)\n');
-                    lines.push('Blocked by            Flip   N    WR%   Avg%      Total%    SL%   AvgPk    AvgTr    Verdict');
-                    lines.push('-'.repeat(98));
+                    lines.push('Blocked by            Flip   N   Pairs   Top%   WR%   Avg%      Total%    SL%   AvgPk    AvgTr    Verdict');
+                    lines.push('-'.repeat(116));
                     _pf1.rows.forEach(r => {
-                        lines.push(`${(r.source||'').padEnd(21)} ${(r.flip_direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${('+'+r.avg_peak.toFixed(2)).padStart(6)}  ${r.avg_trough.toFixed(2).padStart(6)}  ${r.verdict}`);
+                        const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
+                        const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
+                        lines.push(`${(r.source||'').padEnd(21)} ${(r.flip_direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${('+'+r.avg_peak.toFixed(2)).padStart(6)}  ${r.avg_trough.toFixed(2).padStart(6)}  ${r.verdict}`);
                     });
                     if (_pf1.total && _pf1.total.n) {
                         const t = _pf1.total;
@@ -12525,10 +12531,13 @@
                                 const vc = r.verdict && r.verdict.startsWith('★') ? 'text-emerald-400' : (r.verdict && r.verdict.startsWith('✗') ? 'text-red-400' : 'text-gray-400');
                                 const ac = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const tc = r.total_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const _topc = (r.top_pair_share!=null && r.top_pair_share>=60) ? 'text-amber-400' : 'text-gray-400';
                                 return `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1.5 text-fuchsia-300">${r.source}</td>
                                     <td class="px-2 py-1.5">${r.flip_direction}</td>
                                     <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-300">${r.distinct_pairs!=null?r.distinct_pairs:'-'}</td>
+                                    <td class="px-2 py-1.5 text-right ${_topc}" title="${r.top_pair||''}">${r.top_pair_share!=null?r.top_pair_share.toFixed(0)+'%':'-'}</td>
                                     <td class="px-2 py-1.5 text-right ${r.wr>=50?'text-emerald-400':'text-gray-300'}">${r.wr.toFixed(0)}%</td>
                                     <td class="px-2 py-1.5 text-right ${ac}">${r.avg_pct>=0?'+':''}${r.avg_pct.toFixed(3)}%</td>
                                     <td class="px-2 py-1.5 text-right ${tc} font-bold">${r.total_pct>=0?'+':''}${r.total_pct.toFixed(2)}%</td>
@@ -12539,7 +12548,7 @@
                                 </tr>`;
                             }).join('');
                         } else {
-                            _pfBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No phantom flips closed yet (blocked entries seed virtual fades; they resolve over up to 45min)</td></tr>';
+                            _pfBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No phantom flips closed yet (blocked entries seed virtual fades; they resolve over up to 45min)</td></tr>';
                         }
                     }
                     const _pfTot = document.getElementById('phantom-flip-total');

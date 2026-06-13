@@ -8797,6 +8797,13 @@ async def _compute_phantom_flip_performance(db, is_paper):
         wins = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
         tot = sum((r.pnl_pct or 0) for r in rs)
         sls = sum(1 for r in rs if r.exit_reason == 'sl')
+        # Per-pair concentration (CLAUDE.md: a cell's N is only promotion-grade if it's
+        # spread across pairs, not 1-2 sticky ones re-firing every 30min). Each phantom
+        # is already de-duped to one-per-pair-per-30min, so distinct_pairs < n means the
+        # SAME pair faded in separate episodes — correlated, not independent samples.
+        from collections import Counter
+        pc = Counter((r.pair or '?') for r in rs)
+        top_pair, top_n = pc.most_common(1)[0]
         return {
             "n": n,
             "wr": round(100.0 * wins / n, 1),
@@ -8805,6 +8812,9 @@ async def _compute_phantom_flip_performance(db, is_paper):
             "sl_rate": round(100.0 * sls / n, 0),
             "avg_peak": round(sum((r.peak_pct or 0) for r in rs) / n, 3),
             "avg_trough": round(sum((r.trough_pct or 0) for r in rs) / n, 3),
+            "distinct_pairs": len(pc),
+            "top_pair": top_pair,
+            "top_pair_share": round(100.0 * top_n / n, 0),
         }
 
     rows = []
@@ -8817,14 +8827,20 @@ async def _compute_phantom_flip_performance(db, is_paper):
                 a.update({"source": src, "flip_direction": fd})
                 rows.append(a)
     total = _agg(flips) or {}
-    # verdict per row: does the flip pay?
+    # verdict per row: does the flip pay? Concentration gates the ★ — a great-looking
+    # cell driven by one sticky pair (top_pair_share>=60%) is a mirage, not an edge
+    # (CLAUDE.md per-pair concentration rule). It can't earn the green check until the
+    # N is spread; we surface it as ⚠ concentrated instead.
     for r in rows:
+        _conc = r["n"] >= 5 and r.get("top_pair_share", 0) >= 60
         if r["n"] < 5:
             r["verdict"] = "⏳ Low N"
-        elif r["avg_pct"] >= 0.10 and r["wr"] >= 50:
-            r["verdict"] = "★ flip pays"
         elif r["avg_pct"] <= -0.05:
             r["verdict"] = "✗ whipsaws"
+        elif _conc:
+            r["verdict"] = f"⚠ {r['top_pair']} {int(r['top_pair_share'])}%"
+        elif r["avg_pct"] >= 0.10 and r["wr"] >= 50:
+            r["verdict"] = "★ flip pays"
         else:
             r["verdict"] = "⚠ marginal"
     return {"rows": rows, "total": total}

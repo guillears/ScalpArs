@@ -8100,6 +8100,23 @@
             }
             // ===== LEASH SHADOW END =====
 
+            // ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) =====
+            const _pf1 = perf.phantom_flip || {};
+            if (_pf1.rows && _pf1.rows.length) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Phantom Flip Tracker (observation-only) — fade the block: blocked entry -> opposite virtual position, REALIZED P&L (base SL -0.70/arm 0.45/trail 0.25)\n');
+                lines.push('Blocked by            Flip   N    WR%   Avg%      Total%    SL%   AvgPk    AvgTr    Verdict');
+                lines.push('-'.repeat(98));
+                _pf1.rows.forEach(r => {
+                    lines.push(`${(r.source||'').padEnd(21)} ${(r.flip_direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${('+'+r.avg_peak.toFixed(2)).padStart(6)}  ${r.avg_trough.toFixed(2).padStart(6)}  ${r.verdict}`);
+                });
+                if (_pf1.total && _pf1.total.n) {
+                    const t = _pf1.total;
+                    lines.push(`All phantom flips: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}%, SL-rate ${t.sl_rate}%`);
+                }
+            }
+            // ===== PHANTOM FLIP END =====
+
 
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
@@ -9809,6 +9826,23 @@
                     lines.push('');
                 }
                 // ===== LEASH SHADOW END =====
+
+                // ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) =====
+                const _pf1 = perf.phantom_flip || {};
+                if (_pf1.rows && _pf1.rows.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Phantom Flip Tracker (observation-only) — fade the block: blocked entry -> opposite virtual position, REALIZED P&L (base SL -0.70/arm 0.45/trail 0.25)\n');
+                    lines.push('Blocked by            Flip   N    WR%   Avg%      Total%    SL%   AvgPk    AvgTr    Verdict');
+                    lines.push('-'.repeat(98));
+                    _pf1.rows.forEach(r => {
+                        lines.push(`${(r.source||'').padEnd(21)} ${(r.flip_direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${('+'+r.avg_peak.toFixed(2)).padStart(6)}  ${r.avg_trough.toFixed(2).padStart(6)}  ${r.verdict}`);
+                    });
+                    if (_pf1.total && _pf1.total.n) {
+                        const t = _pf1.total;
+                        lines.push(`All phantom flips: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}%, SL-rate ${t.sl_rate}%`);
+                    }
+                }
+                // ===== PHANTOM FLIP END =====
 
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)

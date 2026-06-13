@@ -6343,6 +6343,28 @@ class TradingEngine:
                             self._last_pair_block_reason[pair] = "PAIR_ATR_MAX"
                             signal = "NO_TRADE"
 
+            # Jun 13 — ATR×GAP LONG block (volatile-and-already-extended quadrant).
+            # High-ATR pair that has ALREADY run far above its 4hr trend = buying the
+            # exhaustion top → mean-reverts (ENJ -$253/57s). Unmatched longs ATR>=1.0 &
+            # gap>=0.5: 31% WR -$611 demux; same high-ATR with gap<0.5 = 64-75% WR
+            # POSITIVE (the genuine runner — preserved). gap = (EMA13-EMA50)/EMA50*100,
+            # matching the entry_pair_ema20_ema50_gap_pct field. Counter ATR_GAP_LONG.
+            if signal == "LONG" and getattr(config.trading_config.thresholds, 'atr_gap_block_long_enabled', False):
+                _ag_atr_min = getattr(config.trading_config.thresholds, 'atr_gap_block_atr_min_long', 1.0) or 0.0
+                _ag_gap_min = getattr(config.trading_config.thresholds, 'atr_gap_block_gap_min_long', 0.5)
+                if _ag_atr_min > 0:
+                    _ag_atr = indicators.get('atr'); _ag_price = indicators.get('price')
+                    _ag_e13 = indicators.get('ema13'); _ag_e50 = indicators.get('ema50')
+                    if (_ag_atr is not None and _ag_price and _ag_price > 0
+                            and _ag_e13 is not None and _ag_e50 is not None and _ag_e50 != 0):
+                        _ag_atr_pct = (_ag_atr / _ag_price) * 100
+                        _ag_gap_pct = (_ag_e13 - _ag_e50) / _ag_e50 * 100
+                        if _ag_atr_pct >= _ag_atr_min and _ag_gap_pct >= _ag_gap_min:
+                            logger.info(f"[ATR_GAP_LONG] {pair}: LONG blocked — ATR {_ag_atr_pct:.2f}% >= {_ag_atr_min}% AND pair-gap {_ag_gap_pct:.2f}% >= {_ag_gap_min}% (volatile + already-extended → reverts)")
+                            self._record_filter_block("ATR_GAP_LONG", "LONG", had_room=_had_room)
+                            self._last_pair_block_reason[pair] = "ATR_GAP_LONG"
+                            signal = "NO_TRADE"
+
             # Jun 10 — RSI-SPIKE GUARD (LONG): block when the pair's RSI one candle ago was
             # below the floor = RSI teleported from neutral into the entry zone in a single
             # candle = first-candle pump chase (VVV 44.6->65, PIPPIN 45.5->58.3). Complements
@@ -6647,9 +6669,17 @@ class TradingEngine:
             #   SHORT with pair_ema13 > pair_ema50 → pair in 4hr uptrend
             # 6-trade cross-sample evidence: May 5 SHORTs vs uptrend (4 lost) +
             # May 7 LONGs vs downtrend (2 lost) = 0/6. Defensive ship default ON.
+            # Pair Trend Filter — pair EMA13 vs EMA50, Jun 13: per-direction split.
+            # LONG: block when EMA13 < EMA50 (countertrend long). Currently OFF
+            #   (gap<0 unmatched longs are ~breakeven, 58% WR — not worth blocking).
+            # SHORT: block when pair gap >= short_gap_max (default 0 = EMA13>EMA50 =
+            #   shorting before the breakdown confirms → bounces). Counter PAIR_TREND_FILTER.
             if signal in ["LONG", "SHORT"]:
-                _pair_trend_enabled = getattr(config.trading_config.thresholds, 'pair_trend_filter_enabled', True)
-                if _pair_trend_enabled:
+                _th_pt = config.trading_config.thresholds
+                _pt_long_en = getattr(_th_pt, 'pair_trend_filter_long_enabled', False)
+                _pt_short_en = getattr(_th_pt, 'pair_trend_filter_short_enabled', True)
+                _pt_short_gap_max = getattr(_th_pt, 'pair_trend_short_gap_max', 0.0)
+                if (signal == "LONG" and _pt_long_en) or (signal == "SHORT" and _pt_short_en):
                     _pair_ema13 = indicators.get('ema13')
                     _pair_ema50 = indicators.get('ema50')
                     if _pair_ema13 is not None and _pair_ema50 is not None and _pair_ema50 != 0:
@@ -6662,10 +6692,10 @@ class TradingEngine:
                             self._record_filter_block("PAIR_TREND_FILTER", "LONG", had_room=_had_room)
                             self._last_pair_block_reason[pair] = "PAIR_TREND_FILTER"
                             signal = "NO_TRADE"
-                        elif signal == "SHORT" and _pair_ema13 > _pair_ema50:
+                        elif signal == "SHORT" and _pair_gap_pct >= _pt_short_gap_max:
                             logger.info(
-                                f"[PAIR_TREND_FILTER] {pair}: SHORT blocked — pair EMA13 {_pair_ema13:.6f} > EMA50 {_pair_ema50:.6f} "
-                                f"(gap {_pair_gap_pct:.4f}% — pair in 4hr uptrend, countertrend SHORT blocked)"
+                                f"[PAIR_TREND_FILTER] {pair}: SHORT blocked — pair gap {_pair_gap_pct:.4f}% >= {_pt_short_gap_max}% "
+                                f"(pair not yet below its 4hr trend → shorting before breakdown confirms → bounces)"
                             )
                             self._record_filter_block("PAIR_TREND_FILTER", "SHORT", had_room=_had_room)
                             self._last_pair_block_reason[pair] = "PAIR_TREND_FILTER"

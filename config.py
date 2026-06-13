@@ -370,9 +370,17 @@ class SignalThresholds(BaseModel):
     #   pair_ema13 < pair_ema50 → pair in 4hr downtrend → block LONGs
     #   pair_ema13 > pair_ema50 → pair in 4hr uptrend → block SHORTs
     # Defensive ship — same primitive operating one level down from BTC,
-    # 6-trade cross-sample evidence (May 5 SHORTs against pair uptrends +
-    # May 7 LONGs against pair downtrends, all 6 lost). Default ON.
-    pair_trend_filter_enabled: bool = True
+    # Pair Trend Filter — pair EMA13 vs EMA50. Jun 13: SPLIT per-direction.
+    # SHORT side: block when pair gap >= pair_trend_short_gap_max (default 0 =
+    # EMA13>EMA50 = pair not yet below its 4hr trend → shorting before the
+    # breakdown confirms → bounces). Book shorts gap>=0: 0% WR -$247 (N=6 book /
+    # 39 all-pool, all May8-Jun1 while this was OFF). Watchlist: tighten the
+    # threshold toward -0.2 (the -0.2..0 mild zone = 43% WR -$192).
+    # LONG side: kept OFF — gap<0 unmatched longs are N=67, 58% WR, -$27 (≈breakeven),
+    # not worth blocking. Legacy `pair_trend_filter_enabled` retired into these two.
+    pair_trend_filter_long_enabled: bool = False
+    pair_trend_filter_short_enabled: bool = True
+    pair_trend_short_gap_max: float = 0.0  # block SHORT when pair (EMA13-EMA50)/EMA50% >= this
     tick_momentum_exit_enabled: bool = False  # Real-time tick-based momentum exit via WebSocket
     tick_momentum_exit_min_profit: float = 0.05  # Min P&L % to trigger tick momentum exit
     tick_momentum_exit_min_profit_flagged: float = -0.10  # Min P&L % for flagged trades (Signal Lost Flag system)
@@ -446,6 +454,19 @@ class SignalThresholds(BaseModel):
     # winner = HOME at ATR 2.49; ESPORTS (ATR 4.68, p100 outlier meme) was a -$220 DOA.
     # Blocks only pairs outside everything ever validated. 0 = disabled. Live = 2.5.
     pair_atr_max_long: float = 0.0
+    # Jun 13 — ATR×GAP LONG block (DISCIPLINE-OVERRIDE, N=16 full / N=5 recent < 30).
+    # The "volatile-and-already-extended" quadrant: a high-ATR pair that has ALREADY
+    # run far above its 4hr trend = buying the exhaustion top, which mean-reverts
+    # (ENJ -$253 in 57s). Unmatched longs ATR>=1.0 & gap>=0.5: N=16 31%WR -$611 demux
+    # (recent 12-batch: N=5 20%WR -$414); the SAME high-ATR with gap<0.5 = 64-75%WR
+    # POSITIVE (the genuine runner — PRESERVED, do NOT widen the gap floor toward it).
+    # gap = (EMA13-EMA50)/EMA50*100, matches entry_pair_ema20_ema50_gap_pct field.
+    # Orthogonal to keep-only-unmatched (lives INSIDE the unmatched cohort; removing
+    # the quadrant rehabilitates NO banned C/W pattern). 0 atr_min OR disabled = off.
+    # REVERT GATE: drop if would-be-blocked longs >=50% WR on N>=8 fresh.
+    atr_gap_block_long_enabled: bool = False
+    atr_gap_block_atr_min_long: float = 1.0
+    atr_gap_block_gap_min_long: float = 0.5
     # Jun 10: RSI-SPIKE GUARD (LONG) — block when the pair's RSI one candle ago was below
     # this floor, i.e. RSI teleported from neutral into the entry zone in a single candle =
     # first-candle pump chase (VVV 44.6->65, PIPPIN 45.5->58.3). Complements the fan-window

@@ -5415,6 +5415,20 @@
                                 <input type="number" step="0.5" min="0" id="config-rsi-spike-min-jump-long" class="w-16 ml-1 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="4" title="Min 1-candle RSI jump (rsi - rsi_prev) for the spike guard to fire. 0 = jump condition off (pure floor).">
                             </label>
                         </div>
+                        <!-- Jun 13: ATR x GAP LONG block — volatile-and-already-extended quadrant (ENJ -$253/57s). -->
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 border-t border-white/5 pt-2">
+                            <label class="flex items-center cursor-pointer" title="Block LONG when the pair is BOTH high-ATR AND already extended above its 4hr trend = buying the exhaustion top (reverts). High-ATR with LOW gap = the genuine runner, PRESERVED. gap=(EMA13-EMA50)/EMA50. Counter ATR_GAP_LONG. DISCIPLINE-OVERRIDE ship (N=16 full/5 recent<30). Revert if would-be-blocked longs >=50% WR on N>=8 fresh.">
+                                <input type="checkbox" id="config-atr-gap-block-long-enabled" class="mr-1" checked>
+                                <span class="text-xs text-amber-300">🚫 ATR×Gap LONG block</span>
+                            </label>
+                            <span class="text-xs text-gray-400 ml-1">ATR ≥</span>
+                            <input type="number" step="0.05" min="0" id="config-atr-gap-block-atr-min-long" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="1.0" title="Min pair ATR% for the block. 0 = filter off.">
+                            <span class="text-xs text-gray-500">%</span>
+                            <span class="text-xs text-gray-400 ml-2">AND pair-gap ≥</span>
+                            <input type="number" step="0.05" id="config-atr-gap-block-gap-min-long" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="0.5" title="Min pair EMA13-EMA50 gap% (distance above 4hr trend). Keep at 0.5 — lowering it toward the runner zone (gap<0.5 = 64-75% WR) would block winners.">
+                            <span class="text-xs text-gray-500">%</span>
+                            <span class="text-xs text-gray-600 ml-1">volatile + already-extended → reverts (ENJ)</span>
+                        </div>
                         <!-- Jun 3: BTC-Acceleration Chase filter (stateful, evolution vs last LONG). Block LONG when BTC EMA20 slope is higher than at the last LONG within the window = chasing a maturing move. LONG only. -->
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2">
                             <label class="flex items-center cursor-pointer" title="STATEFUL evolution filter. Blocks a LONG when the live BTC EMA20 slope is HIGHER than it was at the most recent LONG opened within the window below = BTC accelerated since your last entry = chasing a maturing move (late). Cross-batch 7-batch proxy (30min): 30.8% WR block cohort, Σ-3.1%. Caught the 06-03 4-loss cluster (0/4) while keeping both winners. LONG only; SHORT side untested.">
@@ -5460,13 +5474,21 @@
                              Compares pair EMA13 vs EMA50. Blocks countertrend entries:
                              pair EMA13 > EMA50 blocks SHORTs (pair in 4hr uptrend),
                              pair EMA13 < EMA50 blocks LONGs (pair in 4hr downtrend). -->
-                        <div class="flex items-center gap-3 mt-3">
-                            <label class="relative inline-flex items-center cursor-pointer">
-                                <input type="checkbox" id="config-pair-trend-filter-enabled" class="sr-only peer" checked>
+                        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-3">
+                            <span class="text-sm text-gray-400">Pair Trend Filter (EMA13 vs EMA50):</span>
+                            <label class="relative inline-flex items-center cursor-pointer" title="Block LONG when pair EMA13 < EMA50 (pair in 4hr downtrend, countertrend long). OFF by default — gap<0 unmatched longs are ~breakeven (58% WR).">
+                                <input type="checkbox" id="config-pair-trend-filter-long-enabled" class="sr-only peer">
                                 <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
-                                <span class="ml-2 text-sm text-gray-400">Pair Trend Filter (EMA13 vs EMA50)</span>
+                                <span class="ml-2 text-sm text-gray-400">LONG</span>
                             </label>
-                            <span class="text-xs text-gray-500">Pair-level analog of BTC Trend Filter — blocks countertrend pair entries (pair uptrend → no SHORTs, downtrend → no LONGs)</span>
+                            <label class="relative inline-flex items-center cursor-pointer" title="Block SHORT when pair gap >= the threshold (default 0 = EMA13>EMA50 = shorting before the breakdown confirms → bounces). Book shorts gap>=0: 0% WR -$247. Watchlist: tighten toward -0.2.">
+                                <input type="checkbox" id="config-pair-trend-filter-short-enabled" class="sr-only peer" checked>
+                                <div class="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-300 after:border after:border-gray-300 after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600"></div>
+                                <span class="ml-2 text-sm text-gray-400">SHORT</span>
+                            </label>
+                            <span class="text-xs text-gray-400 ml-1">block SHORT when gap ≥</span>
+                            <input type="number" step="0.05" id="config-pair-trend-short-gap-max" class="w-16 bg-white/5 border border-amber-500/40 rounded px-2 py-1 text-amber-200 text-center" value="0.0" title="Block SHORT when pair (EMA13-EMA50)/EMA50% >= this. 0 = block any pair at/above its 4hr trend. Watchlist: tighten to -0.2 (the -0.2..0 mild zone = 43% WR).">
+                            <span class="text-xs text-gray-500">%</span>
                         </div>
                     </div>
                     <div class="mb-2 px-4">
@@ -16673,7 +16695,9 @@
                 document.getElementById('config-btc-adx-max-short').value = config.thresholds.btc_adx_max_short !== undefined ? config.thresholds.btc_adx_max_short : 100;
                 document.getElementById('config-btc-adx-dir-long').value = config.thresholds.btc_adx_dir_long || 'both';
                 document.getElementById('config-btc-trend-filter-enabled').checked = !!config.thresholds.btc_trend_filter_enabled;
-                document.getElementById('config-pair-trend-filter-enabled').checked = config.thresholds.pair_trend_filter_enabled !== undefined ? !!config.thresholds.pair_trend_filter_enabled : true;
+                { const _e=document.getElementById('config-pair-trend-filter-long-enabled'); if(_e) _e.checked = config.thresholds.pair_trend_filter_long_enabled !== undefined ? !!config.thresholds.pair_trend_filter_long_enabled : false; }
+                { const _e=document.getElementById('config-pair-trend-filter-short-enabled'); if(_e) _e.checked = config.thresholds.pair_trend_filter_short_enabled !== undefined ? !!config.thresholds.pair_trend_filter_short_enabled : true; }
+                { const _e=document.getElementById('config-pair-trend-short-gap-max'); if(_e) _e.value = config.thresholds.pair_trend_short_gap_max !== undefined ? config.thresholds.pair_trend_short_gap_max : 0.0; }
                 document.getElementById('config-btc-adx-dir-short').value = config.thresholds.btc_adx_dir_short || 'both';
                 document.getElementById('config-adx-dir-long').value = config.thresholds.adx_dir_long || 'both';
                 document.getElementById('config-adx-dir-short').value = config.thresholds.adx_dir_short || 'both';
@@ -16758,6 +16782,9 @@
                 if (_b1hMinS) _b1hMinS.value = config.thresholds.btc_1h_slope_min_short !== undefined ? config.thresholds.btc_1h_slope_min_short : 0;
                 { const _e=document.getElementById('config-btc-rsi-1h-min-short'); if(_e) _e.value = config.thresholds.btc_rsi_1h_min_short !== undefined ? config.thresholds.btc_rsi_1h_min_short : 0; }
                 { const _e=document.getElementById('config-pair-atr-max-long'); if(_e) _e.value = config.thresholds.pair_atr_max_long !== undefined ? config.thresholds.pair_atr_max_long : 0; }
+                { const _e=document.getElementById('config-atr-gap-block-long-enabled'); if(_e) _e.checked = config.thresholds.atr_gap_block_long_enabled !== undefined ? !!config.thresholds.atr_gap_block_long_enabled : false; }
+                { const _e=document.getElementById('config-atr-gap-block-atr-min-long'); if(_e) _e.value = config.thresholds.atr_gap_block_atr_min_long !== undefined ? config.thresholds.atr_gap_block_atr_min_long : 1.0; }
+                { const _e=document.getElementById('config-atr-gap-block-gap-min-long'); if(_e) _e.value = config.thresholds.atr_gap_block_gap_min_long !== undefined ? config.thresholds.atr_gap_block_gap_min_long : 0.5; }
                 { const _e=document.getElementById('config-rsi-prev-min-long'); if(_e) _e.value = config.thresholds.rsi_prev_min_long !== undefined ? config.thresholds.rsi_prev_min_long : 0; }
                 { const _e=document.getElementById('config-rsi-spike-min-jump-long'); if(_e) _e.value = config.thresholds.rsi_spike_min_jump_long !== undefined ? config.thresholds.rsi_spike_min_jump_long : 0; }
                 const _evoL = document.getElementById('config-evo-chase-filter-long');
@@ -17935,7 +17962,9 @@
                     btc_adx_max_short: safeFloat(document.getElementById('config-btc-adx-max-short').value),
                     btc_adx_dir_long: document.getElementById('config-btc-adx-dir-long').value,
                     btc_trend_filter_enabled: document.getElementById('config-btc-trend-filter-enabled').checked,
-                    pair_trend_filter_enabled: document.getElementById('config-pair-trend-filter-enabled').checked,
+                    pair_trend_filter_long_enabled: (document.getElementById('config-pair-trend-filter-long-enabled')||{checked:false}).checked,
+                    pair_trend_filter_short_enabled: (document.getElementById('config-pair-trend-filter-short-enabled')||{checked:true}).checked,
+                    pair_trend_short_gap_max: safeFloat((document.getElementById('config-pair-trend-short-gap-max')||{}).value || 0),
                     btc_adx_dir_short: document.getElementById('config-btc-adx-dir-short').value,
                     adx_dir_long: document.getElementById('config-adx-dir-long').value,
                     adx_dir_short: document.getElementById('config-adx-dir-short').value,
@@ -17994,6 +18023,9 @@
                     btc_1h_slope_min_short: safeFloat((document.getElementById('config-btc-1h-slope-min-short')||{}).value || 0),
                     btc_rsi_1h_min_short: safeFloat((document.getElementById('config-btc-rsi-1h-min-short')||{}).value || 0),
                     pair_atr_max_long: safeFloat((document.getElementById('config-pair-atr-max-long')||{}).value || 0),
+                    atr_gap_block_long_enabled: (document.getElementById('config-atr-gap-block-long-enabled')||{checked:false}).checked,
+                    atr_gap_block_atr_min_long: safeFloat((document.getElementById('config-atr-gap-block-atr-min-long')||{}).value || 0),
+                    atr_gap_block_gap_min_long: safeFloat((document.getElementById('config-atr-gap-block-gap-min-long')||{}).value || 0),
                     rsi_prev_min_long: safeFloat((document.getElementById('config-rsi-prev-min-long')||{}).value || 0),
                     rsi_spike_min_jump_long: safeFloat((document.getElementById('config-rsi-spike-min-jump-long')||{}).value || 0),
                     evo_chase_filter_long_enabled: (document.getElementById('config-evo-chase-filter-long')||{}).checked || false,

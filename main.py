@@ -23,7 +23,7 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -84,6 +84,7 @@ async def monitor_loop():
                 await trading_engine.update_open_positions(db)
                 await trading_engine.update_orders_cache(db)
                 await trading_engine.update_post_exit_tracking(db)
+                await trading_engine.update_phantom_flips(db)
 
                 _reconcile_counter += 1
                 if _reconcile_counter >= _RECONCILE_INTERVAL and not trading_engine.is_paper_mode:
@@ -6927,6 +6928,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pattern_w_unmatched_winners": _compute_unmatched_winners(orders, limit=20),
         "pattern_truly_unmatched": _compute_truly_unmatched(orders, limit=20),  # TRULY UNMATCHED (no C, no W) — Jun 1
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
+        "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -8769,6 +8771,65 @@ def _compute_truly_unmatched(orders, limit=20):
 
 
 # ===================== LEASH SHADOW START (May 30, 2026 — observation-only) =====================
+async def _compute_phantom_flip_performance(db, is_paper):
+    """Phantom Flip Tracker performance (Jun 13, observation-only). Reads closed
+    PhantomFlip rows (virtual fade-the-block positions) and aggregates by source
+    filter x flip direction. Answers: does the reversion a block implies actually
+    pay (positive realized P&L after SL/trailing) or just whipsaw?
+
+    NOTE granularity: phantoms are priced from the 1s websocket feed and exited by
+    a base-SL(-0.70)/arm(0.45)/trail(0.25) model — realized %, not max-excursion.
+    """
+    try:
+        result = await db.execute(
+            select(PhantomFlip).where(
+                and_(PhantomFlip.is_paper == is_paper, PhantomFlip.pnl_pct.isnot(None))
+            )
+        )
+        flips = result.scalars().all()
+    except Exception:
+        return {"rows": [], "total": {}}
+
+    def _agg(rs):
+        n = len(rs)
+        if n == 0:
+            return None
+        wins = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
+        tot = sum((r.pnl_pct or 0) for r in rs)
+        sls = sum(1 for r in rs if r.exit_reason == 'sl')
+        return {
+            "n": n,
+            "wr": round(100.0 * wins / n, 1),
+            "avg_pct": round(tot / n, 3),
+            "total_pct": round(tot, 2),
+            "sl_rate": round(100.0 * sls / n, 0),
+            "avg_peak": round(sum((r.peak_pct or 0) for r in rs) / n, 3),
+            "avg_trough": round(sum((r.trough_pct or 0) for r in rs) / n, 3),
+        }
+
+    rows = []
+    sources = ["FAN_RATIO_GATE", "ATR_GAP_LONG", "PAIR_TREND_FILTER"]
+    for src in sources:
+        for fd in ("LONG", "SHORT"):
+            sub = [r for r in flips if r.source_filter == src and r.flip_direction == fd]
+            a = _agg(sub)
+            if a:
+                a.update({"source": src, "flip_direction": fd})
+                rows.append(a)
+    total = _agg(flips) or {}
+    # verdict per row: does the flip pay?
+    for r in rows:
+        if r["n"] < 5:
+            r["verdict"] = "⏳ Low N"
+        elif r["avg_pct"] >= 0.10 and r["wr"] >= 50:
+            r["verdict"] = "★ flip pays"
+        elif r["avg_pct"] <= -0.05:
+            r["verdict"] = "✗ whipsaws"
+        else:
+            r["verdict"] = "⚠ marginal"
+    return {"rows": rows, "total": total}
+
+
 def _compute_leash_shadow(orders):
     """Leash Shadow Tracker report. Compares virtual trailing leashes (tight/wide/
     tierA/tierB) vs the actual exit on the runner-profile cohort, sliced by

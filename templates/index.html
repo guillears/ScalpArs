@@ -2372,6 +2372,36 @@
                 </div>
                 <!-- ===== LEASH SHADOW END ===== -->
 
+                <!-- ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) ===== -->
+                <div class="mt-6 pt-6 border-t border-fuchsia-900/40">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔄 Phantom Flip Tracker (observation-only)</h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        When an entry is <strong>blocked</strong> by Fan-Ratio / ATR×Gap / Pair-Trend, a virtual <strong>opposite-direction</strong> ("fade") position is simulated on the live 1s price feed with a real entry, base SL −0.70%, arm +0.45%, trail −0.25% (max 45min). Tests your hypothesis: <span class="text-fuchsia-300">does the reversion a block implies actually pay, or just whipsaw?</span>
+                        <span class="text-amber-400">Realized %, not max-excursion. NEVER trades — measurement only. Need N≥30 per cell before believing it; if a cell shows ★ flip pays we design a proper mean-reversion sleeve (its own quick-target exits), we do NOT just flip the filter.</span>
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-white/10">
+                                <th class="px-2 py-1 text-left">Blocked by</th>
+                                <th class="px-2 py-1 text-left">Flip dir</th>
+                                <th class="px-2 py-1 text-right">N</th>
+                                <th class="px-2 py-1 text-right">WR%</th>
+                                <th class="px-2 py-1 text-right">Avg %</th>
+                                <th class="px-2 py-1 text-right">Total %</th>
+                                <th class="px-2 py-1 text-right" title="% of flips that hit the -0.70 SL">SL%</th>
+                                <th class="px-2 py-1 text-right">AvgPeak</th>
+                                <th class="px-2 py-1 text-right">AvgTrough</th>
+                                <th class="px-2 py-1 text-left">Verdict</th>
+                            </tr></thead>
+                            <tbody id="phantom-flip-body" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No phantom flips yet (only entries blocked after the Jun-13 deploy seed virtual fades)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="phantom-flip-total" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+                <!-- ===== PHANTOM FLIP END ===== -->
+
 
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
@@ -12450,6 +12480,41 @@
                 }
                 // ===== LEASH SHADOW END =====
 
+                // ===== PHANTOM FLIP TRACKER (Jun 13) =====
+                if (data.phantom_flip) {
+                    const _pf = data.phantom_flip;
+                    const _pfBody = document.getElementById('phantom-flip-body');
+                    if (_pfBody) {
+                        const rows = _pf.rows || [];
+                        if (rows.length) {
+                            _pfBody.innerHTML = rows.map(r => {
+                                const vc = r.verdict && r.verdict.startsWith('★') ? 'text-emerald-400' : (r.verdict && r.verdict.startsWith('✗') ? 'text-red-400' : 'text-gray-400');
+                                const ac = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const tc = r.total_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1.5 text-fuchsia-300">${r.source}</td>
+                                    <td class="px-2 py-1.5">${r.flip_direction}</td>
+                                    <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                    <td class="px-2 py-1.5 text-right ${r.wr>=50?'text-emerald-400':'text-gray-300'}">${r.wr.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${ac}">${r.avg_pct>=0?'+':''}${r.avg_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${tc} font-bold">${r.total_pct>=0?'+':''}${r.total_pct.toFixed(2)}%</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-400">${r.sl_rate.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 text-right text-emerald-400/70">+${r.avg_peak.toFixed(2)}</td>
+                                    <td class="px-2 py-1.5 text-right text-red-400/70">${r.avg_trough.toFixed(2)}</td>
+                                    <td class="px-2 py-1.5 ${vc}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        } else {
+                            _pfBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No phantom flips closed yet (blocked entries seed virtual fades; they resolve over up to 45min)</td></tr>';
+                        }
+                    }
+                    const _pfTot = document.getElementById('phantom-flip-total');
+                    if (_pfTot && _pf.total && _pf.total.n) {
+                        const t = _pf.total;
+                        _pfTot.innerHTML = `All phantom flips: N=${t.n}, WR ${t.wr}%, avg <span class="${t.avg_pct>=0?'text-emerald-400':'text-red-400'}">${t.avg_pct>=0?'+':''}${t.avg_pct}%</span>, total ${t.total_pct}%, SL-rate ${t.sl_rate}%`;
+                    }
+                }
+                // ===== PHANTOM FLIP END =====
 
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)

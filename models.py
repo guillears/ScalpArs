@@ -553,10 +553,34 @@ class Order(Base):
     notes = Column(Text, nullable=True)
 
 
+class PhantomFlip(Base):
+    """Phantom Flip Tracker (Jun 13, observation-only). When an entry is BLOCKED by
+    fan-ratio / ATR×gap / pair-trend, a virtual OPPOSITE-direction ("fade") position
+    is simulated on live websocket prices with a real entry/SL/trailing exit. Records
+    realized P&L to answer: does the reversion the block implies actually pay, or just
+    whipsaw? NEVER affects live trading. TO REMOVE: drop this model + the
+    _PHANTOM_FLIP_STATE block in trading_engine.py + the perf block in main.py + UI."""
+    __tablename__ = "phantom_flips"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pair = Column(String(20), nullable=False)
+    source_filter = Column(String(30), nullable=False)   # FAN_RATIO_GATE / ATR_GAP_LONG / PAIR_TREND_FILTER
+    blocked_direction = Column(String(6), nullable=False)  # the signal that WAS blocked
+    flip_direction = Column(String(6), nullable=False)     # the simulated opposite
+    entry_price = Column(Float, nullable=False)
+    pnl_pct = Column(Float, nullable=True)        # realized raw price-move % of the flip
+    peak_pct = Column(Float, nullable=True)       # max favorable excursion
+    trough_pct = Column(Float, nullable=True)     # max adverse excursion
+    exit_reason = Column(String(16), nullable=True)  # sl / trail / horizon
+    is_paper = Column(Boolean, default=True)
+    entry_at = Column(DateTime, nullable=True)
+    exit_at = Column(DateTime, nullable=True)
+
+
 class Transaction(Base):
     """Transaction history log"""
     __tablename__ = "transactions"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     order_id = Column(Integer, nullable=False)
     binance_order_id = Column(String(50), nullable=True)

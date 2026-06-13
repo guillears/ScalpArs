@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, update, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Order, Transaction, BotState, PairData, BnbSwapLog
+from models import Order, Transaction, BotState, PairData, BnbSwapLog, PhantomFlip
 from database import AsyncSessionLocal
 import config
 from config import save_trading_config, TradingConfig
@@ -156,6 +156,51 @@ _STRPK_K = {'strpk': 0.5, 'strpk04': 0.4, 'strpk03': 0.3}
 # Looser than strpk(K=0.5) on partial pullbacks — the candidate to catch Type-B
 # monsters (HOME: pulled back to +0.77 but stayed near EMA5, then re-ran +7.58).
 _STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren', 'strpk_signed')
+
+# ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) =====
+# When an entry is BLOCKED by fan-ratio / ATR×gap / pair-trend, simulate the OPPOSITE
+# ("fade") position with a real entry/SL/trailing exit on live ws prices — to measure
+# whether the reversion the block implies actually pays or just whipsaws. NEVER affects
+# live trading; all logic is fail-silent and isolated. Seeds are DE-DUPED (the filters
+# fire every scan cycle a pair sits in the zone) — one phantom per pair|source per
+# cooldown window. TO REMOVE: grep "PHANTOM_FLIP" / "_seed_phantom_flip" + the model +
+# the main.py perf block + the UI block.
+_PHANTOM_FLIP_STATE = {}      # key "pair|source|ts" -> live state
+_PFLIP_COOLDOWN = {}          # "pair|source" -> last seed epoch (dedupe distinct episodes)
+_PFLIP_ACT = 0.45             # trailing arm (raw price-move %, matches live tp_min)
+_PFLIP_SL = -0.70             # base hard SL (fresh hypothetical → base, not signal-active wide)
+_PFLIP_PB = 0.25              # trailing pullback
+_PFLIP_MAX_MIN = 45           # max tracking horizon
+_PFLIP_COOLDOWN_MIN = 30      # min minutes between phantoms for the same pair|source
+
+def _seed_phantom_flip(pair, entry_price, blocked_direction, source):
+    """Seed a virtual opposite-direction position when an entry is blocked. Fail-silent.
+    De-duped: skips if an active phantom exists for pair|source or one was seeded within
+    the cooldown (the block filters re-fire every scan cycle the pair stays in the zone)."""
+    try:
+        if not entry_price or entry_price <= 0 or blocked_direction not in ("LONG", "SHORT"):
+            return
+        ck = f"{pair}|{source}"
+        _now = _leash_time.time()
+        _last = _PFLIP_COOLDOWN.get(ck, 0)
+        if _now - _last < _PFLIP_COOLDOWN_MIN * 60:
+            return
+        if any(v.get('pair') == pair and v.get('source') == source for v in _PHANTOM_FLIP_STATE.values()):
+            return
+        # bounded self-clean
+        if len(_PHANTOM_FLIP_STATE) > 200:
+            _cut = _now - 3 * 3600
+            for k in [k for k, v in _PHANTOM_FLIP_STATE.items() if v.get('open_ts', 0) < _cut]:
+                _PHANTOM_FLIP_STATE.pop(k, None)
+        _PFLIP_COOLDOWN[ck] = _now
+        _PHANTOM_FLIP_STATE[f"{ck}|{_now:.0f}"] = {
+            'pair': pair, 'source': source, 'blocked_dir': blocked_direction,
+            'flip_dir': "SHORT" if blocked_direction == "LONG" else "LONG",
+            'entry': entry_price, 'open_ts': _now,
+            'peak': 0.0, 'trough': 0.0, 'armed': False, '_last_pnl': 0.0,
+        }
+    except Exception:
+        pass
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
@@ -4323,6 +4368,64 @@ class TradingEngine:
         }
         logger.info(f"[POST_EXIT] Registered {order.pair} order {order.id} ({reason}) for {minutes}min tracking")
 
+    async def update_phantom_flips(self, db: AsyncSession):
+        """Monitor-tick (1s) update of virtual flip positions (Jun 13, observation-only).
+        For each blocked-entry phantom, read the live ws price, compute the flip's raw
+        price-move %, apply the SL/trailing exit model, and persist on exit/timeout.
+        Fully fail-silent — NEVER affects live trading. Uses an isolated DB session per
+        persist so a failure can't poison the monitor-loop session."""
+        if not _PHANTOM_FLIP_STATE:
+            return
+        try:
+            now = _leash_time.time()
+            done = []  # (key, state, exit_pnl, reason)
+            for key, st in list(_PHANTOM_FLIP_STATE.items()):
+                try:
+                    aged = (now - st['open_ts']) / 60.0
+                    tracker = websocket_tracker.get_tracker(st['pair'])
+                    price = tracker.last_price if tracker else None
+                    if not price or price <= 0:
+                        if aged >= _PFLIP_MAX_MIN:
+                            done.append((key, st, st.get('_last_pnl', 0.0), 'horizon'))
+                        continue
+                    if st['flip_dir'] == "LONG":
+                        pnl = (price - st['entry']) / st['entry'] * 100.0
+                    else:
+                        pnl = (st['entry'] - price) / st['entry'] * 100.0
+                    st['_last_pnl'] = pnl
+                    if pnl > st['peak']:
+                        st['peak'] = pnl
+                    if pnl < st['trough']:
+                        st['trough'] = pnl
+                    if not st['armed'] and st['peak'] >= _PFLIP_ACT:
+                        st['armed'] = True
+                    if pnl <= _PFLIP_SL:
+                        done.append((key, st, _PFLIP_SL, 'sl'))
+                    elif st['armed'] and pnl <= st['peak'] - _PFLIP_PB:
+                        done.append((key, st, round(st['peak'] - _PFLIP_PB, 4), 'trail'))
+                    elif aged >= _PFLIP_MAX_MIN:
+                        done.append((key, st, round(pnl, 4), 'horizon'))
+                except Exception:
+                    continue
+            for key, st, exit_pnl, reason in done:
+                try:
+                    async with AsyncSessionLocal() as _pdb:
+                        _pdb.add(PhantomFlip(
+                            pair=st['pair'], source_filter=st['source'],
+                            blocked_direction=st['blocked_dir'], flip_direction=st['flip_dir'],
+                            entry_price=st['entry'], pnl_pct=round(exit_pnl, 4),
+                            peak_pct=round(st['peak'], 4), trough_pct=round(st['trough'], 4),
+                            exit_reason=reason, is_paper=self.is_paper_mode,
+                            entry_at=datetime.utcfromtimestamp(st['open_ts']),
+                            exit_at=datetime.utcnow(),
+                        ))
+                        await _pdb.commit()
+                except Exception:
+                    pass
+                _PHANTOM_FLIP_STATE.pop(key, None)
+        except Exception:
+            pass
+
     async def update_post_exit_tracking(self, db: AsyncSession):
         """Check prices for recently closed BE trades and update peak/trough/timing. Called from monitor loop.
 
@@ -6294,6 +6397,7 @@ class TradingEngine:
                                     )
                                     self._record_filter_block("FAN_RATIO_GATE", signal, had_room=_had_room)
                                     self._last_pair_block_reason[pair] = "FAN_RATIO_GATE"
+                                    _seed_phantom_flip(pair, indicators.get('price'), signal, "FAN_RATIO_GATE")
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -6363,6 +6467,7 @@ class TradingEngine:
                             logger.info(f"[ATR_GAP_LONG] {pair}: LONG blocked — ATR {_ag_atr_pct:.2f}% >= {_ag_atr_min}% AND pair-gap {_ag_gap_pct:.2f}% >= {_ag_gap_min}% (volatile + already-extended → reverts)")
                             self._record_filter_block("ATR_GAP_LONG", "LONG", had_room=_had_room)
                             self._last_pair_block_reason[pair] = "ATR_GAP_LONG"
+                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "ATR_GAP_LONG")
                             signal = "NO_TRADE"
 
             # Jun 10 — RSI-SPIKE GUARD (LONG): block when the pair's RSI one candle ago was
@@ -6699,6 +6804,7 @@ class TradingEngine:
                             )
                             self._record_filter_block("PAIR_TREND_FILTER", "SHORT", had_room=_had_room)
                             self._last_pair_block_reason[pair] = "PAIR_TREND_FILTER"
+                            _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "PAIR_TREND_FILTER")
                             signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:

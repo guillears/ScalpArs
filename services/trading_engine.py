@@ -6258,6 +6258,12 @@ class TradingEngine:
                                     )
                                     self._record_filter_block("BTC_RSI_ADX_CROSS", signal, had_room=_had_room)
                                     self._last_pair_block_reason[pair] = "BTC_RSI_ADX_CROSS"
+                                    # Jun 13: phantom flip — EXTREMES ONLY. Only BTC RSI extremes carry
+                                    # mean-reversion logic: overbought (≥70) LONG-block → fade SHORT;
+                                    # oversold (≤35) SHORT-block → fade LONG (the cleaner one). Mid-RSI
+                                    # cells are directionless — skipped. Macro/correlated: read separately.
+                                    if (signal == "LONG" and btc_rsi >= 70) or (signal == "SHORT" and btc_rsi <= 35):
+                                        _seed_phantom_flip(pair, indicators.get('price'), signal, "BTC_RSI_ADX_CROSS")
                                     signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):

@@ -2890,11 +2890,12 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
     )
     all_orders = result.scalars().all()
-    # Jun 14: Flip Entry sleeve — segregate flip fades from momentum stats. Every
-    # downstream `orders`/`trend_orders` derives from all_orders, so removing flips here
-    # keeps all momentum tables flip-free; flip P&L gets its own section (payload below).
+    # Jun 14: Flip Entry sleeve — flips stay IN all_orders so they appear in every
+    # momentum/diagnostic table (Closing Reason Summary etc.) labeled by their FLIP_*
+    # close reason (operator choice: full visibility over KPI purity — note this blends
+    # flip P&L into Overall Performance / Daily Compound). Still split out separately
+    # for the dedicated Flip Entry Sleeve section below.
     _flip_orders = [o for o in all_orders if (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:')]
-    all_orders = [o for o in all_orders if not (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:')]
 
     # Amendment #7 (Apr 18): also fetch SIGNAL_EXPIRED rows for Entry Type Performance.
     # These are aborted entry attempts where the signal went stale during the maker wait.
@@ -6935,6 +6936,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
         "flip_entry": _compute_flip_entry_performance(_flip_orders),  # FLIP ENTRY (Jun 14, LIVE sleeve)
+        "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14, per-trade)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -8910,6 +8912,47 @@ def _compute_flip_entry_performance(flip_orders):
         else:
             r["verdict"] = "★ live edge"
     return {"rows": rows, "total": total}
+
+
+def _compute_flip_trades(flip_orders, limit=60):
+    """Per-TRADE flip log (Jun 14) — one row per closed flip order, newest first, so the
+    operator can judge each flip DECISION: what triggered it (which filter blocked which
+    direction), how it exited, and a per-trade verdict. FLIP_SL = the fade was wrong;
+    FLIP_TRAIL/HORIZON positive = the fade paid. Non-FLIP exits (EMA13) = pre-fix bug."""
+    closed = [o for o in flip_orders if o.status == "CLOSED" and o.closed_at is not None]
+    closed.sort(key=lambda o: o.closed_at, reverse=True)
+    out = []
+    for o in closed[:limit]:
+        try:
+            dur_min = round(((o.closed_at - o.opened_at).total_seconds() / 60.0), 1) if o.opened_at else None
+        except Exception:
+            dur_min = None
+        src = (o.entry_strategy or "").replace("FLIP:", "")
+        blocked = "SHORT" if o.direction == "LONG" else "LONG"  # flip opened opposite of the blocked entry
+        reason = o.close_reason or ""
+        pnl = o.pnl_percentage or 0
+        # per-trade verdict: was this a good fade decision?
+        if not reason.startswith("FLIP_"):
+            verdict = "⚠ bug-exit"          # closed by momentum stack (pre-fix) — invalid sample
+        elif pnl > 0:
+            verdict = "★ paid"              # fade worked
+        elif reason.startswith("FLIP_SL"):
+            verdict = "✗ stopped"           # fade wrong, hit -0.70
+        else:
+            verdict = "✗ loss"             # horizon/trail closed red
+        out.append({
+            "trigger": f"{src} ⊘{blocked}",   # the filter that blocked + which side it blocked
+            "direction": o.direction,           # the side we OPENED (the fade)
+            "close_reason": reason,
+            "pnl_pct": round(pnl, 3),
+            "pnl_usd": round(o.pnl or 0, 2),
+            "peak_pct": round(o.peak_pnl or 0, 3),
+            "trough_pct": round(o.trough_pnl or 0, 3),
+            "dur_min": dur_min,
+            "verdict": verdict,
+            "closed_at": o.closed_at.strftime("%m-%d %H:%M") if o.closed_at else "",
+        })
+    return out
 
 
 def _compute_leash_shadow(orders):

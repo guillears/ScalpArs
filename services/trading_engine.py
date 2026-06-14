@@ -3573,6 +3573,7 @@ class TradingEngine:
             order_cache_entry = {
                 'id': order.id,
                 'direction': direction,
+                'entry_strategy': (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"),  # Jun 14: realtime path skips flips
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -7374,6 +7375,13 @@ class TradingEngine:
             # The flag resets on the next update_orders_cache cycle.
             if order_info.get('_closing_in_progress'):
                 continue
+            # Jun 14: Flip Entry sleeve — flip orders are owned EXCLUSIVELY by the
+            # _eval_flip_exit model in update_open_positions (SL/arm/trail/horizon).
+            # Skip them here so the momentum realtime stack (EMA13 cross, BE, trailing,
+            # FAST_EXIT, spike guard) can NEVER close a flip. This was the bug that
+            # closed flips on the first tick via EMA13_CROSS_EXIT.
+            if (order_info.get('entry_strategy') or "").startswith("FLIP:"):
+                continue
             order_id = order_info['id']
             direction = order_info['direction']
             entry_price = order_info['entry_price']
@@ -8652,6 +8660,7 @@ class TradingEngine:
             order_info = {
                 'id': order.id,
                 'direction': order.direction,
+                'entry_strategy': (order.entry_strategy or "MOMENTUM"),  # Jun 14: realtime path skips flips
                 'entry_price': order.entry_price,
                 'quantity': order.quantity,
                 'entry_fee': order.entry_fee,

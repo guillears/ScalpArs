@@ -5482,6 +5482,7 @@ class TradingEngine:
                 entry_atr_pct=getattr(order, 'entry_atr_pct', None),  # May 7 Phase 1: ATR-normalized trailing
                 current_stretch=_rt_stretch,  # Jun 1: runner stretch-trail
                 peak_stretch=getattr(order, 'runner_peak_stretch', None),  # Jun 1: runner stretch-trail
+                is_flip=(order.entry_strategy or "").startswith("FLIP:"),  # Jun 14: runner-trail off for flips → normal trailing
             )
 
             order.peak_pnl = exit_result.get("peak_pnl", order.peak_pnl)
@@ -8431,7 +8432,9 @@ class TradingEngine:
                         _rt_arm = float(getattr(_rt_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
                     _rt_atr = order_info.get('entry_atr_pct')
                     _rt_peak = order_info.get('peak_pnl', 0.0) or 0.0
-                    if (_rt_en and _rt_peak >= _rt_arm
+                    # Jun 14: runner-trail disabled for flips (reversion, not continuation)
+                    # → don't suppress the normal tight trailing for them.
+                    if (_rt_en and not _is_flip and _rt_peak >= _rt_arm
                             and (_rt_amin <= 0 or (_rt_atr is not None and _rt_atr >= _rt_amin))):
                         _handoff_suppress = True
             except Exception:

@@ -2435,7 +2435,7 @@
                 <div class="mt-6 pt-6 border-t border-fuchsia-700/50">
                     <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Entry Sleeve <span class="text-xs text-fuchsia-500">(LIVE — real positions)</span></h3>
                     <p class="text-xs text-gray-400 mb-3">
-                        Promoted fade-the-block entries: when a listed filter blocks an entry, the bot opens the <strong>opposite</strong> direction as a real naked trade. It uses the <strong>same exit stack as normal trades</strong> (tiered SL / BE / trailing / runner-trail) with the <strong>EMA13-cross exit disabled</strong> for flips; exit reasons are <code>FLIP_</code>-prefixed. Configure active sources in Settings → Flip Entry Sleeve.
+                        Promoted fade-the-block entries: when a listed filter blocks an entry, the bot opens the <strong>opposite</strong> direction as a real naked trade. It uses the <strong>same exit stack as normal trades</strong> (tiered SL / BE / normal trailing) with the <strong>EMA13-cross exit AND the Runner Stretch-Trail (shorts) disabled</strong> for flips (both are continuation mechanisms; a flip is a reversion); exit reasons are <code>FLIP_</code>-prefixed. Configure active sources in Settings → Flip Entry Sleeve.
                         <span class="text-amber-400">Revert gate: at N≥20, hold only if WR&gt;55% AND avg&gt;+0.05%. Top%≥60 (amber) = one-pair concentration, not a real edge.</span>
                     </p>
                     <div class="overflow-x-auto">
@@ -5747,7 +5747,7 @@
                         </div>
                         <p class="text-xs text-gray-400 mb-2 leading-relaxed">When a chosen filter <strong class="text-gray-200">blocks</strong> an entry, open the <strong class="text-fuchsia-300">opposite</strong> direction as a real trade (naked — not re-checked vs the opposite side's filters). Toggle a source on to trade its fade live (both directions).</p>
                         <div class="text-xs mb-3 px-3 py-2 rounded bg-amber-950/20 border border-amber-800/40 text-amber-200/90">
-                            <strong>Exit behaviour:</strong> flips use the <strong>same exit stack as normal LONG/SHORT trades</strong> (tiered SL / BE / trailing, and the Runner Stretch-Trail on shorts), with <strong class="text-amber-300">⚠ the EMA13-cross exit DISABLED for flips</strong> (it fired instantly — a fade enters on the wrong side of EMA13 by construction). Exit reasons are <code class="text-amber-300">FLIP_</code>-prefixed (e.g. <code>FLIP_STOP_LOSS L1</code>) so flip exits are distinguishable everywhere.
+                            <strong>Exit behaviour:</strong> flips use the <strong>same exit stack as normal LONG/SHORT trades</strong> (tiered SL / BE / normal trailing), with <strong class="text-amber-300">⚠ two carve-outs disabled for flips: the EMA13-cross exit</strong> (fired instantly — a fade enters on the wrong side of EMA13 by construction) <strong class="text-amber-300">and the Runner Stretch-Trail on shorts</strong> (it rides momentum continuation; a flip is a mean-reversion → flip shorts use the normal tight trailing instead). Exit reasons are <code class="text-amber-300">FLIP_</code>-prefixed (e.g. <code>FLIP_STOP_LOSS L1</code>) so flip exits are distinguishable everywhere.
                         </div>
                         <!-- per-source rows render here -->
                         <div id="flip-sources-list" class="space-y-2"></div>

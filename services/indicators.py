@@ -614,6 +614,9 @@ def check_exit_conditions(
     entry_atr_pct: float = None,  # May 7 Phase 1: ATR-normalized trailing
     current_stretch: float = None,  # Jun 1: live |price−EMA5| stretch % (runner trail)
     peak_stretch: float = None,     # Jun 1: peak stretch since entry (runner trail)
+    is_flip: bool = False,          # Jun 14: Flip Entry — disable runner-trail for flips
+                                    # (it's a continuation-ride; a flip is a reversion) →
+                                    # flips fall back to the normal tiered trailing.
 ) -> Dict:
     """
     Check if position should be closed based on SL/TP/Trailing stop
@@ -833,7 +836,7 @@ def check_exit_conditions(
             _ra_en = getattr(_rtc0.thresholds, 'runner_trail_short_enabled', False)
             _ra_amin = float(getattr(_rtc0.thresholds, 'runner_trail_short_atr_min', 0.0) or 0.0)
             _ra_arm = float(getattr(_rtc0.thresholds, 'runner_trail_short_arm_peak', 0.45) or 0.45)
-        _runner_armed = (_ra_en and peak_pnl >= _ra_arm
+        _runner_armed = (_ra_en and not is_flip and peak_pnl >= _ra_arm
                          and (_ra_amin <= 0
                               or (entry_atr_pct is not None and entry_atr_pct >= _ra_amin)))
     except Exception:
@@ -944,7 +947,7 @@ def check_exit_conditions(
             _rh_amin = float(getattr(_rtc.thresholds, 'runner_trail_short_atr_min', 0.0) or 0.0)
             _rh_arm = float(getattr(_rtc.thresholds, 'runner_trail_short_arm_peak', 0.45) or 0.45)
             _rt_k = float(getattr(_rtc.thresholds, 'runner_trail_short_k', 0.5) or 0.5)
-        if (_rh_en and peak_pnl >= _rh_arm
+        if (_rh_en and not is_flip and peak_pnl >= _rh_arm
                 and (_rh_amin <= 0
                      or (entry_atr_pct is not None and entry_atr_pct >= _rh_amin))):
             _handoff_suppress_trailing = True  # take over the profit-taking side

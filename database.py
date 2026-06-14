@@ -508,6 +508,12 @@ async def init_db():
                 if 'last_bnb_check_at' not in bs_columns:
                     connection.execute(text("ALTER TABLE bot_state ADD COLUMN last_bnb_check_at DATETIME"))
 
+            # Jun 14 — Phantom Flip cohort sub-division (matched-long fade by C/W family)
+            if 'phantom_flips' in inspector.get_table_names():
+                pf_columns = [c['name'] for c in inspector.get_columns('phantom_flips')]
+                if 'entry_cohort' not in pf_columns:
+                    connection.execute(text("ALTER TABLE phantom_flips ADD COLUMN entry_cohort VARCHAR(8)"))
+
             if 'investors' not in inspector.get_table_names():
                 connection.execute(text("""
                     CREATE TABLE investors (

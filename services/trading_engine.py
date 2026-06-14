@@ -173,10 +173,12 @@ _PFLIP_PB = 0.25              # trailing pullback
 _PFLIP_MAX_MIN = 45           # max tracking horizon
 _PFLIP_COOLDOWN_MIN = 30      # min minutes between phantoms for the same pair|source
 
-def _seed_phantom_flip(pair, entry_price, blocked_direction, source):
+def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None):
     """Seed a virtual opposite-direction position when an entry is blocked. Fail-silent.
     De-duped: skips if an active phantom exists for pair|source or one was seeded within
-    the cooldown (the block filters re-fire every scan cycle the pair stays in the zone)."""
+    the cooldown (the block filters re-fire every scan cycle the pair stays in the zone).
+    cohort: for LONG_UNMATCHED_ONLY only — "C+W"/"C"/"W" pattern family of the blocked
+    long, so the fade can be sub-divided downstream (None for other sources)."""
     try:
         if not entry_price or entry_price <= 0 or blocked_direction not in ("LONG", "SHORT"):
             return
@@ -196,7 +198,7 @@ def _seed_phantom_flip(pair, entry_price, blocked_direction, source):
         _PHANTOM_FLIP_STATE[f"{ck}|{_now:.0f}"] = {
             'pair': pair, 'source': source, 'blocked_dir': blocked_direction,
             'flip_dir': "SHORT" if blocked_direction == "LONG" else "LONG",
-            'entry': entry_price, 'open_ts': _now,
+            'entry': entry_price, 'open_ts': _now, 'cohort': cohort,
             'peak': 0.0, 'trough': 0.0, 'armed': False, '_last_pnl': 0.0,
         }
     except Exception:
@@ -2885,7 +2887,9 @@ class TradingEngine:
             # (C7 dead-cat bounce, W6 top) that fail as longs → fade to SHORT. Strongest
             # flip candidate (historical N=271, +0.142pp/trade proxy; C7 sub-cell +0.259).
             # Measures REALIZED matched-long→short P&L. Blocked dir LONG → flip SHORT.
-            _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY")
+            # Jun 14: tag the C/W family so the fade can be sub-divided (C+W / C / W).
+            _um_cohort = "C+W" if (_pc_any_e and _pw_any_e) else ("C" if _pc_any_e else "W")
+            _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY", cohort=_um_cohort)
             return None
         _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = self._lookup_pattern_cell_rule(
             direction=direction,
@@ -4421,6 +4425,7 @@ class TradingEngine:
                             entry_price=st['entry'], pnl_pct=round(exit_pnl, 4),
                             peak_pct=round(st['peak'], 4), trough_pct=round(st['trough'], 4),
                             exit_reason=reason, is_paper=self.is_paper_mode,
+                            entry_cohort=st.get('cohort'),
                             entry_at=datetime.utcfromtimestamp(st['open_ts']),
                             exit_at=datetime.utcnow(),
                         ))

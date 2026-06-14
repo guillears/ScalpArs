@@ -575,6 +575,10 @@ class PhantomFlip(Base):
     is_paper = Column(Boolean, default=True)
     entry_at = Column(DateTime, nullable=True)
     exit_at = Column(DateTime, nullable=True)
+    # Jun 14: for LONG_UNMATCHED_ONLY (matched-long fade) only — which pattern family the
+    # blocked long matched, so the fade can be sub-divided. "C+W" / "C" / "W" (None for
+    # other sources, where C/W is not computed at the seed site). Forward-only.
+    entry_cohort = Column(String(8), nullable=True)
 
 
 class Transaction(Base):

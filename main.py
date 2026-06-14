@@ -8826,6 +8826,17 @@ async def _compute_phantom_flip_performance(db, is_paper):
             if a:
                 a.update({"source": src, "flip_direction": fd})
                 rows.append(a)
+    # Sub-division for LONG_UNMATCHED_ONLY (matched-long fade): split the SHORT flip by
+    # which pattern family the blocked long matched — C+W / C-only / W-only. Reveals
+    # whether the fade edge lives in a specific sub-signature vs the blended average.
+    # Forward-only: phantoms seeded before Jun 14 have entry_cohort=NULL and stay only
+    # in the parent row (so sub-rows may not sum to the parent until old ones age out).
+    _um = [r for r in flips if r.source_filter == "LONG_UNMATCHED_ONLY" and r.flip_direction == "SHORT"]
+    for _lbl, _ch in [("  ↳ C+W", "C+W"), ("  ↳ C only", "C"), ("  ↳ W only", "W")]:
+        a = _agg([r for r in _um if (r.entry_cohort or "") == _ch])
+        if a:
+            a.update({"source": _lbl, "flip_direction": "SHORT", "is_subrow": True})
+            rows.append(a)
     total = _agg(flips) or {}
     # verdict per row: does the flip pay? Concentration gates the ★ — a great-looking
     # cell driven by one sticky pair (top_pair_share>=60%) is a mirage, not an edge

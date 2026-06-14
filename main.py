@@ -8914,45 +8914,65 @@ def _compute_flip_entry_performance(flip_orders):
     return {"rows": rows, "total": total}
 
 
-def _compute_flip_trades(flip_orders, limit=60):
-    """Per-TRADE flip log (Jun 14) — one row per closed flip order, newest first, so the
-    operator can judge each flip DECISION: what triggered it (which filter blocked which
-    direction), how it exited, and a per-trade verdict. FLIP_SL = the fade was wrong;
-    FLIP_TRAIL/HORIZON positive = the fade paid. Non-FLIP exits (EMA13) = pre-fix bug."""
-    closed = [o for o in flip_orders if o.status == "CLOSED" and o.closed_at is not None]
-    closed.sort(key=lambda o: o.closed_at, reverse=True)
-    out = []
-    for o in closed[:limit]:
-        try:
-            dur_min = round(((o.closed_at - o.opened_at).total_seconds() / 60.0), 1) if o.opened_at else None
-        except Exception:
-            dur_min = None
+def _compute_flip_trades(flip_orders):
+    """Flip decision scorecard (Jun 14) — aggregated by TRIGGER (which filter blocked
+    which side -> which way we faded), so the operator can judge each trigger's decision
+    quality: N trades, WR, avg/total P&L, verdict against the revert gate. 'bug' counts
+    pre-fix trades closed by the momentum stack (non-FLIP_* exits) — discount those."""
+    closed = [o for o in flip_orders if o.status == "CLOSED" and o.pnl_percentage is not None]
+    groups = {}
+    for o in closed:
         src = (o.entry_strategy or "").replace("FLIP:", "")
         blocked = "SHORT" if o.direction == "LONG" else "LONG"  # flip opened opposite of the blocked entry
-        reason = o.close_reason or ""
-        pnl = o.pnl_percentage or 0
-        # per-trade verdict: was this a good fade decision?
-        if not reason.startswith("FLIP_"):
-            verdict = "⚠ bug-exit"          # closed by momentum stack (pre-fix) — invalid sample
-        elif pnl > 0:
-            verdict = "★ paid"              # fade worked
-        elif reason.startswith("FLIP_SL"):
-            verdict = "✗ stopped"           # fade wrong, hit -0.70
+        key = (f"{src} ⊘{blocked}", o.direction)
+        groups.setdefault(key, []).append(o)
+    rows = []
+    for (trigger, flip_dir), rs in groups.items():
+        n = len(rs)
+        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
+        tot = sum((r.pnl_percentage or 0) for r in rs)
+        usd = sum((r.pnl or 0) for r in rs)
+        peak = sum((r.peak_pnl or 0) for r in rs) / n
+        bug = sum(1 for r in rs if not (r.close_reason or "").startswith("FLIP_"))
+        sl = sum(1 for r in rs if (r.close_reason or "").startswith("FLIP_SL"))
+        wr = round(100.0 * wins / n, 1)
+        avg = round(tot / n, 3)
+        if bug == n:
+            verdict = "⚠ bug-exits"          # all pre-fix, invalid sample
+        elif n < 20:
+            verdict = f"⏳ building {n}/20"
+        elif wr > 55 and avg > 0.05:
+            verdict = "★ paying"
         else:
-            verdict = "✗ loss"             # horizon/trail closed red
-        out.append({
-            "trigger": f"{src} ⊘{blocked}",   # the filter that blocked + which side it blocked
-            "direction": o.direction,           # the side we OPENED (the fade)
-            "close_reason": reason,
-            "pnl_pct": round(pnl, 3),
-            "pnl_usd": round(o.pnl or 0, 2),
-            "peak_pct": round(o.peak_pnl or 0, 3),
-            "trough_pct": round(o.trough_pnl or 0, 3),
-            "dur_min": dur_min,
-            "verdict": verdict,
-            "closed_at": o.closed_at.strftime("%m-%d %H:%M") if o.closed_at else "",
+            verdict = "✗ losing"
+        rows.append({
+            "trigger": trigger, "direction": flip_dir, "n": n,
+            "wr": wr, "avg_pct": avg, "total_pct": round(tot, 2), "total_usd": round(usd, 2),
+            "peak_pct": round(peak, 3), "sl_rate": round(100.0 * sl / n, 0),
+            "bug": bug, "verdict": verdict,
         })
-    return out
+    rows.sort(key=lambda r: -r["n"])
+    # Section-level verdict — judged over VALID flips only (exclude pre-fix bug-exits)
+    # against the same revert gate, so the whole sleeve gets one clear read.
+    valid = [o for o in closed if (o.close_reason or "").startswith("FLIP_")]
+    bug_total = len(closed) - len(valid)
+    nv = len(valid)
+    if nv == 0:
+        overall = {"n": 0, "bug": bug_total, "verdict": "⏳ no valid flips yet", "wr": 0, "avg_pct": 0, "total_usd": 0}
+    else:
+        vw = sum(1 for o in valid if (o.pnl_percentage or 0) > 0)
+        vt = sum((o.pnl_percentage or 0) for o in valid)
+        vu = sum((o.pnl or 0) for o in valid)
+        vwr = round(100.0 * vw / nv, 1)
+        vavg = round(vt / nv, 3)
+        if nv < 20:
+            ov = f"⏳ BUILDING {nv}/20"
+        elif vwr > 55 and vavg > 0.05:
+            ov = "★ PAYING"
+        else:
+            ov = "✗ LOSING — revert"
+        overall = {"n": nv, "bug": bug_total, "verdict": ov, "wr": vwr, "avg_pct": vavg, "total_usd": round(vu, 2)}
+    return {"rows": rows, "overall": overall}
 
 
 def _compute_leash_shadow(orders):

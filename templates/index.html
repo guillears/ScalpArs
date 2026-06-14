@@ -1112,25 +1112,24 @@
 
                 <!-- ===== FLIP TRADE LOG (Jun 14) — per-trade flip tracking (after all multiplier tables) ===== -->
                 <div class="mt-6 pt-6 border-t border-fuchsia-800/40">
-                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Trade Log <span class="text-fuchsia-500/70 text-xs font-normal">per-trade · newest first</span></h3>
-                    <p class="text-xs text-gray-500 mb-3"><strong class="text-gray-300">Trigger</strong> = which filter blocked which side (e.g. <code>FAN_RATIO_GATE ⊘LONG</code> = a long was blocked → we faded <span class="text-red-300">SHORT</span>). <strong class="text-gray-300">Verdict</strong> judges each decision: <span class="text-emerald-400">★ paid</span> = fade worked · <span class="text-red-400">✗ stopped</span> = hit −0.70 SL · <span class="text-amber-400">⚠ bug-exit</span> = closed by the momentum stack before the fix (ignore those).</p>
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Trade Log <span class="text-fuchsia-500/70 text-xs font-normal">decision scorecard · by trigger</span></h3>
+                    <p class="text-xs text-gray-500 mb-3"><strong class="text-gray-300">Trigger</strong> = which filter blocked which side (e.g. <code>FAN_RATIO_GATE ⊘LONG</code> = a long was blocked → we faded <span class="text-red-300">SHORT</span>). <strong class="text-gray-300">Verdict</strong>: <span class="text-emerald-400">★ paying</span> = clears the gate (N≥20, WR&gt;55%, avg&gt;+0.05%) · <span class="text-red-400">✗ losing</span> = fails it · <span class="text-amber-400">⚠ bug-exits</span> = all pre-fix (momentum stack killed them — discount).</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead class="text-gray-400 uppercase">
                                 <tr>
-                                    <th class="text-left py-1 px-2">Closed</th>
-                                    <th class="text-left px-2" title="Which filter blocked which direction → we opened the opposite">Trigger</th>
+                                    <th class="text-left py-1 px-2" title="Which filter blocked which direction → we opened the opposite">Trigger</th>
                                     <th class="text-left px-2" title="The side we opened (the fade)">Flip</th>
-                                    <th class="text-left px-2">Exit</th>
-                                    <th class="text-right px-2">P&amp;L %</th>
-                                    <th class="text-right px-2">P&amp;L $</th>
-                                    <th class="text-right px-2" title="Max favorable excursion">Peak %</th>
-                                    <th class="text-right px-2">Min</th>
-                                    <th class="text-left px-2">Verdict</th>
+                                    <th class="text-right px-2" title="Number of flip trades for this trigger">N</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Avg %</th>
+                                    <th class="text-right px-2">Total $</th>
+                                    <th class="text-right px-2" title="Avg max favorable excursion">Peak %</th>
+                                    <th class="text-right px-2" title="% closed at the -0.70 SL">SL%</th>
                                 </tr>
                             </thead>
                             <tbody id="flip-trades-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
+                                <tr><td colspan="8" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -12717,41 +12716,38 @@
 
                 // ===== FLIP TRADE LOG (Jun 14, per-trade) =====
                 if (data.flip_trades) {
-                    const _ft = data.flip_trades;
+                    const _ftRows = (data.flip_trades.rows) || [];
+                    const _ftOv = (data.flip_trades.overall) || null;
                     const _ftBody = document.getElementById('flip-trades-body');
                     if (_ftBody) {
-                        if (_ft.length) {
-                            _ftBody.innerHTML = _ft.map(t => {
-                                const pc = t.pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                const uc = t.pnl_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        if (_ftRows.length) {
+                            _ftBody.innerHTML = _ftRows.map(t => {
+                                const ac = t.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const uc = t.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const dc = t.direction === 'SHORT' ? 'text-red-300' : 'text-emerald-300';
-                                let ec = 'text-gray-400';
-                                if ((t.close_reason||'').startsWith('FLIP_TRAIL') || (t.close_reason||'').startsWith('FLIP_HORIZON')) ec = 'text-emerald-400';
-                                else if ((t.close_reason||'').startsWith('FLIP_SL')) ec = 'text-red-400';
-                                else if (!(t.close_reason||'').startsWith('FLIP_')) ec = 'text-amber-400';
-                                const vc = (t.verdict||'').startsWith('★') ? 'text-emerald-400' : ((t.verdict||'').startsWith('✗') ? 'text-red-400' : 'text-amber-400');
+                                const bug = (t.bug > 0) ? ` <span class="text-amber-500/70 text-[10px]">(${t.bug} bug)</span>` : '';
                                 return `<tr class="hover:bg-white/5">
-                                    <td class="px-2 py-1.5 text-gray-500">${t.closed_at}</td>
                                     <td class="px-2 py-1.5 text-fuchsia-300 font-mono text-[11px]">${t.trigger}</td>
                                     <td class="px-2 py-1.5 ${dc}">${t.direction}</td>
-                                    <td class="px-2 py-1.5 ${ec} text-[11px]">${t.close_reason}</td>
-                                    <td class="px-2 py-1.5 text-right ${pc}">${t.pnl_pct>=0?'+':''}${t.pnl_pct.toFixed(3)}%</td>
-                                    <td class="px-2 py-1.5 text-right ${uc}">${t.pnl_usd>=0?'+$':'-$'}${Math.abs(t.pnl_usd).toFixed(2)}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-200">${t.n}${bug}</td>
+                                    <td class="px-2 py-1.5 text-right ${t.wr>55?'text-emerald-400':'text-gray-300'}">${t.wr.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${ac}">${t.avg_pct>=0?'+':''}${t.avg_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${uc} font-bold">${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}</td>
                                     <td class="px-2 py-1.5 text-right text-emerald-400/70">+${t.peak_pct.toFixed(2)}</td>
-                                    <td class="px-2 py-1.5 text-right text-gray-400">${t.dur_min!=null?t.dur_min:'-'}</td>
-                                    <td class="px-2 py-1.5 ${vc} font-medium">${t.verdict}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-400">${t.sl_rate.toFixed(0)}%</td>
                                 </tr>`;
                             }).join('');
                         } else {
-                            _ftBody.innerHTML = '<tr><td colspan="9" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>';
+                            _ftBody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>';
                         }
                     }
                     const _ftSum = document.getElementById('flip-trades-summary');
                     if (_ftSum) {
-                        if (_ft.length) {
-                            const wins = _ft.filter(t => t.pnl_pct > 0).length;
-                            const usd = _ft.reduce((a, t) => a + (t.pnl_usd || 0), 0);
-                            _ftSum.innerHTML = `Showing last ${_ft.length} flip trades · ${wins}W/${_ft.length - wins}L · net <span class="${usd>=0?'text-emerald-400':'text-red-400'}">${usd>=0?'+$':'-$'}${Math.abs(usd).toFixed(2)}</span>`;
+                        if (_ftOv && (_ftOv.n > 0 || _ftOv.bug > 0)) {
+                            const vc = (_ftOv.verdict||'').startsWith('★') ? 'text-emerald-400' : ((_ftOv.verdict||'').startsWith('✗') ? 'text-red-400' : 'text-amber-400');
+                            const uc = _ftOv.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const bug = (_ftOv.bug > 0) ? ` · <span class="text-amber-500/70">${_ftOv.bug} pre-fix bug-exit(s) excluded</span>` : '';
+                            _ftSum.innerHTML = `Verdict: <span class="${vc} font-semibold">${_ftOv.verdict}</span> — ${_ftOv.n} valid flips · WR ${_ftOv.wr}% · avg <span class="${_ftOv.avg_pct>=0?'text-emerald-400':'text-red-400'}">${_ftOv.avg_pct>=0?'+':''}${_ftOv.avg_pct}%</span> · net <span class="${uc}">${_ftOv.total_usd>=0?'+$':'-$'}${Math.abs(_ftOv.total_usd).toFixed(2)}</span>${bug}`;
                         } else { _ftSum.innerHTML = ''; }
                     }
                 }

@@ -244,33 +244,6 @@ def _flip_active(source):
 def _flip_size_mult(source):
     return _flip_registry().get(source, 1.0)
 
-def _eval_flip_exit(order, current_price):
-    """Flip Entry exit model — mirrors the phantom that measured the edge: hard SL at
-    _PFLIP_SL (-0.70), arm at +_PFLIP_ACT (0.45) peak then trail _PFLIP_PB (0.25), else
-    exit at _PFLIP_MAX_MIN (45min) horizon. Works in RAW price-move % (same basis as
-    order.pnl_percentage). Updates peak/trough on the order. Returns a FLIP_* close
-    reason or None. Bypasses the entire momentum exit stack."""
-    if not current_price or current_price <= 0 or not order.entry_price:
-        return None
-    if order.direction == "SHORT":
-        pnl = (order.entry_price - current_price) / order.entry_price * 100.0
-    else:
-        pnl = (current_price - order.entry_price) / order.entry_price * 100.0
-    if order.peak_pnl is None or pnl > order.peak_pnl:
-        order.peak_pnl = pnl
-    if order.trough_pnl is None or pnl < order.trough_pnl:
-        order.trough_pnl = pnl
-    if pnl <= _PFLIP_SL:
-        return "FLIP_SL"
-    if (order.peak_pnl or 0) >= _PFLIP_ACT and pnl <= (order.peak_pnl - _PFLIP_PB):
-        return "FLIP_TRAIL"
-    try:
-        aged_min = (datetime.utcnow() - order.opened_at).total_seconds() / 60.0
-    except Exception:
-        aged_min = 0
-    if aged_min >= _PFLIP_MAX_MIN:
-        return "FLIP_HORIZON"
-    return None
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
@@ -842,7 +815,12 @@ class TradingEngine:
         for order in candidates:
             if not order.close_reason or not order.closed_at:
                 continue
-            _reason_base = order.close_reason[3:] if order.close_reason.startswith("FL_") else order.close_reason
+            # Jun 14: strip FLIP_ (then FL_) so flip exits resolve to base reason.
+            _reason_base = order.close_reason
+            if _reason_base.startswith("FLIP_"):
+                _reason_base = _reason_base[5:]
+            if _reason_base.startswith("FL_"):
+                _reason_base = _reason_base[3:]
             # May 7: added EMA13_CROSS_EXIT and EMA_STACK_CROSS_EXIT to recovery
             # whitelist. Without them, EMA13/EMA_STACK trades that spanned a
             # bot restart never got post_exit_peak_pnl written → silently
@@ -3703,6 +3681,13 @@ class TradingEngine:
         reason: str = "MANUAL"
     ) -> Optional[Order]:
         """Close an existing position"""
+        # Jun 14: Flip Entry sleeve — flips use the SAME exit stack as normal trades
+        # (only EMA13-cross is disabled for them), but every exit reason is FLIP_-prefixed
+        # here (the single close funnel) so flip exits are distinguishable everywhere:
+        # FLIP_STOP_LOSS L1 / FLIP_TRAILING_STOP L1 / FLIP_RUNNER_TRAIL / etc. Report +
+        # post-exit-whitelist matchers strip the FLIP_ prefix to recover the base reason.
+        if reason and (order.entry_strategy or "").startswith("FLIP:") and not reason.startswith("FLIP_"):
+            reason = "FLIP_" + reason
         async with _close_lock:
             return await self._close_position_locked(db, order, current_price, reason)
 
@@ -4419,8 +4404,14 @@ class TradingEngine:
         tc = config.trading_config
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
-        _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("FLIP_")):
+        # Jun 14: strip the FLIP_ prefix (then any FL_) so flip exits resolve to their
+        # base reason and get post-exit (regret) tracking like the normal exit.
+        _reason_base = reason
+        if _reason_base.startswith("FLIP_"):
+            _reason_base = _reason_base[5:]
+        if _reason_base.startswith("FL_"):
+            _reason_base = _reason_base[3:]
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -4978,25 +4969,10 @@ class TradingEngine:
                 if order.current_tp_level and order.current_tp_level >= 2 and old_low != order.low_price_since_entry:
                     logger.info(f"[TRACKING] {order.pair} SHORT L{order.current_tp_level}: LOW updated {old_low} -> {order.low_price_since_entry} (ws_low={ws_low})")
 
-            # Jun 14: Flip Entry sleeve — orders tagged FLIP:* use their OWN mean-reversion
-            # exit model (SL/arm/trail/horizon), bypassing the entire momentum exit stack.
-            # Fail-silent so a flip-exit bug can never stall the momentum exit loop.
-            if (order.entry_strategy or "").startswith("FLIP:"):
-                try:
-                    _flip_reason = _eval_flip_exit(order, current_price)
-                    if _flip_reason:
-                        closed_order = await self.close_position(db, order, current_price, _flip_reason)
-                        if closed_order:
-                            updates.append({
-                                "order_id": closed_order.id, "pair": closed_order.pair,
-                                "action": "CLOSED", "reason": _flip_reason,
-                                "pnl": closed_order.pnl, "tp_level": 1,
-                            })
-                    else:
-                        await db.commit()
-                except Exception as _flip_exit_err:
-                    logger.error(f"[FLIP_EXIT] {order.pair}: {_flip_exit_err}")
-                continue
+            # Jun 14: Flip Entry sleeve — flips use the SAME momentum exit stack as normal
+            # trades (EMA13-cross is the only thing disabled, in the realtime path). No
+            # special-case branch here: they flow through check_exit_conditions like any
+            # trade; close_position FLIP_-prefixes their exit reason.
 
             # Get cached indicator data for this pair
             pair_result = await db.execute(
@@ -7375,13 +7351,11 @@ class TradingEngine:
             # The flag resets on the next update_orders_cache cycle.
             if order_info.get('_closing_in_progress'):
                 continue
-            # Jun 14: Flip Entry sleeve — flip orders are owned EXCLUSIVELY by the
-            # _eval_flip_exit model in update_open_positions (SL/arm/trail/horizon).
-            # Skip them here so the momentum realtime stack (EMA13 cross, BE, trailing,
-            # FAST_EXIT, spike guard) can NEVER close a flip. This was the bug that
-            # closed flips on the first tick via EMA13_CROSS_EXIT.
-            if (order_info.get('entry_strategy') or "").startswith("FLIP:"):
-                continue
+            # Jun 14: Flip Entry sleeve — flips use the SAME realtime exit stack as normal
+            # trades (per-tick SL/BE/trailing) EXCEPT the EMA13 cross exit, which is
+            # disabled for them (it fired instantly because a fade enters on the wrong
+            # side of EMA13 by construction). Gated below at the EMA13 block.
+            _is_flip = (order_info.get('entry_strategy') or "").startswith("FLIP:")
             order_id = order_info['id']
             direction = order_info['direction']
             entry_price = order_info['entry_price']
@@ -7667,7 +7641,7 @@ class TradingEngine:
             # Cascade-close behavior: when toggle activates, any open trade
             # currently on wrong side of EMA13 closes on next tick.
             # ════════════════════════════════════════════════════════════════
-            if getattr(config.trading_config.thresholds, 'ema13_cross_exit_enabled', False):
+            if not _is_flip and getattr(config.trading_config.thresholds, 'ema13_cross_exit_enabled', False):
                 _ema13_for_exit = order_info.get('cached_ema13')
                 if _ema13_for_exit is not None and _ema13_for_exit > 0:
                     if direction == "LONG":

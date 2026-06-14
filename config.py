@@ -445,14 +445,17 @@ class SignalThresholds(BaseModel):
     fan_ratio_filter_enabled: bool = True     # master toggle (same A/B pattern)
     # === Flip Entry sleeve (Jun 14) — promote a proven Phantom-Flip cell to a LIVE
     # naked mean-reversion entry. When a listed filter BLOCKS an entry, open the
-    # OPPOSITE direction (block LONG -> SHORT, block SHORT -> LONG) with its own exit
-    # model (SL -0.70 / arm +0.45 / trail -0.25 / 45min, matching the phantom that
-    # measured the edge), tagged entry_strategy="FLIP:<SOURCE>" and exits FLIP_SL/
-    # TRAIL/HORIZON. Naked = NOT re-checked vs the opposite direction's own filters
-    # (reproduces the phantom population). Registry format: comma-separated
-    # "SOURCE:size_mult" — a SOURCE present = active (both sides); size_mult scales
-    # per-trade investment vs base. FAN_RATIO_GATE shipped on N=97/39-pair/Top6%/
-    # WR69%/+0.175% phantom (★, in-sample, gross-of-fees — revert gate in CURRENT_STATE).
+    # OPPOSITE direction (block LONG -> SHORT, block SHORT -> LONG). Jun 14 (operator):
+    # flips use the SAME momentum exit stack as normal trades (tiered SL/BE/trailing/
+    # runner-trail) EXCEPT the EMA13-cross exit, which is disabled for flips (it fired
+    # instantly — a fade enters on the wrong side of EMA13 by construction). Exit reasons
+    # are FLIP_-prefixed (FLIP_STOP_LOSS L1 etc.) so flip exits are distinguishable.
+    # Entry is NAKED = NOT re-checked vs the opposite direction's filters. Tagged
+    # entry_strategy="FLIP:<SOURCE>". Registry: comma-separated "SOURCE:size_mult" — a
+    # SOURCE present = active (both sides); size_mult scales per-trade investment vs base.
+    # FAN_RATIO_GATE shipped on N=97/39-pair/Top6%/WR69%/+0.175% phantom (in-sample;
+    # note the phantom used a flat arm0.45/trail0.25 model, live now uses the tiered
+    # stack — re-measure under the live exit; revert gate in CURRENT_STATE).
     flip_entry_enabled: bool = True                       # master kill-switch for the whole sleeve
     flip_entry_sources: str = "FAN_RATIO_GATE:1.0"        # active flip sources + per-source size mult
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min

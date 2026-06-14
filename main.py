@@ -8879,7 +8879,7 @@ def _compute_flip_entry_performance(flip_orders):
         wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
         tot = sum((r.pnl_percentage or 0) for r in rs)
         usd = sum((r.pnl or 0) for r in rs)
-        sls = sum(1 for r in rs if (r.close_reason or "").startswith("FLIP_SL"))
+        sls = sum(1 for r in rs if ("STOP_LOSS" in (r.close_reason or "")))
         pc = Counter((r.pair or '?') for r in rs)
         top_pair, top_n = pc.most_common(1)[0]
         return {
@@ -8934,7 +8934,7 @@ def _compute_flip_trades(flip_orders):
         usd = sum((r.pnl or 0) for r in rs)
         peak = sum((r.peak_pnl or 0) for r in rs) / n
         bug = sum(1 for r in rs if not (r.close_reason or "").startswith("FLIP_"))
-        sl = sum(1 for r in rs if (r.close_reason or "").startswith("FLIP_SL"))
+        sl = sum(1 for r in rs if ("STOP_LOSS" in (r.close_reason or "")))
         wr = round(100.0 * wins / n, 1)
         avg = round(tot / n, 3)
         if bug == n:

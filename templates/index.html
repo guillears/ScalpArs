@@ -1121,6 +1121,8 @@
                                     <th class="text-left py-1 px-2" title="Which filter blocked which direction → we opened the opposite">Trigger</th>
                                     <th class="text-left px-2" title="The side we opened (the fade)">Flip</th>
                                     <th class="text-right px-2" title="Number of flip trades for this trigger">N</th>
+                                    <th class="text-right px-2" title="distinct pairs in this cell">Pairs</th>
+                                    <th class="text-right px-2" title="% of N from the single most common pair — ≥60% = concentrated">Top%</th>
                                     <th class="text-right px-2">WR%</th>
                                     <th class="text-right px-2">Avg %</th>
                                     <th class="text-right px-2">Total $</th>
@@ -1129,7 +1131,7 @@
                                 </tr>
                             </thead>
                             <tbody id="flip-trades-body" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
+                                <tr><td colspan="10" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -2430,37 +2432,6 @@
                     <div id="phantom-flip-total" class="text-xs text-gray-400 mt-2"></div>
                 </div>
                 <!-- ===== PHANTOM FLIP END ===== -->
-
-                <!-- ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) ===== -->
-                <div class="mt-6 pt-6 border-t border-fuchsia-700/50">
-                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Entry Sleeve <span class="text-xs text-fuchsia-500">(LIVE — real positions)</span></h3>
-                    <p class="text-xs text-gray-400 mb-3">
-                        Promoted fade-the-block entries: when a listed filter blocks an entry, the bot opens the <strong>opposite</strong> direction as a real naked trade. It uses the <strong>same exit stack as normal trades</strong> (tiered SL / BE / normal trailing) with the <strong>EMA13-cross exit AND the Runner Stretch-Trail (shorts) disabled</strong> for flips (both are continuation mechanisms; a flip is a reversion); exit reasons are <code>FLIP_</code>-prefixed. Configure active sources in Settings → Flip Entry Sleeve.
-                        <span class="text-amber-400">Revert gate: at N≥20, hold only if WR&gt;55% AND avg&gt;+0.05%. Top%≥60 (amber) = one-pair concentration, not a real edge.</span>
-                    </p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead><tr class="text-gray-400 border-b border-white/10">
-                                <th class="px-2 py-1 text-left">Source</th>
-                                <th class="px-2 py-1 text-left">Dir</th>
-                                <th class="px-2 py-1 text-right">N</th>
-                                <th class="px-2 py-1 text-right" title="distinct pairs">Pairs</th>
-                                <th class="px-2 py-1 text-right" title="% of N from the single most common pair — ≥60% = concentrated">Top%</th>
-                                <th class="px-2 py-1 text-right">WR%</th>
-                                <th class="px-2 py-1 text-right">Avg %</th>
-                                <th class="px-2 py-1 text-right">Total %</th>
-                                <th class="px-2 py-1 text-right">Total $</th>
-                                <th class="px-2 py-1 text-right" title="% closed at the -0.70 flip SL">SL%</th>
-                                <th class="px-2 py-1 text-left">Verdict</th>
-                            </tr></thead>
-                            <tbody id="flip-entry-body" class="divide-y divide-white/5">
-                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No flip entries closed yet (a blocked entry on an active source opens the opposite-side fade)</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="flip-entry-total" class="text-xs text-gray-400 mt-2"></div>
-                </div>
-                <!-- ===== FLIP ENTRY END ===== -->
 
 
                 <!-- Entry Type Performance -->
@@ -8202,35 +8173,18 @@
             }
             // ===== PHANTOM FLIP END =====
 
-            // ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) =====
-            const _fe1 = perf.flip_entry || {};
-            if (_fe1.rows && _fe1.rows.length) {
-                lines.push(`\n${hr2}`);
-                lines.push('## Flip Entry Sleeve (LIVE) — fade-the-block real positions, normal exit stack with EMA13 disabled (FLIP_-prefixed reasons). Revert gate: N>=20 & (WR>55% & avg>+0.05%)\n');
-                lines.push('Source                Dir    N   Pairs  Top%   WR%   Avg%      Total%    Total$     SL%   Verdict');
-                lines.push('-'.repeat(112));
-                _fe1.rows.forEach(r => {
-                    const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
-                    const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
-                    lines.push(`${(r.source||'').padEnd(21)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${r.verdict}`);
-                });
-                if (_fe1.total && _fe1.total.n) {
-                    const t = _fe1.total;
-                    lines.push(`All flip entries: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}% (${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}), SL-rate ${t.sl_rate}%`);
-                }
-            }
-            // ===== FLIP ENTRY END =====
-
             // ===== FLIP TRADE LOG (Jun 14) — decision scorecard by trigger =====
             const _flt1 = perf.flip_trades || {};
             if (_flt1.rows && _flt1.rows.length) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Flip Trade Log (decision scorecard by trigger) — which filter blocked which side -> which way we faded\n');
-                lines.push('Trigger                    Flip   N    WR%   Avg%      Total$     Peak%    SL%');
-                lines.push('-'.repeat(86));
+                lines.push('Trigger                    Flip   N (bug)   Pairs  Top%   WR%   Avg%      Total$     Peak%    SL%');
+                lines.push('-'.repeat(104));
                 _flt1.rows.forEach(r => {
-                    const bug = r.bug > 0 ? ` (${r.bug} bug)` : '';
-                    lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(2)}${bug.padEnd(9)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}`);
+                    const bug = r.bug > 0 ? ` (${r.bug}b)` : '';
+                    const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
+                    const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
+                    lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${(String(r.n)+bug).padEnd(8)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}`);
                 });
                 const _o = _flt1.overall;
                 if (_o) {
@@ -9968,25 +9922,6 @@
                     }
                 }
                 // ===== PHANTOM FLIP END =====
-
-                // ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) =====
-                const _fe1 = perf.flip_entry || {};
-                if (_fe1.rows && _fe1.rows.length) {
-                    lines.push(`\n${hr2}`);
-                    lines.push('## Flip Entry Sleeve (LIVE) — fade-the-block real positions, normal exit stack with EMA13 disabled (FLIP_-prefixed reasons). Revert gate: N>=20 & (WR>55% & avg>+0.05%)\n');
-                    lines.push('Source                Dir    N   Pairs  Top%   WR%   Avg%      Total%    Total$     SL%   Verdict');
-                    lines.push('-'.repeat(112));
-                    _fe1.rows.forEach(r => {
-                        const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
-                        const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
-                        lines.push(`${(r.source||'').padEnd(21)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${r.verdict}`);
-                    });
-                    if (_fe1.total && _fe1.total.n) {
-                        const t = _fe1.total;
-                        lines.push(`All flip entries: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}% (${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}), SL-rate ${t.sl_rate}%`);
-                    }
-                }
-                // ===== FLIP ENTRY END =====
 
                 // ===== FLIP TRADE LOG (Jun 14) — decision scorecard by trigger =====
                 const _flt1 = perf.flip_trades || {};
@@ -12716,45 +12651,6 @@
                 }
                 // ===== PHANTOM FLIP END =====
 
-                // ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) =====
-                if (data.flip_entry) {
-                    const _fe = data.flip_entry;
-                    const _feBody = document.getElementById('flip-entry-body');
-                    if (_feBody) {
-                        const rows = _fe.rows || [];
-                        if (rows.length) {
-                            _feBody.innerHTML = rows.map(r => {
-                                const vc = r.verdict && r.verdict.startsWith('★') ? 'text-emerald-400' : (r.verdict && r.verdict.startsWith('✗') ? 'text-red-400' : 'text-gray-400');
-                                const ac = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                const tc = r.total_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                const uc = r.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
-                                const _topc = (r.top_pair_share!=null && r.top_pair_share>=60) ? 'text-amber-400' : 'text-gray-400';
-                                return `<tr class="hover:bg-white/5">
-                                    <td class="px-2 py-1.5 text-fuchsia-300">${r.source}</td>
-                                    <td class="px-2 py-1.5">${r.direction}</td>
-                                    <td class="px-2 py-1.5 text-right">${r.n}</td>
-                                    <td class="px-2 py-1.5 text-right text-gray-300">${r.distinct_pairs!=null?r.distinct_pairs:'-'}</td>
-                                    <td class="px-2 py-1.5 text-right ${_topc}" title="${r.top_pair||''}">${r.top_pair_share!=null?r.top_pair_share.toFixed(0)+'%':'-'}</td>
-                                    <td class="px-2 py-1.5 text-right ${r.wr>55?'text-emerald-400':'text-gray-300'}">${r.wr.toFixed(0)}%</td>
-                                    <td class="px-2 py-1.5 text-right ${ac}">${r.avg_pct>=0?'+':''}${r.avg_pct.toFixed(3)}%</td>
-                                    <td class="px-2 py-1.5 text-right ${tc}">${r.total_pct>=0?'+':''}${r.total_pct.toFixed(2)}%</td>
-                                    <td class="px-2 py-1.5 text-right ${uc} font-bold">${r.total_usd>=0?'+$':'-$'}${Math.abs(r.total_usd).toFixed(2)}</td>
-                                    <td class="px-2 py-1.5 text-right text-gray-400">${r.sl_rate.toFixed(0)}%</td>
-                                    <td class="px-2 py-1.5 ${vc}">${r.verdict}</td>
-                                </tr>`;
-                            }).join('');
-                        } else {
-                            _feBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No flip entries closed yet (a blocked entry on an active source opens the opposite-side fade)</td></tr>';
-                        }
-                    }
-                    const _feTot = document.getElementById('flip-entry-total');
-                    if (_feTot && _fe.total && _fe.total.n) {
-                        const t = _fe.total;
-                        _feTot.innerHTML = `All flip entries: N=${t.n}, WR ${t.wr}%, avg <span class="${t.avg_pct>=0?'text-emerald-400':'text-red-400'}">${t.avg_pct>=0?'+':''}${t.avg_pct}%</span>, total ${t.total_pct}% (<span class="${t.total_usd>=0?'text-emerald-400':'text-red-400'}">${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}</span>), SL-rate ${t.sl_rate}%`;
-                    }
-                }
-                // ===== FLIP ENTRY END =====
-
                 // ===== FLIP TRADE LOG (Jun 14, per-trade) =====
                 if (data.flip_trades) {
                     const _ftRows = (data.flip_trades.rows) || [];
@@ -12767,10 +12663,13 @@
                                 const uc = t.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
                                 const dc = t.direction === 'SHORT' ? 'text-red-300' : 'text-emerald-300';
                                 const bug = (t.bug > 0) ? ` <span class="text-amber-500/70 text-[10px]">(${t.bug} bug)</span>` : '';
+                                const _topc = (t.top_pair_share!=null && t.top_pair_share>=60) ? 'text-amber-400' : 'text-gray-400';
                                 return `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1.5 text-fuchsia-300 font-mono text-[11px]">${t.trigger}</td>
                                     <td class="px-2 py-1.5 ${dc}">${t.direction}</td>
                                     <td class="px-2 py-1.5 text-right text-gray-200">${t.n}${bug}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-300">${t.distinct_pairs!=null?t.distinct_pairs:'-'}</td>
+                                    <td class="px-2 py-1.5 text-right ${_topc}" title="${t.top_pair||''}">${t.top_pair_share!=null?t.top_pair_share.toFixed(0)+'%':'-'}</td>
                                     <td class="px-2 py-1.5 text-right ${t.wr>55?'text-emerald-400':'text-gray-300'}">${t.wr.toFixed(0)}%</td>
                                     <td class="px-2 py-1.5 text-right ${ac}">${t.avg_pct>=0?'+':''}${t.avg_pct.toFixed(3)}%</td>
                                     <td class="px-2 py-1.5 text-right ${uc} font-bold">${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}</td>
@@ -12779,7 +12678,7 @@
                                 </tr>`;
                             }).join('');
                         } else {
-                            _ftBody.innerHTML = '<tr><td colspan="8" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>';
+                            _ftBody.innerHTML = '<tr><td colspan="10" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>';
                         }
                     }
                     const _ftSum = document.getElementById('flip-trades-summary');

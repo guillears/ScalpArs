@@ -6935,8 +6935,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pattern_truly_unmatched": _compute_truly_unmatched(orders, limit=20),  # TRULY UNMATCHED (no C, no W) — Jun 1
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
-        "flip_entry": _compute_flip_entry_performance(_flip_orders),  # FLIP ENTRY (Jun 14, LIVE sleeve)
-        "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14, per-trade)
+        "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14 — merged scorecard; replaced flip_entry)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -8865,60 +8864,12 @@ async def _compute_phantom_flip_performance(db, is_paper):
     return {"rows": rows, "total": total}
 
 
-def _compute_flip_entry_performance(flip_orders):
-    """Flip Entry sleeve performance (Jun 14) — LIVE fade-the-block entries, segregated
-    from momentum. Groups closed flip orders by source × entry direction. Reports N · WR
-    · Avg/Total P&L% (RAW, net of fees) · Total$ · per-pair concentration · SL-rate ·
-    verdict against the live revert gate (revert at N>=20 if WR<=55% OR avg<=+0.05%)."""
-    from collections import Counter
-    closed = [o for o in flip_orders if (o.status == "CLOSED") and o.pnl_percentage is not None]
-    def _agg(rs):
-        n = len(rs)
-        if n == 0:
-            return None
-        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
-        tot = sum((r.pnl_percentage or 0) for r in rs)
-        usd = sum((r.pnl or 0) for r in rs)
-        sls = sum(1 for r in rs if ("STOP_LOSS" in (r.close_reason or "")))
-        pc = Counter((r.pair or '?') for r in rs)
-        top_pair, top_n = pc.most_common(1)[0]
-        return {
-            "n": n, "wr": round(100.0 * wins / n, 1),
-            "avg_pct": round(tot / n, 3), "total_pct": round(tot, 2),
-            "total_usd": round(usd, 2),
-            "sl_rate": round(100.0 * sls / n, 0),
-            "distinct_pairs": len(pc), "top_pair": top_pair,
-            "top_pair_share": round(100.0 * top_n / n, 0),
-        }
-    # group by source (strip "FLIP:") × direction
-    rows = []
-    sources = sorted({(o.entry_strategy or "").replace("FLIP:", "") for o in closed})
-    for src in sources:
-        for d in ("LONG", "SHORT"):
-            sub = [o for o in closed if (o.entry_strategy or "").replace("FLIP:", "") == src and o.direction == d]
-            a = _agg(sub)
-            if a:
-                a.update({"source": src, "direction": d})
-                rows.append(a)
-    total = _agg(closed) or {}
-    for r in rows:
-        _conc = r["n"] >= 5 and r.get("top_pair_share", 0) >= 60
-        if r["n"] < 20:
-            r["verdict"] = f"⏳ building {r['n']}/20"
-        elif r["wr"] <= 55 or r["avg_pct"] <= 0.05:
-            r["verdict"] = "✗ revert (gate)"
-        elif _conc:
-            r["verdict"] = f"⚠ {r['top_pair']} {int(r['top_pair_share'])}%"
-        else:
-            r["verdict"] = "★ live edge"
-    return {"rows": rows, "total": total}
-
-
 def _compute_flip_trades(flip_orders):
     """Flip decision scorecard (Jun 14) — aggregated by TRIGGER (which filter blocked
     which side -> which way we faded), so the operator can judge each trigger's decision
     quality: N trades, WR, avg/total P&L, verdict against the revert gate. 'bug' counts
     pre-fix trades closed by the momentum stack (non-FLIP_* exits) — discount those."""
+    from collections import Counter
     closed = [o for o in flip_orders if o.status == "CLOSED" and o.pnl_percentage is not None]
     groups = {}
     for o in closed:
@@ -8935,6 +8886,9 @@ def _compute_flip_trades(flip_orders):
         peak = sum((r.peak_pnl or 0) for r in rs) / n
         bug = sum(1 for r in rs if not (r.close_reason or "").startswith("FLIP_"))
         sl = sum(1 for r in rs if ("STOP_LOSS" in (r.close_reason or "")))
+        # per-pair concentration (folded in from the old Flip Entry Sleeve table)
+        pc = Counter((r.pair or '?') for r in rs)
+        top_pair, top_n = pc.most_common(1)[0]
         wr = round(100.0 * wins / n, 1)
         avg = round(tot / n, 3)
         if bug == n:
@@ -8949,6 +8903,7 @@ def _compute_flip_trades(flip_orders):
             "trigger": trigger, "direction": flip_dir, "n": n,
             "wr": wr, "avg_pct": avg, "total_pct": round(tot, 2), "total_usd": round(usd, 2),
             "peak_pct": round(peak, 3), "sl_rate": round(100.0 * sl / n, 0),
+            "distinct_pairs": len(pc), "top_pair": top_pair, "top_pair_share": round(100.0 * top_n / n, 0),
             "bug": bug, "verdict": verdict,
         })
     rows.sort(key=lambda r: -r["n"])

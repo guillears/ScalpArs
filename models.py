@@ -394,6 +394,12 @@ class Order(Base):
     # ema_gap_expanding_mode='prev2_only' but would have failed the strict prev1 check
     # (the MARGINAL cohort). False = clean expander. NULL = pre-feature / undefined.
     entry_gap_expand_marginal = Column(Boolean, nullable=True)
+    # Jun 14: Flip Entry sleeve. Which entry strategy opened this position:
+    # NULL/"MOMENTUM" = the normal momentum bot; "FLIP:<SOURCE>" = a fade-the-block
+    # mean-reversion entry (e.g. "FLIP:FAN_RATIO_GATE" — opened OPPOSITE a blocked
+    # entry, with its own SL/arm/trail exit emitting FLIP_SL/TRAIL/HORIZON). Used to
+    # segregate flip P&L from core momentum stats everywhere in the reports.
+    entry_strategy = Column(String(40), nullable=True)
     # May 23: post-exit regime-flip tracker. After trade closes, post-exit
     # watcher continues to read live BTC regime classification each tick.
     # When BTC regime first transitions to OPPOSITE-of-trade-direction

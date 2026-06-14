@@ -188,6 +188,8 @@
     "fan_ratio_block_long": "0.85-3.00,5.0-99",
     "fan_ratio_block_short": "1.00-1.90",
     "fan_ratio_filter_enabled": true,
+    "flip_entry_enabled": true,
+    "flip_entry_sources": "FAN_RATIO_GATE:1.0",
     "btc_1h_5m_rsi_dir_filter_long": "",
     "btc_1h_5m_rsi_dir_filter_short": "RR",
     "btc_1h_5m_rsi_dir_filter_enabled": true,

@@ -204,6 +204,74 @@ def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None
     except Exception:
         pass
 
+
+# ===== FLIP ENTRY SLEEVE (Jun 14) =====
+# Promote a proven Phantom-Flip cell to a LIVE naked mean-reversion entry: when a
+# listed filter blocks an entry, open the OPPOSITE direction with the SAME exit model
+# the phantom measured the edge under (SL/arm/trail/horizon, reusing the _PFLIP_*
+# constants above). All flip code is fail-silent + isolated so it can NEVER break the
+# momentum bot. Registry config: thresholds.flip_entry_sources = "SOURCE:size_mult,...".
+# TO REMOVE: grep "FLIP ENTRY" / "flip_source" / "_flip_" / "FLIP_" + the entry_strategy
+# column + the main.py Flip Entry perf block + the UI block.
+def _flip_registry():
+    """Parse the flip-entry registry into {SOURCE: size_mult}. A source listed here is
+    LIVE for BOTH directions. Master kill-switch = thresholds.flip_entry_enabled.
+    Fail-silent → empty dict (sleeve off)."""
+    try:
+        th = config.trading_config.thresholds
+        if not getattr(th, 'flip_entry_enabled', False):
+            return {}
+        out = {}
+        for part in (getattr(th, 'flip_entry_sources', '') or '').split(','):
+            part = part.strip()
+            if not part:
+                continue
+            name, _, mult = part.partition(':')
+            name = name.strip()
+            if not name:
+                continue
+            try:
+                out[name] = float(mult) if mult.strip() else 1.0
+            except (ValueError, AttributeError):
+                out[name] = 1.0
+        return out
+    except Exception:
+        return {}
+
+def _flip_active(source):
+    return source in _flip_registry()
+
+def _flip_size_mult(source):
+    return _flip_registry().get(source, 1.0)
+
+def _eval_flip_exit(order, current_price):
+    """Flip Entry exit model — mirrors the phantom that measured the edge: hard SL at
+    _PFLIP_SL (-0.70), arm at +_PFLIP_ACT (0.45) peak then trail _PFLIP_PB (0.25), else
+    exit at _PFLIP_MAX_MIN (45min) horizon. Works in RAW price-move % (same basis as
+    order.pnl_percentage). Updates peak/trough on the order. Returns a FLIP_* close
+    reason or None. Bypasses the entire momentum exit stack."""
+    if not current_price or current_price <= 0 or not order.entry_price:
+        return None
+    if order.direction == "SHORT":
+        pnl = (order.entry_price - current_price) / order.entry_price * 100.0
+    else:
+        pnl = (current_price - order.entry_price) / order.entry_price * 100.0
+    if order.peak_pnl is None or pnl > order.peak_pnl:
+        order.peak_pnl = pnl
+    if order.trough_pnl is None or pnl < order.trough_pnl:
+        order.trough_pnl = pnl
+    if pnl <= _PFLIP_SL:
+        return "FLIP_SL"
+    if (order.peak_pnl or 0) >= _PFLIP_ACT and pnl <= (order.peak_pnl - _PFLIP_PB):
+        return "FLIP_TRAIL"
+    try:
+        aged_min = (datetime.utcnow() - order.opened_at).total_seconds() / 60.0
+    except Exception:
+        aged_min = 0
+    if aged_min >= _PFLIP_MAX_MIN:
+        return "FLIP_HORIZON"
+    return None
+
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
     """Update virtual leashes for one order on a price tick. Observation-only; fail-silent."""
@@ -797,7 +865,9 @@ class TradingEngine:
                     _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or
                     _reason_base.startswith("FAST_EXIT") or
                     _reason_base.startswith("ATR_FIXED_TP") or
-                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
+                    _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or
+                    # Jun 14: Flip Entry exits — keep post-exit tracking alive across restart
+                    _reason_base.startswith("FLIP_")):
                 continue
 
             closed_utc = order.closed_at if order.closed_at.tzinfo else order.closed_at.replace(tzinfo=None)
@@ -2701,6 +2771,31 @@ class TradingEngine:
             'exit_order_type': 'TAKER_FALLBACK',
         }
 
+    async def _maybe_open_flip(self, db, pair, blocked_signal, source, indicators):
+        """Flip Entry trigger — when `source` blocks `blocked_signal`, open the OPPOSITE
+        direction as a NAKED mean-reversion entry (its own FLIP exit model). Fail-silent
+        so a flip-path bug can NEVER break the scan loop. All risk controls (max-open,
+        existing-position, cooldown, liquidity caps) are enforced inside open_position."""
+        try:
+            if not _flip_active(source):
+                return
+            flip_dir = "SHORT" if blocked_signal == "LONG" else "LONG"
+            price = indicators.get('price') if indicators else None
+            if not price or price <= 0:
+                return
+            order = await self.open_position(
+                db=db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
+                current_price=price,
+                entry_rsi=indicators.get('rsi'),
+                entry_adx=indicators.get('adx'),
+                entry_atr_pct=indicators.get('atr_pct'),
+                flip_source=source,
+            )
+            if order:
+                logger.info(f"[FLIP_ENTRY] {pair}: {source} blocked {blocked_signal} -> opened {flip_dir} flip (id={order.id})")
+        except Exception as e:
+            logger.error(f"[FLIP_ENTRY] {pair}: flip open failed for {source}/{blocked_signal}: {e}")
+
     async def open_position(
         self,
         db: AsyncSession,
@@ -2755,6 +2850,9 @@ class TradingEngine:
         entry_pair_rank: int = None,
         # Jun 8: gap-expanding relaxation A/B tag (prev2_only-admitted MARGINAL cohort)
         entry_gap_expand_marginal: bool = None,
+        # Jun 14: Flip Entry sleeve — when set, this is a NAKED fade-the-block entry
+        # (bypasses pattern/multiplier logic, base×registry sizing, FLIP exit model).
+        flip_source: str = None,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -2877,7 +2975,7 @@ class TradingEngine:
         # Jun 9: "keep only unmatched longs" — the LONG pattern library selects for losers
         # (every C/W pattern net-negative); the edge is the no-pattern runner cohort (85% WR).
         # Block any LONG that matches ANY C or W pattern. Counter LONG_UNMATCHED_ONLY.
-        if direction == "LONG" and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
+        if direction == "LONG" and not flip_source and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
@@ -2899,7 +2997,7 @@ class TradingEngine:
         )
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
-        if _pcell_block:
+        if _pcell_block and not flip_source:
             logger.info(f"[PATTERN_CELL_BLOCK] {pair} {direction}: entry blocked by pattern-cell rule (signature={_pcell_src})")
             try:
                 self._record_filter_block("PATTERN_CELL_BLOCK", direction)
@@ -2985,6 +3083,11 @@ class TradingEngine:
             cell_lev_mult = _lev_cap
         cell_mult = max(0.5, cell_mult)  # safety floor
         cell_lev_mult = max(0.5, cell_lev_mult)
+
+        # Jun 14: Flip Entry sleeve overrides ALL momentum multipliers — a naked fade
+        # sizes at base × registry size_mult, base leverage (no pattern/RSI×ADX boost).
+        if flip_source:
+            cell_mult, cell_lev_mult, cell_src = _flip_size_mult(flip_source), 1.0, f"FLIP:{flip_source}"
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,
@@ -3334,6 +3437,8 @@ class TradingEngine:
             cell_lev_multiplier=cell_lev_mult,
             cell_multiplier_source=cell_src,
             cell_multiplier_capped=cell_capped,
+            # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
+            entry_strategy=(f"FLIP:{flip_source}" if flip_source else "MOMENTUM"),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -4314,7 +4419,7 @@ class TradingEngine:
         if not getattr(tc, 'post_exit_tracking_enabled', False):
             return
         _reason_base = reason[3:] if reason.startswith("FL_") else reason
-        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL")):
+        if not (_reason_base.startswith("BREAKEVEN_EXIT") or _reason_base.startswith("SIGNAL_LOST") or _reason_base.startswith("TICK_MOMENTUM_EXIT") or _reason_base.startswith("RSI_MOMENTUM_EXIT") or _reason_base.startswith("RSI_HANDOFF_EXIT") or _reason_base.startswith("EMA13_CROSS_EXIT") or _reason_base.startswith("EMA_STACK_CROSS_EXIT") or _reason_base.startswith("STOP_LOSS") or _reason_base.startswith("REGIME_CHANGE") or _reason_base.startswith("TRAILING_STOP") or _reason_base.startswith("RUNNER_TRAIL") or _reason_base.startswith("MOMENTUM_EXIT") or _reason_base.startswith("SLOPE_EXIT") or _reason_base.startswith("NO_EXPANSION") or _reason_base.startswith("RECOVERED") or _reason_base.startswith("DEEP_STOP") or _reason_base.startswith("EMERGENCY_SL") or _reason_base.startswith("FAST_EXIT") or _reason_base.startswith("ATR_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_TP") or _reason_base.startswith("PATTERN_FIXED_SL") or _reason_base.startswith("FLIP_")):
             return
         minutes = getattr(tc, 'post_exit_tracking_minutes', 45)
         tracker = websocket_tracker.get_tracker(order.pair)
@@ -4871,7 +4976,27 @@ class TradingEngine:
                 # Log if low_price was updated
                 if order.current_tp_level and order.current_tp_level >= 2 and old_low != order.low_price_since_entry:
                     logger.info(f"[TRACKING] {order.pair} SHORT L{order.current_tp_level}: LOW updated {old_low} -> {order.low_price_since_entry} (ws_low={ws_low})")
-            
+
+            # Jun 14: Flip Entry sleeve — orders tagged FLIP:* use their OWN mean-reversion
+            # exit model (SL/arm/trail/horizon), bypassing the entire momentum exit stack.
+            # Fail-silent so a flip-exit bug can never stall the momentum exit loop.
+            if (order.entry_strategy or "").startswith("FLIP:"):
+                try:
+                    _flip_reason = _eval_flip_exit(order, current_price)
+                    if _flip_reason:
+                        closed_order = await self.close_position(db, order, current_price, _flip_reason)
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id, "pair": closed_order.pair,
+                                "action": "CLOSED", "reason": _flip_reason,
+                                "pnl": closed_order.pnl, "tp_level": 1,
+                            })
+                    else:
+                        await db.commit()
+                except Exception as _flip_exit_err:
+                    logger.error(f"[FLIP_EXIT] {order.pair}: {_flip_exit_err}")
+                continue
+
             # Get cached indicator data for this pair
             pair_result = await db.execute(
                 select(PairData).where(PairData.pair == order.pair)
@@ -6414,6 +6539,8 @@ class TradingEngine:
                                     self._record_filter_block("FAN_RATIO_GATE", signal, had_room=_had_room)
                                     self._last_pair_block_reason[pair] = "FAN_RATIO_GATE"
                                     _seed_phantom_flip(pair, indicators.get('price'), signal, "FAN_RATIO_GATE")
+                                    # Jun 14: Flip Entry — fade the block live (both sides)
+                                    await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators)
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):

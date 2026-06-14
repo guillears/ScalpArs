@@ -443,6 +443,18 @@ class SignalThresholds(BaseModel):
     fan_ratio_block_long: str = "0.85-1.70,5.0-99"   # dead-zone block (May 29) + >5.0 flat-base cap (May 31)
     fan_ratio_block_short: str = "1.00-1.90"  # SHORT dead-zone block (floor 1.02->1.00 May 31; upper 1.65->1.90 Jun 1, spares 2.076 winner)
     fan_ratio_filter_enabled: bool = True     # master toggle (same A/B pattern)
+    # === Flip Entry sleeve (Jun 14) — promote a proven Phantom-Flip cell to a LIVE
+    # naked mean-reversion entry. When a listed filter BLOCKS an entry, open the
+    # OPPOSITE direction (block LONG -> SHORT, block SHORT -> LONG) with its own exit
+    # model (SL -0.70 / arm +0.45 / trail -0.25 / 45min, matching the phantom that
+    # measured the edge), tagged entry_strategy="FLIP:<SOURCE>" and exits FLIP_SL/
+    # TRAIL/HORIZON. Naked = NOT re-checked vs the opposite direction's own filters
+    # (reproduces the phantom population). Registry format: comma-separated
+    # "SOURCE:size_mult" — a SOURCE present = active (both sides); size_mult scales
+    # per-trade investment vs base. FAN_RATIO_GATE shipped on N=97/39-pair/Top6%/
+    # WR69%/+0.175% phantom (★, in-sample, gross-of-fees — revert gate in CURRENT_STATE).
+    flip_entry_enabled: bool = True                       # master kill-switch for the whole sleeve
+    flip_entry_sources: str = "FAN_RATIO_GATE:1.0"        # active flip sources + per-source size mult
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min
     # — the dead-tape, no-fuel fade zone (mirror of the high-ATR runner finding).
     # LONG <0.25%: 5-batch 12% WR / -$230 (cleanest loser sub-band), 0 overlap with

@@ -2890,6 +2890,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
     )
     all_orders = result.scalars().all()
+    # Jun 14: Flip Entry sleeve — segregate flip fades from momentum stats. Every
+    # downstream `orders`/`trend_orders` derives from all_orders, so removing flips here
+    # keeps all momentum tables flip-free; flip P&L gets its own section (payload below).
+    _flip_orders = [o for o in all_orders if (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:')]
+    all_orders = [o for o in all_orders if not (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:')]
 
     # Amendment #7 (Apr 18): also fetch SIGNAL_EXPIRED rows for Entry Type Performance.
     # These are aborted entry attempts where the signal went stale during the maker wait.
@@ -6929,6 +6934,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pattern_truly_unmatched": _compute_truly_unmatched(orders, limit=20),  # TRULY UNMATCHED (no C, no W) — Jun 1
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
+        "flip_entry": _compute_flip_entry_performance(_flip_orders),  # FLIP ENTRY (Jun 14, LIVE sleeve)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -8854,6 +8860,55 @@ async def _compute_phantom_flip_performance(db, is_paper):
             r["verdict"] = "★ flip pays"
         else:
             r["verdict"] = "⚠ marginal"
+    return {"rows": rows, "total": total}
+
+
+def _compute_flip_entry_performance(flip_orders):
+    """Flip Entry sleeve performance (Jun 14) — LIVE fade-the-block entries, segregated
+    from momentum. Groups closed flip orders by source × entry direction. Reports N · WR
+    · Avg/Total P&L% (RAW, net of fees) · Total$ · per-pair concentration · SL-rate ·
+    verdict against the live revert gate (revert at N>=20 if WR<=55% OR avg<=+0.05%)."""
+    from collections import Counter
+    closed = [o for o in flip_orders if (o.status == "CLOSED") and o.pnl_percentage is not None]
+    def _agg(rs):
+        n = len(rs)
+        if n == 0:
+            return None
+        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
+        tot = sum((r.pnl_percentage or 0) for r in rs)
+        usd = sum((r.pnl or 0) for r in rs)
+        sls = sum(1 for r in rs if (r.close_reason or "").startswith("FLIP_SL"))
+        pc = Counter((r.pair or '?') for r in rs)
+        top_pair, top_n = pc.most_common(1)[0]
+        return {
+            "n": n, "wr": round(100.0 * wins / n, 1),
+            "avg_pct": round(tot / n, 3), "total_pct": round(tot, 2),
+            "total_usd": round(usd, 2),
+            "sl_rate": round(100.0 * sls / n, 0),
+            "distinct_pairs": len(pc), "top_pair": top_pair,
+            "top_pair_share": round(100.0 * top_n / n, 0),
+        }
+    # group by source (strip "FLIP:") × direction
+    rows = []
+    sources = sorted({(o.entry_strategy or "").replace("FLIP:", "") for o in closed})
+    for src in sources:
+        for d in ("LONG", "SHORT"):
+            sub = [o for o in closed if (o.entry_strategy or "").replace("FLIP:", "") == src and o.direction == d]
+            a = _agg(sub)
+            if a:
+                a.update({"source": src, "direction": d})
+                rows.append(a)
+    total = _agg(closed) or {}
+    for r in rows:
+        _conc = r["n"] >= 5 and r.get("top_pair_share", 0) >= 60
+        if r["n"] < 20:
+            r["verdict"] = f"⏳ building {r['n']}/20"
+        elif r["wr"] <= 55 or r["avg_pct"] <= 0.05:
+            r["verdict"] = "✗ revert (gate)"
+        elif _conc:
+            r["verdict"] = f"⚠ {r['top_pair']} {int(r['top_pair_share'])}%"
+        else:
+            r["verdict"] = "★ live edge"
     return {"rows": rows, "total": total}
 
 

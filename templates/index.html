@@ -2404,6 +2404,37 @@
                 </div>
                 <!-- ===== PHANTOM FLIP END ===== -->
 
+                <!-- ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) ===== -->
+                <div class="mt-6 pt-6 border-t border-fuchsia-700/50">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Entry Sleeve <span class="text-xs text-fuchsia-500">(LIVE — real positions)</span></h3>
+                    <p class="text-xs text-gray-400 mb-3">
+                        Promoted fade-the-block entries: when a listed filter blocks an entry, the bot opens the <strong>opposite</strong> direction as a real naked mean-reversion trade with its own exit (SL −0.70 / arm +0.45 / trail −0.25 / 45min). P&L here is <strong>segregated</strong> from the momentum stats above. Configure active sources in Settings → Flip Entry Sleeve.
+                        <span class="text-amber-400">Revert gate: at N≥20, hold only if WR&gt;55% AND avg&gt;+0.05%. Top%≥60 (amber) = one-pair concentration, not a real edge.</span>
+                    </p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-white/10">
+                                <th class="px-2 py-1 text-left">Source</th>
+                                <th class="px-2 py-1 text-left">Dir</th>
+                                <th class="px-2 py-1 text-right">N</th>
+                                <th class="px-2 py-1 text-right" title="distinct pairs">Pairs</th>
+                                <th class="px-2 py-1 text-right" title="% of N from the single most common pair — ≥60% = concentrated">Top%</th>
+                                <th class="px-2 py-1 text-right">WR%</th>
+                                <th class="px-2 py-1 text-right">Avg %</th>
+                                <th class="px-2 py-1 text-right">Total %</th>
+                                <th class="px-2 py-1 text-right">Total $</th>
+                                <th class="px-2 py-1 text-right" title="% closed at the -0.70 flip SL">SL%</th>
+                                <th class="px-2 py-1 text-left">Verdict</th>
+                            </tr></thead>
+                            <tbody id="flip-entry-body" class="divide-y divide-white/5">
+                                <tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No flip entries closed yet (a blocked entry on an active source opens the opposite-side fade)</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="flip-entry-total" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+                <!-- ===== FLIP ENTRY END ===== -->
+
 
                 <!-- Entry Type Performance -->
                 <div class="mt-6 pt-6 border-t border-white/10">
@@ -5677,6 +5708,23 @@
                             </div>
                         </div>
                     </div>
+                    <!-- ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) ===== -->
+                    <div class="mt-3 mb-2 px-4 border-t border-fuchsia-900/40 pt-3">
+                        <div class="flex items-center gap-3 mb-1">
+                            <span class="text-sm text-fuchsia-300">🔀 Flip Entry Sleeve <span class="text-fuchsia-400 text-xs">(Jun 14, LIVE)</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="config-flip-entry-enabled" class="sr-only peer" checked>
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-fuchsia-500"></div>
+                                <span class="ml-2 text-xs text-gray-400">Enabled (master)</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-500 mb-2">When a listed filter BLOCKS an entry, open the <strong>opposite</strong> direction as a naked mean-reversion trade (block LONG→SHORT, block SHORT→LONG) with its own exit (SL −0.70 / arm +0.45 / trail −0.25 / 45min) — the model that measured the phantom edge. Tagged <code>FLIP:&lt;SOURCE&gt;</code>; P&L segregated from momentum. <span class="text-amber-400">Registry: comma-separated <code>SOURCE:size_mult</code>. A source listed = LIVE both sides. Revert gate: N≥20 & (WR&gt;55% & avg&gt;+0.05%).</span></p>
+                        <div>
+                            <span class="text-xs text-fuchsia-400 font-medium">Active flip sources (SOURCE:size_mult, comma-separated)</span>
+                            <input type="text" id="config-flip-entry-sources" placeholder="e.g. FAN_RATIO_GATE:1.0" class="w-full mt-1 px-2 py-1 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200">
+                        </div>
+                    </div>
+                    <!-- ===== FLIP ENTRY CONFIG END ===== -->
                     <div class="mt-3 mb-2 px-4">
                         <div class="flex items-center gap-3 mb-1">
                             <span class="text-sm text-gray-300">BTC 1h × BTC 5m RSI Direction Cross-Filter <span class="text-fuchsia-400 text-xs">(May 26 PM)</span></span>
@@ -8121,6 +8169,25 @@
             }
             // ===== PHANTOM FLIP END =====
 
+            // ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) =====
+            const _fe1 = perf.flip_entry || {};
+            if (_fe1.rows && _fe1.rows.length) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Flip Entry Sleeve (LIVE) — fade-the-block real positions, own exit (SL -0.70/arm 0.45/trail 0.25/45min). Revert gate: N>=20 & (WR>55% & avg>+0.05%)\n');
+                lines.push('Source                Dir    N   Pairs  Top%   WR%   Avg%      Total%    Total$     SL%   Verdict');
+                lines.push('-'.repeat(112));
+                _fe1.rows.forEach(r => {
+                    const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
+                    const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
+                    lines.push(`${(r.source||'').padEnd(21)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${r.verdict}`);
+                });
+                if (_fe1.total && _fe1.total.n) {
+                    const t = _fe1.total;
+                    lines.push(`All flip entries: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}% (${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}), SL-rate ${t.sl_rate}%`);
+                }
+            }
+            // ===== FLIP ENTRY END =====
+
 
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
@@ -9849,6 +9916,25 @@
                     }
                 }
                 // ===== PHANTOM FLIP END =====
+
+                // ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) =====
+                const _fe1 = perf.flip_entry || {};
+                if (_fe1.rows && _fe1.rows.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Flip Entry Sleeve (LIVE) — fade-the-block real positions, own exit (SL -0.70/arm 0.45/trail 0.25/45min). Revert gate: N>=20 & (WR>55% & avg>+0.05%)\n');
+                    lines.push('Source                Dir    N   Pairs  Top%   WR%   Avg%      Total%    Total$     SL%   Verdict');
+                    lines.push('-'.repeat(112));
+                    _fe1.rows.forEach(r => {
+                        const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
+                        const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
+                        lines.push(`${(r.source||'').padEnd(21)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(3)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_pct>=0?'+':'')+r.total_pct.toFixed(2)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${r.verdict}`);
+                    });
+                    if (_fe1.total && _fe1.total.n) {
+                        const t = _fe1.total;
+                        lines.push(`All flip entries: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}% (${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}), SL-rate ${t.sl_rate}%`);
+                    }
+                }
+                // ===== FLIP ENTRY END =====
 
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)
@@ -12558,6 +12644,45 @@
                     }
                 }
                 // ===== PHANTOM FLIP END =====
+
+                // ===== FLIP ENTRY SLEEVE (Jun 14, LIVE) =====
+                if (data.flip_entry) {
+                    const _fe = data.flip_entry;
+                    const _feBody = document.getElementById('flip-entry-body');
+                    if (_feBody) {
+                        const rows = _fe.rows || [];
+                        if (rows.length) {
+                            _feBody.innerHTML = rows.map(r => {
+                                const vc = r.verdict && r.verdict.startsWith('★') ? 'text-emerald-400' : (r.verdict && r.verdict.startsWith('✗') ? 'text-red-400' : 'text-gray-400');
+                                const ac = r.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const tc = r.total_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const uc = r.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const _topc = (r.top_pair_share!=null && r.top_pair_share>=60) ? 'text-amber-400' : 'text-gray-400';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1.5 text-fuchsia-300">${r.source}</td>
+                                    <td class="px-2 py-1.5">${r.direction}</td>
+                                    <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-300">${r.distinct_pairs!=null?r.distinct_pairs:'-'}</td>
+                                    <td class="px-2 py-1.5 text-right ${_topc}" title="${r.top_pair||''}">${r.top_pair_share!=null?r.top_pair_share.toFixed(0)+'%':'-'}</td>
+                                    <td class="px-2 py-1.5 text-right ${r.wr>55?'text-emerald-400':'text-gray-300'}">${r.wr.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${ac}">${r.avg_pct>=0?'+':''}${r.avg_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${tc}">${r.total_pct>=0?'+':''}${r.total_pct.toFixed(2)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${uc} font-bold">${r.total_usd>=0?'+$':'-$'}${Math.abs(r.total_usd).toFixed(2)}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-400">${r.sl_rate.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 ${vc}">${r.verdict}</td>
+                                </tr>`;
+                            }).join('');
+                        } else {
+                            _feBody.innerHTML = '<tr><td colspan="11" class="px-3 py-4 text-center text-gray-500">No flip entries closed yet (a blocked entry on an active source opens the opposite-side fade)</td></tr>';
+                        }
+                    }
+                    const _feTot = document.getElementById('flip-entry-total');
+                    if (_feTot && _fe.total && _fe.total.n) {
+                        const t = _fe.total;
+                        _feTot.innerHTML = `All flip entries: N=${t.n}, WR ${t.wr}%, avg <span class="${t.avg_pct>=0?'text-emerald-400':'text-red-400'}">${t.avg_pct>=0?'+':''}${t.avg_pct}%</span>, total ${t.total_pct}% (<span class="${t.total_usd>=0?'text-emerald-400':'text-red-400'}">${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}</span>), SL-rate ${t.sl_rate}%`;
+                    }
+                }
+                // ===== FLIP ENTRY END =====
 
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)
@@ -16941,6 +17066,10 @@
                 if (_fanS) _fanS.value = (config.thresholds.fan_ratio_block_short || '');
                 const _fanEn = document.getElementById('config-fan-ratio-filter-enabled');
                 if (_fanEn) _fanEn.checked = (config.thresholds.fan_ratio_filter_enabled !== false);
+                const _flipEn = document.getElementById('config-flip-entry-enabled');
+                if (_flipEn) _flipEn.checked = (config.thresholds.flip_entry_enabled === true);
+                const _flipSrc = document.getElementById('config-flip-entry-sources');
+                if (_flipSrc) _flipSrc.value = (config.thresholds.flip_entry_sources || '');
                 // BTC 1h × 5m RSI Direction Cross-Filter (May 26 PM)
                 loadBtc1h5mRsiDirFilter('long', config.thresholds.btc_1h_5m_rsi_dir_filter_long || '');
                 loadBtc1h5mRsiDirFilter('short', config.thresholds.btc_1h_5m_rsi_dir_filter_short || '');
@@ -18163,6 +18292,8 @@
                     fan_ratio_block_long: ((document.getElementById('config-fan-ratio-block-long') || {}).value || '').trim(),
                     fan_ratio_block_short: ((document.getElementById('config-fan-ratio-block-short') || {}).value || '').trim(),
                     fan_ratio_filter_enabled: ((document.getElementById('config-fan-ratio-filter-enabled') || {}).checked === true),
+                    flip_entry_enabled: ((document.getElementById('config-flip-entry-enabled') || {}).checked === true),
+                    flip_entry_sources: ((document.getElementById('config-flip-entry-sources') || {}).value || '').trim(),
                     // BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26 PM)
                     btc_1h_5m_rsi_dir_filter_long: collectBtc1h5mRsiDirFilter('long'),
                     btc_1h_5m_rsi_dir_filter_short: collectBtc1h5mRsiDirFilter('short'),

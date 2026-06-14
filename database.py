@@ -468,6 +468,9 @@ async def init_db():
                 # Jun 8: gap-expanding relaxation A/B cohort tag
                 if 'entry_gap_expand_marginal' not in columns:
                     connection.execute(text("ALTER TABLE orders ADD COLUMN entry_gap_expand_marginal BOOLEAN"))
+                # Jun 14: Flip Entry sleeve — strategy tag (MOMENTUM vs FLIP:<SOURCE>)
+                if 'entry_strategy' not in columns:
+                    connection.execute(text("ALTER TABLE orders ADD COLUMN entry_strategy VARCHAR(40)"))
 
             if 'transactions' in inspector.get_table_names():
                 tx_columns = [c['name'] for c in inspector.get_columns('transactions')]

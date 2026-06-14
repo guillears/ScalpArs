@@ -8218,6 +8218,25 @@
             }
             // ===== FLIP ENTRY END =====
 
+            // ===== FLIP TRADE LOG (Jun 14) — decision scorecard by trigger =====
+            const _flt1 = perf.flip_trades || {};
+            if (_flt1.rows && _flt1.rows.length) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Flip Trade Log (decision scorecard by trigger) — which filter blocked which side -> which way we faded\n');
+                lines.push('Trigger                    Flip   N    WR%   Avg%      Total$     Peak%    SL%');
+                lines.push('-'.repeat(86));
+                _flt1.rows.forEach(r => {
+                    const bug = r.bug > 0 ? ` (${r.bug} bug)` : '';
+                    lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(2)}${bug.padEnd(9)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}`);
+                });
+                const _o = _flt1.overall;
+                if (_o) {
+                    const bx = _o.bug > 0 ? ` (${_o.bug} pre-fix bug-exit(s) excluded)` : '';
+                    lines.push(`\nVERDICT: ${_o.verdict} — ${_o.n} valid flips, WR ${_o.wr}%, avg ${_o.avg_pct>=0?'+':''}${_o.avg_pct}%, net ${_o.total_usd>=0?'+$':'-$'}${Math.abs(_o.total_usd).toFixed(2)}${bx}`);
+                }
+            }
+            // ===== FLIP TRADE LOG END =====
+
 
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
@@ -9965,6 +9984,25 @@
                     }
                 }
                 // ===== FLIP ENTRY END =====
+
+                // ===== FLIP TRADE LOG (Jun 14) — decision scorecard by trigger =====
+                const _flt1 = perf.flip_trades || {};
+                if (_flt1.rows && _flt1.rows.length) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Flip Trade Log (decision scorecard by trigger) — which filter blocked which side -> which way we faded\n');
+                    lines.push('Trigger                    Flip   N    WR%   Avg%      Total$     Peak%    SL%');
+                    lines.push('-'.repeat(86));
+                    _flt1.rows.forEach(r => {
+                        const bug = r.bug > 0 ? ` (${r.bug} bug)` : '';
+                        lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(2)}${bug.padEnd(9)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}`);
+                    });
+                    const _o = _flt1.overall;
+                    if (_o) {
+                        const bx = _o.bug > 0 ? ` (${_o.bug} pre-fix bug-exit(s) excluded)` : '';
+                        lines.push(`\nVERDICT: ${_o.verdict} — ${_o.n} valid flips, WR ${_o.wr}%, avg ${_o.avg_pct>=0?'+':''}${_o.avg_pct}%, net ${_o.total_usd>=0?'+$':'-$'}${Math.abs(_o.total_usd).toFixed(2)}${bx}`);
+                    }
+                }
+                // ===== FLIP TRADE LOG END =====
 
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)

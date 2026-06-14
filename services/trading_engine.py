@@ -244,6 +244,36 @@ def _flip_active(source):
 def _flip_size_mult(source):
     return _flip_registry().get(source, 1.0)
 
+def _eval_flip_exit(order, current_price):
+    """Flip Entry exit — FLAT phantom-replica model (Jun 14 revert): the exit that
+    measured the +0.175% edge. Hard SL _PFLIP_SL (-0.70), arm at +_PFLIP_ACT (0.45)
+    peak then trail _PFLIP_PB (0.25) from peak, else _PFLIP_MAX_MIN (45min) horizon.
+    RAW price-move % (same basis as pnl_percentage). Updates peak/trough on the order.
+    Returns a BASE close reason (close_position FLIP_-prefixes it) or None. Bypasses the
+    momentum stack entirely — the normal tiered trailing gave back too much (ATR floor)
+    on the moderate-peak reversions; the tight 0.25 trail captures them, per the phantom."""
+    if not current_price or current_price <= 0 or not order.entry_price:
+        return None
+    if order.direction == "SHORT":
+        pnl = (order.entry_price - current_price) / order.entry_price * 100.0
+    else:
+        pnl = (current_price - order.entry_price) / order.entry_price * 100.0
+    if order.peak_pnl is None or pnl > order.peak_pnl:
+        order.peak_pnl = pnl
+    if order.trough_pnl is None or pnl < order.trough_pnl:
+        order.trough_pnl = pnl
+    if pnl <= _PFLIP_SL:
+        return "STOP_LOSS L1"
+    if (order.peak_pnl or 0) >= _PFLIP_ACT and pnl <= (order.peak_pnl - _PFLIP_PB):
+        return "TRAILING_STOP L1"
+    try:
+        aged_min = (datetime.utcnow() - order.opened_at).total_seconds() / 60.0
+    except Exception:
+        aged_min = 0
+    if aged_min >= _PFLIP_MAX_MIN:
+        return "NO_EXPANSION"
+    return None
+
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
@@ -4969,10 +4999,27 @@ class TradingEngine:
                 if order.current_tp_level and order.current_tp_level >= 2 and old_low != order.low_price_since_entry:
                     logger.info(f"[TRACKING] {order.pair} SHORT L{order.current_tp_level}: LOW updated {old_low} -> {order.low_price_since_entry} (ws_low={ws_low})")
 
-            # Jun 14: Flip Entry sleeve — flips use the SAME momentum exit stack as normal
-            # trades (EMA13-cross is the only thing disabled, in the realtime path). No
-            # special-case branch here: they flow through check_exit_conditions like any
-            # trade; close_position FLIP_-prefixes their exit reason.
+            # Jun 14 (REVERT): Flip Entry sleeve uses the FLAT phantom-replica exit
+            # (_eval_flip_exit: arm 0.45 / trail 0.25 / SL -0.70 / 45min) — the exit that
+            # measured the edge. The momentum stack's ATR-widened trailing gave back too
+            # much on moderate-peak reversions. Flips bypass the whole momentum exit stack
+            # here; close_position FLIP_-prefixes the reason. Fail-silent.
+            if (order.entry_strategy or "").startswith("FLIP:"):
+                try:
+                    _flip_reason = _eval_flip_exit(order, current_price)
+                    if _flip_reason:
+                        closed_order = await self.close_position(db, order, current_price, _flip_reason)
+                        if closed_order:
+                            updates.append({
+                                "order_id": closed_order.id, "pair": closed_order.pair,
+                                "action": "CLOSED", "reason": closed_order.close_reason,
+                                "pnl": closed_order.pnl, "tp_level": 1,
+                            })
+                    else:
+                        await db.commit()
+                except Exception as _flip_exit_err:
+                    logger.error(f"[FLIP_EXIT] {order.pair}: {_flip_exit_err}")
+                continue
 
             # Get cached indicator data for this pair
             pair_result = await db.execute(
@@ -7352,11 +7399,12 @@ class TradingEngine:
             # The flag resets on the next update_orders_cache cycle.
             if order_info.get('_closing_in_progress'):
                 continue
-            # Jun 14: Flip Entry sleeve — flips use the SAME realtime exit stack as normal
-            # trades (per-tick SL/BE/trailing) EXCEPT the EMA13 cross exit, which is
-            # disabled for them (it fired instantly because a fade enters on the wrong
-            # side of EMA13 by construction). Gated below at the EMA13 block.
-            _is_flip = (order_info.get('entry_strategy') or "").startswith("FLIP:")
+            # Jun 14 (REVERT): flips exit EXCLUSIVELY via the flat _eval_flip_exit model in
+            # the monitor loop. Skip them in the entire realtime momentum stack so it can
+            # never touch a flip.
+            if (order_info.get('entry_strategy') or "").startswith("FLIP:"):
+                continue
+            _is_flip = False  # flips already skipped above; keeps the gates below inert
             order_id = order_info['id']
             direction = order_info['direction']
             entry_price = order_info['entry_price']

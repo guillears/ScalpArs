@@ -875,14 +875,6 @@ def check_exit_conditions(
                 "new_tp_level": new_tp_level,
                 "new_tp_target": new_tp_target
             }
-        elif is_flip:
-            # Jun 14: countertrend flips almost NEVER pass the trend-continue check
-            # (we faded the trend), so the immediate TP-take below was firing the
-            # instant P&L crossed +0.45% — closing AT the peak before the pullback
-            # trailing could ever engage. For flips, do NOT take the immediate TP:
-            # fall through to the pullback-trailing below so the flip rides and exits
-            # on a real PB, exactly like a normal winning trade. (Hard SL still bounds it.)
-            logger.info(f"[FLIP_TP_RIDE] {direction} L{current_tp_level}: pnl={pnl_pct:.4f}% >= target — flip holds for the pullback-trail instead of immediate TP")
         else:
             # Trend broken while at/above TP target -- exit immediately
             logger.info(f"[TREND_BREAK_EXIT] {direction} L{current_tp_level}: pnl={pnl_pct:.4f}% >= target={effective_tp_target:.4f}% but trend broken, closing now")

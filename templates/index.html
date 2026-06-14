@@ -994,34 +994,6 @@
                     <div id="mult-cell-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
 
-                <!-- ===== FLIP TRADE LOG (Jun 14) — per-trade flip tracking ===== -->
-                <div class="mt-6 pt-6 border-t border-fuchsia-800/40">
-                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Trade Log <span class="text-fuchsia-500/70 text-xs font-normal">per-trade · newest first</span></h3>
-                    <p class="text-xs text-gray-500 mb-3"><strong class="text-gray-300">Trigger</strong> = which filter blocked which side (e.g. <code>FAN_RATIO_GATE ⊘LONG</code> = a long was blocked → we faded <span class="text-red-300">SHORT</span>). <strong class="text-gray-300">Verdict</strong> judges each decision: <span class="text-emerald-400">★ paid</span> = fade worked · <span class="text-red-400">✗ stopped</span> = hit −0.70 SL · <span class="text-amber-400">⚠ bug-exit</span> = closed by the momentum stack before the fix (ignore those).</p>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs">
-                            <thead class="text-gray-400 uppercase">
-                                <tr>
-                                    <th class="text-left py-1 px-2">Closed</th>
-                                    <th class="text-left px-2" title="Which filter blocked which direction → we opened the opposite">Trigger</th>
-                                    <th class="text-left px-2" title="The side we opened (the fade)">Flip</th>
-                                    <th class="text-left px-2">Exit</th>
-                                    <th class="text-right px-2">P&amp;L %</th>
-                                    <th class="text-right px-2">P&amp;L $</th>
-                                    <th class="text-right px-2" title="Max favorable excursion">Peak %</th>
-                                    <th class="text-right px-2">Min</th>
-                                    <th class="text-left px-2">Verdict</th>
-                                </tr>
-                            </thead>
-                            <tbody id="flip-trades-body" class="divide-y divide-white/5">
-                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="flip-trades-summary" class="text-xs text-gray-400 mt-2"></div>
-                </div>
-                <!-- ===== FLIP TRADE LOG END ===== -->
-
                 <!-- Pattern Cell Ship Performance (May 21, NEW — per CLAUDE.md May 21 ship Phase 2) -->
                 <div class="mt-6 pt-6 border-t border-fuchsia-900/40">
                     <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🎲 Pattern Cell Ship Performance</h3>
@@ -1137,6 +1109,34 @@
                     </div>
                     <div id="btc1h-mult-perf-summary" class="text-xs text-gray-400 mt-2"></div>
                 </div>
+
+                <!-- ===== FLIP TRADE LOG (Jun 14) — per-trade flip tracking (after all multiplier tables) ===== -->
+                <div class="mt-6 pt-6 border-t border-fuchsia-800/40">
+                    <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Trade Log <span class="text-fuchsia-500/70 text-xs font-normal">per-trade · newest first</span></h3>
+                    <p class="text-xs text-gray-500 mb-3"><strong class="text-gray-300">Trigger</strong> = which filter blocked which side (e.g. <code>FAN_RATIO_GATE ⊘LONG</code> = a long was blocked → we faded <span class="text-red-300">SHORT</span>). <strong class="text-gray-300">Verdict</strong> judges each decision: <span class="text-emerald-400">★ paid</span> = fade worked · <span class="text-red-400">✗ stopped</span> = hit −0.70 SL · <span class="text-amber-400">⚠ bug-exit</span> = closed by the momentum stack before the fix (ignore those).</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Closed</th>
+                                    <th class="text-left px-2" title="Which filter blocked which direction → we opened the opposite">Trigger</th>
+                                    <th class="text-left px-2" title="The side we opened (the fade)">Flip</th>
+                                    <th class="text-left px-2">Exit</th>
+                                    <th class="text-right px-2">P&amp;L %</th>
+                                    <th class="text-right px-2">P&amp;L $</th>
+                                    <th class="text-right px-2" title="Max favorable excursion">Peak %</th>
+                                    <th class="text-right px-2">Min</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="flip-trades-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="flip-trades-summary" class="text-xs text-gray-400 mt-2"></div>
+                </div>
+                <!-- ===== FLIP TRADE LOG END ===== -->
 
 
                 <!-- EMA13 Strict-Mode Performance (May 8, 2026 — tracks ema13_cross_requires_stack_flip toggle) -->

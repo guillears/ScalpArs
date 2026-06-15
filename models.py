@@ -588,6 +588,7 @@ class PhantomFlip(Base):
     # Jun 15: full entry-indicator capture (parity with the flip Order / normal trade) so the
     # phantom POOL is analyzable by RSI / ATR / fan-ratio / regime cross-batch. Forward-only
     # (existing rows stay NULL). Populated from _flip_entry_fields() at seed time.
+    entry_gap = Column(Float, nullable=True)
     entry_rsi = Column(Float, nullable=True)
     entry_rsi_prev = Column(Float, nullable=True)
     entry_adx = Column(Float, nullable=True)

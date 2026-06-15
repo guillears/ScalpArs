@@ -2817,8 +2817,9 @@ class TradingEngine:
             except Exception:
                 pass
         px = ind.get('price')
-        e5, e8, e13, e50 = ind.get('ema5'), ind.get('ema8'), ind.get('ema13'), ind.get('ema50')
+        e5, e8, e13, e50, e20 = ind.get('ema5'), ind.get('ema8'), ind.get('ema13'), ind.get('ema50'), ind.get('ema20')
         # ── pair fields (recomputed exactly as the momentum path does) ──
+        put('entry_gap', lambda: round(abs((e5 - e20) / px * 100), 4))   # EMA5-EMA20 gap (Entry Gap 5-20 table)
         put('entry_rsi', lambda: round(ind['rsi'], 2))
         put('entry_rsi_prev', lambda: round(ind['rsi_prev2'], 2))
         put('entry_adx', lambda: round(ind['adx'], 4))
@@ -3094,6 +3095,7 @@ class TradingEngine:
             # analytics columns as a normal trade — ATR, fan-ratio gaps, stretch, range-pos,
             # dist-EMA13, BTC fields. Built once, shared by the seed + the live flip below.
             _um_ef = {k: v for k, v in {
+                'entry_gap': entry_gap,
                 'entry_ema_gap_5_8': entry_ema_gap_5_8, 'entry_ema_gap_8_13': entry_ema_gap_8_13,
                 'entry_ema5_stretch': entry_ema5_stretch, 'entry_price_vs_ema5_pct': entry_price_vs_ema5_pct,
                 'entry_rsi': entry_rsi, 'entry_rsi_prev': entry_rsi_prev,

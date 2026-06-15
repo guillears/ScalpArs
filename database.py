@@ -519,6 +519,7 @@ async def init_db():
                 # Jun 15 — full entry-indicator capture on phantoms (RSI/ATR/fan-ratio/regime
                 # parity with the flip Order) so the phantom POOL is analyzable cross-batch.
                 _pf_float = [
+                    'entry_gap',
                     'entry_rsi', 'entry_rsi_prev', 'entry_adx', 'entry_adx_prev', 'entry_adx_delta',
                     'entry_pos_di', 'entry_neg_di', 'entry_ema_gap_5_8', 'entry_ema_gap_8_13',
                     'entry_ema5_stretch', 'entry_price_vs_ema5_pct', 'entry_atr_pct',

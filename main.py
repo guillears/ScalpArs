@@ -8995,7 +8995,10 @@ async def _compute_phantom_flip_performance(db, is_paper):
         else:
             _delta = round((_k["avg"] - _bk["avg"]), 3) if (_k and _bk) else None
             _verdict = "⏳ low N"
-        leftover_filter_test.append({"filter": _lbl, "kept": _k, "blocked": _bk, "delta": _delta, "verdict": _verdict})
+        # ≈Δ$ (synthetic): phantoms carry no real $, so approximate per the standard ~$10k flip
+        # notional ($500 × 20×) → 1% ≈ $100. This is Δavg% × 100 (intuition only, not measured $).
+        _delta_usd = round(_delta * 100.0, 1) if _delta is not None else None
+        leftover_filter_test.append({"filter": _lbl, "kept": _k, "blocked": _bk, "delta": _delta, "delta_usd": _delta_usd, "verdict": _verdict})
     return {"rows": rows, "total": total, "fan_curve": fan_curve, "leftover_filter_test": leftover_filter_test}
 
 

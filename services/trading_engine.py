@@ -6043,6 +6043,19 @@ class TradingEngine:
             _p = _current_pair_holder.get('pair')
             if _p:
                 self._last_pair_block_reason[_p] = filter_name
+            # Jun 15: phantom — fade the OVERBOUGHT-long RSI block to a SHORT (dedup-pool
+            # NP=28% for RSI>65 longs, the data's top fade candidate). Seed ONLY the
+            # overbought case (rsi > long_rsi_max), NOT the oversold-long block (those
+            # bounce up). Observation-only; source label "Pair RSI >65".
+            if filter_name == "PAIR_RSI_RANGE" and direction == "LONG":
+                try:
+                    _rsi = _current_pair_holder.get('rsi')
+                    _px = _current_pair_holder.get('price')
+                    _rmax = getattr(config.trading_config.thresholds, 'momentum_long_rsi_max', 65)
+                    if _rsi is not None and _px and _rsi > _rmax:
+                        _seed_phantom_flip(_p, _px, "LONG", "Pair RSI >65")
+                except Exception:
+                    pass
 
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
@@ -6089,6 +6102,11 @@ class TradingEngine:
                 _pair_avg_vol_global = indicators.get('avg_volume_global') or 0
                 _scan_vol_sum += _pair_vol
                 _scan_avg_vol_sum += _pair_avg_vol_global if _pair_avg_vol_global > 0 else _pair_avg_vol
+
+                # Jun 15: stash rsi/price so the block recorder can seed the overbought-RSI
+                # phantom (the PAIR_RSI_RANGE LONG block fires inside get_signal).
+                _current_pair_holder['rsi'] = indicators.get('rsi')
+                _current_pair_holder['price'] = indicators.get('price')
 
                 signal, confidence = get_signal(
                     ema5=indicators.get('ema5'),
@@ -6670,7 +6688,8 @@ class TradingEngine:
                             logger.info(f"[ATR_GAP_LONG] {pair}: LONG blocked — ATR {_ag_atr_pct:.2f}% >= {_ag_atr_min}% AND pair-gap {_ag_gap_pct:.2f}% >= {_ag_gap_min}% (volatile + already-extended → reverts)")
                             self._record_filter_block("ATR_GAP_LONG", "LONG", had_room=_had_room)
                             self._last_pair_block_reason[pair] = "ATR_GAP_LONG"
-                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "ATR_GAP_LONG")
+                            # Jun 15: phantom seed removed — ATR_GAP_LONG fade was ✗ whipsaws
+                            # (N=6, -0.057% avg, 50% SL); that zone is chop, neither side pays.
                             signal = "NO_TRADE"
 
             # Jun 10 — RSI-SPIKE GUARD (LONG): block when the pair's RSI one candle ago was

@@ -173,15 +173,28 @@ _PFLIP_PB = 0.25              # trailing pullback
 _PFLIP_MAX_MIN = 45           # max tracking horizon
 _PFLIP_COOLDOWN_MIN = 30      # min minutes between phantoms for the same pair|source
 
-def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None):
+def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None):
     """Seed a virtual opposite-direction position when an entry is blocked. Fail-silent.
     De-duped: skips if an active phantom exists for pair|source or one was seeded within
     the cooldown (the block filters re-fire every scan cycle the pair stays in the zone).
     cohort: for LONG_UNMATCHED_ONLY only — "C+W"/"C"/"W" pattern family of the blocked
-    long, so the fade can be sub-divided downstream (None for other sources)."""
+    long, so the fade can be sub-divided downstream (None for other sources).
+    entry_fields (Jun 15): the _flip_entry_fields() dict so the persisted PhantomFlip row
+    carries full entry context (RSI/ATR/fan-ratio/regime) for cross-batch analysis."""
     try:
         if not entry_price or entry_price <= 0 or blocked_direction not in ("LONG", "SHORT"):
             return
+        # Build the entry-context dict (+ regime from globals, as open_position does).
+        _ef = dict(entry_fields or {})
+        _g = globals()
+        if 'entry_macro_trend' not in _ef:
+            _ef['entry_macro_trend'] = _g.get('_current_btc_regime')
+        if 'entry_btc_regime' not in _ef:
+            try:
+                _ef['entry_btc_regime'] = classify_btc_regime(
+                    _g.get('_current_btc_adx'), _g.get('_current_btc_rsi'), _g.get('_btc_ema20_slope_pct'))
+            except Exception:
+                pass
         ck = f"{pair}|{source}"
         _now = _leash_time.time()
         _last = _PFLIP_COOLDOWN.get(ck, 0)
@@ -198,7 +211,7 @@ def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None
         _PHANTOM_FLIP_STATE[f"{ck}|{_now:.0f}"] = {
             'pair': pair, 'source': source, 'blocked_dir': blocked_direction,
             'flip_dir': "SHORT" if blocked_direction == "LONG" else "LONG",
-            'entry': entry_price, 'open_ts': _now, 'cohort': cohort,
+            'entry': entry_price, 'open_ts': _now, 'cohort': cohort, '_ef': _ef,
             'peak': 0.0, 'trough': 0.0, 'armed': False, '_last_pnl': 0.0,
         }
     except Exception:
@@ -2787,14 +2800,59 @@ class TradingEngine:
             'exit_order_type': 'TAKER_FALLBACK',
         }
 
-    async def _maybe_open_flip(self, db, pair, blocked_signal, source, indicators, isolate=False):
+    def _flip_entry_fields(self, indicators):
+        """Jun 15: build the FULL entry-indicator kwarg set for a flip Order from the raw
+        `indicators` dict (+ BTC globals), mirroring the momentum entry path so flip trades
+        carry the SAME analytics columns as normal trades — ATR, fan-ratio gaps (5-8 / 8-13),
+        EMA5 stretch, range-position, dist-from-EMA13, ADX-delta, ±DI, BTC adx/rsi/slope.
+        Fail-silent PER FIELD: a missing/None indicator drops that one field, never the flip."""
+        ind = indicators or {}
+        g = globals()
+        out = {}
+        def put(k, fn):
+            try:
+                v = fn()
+                if v is not None:
+                    out[k] = v
+            except Exception:
+                pass
+        px = ind.get('price')
+        e5, e8, e13, e50 = ind.get('ema5'), ind.get('ema8'), ind.get('ema13'), ind.get('ema50')
+        # ── pair fields (recomputed exactly as the momentum path does) ──
+        put('entry_rsi', lambda: round(ind['rsi'], 2))
+        put('entry_rsi_prev', lambda: round(ind['rsi_prev2'], 2))
+        put('entry_adx', lambda: round(ind['adx'], 4))
+        put('entry_adx_prev', lambda: round(ind['adx_prev1'], 4))
+        put('entry_adx_delta', lambda: round(ind['adx'] - ind['adx_prev1'], 4))
+        put('entry_pos_di', lambda: ind['pos_di'])
+        put('entry_neg_di', lambda: ind['neg_di'])
+        put('entry_ema_gap_5_8', lambda: round(abs((e5 - e8) / e8 * 100), 4))
+        put('entry_ema_gap_8_13', lambda: round(abs((e8 - e13) / e13 * 100), 4))
+        put('entry_ema5_stretch', lambda: round(abs(px - e5) / px * 100, 4))
+        put('entry_price_vs_ema5_pct', lambda: round((px - e5) / e5 * 100, 4))
+        put('entry_atr_pct', lambda: round(ind['atr'] / px * 100, 4))
+        put('entry_pair_ema20_ema50_gap_pct', lambda: round((e13 - e50) / e50 * 100, 4))
+        put('entry_dist_from_ema13_pct', lambda: round((px - e13) / e13 * 100, 4))
+        put('entry_range_position', lambda: round((px - ind['low_20']) / (ind['high_20'] - ind['low_20']) * 100, 1))
+        # ── BTC fields from live module globals ──
+        put('entry_btc_adx', lambda: round(g.get('_current_btc_adx'), 4))
+        put('entry_btc_rsi', lambda: round(g.get('_current_btc_rsi'), 1))
+        put('entry_btc_ema20_slope', lambda: g.get('_btc_ema20_slope_pct'))
+        put('entry_btc_1h_slope', lambda: g.get('_current_btc_1h_slope'))
+        put('entry_btc_dist_from_ema13_pct', lambda: round((g['_current_btc_price'] - g['_current_btc_ema13']) / g['_current_btc_ema13'] * 100, 4))
+        return out
+
+    async def _maybe_open_flip(self, db, pair, blocked_signal, source, indicators, isolate=False, entry_fields=None):
         """Flip Entry trigger — when `source` blocks `blocked_signal`, open the OPPOSITE
         direction as a NAKED mean-reversion entry (its own FLIP exit model). Fail-silent
         so a flip-path bug can NEVER break the caller. All risk controls (max-open,
         existing-position, cooldown, liquidity caps) are enforced inside open_position.
         isolate=True opens the flip in a FRESH DB session — required when called
         re-entrantly from INSIDE open_position (e.g. the LONG_UNMATCHED_ONLY block) so it
-        can't disturb the outer transaction."""
+        can't disturb the outer transaction. entry_fields (Jun 15) = a ready dict of entry_*
+        analytics kwargs so the flip Order carries the same columns as a normal trade; the
+        caller supplies it (recomputed from indicators at the FAN site, or forwarded from
+        open_position's own params at the LONG_UNMATCHED site)."""
         try:
             if not _flip_active(source):
                 return
@@ -2802,14 +2860,16 @@ class TradingEngine:
             price = indicators.get('price') if indicators else None
             if not price or price <= 0:
                 return
+            _ef = dict(entry_fields or {})
             async def _open(_db):
                 return await self.open_position(
                     db=_db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
                     current_price=price,
-                    entry_rsi=indicators.get('rsi'),
-                    entry_adx=indicators.get('adx'),
-                    entry_atr_pct=indicators.get('atr_pct'),
+                    entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
+                    entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
+                    entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
                     flip_source=source,
+                    **_ef,
                 )
             if isolate:
                 async with AsyncSessionLocal() as _fdb:
@@ -3029,7 +3089,22 @@ class TradingEngine:
             # Measures REALIZED matched-long→short P&L. Blocked dir LONG → flip SHORT.
             # Jun 14: tag the C/W family so the fade can be sub-divided (C+W / C / W).
             _um_cohort = "C+W" if (_pc_any_e and _pw_any_e) else ("C" if _pc_any_e else "W")
-            _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY", cohort=_um_cohort)
+            # Jun 15: forward THIS blocked-long's full entry context (open_position's own
+            # derived params) so BOTH the phantom row AND the SHORT fade Order carry the same
+            # analytics columns as a normal trade — ATR, fan-ratio gaps, stretch, range-pos,
+            # dist-EMA13, BTC fields. Built once, shared by the seed + the live flip below.
+            _um_ef = {k: v for k, v in {
+                'entry_ema_gap_5_8': entry_ema_gap_5_8, 'entry_ema_gap_8_13': entry_ema_gap_8_13,
+                'entry_ema5_stretch': entry_ema5_stretch, 'entry_price_vs_ema5_pct': entry_price_vs_ema5_pct,
+                'entry_rsi': entry_rsi, 'entry_rsi_prev': entry_rsi_prev,
+                'entry_adx': entry_adx, 'entry_adx_prev': entry_adx_prev, 'entry_adx_delta': entry_adx_delta,
+                'entry_pos_di': entry_pos_di, 'entry_neg_di': entry_neg_di, 'entry_atr_pct': entry_atr_pct,
+                'entry_range_position': entry_range_position, 'entry_dist_from_ema13_pct': entry_dist_from_ema13_pct,
+                'entry_pair_ema20_ema50_gap_pct': entry_pair_ema20_ema50_gap_pct,
+                'entry_btc_adx': entry_btc_adx, 'entry_btc_rsi': entry_btc_rsi,
+                'entry_btc_1h_slope': entry_btc_1h_slope, 'entry_btc_dist_from_ema13_pct': entry_btc_dist_from_ema13_pct,
+            }.items() if v is not None}
+            _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY", cohort=_um_cohort, entry_fields=_um_ef)
             # Jun 15: LIVE flip — fade the matched long to a SHORT (registry-gated). This
             # block runs INSIDE open_position, so the flip opens in an ISOLATED session
             # (isolate=True) to keep the outer (blocked-long) transaction clean. The flip
@@ -3037,7 +3112,7 @@ class TradingEngine:
             await self._maybe_open_flip(
                 db, pair, "LONG", "LONG_UNMATCHED_ONLY",
                 {'price': current_price, 'rsi': entry_rsi, 'adx': entry_adx, 'atr_pct': entry_atr_pct},
-                isolate=True,
+                isolate=True, entry_fields=_um_ef,
             )
             return None
         _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = self._lookup_pattern_cell_rule(
@@ -4609,6 +4684,8 @@ class TradingEngine:
                             entry_cohort=st.get('cohort'),
                             entry_at=datetime.utcfromtimestamp(st['open_ts']),
                             exit_at=datetime.utcnow(),
+                            # Jun 15: full entry context (RSI/ATR/fan-ratio/regime) for analysis.
+                            **{k: v for k, v in (st.get('_ef') or {}).items() if v is not None},
                         ))
                         await _pdb.commit()
                 except Exception:
@@ -6072,7 +6149,8 @@ class TradingEngine:
                     _px = _current_pair_holder.get('price')
                     _rmax = getattr(config.trading_config.thresholds, 'momentum_long_rsi_max', 65)
                     if _rsi is not None and _px and _rsi > _rmax:
-                        _seed_phantom_flip(_p, _px, "LONG", "Pair RSI >65")
+                        _seed_phantom_flip(_p, _px, "LONG", "Pair RSI >65",
+                                           entry_fields=self._flip_entry_fields(_current_pair_holder))
                 except Exception:
                     pass
 
@@ -6495,7 +6573,8 @@ class TradingEngine:
                                     # oversold (≤35) SHORT-block → fade LONG (the cleaner one). Mid-RSI
                                     # cells are directionless — skipped. Macro/correlated: read separately.
                                     if (signal == "LONG" and btc_rsi >= 70) or (signal == "SHORT" and btc_rsi <= 35):
-                                        _seed_phantom_flip(pair, indicators.get('price'), signal, "BTC_RSI_ADX_CROSS")
+                                        _seed_phantom_flip(pair, indicators.get('price'), signal, "BTC_RSI_ADX_CROSS",
+                                                           entry_fields=self._flip_entry_fields(indicators))
                                     signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):
@@ -6635,9 +6714,11 @@ class TradingEngine:
                                     )
                                     self._record_filter_block("FAN_RATIO_GATE", signal, had_room=_had_room)
                                     self._last_pair_block_reason[pair] = "FAN_RATIO_GATE"
-                                    _seed_phantom_flip(pair, indicators.get('price'), signal, "FAN_RATIO_GATE")
+                                    _seed_phantom_flip(pair, indicators.get('price'), signal, "FAN_RATIO_GATE",
+                                                       entry_fields=self._flip_entry_fields(indicators))
                                     # Jun 14: Flip Entry — fade the block live (both sides)
-                                    await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators)
+                                    await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
+                                                                entry_fields=self._flip_entry_fields(indicators))
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -7045,7 +7126,8 @@ class TradingEngine:
                             )
                             self._record_filter_block("PAIR_TREND_FILTER", "SHORT", had_room=_had_room)
                             self._last_pair_block_reason[pair] = "PAIR_TREND_FILTER"
-                            _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "PAIR_TREND_FILTER")
+                            _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "PAIR_TREND_FILTER",
+                                               entry_fields=self._flip_entry_fields(indicators))
                             signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:

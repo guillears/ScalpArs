@@ -16831,7 +16831,7 @@
         // One entry per WIRED flip source. Adding a new live source later = add a row
         // here AND wire its block site to _maybe_open_flip in trading_engine.py.
         const FLIP_SOURCES = [
-            { key: 'FAN_RATIO_GATE', desc: 'Fan-ratio dead-zone block → fade the opposite side', note: '★ phantom N=97 · WR 69% · +0.18% — 2× size Jun 15' },
+            { key: 'FAN_RATIO_GATE', desc: 'Fan-ratio dead-zone block → fade the opposite side', note: '⚠ de-muxed 2×→1× Jun 15 (live ✗ harmful: N=24/50%/−0.24%) — on instant-review' },
             { key: 'LONG_UNMATCHED_ONLY', desc: 'Matched (C/W) long blocked → fade to short', note: '⚠ below-evidence (phantom N≈9 · WR 67%) — Jun 15 override @1x' },
         ];
         function renderFlipSources() {

@@ -516,6 +516,22 @@ async def init_db():
                 pf_columns = [c['name'] for c in inspector.get_columns('phantom_flips')]
                 if 'entry_cohort' not in pf_columns:
                     connection.execute(text("ALTER TABLE phantom_flips ADD COLUMN entry_cohort VARCHAR(8)"))
+                # Jun 15 — full entry-indicator capture on phantoms (RSI/ATR/fan-ratio/regime
+                # parity with the flip Order) so the phantom POOL is analyzable cross-batch.
+                _pf_float = [
+                    'entry_rsi', 'entry_rsi_prev', 'entry_adx', 'entry_adx_prev', 'entry_adx_delta',
+                    'entry_pos_di', 'entry_neg_di', 'entry_ema_gap_5_8', 'entry_ema_gap_8_13',
+                    'entry_ema5_stretch', 'entry_price_vs_ema5_pct', 'entry_atr_pct',
+                    'entry_pair_ema20_ema50_gap_pct', 'entry_dist_from_ema13_pct', 'entry_range_position',
+                    'entry_btc_adx', 'entry_btc_rsi', 'entry_btc_ema20_slope', 'entry_btc_1h_slope',
+                    'entry_btc_dist_from_ema13_pct',
+                ]
+                for _col in _pf_float:
+                    if _col not in pf_columns:
+                        connection.execute(text(f"ALTER TABLE phantom_flips ADD COLUMN {_col} FLOAT"))
+                for _col in ('entry_macro_trend', 'entry_btc_regime'):
+                    if _col not in pf_columns:
+                        connection.execute(text(f"ALTER TABLE phantom_flips ADD COLUMN {_col} VARCHAR(20)"))
 
             if 'investors' not in inspector.get_table_names():
                 connection.execute(text("""

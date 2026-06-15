@@ -585,6 +585,31 @@ class PhantomFlip(Base):
     # blocked long matched, so the fade can be sub-divided. "C+W" / "C" / "W" (None for
     # other sources, where C/W is not computed at the seed site). Forward-only.
     entry_cohort = Column(String(8), nullable=True)
+    # Jun 15: full entry-indicator capture (parity with the flip Order / normal trade) so the
+    # phantom POOL is analyzable by RSI / ATR / fan-ratio / regime cross-batch. Forward-only
+    # (existing rows stay NULL). Populated from _flip_entry_fields() at seed time.
+    entry_rsi = Column(Float, nullable=True)
+    entry_rsi_prev = Column(Float, nullable=True)
+    entry_adx = Column(Float, nullable=True)
+    entry_adx_prev = Column(Float, nullable=True)
+    entry_adx_delta = Column(Float, nullable=True)
+    entry_pos_di = Column(Float, nullable=True)
+    entry_neg_di = Column(Float, nullable=True)
+    entry_ema_gap_5_8 = Column(Float, nullable=True)
+    entry_ema_gap_8_13 = Column(Float, nullable=True)
+    entry_ema5_stretch = Column(Float, nullable=True)
+    entry_price_vs_ema5_pct = Column(Float, nullable=True)
+    entry_atr_pct = Column(Float, nullable=True)
+    entry_pair_ema20_ema50_gap_pct = Column(Float, nullable=True)
+    entry_dist_from_ema13_pct = Column(Float, nullable=True)
+    entry_range_position = Column(Float, nullable=True)
+    entry_btc_adx = Column(Float, nullable=True)
+    entry_btc_rsi = Column(Float, nullable=True)
+    entry_btc_ema20_slope = Column(Float, nullable=True)
+    entry_btc_1h_slope = Column(Float, nullable=True)
+    entry_btc_dist_from_ema13_pct = Column(Float, nullable=True)
+    entry_macro_trend = Column(String(20), nullable=True)
+    entry_btc_regime = Column(String(20), nullable=True)
 
 
 class Transaction(Base):

@@ -8209,6 +8209,24 @@ class TradingEngine:
             conf = config.trading_config.confidence_levels.get(
                 order_info.get('confidence', 'LOW'))
             tp_min = conf.tp_min if conf else 0.1
+            # Jun 15 (operator request): FLIP per-level advance on PROFIT MILESTONES, decoupled
+            # from `trend_continues` (which never fires for a fade — the pair's EMA stack is against
+            # the short, so the momentum path pins flips at L1). Ratchet current_tp_level to
+            # 1 + floor(peak / tp_min) (tp_min 0.45 → L2 @0.45%, L3 @0.90%, …), capped at 5, so the
+            # per-level trailing widening applies to flips like normal trades (tight at L1, wider at
+            # L2+ to let big reversals run). Ratchet-up only; persist to cache + DB so the UI shows
+            # the level and the realtime trailing widening below uses it.
+            if _is_flip and tp_min > 0 and current_peak > 0:
+                _flip_lvl = min(5, 1 + int(current_peak / tp_min))
+                if _flip_lvl > (tp_level or 1):
+                    tp_level = _flip_lvl
+                    order_info['current_tp_level'] = tp_level
+                    try:
+                        async with AsyncSessionLocal() as _lvl_db:
+                            await _lvl_db.execute(update(Order).where(Order.id == order_id).values(current_tp_level=tp_level))
+                            await _lvl_db.commit()
+                    except Exception:
+                        pass
             effective_tp_target = tp_level * tp_min if tp_level > 1 else tp_min
             
             # Trailing stop activates once peak reaches TP target or at L2+.

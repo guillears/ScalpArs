@@ -620,7 +620,7 @@ class PhantomFlip(Base):
     entry_bear_pct = Column(Float, nullable=True)
     entry_pair_volume_24h_usd = Column(Float, nullable=True)
     entry_pair_rank = Column(Integer, nullable=True)
-    entry_quality_score = Column(Integer, nullable=True)
+    entry_quality_score = Column(Float, nullable=True)  # Float to match Order.entry_quality_score
 
 
 class Transaction(Base):

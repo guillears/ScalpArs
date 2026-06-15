@@ -2805,19 +2805,23 @@ class TradingEngine:
         Caller passes `locals()`. Pair-specific values are scan_and_trade locals; the
         market-wide ones (_market_bull_pct/_market_bear_pct are module GLOBALS, declared
         `global` in scan_and_trade; _global_volume_ratio is a local) are read local-then-
-        global. Uses .get() so a not-yet-assigned name never raises. Keys = entry_* columns."""
-        g = globals()
-        def pick(k):
-            v = L.get(k)
-            return v if v is not None else g.get(k)
-        return {
-            'entry_global_volume_ratio': pick('_global_volume_ratio'),
-            'entry_pair_volume_ratio': L.get('_pair_volume_ratio'),
-            'entry_bull_pct': pick('_market_bull_pct'),
-            'entry_bear_pct': pick('_market_bear_pct'),
-            'entry_pair_volume_24h_usd': L.get('volume_24h'),
-            'entry_pair_rank': L.get('_pair_rank'),
-        }
+        global. Uses .get() so a not-yet-assigned name never raises. Keys = entry_* columns.
+        Whole body wrapped fail-silent → {} so a flip helper can NEVER break the scan loop."""
+        try:
+            g = globals()
+            def pick(k):
+                v = L.get(k)
+                return v if v is not None else g.get(k)
+            return {
+                'entry_global_volume_ratio': pick('_global_volume_ratio'),
+                'entry_pair_volume_ratio': L.get('_pair_volume_ratio'),
+                'entry_bull_pct': pick('_market_bull_pct'),
+                'entry_bear_pct': pick('_market_bear_pct'),
+                'entry_pair_volume_24h_usd': L.get('volume_24h'),
+                'entry_pair_rank': L.get('_pair_rank'),
+            }
+        except Exception:
+            return {}
 
     def _flip_entry_fields(self, indicators, flip_dir=None, scan=None):
         """Jun 15: build the FULL entry-indicator kwarg set for a flip Order from the raw
@@ -2841,45 +2845,50 @@ class TradingEngine:
                     out[k] = v
             except Exception:
                 pass
-        px = ind.get('price')
-        e5, e8, e13, e50, e20 = ind.get('ema5'), ind.get('ema8'), ind.get('ema13'), ind.get('ema50'), ind.get('ema20')
-        e20p3, e50p12 = ind.get('ema20_prev3'), ind.get('ema50_prev12')
-        # ── pair fields (recomputed exactly as the momentum path does) ──
-        put('entry_gap', lambda: round(abs((e5 - e20) / px * 100), 4))   # EMA5-EMA20 gap (Entry Gap 5-20 table)
-        put('entry_rsi', lambda: round(ind['rsi'], 2))
-        put('entry_rsi_prev', lambda: round(ind['rsi_prev2'], 2))
-        put('entry_adx', lambda: round(ind['adx'], 4))
-        put('entry_adx_prev', lambda: round(ind['adx_prev1'], 4))
-        put('entry_adx_delta', lambda: round(ind['adx'] - ind['adx_prev1'], 4))
-        put('entry_pos_di', lambda: ind['pos_di'])
-        put('entry_neg_di', lambda: ind['neg_di'])
-        put('entry_ema_gap_5_8', lambda: round(abs((e5 - e8) / e8 * 100), 4))
-        put('entry_ema_gap_8_13', lambda: round(abs((e8 - e13) / e13 * 100), 4))
-        put('entry_ema5_stretch', lambda: round(abs(px - e5) / px * 100, 4))
-        put('entry_price_vs_ema5_pct', lambda: round((px - e5) / e5 * 100, 4))
-        put('entry_atr_pct', lambda: round(ind['atr'] / px * 100, 4))
-        put('entry_pair_ema20_ema50_gap_pct', lambda: round((e13 - e50) / e50 * 100, 4))
-        put('entry_dist_from_ema13_pct', lambda: round((px - e13) / e13 * 100, 4))
-        put('entry_range_position', lambda: round((px - ind['low_20']) / (ind['high_20'] - ind['low_20']) * 100, 1))
-        put('entry_ema20_slope', lambda: round((e20 - e20p3) / e20p3 * 100, 4))    # pair EMA20 slope (Pair EMA20 Slope table)
-        put('entry_ema50_slope', lambda: round((e50 - e50p12) / e50p12 * 100, 4))  # pair EMA50 slope
-        # ── BTC fields from live module globals ──
-        put('entry_btc_adx', lambda: round(g.get('_current_btc_adx'), 4))
-        put('entry_btc_rsi', lambda: round(g.get('_current_btc_rsi'), 1))
-        put('entry_btc_ema20_slope', lambda: g.get('_btc_ema20_slope_pct'))
-        put('entry_btc_1h_slope', lambda: g.get('_current_btc_1h_slope'))
-        put('entry_btc_dist_from_ema13_pct', lambda: round((g['_current_btc_price'] - g['_current_btc_ema13']) / g['_current_btc_ema13'] * 100, 4))
-        # ── scan-state market context (volume / breadth / rank) ──
-        if scan:
-            for k, v in scan.items():
-                if v is not None:
-                    out[k] = v
-        # ── quality score (0-6) for the fade's direction, from the assembled inputs ──
-        if flip_dir:
-            put('entry_quality_score', lambda: _calculate_quality_score(
-                flip_dir, out.get('entry_rsi'), out.get('entry_adx'), out.get('entry_gap'),
-                out.get('entry_bull_pct'), out.get('entry_bear_pct'), out.get('entry_btc_adx'),
-                out.get('entry_ema20_slope')))
+        # Whole computation wrapped fail-silent → returns whatever was accumulated so a
+        # flip helper can NEVER raise into scan_and_trade / open_position (the #1 invariant).
+        try:
+            px = ind.get('price')
+            e5, e8, e13, e50, e20 = ind.get('ema5'), ind.get('ema8'), ind.get('ema13'), ind.get('ema50'), ind.get('ema20')
+            e20p3, e50p12 = ind.get('ema20_prev3'), ind.get('ema50_prev12')
+            # ── pair fields (recomputed exactly as the momentum path does) ──
+            put('entry_gap', lambda: round(abs((e5 - e20) / px * 100), 4))   # EMA5-EMA20 gap (Entry Gap 5-20 table)
+            put('entry_rsi', lambda: round(ind['rsi'], 2))
+            put('entry_rsi_prev', lambda: round(ind['rsi_prev2'], 2))
+            put('entry_adx', lambda: round(ind['adx'], 4))
+            put('entry_adx_prev', lambda: round(ind['adx_prev1'], 4))
+            put('entry_adx_delta', lambda: round(ind['adx'] - ind['adx_prev1'], 4))
+            put('entry_pos_di', lambda: ind['pos_di'])
+            put('entry_neg_di', lambda: ind['neg_di'])
+            put('entry_ema_gap_5_8', lambda: round(abs((e5 - e8) / e8 * 100), 4))
+            put('entry_ema_gap_8_13', lambda: round(abs((e8 - e13) / e13 * 100), 4))
+            put('entry_ema5_stretch', lambda: round(abs(px - e5) / px * 100, 4))
+            put('entry_price_vs_ema5_pct', lambda: round((px - e5) / e5 * 100, 4))
+            put('entry_atr_pct', lambda: round(ind['atr'] / px * 100, 4))
+            put('entry_pair_ema20_ema50_gap_pct', lambda: round((e13 - e50) / e50 * 100, 4))
+            put('entry_dist_from_ema13_pct', lambda: round((px - e13) / e13 * 100, 4))
+            put('entry_range_position', lambda: round((px - ind['low_20']) / (ind['high_20'] - ind['low_20']) * 100, 1))
+            put('entry_ema20_slope', lambda: round((e20 - e20p3) / e20p3 * 100, 4))    # pair EMA20 slope (Pair EMA20 Slope table)
+            put('entry_ema50_slope', lambda: round((e50 - e50p12) / e50p12 * 100, 4))  # pair EMA50 slope
+            # ── BTC fields from live module globals ──
+            put('entry_btc_adx', lambda: round(g.get('_current_btc_adx'), 4))
+            put('entry_btc_rsi', lambda: round(g.get('_current_btc_rsi'), 1))
+            put('entry_btc_ema20_slope', lambda: g.get('_btc_ema20_slope_pct'))
+            put('entry_btc_1h_slope', lambda: g.get('_current_btc_1h_slope'))
+            put('entry_btc_dist_from_ema13_pct', lambda: round((g['_current_btc_price'] - g['_current_btc_ema13']) / g['_current_btc_ema13'] * 100, 4))
+            # ── scan-state market context (volume / breadth / rank) ──
+            if scan:
+                for k, v in scan.items():
+                    if v is not None:
+                        out[k] = v
+            # ── quality score (0-6) for the fade's direction, from the assembled inputs ──
+            if flip_dir:
+                put('entry_quality_score', lambda: _calculate_quality_score(
+                    flip_dir, out.get('entry_rsi'), out.get('entry_adx'), out.get('entry_gap'),
+                    out.get('entry_bull_pct'), out.get('entry_bear_pct'), out.get('entry_btc_adx'),
+                    out.get('entry_ema20_slope')))
+        except Exception:
+            pass
         return out
 
     async def _maybe_open_flip(self, db, pair, blocked_signal, source, indicators, isolate=False, entry_fields=None):

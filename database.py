@@ -529,11 +529,12 @@ async def init_db():
                     # full-parity round 2 (Jun 15)
                     'entry_ema20_slope', 'entry_ema50_slope', 'entry_global_volume_ratio',
                     'entry_pair_volume_ratio', 'entry_bull_pct', 'entry_bear_pct', 'entry_pair_volume_24h_usd',
+                    'entry_quality_score',  # Float to match Order.entry_quality_score
                 ]
                 for _col in _pf_float:
                     if _col not in pf_columns:
                         connection.execute(text(f"ALTER TABLE phantom_flips ADD COLUMN {_col} FLOAT"))
-                for _col in ('entry_pair_rank', 'entry_quality_score'):
+                for _col in ('entry_pair_rank',):
                     if _col not in pf_columns:
                         connection.execute(text(f"ALTER TABLE phantom_flips ADD COLUMN {_col} INTEGER"))
                 for _col in ('entry_macro_trend', 'entry_btc_regime'):

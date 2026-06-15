@@ -8891,6 +8891,22 @@ def _compute_flip_trades(flip_orders):
         top_pair, top_n = pc.most_common(1)[0]
         wr = round(100.0 * wins / n, 1)
         avg = round(tot / n, 3)
+        # Multiplier effect (Jun 15) — representative size/lev (most common in the group)
+        # + the $ uplift the multiplier produced vs the same trades de-multiplied to 1x.
+        # delta_usd = Σ pnl·(1 − 1/eff): >0 amplifies a gain, <0 amplifies a loss.
+        size_mult = Counter(round(r.cell_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
+        lev_mult = Counter(round(r.cell_lev_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
+        eff = round(size_mult * lev_mult, 2)
+        delta_usd = round(sum((r.pnl or 0) * (1 - 1.0 / ((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0)))
+                              for r in rs if (r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0) > 0), 2)
+        if eff <= 1.0:
+            mult_verdict = "—"                              # no multiplier applied
+        elif bug == n:
+            mult_verdict = "⏳ bug-exits"
+        elif usd > 0:
+            mult_verdict = "★ working"                      # multiplier amplified a net gain
+        else:
+            mult_verdict = "✗ harmful → revert 1×"          # multiplier amplified a net loss
         if bug == n:
             verdict = "⚠ bug-exits"          # all pre-fix, invalid sample
         elif n < 20:
@@ -8904,6 +8920,8 @@ def _compute_flip_trades(flip_orders):
             "wr": wr, "avg_pct": avg, "total_pct": round(tot, 2), "total_usd": round(usd, 2),
             "peak_pct": round(peak, 3), "sl_rate": round(100.0 * sl / n, 0),
             "distinct_pairs": len(pc), "top_pair": top_pair, "top_pair_share": round(100.0 * top_n / n, 0),
+            "size_mult": size_mult, "lev_mult": lev_mult, "eff_mult": eff,
+            "delta_usd": delta_usd, "mult_verdict": mult_verdict,
             "bug": bug, "verdict": verdict,
         })
     rows.sort(key=lambda r: -r["n"])

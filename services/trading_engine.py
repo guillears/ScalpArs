@@ -214,8 +214,9 @@ def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None
 # TO REMOVE: grep "FLIP ENTRY" / "flip_source" / "_flip_" / "FLIP_" + the entry_strategy
 # column + the main.py Flip Entry perf block + the UI block.
 def _flip_registry():
-    """Parse the flip-entry registry into {SOURCE: size_mult}. A source listed here is
-    LIVE for BOTH directions. Master kill-switch = thresholds.flip_entry_enabled.
+    """Parse the flip-entry registry into {SOURCE: (size_mult, lev_mult)}. A source listed
+    here is LIVE for BOTH directions. Master kill-switch = thresholds.flip_entry_enabled.
+    Format: SOURCE:size_mult:lev_mult (lev optional → 1.0; bare SOURCE → 1.0/1.0).
     Fail-silent → empty dict (sleeve off)."""
     try:
         th = config.trading_config.thresholds
@@ -226,14 +227,18 @@ def _flip_registry():
             part = part.strip()
             if not part:
                 continue
-            name, _, mult = part.partition(':')
-            name = name.strip()
+            bits = [b.strip() for b in part.split(':')]
+            name = bits[0]
             if not name:
                 continue
-            try:
-                out[name] = float(mult) if mult.strip() else 1.0
-            except (ValueError, AttributeError):
-                out[name] = 1.0
+            def _pf(x, d=1.0):
+                try:
+                    return float(x)
+                except (ValueError, TypeError):
+                    return d
+            size = _pf(bits[1]) if len(bits) > 1 and bits[1] else 1.0
+            lev = _pf(bits[2]) if len(bits) > 2 and bits[2] else 1.0
+            out[name] = (size, lev)
         return out
     except Exception:
         return {}
@@ -242,7 +247,10 @@ def _flip_active(source):
     return source in _flip_registry()
 
 def _flip_size_mult(source):
-    return _flip_registry().get(source, 1.0)
+    return _flip_registry().get(source, (1.0, 1.0))[0]
+
+def _flip_lev_mult(source):
+    return _flip_registry().get(source, (1.0, 1.0))[1]
 
 def _eval_flip_exit(order, current_price):
     """Flip Entry exit — FLAT phantom-replica model (Jun 14 revert): the exit that
@@ -3128,9 +3136,20 @@ class TradingEngine:
         cell_lev_mult = max(0.5, cell_lev_mult)
 
         # Jun 14: Flip Entry sleeve overrides ALL momentum multipliers — a naked fade
-        # sizes at base × registry size_mult, base leverage (no pattern/RSI×ADX boost).
+        # sizes at base × registry size_mult × registry lev_mult (no pattern/RSI×ADX boost).
+        # Jun 15: registry now carries a per-source leverage multiplier too (3-part format);
+        # force multiplier_target="both" so size AND lev apply. Hard caps below still clamp.
         if flip_source:
-            cell_mult, cell_lev_mult, cell_src = _flip_size_mult(flip_source), 1.0, f"FLIP:{flip_source}"
+            cell_mult, cell_lev_mult, cell_src = _flip_size_mult(flip_source), _flip_lev_mult(flip_source), f"FLIP:{flip_source}"
+            _mult_target = "both"
+            # Re-apply the hard caps (the clamp above ran before this override).
+            if cell_mult > _inv_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
+                cell_mult = _inv_cap
+            if cell_lev_mult > _lev_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
+                cell_lev_mult = _lev_cap
+            cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.5, cell_lev_mult)
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,

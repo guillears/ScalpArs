@@ -1113,7 +1113,7 @@
                 <!-- ===== FLIP TRADE LOG (Jun 14) — per-trade flip tracking (after all multiplier tables) ===== -->
                 <div class="mt-6 pt-6 border-t border-fuchsia-800/40">
                     <h3 class="text-sm font-semibold text-fuchsia-300 mb-2">🔀 Flip Trade Log <span class="text-fuchsia-500/70 text-xs font-normal">decision scorecard · by trigger</span></h3>
-                    <p class="text-xs text-gray-500 mb-3"><strong class="text-gray-300">Trigger</strong> = which filter blocked which side (e.g. <code>FAN_RATIO_GATE ⊘LONG</code> = a long was blocked → we faded <span class="text-red-300">SHORT</span>). <strong class="text-gray-300">Verdict</strong>: <span class="text-emerald-400">★ paying</span> = clears the gate (N≥20, WR&gt;55%, avg&gt;+0.05%) · <span class="text-red-400">✗ losing</span> = fails it · <span class="text-amber-400">⚠ bug-exits</span> = all pre-fix (momentum stack killed them — discount).</p>
+                    <p class="text-xs text-gray-500 mb-3"><strong class="text-gray-300">Trigger</strong> = which filter blocked which side (e.g. <code>FAN_RATIO_GATE ⊘LONG</code> = a long was blocked → we faded <span class="text-red-300">SHORT</span>). <strong class="text-gray-300">Verdict</strong>: <span class="text-emerald-400">★ paying</span> = clears the gate (N≥20, WR&gt;55%, avg&gt;+0.05%) · <span class="text-red-400">✗ losing</span> = fails it · <span class="text-amber-400">⚠ bug-exits</span> = all pre-fix (momentum stack killed them — discount). <strong class="text-gray-300">Mult</strong>: <span class="text-emerald-400">★ working</span> = multiplier amplified a net gain · <span class="text-red-400">✗ harmful</span> = amplified a net loss (revert to 1×). <strong class="text-gray-300">Δ$ vs 1×</strong> = the $ the size/lev multiplier added vs the same trades at base.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-xs">
                             <thead class="text-gray-400 uppercase">
@@ -1128,10 +1128,14 @@
                                     <th class="text-right px-2">Total $</th>
                                     <th class="text-right px-2" title="Avg max favorable excursion">Peak %</th>
                                     <th class="text-right px-2" title="% closed at the -0.70 SL">SL%</th>
+                                    <th class="text-right px-2" title="Investment-side multiplier applied (registry size_mult)">Size×</th>
+                                    <th class="text-right px-2" title="Leverage-side multiplier applied (registry lev_mult)">Lev×</th>
+                                    <th class="text-right px-2" title="$ the multiplier added vs the same trades de-multiplied to 1×. Negative = amplified a loss.">Δ$ vs 1×</th>
+                                    <th class="text-left px-2" title="Multiplier verdict">Mult</th>
                                 </tr>
                             </thead>
                             <tbody id="flip-trades-body" class="divide-y divide-white/5">
-                                <tr><td colspan="10" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
+                                <tr><td colspan="14" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -8178,13 +8182,16 @@
             if (_flt1.rows && _flt1.rows.length) {
                 lines.push(`\n${hr2}`);
                 lines.push('## Flip Trade Log (decision scorecard by trigger) — which filter blocked which side -> which way we faded\n');
-                lines.push('Trigger                    Flip   N (bug)   Pairs  Top%   WR%   Avg%      Total$     Peak%    SL%');
-                lines.push('-'.repeat(104));
+                lines.push('Trigger                    Flip   N (bug)   Pairs  Top%   WR%   Avg%      Total$     Peak%    SL%   Size  Lev   Δ$ 1x      Mult');
+                lines.push('-'.repeat(130));
                 _flt1.rows.forEach(r => {
                     const bug = r.bug > 0 ? ` (${r.bug}b)` : '';
                     const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
                     const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
-                    lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${(String(r.n)+bug).padEnd(8)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}`);
+                    const sz = ((r.size_mult!=null?r.size_mult:1).toFixed(1)+'x').padStart(4);
+                    const lv = ((r.lev_mult!=null?r.lev_mult:1).toFixed(1)+'x').padStart(4);
+                    const du = (r.eff_mult>1 ? (r.delta_usd>=0?'+$':'-$')+Math.abs(r.delta_usd).toFixed(2) : '-').padStart(8);
+                    lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${(String(r.n)+bug).padEnd(8)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${sz}  ${lv}  ${du}  ${r.mult_verdict||'-'}`);
                 });
                 const _o = _flt1.overall;
                 if (_o) {
@@ -9928,11 +9935,14 @@
                 if (_flt1.rows && _flt1.rows.length) {
                     lines.push(`\n${hr2}`);
                     lines.push('## Flip Trade Log (decision scorecard by trigger) — which filter blocked which side -> which way we faded\n');
-                    lines.push('Trigger                    Flip   N    WR%   Avg%      Total$     Peak%    SL%');
-                    lines.push('-'.repeat(86));
+                    lines.push('Trigger                    Flip   N    WR%   Avg%      Total$     Peak%    SL%   Size  Lev   Δ$ 1x      Mult');
+                    lines.push('-'.repeat(112));
                     _flt1.rows.forEach(r => {
                         const bug = r.bug > 0 ? ` (${r.bug} bug)` : '';
-                        lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(2)}${bug.padEnd(9)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}`);
+                        const sz = ((r.size_mult!=null?r.size_mult:1).toFixed(1)+'x').padStart(4);
+                        const lv = ((r.lev_mult!=null?r.lev_mult:1).toFixed(1)+'x').padStart(4);
+                        const du = (r.eff_mult>1 ? (r.delta_usd>=0?'+$':'-$')+Math.abs(r.delta_usd).toFixed(2) : '-').padStart(8);
+                        lines.push(`${(r.trigger||'').padEnd(26)} ${(r.direction||'').padEnd(6)} ${String(r.n).padStart(2)}${bug.padEnd(9)}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${sz}  ${lv}  ${du}  ${r.mult_verdict||'-'}`);
                     });
                     const _o = _flt1.overall;
                     if (_o) {
@@ -12664,6 +12674,12 @@
                                 const dc = t.direction === 'SHORT' ? 'text-red-300' : 'text-emerald-300';
                                 const bug = (t.bug > 0) ? ` <span class="text-amber-500/70 text-[10px]">(${t.bug} bug)</span>` : '';
                                 const _topc = (t.top_pair_share!=null && t.top_pair_share>=60) ? 'text-amber-400' : 'text-gray-400';
+                                const _mv = t.mult_verdict || '—';
+                                const _mvc = _mv.startsWith('★') ? 'text-emerald-400' : (_mv.startsWith('✗') ? 'text-red-400' : 'text-gray-500');
+                                const _du = (t.delta_usd!=null) ? t.delta_usd : 0;
+                                const _duc = (t.eff_mult>1) ? (_du>=0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-600';
+                                const _szc = (t.size_mult>1) ? 'text-fuchsia-300 font-semibold' : 'text-gray-500';
+                                const _lvc = (t.lev_mult>1) ? 'text-fuchsia-300 font-semibold' : 'text-gray-500';
                                 return `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1.5 text-fuchsia-300 font-mono text-[11px]">${t.trigger}</td>
                                     <td class="px-2 py-1.5 ${dc}">${t.direction}</td>
@@ -12675,10 +12691,14 @@
                                     <td class="px-2 py-1.5 text-right ${uc} font-bold">${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}</td>
                                     <td class="px-2 py-1.5 text-right text-emerald-400/70">+${t.peak_pct.toFixed(2)}</td>
                                     <td class="px-2 py-1.5 text-right text-gray-400">${t.sl_rate.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${_szc}">${(t.size_mult!=null?t.size_mult:1).toFixed(1)}×</td>
+                                    <td class="px-2 py-1.5 text-right ${_lvc}">${(t.lev_mult!=null?t.lev_mult:1).toFixed(1)}×</td>
+                                    <td class="px-2 py-1.5 text-right ${_duc}">${t.eff_mult>1?(_du>=0?'+$':'-$')+Math.abs(_du).toFixed(2):'—'}</td>
+                                    <td class="px-2 py-1.5 text-left ${_mvc} text-[11px]">${_mv}</td>
                                 </tr>`;
                             }).join('');
                         } else {
-                            _ftBody.innerHTML = '<tr><td colspan="10" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>';
+                            _ftBody.innerHTML = '<tr><td colspan="14" class="py-3 text-center text-gray-500">No flip trades closed yet</td></tr>';
                         }
                     }
                     const _ftSum = document.getElementById('flip-trades-summary');
@@ -16811,7 +16831,7 @@
         // One entry per WIRED flip source. Adding a new live source later = add a row
         // here AND wire its block site to _maybe_open_flip in trading_engine.py.
         const FLIP_SOURCES = [
-            { key: 'FAN_RATIO_GATE', desc: 'Fan-ratio dead-zone block → fade the opposite side', note: '★ phantom N=97 · WR 69% · +0.18%' },
+            { key: 'FAN_RATIO_GATE', desc: 'Fan-ratio dead-zone block → fade the opposite side', note: '★ phantom N=97 · WR 69% · +0.18% — 2× size Jun 15' },
             { key: 'LONG_UNMATCHED_ONLY', desc: 'Matched (C/W) long blocked → fade to short', note: '⚠ below-evidence (phantom N≈9 · WR 67%) — Jun 15 override @1x' },
         ];
         function renderFlipSources() {
@@ -16830,6 +16850,8 @@
                     <div class="flex items-center gap-1 shrink-0">
                         <span class="text-[10px] text-gray-500">size×</span>
                         <input type="number" id="flip-size-${s.key}" value="1.0" step="0.1" min="0.25" onchange="syncFlipRegistry()" class="w-14 px-1 py-0.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 text-right">
+                        <span class="text-[10px] text-gray-500 ml-1">lev×</span>
+                        <input type="number" id="flip-lev-${s.key}" value="1.0" step="0.1" min="0.5" onchange="syncFlipRegistry()" class="w-14 px-1 py-0.5 text-xs bg-gray-800 border border-gray-700 rounded text-gray-200 text-right" title="Leverage multiplier — caution on the −0.70 SL (amplifies the loss per invested $)">
                     </div>
                 </div>`).join('');
         }
@@ -16839,7 +16861,11 @@
                 const cb = document.getElementById('flip-src-' + s.key);
                 if (cb && cb.checked) {
                     const sz = parseFloat((document.getElementById('flip-size-' + s.key) || {}).value);
-                    parts.push(`${s.key}:${(sz && sz > 0) ? sz : 1.0}`);
+                    const lv = parseFloat((document.getElementById('flip-lev-' + s.key) || {}).value);
+                    const szv = (sz && sz > 0) ? sz : 1.0;
+                    const lvv = (lv && lv > 0) ? lv : 1.0;
+                    // Omit the lev part when it's 1× to keep the registry string clean.
+                    parts.push(lvv !== 1.0 ? `${s.key}:${szv}:${lvv}` : `${s.key}:${szv}`);
                 }
             });
             const raw = document.getElementById('config-flip-entry-sources');
@@ -16850,14 +16876,17 @@
             const map = {};
             (str || '').split(',').forEach(p => {
                 p = p.trim(); if (!p) return;
-                const [k, m] = p.split(':');
-                if (k) map[k.trim()] = parseFloat(m) || 1.0;
+                const bits = p.split(':');
+                const k = (bits[0] || '').trim();
+                if (k) map[k] = { size: parseFloat(bits[1]) || 1.0, lev: parseFloat(bits[2]) || 1.0 };
             });
             FLIP_SOURCES.forEach(s => {
                 const cb = document.getElementById('flip-src-' + s.key);
                 const sz = document.getElementById('flip-size-' + s.key);
+                const lv = document.getElementById('flip-lev-' + s.key);
                 if (cb) cb.checked = (s.key in map);
-                if (sz && (s.key in map)) sz.value = map[s.key];
+                if (sz && (s.key in map)) sz.value = map[s.key].size;
+                if (lv && (s.key in map)) lv.value = map[s.key].lev;
             });
             syncFlipRegistry();
         }

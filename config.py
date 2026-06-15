@@ -456,7 +456,7 @@ class SignalThresholds(BaseModel):
     # SOURCE present = active (both sides); size_mult scales per-trade investment vs base.
     # FAN_RATIO_GATE shipped on N=97/39-pair/Top6%/WR69%/+0.175% phantom (in-sample).
     flip_entry_enabled: bool = True                       # master kill-switch for the whole sleeve
-    flip_entry_sources: str = "FAN_RATIO_GATE:1.0,LONG_UNMATCHED_ONLY:1.0"  # active flip sources + per-source size mult (LONG_UNMATCHED added Jun 15, below-evidence override @1x)
+    flip_entry_sources: str = "FAN_RATIO_GATE:2.0,LONG_UNMATCHED_ONLY:1.0"  # SOURCE:size:lev (lev optional→1.0). FAN_RATIO 2x size Jun 15 (proven source, lev stays 1x on the -0.70 SL); LONG_UNMATCHED below-evidence @1x
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min
     # — the dead-tape, no-fuel fade zone (mirror of the high-ATR runner finding).
     # LONG <0.25%: 5-batch 12% WR / -$230 (cleanest loser sub-band), 0 overlap with

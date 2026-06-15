@@ -526,10 +526,16 @@ async def init_db():
                     'entry_pair_ema20_ema50_gap_pct', 'entry_dist_from_ema13_pct', 'entry_range_position',
                     'entry_btc_adx', 'entry_btc_rsi', 'entry_btc_ema20_slope', 'entry_btc_1h_slope',
                     'entry_btc_dist_from_ema13_pct',
+                    # full-parity round 2 (Jun 15)
+                    'entry_ema20_slope', 'entry_ema50_slope', 'entry_global_volume_ratio',
+                    'entry_pair_volume_ratio', 'entry_bull_pct', 'entry_bear_pct', 'entry_pair_volume_24h_usd',
                 ]
                 for _col in _pf_float:
                     if _col not in pf_columns:
                         connection.execute(text(f"ALTER TABLE phantom_flips ADD COLUMN {_col} FLOAT"))
+                for _col in ('entry_pair_rank', 'entry_quality_score'):
+                    if _col not in pf_columns:
+                        connection.execute(text(f"ALTER TABLE phantom_flips ADD COLUMN {_col} INTEGER"))
                 for _col in ('entry_macro_trend', 'entry_btc_regime'):
                     if _col not in pf_columns:
                         connection.execute(text(f"ALTER TABLE phantom_flips ADD COLUMN {_col} VARCHAR(20)"))

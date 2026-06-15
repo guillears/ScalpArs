@@ -2800,12 +2800,31 @@ class TradingEngine:
             'exit_order_type': 'TAKER_FALLBACK',
         }
 
-    def _flip_entry_fields(self, indicators):
+    def _flip_scan_ctx(self, L):
+        """Jun 15: pull the scan-state market context (volume / breadth / rank) out of the
+        scan_and_trade locals dict — passed in as `locals()` by the caller. Uses .get() so a
+        not-yet-assigned local never raises. Keys are the entry_* column names."""
+        return {
+            'entry_global_volume_ratio': L.get('_global_volume_ratio'),
+            'entry_pair_volume_ratio': L.get('_pair_volume_ratio'),
+            'entry_bull_pct': L.get('_market_bull_pct'),
+            'entry_bear_pct': L.get('_market_bear_pct'),
+            'entry_pair_volume_24h_usd': L.get('volume_24h'),
+            'entry_pair_rank': L.get('_pair_rank'),
+        }
+
+    def _flip_entry_fields(self, indicators, flip_dir=None, scan=None):
         """Jun 15: build the FULL entry-indicator kwarg set for a flip Order from the raw
-        `indicators` dict (+ BTC globals), mirroring the momentum entry path so flip trades
-        carry the SAME analytics columns as normal trades — ATR, fan-ratio gaps (5-8 / 8-13),
-        EMA5 stretch, range-position, dist-from-EMA13, ADX-delta, ±DI, BTC adx/rsi/slope.
-        Fail-silent PER FIELD: a missing/None indicator drops that one field, never the flip."""
+        `indicators` dict (+ BTC globals + scan-state), mirroring the momentum entry path so
+        flip trades carry the SAME analytics columns as normal trades — gaps (5-20 / 5-8 /
+        8-13), fan-ratio, EMA5 stretch, range-position, dist-EMA13, ADX-delta, ±DI, pair
+        EMA20/EMA50 slopes, BTC adx/rsi/slope, volume ratios, breadth, rank, quality score.
+        flip_dir → compute the quality score for the fade's direction. scan → market context
+        (volume/breadth/rank) from _flip_scan_ctx. Fail-silent PER FIELD: a missing input
+        drops that one field, never the flip. Fields with NO source at the flip's firing
+        point (funding rate, BTC RSI/ADX history, gap-expand A/B tag — all computed later in
+        the entry pipeline a blocked fade never reaches; none drive a 'Performance by' table)
+        stay NULL by design."""
         ind = indicators or {}
         g = globals()
         out = {}
@@ -2818,6 +2837,7 @@ class TradingEngine:
                 pass
         px = ind.get('price')
         e5, e8, e13, e50, e20 = ind.get('ema5'), ind.get('ema8'), ind.get('ema13'), ind.get('ema50'), ind.get('ema20')
+        e20p3, e50p12 = ind.get('ema20_prev3'), ind.get('ema50_prev12')
         # ── pair fields (recomputed exactly as the momentum path does) ──
         put('entry_gap', lambda: round(abs((e5 - e20) / px * 100), 4))   # EMA5-EMA20 gap (Entry Gap 5-20 table)
         put('entry_rsi', lambda: round(ind['rsi'], 2))
@@ -2835,12 +2855,25 @@ class TradingEngine:
         put('entry_pair_ema20_ema50_gap_pct', lambda: round((e13 - e50) / e50 * 100, 4))
         put('entry_dist_from_ema13_pct', lambda: round((px - e13) / e13 * 100, 4))
         put('entry_range_position', lambda: round((px - ind['low_20']) / (ind['high_20'] - ind['low_20']) * 100, 1))
+        put('entry_ema20_slope', lambda: round((e20 - e20p3) / e20p3 * 100, 4))    # pair EMA20 slope (Pair EMA20 Slope table)
+        put('entry_ema50_slope', lambda: round((e50 - e50p12) / e50p12 * 100, 4))  # pair EMA50 slope
         # ── BTC fields from live module globals ──
         put('entry_btc_adx', lambda: round(g.get('_current_btc_adx'), 4))
         put('entry_btc_rsi', lambda: round(g.get('_current_btc_rsi'), 1))
         put('entry_btc_ema20_slope', lambda: g.get('_btc_ema20_slope_pct'))
         put('entry_btc_1h_slope', lambda: g.get('_current_btc_1h_slope'))
         put('entry_btc_dist_from_ema13_pct', lambda: round((g['_current_btc_price'] - g['_current_btc_ema13']) / g['_current_btc_ema13'] * 100, 4))
+        # ── scan-state market context (volume / breadth / rank) ──
+        if scan:
+            for k, v in scan.items():
+                if v is not None:
+                    out[k] = v
+        # ── quality score (0-6) for the fade's direction, from the assembled inputs ──
+        if flip_dir:
+            put('entry_quality_score', lambda: _calculate_quality_score(
+                flip_dir, out.get('entry_rsi'), out.get('entry_adx'), out.get('entry_gap'),
+                out.get('entry_bull_pct'), out.get('entry_bear_pct'), out.get('entry_btc_adx'),
+                out.get('entry_ema20_slope')))
         return out
 
     async def _maybe_open_flip(self, db, pair, blocked_signal, source, indicators, isolate=False, entry_fields=None):
@@ -3103,8 +3136,14 @@ class TradingEngine:
                 'entry_pos_di': entry_pos_di, 'entry_neg_di': entry_neg_di, 'entry_atr_pct': entry_atr_pct,
                 'entry_range_position': entry_range_position, 'entry_dist_from_ema13_pct': entry_dist_from_ema13_pct,
                 'entry_pair_ema20_ema50_gap_pct': entry_pair_ema20_ema50_gap_pct,
+                'entry_ema20_slope': entry_ema20_slope, 'entry_ema50_slope': entry_ema50_slope,
                 'entry_btc_adx': entry_btc_adx, 'entry_btc_rsi': entry_btc_rsi,
+                'entry_btc_ema20_slope': entry_btc_ema20_slope,
                 'entry_btc_1h_slope': entry_btc_1h_slope, 'entry_btc_dist_from_ema13_pct': entry_btc_dist_from_ema13_pct,
+                'entry_global_volume_ratio': entry_global_volume_ratio, 'entry_pair_volume_ratio': entry_pair_volume_ratio,
+                'entry_bull_pct': entry_bull_pct, 'entry_bear_pct': entry_bear_pct,
+                'entry_pair_volume_24h_usd': entry_pair_volume_24h_usd, 'entry_pair_rank': entry_pair_rank,
+                'entry_quality_score': entry_quality_score,
             }.items() if v is not None}
             _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY", cohort=_um_cohort, entry_fields=_um_ef)
             # Jun 15: LIVE flip — fade the matched long to a SHORT (registry-gated). This
@@ -6152,7 +6191,7 @@ class TradingEngine:
                     _rmax = getattr(config.trading_config.thresholds, 'momentum_long_rsi_max', 65)
                     if _rsi is not None and _px and _rsi > _rmax:
                         _seed_phantom_flip(_p, _px, "LONG", "Pair RSI >65",
-                                           entry_fields=self._flip_entry_fields(_current_pair_holder))
+                                           entry_fields=self._flip_entry_fields(_current_pair_holder, flip_dir="SHORT"))
                 except Exception:
                     pass
 
@@ -6576,7 +6615,7 @@ class TradingEngine:
                                     # cells are directionless — skipped. Macro/correlated: read separately.
                                     if (signal == "LONG" and btc_rsi >= 70) or (signal == "SHORT" and btc_rsi <= 35):
                                         _seed_phantom_flip(pair, indicators.get('price'), signal, "BTC_RSI_ADX_CROSS",
-                                                           entry_fields=self._flip_entry_fields(indicators))
+                                                           entry_fields=self._flip_entry_fields(indicators, flip_dir=('SHORT' if signal == 'LONG' else 'LONG'), scan=self._flip_scan_ctx(locals())))
                                     signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):
@@ -6716,11 +6755,13 @@ class TradingEngine:
                                     )
                                     self._record_filter_block("FAN_RATIO_GATE", signal, had_room=_had_room)
                                     self._last_pair_block_reason[pair] = "FAN_RATIO_GATE"
+                                    _fan_dir = 'SHORT' if signal == 'LONG' else 'LONG'
+                                    _fan_ef = self._flip_entry_fields(indicators, flip_dir=_fan_dir, scan=self._flip_scan_ctx(locals()))
                                     _seed_phantom_flip(pair, indicators.get('price'), signal, "FAN_RATIO_GATE",
-                                                       entry_fields=self._flip_entry_fields(indicators))
+                                                       entry_fields=_fan_ef)
                                     # Jun 14: Flip Entry — fade the block live (both sides)
                                     await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
-                                                                entry_fields=self._flip_entry_fields(indicators))
+                                                                entry_fields=_fan_ef)
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -7129,7 +7170,7 @@ class TradingEngine:
                             self._record_filter_block("PAIR_TREND_FILTER", "SHORT", had_room=_had_room)
                             self._last_pair_block_reason[pair] = "PAIR_TREND_FILTER"
                             _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "PAIR_TREND_FILTER",
-                                               entry_fields=self._flip_entry_fields(indicators))
+                                               entry_fields=self._flip_entry_fields(indicators, flip_dir="LONG", scan=self._flip_scan_ctx(locals())))
                             signal = "NO_TRADE"
 
             if signal in ["LONG", "SHORT"]:

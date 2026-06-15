@@ -611,6 +611,16 @@ class PhantomFlip(Base):
     entry_btc_dist_from_ema13_pct = Column(Float, nullable=True)
     entry_macro_trend = Column(String(20), nullable=True)
     entry_btc_regime = Column(String(20), nullable=True)
+    # Jun 15 (full parity round 2): pair slopes, market context, quality score.
+    entry_ema20_slope = Column(Float, nullable=True)
+    entry_ema50_slope = Column(Float, nullable=True)
+    entry_global_volume_ratio = Column(Float, nullable=True)
+    entry_pair_volume_ratio = Column(Float, nullable=True)
+    entry_bull_pct = Column(Float, nullable=True)
+    entry_bear_pct = Column(Float, nullable=True)
+    entry_pair_volume_24h_usd = Column(Float, nullable=True)
+    entry_pair_rank = Column(Integer, nullable=True)
+    entry_quality_score = Column(Integer, nullable=True)
 
 
 class Transaction(Base):

@@ -621,6 +621,16 @@ class PhantomFlip(Base):
     entry_pair_volume_24h_usd = Column(Float, nullable=True)
     entry_pair_rank = Column(Integer, nullable=True)
     entry_quality_score = Column(Float, nullable=True)  # Float to match Order.entry_quality_score
+    # Jun 15 (full parity round 3): BTC prev/higher-TF companions — the "vs prev candle /
+    # vs 6-ago / 1h" values the "Performance by BTC ... Direction / Volatility / 1h RSI"
+    # tables compare against. Without these on the Order, flips were invisible to those
+    # tables; mirrored onto the phantom row too so the phantom analyses see the same slice.
+    entry_btc_adx_prev = Column(Float, nullable=True)
+    entry_btc_rsi_prev = Column(Float, nullable=True)
+    entry_btc_rsi_prev6 = Column(Float, nullable=True)
+    entry_btc_atr_pct = Column(Float, nullable=True)
+    entry_btc_rsi_1h = Column(Float, nullable=True)
+    entry_btc_rsi_1h_prev = Column(Float, nullable=True)
 
 
 class Transaction(Base):

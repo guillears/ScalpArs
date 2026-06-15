@@ -530,6 +530,10 @@ async def init_db():
                     'entry_ema20_slope', 'entry_ema50_slope', 'entry_global_volume_ratio',
                     'entry_pair_volume_ratio', 'entry_bull_pct', 'entry_bear_pct', 'entry_pair_volume_24h_usd',
                     'entry_quality_score',  # Float to match Order.entry_quality_score
+                    # full-parity round 3 (Jun 15) — BTC prev/higher-TF companions so flips feed
+                    # the "by BTC ... Direction / Volatility / 1h RSI" tables (they compare cur vs prev)
+                    'entry_btc_adx_prev', 'entry_btc_rsi_prev', 'entry_btc_rsi_prev6',
+                    'entry_btc_atr_pct', 'entry_btc_rsi_1h', 'entry_btc_rsi_1h_prev',
                 ]
                 for _col in _pf_float:
                     if _col not in pf_columns:

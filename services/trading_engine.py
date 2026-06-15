@@ -2876,6 +2876,15 @@ class TradingEngine:
             put('entry_btc_ema20_slope', lambda: g.get('_btc_ema20_slope_pct'))
             put('entry_btc_1h_slope', lambda: g.get('_current_btc_1h_slope'))
             put('entry_btc_dist_from_ema13_pct', lambda: round((g['_current_btc_price'] - g['_current_btc_ema13']) / g['_current_btc_ema13'] * 100, 4))
+            # BTC prev/higher-TF COMPANIONS (Jun 15) — the "vs prev candle / vs 6-ago / 1h"
+            # values the "Performance by BTC ... Direction / Volatility / 1h RSI" tables compare
+            # against. Without these a flip is invisible to every one of those tables.
+            put('entry_btc_adx_prev', lambda: round(g.get('_current_btc_adx_prev'), 4))
+            put('entry_btc_rsi_prev', lambda: round(g.get('_current_btc_rsi_prev'), 1))
+            put('entry_btc_rsi_prev6', lambda: round(g.get('_current_btc_rsi_prev6'), 1))
+            put('entry_btc_atr_pct', lambda: g.get('_current_btc_atr_pct'))
+            put('entry_btc_rsi_1h', lambda: g.get('_current_btc_rsi_1h'))
+            put('entry_btc_rsi_1h_prev', lambda: g.get('_current_btc_rsi_1h_prev'))
             # ── scan-state market context (volume / breadth / rank) ──
             if scan:
                 for k, v in scan.items():
@@ -3155,6 +3164,11 @@ class TradingEngine:
                 'entry_btc_adx': entry_btc_adx, 'entry_btc_rsi': entry_btc_rsi,
                 'entry_btc_ema20_slope': entry_btc_ema20_slope,
                 'entry_btc_1h_slope': entry_btc_1h_slope, 'entry_btc_dist_from_ema13_pct': entry_btc_dist_from_ema13_pct,
+                # Jun 15 — BTC prev/higher-TF companions (parity with the FAN flip path) so the
+                # "by BTC ... Direction / Volatility / 1h RSI" tables also see LONG_UNMATCHED flips.
+                'entry_btc_adx_prev': entry_btc_adx_prev, 'entry_btc_rsi_prev': entry_btc_rsi_prev,
+                'entry_btc_rsi_prev6': entry_btc_rsi_prev6, 'entry_btc_atr_pct': entry_btc_atr_pct,
+                'entry_btc_rsi_1h': entry_btc_rsi_1h, 'entry_btc_rsi_1h_prev': entry_btc_rsi_1h_prev,
                 'entry_global_volume_ratio': entry_global_volume_ratio, 'entry_pair_volume_ratio': entry_pair_volume_ratio,
                 'entry_bull_pct': entry_bull_pct, 'entry_bear_pct': entry_bear_pct,
                 'entry_pair_volume_24h_usd': entry_pair_volume_24h_usd, 'entry_pair_rank': entry_pair_rank,
@@ -4741,7 +4755,11 @@ class TradingEngine:
                             entry_at=datetime.utcfromtimestamp(st['open_ts']),
                             exit_at=datetime.utcnow(),
                             # Jun 15: full entry context (RSI/ATR/fan-ratio/regime) for analysis.
-                            **{k: v for k, v in (st.get('_ef') or {}).items() if v is not None},
+                            # Filter to REAL PhantomFlip columns — _ef is the Order-shaped field
+                            # set and may carry keys the phantom table lacks; an unknown kwarg
+                            # would raise into the swallowing try/except and silently kill the row.
+                            **{k: v for k, v in (st.get('_ef') or {}).items()
+                               if v is not None and k in PhantomFlip.__table__.columns},
                         ))
                         await _pdb.commit()
                 except Exception:
@@ -6050,6 +6068,21 @@ class TradingEngine:
             _current_btc_trend_gap_pct = round(((btc_ema13 - btc_ema50) / btc_ema50) * 100, 4)
         else:
             _current_btc_trend_gap_pct = None
+        # Jun 15 — mirror the BTC prev/higher-TF COMPANION values to module globals too, so
+        # _flip_entry_fields (which reads globals) can stamp them on flip Orders. The normal
+        # entry path stamps these from the scan-locals below; flips fire mid-scan and read
+        # globals, so without this mirror flips carried entry_btc_adx but NOT entry_btc_adx_prev
+        # → every "by BTC ... Direction / Volatility / 1h" perf table (which compares cur vs
+        # prev) silently dropped all flips. BTC is computed once per scan = scan-wide, so a
+        # global mirror is correct (same pattern as _current_btc_adx above).
+        global _current_btc_adx_prev, _current_btc_rsi_prev, _current_btc_rsi_prev6
+        global _current_btc_atr_pct, _current_btc_rsi_1h, _current_btc_rsi_1h_prev
+        _current_btc_adx_prev = btc_adx_prev
+        _current_btc_rsi_prev = btc_rsi_prev
+        _current_btc_rsi_prev6 = btc_rsi_prev6
+        _current_btc_atr_pct = btc_atr_pct
+        _current_btc_rsi_1h = btc_rsi_1h
+        _current_btc_rsi_1h_prev = btc_rsi_1h_prev
         logger.info(f"[SCAN] BTC regime={btc_regime} slope={_btc_ema20_slope_pct}% (ema20={btc_ema20}, prev3={btc_ema20_prev3}, adx={btc_adx}) global_filter={'ON' if btc_global_enabled else 'OFF'}")
         
         # ── Phase 1: Collect indicators, signals, and pair regimes for ALL pairs ──

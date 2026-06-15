@@ -6781,6 +6781,20 @@ class TradingEngine:
                                     break
                             except (ValueError, TypeError):
                                 continue
+                        else:
+                            # FAN_CONTROL (Jun 15) — the for-loop completed with NO block, i.e.
+                            # the fan ratio is OUTSIDE every dead-zone band → this entry PASSES
+                            # the fan filter (a "clean"/accelerating move the bot would trade).
+                            # Seed a phantom fade here too (observation-only, NO live flip) as the
+                            # A/B control vs FAN_RATIO_GATE: bucketed by fan ratio × regime it
+                            # answers "does the dead-zone band actually select better fades, or is
+                            # the edge just regime-alignment?". Forward-only; fail-silent.
+                            try:
+                                _ctrl_dir = 'SHORT' if signal == 'LONG' else 'LONG'
+                                _seed_phantom_flip(pair, indicators.get('price'), signal, "FAN_CONTROL",
+                                                   entry_fields=self._flip_entry_fields(indicators, flip_dir=_ctrl_dir, scan=self._flip_scan_ctx(locals())))
+                            except Exception:
+                                pass
 
             # Pair ATR minimum filter (June 1, 2026). Block entries when pair
             # ATR% < min — the dead-tape / no-fuel fade zone (mirror of the

@@ -8837,7 +8837,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
         return (s < 0) if fd == "SHORT" else (s > 0)
 
     rows = []
-    sources = ["FAN_RATIO_GATE", "Pair RSI >65", "PAIR_TREND_FILTER", "BTC_RSI_ADX_CROSS", "LONG_UNMATCHED_ONLY"]
+    sources = ["FAN_RATIO_GATE", "FAN_CONTROL", "Pair RSI >65", "PAIR_TREND_FILTER", "BTC_RSI_ADX_CROSS", "LONG_UNMATCHED_ONLY"]
     for src in sources:
         for fd in ("LONG", "SHORT"):
             sub = [r for r in flips if r.source_filter == src and r.flip_direction == fd]
@@ -8879,7 +8879,38 @@ async def _compute_phantom_flip_performance(db, is_paper):
             r["verdict"] = "★ flip pays"
         else:
             r["verdict"] = "⚠ marginal"
-    return {"rows": rows, "total": total}
+
+    # Jun 15: FAN-RATIO CURVE. Pool the full-range FAN fades (dead-zone FAN_RATIO_GATE +
+    # the FAN_CONTROL pass-through), bucket by fan ratio (same ranges as the Fan Accel
+    # table) × regime alignment, to find WHERE the aligned fade edge actually peaks — i.e.
+    # is the May-29 dead-zone band the best range for the FADE, or is a different range
+    # better? Only the aligned column matters (counter is the known loser). Forward-only.
+    fan_curve = []
+    _fanflips = [r for r in flips if r.source_filter in ("FAN_RATIO_GATE", "FAN_CONTROL")
+                 and r.entry_ema_gap_5_8 and r.entry_ema_gap_8_13]
+    def _fan_align(r):
+        s = r.entry_btc_ema20_slope
+        if s is None:
+            return None
+        return (s < 0) if r.flip_direction == "SHORT" else (s > 0)
+    def _mini(rs):
+        n = len(rs)
+        if n == 0:
+            return None
+        w = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
+        return {"n": n, "wr": round(100.0 * w / n, 0), "avg": round(sum((r.pnl_pct or 0) for r in rs) / n, 3)}
+    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 99.0)]:
+        _b = [r for r in _fanflips if _lo <= (r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13) < _hi]
+        if not _b:
+            continue
+        fan_curve.append({
+            "bucket": f"{_lo:.2f}-{_hi:.2f}",
+            "in_deadzone": (0.85 <= _lo < 3.0) or (_lo >= 5.0),  # the May-29 long-block bands
+            "all": _mini(_b),
+            "aligned": _mini([r for r in _b if _fan_align(r) is True]),
+            "counter": _mini([r for r in _b if _fan_align(r) is False]),
+        })
+    return {"rows": rows, "total": total, "fan_curve": fan_curve}
 
 
 def _compute_flip_trades(flip_orders):

@@ -2434,6 +2434,25 @@
                         </table>
                     </div>
                     <div id="phantom-flip-total" class="text-xs text-gray-400 mt-2"></div>
+                    <!-- FAN-RATIO CURVE (Jun 15) — all FAN fades by fan ratio × regime alignment -->
+                    <div class="mt-4">
+                        <div class="text-xs font-semibold text-fuchsia-300 mb-1">🌀 Fan-Ratio Curve <span class="text-gray-500 font-normal">— all FAN fades (dead-zone + control) by fan ratio × regime; where does the <span class="text-emerald-400">aligned</span> edge peak? <span class="text-amber-400">DZ</span> = May-29 dead-zone band</span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">Fan Bucket</th>
+                                    <th class="text-center px-2" title="In the May-29 fan dead-zone block band?">DZ</th>
+                                    <th class="text-right px-2">N (all)</th>
+                                    <th class="text-right px-2">All Avg%</th>
+                                    <th class="text-right px-2 text-emerald-400/80">Aligned N/WR/Avg</th>
+                                    <th class="text-right px-2 text-red-400/70">Counter N/WR/Avg</th>
+                                </tr></thead>
+                                <tbody id="phantom-fan-curve-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No FAN fades captured yet (forward-only)</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
                 <!-- ===== PHANTOM FLIP END ===== -->
 
@@ -8174,6 +8193,16 @@
                     const t = _pf1.total;
                     lines.push(`All phantom flips: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}%, SL-rate ${t.sl_rate}%`);
                 }
+                if (_pf1.fan_curve && _pf1.fan_curve.length) {
+                    lines.push('\n  ── FAN-RATIO CURVE (all FAN fades by fan ratio × regime alignment; DZ = May-29 dead-zone band) — where does the ALIGNED edge peak? ──');
+                    lines.push('  FanBucket     DZ   N(all)  all%     aligned N/WR/avg          counter N/WR/avg');
+                    lines.push('  '+'-'.repeat(92));
+                    const _fc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
+                    _pf1.fan_curve.forEach(c => {
+                        const a0=c.all;
+                        lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc(c.aligned).padEnd(24)} ${_fc(c.counter)}`);
+                    });
+                }
             }
             // ===== PHANTOM FLIP END =====
 
@@ -9926,6 +9955,16 @@
                     if (_pf1.total && _pf1.total.n) {
                         const t = _pf1.total;
                         lines.push(`All phantom flips: N=${t.n}, WR ${t.wr}%, avg ${t.avg_pct>=0?'+':''}${t.avg_pct}%, total ${t.total_pct}%, SL-rate ${t.sl_rate}%`);
+                    }
+                    if (_pf1.fan_curve && _pf1.fan_curve.length) {
+                        lines.push('\n  ── FAN-RATIO CURVE (all FAN fades by fan ratio × regime alignment; DZ = May-29 dead-zone band) — where does the ALIGNED edge peak? ──');
+                        lines.push('  FanBucket     DZ   N(all)  all%     aligned N/WR/avg          counter N/WR/avg');
+                        lines.push('  '+'-'.repeat(92));
+                        const _fc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
+                        _pf1.fan_curve.forEach(c => {
+                            const a0=c.all;
+                            lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc2(c.aligned).padEnd(24)} ${_fc2(c.counter)}`);
+                        });
                     }
                 }
                 // ===== PHANTOM FLIP END =====
@@ -12657,6 +12696,26 @@
                     if (_pfTot && _pf.total && _pf.total.n) {
                         const t = _pf.total;
                         _pfTot.innerHTML = `All phantom flips: N=${t.n}, WR ${t.wr}%, avg <span class="${t.avg_pct>=0?'text-emerald-400':'text-red-400'}">${t.avg_pct>=0?'+':''}${t.avg_pct}%</span>, total ${t.total_pct}%, SL-rate ${t.sl_rate}%`;
+                    }
+                    const _fcBody = document.getElementById('phantom-fan-curve-body');
+                    if (_fcBody) {
+                        const _fc = _pf.fan_curve || [];
+                        const _mini = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg>=0?'text-emerald-400':'text-red-400'}">${m.avg>=0?'+':''}${m.avg.toFixed(3)}</span>` : '<span class="text-gray-600">-</span>';
+                        if (_fc.length) {
+                            _fcBody.innerHTML = _fc.map(c => {
+                                const a0 = c.all;
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 text-gray-200 font-mono">${c.bucket}</td>
+                                    <td class="px-2 py-1 text-center ${c.in_deadzone?'text-amber-400':'text-gray-600'}">${c.in_deadzone?'DZ':'·'}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${a0?a0.n:0}</td>
+                                    <td class="px-2 py-1 text-right ${a0&&a0.avg>=0?'text-emerald-400':'text-red-400'}">${a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-'}</td>
+                                    <td class="px-2 py-1 text-right">${_mini(c.aligned)}</td>
+                                    <td class="px-2 py-1 text-right">${_mini(c.counter)}</td>
+                                </tr>`;
+                            }).join('');
+                        } else {
+                            _fcBody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No FAN fades captured yet (forward-only)</td></tr>';
+                        }
                     }
                 }
                 // ===== PHANTOM FLIP END =====

@@ -2453,6 +2453,25 @@
                             </table>
                         </div>
                     </div>
+                    <!-- LEFTOVER-FILTER TEST (Jun 15) — which skipped downstream filter separates flip winners/losers -->
+                    <div class="mt-4">
+                        <div class="text-xs font-semibold text-cyan-300 mb-1">🧪 Leftover-Filter Test <span class="text-gray-500 font-normal">— FAN short phantoms split by each SKIPPED downstream filter (short-side). <span class="text-emerald-400">Kept</span>=short would pass · <span class="text-red-400">Blocked</span>=would be rejected. A filter whose Blocked side is mostly losers = a flip-gate candidate.</span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">Filter (short-side)</th>
+                                    <th class="text-right px-2 text-emerald-400/80">Kept N/WR/Avg</th>
+                                    <th class="text-right px-2 text-red-400/70">Blocked N/WR/Avg</th>
+                                    <th class="text-right px-2">Δavg</th>
+                                    <th class="text-left px-2">Verdict</th>
+                                </tr></thead>
+                                <tbody id="phantom-leftover-filter-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="5" class="px-2 py-3 text-center text-gray-500">No FAN short phantoms captured yet (forward-only)</td></tr>
+                                </tbody>
+                            </table>
+                            <div class="text-[10px] text-gray-600 mt-1">Excluded (no short version / not reconstructable): ATR_GAP_LONG, BTC_ACCEL_CHASE_LONG, RSI_SPIKE_GUARD, SPIKE_GUARD. Verdict gated at N≥10 both sides. Confirm cross-batch before shipping any as a live gate.</div>
+                        </div>
+                    </div>
                 </div>
                 <!-- ===== PHANTOM FLIP END ===== -->
 
@@ -8203,6 +8222,15 @@
                         lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc(c.aligned).padEnd(24)} ${_fc(c.counter)}`);
                     });
                 }
+                if (_pf1.leftover_filter_test && _pf1.leftover_filter_test.length) {
+                    lines.push('\n  ── LEFTOVER-FILTER TEST (FAN short phantoms split by each SKIPPED downstream filter, short-side) — which one separates winners from losers? ──');
+                    lines.push('  Filter (short-side)              kept N/WR/avg          blocked N/WR/avg       Δavg      Verdict');
+                    lines.push('  '+'-'.repeat(98));
+                    const _lfm = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
+                    _pf1.leftover_filter_test.forEach(c => {
+                        lines.push(`  ${c.filter.padEnd(32)} ${_lfm(c.kept).padEnd(22)} ${_lfm(c.blocked).padEnd(21)} ${(c.delta!=null?(c.delta>=0?'+':'')+c.delta.toFixed(3):'-').padStart(7)}   ${c.verdict}`);
+                    });
+                }
             }
             // ===== PHANTOM FLIP END =====
 
@@ -9964,6 +9992,15 @@
                         _pf1.fan_curve.forEach(c => {
                             const a0=c.all;
                             lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc2(c.aligned).padEnd(24)} ${_fc2(c.counter)}`);
+                        });
+                    }
+                    if (_pf1.leftover_filter_test && _pf1.leftover_filter_test.length) {
+                        lines.push('\n  ── LEFTOVER-FILTER TEST (FAN short phantoms split by each SKIPPED downstream filter, short-side) — which one separates winners from losers? ──');
+                        lines.push('  Filter (short-side)              kept N/WR/avg          blocked N/WR/avg       Δavg      Verdict');
+                        lines.push('  '+'-'.repeat(98));
+                        const _lfm2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
+                        _pf1.leftover_filter_test.forEach(c => {
+                            lines.push(`  ${c.filter.padEnd(32)} ${_lfm2(c.kept).padEnd(22)} ${_lfm2(c.blocked).padEnd(21)} ${(c.delta!=null?(c.delta>=0?'+':'')+c.delta.toFixed(3):'-').padStart(7)}   ${c.verdict}`);
                         });
                     }
                 }
@@ -12715,6 +12752,23 @@
                             }).join('');
                         } else {
                             _fcBody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No FAN fades captured yet (forward-only)</td></tr>';
+                        }
+                    }
+                    const _lfBody = document.getElementById('phantom-leftover-filter-body');
+                    if (_lfBody) {
+                        const _lf = _pf.leftover_filter_test || [];
+                        const _m = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg>=0?'text-emerald-400':'text-red-400'}">${m.avg>=0?'+':''}${m.avg.toFixed(3)}</span>` : '<span class="text-gray-600">-</span>';
+                        const _vc = (v) => v.startsWith('★')?'text-emerald-400':(v.startsWith('✗')?'text-red-400':(v.startsWith('·')?'text-gray-400':'text-amber-400'));
+                        if (_lf.length) {
+                            _lfBody.innerHTML = _lf.map(c => `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 text-gray-200">${c.filter}</td>
+                                    <td class="px-2 py-1 text-right">${_m(c.kept)}</td>
+                                    <td class="px-2 py-1 text-right">${_m(c.blocked)}</td>
+                                    <td class="px-2 py-1 text-right ${c.delta!=null&&c.delta>=0?'text-emerald-400':'text-red-400'}">${c.delta!=null?(c.delta>=0?'+':'')+c.delta.toFixed(3):'-'}</td>
+                                    <td class="px-2 py-1 ${_vc(c.verdict)}">${c.verdict}</td>
+                                </tr>`).join('');
+                        } else {
+                            _lfBody.innerHTML = '<tr><td colspan="5" class="px-2 py-3 text-center text-gray-500">No FAN short phantoms captured yet (forward-only)</td></tr>';
                         }
                     }
                 }

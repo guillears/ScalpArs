@@ -8936,7 +8936,67 @@ async def _compute_phantom_flip_performance(db, is_paper):
             "aligned": _mini([r for r in _b if _fan_align(r) is True]),
             "counter": _mini([r for r in _b if _fan_align(r) is False]),
         })
-    return {"rows": rows, "total": total, "fan_curve": fan_curve}
+    # Jun 15: LEFTOVER-FILTER TEST. The FAN flip opens mid-chain (gate #8) and SKIPS the ~21
+    # downstream filters (BTC trend/slope, pair trend, breadth, vol, ATR, 1h-RSI, quality).
+    # For each downstream filter that has a SHORT-side version reconstructable from the captured
+    # entry data, split the FAN_RATIO_GATE short phantoms into KEPT (a normal short would have
+    # PASSED the filter here) vs BLOCKED (would have been rejected). If the BLOCKED side is mostly
+    # losers, that filter is a candidate flip entry gate. Verdict is N-gated (both sides ≥10).
+    # NOTE: long-only filters (ATR_GAP_LONG, BTC_ACCEL_CHASE_LONG, RSI_SPIKE_GUARD) have no short
+    # version, and SPIKE_GUARD needs live volume-spike state — those are not evaluable here.
+    _th_lf = config.trading_config.thresholds
+    def _cfg(name, dflt):
+        try:
+            v = getattr(_th_lf, name, None)
+            return float(v) if v is not None else float(dflt)
+        except (TypeError, ValueError):
+            return float(dflt)
+    _lf_breadth = _cfg('market_breadth_bear_threshold', 45.0)
+    _lf_vmin = _cfg('global_vol_min_short', 0.5)
+    _lf_vmax = _cfg('global_vol_max_short', 1.1)
+    _lf_atrmin = _cfg('pair_atr_min_short', 0.25)
+    _lf_atrmax = _cfg('pair_atr_max_short', 2.5)
+    _lf_rsi1h = _cfg('btc_1h_rsi_min_short', 35.0)
+    _lf_qmax = _cfg('entry_quality_score_block_max', 1.0)
+    # each entry: (label, predicate) — predicate(r) → True=short PASSES (kept), False=BLOCKED, None=no data
+    _lf_specs = [
+        ("BTC trend (slope ≤ 0)",   lambda r: (r.entry_btc_ema20_slope <= 0) if r.entry_btc_ema20_slope is not None else None),
+        ("BTC 1h slope ≤ 0",        lambda r: (r.entry_btc_1h_slope <= 0) if r.entry_btc_1h_slope is not None else None),
+        ("Pair trend (slope ≤ 0)",  lambda r: (r.entry_ema20_slope <= 0) if r.entry_ema20_slope is not None else None),
+        (f"Breadth bear ≥ {_lf_breadth:.0f}%", lambda r: (r.entry_bear_pct >= _lf_breadth) if r.entry_bear_pct is not None else None),
+        (f"Pair ATR in [{_lf_atrmin:.2f},{_lf_atrmax:.2f}]", lambda r: (_lf_atrmin <= r.entry_atr_pct <= _lf_atrmax) if r.entry_atr_pct is not None else None),
+        (f"Global vol in [{_lf_vmin:.2f},{_lf_vmax:.2f}]", lambda r: (_lf_vmin <= r.entry_global_volume_ratio <= _lf_vmax) if r.entry_global_volume_ratio is not None else None),
+        (f"BTC 1h RSI ≥ {_lf_rsi1h:.0f}", lambda r: (r.entry_btc_rsi_1h >= _lf_rsi1h) if r.entry_btc_rsi_1h is not None else None),
+        (f"Quality score > {_lf_qmax:.0f}", lambda r: (r.entry_quality_score > _lf_qmax) if r.entry_quality_score is not None else None),
+    ]
+    _lf_pool = [r for r in flips if r.source_filter == "FAN_RATIO_GATE" and r.flip_direction == "SHORT"]
+    leftover_filter_test = []
+    for _lbl, _pred in _lf_specs:
+        _kept, _blocked = [], []
+        for r in _lf_pool:
+            try:
+                _v = _pred(r)
+            except Exception:
+                _v = None
+            if _v is True:
+                _kept.append(r)
+            elif _v is False:
+                _blocked.append(r)
+        _k, _bk = _mini(_kept), _mini(_blocked)
+        # verdict: separation = kept_avg − blocked_avg (positive = blocking the blocked side removes losers)
+        if _k and _bk and _k["n"] >= 10 and _bk["n"] >= 10:
+            _delta = round(_k["avg"] - _bk["avg"], 3)
+            if _delta >= 0.15:
+                _verdict = "★ gate candidate"
+            elif _delta <= -0.15:
+                _verdict = "✗ inverted"
+            else:
+                _verdict = "· neutral"
+        else:
+            _delta = round((_k["avg"] - _bk["avg"]), 3) if (_k and _bk) else None
+            _verdict = "⏳ low N"
+        leftover_filter_test.append({"filter": _lbl, "kept": _k, "blocked": _bk, "delta": _delta, "verdict": _verdict})
+    return {"rows": rows, "total": total, "fan_curve": fan_curve, "leftover_filter_test": leftover_filter_test}
 
 
 def _compute_flip_trades(flip_orders):

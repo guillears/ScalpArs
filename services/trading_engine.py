@@ -2801,14 +2801,20 @@ class TradingEngine:
         }
 
     def _flip_scan_ctx(self, L):
-        """Jun 15: pull the scan-state market context (volume / breadth / rank) out of the
-        scan_and_trade locals dict — passed in as `locals()` by the caller. Uses .get() so a
-        not-yet-assigned local never raises. Keys are the entry_* column names."""
+        """Jun 15: pull the scan-state market context (volume / breadth / rank) for a flip.
+        Caller passes `locals()`. Pair-specific values are scan_and_trade locals; the
+        market-wide ones (_market_bull_pct/_market_bear_pct are module GLOBALS, declared
+        `global` in scan_and_trade; _global_volume_ratio is a local) are read local-then-
+        global. Uses .get() so a not-yet-assigned name never raises. Keys = entry_* columns."""
+        g = globals()
+        def pick(k):
+            v = L.get(k)
+            return v if v is not None else g.get(k)
         return {
-            'entry_global_volume_ratio': L.get('_global_volume_ratio'),
+            'entry_global_volume_ratio': pick('_global_volume_ratio'),
             'entry_pair_volume_ratio': L.get('_pair_volume_ratio'),
-            'entry_bull_pct': L.get('_market_bull_pct'),
-            'entry_bear_pct': L.get('_market_bear_pct'),
+            'entry_bull_pct': pick('_market_bull_pct'),
+            'entry_bear_pct': pick('_market_bear_pct'),
             'entry_pair_volume_24h_usd': L.get('volume_24h'),
             'entry_pair_rank': L.get('_pair_rank'),
         }

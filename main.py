@@ -5584,7 +5584,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "EMA13_CROSS_EXIT",
             "EMA_STACK_CROSS_EXIT",
         ]
-        _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") for p in _sl_reason_prefixes)
+        _cr_match = lambda cr: any(cr.startswith(p) or cr.startswith(f"FL_{p}") or cr.startswith(f"FLIP_{p}") for p in _sl_reason_prefixes)
         sl_orders = [o for o in orders if o.close_reason and (o.pnl or 0) <= 0 and _cr_match(o.close_reason)]
         
         be_active_trades = []

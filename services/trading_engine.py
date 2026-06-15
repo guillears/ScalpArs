@@ -276,31 +276,19 @@ def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
 
 def _eval_flip_exit(order, current_price):
-    """Flip Entry exit — FLAT phantom-replica model (Jun 14 revert): the exit that
-    measured the +0.175% edge. Hard SL _PFLIP_SL (-0.70), arm at +_PFLIP_ACT (0.45)
-    peak then trail _PFLIP_PB (0.25) from peak, else _PFLIP_MAX_MIN (45min) horizon.
-    RAW price-move % (same basis as pnl_percentage). Updates peak/trough on the order.
-    Returns a BASE close reason (close_position FLIP_-prefixes it) or None. Bypasses the
-    momentum stack entirely — the normal tiered trailing gave back too much (ATR floor)
-    on the moderate-peak reversions; the tight 0.25 trail captures them, per the phantom."""
-    if not current_price or current_price <= 0 or not order.entry_price:
+    """Flip Entry exit — max-hold timeout ONLY (Jun 15). Flips now exit via the NORMAL
+    realtime stack (check_realtime_stop_loss): ATR-widened SL (base −0.70 → ×sl_atr_multiplier
+    → floor sl_atr_widen_floor_pct) + ATR trailing + min-profit gate, with EMA13 and the
+    short-specific runner disabled (a flip SHORT trails like a LONG). This monitor-loop helper
+    enforces only the _PFLIP_MAX_MIN (45min) horizon — SL + trailing are handled realtime, so
+    they are deliberately NOT duplicated here (a hard −0.70 here would pre-empt the ATR widen).
+    Returns a BASE close reason (close_position FLIP_-prefixes it) or None."""
+    if not order.opened_at:
         return None
-    if order.direction == "SHORT":
-        pnl = (order.entry_price - current_price) / order.entry_price * 100.0
-    else:
-        pnl = (current_price - order.entry_price) / order.entry_price * 100.0
-    if order.peak_pnl is None or pnl > order.peak_pnl:
-        order.peak_pnl = pnl
-    if order.trough_pnl is None or pnl < order.trough_pnl:
-        order.trough_pnl = pnl
-    if pnl <= _PFLIP_SL:
-        return "STOP_LOSS L1"
-    if (order.peak_pnl or 0) >= _PFLIP_ACT and pnl <= (order.peak_pnl - _PFLIP_PB):
-        return "TRAILING_STOP L1"
     try:
         aged_min = (datetime.utcnow() - order.opened_at).total_seconds() / 60.0
     except Exception:
-        aged_min = 0
+        return None
     if aged_min >= _PFLIP_MAX_MIN:
         return "NO_EXPANSION"
     return None
@@ -7669,12 +7657,14 @@ class TradingEngine:
             # The flag resets on the next update_orders_cache cycle.
             if order_info.get('_closing_in_progress'):
                 continue
-            # Jun 14 (REVERT): flips exit EXCLUSIVELY via the flat _eval_flip_exit model in
-            # the monitor loop. Skip them in the entire realtime momentum stack so it can
-            # never touch a flip.
-            if (order_info.get('entry_strategy') or "").startswith("FLIP:"):
-                continue
-            _is_flip = False  # flips already skipped above; keeps the gates below inert
+            # Jun 15 (operator request): flips now exit via the NORMAL realtime stack —
+            # same SL (base −0.70 → ATR-widen ×1.5 → floor −1.20) and same ATR trailing +
+            # min-profit gate as momentum trades. `_is_flip` gates ONLY the two exceptions:
+            # EMA13 cross OFF (see :7963) and the short-specific runner-trail OFF (see :8755),
+            # so a flip SHORT trails like a LONG. All other RT exits (fast-exit / tick /
+            # rsi-momentum / signal-lost) are config-disabled, so flips get exactly SL +
+            # trailing here; the monitor loop only enforces the 45min flip max-hold.
+            _is_flip = (order_info.get('entry_strategy') or "").startswith("FLIP:")
             order_id = order_info['id']
             direction = order_info['direction']
             entry_price = order_info['entry_price']

@@ -8844,6 +8844,17 @@ async def _compute_phantom_flip_performance(db, is_paper):
             return None
         return (s < 0) if fd == "SHORT" else (s > 0)
 
+    # Jun 15 watchlist — pair ADX direction at entry (rising = entry_adx > entry_adx_prev).
+    # Live batch hint: every bear FAN-flip loser had FALLING pair-ADX; rising-ADX shorts went
+    # 5/5. Mirrors the existing `Pair ADX Dir S: rising` momentum filter (which flips bypass).
+    # Split the FAN fades by it so the fresh batch shows whether rising-pair-ADX cleanly
+    # separates flip winners from losers. Forward-only (NULL entry_adx_prev → parent only).
+    def _padx_rising(r):
+        a, p = r.entry_adx, r.entry_adx_prev
+        if a is None or p is None:
+            return None
+        return a > p
+
     rows = []
     sources = ["FAN_RATIO_GATE", "FAN_CONTROL", "Pair RSI >65", "PAIR_TREND_FILTER", "BTC_RSI_ADX_CROSS", "LONG_UNMATCHED_ONLY"]
     for src in sources:
@@ -8859,6 +8870,13 @@ async def _compute_phantom_flip_performance(db, is_paper):
                     if aa:
                         aa.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
                         rows.append(aa)
+                # pair-ADX-direction sub-rows (FAN sources only) — the rising-pair-ADX watchlist
+                if src in ("FAN_RATIO_GATE", "FAN_CONTROL"):
+                    for _lbl, _want in [("  ↳ pADX rising", True), ("  ↳ pADX falling", False)]:
+                        ap = _agg([r for r in sub if _padx_rising(r) is _want])
+                        if ap:
+                            ap.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
+                            rows.append(ap)
     # Sub-division for LONG_UNMATCHED_ONLY (matched-long fade): split the SHORT flip by
     # which pattern family the blocked long matched — C+W / C-only / W-only. Reveals
     # whether the fade edge lives in a specific sub-signature vs the blended average.

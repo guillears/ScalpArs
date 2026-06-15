@@ -2779,11 +2779,14 @@ class TradingEngine:
             'exit_order_type': 'TAKER_FALLBACK',
         }
 
-    async def _maybe_open_flip(self, db, pair, blocked_signal, source, indicators):
+    async def _maybe_open_flip(self, db, pair, blocked_signal, source, indicators, isolate=False):
         """Flip Entry trigger — when `source` blocks `blocked_signal`, open the OPPOSITE
         direction as a NAKED mean-reversion entry (its own FLIP exit model). Fail-silent
-        so a flip-path bug can NEVER break the scan loop. All risk controls (max-open,
-        existing-position, cooldown, liquidity caps) are enforced inside open_position."""
+        so a flip-path bug can NEVER break the caller. All risk controls (max-open,
+        existing-position, cooldown, liquidity caps) are enforced inside open_position.
+        isolate=True opens the flip in a FRESH DB session — required when called
+        re-entrantly from INSIDE open_position (e.g. the LONG_UNMATCHED_ONLY block) so it
+        can't disturb the outer transaction."""
         try:
             if not _flip_active(source):
                 return
@@ -2791,14 +2794,20 @@ class TradingEngine:
             price = indicators.get('price') if indicators else None
             if not price or price <= 0:
                 return
-            order = await self.open_position(
-                db=db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
-                current_price=price,
-                entry_rsi=indicators.get('rsi'),
-                entry_adx=indicators.get('adx'),
-                entry_atr_pct=indicators.get('atr_pct'),
-                flip_source=source,
-            )
+            async def _open(_db):
+                return await self.open_position(
+                    db=_db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
+                    current_price=price,
+                    entry_rsi=indicators.get('rsi'),
+                    entry_adx=indicators.get('adx'),
+                    entry_atr_pct=indicators.get('atr_pct'),
+                    flip_source=source,
+                )
+            if isolate:
+                async with AsyncSessionLocal() as _fdb:
+                    order = await _open(_fdb)
+            else:
+                order = await _open(db)
             if order:
                 logger.info(f"[FLIP_ENTRY] {pair}: {source} blocked {blocked_signal} -> opened {flip_dir} flip (id={order.id})")
         except Exception as e:
@@ -2866,7 +2875,24 @@ class TradingEngine:
         if not self.is_running:
             logger.warning(f"[SKIP] {pair}: Bot not running")
             return None
-        
+
+        # Jun 15: Flip Entry — the flip trigger fires mid-filter-chain, before the
+        # momentum path computes entry_regime, so flips arrived with empty macro_trend /
+        # btc_regime → they classified as NEUTRAL and vanished from the BULLISH/BEARISH
+        # report sections (all-flips batch => empty tables). Populate both from the live
+        # BTC globals, exactly as the momentum path does.
+        if flip_source:
+            if not entry_macro_trend:
+                entry_macro_trend = globals().get('_current_btc_regime') or 'NEUTRAL'
+            if not entry_btc_regime:
+                try:
+                    entry_btc_regime = classify_btc_regime(
+                        globals().get('_current_btc_adx'),
+                        globals().get('_current_btc_rsi'),
+                        globals().get('_btc_ema20_slope_pct'))
+                except Exception:
+                    entry_btc_regime = None
+
         # Check if confidence level is enabled
         conf_config = config.trading_config.confidence_levels.get(confidence)
         if not conf_config or not conf_config.enabled:
@@ -2996,6 +3022,15 @@ class TradingEngine:
             # Jun 14: tag the C/W family so the fade can be sub-divided (C+W / C / W).
             _um_cohort = "C+W" if (_pc_any_e and _pw_any_e) else ("C" if _pc_any_e else "W")
             _seed_phantom_flip(pair, current_price, "LONG", "LONG_UNMATCHED_ONLY", cohort=_um_cohort)
+            # Jun 15: LIVE flip — fade the matched long to a SHORT (registry-gated). This
+            # block runs INSIDE open_position, so the flip opens in an ISOLATED session
+            # (isolate=True) to keep the outer (blocked-long) transaction clean. The flip
+            # SHORT can't re-enter this block (it's direction=="LONG" + not flip_source).
+            await self._maybe_open_flip(
+                db, pair, "LONG", "LONG_UNMATCHED_ONLY",
+                {'price': current_price, 'rsi': entry_rsi, 'adx': entry_adx, 'atr_pct': entry_atr_pct},
+                isolate=True,
+            )
             return None
         _pcell_inv, _pcell_lev, _pcell_src, _pcell_fixed_tp, _pcell_fixed_sl, _pcell_block = self._lookup_pattern_cell_rule(
             direction=direction,

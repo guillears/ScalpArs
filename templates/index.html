@@ -16812,6 +16812,7 @@
         // here AND wire its block site to _maybe_open_flip in trading_engine.py.
         const FLIP_SOURCES = [
             { key: 'FAN_RATIO_GATE', desc: 'Fan-ratio dead-zone block → fade the opposite side', note: '★ phantom N=97 · WR 69% · +0.18%' },
+            { key: 'LONG_UNMATCHED_ONLY', desc: 'Matched (C/W) long blocked → fade to short', note: '⚠ below-evidence (phantom N≈9 · WR 67%) — Jun 15 override @1x' },
         ];
         function renderFlipSources() {
             const list = document.getElementById('flip-sources-list');

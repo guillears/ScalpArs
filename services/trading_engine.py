@@ -3778,7 +3778,7 @@ class TradingEngine:
             order_cache_entry = {
                 'id': order.id,
                 'direction': direction,
-                'entry_strategy': (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"),  # Jun 14: realtime path skips flips
+                'entry_strategy': (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"),  # Jun 15: flips now exit via the realtime stack (entry_strategy gates _is_flip)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -5202,11 +5202,11 @@ class TradingEngine:
                 if order.current_tp_level and order.current_tp_level >= 2 and old_low != order.low_price_since_entry:
                     logger.info(f"[TRACKING] {order.pair} SHORT L{order.current_tp_level}: LOW updated {old_low} -> {order.low_price_since_entry} (ws_low={ws_low})")
 
-            # Jun 14 (REVERT): Flip Entry sleeve uses the FLAT phantom-replica exit
-            # (_eval_flip_exit: arm 0.45 / trail 0.25 / SL -0.70 / 45min) — the exit that
-            # measured the edge. The momentum stack's ATR-widened trailing gave back too
-            # much on moderate-peak reversions. Flips bypass the whole momentum exit stack
-            # here; close_position FLIP_-prefixes the reason. Fail-silent.
+            # Jun 15: flips exit via the NORMAL realtime stack (check_realtime_stop_loss) —
+            # SL + ATR trailing + flip min-profit gate. The monitor loop only enforces the
+            # 45min flip max-hold here (_eval_flip_exit returns NO_EXPANSION or None); flips
+            # `continue` past the momentum check_exit_conditions below so no base -0.70 SL
+            # pre-empts the realtime ATR widen. close_position FLIP_-prefixes the reason.
             if (order.entry_strategy or "").startswith("FLIP:"):
                 try:
                     _flip_reason = _eval_flip_exit(order, current_price)
@@ -8865,6 +8865,19 @@ class TradingEngine:
                         except Exception:
                             pass
                 
+                # Jun 15: trailing MIN-PROFIT GATE for flips only (operator-requested "never
+                # trail into a loss"). The realtime trailing path has no such gate — the momentum
+                # min-profit gate lives in the monitor's check_exit_conditions, which flips skip.
+                # Suppress a flip trailing-exit that would close below trailing_min_profit_to_fire;
+                # the ATR-widened SL still bounds the downside. Momentum trades are untouched.
+                if should_close_trailing and _is_flip:
+                    try:
+                        _flip_trail_min = float(getattr(_th, 'trailing_min_profit_to_fire', 0.0) or 0.0)
+                    except (ValueError, TypeError):
+                        _flip_trail_min = 0.0
+                    if pnl_pct < _flip_trail_min:
+                        should_close_trailing = False
+
                 if should_close_trailing:
                     # Prevent duplicate close attempts from consecutive monitor cycles
                     if order_info.get('_closing_in_progress'):
@@ -8945,7 +8958,7 @@ class TradingEngine:
             order_info = {
                 'id': order.id,
                 'direction': order.direction,
-                'entry_strategy': (order.entry_strategy or "MOMENTUM"),  # Jun 14: realtime path skips flips
+                'entry_strategy': (order.entry_strategy or "MOMENTUM"),  # Jun 15: flips now exit via the realtime stack (entry_strategy gates _is_flip)
                 'entry_price': order.entry_price,
                 'quantity': order.quantity,
                 'entry_fee': order.entry_fee,

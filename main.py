@@ -8824,6 +8824,18 @@ async def _compute_phantom_flip_performance(db, is_paper):
             "top_pair_share": round(100.0 * top_n / n, 0),
         }
 
+    # Jun 15: REGIME-ALIGNMENT helper. A flip is a fade; the live data shows the edge lives
+    # in whether the fade direction agrees with the macro (BTC EMA20 slope sign): a SHORT
+    # fade aligns with a FALLING BTC, a LONG fade with a RISING BTC. "Counter" = fade fights
+    # the macro (short into a rising BTC) = the loser cohort. Split every source by this so a
+    # blended "✗ whipsaws" verdict that's really aligned-winners + counter-losers is exposed.
+    # Forward-only: phantoms with entry_btc_ema20_slope=NULL (pre-capture) only feed the parent.
+    def _aligned(r, fd):
+        s = r.entry_btc_ema20_slope
+        if s is None:
+            return None
+        return (s < 0) if fd == "SHORT" else (s > 0)
+
     rows = []
     sources = ["FAN_RATIO_GATE", "Pair RSI >65", "PAIR_TREND_FILTER", "BTC_RSI_ADX_CROSS", "LONG_UNMATCHED_ONLY"]
     for src in sources:
@@ -8833,6 +8845,12 @@ async def _compute_phantom_flip_performance(db, is_paper):
             if a:
                 a.update({"source": src, "flip_direction": fd})
                 rows.append(a)
+                # regime-alignment sub-rows (only where btc-slope is captured)
+                for _lbl, _want in [("  ↳ aligned (macro w/ fade)", True), ("  ↳ counter (macro v/ fade)", False)]:
+                    aa = _agg([r for r in sub if _aligned(r, fd) is _want])
+                    if aa:
+                        aa.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
+                        rows.append(aa)
     # Sub-division for LONG_UNMATCHED_ONLY (matched-long fade): split the SHORT flip by
     # which pattern family the blocked long matched — C+W / C-only / W-only. Reveals
     # whether the fade edge lives in a specific sub-signature vs the blended average.

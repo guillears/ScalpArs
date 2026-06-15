@@ -536,6 +536,14 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         await db.execute(
             delete(BnbSwapLog).where(BnbSwapLog.is_paper == is_paper)
         )
+        # Phantom Flip Tracker — clear its persisted rows so a fresh batch starts with
+        # matching tracking (else the 🔄 tracker shows stale cross-reset fades). Also wipe
+        # the in-memory open-fade + cooldown state so no virtual position survives the reset.
+        await db.execute(
+            delete(PhantomFlip).where(PhantomFlip.is_paper == is_paper)
+        )
+        import services.trading_engine as _te
+        _te.reset_phantom_flip_state()
 
         if is_paper:
             trading_engine.paper_balance = config.trading_config.paper_balance

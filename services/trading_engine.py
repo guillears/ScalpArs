@@ -173,6 +173,16 @@ _PFLIP_PB = 0.25              # trailing pullback
 _PFLIP_MAX_MIN = 45           # max tracking horizon
 _PFLIP_COOLDOWN_MIN = 30      # min minutes between phantoms for the same pair|source
 
+
+def reset_phantom_flip_state():
+    """Clear the in-memory phantom-flip tracking (open virtual fades + per-pair|source
+    cooldowns). Called on a full data reset so a fresh batch starts with no carryover —
+    the persisted phantom_flips rows are deleted separately in the /api/reset handler.
+    Mutates the existing dicts in place (no rebinding) so all module references stay live."""
+    _PHANTOM_FLIP_STATE.clear()
+    _PFLIP_COOLDOWN.clear()
+
+
 def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None):
     """Seed a virtual opposite-direction position when an entry is blocked. Fail-silent.
     De-duped: skips if an active phantom exists for pair|source or one was seeded within

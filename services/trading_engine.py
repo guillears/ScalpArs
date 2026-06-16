@@ -275,6 +275,48 @@ def _flip_size_mult(source):
 def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
 
+def _flip_filters(source, ind):
+    """Source-namespaced flip filter layer (Jun 16). Given the flip's `source` and the
+    blocked entry's `indicators`, decide whether to VETO the flip, how much to SIZE it, and
+    which EXIT mode to use. Each source is an INDEPENDENT branch with its own config namespace
+    and its own filter TYPES (FAN uses stretch+regime+strpk+mult; future LONG_UNMATCHED /
+    PAIR_RSI_OB branches define their own). Fully fail-open: any error → (False, None, 1.0,
+    None) so a filter bug can never block a flip or break the scan.
+    Returns (blocked: bool, reason: str|None, size_mult: float, exit_mode: str|None)."""
+    try:
+        th = config.trading_config.thresholds
+        if source == "FAN_RATIO_GATE":
+            stretch = ind.get('ema5_stretch')
+            brsi = ind.get('btc_rsi'); badx = ind.get('btc_adx')
+            # 1) thin-fuel block
+            smin = float(getattr(th, 'flip_fan_stretch_min', 0.0) or 0.0)
+            if smin > 0 and stretch is not None and stretch < smin:
+                return (True, "FLIP_FAN_STRETCH", 1.0, None)
+            # 2) regime block — fade into a strong, un-exhausted bull
+            rmin = float(getattr(th, 'flip_fan_block_btc_rsi', 0.0) or 0.0)
+            amin = float(getattr(th, 'flip_fan_block_btc_adx', 0.0) or 0.0)
+            if rmin > 0 and amin > 0 and brsi is not None and badx is not None and brsi >= rmin and badx >= amin:
+                return (True, "FLIP_FAN_REGIME", 1.0, None)
+            # 3) size multiplier cells (btc_rsi range x btc_adx range -> mult)
+            size = 1.0
+            rule = (getattr(th, 'flip_fan_mult_rule', '') or '').strip()
+            if rule and brsi is not None and badx is not None:
+                for cellspec in rule.split(','):
+                    try:
+                        rs, as_, mu = cellspec.strip().split(':')
+                        rlo, rhi = map(float, rs.split('-')); alo, ahi = map(float, as_.split('-'))
+                        if rlo <= brsi < rhi and alo <= badx < ahi:
+                            size = float(mu); break
+                    except (ValueError, TypeError):
+                        continue
+            # 4) exit mode
+            exitm = "strpk" if getattr(th, 'flip_fan_runner_strpk', False) else None
+            return (False, None, size, exitm)
+        # LONG_UNMATCHED_ONLY / PAIR_RSI_OB: no filters defined yet (their own data pending) → no-op
+        return (False, None, 1.0, None)
+    except Exception:
+        return (False, None, 1.0, None)
+
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
     """Update virtual leashes for one order on a price tick. Observation-only; fail-silent."""
@@ -2898,6 +2940,20 @@ class TradingEngine:
             if not price or price <= 0:
                 return
             _ef = dict(entry_fields or {})
+            # Jun 16: source-namespaced flip filter layer — veto / size / exit-mode.
+            _g = globals(); _ind = indicators or {}
+            _ff_in = {
+                'ema5_stretch': _ef.get('entry_ema5_stretch') if _ef.get('entry_ema5_stretch') is not None else _ind.get('ema5_stretch'),
+                'btc_rsi': _ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi'),
+                'btc_adx': _ef.get('entry_btc_adx') if _ef.get('entry_btc_adx') is not None else _g.get('_current_btc_adx'),
+            }
+            _blocked, _reason, _flip_cell_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
+            if _blocked:
+                try: self._record_filter_block(_reason, flip_dir)
+                except Exception: pass
+                logger.info(f"[FLIP_FILTER] {pair}: {source} flip vetoed by {_reason} "
+                            f"(stretch={_ff_in.get('ema5_stretch')}, btcRSI={_ff_in.get('btc_rsi')}, btcADX={_ff_in.get('btc_adx')})")
+                return
             async def _open(_db):
                 return await self.open_position(
                     db=_db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
@@ -2905,7 +2961,7 @@ class TradingEngine:
                     entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
                     entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
-                    flip_source=source,
+                    flip_source=source, flip_cell_mult=_flip_cell_mult, flip_exit_mode=_flip_exit_mode,
                     **_ef,
                 )
             if isolate:
@@ -2975,6 +3031,8 @@ class TradingEngine:
         # Jun 14: Flip Entry sleeve — when set, this is a NAKED fade-the-block entry
         # (bypasses pattern/multiplier logic, base×registry sizing, FLIP exit model).
         flip_source: str = None,
+        flip_cell_mult: float = 1.0,
+        flip_exit_mode: str = None,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -3265,6 +3323,13 @@ class TradingEngine:
         # force multiplier_target="both" so size AND lev apply. Hard caps below still clamp.
         if flip_source:
             cell_mult, cell_lev_mult, cell_src = _flip_size_mult(flip_source), _flip_lev_mult(flip_source), f"FLIP:{flip_source}"
+            # Jun 16: per-source CONDITIONAL cell multiplier from _flip_filters (e.g. FAN's
+            # strong-bear BTC RSI40-45×ADX≥35 cell @2×). Multiplies the registry size and
+            # carries a distinct cell_src so it groups as its OWN row in Multiplier Cell
+            # Performance (the flip multiplier table).
+            if flip_cell_mult and flip_cell_mult != 1.0:
+                cell_mult = cell_mult * flip_cell_mult
+                cell_src = f"FLIP:{flip_source}×{flip_cell_mult:g}"
             _mult_target = "both"
             # Re-apply the hard caps (the clamp above ran before this override).
             if cell_mult > _inv_cap:
@@ -5282,6 +5347,32 @@ class TradingEngine:
             # EMA13 + short-runner disabled. Flips DID just run the shared MAX_HOLD + NO_EXPANSION
             # above, so a stale flip closes on the SAME no-expansion as a normal trade (Jun 16).
             if (order.entry_strategy or "").startswith("FLIP:"):
+                # Jun 16: per-source flip exit. FAN flips with runner_strpk exit via the SHORT
+                # runner stretch-trail (same engine/params as normal shorts) — fired HERE in the
+                # monitor where ema5 is fresh (the realtime path lacks it). Armed once peak ≥ arm;
+                # close when live stretch retraces to ≤ K × peak stretch. The realtime tight-trail
+                # is suppressed for armed FAN-strpk flips (see :8823) so this can run. Fail-open.
+                try:
+                    _fsrc = (order.entry_strategy or "")[5:]
+                    _rt_th = config.trading_config.thresholds
+                    if (_fsrc == "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_fan_runner_strpk', False)
+                            and order.direction == "SHORT" and ema5 and ema5 > 0 and current_price > 0):
+                        _fl_stretch = ((ema5 - current_price) / current_price) * 100.0
+                        if getattr(order, 'runner_peak_stretch', None) is None or _fl_stretch > order.runner_peak_stretch:
+                            order.runner_peak_stretch = _fl_stretch
+                        _fl_arm = float(getattr(_rt_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
+                        _fl_k = float(getattr(_rt_th, 'runner_trail_short_k', 0.5) or 0.5)
+                        _fl_pk = order.runner_peak_stretch or 0.0
+                        if realtime_peak >= _fl_arm and _fl_pk > 0 and _fl_stretch <= _fl_pk * _fl_k:
+                            logger.info(f"[FLIP_RUNNER_TRAIL] {order.pair} SHORT: stretch {_fl_stretch:.3f} <= {_fl_k}x peak {_fl_pk:.3f} (armed peak={realtime_peak:.2f}%) -> close")
+                            closed_order = await self.close_position(db, order, current_price, "RUNNER_TRAIL")
+                            if closed_order:
+                                updates.append({"order_id": closed_order.id, "pair": closed_order.pair,
+                                                "action": "CLOSED", "reason": closed_order.close_reason,
+                                                "pnl": closed_order.pnl, "tp_level": order.current_tp_level or 1})
+                            continue
+                except Exception as _fl_rt_err:
+                    logger.error(f"[FLIP_RUNNER_TRAIL] {order.pair}: {_fl_rt_err}")
                 await db.commit()
                 continue
 
@@ -8753,9 +8844,14 @@ class TradingEngine:
                         _rt_arm = float(getattr(_rt_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
                     _rt_atr = order_info.get('entry_atr_pct')
                     _rt_peak = order_info.get('peak_pnl', 0.0) or 0.0
-                    # Jun 14: runner-trail disabled for flips (reversion, not continuation)
-                    # → don't suppress the normal tight trailing for them.
-                    if (_rt_en and not _is_flip and _rt_peak >= _rt_arm
+                    # Jun 14: runner-trail disabled for flips by default. Jun 16: EXCEPT FAN flips
+                    # with flip_fan_runner_strpk — they get the SHORT runner stretch-trail (the
+                    # actual RUNNER_TRAIL exit fires in the monitor loop where ema5 is fresh); here
+                    # we suppress the realtime tight-trail once armed so it can't close first.
+                    _flip_strpk_ok = (_is_flip and direction == "SHORT"
+                                      and (order_info.get('entry_strategy') or "")[5:] == "FAN_RATIO_GATE"
+                                      and getattr(_rt_th, 'flip_fan_runner_strpk', False))
+                    if (_rt_en and (not _is_flip or _flip_strpk_ok) and _rt_peak >= _rt_arm
                             and (_rt_amin <= 0 or (_rt_atr is not None and _rt_atr >= _rt_amin))):
                         _handoff_suppress = True
             except Exception:

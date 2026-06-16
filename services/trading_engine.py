@@ -5357,36 +5357,12 @@ class TradingEngine:
             # EMA13 + short-runner disabled. Flips DID just run the shared MAX_HOLD + NO_EXPANSION
             # above, so a stale flip closes on the SAME no-expansion as a normal trade (Jun 16).
             if (order.entry_strategy or "").startswith("FLIP:"):
-                # Jun 16: per-source flip exit. FAN flips with runner_strpk exit via the SHORT
-                # runner stretch-trail (same engine/params as normal shorts) — fired HERE in the
-                # monitor where ema5 is fresh (the realtime path lacks it). Armed once peak ≥ arm;
-                # close when live stretch retraces to ≤ K × peak stretch. The realtime tight-trail
-                # is suppressed for armed FAN-strpk flips (see :8823) so this can run. Fail-open.
-                try:
-                    _fsrc = (order.entry_strategy or "")[5:]
-                    _rt_th = config.trading_config.thresholds
-                    # Jun 16: strpk now covers ALL flip shorts — FAN via flip_fan_runner_strpk,
-                    # the other sleeves (PAIR_RSI_OB / LONG_UNMATCHED_ONLY) via flip_runner_strpk_shorts.
-                    _strpk_on = ((_fsrc == "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_fan_runner_strpk', False))
-                                 or (_fsrc != "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_runner_strpk_shorts', False)))
-                    if (_strpk_on
-                            and order.direction == "SHORT" and ema5 and ema5 > 0 and current_price > 0):
-                        _fl_stretch = ((ema5 - current_price) / current_price) * 100.0
-                        if getattr(order, 'runner_peak_stretch', None) is None or _fl_stretch > order.runner_peak_stretch:
-                            order.runner_peak_stretch = _fl_stretch
-                        _fl_arm = float(getattr(_rt_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
-                        _fl_k = float(getattr(_rt_th, 'runner_trail_short_k', 0.5) or 0.5)
-                        _fl_pk = order.runner_peak_stretch or 0.0
-                        if realtime_peak >= _fl_arm and _fl_pk > 0 and _fl_stretch <= _fl_pk * _fl_k:
-                            logger.info(f"[FLIP_RUNNER_TRAIL] {order.pair} SHORT: stretch {_fl_stretch:.3f} <= {_fl_k}x peak {_fl_pk:.3f} (armed peak={realtime_peak:.2f}%) -> close")
-                            closed_order = await self.close_position(db, order, current_price, "RUNNER_TRAIL")
-                            if closed_order:
-                                updates.append({"order_id": closed_order.id, "pair": closed_order.pair,
-                                                "action": "CLOSED", "reason": closed_order.close_reason,
-                                                "pnl": closed_order.pnl, "tp_level": order.current_tp_level or 1})
-                            continue
-                except Exception as _fl_rt_err:
-                    logger.error(f"[FLIP_RUNNER_TRAIL] {order.pair}: {_fl_rt_err}")
+                # Flips skip the momentum exit STACK below. Their SHORT runner stretch-trail
+                # (strpk → FLIP_RUNNER_TRAIL) now fires in the REALTIME tick path (Jun 16 Fix A:
+                # check_realtime_stop_loss), at WS-tick resolution instead of this 1s loop — so it
+                # tracks peak-stretch and checks the trail like the leash-shadow does, rather than
+                # under-tracking the peak and trailing out on a 1-second bounce. The shared
+                # MAX_HOLD + NO_EXPANSION above already ran; just commit and skip the stack.
                 await db.commit()
                 continue
 
@@ -8848,6 +8824,47 @@ class TradingEngine:
                             logger.error(f"[REALTIME_MOMENTUM_EXIT] Error closing {pair}: {e}")
                         continue
             
+            # ─── FLIP STRPK RUNNER-TRAIL — realtime tick exit (Jun 16, Fix A) ───
+            # The SHORT runner stretch-trail for flip shorts fires HERE (every WS tick) instead
+            # of the 1s monitor, so peak-stretch is tracked and the trail checked at TICK
+            # resolution (matching the leash-shadow) — not under-tracking the peak and trailing
+            # out on a 1-second bounce. Same arm/K, same cached_ema5 the shadow uses; hard SL
+            # above kept priority. Fail-open (a strpk error must never break the realtime loop).
+            if (_is_flip and direction == "SHORT" and _ls_stretch is not None
+                    and not order_info.get('_closing_in_progress')):
+                try:
+                    _sp_th = config.trading_config.thresholds
+                    _sp_src = (order_info.get('entry_strategy') or "")[5:]
+                    _sp_on = ((_sp_src == "FAN_RATIO_GATE" and getattr(_sp_th, 'flip_fan_runner_strpk', False))
+                              or (_sp_src != "FAN_RATIO_GATE" and getattr(_sp_th, 'flip_runner_strpk_shorts', False)))
+                    if _sp_on:
+                        _sp_pk = order_info.get('runner_peak_stretch')
+                        if _sp_pk is None or _ls_stretch > _sp_pk:
+                            _sp_pk = _ls_stretch
+                            order_info['runner_peak_stretch'] = _sp_pk
+                        _sp_arm = float(getattr(_sp_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
+                        _sp_k = float(getattr(_sp_th, 'runner_trail_short_k', 0.5) or 0.5)
+                        if current_peak >= _sp_arm and _sp_pk > 0 and _ls_stretch <= _sp_pk * _sp_k:
+                            logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT: stretch {_ls_stretch:.3f} <= {_sp_k}x peak {_sp_pk:.3f} (armed peak={current_peak:.2f}%) -> close")
+                            order_info['_closing_in_progress'] = True
+                            async with AsyncSessionLocal() as db:
+                                _spr = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))
+                                _sp_order = _spr.scalar_one_or_none()
+                                if _sp_order:
+                                    _sp_order.runner_peak_stretch = _sp_pk  # persist for the CSV/report
+                                    _sp_closed = await self.close_position(db, _sp_order, current_price, "RUNNER_TRAIL")
+                                    if _sp_closed:
+                                        logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} closed at {current_price} pnl={pnl_pct:.4f}%")
+                                        async with _cache_lock:
+                                            _open_orders_cache[pair] = [o for o in _open_orders_cache.get(pair, []) if o['id'] != order_id]
+                                    else:
+                                        order_info['_closing_in_progress'] = False
+                            continue
+                except Exception as _sp_err:
+                    logger.error(f"[REALTIME_RUNNER_TRAIL] {pair}: {_sp_err}")
+                    order_info['_closing_in_progress'] = False
+            # ─── FLIP STRPK RUNNER-TRAIL END ───
+
             # Real-time trailing stop check (only when trailing stop is active and TP/trailing enabled).
             # Phase 1d-ExitTest (May 2): suppress trailing when RSI Handoff is active and trade is past level.
             # May 6: also suppress when EMA Stack Cross Exit is active and trade is past level.

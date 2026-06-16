@@ -16362,18 +16362,30 @@
                     // LONG + entry ATR ≥ min + peak ≥ arm. When active the tight trailing
                     // has handed off to the stretch-trail, so show 🏃 RUNNER instead of 🛡.
                     const _rtTh = window._cachedConfig?.thresholds || {};
-                    const _runnerArmed = _rtTh.runner_trail_enabled === true
+                    const _runnerArmedLong = _rtTh.runner_trail_enabled === true
                         && o.direction === 'LONG'
                         && typeof o.entry_atr_pct === 'number'
                         && o.entry_atr_pct >= (_rtTh.runner_trail_atr_min ?? 1.0)
                         && _tpPeak >= (_rtTh.runner_trail_arm_peak ?? 0.70);
+                    // Jun 16: FAN-flip SHORT strpk runner — same handoff, different sleeve.
+                    // A FAN_RATIO_GATE flip with flip_fan_runner_strpk on, armed (peak ≥ short
+                    // arm), is held by the stretch-trail (FLIP_RUNNER_TRAIL), NOT the L2 tight
+                    // trail — so it should show 🏃 RUNNER, not 🛡 L2.
+                    const _runnerArmedFlip = _rtTh.flip_fan_runner_strpk === true
+                        && o.direction === 'SHORT'
+                        && (o.entry_strategy || '').startsWith('FLIP:FAN_RATIO_GATE')
+                        && _tpPeak >= (_rtTh.runner_trail_short_arm_peak ?? 0.45);
+                    const _runnerArmed = _runnerArmedLong || _runnerArmedFlip;
                     if (_armed) {
                         let bgClass, textClass, label, title;
                         if (_runnerArmed) {
-                            const _rtK = _rtTh.runner_trail_k ?? 0.5;
+                            const _rtK = (_runnerArmedFlip ? (_rtTh.runner_trail_short_k ?? 0.5) : (_rtTh.runner_trail_k ?? 0.5));
+                            const _rtArm = (_runnerArmedFlip ? (_rtTh.runner_trail_short_arm_peak ?? 0.45) : (_rtTh.runner_trail_arm_peak ?? 0.70));
                             bgClass = 'bg-fuchsia-500/25'; textClass = 'text-fuchsia-300';
                             label = `🏃 RUNNER L${_tpLvl}`;
-                            title = `Runner stretch-trail active (high-ATR LONG, peak ${_tpPeak.toFixed(2)}% ≥ ${(_rtTh.runner_trail_arm_peak ?? 0.70)}%). Tight trailing handed off — holding until stretch ≤ ${_rtK}× peak (or EMA13 / hard SL). Letting the runner run.`;
+                            title = _runnerArmedFlip
+                                ? `FAN-flip strpk runner active (SHORT, peak ${_tpPeak.toFixed(2)}% ≥ ${_rtArm}%). The L2 tight trail is suppressed — held by the stretch-trail until stretch ≤ ${_rtK}× peak (or hard SL). Exits FLIP_RUNNER_TRAIL.`
+                                : `Runner stretch-trail active (high-ATR LONG, peak ${_tpPeak.toFixed(2)}% ≥ ${_rtArm}%). Tight trailing handed off — holding until stretch ≤ ${_rtK}× peak (or EMA13 / hard SL). Letting the runner run.`;
                         } else if (_handoffActive && _tpLvl >= _handoffLvl) {
                             bgClass = 'bg-purple-500/25'; textClass = 'text-purple-300';
                             label = `🛡 L${_tpLvl}·RSI`;

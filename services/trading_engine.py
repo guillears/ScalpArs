@@ -6318,6 +6318,19 @@ class TradingEngine:
                         _current_pair_holder['rsi_ob_flip'] = True
                 except Exception:
                     pass
+            # Jun 16: LONG-fade phantom trackers — fade a BLOCKED SHORT to a LONG (block→fade,
+            # observation-only, mirror of the short-side fades). These two short-blocks fire
+            # inside get_signal; seed here off the decisive-gate recorder. PAIR_ADX_MAX = the
+            # down-move was too extended to short → bounce-long fade; PAIR_RSI_ADX_CROSS = the
+            # pair RSI×ADX cross gate (pair mirror of the BTC cross).
+            if direction == "SHORT" and filter_name in ("PAIR_ADX_MAX", "PAIR_RSI_ADX_CROSS"):
+                try:
+                    _px2 = _current_pair_holder.get('price')
+                    if _px2:
+                        _seed_phantom_flip(_p, _px2, "SHORT", filter_name,
+                                           entry_fields=self._flip_entry_fields(_current_pair_holder, flip_dir="LONG"))
+                except Exception:
+                    pass
 
         for batch_start in range(0, len(top_pairs), OHLCV_BATCH_SIZE):
             batch = top_pairs[batch_start:batch_start + OHLCV_BATCH_SIZE]
@@ -6677,6 +6690,13 @@ class TradingEngine:
                     )
                     self._record_filter_block("BTC_ADX_BLOCK_SHORT", signal, had_room=_had_room)
                     self._last_pair_block_reason[pair] = "BTC_ADX_BLOCK_SHORT"
+                    # Jun 16: LONG-fade phantom — short killed by a strong-bull BTC regime →
+                    # fading LONG is macro-ALIGNED (the one robust short-side lesson). Obs-only.
+                    try:
+                        _seed_phantom_flip(pair, indicators.get('price'), "SHORT", "BTC_ADX_BLOCK_SHORT",
+                                           entry_fields=self._flip_entry_fields(indicators, flip_dir="LONG", scan=self._flip_scan_ctx(locals())))
+                    except Exception:
+                        pass
                     signal = "NO_TRADE"
 
             # BTC ADX Direction check — runs independently of BTC global filter

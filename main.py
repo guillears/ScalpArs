@@ -8880,38 +8880,67 @@ async def _compute_phantom_flip_performance(db, is_paper):
         return a > p
 
     rows = []
-    sources = ["FAN_RATIO_GATE", "FAN_CONTROL", "Pair RSI >65", "PAIR_TREND_FILTER", "BTC_RSI_ADX_CROSS", "LONG_UNMATCHED_ONLY"]
-    for src in sources:
-        for fd in ("LONG", "SHORT"):
+    # (source_filter, directions_to_render, show_subrows). Jun 16 pivot to LONGs:
+    #  • FAN_RATIO_GATE SHORT DROPPED — real data is authoritative now (Flip Trade Log +
+    #    the Flip Source dashboard filter); its LONG fade (FAN ⊘SHORT) is KEPT as a tracker.
+    #  • Pair RSI>65 + LONG_UNMATCHED_ONLY SLIMMED to a single top-line (now live sources →
+    #    migrating to real data; DELETE these phantom rows at real N≥30 each).
+    #  • FAN_CONTROL kept in full (it's the never-traded control — no real-data twin).
+    #  • NEW LONG-fade trackers (fade a BLOCKED SHORT → LONG): PAIR_ADX_MAX (exhausted
+    #    down-move bounce), BTC_ADX_BLOCK_SHORT (macro-aligned), PAIR_RSI_ADX_CROSS (pair
+    #    cross mirror). Aligned/counter sub-rows carry over the one robust short-side lesson;
+    #    FAN_CONTROL LONG serves as the shared long-side control.
+    source_specs = [
+        ("FAN_CONTROL",         ("LONG", "SHORT"), True),
+        ("FAN_RATIO_GATE",      ("LONG",),         True),
+        ("PAIR_ADX_MAX",        ("LONG",),         True),
+        ("BTC_ADX_BLOCK_SHORT", ("LONG",),         True),
+        ("PAIR_RSI_ADX_CROSS",  ("LONG",),         True),
+        ("PAIR_TREND_FILTER",   ("LONG", "SHORT"), True),
+        ("BTC_RSI_ADX_CROSS",   ("LONG", "SHORT"), True),
+        ("Pair RSI >65",        ("SHORT",),        False),
+        ("LONG_UNMATCHED_ONLY", ("SHORT",),        False),
+    ]
+    for src, _dirs, _subrows in source_specs:
+        for fd in _dirs:
             sub = [r for r in flips if r.source_filter == src and r.flip_direction == fd]
             a = _agg(sub)
-            if a:
-                a.update({"source": src, "flip_direction": fd})
-                rows.append(a)
-                # regime-alignment sub-rows (only where btc-slope is captured)
-                for _lbl, _want in [("  ↳ aligned (macro w/ fade)", True), ("  ↳ counter (macro v/ fade)", False)]:
-                    aa = _agg([r for r in sub if _aligned(r, fd) is _want])
-                    if aa:
-                        aa.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
-                        rows.append(aa)
-                # pair-ADX-direction sub-rows (FAN sources only) — the rising-pair-ADX watchlist
-                if src in ("FAN_RATIO_GATE", "FAN_CONTROL"):
-                    for _lbl, _want in [("  ↳ pADX rising", True), ("  ↳ pADX falling", False)]:
-                        ap = _agg([r for r in sub if _padx_rising(r) is _want])
-                        if ap:
-                            ap.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
-                            rows.append(ap)
-    # Sub-division for LONG_UNMATCHED_ONLY (matched-long fade): split the SHORT flip by
-    # which pattern family the blocked long matched — C+W / C-only / W-only. Reveals
-    # whether the fade edge lives in a specific sub-signature vs the blended average.
-    # Forward-only: phantoms seeded before Jun 14 have entry_cohort=NULL and stay only
-    # in the parent row (so sub-rows may not sum to the parent until old ones age out).
-    _um = [r for r in flips if r.source_filter == "LONG_UNMATCHED_ONLY" and r.flip_direction == "SHORT"]
-    for _lbl, _ch in [("  ↳ C+W", "C+W"), ("  ↳ C only", "C"), ("  ↳ W only", "W")]:
-        a = _agg([r for r in _um if (r.entry_cohort or "") == _ch])
-        if a:
-            a.update({"source": _lbl, "flip_direction": "SHORT", "is_subrow": True})
+            if not a:
+                continue
+            a.update({"source": src, "flip_direction": fd})
             rows.append(a)
+            if not _subrows:
+                continue
+            # regime-alignment sub-rows (aligned vs counter — the robust separator)
+            for _lbl, _want in [("  ↳ aligned (macro w/ fade)", True), ("  ↳ counter (macro v/ fade)", False)]:
+                aa = _agg([r for r in sub if _aligned(r, fd) is _want])
+                if aa:
+                    aa.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
+                    rows.append(aa)
+            # pair-ADX-direction sub-rows (FAN sources only) — the rising-pair-ADX watchlist
+            if src in ("FAN_RATIO_GATE", "FAN_CONTROL"):
+                for _lbl, _want in [("  ↳ pADX rising", True), ("  ↳ pADX falling", False)]:
+                    ap = _agg([r for r in sub if _padx_rising(r) is _want])
+                    if ap:
+                        ap.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
+                        rows.append(ap)
+            # Jun 16: per-cell split of the cross gate — bucket by BTC RSI×ADX cell (5-pt grid)
+            # so a winning sub-cell isn't masked by the blended "all-cross" average (mirrors
+            # what the fan-ratio curve did for FAN). Cells shown at N≥3.
+            if src == "BTC_RSI_ADX_CROSS":
+                _cells = {}
+                for r in sub:
+                    _br, _ba = r.entry_btc_rsi, r.entry_btc_adx
+                    if _br is None or _ba is None:
+                        continue
+                    _rk, _ak = int(_br // 5 * 5), int(_ba // 5 * 5)
+                    _cells.setdefault((_rk, _ak), []).append(r)
+                for (_rk, _ak), _crs in sorted(_cells.items()):
+                    cc = _agg(_crs)
+                    if cc and cc["n"] >= 3:
+                        cc.update({"source": f"  ↳ BTCrsi{_rk}-{_rk+5} × adx{_ak}-{_ak+5}",
+                                   "flip_direction": fd, "is_subrow": True})
+                        rows.append(cc)
     total = _agg(flips) or {}
     # verdict per row: does the flip pay? Concentration gates the ★ — a great-looking
     # cell driven by one sticky pair (top_pair_share>=60%) is a mirage, not an edge

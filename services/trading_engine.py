@@ -3971,6 +3971,15 @@ class TradingEngine:
         # post-exit-whitelist matchers strip the FLIP_ prefix to recover the base reason.
         if reason and (order.entry_strategy or "").startswith("FLIP:") and not reason.startswith("FLIP_"):
             reason = "FLIP_" + reason
+        # Jun 16: snapshot the shadow's peak stretch AT THIS CLOSE INSTANT (before post-exit
+        # tracking grows it). Diagnostic — vs runner_peak_stretch (live peak at exit): if ≈ equal
+        # the live strpk was NOT under-sampling (the whole shadow gap is post-exit → Fix B, not A).
+        try:
+            _sps_close = _LEASH_STATE.get(order.id, {}).get('pstretch')
+            if _sps_close is not None:
+                order.shadow_peak_stretch_at_close = round(_sps_close, 4)
+        except Exception:
+            pass
         async with _close_lock:
             return await self._close_position_locked(db, order, current_price, reason)
 

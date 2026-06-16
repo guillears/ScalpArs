@@ -436,7 +436,8 @@ async def init_db():
                             'shadow_strpk_min','shadow_stren_min',
                             'shadow_strpk04_pnl','shadow_strpk04_min','shadow_strpk03_pnl','shadow_strpk03_min',
                             'shadow_strpk_signed_pnl','shadow_strpk_signed_min',  # Jun 1: signed-stretch leash variant
-                            'runner_peak_stretch'):  # Jun 1: live runner stretch-trail peak tracking
+                            'runner_peak_stretch',  # Jun 1: live runner stretch-trail peak tracking
+                            'shadow_peak_stretch_at_close'):  # Jun 16: shadow peak snapshotted at live close (sampling vs post-exit diagnostic)
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} FLOAT"))
                 for _sc in ('shadow_tight_reason','shadow_wide_reason','shadow_tierA_reason','shadow_tierB_reason',

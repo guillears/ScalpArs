@@ -507,6 +507,11 @@ class Order(Base):
     shadow_strpk_signed_reason = Column(String(15), nullable=True)
     shadow_strpk_signed_min = Column(Float, nullable=True)
     shadow_peak_stretch = Column(Float, nullable=True)
+    # Jun 16 — sampling-vs-post-exit diagnostic: the shadow's peak stretch SNAPSHOTTED at the
+    # instant the LIVE trade closed (vs shadow_peak_stretch which keeps growing post-exit).
+    # Compare against runner_peak_stretch (live peak at exit): if ≈ equal, the live strpk was
+    # NOT under-sampling (the whole shadow gap is post-exit continuation → Fix B, not Fix A).
+    shadow_peak_stretch_at_close = Column(Float, nullable=True)
     # ===== LEASH SHADOW END =====
 
     # Jun 1, 2026 — RUNNER STRETCH-TRAIL: live peak |price−EMA5| stretch since

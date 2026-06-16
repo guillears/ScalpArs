@@ -275,25 +275,6 @@ def _flip_size_mult(source):
 def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
 
-def _eval_flip_exit(order, current_price):
-    """Flip Entry exit — max-hold timeout ONLY (Jun 15). Flips now exit via the NORMAL
-    realtime stack (check_realtime_stop_loss): ATR-widened SL (base −0.70 → ×sl_atr_multiplier
-    → floor sl_atr_widen_floor_pct) + ATR trailing + min-profit gate, with EMA13 and the
-    short-specific runner disabled (a flip SHORT trails like a LONG). This monitor-loop helper
-    enforces only the _PFLIP_MAX_MIN (45min) horizon — SL + trailing are handled realtime, so
-    they are deliberately NOT duplicated here (a hard −0.70 here would pre-empt the ATR widen).
-    Returns a BASE close reason (close_position FLIP_-prefixes it) or None."""
-    if not order.opened_at:
-        return None
-    try:
-        aged_min = (datetime.utcnow() - order.opened_at).total_seconds() / 60.0
-    except Exception:
-        return None
-    if aged_min >= _PFLIP_MAX_MIN:
-        return "NO_EXPANSION"
-    return None
-
-
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
     """Update virtual leashes for one order on a price tick. Observation-only; fail-silent."""
@@ -5202,27 +5183,12 @@ class TradingEngine:
                 if order.current_tp_level and order.current_tp_level >= 2 and old_low != order.low_price_since_entry:
                     logger.info(f"[TRACKING] {order.pair} SHORT L{order.current_tp_level}: LOW updated {old_low} -> {order.low_price_since_entry} (ws_low={ws_low})")
 
-            # Jun 15: flips exit via the NORMAL realtime stack (check_realtime_stop_loss) —
-            # SL + ATR trailing + flip min-profit gate. The monitor loop only enforces the
-            # 45min flip max-hold here (_eval_flip_exit returns NO_EXPANSION or None); flips
-            # `continue` past the momentum check_exit_conditions below so no base -0.70 SL
-            # pre-empts the realtime ATR widen. close_position FLIP_-prefixes the reason.
-            if (order.entry_strategy or "").startswith("FLIP:"):
-                try:
-                    _flip_reason = _eval_flip_exit(order, current_price)
-                    if _flip_reason:
-                        closed_order = await self.close_position(db, order, current_price, _flip_reason)
-                        if closed_order:
-                            updates.append({
-                                "order_id": closed_order.id, "pair": closed_order.pair,
-                                "action": "CLOSED", "reason": closed_order.close_reason,
-                                "pnl": closed_order.pnl, "tp_level": 1,
-                            })
-                    else:
-                        await db.commit()
-                except Exception as _flip_exit_err:
-                    logger.error(f"[FLIP_EXIT] {order.pair}: {_flip_exit_err}")
-                continue
+            # Jun 16: flips no longer use the flip-specific 45min horizon. They flow through
+            # the SAME monitor-loop timeouts as normal trades — MAX_HOLD + NO_EXPANSION below
+            # (180min + BE-peak gate + signal-active reset) — then skip the momentum exit STACK
+            # (the flip-skip guard just before the momentum exits). SL + ATR trailing + the flip
+            # min-profit gate remain handled realtime in check_realtime_stop_loss (EMA13/runner
+            # disabled). close_position still FLIP_-prefixes the reason (-> FLIP_NO_EXPANSION).
 
             # Get cached indicator data for this pair
             pair_result = await db.execute(
@@ -5310,6 +5276,14 @@ class TradingEngine:
                                     "tp_level": order.current_tp_level or 1
                                 })
                             continue
+
+            # Flips skip the momentum exit STACK below (base −0.70 SL, ATR trailing, EMA13,
+            # signal-lost, etc.) — those are handled realtime in check_realtime_stop_loss with
+            # EMA13 + short-runner disabled. Flips DID just run the shared MAX_HOLD + NO_EXPANSION
+            # above, so a stale flip closes on the SAME no-expansion as a normal trade (Jun 16).
+            if (order.entry_strategy or "").startswith("FLIP:"):
+                await db.commit()
+                continue
 
             # Compute current P&L % for exit checks
             if order.direction == "LONG":

@@ -362,7 +362,7 @@ class SignalThresholds(BaseModel):
     # can't trip it; only a real reversal does. Applies to ALL flip shorts running strpk.
     # N=1.0 robust default (would have held AERO/HYPE/STG); shadow tests 0.5/1.0/1.5.
     runner_trail_short_use_atr: bool = True   # true = ATR-floor trail; false = K×peak_stretch ratio trail
-    runner_trail_short_atr_mult: float = 1.0  # N — give back N×ATR% from peak before exit (hard SL still backstops)
+    runner_trail_short_atr_mult: float = 0.5  # N — give back N×ATR% from peak before exit (hard SL still backstops). Jun 16: started at 0.5 (operator override) — old-data approx (peak−N×ATR on 7 armed shorts) had N=0.5 +12.6% vs N=1.0 +10.1% vs N=1.5 +7.7%; that approx is whipsaw-blind (favors low N), shadows atr05/10/15 settle it live. 1.0 was the conservative alt (asymmetric-risk: too-tight whipsaws out of big runners)
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in

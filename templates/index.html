@@ -5798,6 +5798,14 @@
                             </div>
                             <p class="text-[10px] text-gray-600 mt-2">Block thin-fuel (stretch&lt;0.12) + fade-into-strong-bull (BTC RSI≥60 &amp; ADX≥30); strpk exit; multiplier on the strong-bear cell (BTC RSI 40-45 × ADX≥35, 2× size / 1× lev). Multiplier is a below-N≥30 override — watch its row in Multiplier Cell Performance. Set Invest/Lev to 1.0 to disable.</p>
                         </div>
+                        <!-- All-sleeves strpk exit (Jun 16) -->
+                        <div class="mt-3 px-3 py-2 rounded bg-cyan-950/15 border border-cyan-800/30">
+                            <label class="flex items-center justify-between gap-2 text-xs">
+                                <span class="text-cyan-300">🏃 Strpk runner-trail for the OTHER short sleeves <span class="text-gray-500">(PAIR_RSI_OB + LONG_UNMATCHED)</span></span>
+                                <span class="relative inline-flex items-center cursor-pointer"><input type="checkbox" id="config-flip-runner-strpk-shorts" class="sr-only peer"><div class="relative w-9 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div></span>
+                            </label>
+                            <p class="text-[10px] text-gray-600 mt-1">With the FAN toggle above, this makes <strong class="text-gray-400">all flip shorts</strong> exit via the SHORT runner stretch-trail (arm 0.45 / K 0.5 → <code class="text-cyan-300">FLIP_RUNNER_TRAIL</code>) instead of the standard 0.25% trailing stop. OFF → non-FAN flips fall back to <code>FLIP_TRAILING_STOP</code>.</p>
+                        </div>
                         <details class="mt-3">
                             <summary class="text-[11px] text-gray-600 cursor-pointer hover:text-gray-400 select-none">⚙ Advanced — raw registry string</summary>
                             <input type="text" id="config-flip-entry-sources" readonly class="w-full mt-1 px-2 py-1 text-xs bg-gray-900 border border-gray-800 rounded text-gray-500 font-mono">
@@ -16371,9 +16379,12 @@
                     // A FAN_RATIO_GATE flip with flip_fan_runner_strpk on, armed (peak ≥ short
                     // arm), is held by the stretch-trail (FLIP_RUNNER_TRAIL), NOT the L2 tight
                     // trail — so it should show 🏃 RUNNER, not 🛡 L2.
-                    const _runnerArmedFlip = _rtTh.flip_fan_runner_strpk === true
+                    const _flipSrc = (o.entry_strategy || '').startsWith('FLIP:') ? (o.entry_strategy || '').slice(5) : '';
+                    const _flipStrpkOn = _flipSrc === 'FAN_RATIO_GATE'
+                        ? (_rtTh.flip_fan_runner_strpk === true)
+                        : (_flipSrc ? (_rtTh.flip_runner_strpk_shorts === true) : false);
+                    const _runnerArmedFlip = _flipStrpkOn
                         && o.direction === 'SHORT'
-                        && (o.entry_strategy || '').startsWith('FLIP:FAN_RATIO_GATE')
                         && _tpPeak >= (_rtTh.runner_trail_short_arm_peak ?? 0.45);
                     const _runnerArmed = _runnerArmedLong || _runnerArmedFlip;
                     if (_armed) {
@@ -16384,7 +16395,7 @@
                             bgClass = 'bg-fuchsia-500/25'; textClass = 'text-fuchsia-300';
                             label = `🏃 RUNNER L${_tpLvl}`;
                             title = _runnerArmedFlip
-                                ? `FAN-flip strpk runner active (SHORT, peak ${_tpPeak.toFixed(2)}% ≥ ${_rtArm}%). The L2 tight trail is suppressed — held by the stretch-trail until stretch ≤ ${_rtK}× peak (or hard SL). Exits FLIP_RUNNER_TRAIL.`
+                                ? `Flip strpk runner active (${_flipSrc} SHORT, peak ${_tpPeak.toFixed(2)}% ≥ ${_rtArm}%). The L2 tight trail is suppressed — held by the stretch-trail until stretch ≤ ${_rtK}× peak (or hard SL). Exits FLIP_RUNNER_TRAIL.`
                                 : `Runner stretch-trail active (high-ATR LONG, peak ${_tpPeak.toFixed(2)}% ≥ ${_rtArm}%). Tight trailing handed off — holding until stretch ≤ ${_rtK}× peak (or EMA13 / hard SL). Letting the runner run.`;
                         } else if (_handoffActive && _tpLvl >= _handoffLvl) {
                             bgClass = 'bg-purple-500/25'; textClass = 'text-purple-300';
@@ -17352,6 +17363,8 @@
                 } catch(e) {}
                 const _fanStrpk=document.getElementById('config-flip-fan-runner-strpk');
                 if(_fanStrpk) _fanStrpk.checked = (config.thresholds.flip_fan_runner_strpk === true);
+                const _allStrpk=document.getElementById('config-flip-runner-strpk-shorts');
+                if(_allStrpk) _allStrpk.checked = (config.thresholds.flip_runner_strpk_shorts === true);
                 // BTC 1h × 5m RSI Direction Cross-Filter (May 26 PM)
                 loadBtc1h5mRsiDirFilter('long', config.thresholds.btc_1h_5m_rsi_dir_filter_long || '');
                 loadBtc1h5mRsiDirFilter('short', config.thresholds.btc_1h_5m_rsi_dir_filter_short || '');
@@ -18580,6 +18593,7 @@
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
+                    flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),
                     flip_fan_mult_rule: (function(){
                         const _v=(id)=>((document.getElementById(id)||{}).value||'').trim();
                         const rlo=_v('config-flip-fan-mult-rsi-min'), rhi=_v('config-flip-fan-mult-rsi-max');

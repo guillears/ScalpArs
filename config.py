@@ -464,6 +464,7 @@ class SignalThresholds(BaseModel):
     flip_fan_block_btc_rsi: float = 60.0      # block FAN flip if BTC RSI >= this AND BTC ADX >= flip_fan_block_btc_adx (fade into strong un-exhausted bull: N=19/47%WR/-$416). 0 = off
     flip_fan_block_btc_adx: float = 30.0      # paired with flip_fan_block_btc_rsi
     flip_fan_runner_strpk: bool = True        # exit FAN flips via the SHORT runner stretch-trail (strpk, arm 0.45/K0.5) instead of trailing-like-a-long. Reuses runner_trail_short_* params
+    flip_runner_strpk_shorts: bool = True     # Jun 16: extend the SHORT runner stretch-trail (strpk) to the NON-FAN flip short sleeves too (PAIR_RSI_OB, LONG_UNMATCHED_ONLY). A flip short runs strpk if FAN+flip_fan_runner_strpk OR non-FAN+this. = strpk for ALL flip shorts
     flip_fan_mult_rule: str = "40-45:35-99:2.0:1.0"  # btc_rsi_lo-hi : btc_adx_lo-hi : size_mult : lev_mult cells (lev optional, defaults 1.0; same 4-part format as the other multiplier cells). Strong-bear cell N=10/90%WR/+$308 @2x size/1x lev. Empty = off. BELOW N>=30 gate — operator override
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min
     # — the dead-tape, no-fuel fade zone (mirror of the high-ATR runner finding).

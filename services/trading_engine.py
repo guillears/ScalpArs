@@ -317,8 +317,9 @@ def _flip_filters(source, ind):
             # 4) exit mode
             exitm = "strpk" if getattr(th, 'flip_fan_runner_strpk', False) else None
             return (False, None, size, lev, exitm)
-        # LONG_UNMATCHED_ONLY / PAIR_RSI_OB: no filters defined yet (their own data pending) → no-op
-        return (False, None, 1.0, 1.0, None)
+        # LONG_UNMATCHED_ONLY / PAIR_RSI_OB: no entry filters yet (their own data pending), but
+        # Jun 16 they DO share the SHORT runner stretch-trail exit via flip_runner_strpk_shorts.
+        return (False, None, 1.0, 1.0, ("strpk" if getattr(th, 'flip_runner_strpk_shorts', False) else None))
     except Exception:
         return (False, None, 1.0, 1.0, None)
 
@@ -5364,7 +5365,11 @@ class TradingEngine:
                 try:
                     _fsrc = (order.entry_strategy or "")[5:]
                     _rt_th = config.trading_config.thresholds
-                    if (_fsrc == "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_fan_runner_strpk', False)
+                    # Jun 16: strpk now covers ALL flip shorts — FAN via flip_fan_runner_strpk,
+                    # the other sleeves (PAIR_RSI_OB / LONG_UNMATCHED_ONLY) via flip_runner_strpk_shorts.
+                    _strpk_on = ((_fsrc == "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_fan_runner_strpk', False))
+                                 or (_fsrc != "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_runner_strpk_shorts', False)))
+                    if (_strpk_on
                             and order.direction == "SHORT" and ema5 and ema5 > 0 and current_price > 0):
                         _fl_stretch = ((ema5 - current_price) / current_price) * 100.0
                         if getattr(order, 'runner_peak_stretch', None) is None or _fl_stretch > order.runner_peak_stretch:
@@ -8877,9 +8882,13 @@ class TradingEngine:
                     # with flip_fan_runner_strpk — they get the SHORT runner stretch-trail (the
                     # actual RUNNER_TRAIL exit fires in the monitor loop where ema5 is fresh); here
                     # we suppress the realtime tight-trail once armed so it can't close first.
-                    _flip_strpk_ok = (_is_flip and direction == "SHORT"
-                                      and (order_info.get('entry_strategy') or "")[5:] == "FAN_RATIO_GATE"
-                                      and getattr(_rt_th, 'flip_fan_runner_strpk', False))
+                    # Jun 16: suppress the realtime tight-trail for ANY armed strpk flip short
+                    # (FAN via flip_fan_runner_strpk, others via flip_runner_strpk_shorts) so the
+                    # monitor's RUNNER_TRAIL handles the exit.
+                    _strpk_src = (order_info.get('entry_strategy') or "")[5:]
+                    _flip_strpk_ok = (_is_flip and direction == "SHORT" and (
+                        (_strpk_src == "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_fan_runner_strpk', False))
+                        or (_strpk_src != "FAN_RATIO_GATE" and getattr(_rt_th, 'flip_runner_strpk_shorts', False))))
                     if (_rt_en and (not _is_flip or _flip_strpk_ok) and _rt_peak >= _rt_arm
                             and (_rt_amin <= 0 or (_rt_atr is not None and _rt_atr >= _rt_amin))):
                         _handoff_suppress = True

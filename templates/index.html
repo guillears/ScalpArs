@@ -4908,7 +4908,14 @@
                                     <label class="flex items-center text-sm text-gray-400">k ×
                                         <input type="number" step="0.05" min="0" max="1" id="config-runner-trail-short-k" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
                                     </label>
+                                    <label class="flex items-center text-sm text-cyan-300" title="Jun 16: ATR-floor trail (chandelier). ON = exit when P&L retraces > N×ATR% from peak (a normal bounce <1 ATR can't trip it). OFF = the k×peak-stretch ratio trail.">ATR-floor
+                                        <input type="checkbox" id="config-runner-trail-short-use-atr" class="ml-2" checked>
+                                    </label>
+                                    <label class="flex items-center text-sm text-cyan-300" title="N — give back N×entry_atr_pct from peak before exit. 1.0 = robust default. Hard SL still backstops.">N ×ATR
+                                        <input type="number" step="0.1" min="0" id="config-runner-trail-short-atr-mult" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0">
+                                    </label>
                                 </div>
+                                <p class="text-[11px] text-cyan-400/80 mt-1">Jun 16 — ATR-floor (chandelier) is now the primary trail for ALL strpk shorts (FAN + PAIR_RSI_OB + LONG_UNMATCHED): exit only when P&L gives back &gt; N×ATR from peak, so a first bounce can't trip it. Shadow-tests N=0.5/1.0/1.5 (shadow_atr* columns) to confirm N. Toggle OFF → falls back to the k×stretch trail below.</p>
                                 <p class="text-xs text-gray-500 mt-1">Shadow-strpk on book shorts: Δ+5.1pp/+$996 (N=20, 13/7) · recent era 8/0 +$979. <span class="text-amber-400">Once armed the EMA13-short cross is SUPPRESSED (phantom recorded) — the measured uplift comes from riding through the first cross.</span> Backstop: hard SL. <span class="text-amber-400">REVERT GATE: shadow_tight keeps running as the old-policy proxy — if actual − tight &lt; 0 cumulative on N≥8 fresh armed shorts, turn this OFF.</span></p>
                             </div>
                         </div>
@@ -17234,6 +17241,8 @@
                 { const _e=document.getElementById('config-runner-trail-short-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_short_atr_min !== undefined ? config.thresholds.runner_trail_short_atr_min : 0.0; }
                 { const _e=document.getElementById('config-runner-trail-short-arm-peak'); if(_e) _e.value = config.thresholds.runner_trail_short_arm_peak !== undefined ? config.thresholds.runner_trail_short_arm_peak : 0.45; }
                 { const _e=document.getElementById('config-runner-trail-short-k'); if(_e) _e.value = config.thresholds.runner_trail_short_k !== undefined ? config.thresholds.runner_trail_short_k : 0.5; }
+                { const _e=document.getElementById('config-runner-trail-short-use-atr'); if(_e) _e.checked = config.thresholds.runner_trail_short_use_atr !== undefined ? !!config.thresholds.runner_trail_short_use_atr : true; }
+                { const _e=document.getElementById('config-runner-trail-short-atr-mult'); if(_e) _e.value = config.thresholds.runner_trail_short_atr_mult !== undefined ? config.thresholds.runner_trail_short_atr_mult : 1.0; }
                 if (document.getElementById('config-btc-adx-block-min-short')) {
                     document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
                 }
@@ -18520,6 +18529,8 @@
                     runner_trail_short_atr_min: safeFloat(document.getElementById('config-runner-trail-short-atr-min')?.value || 0),
                     runner_trail_short_arm_peak: safeFloat(document.getElementById('config-runner-trail-short-arm-peak')?.value || 0.45),
                     runner_trail_short_k: safeFloat(document.getElementById('config-runner-trail-short-k')?.value || 0.5),
+                    runner_trail_short_use_atr: (document.getElementById('config-runner-trail-short-use-atr')?.checked === true),
+                    runner_trail_short_atr_mult: safeFloat(document.getElementById('config-runner-trail-short-atr-mult')?.value || 1.0),
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
                     btc_rsi_band_atr_block_long: (document.getElementById('config-btc-rsi-band-atr-block-long')?.value || '').trim(),

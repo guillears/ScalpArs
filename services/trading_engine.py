@@ -156,6 +156,9 @@ _STRPK_K = {'strpk': 0.5, 'strpk04': 0.4, 'strpk03': 0.3}
 # Looser than strpk(K=0.5) on partial pullbacks — the candidate to catch Type-B
 # monsters (HOME: pulled back to +0.77 but stayed near EMA5, then re-ran +7.58).
 _STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren', 'strpk_signed')
+# Jun 16: ATR-floored give-back trail (chandelier) shadows — exit when P&L retraces
+# > N×entry_atr_pct from peak. Tests which N the live runner_trail_short_atr_mult should be.
+_ATR_N = {'atr05': 0.5, 'atr10': 1.0, 'atr15': 1.5}
 
 # ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) =====
 # When an entry is BLOCKED by fan-ratio / ATR×gap / pair-trend, simulate the OPPOSITE
@@ -324,7 +327,7 @@ def _flip_filters(source, ind):
         return (False, None, 1.0, 1.0, None)
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
-                  stretch=None, entry_stretch=None):
+                  stretch=None, entry_stretch=None, atr=None):
     """Update virtual leashes for one order on a price tick. Observation-only; fail-silent."""
     try:
         if order_id is None or pnl_pct is None:
@@ -340,8 +343,13 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                   'exit_mins': {n: None for n, _, _, _, _ in _LEASH_SPECS},
                   'sexits': {n: None for n in _STRETCH_NAMES},
                   'sexit_mins': {n: None for n in _STRETCH_NAMES},
+                  'aexits': {n: None for n in _ATR_N},
+                  'aexit_mins': {n: None for n in _ATR_N},
+                  'atr': atr,
                   'pstretch': None, 'estretch': entry_stretch}
             _LEASH_STATE[order_id] = st
+        if st.get('atr') is None and atr is not None:
+            st['atr'] = atr
         st['ts'] = _leash_time.time()
         if st.get('estretch') is None and entry_stretch is not None:
             st['estretch'] = entry_stretch
@@ -392,6 +400,22 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     es = st.get('estretch')
                     if es is not None and stretch <= es:
                         st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
+        # ---- ATR-floored give-back exits (chandelier): exit when P&L retraces > N×ATR from peak.
+        # Same backstops. The candidate to replace the strpk ratio-trail (which collapses on a
+        # tiny freshly-armed peak). _aatr = the pair's entry ATR% captured at first tick. ----
+        _aatr = st.get('atr')
+        if _aatr and _aatr > 0:
+            for aname, _aN in _ATR_N.items():
+                if st['aexits'][aname] is not None:
+                    continue
+                if pnl_pct <= _LEASH_SL:
+                    st['aexits'][aname] = (_LEASH_SL, 'hard_sl'); continue
+                if ema13_crossed:
+                    st['aexits'][aname] = (round(pnl_pct, 4), 'ema13'); continue
+                if signal_lost:
+                    st['aexits'][aname] = (round(pnl_pct, 4), 'signal_lost'); continue
+                if pnl_pct <= rmax - _aN * _aatr:
+                    st['aexits'][aname] = (round(pnl_pct, 4), 'atr')
         # ---- stamp fire-minute (from open) on whichever leash just fired this tick ----
         _emin = round((st['ts'] - st['open_ts']) / 60.0, 2)
         for _n in st['exits']:
@@ -400,6 +424,9 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
         for _sn in st['sexits']:
             if st['sexits'][_sn] is not None and st['sexit_mins'].get(_sn) is None:
                 st['sexit_mins'][_sn] = _emin
+        for _an in st['aexits']:
+            if st['aexits'][_an] is not None and st['aexit_mins'].get(_an) is None:
+                st['aexit_mins'][_an] = _emin
     except Exception:
         pass  # observation-only: a shadow error must NEVER affect trading
 
@@ -422,6 +449,13 @@ def _leash_finalize(order_id, fallback_pnl):
             else:
                 out[sname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
                 out[sname + '_min'] = None
+        for aname in _ATR_N:
+            if st and st.get('aexits', {}).get(aname) is not None:
+                out[aname] = st['aexits'][aname]
+                out[aname + '_min'] = st.get('aexit_mins', {}).get(aname)
+            else:
+                out[aname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+                out[aname + '_min'] = None
         out['_peak_stretch'] = round(st['pstretch'], 4) if (st and st.get('pstretch') is not None) else None
     except Exception:
         pass
@@ -5052,7 +5086,7 @@ class TradingEngine:
             _leash_update(order_id, current_pnl, peak_hint=None,
                           ema13_crossed=(info.get("ema13_cross_at") is not None),
                           signal_lost=(info.get("signal_lost_at") is not None),
-                          stretch=_pe_stretch)
+                          stretch=_pe_stretch, atr=info.get('entry_atr_pct'))
             # ===== LEASH SHADOW END =====
 
             # Post-exit phantom tick momentum checks
@@ -5141,6 +5175,13 @@ class TradingEngine:
                                 shadow_strpk_signed_reason=_leash_exits.get('strpk_signed', (None, None))[1],
                                 shadow_strpk_signed_min=_leash_exits.get('strpk_signed_min'),
                                 shadow_peak_stretch=_leash_exits.get('_peak_stretch'),
+                                # Jun 16: ATR-floored give-back shadows (N=0.5/1.0/1.5) — tune runner_trail_short_atr_mult
+                                shadow_atr05_pnl=_leash_exits.get('atr05', (None, None))[0],
+                                shadow_atr05_min=_leash_exits.get('atr05_min'),
+                                shadow_atr10_pnl=_leash_exits.get('atr10', (None, None))[0],
+                                shadow_atr10_min=_leash_exits.get('atr10_min'),
+                                shadow_atr15_pnl=_leash_exits.get('atr15', (None, None))[0],
+                                shadow_atr15_min=_leash_exits.get('atr15_min'),
                                 # ===== LEASH SHADOW END =====
                                 post_exit_peak_pnl=round(peak_pnl, 4),
                                 post_exit_trough_pnl=round(trough_pnl, 4),
@@ -8243,7 +8284,8 @@ class TradingEngine:
                 _ls_stretch = ((current_price - _ls_ema5) / current_price * 100) if direction == 'LONG' \
                     else ((_ls_ema5 - current_price) / current_price * 100)
             _leash_update(order_info.get('id'), pnl_pct, peak_hint=current_peak,
-                          stretch=_ls_stretch, entry_stretch=order_info.get('entry_ema5_stretch'))
+                          stretch=_ls_stretch, entry_stretch=order_info.get('entry_ema5_stretch'),
+                          atr=order_info.get('entry_atr_pct'))
             # ===== LEASH SHADOW END =====
 
             # May 17: post-arm-min tracking for BE-floor counterfactual analysis.
@@ -8852,9 +8894,26 @@ class TradingEngine:
                             _sp_pk = _ls_stretch
                             order_info['runner_peak_stretch'] = _sp_pk
                         _sp_arm = float(getattr(_sp_th, 'runner_trail_short_arm_peak', 0.45) or 0.45)
-                        _sp_k = float(getattr(_sp_th, 'runner_trail_short_k', 0.5) or 0.5)
-                        if current_peak >= _sp_arm and _sp_pk > 0 and _ls_stretch <= _sp_pk * _sp_k:
-                            logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT: stretch {_ls_stretch:.3f} <= {_sp_k}x peak {_sp_pk:.3f} (armed peak={current_peak:.2f}%) -> close")
+                        # Jun 16: ATR-floored give-back (chandelier) is the primary trail — exit
+                        # when P&L retraces > N×ATR% from peak (a normal bounce <1 ATR can't trip
+                        # it; only a real reversal does). Fixes the ratio-trail collapsing on a
+                        # tiny freshly-armed peak. Fallback to K×peak_stretch when use_atr=false.
+                        _sp_use_atr = getattr(_sp_th, 'runner_trail_short_use_atr', True)
+                        _sp_atr = order_info.get('entry_atr_pct')
+                        _sp_fire = False; _sp_why = ""
+                        if current_peak >= _sp_arm:
+                            if _sp_use_atr and _sp_atr and _sp_atr > 0:
+                                _sp_n = float(getattr(_sp_th, 'runner_trail_short_atr_mult', 1.0) or 1.0)
+                                if (current_peak - pnl_pct) > _sp_n * _sp_atr:
+                                    _sp_fire = True
+                                    _sp_why = f"giveback {current_peak - pnl_pct:.3f}% > {_sp_n}x ATR {_sp_atr:.3f}% (peak={current_peak:.2f}%)"
+                            else:
+                                _sp_k = float(getattr(_sp_th, 'runner_trail_short_k', 0.5) or 0.5)
+                                if _sp_pk > 0 and _ls_stretch <= _sp_pk * _sp_k:
+                                    _sp_fire = True
+                                    _sp_why = f"stretch {_ls_stretch:.3f} <= {_sp_k}x peak {_sp_pk:.3f} (peak={current_peak:.2f}%)"
+                        if _sp_fire:
+                            logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT: {_sp_why} -> close")
                             order_info['_closing_in_progress'] = True
                             async with AsyncSessionLocal() as db:
                                 _spr = await db.execute(select(Order).where(and_(Order.id == order_id, Order.status == "OPEN")))

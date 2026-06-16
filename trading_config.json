@@ -161,6 +161,8 @@
     "runner_trail_short_atr_min": 0.0,
     "runner_trail_short_arm_peak": 0.45,
     "runner_trail_short_k": 0.5,
+    "runner_trail_short_use_atr": true,
+    "runner_trail_short_atr_mult": 1.0,
     "trailing_early_arm_threshold": 0.0,
     "trailing_early_arm_pullback": 0.1,
     "pair_trend_filter_long_enabled": false,

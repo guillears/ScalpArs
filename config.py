@@ -354,7 +354,15 @@ class SignalThresholds(BaseModel):
     runner_trail_short_enabled: bool = True
     runner_trail_short_atr_min: float = 0.0   # 0 = no ATR gate (shadow had none)
     runner_trail_short_arm_peak: float = 0.45 # matches leash ACT + live trailing arm
-    runner_trail_short_k: float = 0.5         # shadow strpk K=0.5
+    runner_trail_short_k: float = 0.5         # shadow strpk K=0.5 (stretch-ratio trail — fallback when use_atr=false)
+    # Jun 16 — ATR-floored give-back trail (chandelier). Root cause of strpk early exits: the
+    # K×peak_stretch ratio collapses to ~0 width on a freshly-armed (tiny) peak, so a first
+    # bounce trips it before the move develops. The ATR-floor gives a VOLATILITY floor: exit
+    # only when P&L retraces > atr_mult × entry_atr_pct from peak — a normal bounce (<1 ATR)
+    # can't trip it; only a real reversal does. Applies to ALL flip shorts running strpk.
+    # N=1.0 robust default (would have held AERO/HYPE/STG); shadow tests 0.5/1.0/1.5.
+    runner_trail_short_use_atr: bool = True   # true = ATR-floor trail; false = K×peak_stretch ratio trail
+    runner_trail_short_atr_mult: float = 1.0  # N — give back N×ATR% from peak before exit (hard SL still backstops)
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in

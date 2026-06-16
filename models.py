@@ -512,6 +512,14 @@ class Order(Base):
     # Compare against runner_peak_stretch (live peak at exit): if ≈ equal, the live strpk was
     # NOT under-sampling (the whole shadow gap is post-exit continuation → Fix B, not Fix A).
     shadow_peak_stretch_at_close = Column(Float, nullable=True)
+    # Jun 16 — ATR-floored give-back trail shadows (chandelier), N = 0.5/1.0/1.5 × entry_atr_pct.
+    # Tunes the live runner_trail_short_atr_mult: compare these vs actual + post_exit_peak to pick N.
+    shadow_atr05_pnl = Column(Float, nullable=True)
+    shadow_atr05_min = Column(Float, nullable=True)
+    shadow_atr10_pnl = Column(Float, nullable=True)
+    shadow_atr10_min = Column(Float, nullable=True)
+    shadow_atr15_pnl = Column(Float, nullable=True)
+    shadow_atr15_min = Column(Float, nullable=True)
     # ===== LEASH SHADOW END =====
 
     # Jun 1, 2026 — RUNNER STRETCH-TRAIL: live peak |price−EMA5| stretch since

@@ -456,7 +456,7 @@ class SignalThresholds(BaseModel):
     # SOURCE present = active (both sides); size_mult scales per-trade investment vs base.
     # FAN_RATIO_GATE shipped on N=97/39-pair/Top6%/WR69%/+0.175% phantom (in-sample).
     flip_entry_enabled: bool = True                       # master kill-switch for the whole sleeve
-    flip_entry_sources: str = "FAN_RATIO_GATE:1.0"  # SOURCE:size:lev (lev optional→1.0). Jun 16: LONG_UNMATCHED_ONLY + PAIR_RSI_OB DISABLED (dropped from registry) to isolate FAN_RATIO_GATE optimization — both stay tracked in the phantom tracker; re-add via UI toggle once FAN is sorted. FAN_RATIO DE-MUXED 2x→1x Jun 15 (multiplier gate ✗ HARMFUL: live N=24/50%WR/-0.24%/-$912). Source itself gate-breached (net-neg even @1x) → on instant-review. [archived: PAIR_RSI_OB phantom N=11/82%WR/+0.405%, locked promo gate N≥30; LONG_UNMATCHED phantom N≈9/67%WR]
+    flip_entry_sources: str = "FAN_RATIO_GATE:1.0,LONG_UNMATCHED_ONLY:1.0,PAIR_RSI_OB:1.0"  # SOURCE:size:lev (lev optional→1.0). Jun 16 PM: RE-ACTIVATED LONG_UNMATCHED_ONLY + PAIR_RSI_OB @1x base (no source filters yet — clean baseline for per-source data collection via the new Flip Source dashboard filter). Each evaluated/tuned in isolation, findings encoded in its own _flip_filters branch. FAN_RATIO DE-MUXED 2x→1x Jun 15 (multiplier gate ✗ HARMFUL: live N=24/50%WR/-0.24%/-$912). [phantom priors: PAIR_RSI_OB N=11/82%WR/+0.405%; LONG_UNMATCHED N≈8/38%WR/-0.190% ✗ whipsaws — collect real data, tight revert gate]
     # ── FAN_RATIO_GATE flip filter section (Jun 16, 76-trade batch). Source-namespaced
     #    (`flip_fan_*`); future sources get parallel `flip_unmatched_*`/`flip_pairsi_*` sets,
     #    evaluated independently in _flip_filters(). All fail-open. Block reasons FLIP_FAN_*.
@@ -464,7 +464,7 @@ class SignalThresholds(BaseModel):
     flip_fan_block_btc_rsi: float = 60.0      # block FAN flip if BTC RSI >= this AND BTC ADX >= flip_fan_block_btc_adx (fade into strong un-exhausted bull: N=19/47%WR/-$416). 0 = off
     flip_fan_block_btc_adx: float = 30.0      # paired with flip_fan_block_btc_rsi
     flip_fan_runner_strpk: bool = True        # exit FAN flips via the SHORT runner stretch-trail (strpk, arm 0.45/K0.5) instead of trailing-like-a-long. Reuses runner_trail_short_* params
-    flip_fan_mult_rule: str = "40-45:35-99:2.0"  # btc_rsi_lo-hi : btc_adx_lo-hi : size_mult cells (Pattern-W mirror of the regime block: strong-bear cell N=10/90%WR/+$308). Empty = off. BELOW N>=30 gate — operator override
+    flip_fan_mult_rule: str = "40-45:35-99:2.0:1.0"  # btc_rsi_lo-hi : btc_adx_lo-hi : size_mult : lev_mult cells (lev optional, defaults 1.0; same 4-part format as the other multiplier cells). Strong-bear cell N=10/90%WR/+$308 @2x size/1x lev. Empty = off. BELOW N>=30 gate — operator override
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min
     # — the dead-tape, no-fuel fade zone (mirror of the high-ATR runner finding).
     # LONG <0.25%: 5-batch 12% WR / -$230 (cleanest loser sub-band), 0 overlap with

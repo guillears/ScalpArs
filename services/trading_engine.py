@@ -282,7 +282,7 @@ def _flip_filters(source, ind):
     and its own filter TYPES (FAN uses stretch+regime+strpk+mult; future LONG_UNMATCHED /
     PAIR_RSI_OB branches define their own). Fully fail-open: any error → (False, None, 1.0,
     None) so a filter bug can never block a flip or break the scan.
-    Returns (blocked: bool, reason: str|None, size_mult: float, exit_mode: str|None)."""
+    Returns (blocked: bool, reason: str|None, size_mult: float, lev_mult: float, exit_mode: str|None)."""
     try:
         th = config.trading_config.thresholds
         if source == "FAN_RATIO_GATE":
@@ -291,31 +291,36 @@ def _flip_filters(source, ind):
             # 1) thin-fuel block
             smin = float(getattr(th, 'flip_fan_stretch_min', 0.0) or 0.0)
             if smin > 0 and stretch is not None and stretch < smin:
-                return (True, "FLIP_FAN_STRETCH", 1.0, None)
+                return (True, "FLIP_FAN_STRETCH", 1.0, 1.0, None)
             # 2) regime block — fade into a strong, un-exhausted bull
             rmin = float(getattr(th, 'flip_fan_block_btc_rsi', 0.0) or 0.0)
             amin = float(getattr(th, 'flip_fan_block_btc_adx', 0.0) or 0.0)
             if rmin > 0 and amin > 0 and brsi is not None and badx is not None and brsi >= rmin and badx >= amin:
-                return (True, "FLIP_FAN_REGIME", 1.0, None)
-            # 3) size multiplier cells (btc_rsi range x btc_adx range -> mult)
-            size = 1.0
+                return (True, "FLIP_FAN_REGIME", 1.0, 1.0, None)
+            # 3) size/lev multiplier cells. Format matches the other multiplier cells:
+            #    btc_rsi_lo-hi : btc_adx_lo-hi : size_mult [: lev_mult]  (lev optional, defaults 1.0)
+            size = 1.0; lev = 1.0
             rule = (getattr(th, 'flip_fan_mult_rule', '') or '').strip()
             if rule and brsi is not None and badx is not None:
                 for cellspec in rule.split(','):
                     try:
-                        rs, as_, mu = cellspec.strip().split(':')
-                        rlo, rhi = map(float, rs.split('-')); alo, ahi = map(float, as_.split('-'))
+                        parts = [p.strip() for p in cellspec.strip().split(':')]
+                        if len(parts) < 3:
+                            continue
+                        rlo, rhi = map(float, parts[0].split('-')); alo, ahi = map(float, parts[1].split('-'))
                         if rlo <= brsi < rhi and alo <= badx < ahi:
-                            size = float(mu); break
+                            size = float(parts[2])
+                            lev = float(parts[3]) if len(parts) >= 4 and parts[3] else 1.0
+                            break
                     except (ValueError, TypeError):
                         continue
             # 4) exit mode
             exitm = "strpk" if getattr(th, 'flip_fan_runner_strpk', False) else None
-            return (False, None, size, exitm)
+            return (False, None, size, lev, exitm)
         # LONG_UNMATCHED_ONLY / PAIR_RSI_OB: no filters defined yet (their own data pending) → no-op
-        return (False, None, 1.0, None)
+        return (False, None, 1.0, 1.0, None)
     except Exception:
-        return (False, None, 1.0, None)
+        return (False, None, 1.0, 1.0, None)
 
 def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal_lost=False,
                   stretch=None, entry_stretch=None):
@@ -2947,7 +2952,7 @@ class TradingEngine:
                 'btc_rsi': _ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi'),
                 'btc_adx': _ef.get('entry_btc_adx') if _ef.get('entry_btc_adx') is not None else _g.get('_current_btc_adx'),
             }
-            _blocked, _reason, _flip_cell_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
+            _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:
                 try: self._record_filter_block(_reason, flip_dir)
                 except Exception: pass
@@ -2961,7 +2966,7 @@ class TradingEngine:
                     entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
                     entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
-                    flip_source=source, flip_cell_mult=_flip_cell_mult, flip_exit_mode=_flip_exit_mode,
+                    flip_source=source, flip_cell_mult=_flip_cell_mult, flip_cell_lev_mult=_flip_cell_lev_mult, flip_exit_mode=_flip_exit_mode,
                     **_ef,
                 )
             if isolate:
@@ -3032,6 +3037,7 @@ class TradingEngine:
         # (bypasses pattern/multiplier logic, base×registry sizing, FLIP exit model).
         flip_source: str = None,
         flip_cell_mult: float = 1.0,
+        flip_cell_lev_mult: float = 1.0,
         flip_exit_mode: str = None,
     ) -> Optional[Order]:
         """Open a new position"""
@@ -3324,12 +3330,15 @@ class TradingEngine:
         if flip_source:
             cell_mult, cell_lev_mult, cell_src = _flip_size_mult(flip_source), _flip_lev_mult(flip_source), f"FLIP:{flip_source}"
             # Jun 16: per-source CONDITIONAL cell multiplier from _flip_filters (e.g. FAN's
-            # strong-bear BTC RSI40-45×ADX≥35 cell @2×). Multiplies the registry size and
-            # carries a distinct cell_src so it groups as its OWN row in Multiplier Cell
-            # Performance (the flip multiplier table).
-            if flip_cell_mult and flip_cell_mult != 1.0:
-                cell_mult = cell_mult * flip_cell_mult
-                cell_src = f"FLIP:{flip_source}×{flip_cell_mult:g}"
+            # strong-bear BTC RSI40-45×ADX≥35 cell @2× size / 1× lev). Multiplies the registry
+            # size AND leverage and carries a distinct cell_src so it groups as its OWN row in
+            # Multiplier Cell Performance (the flip multiplier table). Hard caps below still clamp.
+            if (flip_cell_mult and flip_cell_mult != 1.0) or (flip_cell_lev_mult and flip_cell_lev_mult != 1.0):
+                cell_mult = cell_mult * (flip_cell_mult or 1.0)
+                cell_lev_mult = cell_lev_mult * (flip_cell_lev_mult or 1.0)
+                _tag = f"×{flip_cell_mult:g}" if flip_cell_mult and flip_cell_mult != 1.0 else ""
+                _tag += f"L{flip_cell_lev_mult:g}" if flip_cell_lev_mult and flip_cell_lev_mult != 1.0 else ""
+                cell_src = f"FLIP:{flip_source}{_tag}"
             _mult_target = "both"
             # Re-apply the hard caps (the clamp above ran before this override).
             if cell_mult > _inv_cap:

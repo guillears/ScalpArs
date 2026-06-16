@@ -538,6 +538,16 @@
                         <input type="date" id="window-to-date" class="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm" onchange="loadPerformance()" title="To date (inclusive, UTC)">
                     </span>
                     <span id="window-filter-badge" class="text-xs text-gray-500"></span>
+                    <span class="text-sm font-semibold text-fuchsia-300">Filter by Flip Source:</span>
+                    <select id="flip-source-filter" class="bg-white/5 border border-fuchsia-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="Slice every table by entry-strategy source — per-flip-sleeve evaluation in isolation">
+                        <option value="">All Sources</option>
+                        <option value="MOMENTUM">Non-flip (momentum)</option>
+                        <option value="FLIP">All flips</option>
+                        <option value="FAN_RATIO_GATE">🔀 FAN_RATIO_GATE</option>
+                        <option value="LONG_UNMATCHED_ONLY">🔀 LONG_UNMATCHED_ONLY</option>
+                        <option value="PAIR_RSI_OB">🔀 PAIR_RSI_OB</option>
+                    </select>
+                    <span id="flip-source-filter-badge" class="text-xs text-gray-500"></span>
                     <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
@@ -5773,9 +5783,20 @@
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Strpk runner-trail exit</span><input type="checkbox" id="config-flip-fan-runner-strpk" class="sr-only peer"><div class="relative w-9 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-fuchsia-500"></div></label>
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Block BTC RSI ≥</span><input type="number" id="config-flip-fan-block-btc-rsi" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">&nbsp;&nbsp;&amp; BTC ADX ≥</span><input type="number" id="config-flip-fan-block-btc-adx" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
-                                <label class="flex items-center justify-between gap-2 col-span-2"><span class="text-gray-400">Multiplier cells <span class="text-gray-600">(rsi:adx:mult)</span></span><input type="text" id="config-flip-fan-mult-rule" class="w-48 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 font-mono"></label>
                             </div>
-                            <p class="text-[10px] text-gray-600 mt-2">Block thin-fuel (stretch&lt;0.12) + fade-into-strong-bull (BTC RSI≥60 &amp; ADX≥30); strpk exit; 2× the strong-bear cell (BTC RSI 40-45 × ADX≥35). Multiplier is a below-N≥30 override — watch its row in Multiplier Cell Performance.</p>
+                            <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
+                            <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
+                                <div class="text-[11px] text-fuchsia-300/80 mb-1">Multiplier cell <span class="text-gray-600">(BTC RSI × BTC ADX → size + leverage)</span></div>
+                                <div class="grid grid-cols-6 gap-2 text-[10px]">
+                                    <label class="flex flex-col gap-0.5"><span class="text-gray-500">RSI Min</span><input type="number" id="config-flip-fan-mult-rsi-min" step="1" class="w-full px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-center"></label>
+                                    <label class="flex flex-col gap-0.5"><span class="text-gray-500">RSI Max</span><input type="number" id="config-flip-fan-mult-rsi-max" step="1" class="w-full px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-center"></label>
+                                    <label class="flex flex-col gap-0.5"><span class="text-gray-500">ADX Min</span><input type="number" id="config-flip-fan-mult-adx-min" step="1" class="w-full px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-center"></label>
+                                    <label class="flex flex-col gap-0.5"><span class="text-gray-500">ADX Max</span><input type="number" id="config-flip-fan-mult-adx-max" step="1" class="w-full px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-center"></label>
+                                    <label class="flex flex-col gap-0.5"><span class="text-amber-500/80">Invest Multi</span><input type="number" id="config-flip-fan-mult-size" step="0.1" class="w-full px-1.5 py-1 bg-gray-800 border border-amber-700/50 rounded text-amber-200 text-center"></label>
+                                    <label class="flex flex-col gap-0.5"><span class="text-amber-500/80">Lev Multi</span><input type="number" id="config-flip-fan-mult-lev" step="0.1" class="w-full px-1.5 py-1 bg-gray-800 border border-amber-700/50 rounded text-amber-200 text-center"></label>
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-gray-600 mt-2">Block thin-fuel (stretch&lt;0.12) + fade-into-strong-bull (BTC RSI≥60 &amp; ADX≥30); strpk exit; multiplier on the strong-bear cell (BTC RSI 40-45 × ADX≥35, 2× size / 1× lev). Multiplier is a below-N≥30 override — watch its row in Multiplier Cell Performance. Set Invest/Lev to 1.0 to disable.</p>
                         </div>
                         <details class="mt-3">
                             <summary class="text-[11px] text-gray-600 cursor-pointer hover:text-gray-400 select-none">⚙ Advanced — raw registry string</summary>
@@ -9280,6 +9301,7 @@
             try {
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
+                const _flipSrc1 = (document.getElementById('flip-source-filter') || {}).value || '';
                 const _params1 = [];
                 if (regimeFilter) _params1.push(`regime=${regimeFilter}`);
                 if (windowFilter && windowFilter !== 'custom') {
@@ -9289,6 +9311,7 @@
                     const _to = (document.getElementById('window-to-date') || {}).value || '';
                     if (_from && _to) { _params1.push(`from_date=${_from}`); _params1.push(`to_date=${_to}`); }
                 }
+                if (_flipSrc1) _params1.push(`flip_source=${encodeURIComponent(_flipSrc1)}`);
 
                 // --- Pair Rank Performance (Jun 12) ---
                 if (perf.pair_rank_performance && perf.pair_rank_performance.length > 0) {
@@ -10958,7 +10981,8 @@
             btn.disabled = true;
             try {
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
-                const _winSuffix = _buildWindowQuery('&');
+                const _flipSrcSplit = (document.getElementById('flip-source-filter') || {}).value || '';
+                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '');
                 const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
@@ -11088,6 +11112,7 @@
                 const safe = (v, fb=0) => (v != null && !isNaN(v)) ? v : fb;
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
+                const flipSourceFilter = (document.getElementById('flip-source-filter') || {}).value || '';
                 const params = [];
                 if (regimeFilter) params.push(`regime=${regimeFilter}`);
                 // window_hours OR (from_date, to_date) per dropdown selection
@@ -11101,9 +11126,15 @@
                         params.push(`to_date=${to}`);
                     }
                 }
+                if (flipSourceFilter) params.push(`flip_source=${encodeURIComponent(flipSourceFilter)}`);
                 const queryStr = params.length ? '?' + params.join('&') : '';
                 const badge = document.getElementById('regime-filter-badge');
                 badge.textContent = regimeFilter ? `Showing ${regimeFilter} trades only` : '';
+                const fsBadge = document.getElementById('flip-source-filter-badge');
+                if (fsBadge) {
+                    const fsLabel = { 'MOMENTUM':'non-flip momentum only','FLIP':'all flips only','FAN_RATIO_GATE':'FAN_RATIO_GATE flips only','LONG_UNMATCHED_ONLY':'LONG_UNMATCHED_ONLY flips only','PAIR_RSI_OB':'PAIR_RSI_OB flips only' }[flipSourceFilter];
+                    fsBadge.textContent = fsLabel ? `Showing ${fsLabel}` : '';
+                }
                 const wBadge = document.getElementById('window-filter-badge');
                 if (wBadge) {
                     if (windowFilter === 'custom') {
@@ -17295,7 +17326,18 @@
                 _setVal('config-flip-fan-stretch-min', config.thresholds.flip_fan_stretch_min);
                 _setVal('config-flip-fan-block-btc-rsi', config.thresholds.flip_fan_block_btc_rsi);
                 _setVal('config-flip-fan-block-btc-adx', config.thresholds.flip_fan_block_btc_adx);
-                _setVal('config-flip-fan-mult-rule', config.thresholds.flip_fan_mult_rule);
+                // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
+                try {
+                    const _mc = ((config.thresholds.flip_fan_mult_rule || '').split(',')[0] || '').trim();
+                    const _mp = _mc.split(':');
+                    if (_mp.length >= 3) {
+                        const _r = (_mp[0]||'').split('-'), _a = (_mp[1]||'').split('-');
+                        _setVal('config-flip-fan-mult-rsi-min', _r[0]); _setVal('config-flip-fan-mult-rsi-max', _r[1]);
+                        _setVal('config-flip-fan-mult-adx-min', _a[0]); _setVal('config-flip-fan-mult-adx-max', _a[1]);
+                        _setVal('config-flip-fan-mult-size', _mp[2]);
+                        _setVal('config-flip-fan-mult-lev', (_mp.length >= 4 && _mp[3]) ? _mp[3] : '1.0');
+                    }
+                } catch(e) {}
                 const _fanStrpk=document.getElementById('config-flip-fan-runner-strpk');
                 if(_fanStrpk) _fanStrpk.checked = (config.thresholds.flip_fan_runner_strpk === true);
                 // BTC 1h × 5m RSI Direction Cross-Filter (May 26 PM)
@@ -18526,7 +18568,15 @@
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
-                    flip_fan_mult_rule: ((document.getElementById('config-flip-fan-mult-rule') || {}).value || '').trim(),
+                    flip_fan_mult_rule: (function(){
+                        const _v=(id)=>((document.getElementById(id)||{}).value||'').trim();
+                        const rlo=_v('config-flip-fan-mult-rsi-min'), rhi=_v('config-flip-fan-mult-rsi-max');
+                        const alo=_v('config-flip-fan-mult-adx-min'), ahi=_v('config-flip-fan-mult-adx-max');
+                        const sz=_v('config-flip-fan-mult-size'), lv=_v('config-flip-fan-mult-lev');
+                        // all four bounds + size required; empty/incomplete → off (empty string)
+                        if(!rlo||!rhi||!alo||!ahi||!sz) return '';
+                        return `${rlo}-${rhi}:${alo}-${ahi}:${sz}:${lv||'1.0'}`;
+                    })(),
                     // BTC 1h × BTC 5m RSI Direction Cross-Filter (May 26 PM)
                     btc_1h_5m_rsi_dir_filter_long: collectBtc1h5mRsiDirFilter('long'),
                     btc_1h_5m_rsi_dir_filter_short: collectBtc1h5mRsiDirFilter('short'),

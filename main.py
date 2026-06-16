@@ -1680,6 +1680,7 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 @app.get("/api/performance")
 async def get_performance(regime: str = None, window_hours: int = None,
                           from_date: str = None, to_date: str = None,
+                          flip_source: str = None,
                           db: AsyncSession = Depends(get_db)):
     """Get closed orders performance metrics, optionally filtered by macro trend regime and/or time window.
 
@@ -1688,12 +1689,16 @@ async def get_performance(regime: str = None, window_hours: int = None,
     from_date / to_date: str (ISO YYYY-MM-DD) — restrict to trades closed within [from_date 00:00 UTC,
                   to_date 23:59:59 UTC]. Both required for the date range to apply; takes precedence
                   over window_hours when both provided.
+    flip_source: str (Jun 16) — restrict the pool by entry-strategy source so every table re-slices
+                  for one flip sleeve in isolation. Values: a source name (FAN_RATIO_GATE /
+                  LONG_UNMATCHED_ONLY / PAIR_RSI_OB → entry_strategy startswith "FLIP:<name>"),
+                  "FLIP" (all flips), "MOMENTUM" (non-flip only). None / "" / "ALL" = no filter.
     """
     await trading_engine.initialize(db)
 
     try:
         return await _compute_performance(db, regime=regime, window_hours=window_hours,
-                                          from_date=from_date, to_date=to_date)
+                                          from_date=from_date, to_date=to_date, flip_source=flip_source)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         return {
@@ -2892,7 +2897,7 @@ def _compute_liquidity_sizing(orders):
 
 
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
-                                from_date: str = None, to_date: str = None):
+                                from_date: str = None, to_date: str = None, flip_source: str = None):
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
@@ -3001,6 +3006,25 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         _cutoff = datetime.utcnow() - timedelta(hours=window_hours)
         orders = [o for o in orders if o.closed_at and o.closed_at >= _cutoff]
         signal_expired_orders = [o for o in signal_expired_orders if o.closed_at and o.closed_at >= _cutoff]
+
+    # Apply flip-source filter if requested (Jun 16). Slices the pool by entry_strategy so every
+    # downstream table re-computes for ONE flip sleeve in isolation — the per-source evaluation
+    # surface for tuning LONG_UNMATCHED_ONLY / PAIR_RSI_OB / FAN_RATIO_GATE independently.
+    # Composes AFTER regime + window. Prefix match catches mult variants (FLIP:FAN_RATIO_GATE×2).
+    _fs = (flip_source or '').strip().upper()
+    if _fs and _fs != 'ALL':
+        def _es(o):
+            return (getattr(o, 'entry_strategy', None) or '')
+        if _fs == 'FLIP':
+            orders = [o for o in orders if _es(o).startswith('FLIP:')]
+        elif _fs == 'MOMENTUM':
+            orders = [o for o in orders if not _es(o).startswith('FLIP:')]
+        else:
+            _pre = f'FLIP:{_fs}'
+            orders = [o for o in orders if _es(o).upper().startswith(_pre)]
+        # SIGNAL_EXPIRED rows are aborted maker entries (never flips) → keep only for MOMENTUM/ALL
+        if _fs != 'MOMENTUM':
+            signal_expired_orders = []
 
     if not orders:
         logger.warning("[PERF] No closed orders found for is_paper=%s (regime=%s), returning empty performance",

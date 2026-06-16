@@ -6212,6 +6212,10 @@ class TradingEngine:
                     if _rsi is not None and _px and _rsi > _rmax:
                         _seed_phantom_flip(_p, _px, "LONG", "Pair RSI >65",
                                            entry_fields=self._flip_entry_fields(_current_pair_holder, flip_dir="SHORT"))
+                        # Jun 16: also mark this pair so Phase 3 can open the LIVE flip
+                        # (PAIR_RSI_OB source). The block fires inside get_signal (signal is
+                        # already NO_TRADE by Phase 3), so the marker rides the _collected row.
+                        _current_pair_holder['rsi_ob_flip'] = True
                 except Exception:
                     pass
 
@@ -6265,6 +6269,7 @@ class TradingEngine:
                 # phantom (the PAIR_RSI_RANGE LONG block fires inside get_signal).
                 _current_pair_holder['rsi'] = indicators.get('rsi')
                 _current_pair_holder['price'] = indicators.get('price')
+                _current_pair_holder['rsi_ob_flip'] = False  # Jun 16: reset live-flip marker per pair
 
                 signal, confidence = get_signal(
                     ema5=indicators.get('ema5'),
@@ -6304,6 +6309,7 @@ class TradingEngine:
                     'indicators': indicators, 'signal': signal, 'confidence': confidence,
                     'pair_volume_ratio': _pair_volume_ratio, 'breadth_regime': breadth_regime,
                     'rank': pair_info.get('rank'),
+                    'rsi_ob_flip': _current_pair_holder.get('rsi_ob_flip', False),  # Jun 16: overbought-RSI live flip
                 })
 
             if batch_start + OHLCV_BATCH_SIZE < len(top_pairs):
@@ -6356,6 +6362,21 @@ class TradingEngine:
             volume_24h = _cr['volume_24h']
             _pair_volume_ratio = _cr['pair_volume_ratio']
             _pair_rank = _cr.get('rank')
+
+            # Jun 16: PAIR_RSI_OB live flip — fade an overbought-long (rsi>65) block to SHORT.
+            # The block fired inside get_signal (Phase 1, signal already NO_TRADE here), so we
+            # act on the marker carried on the row. Source key "PAIR_RSI_OB" (the phantom cell
+            # is "Pair RSI >65"). Below-evidence operator override @1x — _maybe_open_flip is a
+            # no-op unless the source is in flip_entry_sources; all risk caps live in
+            # open_position. Fail-silent so a flip bug can't break the scan.
+            if _cr.get('rsi_ob_flip'):
+                try:
+                    await self._maybe_open_flip(
+                        db, pair, "LONG", "PAIR_RSI_OB", indicators,
+                        entry_fields=self._flip_entry_fields(indicators, flip_dir="SHORT",
+                                                             scan=self._flip_scan_ctx(locals())))
+                except Exception as _ob_flip_err:
+                    logger.error(f"[FLIP_ENTRY] {pair}: PAIR_RSI_OB flip failed: {_ob_flip_err}")
 
             # Jun 3: NO-TRADE pairs — stay in the top-pair/volume universe (subscribed,
             # scanned, displayed) but entries are blocked. Distinct from pair_blacklist

@@ -9103,14 +9103,17 @@ async def _compute_phantom_flip_performance(db, is_paper):
             # weak/healthy bull average. STRONG_BULL → sbull; HEALTHY_BULL/BULL_EXHAUSTED → hbull.
             return 'sbull' if 'STRONG' in r else 'hbull'
         if 'BEAR' in r:
-            return 'bear'
+            # Jun 17: split bear too (symmetric to bull) — the proven flip-short edge is
+            # specifically STRONG_BEAR, not all bear. STRONG_BEAR → sbear; HEALTHY_BEAR/
+            # BEAR_EXHAUSTED → hbear.
+            return 'sbear' if 'STRONG' in r else 'hbear'
         return 'chop'  # CHOPPY_* / NEUTRAL / unknown
     _xt = {}
     for _fp in _all_flips:  # include PASS:* passthrough-longs here (the bull-hunt LONG rows)
         if not _fp.entry_btc_regime:
             continue
         _key = (_fp.source_filter, _fp.flip_direction)
-        _slot = _xt.setdefault(_key, {'sbull': [], 'hbull': [], 'bear': [], 'chop': [], 'all': []})
+        _slot = _xt.setdefault(_key, {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': [], 'all': []})
         _slot[_regbucket(_fp.entry_btc_regime)].append(_fp)
         _slot['all'].append(_fp)
     source_regime_xtab = []
@@ -9118,7 +9121,8 @@ async def _compute_phantom_flip_performance(db, is_paper):
         source_regime_xtab.append({
             "source": _src, "direction": _fd,
             "sbull": _agg(_b['sbull']), "hbull": _agg(_b['hbull']),
-            "bear": _agg(_b['bear']), "chop": _agg(_b['chop']), "all": _agg(_b['all']),
+            "sbear": _agg(_b['sbear']), "hbear": _agg(_b['hbear']),
+            "chop": _agg(_b['chop']), "all": _agg(_b['all']),
         })
 
     return {"rows": rows, "total": total, "fan_curve": fan_curve,

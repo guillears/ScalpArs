@@ -440,7 +440,10 @@ async def init_db():
                             'shadow_peak_stretch_at_close',  # Jun 16: shadow peak snapshotted at live close (sampling vs post-exit diagnostic)
                             'shadow_atr05_pnl','shadow_atr05_min',  # Jun 16: ATR-floor give-back shadows (chandelier) N=0.5/1.0/1.5
                             'shadow_atr10_pnl','shadow_atr10_min',
-                            'shadow_atr15_pnl','shadow_atr15_min'):
+                            'shadow_atr15_pnl','shadow_atr15_min',
+                            'shadow_cap025_pnl','shadow_cap025_min',  # Jun 17 PM: give-back-cap shadows (frac 0.25/0.35/0.50)
+                            'shadow_cap035_pnl','shadow_cap035_min',
+                            'shadow_cap050_pnl','shadow_cap050_min'):
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} FLOAT"))
                 for _sc in ('shadow_tight_reason','shadow_wide_reason','shadow_tierA_reason','shadow_tierB_reason',

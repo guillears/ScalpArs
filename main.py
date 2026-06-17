@@ -9193,6 +9193,11 @@ def _compute_leash_shadow(orders):
         ('atr05', 'shadow_atr05_pnl', 'shadow_atr05_pnl', 'shadow_atr05_min'),  # N=0.5 (= live)
         ('atr10', 'shadow_atr10_pnl', 'shadow_atr10_pnl', 'shadow_atr10_min'),  # N=1.0 counterfactual
         ('atr15', 'shadow_atr15_pnl', 'shadow_atr15_pnl', 'shadow_atr15_min'),  # N=1.5 counterfactual
+        # Jun 17 PM — give-back-cap shadows (live N + lock, give-back capped at frac×peak). cap035 ≈ the
+        # LIVE policy (minus ratchet edge cases); cap025/cap050 = tighter/looser counterfactuals to tune frac.
+        ('cap025', 'shadow_cap025_pnl', 'shadow_cap025_pnl', 'shadow_cap025_min'),  # frac 0.25 (tighter)
+        ('cap035', 'shadow_cap035_pnl', 'shadow_cap035_pnl', 'shadow_cap035_min'),  # frac 0.35 (= live)
+        ('cap050', 'shadow_cap050_pnl', 'shadow_cap050_pnl', 'shadow_cap050_min'),  # frac 0.50 (looser)
     ]
     # armed + shadow-populated cohort
     rows = [o for o in orders

@@ -159,6 +159,10 @@ _STRETCH_NAMES = ('strpk', 'strpk04', 'strpk03', 'stren', 'strpk_signed')
 # Jun 16: ATR-floored give-back trail (chandelier) shadows — exit when P&L retraces
 # > N×entry_atr_pct from peak. Tests which N the live runner_trail_short_atr_mult should be.
 _ATR_N = {'atr05': 0.5, 'atr10': 1.0, 'atr15': 1.5}
+# Jun 17 PM: give-back-CAP shadows — ATR-floor at the LIVE N + lock, but give_back capped at
+# frac×peak. Varies frac (0.25/0.35/0.50) to tune runner_trail_short_giveback_frac from data
+# (which frac captures most without noise-stopping), parallel to how _ATR_N tuned N.
+_CAP_FRAC = {'cap025': 0.25, 'cap035': 0.35, 'cap050': 0.50}
 
 # ===== PHANTOM FLIP TRACKER (Jun 13, observation-only) =====
 # When an entry is BLOCKED by fan-ratio / ATR×gap / pair-trend, simulate the OPPOSITE
@@ -352,6 +356,8 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                   'sexit_mins': {n: None for n in _STRETCH_NAMES},
                   'aexits': {n: None for n in _ATR_N},
                   'aexit_mins': {n: None for n in _ATR_N},
+                  'cexits': {n: None for n in _CAP_FRAC},
+                  'cexit_mins': {n: None for n in _CAP_FRAC},
                   'atr': atr,
                   'pstretch': None, 'estretch': entry_stretch}
             _LEASH_STATE[order_id] = st
@@ -423,6 +429,26 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     st['aexits'][aname] = (round(pnl_pct, 4), 'signal_lost'); continue
                 if pnl_pct <= rmax - _aN * _aatr:
                     st['aexits'][aname] = (round(pnl_pct, 4), 'atr')
+        # ---- give-back-CAP shadows (Jun 17 PM): mirror the LIVE exit (ATR-floor at live N + lock)
+        # but cap the give-back at frac×peak; vary frac to tune runner_trail_short_giveback_frac. ----
+        if _aatr and _aatr > 0:
+            try:
+                _cN = float(getattr(config.trading_config.thresholds, 'runner_trail_short_atr_mult', 0.5) or 0.5)
+                _clock = float(getattr(config.trading_config.thresholds, 'runner_trail_short_be_lock_pct', 0.10) or 0.10)
+            except Exception:
+                _cN, _clock = 0.5, 0.10
+            for cname, _cfrac in _CAP_FRAC.items():
+                if st['cexits'][cname] is not None:
+                    continue
+                if pnl_pct <= _LEASH_SL:
+                    st['cexits'][cname] = (_LEASH_SL, 'hard_sl'); continue
+                if ema13_crossed:
+                    st['cexits'][cname] = (round(pnl_pct, 4), 'ema13'); continue
+                if signal_lost:
+                    st['cexits'][cname] = (round(pnl_pct, 4), 'signal_lost'); continue
+                _cfloor = max(rmax - min(_cN * _aatr, _cfrac * rmax), _clock)
+                if pnl_pct <= _cfloor:
+                    st['cexits'][cname] = (round(pnl_pct, 4), 'cap')
         # ---- stamp fire-minute (from open) on whichever leash just fired this tick ----
         _emin = round((st['ts'] - st['open_ts']) / 60.0, 2)
         for _n in st['exits']:
@@ -434,6 +460,9 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
         for _an in st['aexits']:
             if st['aexits'][_an] is not None and st['aexit_mins'].get(_an) is None:
                 st['aexit_mins'][_an] = _emin
+        for _cn in st['cexits']:
+            if st['cexits'][_cn] is not None and st['cexit_mins'].get(_cn) is None:
+                st['cexit_mins'][_cn] = _emin
     except Exception:
         pass  # observation-only: a shadow error must NEVER affect trading
 
@@ -463,6 +492,13 @@ def _leash_finalize(order_id, fallback_pnl):
             else:
                 out[aname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
                 out[aname + '_min'] = None
+        for cname in _CAP_FRAC:
+            if st and st.get('cexits', {}).get(cname) is not None:
+                out[cname] = st['cexits'][cname]
+                out[cname + '_min'] = st.get('cexit_mins', {}).get(cname)
+            else:
+                out[cname] = (round(fallback_pnl, 4) if fallback_pnl is not None else None, 'window')
+                out[cname + '_min'] = None
         out['_peak_stretch'] = round(st['pstretch'], 4) if (st and st.get('pstretch') is not None) else None
     except Exception:
         pass
@@ -5196,6 +5232,13 @@ class TradingEngine:
                                 shadow_atr10_min=_leash_exits.get('atr10_min'),
                                 shadow_atr15_pnl=_leash_exits.get('atr15', (None, None))[0],
                                 shadow_atr15_min=_leash_exits.get('atr15_min'),
+                                # Jun 17 PM: give-back-cap shadows (frac 0.25/0.35/0.50) — tune runner_trail_short_giveback_frac
+                                shadow_cap025_pnl=_leash_exits.get('cap025', (None, None))[0],
+                                shadow_cap025_min=_leash_exits.get('cap025_min'),
+                                shadow_cap035_pnl=_leash_exits.get('cap035', (None, None))[0],
+                                shadow_cap035_min=_leash_exits.get('cap035_min'),
+                                shadow_cap050_pnl=_leash_exits.get('cap050', (None, None))[0],
+                                shadow_cap050_min=_leash_exits.get('cap050_min'),
                                 # ===== LEASH SHADOW END =====
                                 post_exit_peak_pnl=round(peak_pnl, 4),
                                 post_exit_trough_pnl=round(trough_pnl, 4),

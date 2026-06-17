@@ -520,6 +520,14 @@ class Order(Base):
     shadow_atr10_min = Column(Float, nullable=True)
     shadow_atr15_pnl = Column(Float, nullable=True)
     shadow_atr15_min = Column(Float, nullable=True)
+    # Jun 17 PM — give-back-cap shadows (ATR-floor at live N + lock, give-back capped at frac×peak).
+    # frac 0.25/0.35/0.50 → tune runner_trail_short_giveback_frac from data (which captures most w/o noise-stop).
+    shadow_cap025_pnl = Column(Float, nullable=True)
+    shadow_cap025_min = Column(Float, nullable=True)
+    shadow_cap035_pnl = Column(Float, nullable=True)
+    shadow_cap035_min = Column(Float, nullable=True)
+    shadow_cap050_pnl = Column(Float, nullable=True)
+    shadow_cap050_min = Column(Float, nullable=True)
     # ===== LEASH SHADOW END =====
 
     # Jun 1, 2026 — RUNNER STRETCH-TRAIL: live peak |price−EMA5| stretch since

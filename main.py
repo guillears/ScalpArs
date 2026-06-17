@@ -6794,21 +6794,29 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     try:
         _fb = trading_engine._get_filter_block_summary()
         _fb_rows = _fb.get('rows', [])
-        _n_flip = sum(1 for o in all_orders if (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:'))
+        # Single pass: count opened trades by (normal/flip) × (LONG/SHORT) so NORMAL & FLIP
+        # each split by direction without 4 separate scans.
+        _oc = Counter()
+        for o in all_orders:
+            _kind = 'flip' if (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:') else 'norm'
+            _oc[(_kind, o.direction)] += 1
+        _nL, _nS = _oc[('norm', 'LONG')], _oc[('norm', 'SHORT')]
+        _fL, _fS = _oc[('flip', 'LONG')], _oc[('flip', 'SHORT')]
         entry_funnel = {
             "blocked_by_filter_room": _fb.get('total_room', 0),
             "blocked_at_max": _fb.get('total_full', 0),
             "blocked_long": _fb.get('total_long', 0),
             "blocked_short": _fb.get('total_short', 0),
-            "opened_normal": len(all_orders) - _n_flip,
-            "opened_flip": _n_flip,
+            "opened_normal": _nL + _nS, "opened_normal_long": _nL, "opened_normal_short": _nS,
+            "opened_flip": _fL + _fS, "opened_flip_long": _fL, "opened_flip_short": _fS,
             "top_blockers": [{"filter": r["filter"], "room": r["total_room"],
                               "long": r["long"], "short": r["short"]} for r in _fb_rows[:5]],
         }
     except Exception as e:
         logger.error(f"[PERF] Error computing Entry Funnel: {e}")
         entry_funnel = {"blocked_by_filter_room": 0, "blocked_at_max": 0, "blocked_long": 0,
-                        "blocked_short": 0, "opened_normal": 0, "opened_flip": 0, "top_blockers": []}
+                        "blocked_short": 0, "opened_normal": 0, "opened_normal_long": 0, "opened_normal_short": 0,
+                        "opened_flip": 0, "opened_flip_long": 0, "opened_flip_short": 0, "top_blockers": []}
 
     return {
         "total_trades": total_trades,

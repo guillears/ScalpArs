@@ -8515,7 +8515,7 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Entry Funnel (why so few NORMAL trades — since bot start, in-memory)\n');
                 lines.push(`Blocked by filter (had room): ${_ef1.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef1.blocked_at_max}`);
-                lines.push(`Opened — NORMAL: ${_ef1.opened_normal}  |  Opened — FLIP: ${_ef1.opened_flip}  |  Blocked L/S: ${_ef1.blocked_long}/${_ef1.blocked_short}`);
+                lines.push(`Opened — NORMAL: ${_ef1.opened_normal} (${_ef1.opened_normal_long||0}L/${_ef1.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef1.opened_flip} (${_ef1.opened_flip_long||0}L/${_ef1.opened_flip_short||0}S)  |  Blocked L/S: ${_ef1.blocked_long}/${_ef1.blocked_short}`);
                 lines.push('Top blockers (room): ' + ((_ef1.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
                 if (_ef1.opened_normal===0 && _ef1.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
             }
@@ -10304,7 +10304,7 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Entry Funnel (why so few NORMAL trades — since bot start, in-memory)\n');
                     lines.push(`Blocked by filter (had room): ${_ef2.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef2.blocked_at_max}`);
-                    lines.push(`Opened — NORMAL: ${_ef2.opened_normal}  |  Opened — FLIP: ${_ef2.opened_flip}  |  Blocked L/S: ${_ef2.blocked_long}/${_ef2.blocked_short}`);
+                    lines.push(`Opened — NORMAL: ${_ef2.opened_normal} (${_ef2.opened_normal_long||0}L/${_ef2.opened_normal_short||0}S)  |  Opened — FLIP: ${_ef2.opened_flip} (${_ef2.opened_flip_long||0}L/${_ef2.opened_flip_short||0}S)  |  Blocked L/S: ${_ef2.blocked_long}/${_ef2.blocked_short}`);
                     lines.push('Top blockers (room): ' + ((_ef2.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
                     if (_ef2.opened_normal===0 && _ef2.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
                 }
@@ -11308,12 +11308,12 @@
                 (function(){
                     const ef = data.entry_funnel; const grid = document.getElementById('entry-funnel');
                     if (!ef || !grid) return;
-                    const cell = (label, val, cls) => `<div class="bg-white/5 rounded p-2"><div class="text-gray-400">${label}</div><div class="text-lg font-bold ${cls||''}">${val}</div></div>`;
+                    const cell = (label, val, cls, sub) => `<div class="bg-white/5 rounded p-2"><div class="text-gray-400">${label}</div><div class="text-lg font-bold ${cls||''}">${val}</div>${sub?`<div class="text-[10px] text-gray-500">${sub}</div>`:''}</div>`;
                     grid.innerHTML =
-                        cell('Blocked by filter (had room)', ef.blocked_by_filter_room.toLocaleString(), 'text-amber-300') +
+                        cell('Blocked by filter (had room)', ef.blocked_by_filter_room.toLocaleString(), 'text-amber-300', `${(ef.blocked_long||0).toLocaleString()}L / ${(ef.blocked_short||0).toLocaleString()}S`) +
                         cell('Blocked at max-5 (no trade lost)', ef.blocked_at_max.toLocaleString(), 'text-gray-400') +
-                        cell('Opened — NORMAL', ef.opened_normal, ef.opened_normal>0?'text-emerald-300':'text-red-400') +
-                        cell('Opened — FLIP', ef.opened_flip, 'text-cyan-300');
+                        cell('Opened — NORMAL', ef.opened_normal, ef.opened_normal>0?'text-emerald-300':'text-red-400', `${ef.opened_normal_long||0}L / ${ef.opened_normal_short||0}S`) +
+                        cell('Opened — FLIP', ef.opened_flip, 'text-cyan-300', `${ef.opened_flip_long||0}L / ${ef.opened_flip_short||0}S`);
                     const tb = document.getElementById('entry-funnel-blockers');
                     if (tb) {
                         const rows = (ef.top_blockers||[]).map(b => `<span class="text-gray-300">${b.filter}</span> ${b.room.toLocaleString()} <span class="text-gray-500">(L${b.long}/S${b.short})</span>`).join('  ·  ');

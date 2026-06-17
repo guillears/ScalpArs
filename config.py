@@ -495,7 +495,15 @@ class SignalThresholds(BaseModel):
     # batch -$611→-$5. Discipline-override (literal NP gate 13%<60%; saveability analysis overrides).
     # TIGHT REVERT: re-open if these cells flip to WR>45% on N>=15 fresh. Empty regimes = OFF.
     flip_short_regime_block_adxd_max: float = 0.0   # block flip-SHORT when entry ADXΔ < this (0.0 = the ADXΔ<0 cut)
-    flip_short_regime_block_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-SHORTS in; empty = filter OFF
+    flip_short_regime_block_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-SHORTS in (ADXΔ<adxd_max gate); empty = filter OFF
+    # Jun 17 (B2) — regimes where flip-SHORTS lose REGARDLESS of ADXΔ → block any-ADXΔ. STRONG_BULL loses
+    # in BOTH ADXΔ halves (N=26: ADXΔ<0 −$190/N=11 already-blocked + ADXΔ≥0 −$531/N=15 was LEAKING through
+    # the ADXΔ<0-only gate). Strong-bull-specific (healthy-bull/chop ADXΔ≥0 ≈ breakeven, kept at ADXΔ<0).
+    flip_short_regime_block_any_adxd_regimes: str = "STRONG_BULL"  # CSV; empty = OFF
+    # Jun 17 (B1) — anti-parabola: block flip-SHORT when EMA5 stretch% ≥ this (shorting a vertical blow-off
+    # that keeps ripping; ESPORTS 10.47% stretch = −2.25% gapped stop in 0s). Pool stretch≥2 = N=2/0%WR
+    # (ASTER+ESPORTS), 0 winners removed (1–2% band 67%WR preserved). Regime-agnostic catastrophe guard.
+    flip_short_stretch_block_max: float = 2.0   # block flip-SHORT when entry EMA5 stretch% ≥ this (0 = off)
     # Jun 17 — high-ATR bear block (the regime-inverted hole in the bear exemption above). Block flip-SHORT
     # when pair ATR% ≥ min AND BTC regime ∈ bear set. High-ATR parabolic pump in a bear = counter-trend
     # squeeze (ESPORTS 4.0/HUSDT 3.0 = 0%WR/−$245). CUT=3.0 not 2.0 (ATR<2.5 bear shorts net-positive).

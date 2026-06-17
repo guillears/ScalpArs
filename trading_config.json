@@ -201,6 +201,8 @@
     "flip_fan_block_btc_adx": 30.0,
     "flip_short_regime_block_adxd_max": 0.0,
     "flip_short_regime_block_regimes": "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT",
+    "flip_short_regime_block_any_adxd_regimes": "STRONG_BULL",
+    "flip_short_stretch_block_max": 2.0,
     "flip_short_atr_block_min": 3.0,
     "flip_short_atr_block_regimes": "STRONG_BEAR,HEALTHY_BEAR,BEAR_EXHAUSTED",
     "flip_long_regime_block_adxd_max": 99.0,

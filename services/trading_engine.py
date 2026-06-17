@@ -306,11 +306,25 @@ def _flip_filters(source, ind):
         # when entry ADXΔ < adxd_max AND BTC regime ∈ blocked set. Cross-batch BULL/CHOP ∧ ADXΔ<0 =
         # N=38/40%WR/-$1070; 96% of losers peak <0.45 arm so the give-back cap can't save them →
         # entry block. Fail-open: empty regimes or missing data → no block.
+        # B1 (Jun 17): anti-parabola — block flip-SHORT when EMA5 stretch ≥ max. Shorting a vertical
+        # blow-off that keeps ripping (ESPORTS 10.47% stretch → −2.25% gapped stop in 0s). Pool stretch≥2
+        # = N=2/0%WR (ASTER+ESPORTS), 0 winners removed (1–2% band 67%WR preserved). Regime-agnostic
+        # catastrophe guard. Fail-open: missing stretch or max=0 → no block.
+        _smax = float(getattr(th, 'flip_short_stretch_block_max', 0.0) or 0.0)
+        if ind.get('flip_dir') == 'SHORT' and _smax > 0:
+            _sstr = ind.get('ema5_stretch')
+            if _sstr is not None and _sstr >= _smax:
+                return (True, "FLIP_SHORT_HISTRETCH", 1.0, 1.0, None)
         _regs = (getattr(th, 'flip_short_regime_block_regimes', '') or '').strip()
-        if ind.get('flip_dir') == 'SHORT' and _regs:
+        _anyregs = (getattr(th, 'flip_short_regime_block_any_adxd_regimes', '') or '').strip()
+        if ind.get('flip_dir') == 'SHORT' and (_regs or _anyregs):
             _adxd = ind.get('adx_delta'); _reg = ind.get('btc_regime')
             _amax = float(getattr(th, 'flip_short_regime_block_adxd_max', 0.0) or 0.0)
             _regset = {s.strip() for s in _regs.split(',') if s.strip()}
+            _anyset = {s.strip() for s in _anyregs.split(',') if s.strip()}
+            # B2 (Jun 17): block any-ADXΔ in these regimes (STRONG_BULL loses both ADXΔ halves).
+            if _reg and _reg in _anyset:
+                return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
             if _adxd is not None and _reg and _adxd < _amax and _reg in _regset:
                 return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
         # High-ATR bear block (Jun 17): the REGIME-INVERTED hole in FLIP_SHORT_REGIME's bear exemption.

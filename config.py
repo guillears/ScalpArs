@@ -362,7 +362,16 @@ class SignalThresholds(BaseModel):
     # can't trip it; only a real reversal does. Applies to ALL flip shorts running strpk.
     # N=1.0 robust default (would have held AERO/HYPE/STG); shadow tests 0.5/1.0/1.5.
     runner_trail_short_use_atr: bool = True   # true = ATR-floor trail; false = K×peak_stretch ratio trail
-    runner_trail_short_atr_mult: float = 0.5  # N — give back N×ATR% from peak before exit (hard SL still backstops). Jun 16: started at 0.5 (operator override) — old-data approx (peak−N×ATR on 7 armed shorts) had N=0.5 +12.6% vs N=1.0 +10.1% vs N=1.5 +7.7%; that approx is whipsaw-blind (favors low N), shadows atr05/10/15 settle it live. 1.0 was the conservative alt (asymmetric-risk: too-tight whipsaws out of big runners)
+    runner_trail_short_atr_mult: float = 1.0  # N — give back N×ATR% from peak before exit (hard SL still backstops). Jun 17: 0.5→1.0 paired with the BE-ratchet below. N=1.0 gives genuine runners room (shadow atr10 +$873 vs atr05, PORTAL held to +7.2 vs +2.7); the ratchet caps the reverser tail so looser N is now safe (cap losers / room for winners). atr05 shadow kept as the N=0.5 no-ratchet control.
+    # Jun 17 — BREAKEVEN RATCHET (min floor under the ATR-floor). Root cause of "peaked +0.5% then
+    # closed negative": on high-ATR/modest-peak shorts (EVAA ATR1.89 peak0.59, VELVET ATR1.59 peak0.76)
+    # the give-back N×ATR EXCEEDS the peak, so the chandelier floor (peak − N×ATR) sits BELOW breakeven —
+    # it permits a full round-trip into a loss (or to the −0.70 SL). FIX: once ARMED, the effective exit
+    # floor = max(peak − N×ATR, be_lock_pct). Only binds when peak − N×ATR < lock (the broken set); by
+    # construction it CANNOT touch a runner (its floor stays well above the lock). be_lock 0.10 ≈ net-flat
+    # after the 0.09% roundtrip fee. Sim (23 armed): converts the 5 broken trades from −0.02/−1.20 to ~+0.10.
+    runner_trail_short_be_ratchet_enabled: bool = True  # true = clamp the armed exit floor to >= be_lock_pct
+    runner_trail_short_be_lock_pct: float = 0.10        # min P&L an armed runner may give back to (the ratchet lock)
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in
@@ -471,6 +480,13 @@ class SignalThresholds(BaseModel):
     flip_fan_stretch_min: float = 0.12        # block FAN flip if entry EMA5 stretch < this (thin fuel, batch N=10/10%WR/-$495). 0 = off
     flip_fan_block_btc_rsi: float = 60.0      # block FAN flip if BTC RSI >= this AND BTC ADX >= flip_fan_block_btc_adx (fade into strong un-exhausted bull: N=19/47%WR/-$416). 0 = off
     flip_fan_block_btc_adx: float = 30.0      # paired with flip_fan_block_btc_rsi
+    # Jun 17 — fan-SPIKE block (ALL flip sources, not just FAN). Block the flip when the pair's
+    # entry fan ratio (|EMA5-8 gap| / |EMA8-13 gap|) >= this — a violently-accelerating parabolic
+    # fan that the fade gets run over by (never arms, straight to SL). Cross-batch N=3, 0% WR,
+    # ~-1.0% (ASTER 5.7/VELVET 28.3 [12-20-07] + ALLO 13.2 [06-16 ref], 3 pairs) — clears the
+    # >=3-sample direction-consistent bar; mirrors the already-live fan_ratio_block_long 5.0-99.
+    # Threshold is specifically >=5 (the 2-5 band CONTRADICTS cross-batch). 0 = off.
+    flip_fan_spike_max: float = 5.0           # block any flip when pair fan ratio >= this (0 = off). TIGHT REVERT: re-open if fan>=5 flips >=40% WR on N>=5 fresh
     flip_fan_runner_strpk: bool = True        # exit FAN flips via the SHORT runner stretch-trail (strpk, arm 0.45/K0.5) instead of trailing-like-a-long. Reuses runner_trail_short_* params
     flip_runner_strpk_shorts: bool = True     # Jun 16: extend the SHORT runner stretch-trail (strpk) to the NON-FAN flip short sleeves too (PAIR_RSI_OB, LONG_UNMATCHED_ONLY). A flip short runs strpk if FAN+flip_fan_runner_strpk OR non-FAN+this. = strpk for ALL flip shorts
     flip_fan_mult_rule: str = "40-45:35-99:2.0:1.0"  # btc_rsi_lo-hi : btc_adx_lo-hi : size_mult : lev_mult cells (lev optional, defaults 1.0; same 4-part format as the other multiplier cells). Strong-bear cell N=10/90%WR/+$308 @2x size/1x lev. Empty = off. BELOW N>=30 gate — operator override

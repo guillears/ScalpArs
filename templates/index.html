@@ -4914,7 +4914,14 @@
                                     <label class="flex items-center text-sm text-cyan-300" title="N — give back N×entry_atr_pct from peak before exit. 1.0 = robust default. Hard SL still backstops.">N ×ATR
                                         <input type="number" step="0.1" min="0" id="config-runner-trail-short-atr-mult" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="1.0">
                                     </label>
+                                    <label class="flex items-center text-sm text-amber-300" title="Jun 17 BE-ratchet: once armed, the exit floor = max(peak − N×ATR, lock). Stops a high-ATR/modest-peak short from round-tripping its whole peak into a loss. Only binds when peak − N×ATR < lock; never touches a runner.">BE-ratchet
+                                        <input type="checkbox" id="config-runner-trail-short-be-ratchet" class="ml-2" checked>
+                                    </label>
+                                    <label class="flex items-center text-sm text-amber-300" title="The ratchet lock: min P&L an armed runner may give back to. 0.10 ≈ net-flat after the 0.09% roundtrip fee.">lock%
+                                        <input type="number" step="0.05" id="config-runner-trail-short-be-lock" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
+                                    </label>
                                 </div>
+                                <p class="text-[11px] text-amber-400/80 mt-1">Jun 17 — BE-ratchet (cap for losers): once armed, exit floor = max(peak − N×ATR, lock). On high-ATR/modest-peak shorts the give-back N×ATR exceeds the peak, so the bare ATR-floor sits below breakeven and permits a full round-trip into a loss (EVAA −0.36, VELVET −1.20). The lock clamps those to ~+0.10 while never touching a genuine runner (its floor stays well above the lock). Paired with N=0.5→1.0: the ratchet caps the reverser tail so the looser N can give runners room. <span class="text-cyan-300">atr05 shadow = the N=0.5 no-ratchet control for the revert gate.</span></p>
                                 <p class="text-[11px] text-cyan-400/80 mt-1">Jun 16 — ATR-floor (chandelier) is now the primary trail for ALL strpk shorts (FAN + PAIR_RSI_OB + LONG_UNMATCHED): exit only when P&L gives back &gt; N×ATR from peak, so a first bounce can't trip it. Shadow-tests N=0.5/1.0/1.5 (shadow_atr* columns) to confirm N. Toggle OFF → falls back to the k×stretch trail below.</p>
                                 <p class="text-xs text-gray-500 mt-1">Shadow-strpk on book shorts: Δ+5.1pp/+$996 (N=20, 13/7) · recent era 8/0 +$979. <span class="text-amber-400">Once armed the EMA13-short cross is SUPPRESSED (phantom recorded) — the measured uplift comes from riding through the first cross.</span> Backstop: hard SL. <span class="text-amber-400">REVERT GATE: shadow_tight keeps running as the old-policy proxy — if actual − tight &lt; 0 cumulative on N≥8 fresh armed shorts, turn this OFF.</span></p>
                             </div>
@@ -5790,6 +5797,7 @@
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Strpk runner-trail exit</span><input type="checkbox" id="config-flip-fan-runner-strpk" class="sr-only peer"><div class="relative w-9 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-fuchsia-500"></div></label>
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Block BTC RSI ≥</span><input type="number" id="config-flip-fan-block-btc-rsi" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">&nbsp;&nbsp;&amp; BTC ADX ≥</span><input type="number" id="config-flip-fan-block-btc-adx" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
+                                <label class="flex items-center justify-between gap-2" title="Jun 17: block ANY flip (all sources) when the pair fan ratio |EMA5-8 gap|/|EMA8-13 gap| ≥ this — a violently-accelerating parabolic spike the fade gets run over by. Cross-batch N=3/0%WR (ASTER/VELVET/ALLO). Mirrors the live long-side fan≥5 block. 0 = off."><span class="text-amber-300">Block fan ratio ≥</span><input type="number" id="config-flip-fan-spike-max" step="0.5" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-right"></label>
                             </div>
                             <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
                             <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
@@ -17243,6 +17251,8 @@
                 { const _e=document.getElementById('config-runner-trail-short-k'); if(_e) _e.value = config.thresholds.runner_trail_short_k !== undefined ? config.thresholds.runner_trail_short_k : 0.5; }
                 { const _e=document.getElementById('config-runner-trail-short-use-atr'); if(_e) _e.checked = config.thresholds.runner_trail_short_use_atr !== undefined ? !!config.thresholds.runner_trail_short_use_atr : true; }
                 { const _e=document.getElementById('config-runner-trail-short-atr-mult'); if(_e) _e.value = config.thresholds.runner_trail_short_atr_mult !== undefined ? config.thresholds.runner_trail_short_atr_mult : 1.0; }
+                { const _e=document.getElementById('config-runner-trail-short-be-ratchet'); if(_e) _e.checked = config.thresholds.runner_trail_short_be_ratchet_enabled !== undefined ? !!config.thresholds.runner_trail_short_be_ratchet_enabled : true; }
+                { const _e=document.getElementById('config-runner-trail-short-be-lock'); if(_e) _e.value = config.thresholds.runner_trail_short_be_lock_pct !== undefined ? config.thresholds.runner_trail_short_be_lock_pct : 0.10; }
                 if (document.getElementById('config-btc-adx-block-min-short')) {
                     document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
                 }
@@ -17358,6 +17368,7 @@
                 _setVal('config-flip-fan-stretch-min', config.thresholds.flip_fan_stretch_min);
                 _setVal('config-flip-fan-block-btc-rsi', config.thresholds.flip_fan_block_btc_rsi);
                 _setVal('config-flip-fan-block-btc-adx', config.thresholds.flip_fan_block_btc_adx);
+                _setVal('config-flip-fan-spike-max', config.thresholds.flip_fan_spike_max);
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
                 try {
                     const _mc = ((config.thresholds.flip_fan_mult_rule || '').split(',')[0] || '').trim();
@@ -18531,6 +18542,8 @@
                     runner_trail_short_k: safeFloat(document.getElementById('config-runner-trail-short-k')?.value || 0.5),
                     runner_trail_short_use_atr: (document.getElementById('config-runner-trail-short-use-atr')?.checked === true),
                     runner_trail_short_atr_mult: safeFloat(document.getElementById('config-runner-trail-short-atr-mult')?.value || 1.0),
+                    runner_trail_short_be_ratchet_enabled: (document.getElementById('config-runner-trail-short-be-ratchet')?.checked === true),
+                    runner_trail_short_be_lock_pct: safeFloat(document.getElementById('config-runner-trail-short-be-lock')?.value || 0.10),
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
                     btc_rsi_band_atr_block_long: (document.getElementById('config-btc-rsi-band-atr-block-long')?.value || '').trim(),
@@ -18603,6 +18616,7 @@
                     flip_fan_stretch_min: parseFloat((document.getElementById('config-flip-fan-stretch-min') || {}).value) || 0,
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,
+                    flip_fan_spike_max: parseFloat((document.getElementById('config-flip-fan-spike-max') || {}).value) || 0,
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),
                     flip_fan_mult_rule: (function(){

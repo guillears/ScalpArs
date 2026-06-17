@@ -288,6 +288,13 @@ def _flip_filters(source, ind):
     Returns (blocked: bool, reason: str|None, size_mult: float, lev_mult: float, exit_mode: str|None)."""
     try:
         th = config.trading_config.thresholds
+        # Universal fan-SPIKE block (ALL sources, Jun 17): refuse a flip that fades a violently-
+        # accelerating parabolic fan (ratio >= flip_fan_spike_max) — it never arms, runs to SL.
+        # Cross-batch N=3 / 0% WR (ASTER/VELVET/ALLO). Mirrors the live long-side fan>=5 block.
+        _fan = ind.get('fan_ratio')
+        _fmax = float(getattr(th, 'flip_fan_spike_max', 0.0) or 0.0)
+        if _fmax > 0 and _fan is not None and _fan >= _fmax:
+            return (True, "FLIP_FAN_SPIKE", 1.0, 1.0, None)
         if source == "FAN_RATIO_GATE":
             stretch = ind.get('ema5_stretch')
             brsi = ind.get('btc_rsi'); badx = ind.get('btc_adx')
@@ -2982,10 +2989,17 @@ class TradingEngine:
             _ef = dict(entry_fields or {})
             # Jun 16: source-namespaced flip filter layer — veto / size / exit-mode.
             _g = globals(); _ind = indicators or {}
+            # fan ratio = |EMA5-8 gap| / |EMA8-13 gap| (for the fan-spike block, all sources)
+            _g58 = _ef.get('entry_ema_gap_5_8'); _g813 = _ef.get('entry_ema_gap_8_13')
+            if _g58 is None and _ind.get('ema5') and _ind.get('ema8'):
+                _g58 = abs((_ind['ema5'] - _ind['ema8']) / _ind['ema8'] * 100)
+            if _g813 is None and _ind.get('ema8') and _ind.get('ema13'):
+                _g813 = abs((_ind['ema8'] - _ind['ema13']) / _ind['ema13'] * 100)
             _ff_in = {
                 'ema5_stretch': _ef.get('entry_ema5_stretch') if _ef.get('entry_ema5_stretch') is not None else _ind.get('ema5_stretch'),
                 'btc_rsi': _ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi'),
                 'btc_adx': _ef.get('entry_btc_adx') if _ef.get('entry_btc_adx') is not None else _g.get('_current_btc_adx'),
+                'fan_ratio': (abs(_g58 / _g813) if (_g58 is not None and _g813) else None),
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:
@@ -8904,9 +8918,17 @@ class TradingEngine:
                         if current_peak >= _sp_arm:
                             if _sp_use_atr and _sp_atr and _sp_atr > 0:
                                 _sp_n = float(getattr(_sp_th, 'runner_trail_short_atr_mult', 1.0) or 1.0)
-                                if (current_peak - pnl_pct) > _sp_n * _sp_atr:
+                                # Jun 17 BE-ratchet: clamp the armed exit floor to >= be_lock so a
+                                # high-ATR/modest-peak short can't round-trip its whole peak into a loss
+                                # (EVAA/VELVET). Only binds when peak − N×ATR < lock; never touches a runner.
+                                _sp_atr_floor = current_peak - _sp_n * _sp_atr
+                                _sp_lock = float(getattr(_sp_th, 'runner_trail_short_be_lock_pct', 0.10) or 0.10)
+                                _sp_ratchet = getattr(_sp_th, 'runner_trail_short_be_ratchet_enabled', True)
+                                _sp_floor = max(_sp_atr_floor, _sp_lock) if _sp_ratchet else _sp_atr_floor
+                                if pnl_pct <= _sp_floor:
                                     _sp_fire = True
-                                    _sp_why = f"giveback {current_peak - pnl_pct:.3f}% > {_sp_n}x ATR {_sp_atr:.3f}% (peak={current_peak:.2f}%)"
+                                    _sp_bound = "lock" if (_sp_ratchet and _sp_lock > _sp_atr_floor) else "atr"
+                                    _sp_why = f"pnl {pnl_pct:.3f}% <= floor {_sp_floor:.3f}% [{_sp_bound}] (peak={current_peak:.2f}%, {_sp_n}xATR={_sp_n*_sp_atr:.3f}%)"
                             else:
                                 _sp_k = float(getattr(_sp_th, 'runner_trail_short_k', 0.5) or 0.5)
                                 if _sp_pk > 0 and _ls_stretch <= _sp_pk * _sp_k:

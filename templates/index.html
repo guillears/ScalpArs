@@ -5827,6 +5827,8 @@
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Block BTC RSI ≥</span><input type="number" id="config-flip-fan-block-btc-rsi" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">&nbsp;&nbsp;&amp; BTC ADX ≥</span><input type="number" id="config-flip-fan-block-btc-adx" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
                                 <label class="flex items-center justify-between gap-2" title="Jun 17: block ANY flip (all sources) when the pair fan ratio |EMA5-8 gap|/|EMA8-13 gap| ≥ this — a violently-accelerating parabolic spike the fade gets run over by. Cross-batch N=3/0%WR (ASTER/VELVET/ALLO). Mirrors the live long-side fan≥5 block. 0 = off."><span class="text-amber-300">Block fan ratio ≥</span><input type="number" id="config-flip-fan-spike-max" step="0.5" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-right"></label>
+                                <label class="flex items-center justify-between gap-2" title="Jun 17: 2D regime×ADXΔ block for flip-SHORTS (all sources). Block a short flip when entry ADXΔ < this AND BTC regime is in the list below. Cross-batch BULL/CHOP ∧ ADXΔ<0 = N=38/40%WR/-$1070; 96% of losers peak below the 0.45 arm so exits can't save them → entry block. 0.0 = the ADXΔ<0 cut."><span class="text-amber-300">Short flip: block ADXΔ &lt;</span><input type="number" id="config-flip-short-regime-adxd-max" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-right"></label>
+                                <label class="flex items-center justify-between gap-2" title="Jun 17: BTC regimes (CSV) in which the flip-SHORT ADXΔ block applies. Default STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT (the bull/chop cells where flip-shorts bleed). Empty = filter OFF (also disables the ADXΔ block above). Bear regimes are intentionally excluded — that's where the flip-short edge lives."><span class="text-amber-300">&nbsp;&nbsp;in regimes</span><input type="text" id="config-flip-short-regime-regimes" class="w-44 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-right text-xs" placeholder="STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT"></label>
                             </div>
                             <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
                             <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
@@ -17471,6 +17473,8 @@
                 _setVal('config-flip-fan-block-btc-rsi', config.thresholds.flip_fan_block_btc_rsi);
                 _setVal('config-flip-fan-block-btc-adx', config.thresholds.flip_fan_block_btc_adx);
                 _setVal('config-flip-fan-spike-max', config.thresholds.flip_fan_spike_max);
+                _setVal('config-flip-short-regime-adxd-max', config.thresholds.flip_short_regime_block_adxd_max);
+                _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
                 try {
                     const _mc = ((config.thresholds.flip_fan_mult_rule || '').split(',')[0] || '').trim();
@@ -18720,6 +18724,8 @@
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,
                     flip_fan_spike_max: parseFloat((document.getElementById('config-flip-fan-spike-max') || {}).value) || 0,
+                    flip_short_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-regime-adxd-max') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),
                     flip_fan_mult_rule: (function(){

@@ -190,8 +190,11 @@ def reset_phantom_flip_state():
     _PFLIP_COOLDOWN.clear()
 
 
-def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None):
-    """Seed a virtual opposite-direction position when an entry is blocked. Fail-silent.
+def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None, mode='FADE'):
+    """Seed a virtual position when an entry is blocked. mode='FADE' (default) opens the
+    OPPOSITE direction (fade-the-block, the bear mechanism). mode='PASS' opens the SAME
+    direction (passthrough / un-block — Jun 17 bull hunt: measure whether a too-conservative
+    filter is killing good trend-longs; caller uses a "PASS:" source prefix). Fail-silent.
     De-duped: skips if an active phantom exists for pair|source or one was seeded within
     the cooldown (the block filters re-fire every scan cycle the pair stays in the zone).
     cohort: for LONG_UNMATCHED_ONLY only — "C+W"/"C"/"W" pattern family of the blocked
@@ -227,7 +230,7 @@ def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None
         _PFLIP_COOLDOWN[ck] = _now
         _PHANTOM_FLIP_STATE[f"{ck}|{_now:.0f}"] = {
             'pair': pair, 'source': source, 'blocked_dir': blocked_direction,
-            'flip_dir': "SHORT" if blocked_direction == "LONG" else "LONG",
+            'flip_dir': blocked_direction if mode == 'PASS' else ("SHORT" if blocked_direction == "LONG" else "LONG"),
             'entry': entry_price, 'open_ts': _now, 'cohort': cohort, '_ef': _ef,
             'peak': 0.0, 'trough': 0.0, 'armed': False, '_last_pnl': 0.0,
         }
@@ -299,6 +302,17 @@ def _flip_filters(source, ind):
         _fmax = float(getattr(th, 'flip_fan_spike_max', 0.0) or 0.0)
         if _fmax > 0 and _fan is not None and _fan >= _fmax:
             return (True, "FLIP_FAN_SPIKE", 1.0, 1.0, None)
+        # Universal 2D regime×ADXΔ block for flip-SHORTS (ALL sources, Jun 17). Block a short flip
+        # when entry ADXΔ < adxd_max AND BTC regime ∈ blocked set. Cross-batch BULL/CHOP ∧ ADXΔ<0 =
+        # N=38/40%WR/-$1070; 96% of losers peak <0.45 arm so the give-back cap can't save them →
+        # entry block. Fail-open: empty regimes or missing data → no block.
+        _regs = (getattr(th, 'flip_short_regime_block_regimes', '') or '').strip()
+        if ind.get('flip_dir') == 'SHORT' and _regs:
+            _adxd = ind.get('adx_delta'); _reg = ind.get('btc_regime')
+            _amax = float(getattr(th, 'flip_short_regime_block_adxd_max', 0.0) or 0.0)
+            _regset = {s.strip() for s in _regs.split(',') if s.strip()}
+            if _adxd is not None and _reg and _adxd < _amax and _reg in _regset:
+                return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
         if source == "FAN_RATIO_GATE":
             stretch = ind.get('ema5_stretch')
             brsi = ind.get('btc_rsi'); badx = ind.get('btc_adx')
@@ -3031,11 +3045,22 @@ class TradingEngine:
                 _g58 = abs((_ind['ema5'] - _ind['ema8']) / _ind['ema8'] * 100)
             if _g813 is None and _ind.get('ema8') and _ind.get('ema13'):
                 _g813 = abs((_ind['ema8'] - _ind['ema13']) / _ind['ema13'] * 100)
+            # BTC regime for the 2D flip-short block: prefer the recorded entry regime, else
+            # classify from live globals (mirrors _seed_phantom_flip).
+            _ff_reg = _ef.get('entry_btc_regime')
+            if _ff_reg is None:
+                try:
+                    _ff_reg = classify_btc_regime(_g.get('_current_btc_adx'), _g.get('_current_btc_rsi'), _g.get('_btc_ema20_slope_pct'))
+                except Exception:
+                    _ff_reg = None
             _ff_in = {
                 'ema5_stretch': _ef.get('entry_ema5_stretch') if _ef.get('entry_ema5_stretch') is not None else _ind.get('ema5_stretch'),
                 'btc_rsi': _ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi'),
                 'btc_adx': _ef.get('entry_btc_adx') if _ef.get('entry_btc_adx') is not None else _g.get('_current_btc_adx'),
                 'fan_ratio': (abs(_g58 / _g813) if (_g58 is not None and _g813) else None),
+                'flip_dir': flip_dir,
+                'adx_delta': _ef.get('entry_adx_delta') if _ef.get('entry_adx_delta') is not None else _ind.get('adx_delta'),
+                'btc_regime': _ff_reg,
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:
@@ -6702,6 +6727,15 @@ class TradingEngine:
                     _bound_label = f"<{_btc_adx_lo}" if _btc_adx_too_low else f">{_btc_adx_hi}"
                     logger.info(f"[{_gate_subtype}] {pair}: {signal} blocked — BTC ADX {btc_adx:.1f} {_bound_label} (range [{_btc_adx_lo}-{_btc_adx_hi}])")
                     self._record_filter_block(_gate_subtype, signal, had_room=_had_room)
+                    # Jun 17 passthrough-long (un-block hunt): low-ADX macro gate is the prime
+                    # over-blocker in a real bull trend. Seed a SAME-direction virtual LONG so the
+                    # Source×Regime cross-tab shows whether these blocked longs win in bull.
+                    if signal == "LONG" and _btc_adx_too_low:
+                        try:
+                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:BTC_ADX_GATE_LOW",
+                                               entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
+                        except Exception:
+                            pass
                     signal = "NO_TRADE"
 
             # BTC RSI BAND × BTC ATR conditional block — May 27, 2026 A3 ship.
@@ -6865,6 +6899,14 @@ class TradingEngine:
                                     if (signal == "LONG" and btc_rsi >= 70) or (signal == "SHORT" and btc_rsi <= 35):
                                         _seed_phantom_flip(pair, indicators.get('price'), signal, "BTC_RSI_ADX_CROSS",
                                                            entry_fields=self._flip_entry_fields(indicators, flip_dir=('SHORT' if signal == 'LONG' else 'LONG'), scan=self._flip_scan_ctx(locals())))
+                                    # Jun 17 passthrough-long (un-block hunt): ALL long blocks (not just
+                                    # RSI extremes) — does this macro cross over-block good bull longs?
+                                    if signal == "LONG":
+                                        try:
+                                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:BTC_RSI_ADX_CROSS",
+                                                               entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
+                                        except Exception:
+                                            pass
                                     signal = "NO_TRADE"
                                 break
                         except (ValueError, TypeError):
@@ -7011,6 +7053,14 @@ class TradingEngine:
                                     # Jun 14: Flip Entry — fade the block live (both sides)
                                     await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
                                                                 entry_fields=_fan_ef)
+                                    # Jun 17 passthrough-long (un-block hunt): clean A/B vs the fade
+                                    # above — same blocked long tracked as a LONG; regime says which wins.
+                                    if signal == "LONG":
+                                        try:
+                                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:FAN_RATIO_GATE",
+                                                               entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
+                                        except Exception:
+                                            pass
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):

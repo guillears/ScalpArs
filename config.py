@@ -487,6 +487,15 @@ class SignalThresholds(BaseModel):
     flip_fan_stretch_min: float = 0.12        # block FAN flip if entry EMA5 stretch < this (thin fuel, batch N=10/10%WR/-$495). 0 = off
     flip_fan_block_btc_rsi: float = 60.0      # block FAN flip if BTC RSI >= this AND BTC ADX >= flip_fan_block_btc_adx (fade into strong un-exhausted bull: N=19/47%WR/-$416). 0 = off
     flip_fan_block_btc_adx: float = 30.0      # paired with flip_fan_block_btc_rsi
+    # Jun 17 — 2D regime×ADXΔ block for flip-SHORTS (ALL sources). Block a short flip when entry
+    # ADXΔ < adxd_max AND BTC regime ∈ regimes set. Cross-batch (76+39+11 pool, deduped) the cell
+    # BULL/CHOP ∧ ADXΔ<0 = N=38 / 40%WR / -0.34% / -$1070; 96% of its losers peak < 0.45 arm so the
+    # give-back cap can't save them → entry block, not exit. Orthogonal to regime alone (ADXΔ sign
+    # is ~50/50 within each regime). Counterfactual: last(bear) batch -$63 [dormant], current(bull)
+    # batch -$611→-$5. Discipline-override (literal NP gate 13%<60%; saveability analysis overrides).
+    # TIGHT REVERT: re-open if these cells flip to WR>45% on N>=15 fresh. Empty regimes = OFF.
+    flip_short_regime_block_adxd_max: float = 0.0   # block flip-SHORT when entry ADXΔ < this (0.0 = the ADXΔ<0 cut)
+    flip_short_regime_block_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-SHORTS in; empty = filter OFF
     # Jun 17 — fan-SPIKE block (ALL flip sources, not just FAN). Block the flip when the pair's
     # entry fan ratio (|EMA5-8 gap| / |EMA8-13 gap|) >= this — a violently-accelerating parabolic
     # fan that the fade gets run over by (never arms, straight to SL). Cross-batch N=3, 0% WR,

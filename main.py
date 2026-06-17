@@ -8859,7 +8859,12 @@ async def _compute_phantom_flip_performance(db, is_paper):
                 and_(PhantomFlip.is_paper == is_paper, PhantomFlip.pnl_pct.isnot(None))
             )
         )
-        flips = result.scalars().all()
+        _all_flips = result.scalars().all()
+        # Jun 17 — split off PASS:* passthrough-longs (un-block hunt) so they DON'T pollute the
+        # fade tracker rows / "All phantom flips" aggregate / fan-curve / leftover test. They are
+        # a different mechanism (same-direction, not a fade) and route ONLY into the Source×Regime
+        # cross-tab below (which already buckets by direction — LONG = bull candidate).
+        flips = [f for f in _all_flips if not (getattr(f, 'source_filter', '') or '').startswith('PASS:')]
     except Exception:
         return {"rows": [], "total": {}}
 
@@ -9099,7 +9104,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
             return 'bear'
         return 'chop'  # CHOPPY_* / NEUTRAL / unknown
     _xt = {}
-    for _fp in flips:
+    for _fp in _all_flips:  # include PASS:* passthrough-longs here (the bull-hunt LONG rows)
         if not _fp.entry_btc_regime:
             continue
         _key = (_fp.source_filter, _fp.flip_direction)

@@ -6792,6 +6792,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # restart); opened side = the closed pool. blocked_by_filter_room = signals that fired WITH
     # room to trade but a filter killed them (vs blocked_at_max = only stopped by the 5-cap).
     try:
+        from collections import Counter
         _fb = trading_engine._get_filter_block_summary()
         _fb_rows = _fb.get('rows', [])
         # Single pass: count opened trades by (normal/flip) × (LONG/SHORT) so NORMAL & FLIP

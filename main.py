@@ -6786,9 +6786,33 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     except Exception as e:
         logger.error(f"[PERF] Error computing Flagged Exits: {e}\n{traceback.format_exc()}")
 
+    # Entry Funnel (Jun 17) — answers "why no NORMAL trades, only flips": momentum signals
+    # DO fire but the filter stack rejects them; flips are the contrarian residue that opens
+    # on certain blocked signals. Block side = live in-memory filter-block counters (resets on
+    # restart); opened side = the closed pool. blocked_by_filter_room = signals that fired WITH
+    # room to trade but a filter killed them (vs blocked_at_max = only stopped by the 5-cap).
+    try:
+        _fb = trading_engine._get_filter_block_summary()
+        _fb_rows = _fb.get('rows', [])
+        _n_flip = sum(1 for o in all_orders if (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:'))
+        entry_funnel = {
+            "blocked_by_filter_room": _fb.get('total_room', 0),
+            "blocked_at_max": _fb.get('total_full', 0),
+            "blocked_long": _fb.get('total_long', 0),
+            "blocked_short": _fb.get('total_short', 0),
+            "opened_normal": len(all_orders) - _n_flip,
+            "opened_flip": _n_flip,
+            "top_blockers": [{"filter": r["filter"], "room": r["total_room"],
+                              "long": r["long"], "short": r["short"]} for r in _fb_rows[:5]],
+        }
+    except Exception as e:
+        logger.error(f"[PERF] Error computing Entry Funnel: {e}")
+        entry_funnel = {"blocked_by_filter_room": 0, "blocked_at_max": 0, "blocked_long": 0,
+                        "blocked_short": 0, "opened_normal": 0, "opened_flip": 0, "top_blockers": []}
 
     return {
         "total_trades": total_trades,
+        "entry_funnel": entry_funnel,
         "total_longs": total_longs,
         "total_shorts": total_shorts,
         "total_wins": len(all_wins),

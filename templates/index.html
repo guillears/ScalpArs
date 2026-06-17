@@ -2570,6 +2570,14 @@
                     </div>
                 </div>
 
+                <!-- Entry Funnel (Jun 17) — why only flips, not normal trades -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-cyan-300 mb-2">🔎 Entry Funnel <span class="text-xs text-gray-500 font-normal">(why so few NORMAL trades — since bot start, in-memory)</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">Momentum signals DO fire — the filter stack rejects them; flips are the contrarian residue. If <span class="text-cyan-300">opened-normal ≈ 0</span> while <span class="text-amber-300">blocked-by-filter</span> is large, it's the filters (regime), not a bug and not the 5-position cap.</p>
+                    <div id="entry-funnel" class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs"></div>
+                    <div id="entry-funnel-blockers" class="text-xs text-gray-400 mt-3"></div>
+                </div>
+
                 <!-- Filter Blocks (May 5) — pre-entry filter rejection counters -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Filter Blocks <span class="text-xs text-gray-500 font-normal">(since bot start, in-memory)</span></h3>
@@ -4919,6 +4927,9 @@
                                     </label>
                                     <label class="flex items-center text-sm text-amber-300" title="The ratchet lock: min P&L an armed runner may give back to. 0.10 ≈ net-flat after the 0.09% roundtrip fee.">lock%
                                         <input type="number" step="0.05" id="config-runner-trail-short-be-lock" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
+                                    </label>
+                                    <label class="flex items-center text-sm text-fuchsia-300" title="Jun 17 PM give-back cap: never give back more than this × peak. Stops a high-ATR pair surrendering a whole runner to the lock (AGT +2.42→+0.10). Binds only when frac×peak < N×ATR. 0 = off.">give-back×pk
+                                        <input type="number" step="0.05" min="0" max="1" id="config-runner-trail-short-giveback-frac" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.35">
                                     </label>
                                 </div>
                                 <p class="text-[11px] text-amber-400/80 mt-1">Jun 17 — BE-ratchet (cap for losers): once armed, exit floor = max(peak − N×ATR, lock). On high-ATR/modest-peak shorts the give-back N×ATR exceeds the peak, so the bare ATR-floor sits below breakeven and permits a full round-trip into a loss (EVAA −0.36, VELVET −1.20). The lock clamps those to ~+0.10 while never touching a genuine runner (its floor stays well above the lock). Paired with N=0.5→1.0: the ratchet caps the reverser tail so the looser N can give runners room. <span class="text-cyan-300">atr05 shadow = the N=0.5 no-ratchet control for the revert gate.</span></p>
@@ -8472,6 +8483,15 @@
             // Filter Blocks (May 5) — pre-entry filter rejection counters
             // Real = block fired with bot having room (filter actually prevented a trade).
             // Free = block fired at max_open_positions (no trade prevented — filter just logged).
+            const _ef1 = perf.entry_funnel;
+            if (_ef1) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Entry Funnel (why so few NORMAL trades — since bot start, in-memory)\n');
+                lines.push(`Blocked by filter (had room): ${_ef1.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef1.blocked_at_max}`);
+                lines.push(`Opened — NORMAL: ${_ef1.opened_normal}  |  Opened — FLIP: ${_ef1.opened_flip}  |  Blocked L/S: ${_ef1.blocked_long}/${_ef1.blocked_short}`);
+                lines.push('Top blockers (room): ' + ((_ef1.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
+                if (_ef1.opened_normal===0 && _ef1.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
+            }
             const _fbc = window._lastFilterBlockCounts;
             if (_fbc && _fbc.rows && _fbc.rows.length) {
                 lines.push(`\n${hr2}`);
@@ -10242,6 +10262,16 @@
                     }
                 }
 
+                // --- ENTRY FUNNEL (Jun 17) — why so few normal trades ---
+                const _ef2 = perf.entry_funnel;
+                if (_ef2) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Entry Funnel (why so few NORMAL trades — since bot start, in-memory)\n');
+                    lines.push(`Blocked by filter (had room): ${_ef2.blocked_by_filter_room}  |  Blocked at max-5 (no trade lost): ${_ef2.blocked_at_max}`);
+                    lines.push(`Opened — NORMAL: ${_ef2.opened_normal}  |  Opened — FLIP: ${_ef2.opened_flip}  |  Blocked L/S: ${_ef2.blocked_long}/${_ef2.blocked_short}`);
+                    lines.push('Top blockers (room): ' + ((_ef2.top_blockers||[]).map(b=>`${b.filter} ${b.room}(L${b.long}/S${b.short})`).join(' · ') || '—'));
+                    if (_ef2.opened_normal===0 && _ef2.blocked_by_filter_room>50) lines.push('=> Signals fire, filters reject them -> flips are the residue. Not a bug, not the 5-cap.');
+                }
                 // --- FILTER BLOCKS (May 5) ---
                 // Real = block fired with bot having room (filter actually prevented a trade).
                 // Free = block fired at max_open_positions (no trade prevented — filter just logged).
@@ -11238,6 +11268,25 @@
                     ppBody.innerHTML = '<tr><td colspan="12" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
                 
+                // Entry Funnel (Jun 17) — why so few normal trades
+                (function(){
+                    const ef = data.entry_funnel; const grid = document.getElementById('entry-funnel');
+                    if (!ef || !grid) return;
+                    const cell = (label, val, cls) => `<div class="bg-white/5 rounded p-2"><div class="text-gray-400">${label}</div><div class="text-lg font-bold ${cls||''}">${val}</div></div>`;
+                    grid.innerHTML =
+                        cell('Blocked by filter (had room)', ef.blocked_by_filter_room.toLocaleString(), 'text-amber-300') +
+                        cell('Blocked at max-5 (no trade lost)', ef.blocked_at_max.toLocaleString(), 'text-gray-400') +
+                        cell('Opened — NORMAL', ef.opened_normal, ef.opened_normal>0?'text-emerald-300':'text-red-400') +
+                        cell('Opened — FLIP', ef.opened_flip, 'text-cyan-300');
+                    const tb = document.getElementById('entry-funnel-blockers');
+                    if (tb) {
+                        const rows = (ef.top_blockers||[]).map(b => `<span class="text-gray-300">${b.filter}</span> ${b.room.toLocaleString()} <span class="text-gray-500">(L${b.long}/S${b.short})</span>`).join('  ·  ');
+                        const verdict = (ef.opened_normal===0 && ef.blocked_by_filter_room>50)
+                            ? `<span class="text-emerald-400">✓ Signals fire, filters reject them → flips are the residue. Not a bug, not the 5-cap.</span>`
+                            : '';
+                        tb.innerHTML = `<span class="text-gray-500">Top blockers (with room):</span> ${rows || '—'}<br>${verdict}`;
+                    }
+                })();
                 document.getElementById('perf-total-trades').textContent = data.total_trades;
                 document.getElementById('perf-total-longs').textContent = data.total_longs;
                 document.getElementById('perf-total-shorts').textContent = data.total_shorts;
@@ -17253,6 +17302,7 @@
                 { const _e=document.getElementById('config-runner-trail-short-atr-mult'); if(_e) _e.value = config.thresholds.runner_trail_short_atr_mult !== undefined ? config.thresholds.runner_trail_short_atr_mult : 1.0; }
                 { const _e=document.getElementById('config-runner-trail-short-be-ratchet'); if(_e) _e.checked = config.thresholds.runner_trail_short_be_ratchet_enabled !== undefined ? !!config.thresholds.runner_trail_short_be_ratchet_enabled : true; }
                 { const _e=document.getElementById('config-runner-trail-short-be-lock'); if(_e) _e.value = config.thresholds.runner_trail_short_be_lock_pct !== undefined ? config.thresholds.runner_trail_short_be_lock_pct : 0.10; }
+                { const _e=document.getElementById('config-runner-trail-short-giveback-frac'); if(_e) _e.value = config.thresholds.runner_trail_short_giveback_frac !== undefined ? config.thresholds.runner_trail_short_giveback_frac : 0.35; }
                 if (document.getElementById('config-btc-adx-block-min-short')) {
                     document.getElementById('config-btc-adx-block-min-short').value = config.thresholds.btc_adx_block_min_short !== undefined ? config.thresholds.btc_adx_block_min_short : 0;
                 }
@@ -18544,6 +18594,7 @@
                     runner_trail_short_atr_mult: safeFloat(document.getElementById('config-runner-trail-short-atr-mult')?.value || 1.0),
                     runner_trail_short_be_ratchet_enabled: (document.getElementById('config-runner-trail-short-be-ratchet')?.checked === true),
                     runner_trail_short_be_lock_pct: safeFloat(document.getElementById('config-runner-trail-short-be-lock')?.value || 0.10),
+                    runner_trail_short_giveback_frac: safeFloat(document.getElementById('config-runner-trail-short-giveback-frac')?.value || 0.35),
                     btc_adx_block_min_short: safeFloat(document.getElementById('config-btc-adx-block-min-short')?.value || 0),
                     btc_adx_block_max_short: safeFloat(document.getElementById('config-btc-adx-block-max-short')?.value || 0),
                     btc_rsi_band_atr_block_long: (document.getElementById('config-btc-rsi-band-atr-block-long')?.value || '').trim(),

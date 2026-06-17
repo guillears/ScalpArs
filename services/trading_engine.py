@@ -8917,18 +8917,24 @@ class TradingEngine:
                         _sp_fire = False; _sp_why = ""; _sp_bound = None
                         if current_peak >= _sp_arm:
                             if _sp_use_atr and _sp_atr and _sp_atr > 0:
-                                _sp_n = float(getattr(_sp_th, 'runner_trail_short_atr_mult', 1.0) or 1.0)
-                                # Jun 17 BE-ratchet: clamp the armed exit floor to >= be_lock so a
-                                # high-ATR/modest-peak short can't round-trip its whole peak into a loss
-                                # (EVAA/VELVET). Only binds when peak − N×ATR < lock; never touches a runner.
-                                _sp_atr_floor = current_peak - _sp_n * _sp_atr
+                                _sp_n = float(getattr(_sp_th, 'runner_trail_short_atr_mult', 0.5) or 0.5)
+                                # Jun 17 PM give-back CAP: never give back more than frac×peak, so a high-ATR
+                                # pair can't surrender the whole runner to the lock (AGT +2.42->+0.10). The floor
+                                # then RISES with the peak. Jun 17 BE-ratchet (lock) still backstops round-trips.
+                                _sp_giveback = _sp_n * _sp_atr
+                                _sp_frac = float(getattr(_sp_th, 'runner_trail_short_giveback_frac', 0.0) or 0.0)
+                                _sp_capped = (_sp_frac > 0 and current_peak > 0 and _sp_frac * current_peak < _sp_giveback)
+                                if _sp_capped:
+                                    _sp_giveback = _sp_frac * current_peak
+                                _sp_atr_floor = current_peak - _sp_giveback
                                 _sp_lock = float(getattr(_sp_th, 'runner_trail_short_be_lock_pct', 0.10) or 0.10)
                                 _sp_ratchet = getattr(_sp_th, 'runner_trail_short_be_ratchet_enabled', True)
                                 _sp_floor = max(_sp_atr_floor, _sp_lock) if _sp_ratchet else _sp_atr_floor
                                 if pnl_pct <= _sp_floor:
                                     _sp_fire = True
-                                    _sp_bound = "lock" if (_sp_ratchet and _sp_lock > _sp_atr_floor) else "atr"
-                                    _sp_why = f"pnl {pnl_pct:.3f}% <= floor {_sp_floor:.3f}% [{_sp_bound}] (peak={current_peak:.2f}%, {_sp_n}xATR={_sp_n*_sp_atr:.3f}%)"
+                                    _sp_bound = ("lock" if (_sp_ratchet and _sp_lock > _sp_atr_floor)
+                                                 else "cap" if _sp_capped else "atr")
+                                    _sp_why = f"pnl {pnl_pct:.3f}% <= floor {_sp_floor:.3f}% [{_sp_bound}] (peak={current_peak:.2f}%, giveback={_sp_giveback:.3f}%)"
                             else:
                                 _sp_k = float(getattr(_sp_th, 'runner_trail_short_k', 0.5) or 0.5)
                                 if _sp_pk > 0 and _ls_stretch <= _sp_pk * _sp_k:

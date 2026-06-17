@@ -362,7 +362,7 @@ class SignalThresholds(BaseModel):
     # can't trip it; only a real reversal does. Applies to ALL flip shorts running strpk.
     # N=1.0 robust default (would have held AERO/HYPE/STG); shadow tests 0.5/1.0/1.5.
     runner_trail_short_use_atr: bool = True   # true = ATR-floor trail; false = K×peak_stretch ratio trail
-    runner_trail_short_atr_mult: float = 1.0  # N — give back N×ATR% from peak before exit (hard SL still backstops). Jun 17: 0.5→1.0 paired with the BE-ratchet below. N=1.0 gives genuine runners room (shadow atr10 +$873 vs atr05, PORTAL held to +7.2 vs +2.7); the ratchet caps the reverser tail so looser N is now safe (cap losers / room for winners). atr05 shadow kept as the N=0.5 no-ratchet control.
+    runner_trail_short_atr_mult: float = 0.5  # N — give back N×ATR% from peak before exit (hard SL still backstops). Jun 17 PM: REVERTED 1.0→0.5 — live sim showed N=1.0 captured LESS than N=0.5 (good batch +10.18% vs +15.37%; the N=1.0 shadow win was post-exit-continuation inflated). N=0.5 preserves the low-ATR winners (PORTAL 2.70 vs 1.96).
     # Jun 17 — BREAKEVEN RATCHET (min floor under the ATR-floor). Root cause of "peaked +0.5% then
     # closed negative": on high-ATR/modest-peak shorts (EVAA ATR1.89 peak0.59, VELVET ATR1.59 peak0.76)
     # the give-back N×ATR EXCEEDS the peak, so the chandelier floor (peak − N×ATR) sits BELOW breakeven —
@@ -372,6 +372,13 @@ class SignalThresholds(BaseModel):
     # after the 0.09% roundtrip fee. Sim (23 armed): converts the 5 broken trades from −0.02/−1.20 to ~+0.10.
     runner_trail_short_be_ratchet_enabled: bool = True  # true = clamp the armed exit floor to >= be_lock_pct
     runner_trail_short_be_lock_pct: float = 0.10        # min P&L an armed runner may give back to (the ratchet lock)
+    # Jun 17 PM — GIVE-BACK CAP. On high-ATR pairs N×ATR exceeds any realistic peak, so the floor pins at
+    # the lock and the trail surrenders the WHOLE runner to breakeven (AGT ATR3.9 peak+2.42 -> closed +0.10).
+    # FIX: give_back = min(N×ATR, giveback_frac × peak) — never give back more than a fraction of the peak,
+    # so the floor RISES with the peak instead of sticking at the lock. Binds only when frac×peak < N×ATR
+    # (the high-ATR/modest-peak case); normal-ATR runners unaffected (ATR-floor stays tighter). 0 = off.
+    # frac 0.35 from the good-batch sweep + noise-stop constraint (tighter over-fits / re-introduces noise-stops).
+    runner_trail_short_giveback_frac: float = 0.35      # cap the give-back at this × peak (0 = off, use raw N×ATR)
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in

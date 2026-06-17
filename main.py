@@ -9210,7 +9210,45 @@ def _compute_flip_trades(flip_orders):
         else:
             ov = "✗ LOSING — revert"
         overall = {"n": nv, "bug": bug_total, "verdict": ov, "wr": vwr, "avg_pct": vavg, "total_usd": round(vu, 2)}
-    return {"rows": rows, "overall": overall}
+
+    # Jun 17 — LIVE Flip Trades × BTC-Regime cross-tab (real-trade twin of the phantom
+    # Source×Regime table; this is the AUTHORITATIVE regime-gate surface — the phantom is the
+    # proxy). Group by (source, flip_dir) with the ×N multiplier variant stripped (% is size-
+    # invariant), bucket by the 6-way regime split. %-first + de-muxed $ (Σ pnl/eff to 1×).
+    import re as _re
+    def _rb(reg):
+        r = (reg or '').upper()
+        if 'BULL' in r:
+            return 'sbull' if 'STRONG' in r else 'hbull'
+        if 'BEAR' in r:
+            return 'sbear' if 'STRONG' in r else 'hbear'
+        return 'chop'
+    def _agg_rx(rs):
+        m = len(rs)
+        if m == 0:
+            return None
+        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
+        tot = sum((r.pnl_percentage or 0) for r in rs)
+        usd = sum((r.pnl or 0) / max((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0), 1e-9) for r in rs)
+        return {"n": m, "wr": round(100.0 * wins / m, 1), "avg_pct": round(tot / m, 3), "usd": round(usd, 2)}
+    _rx = {}
+    for o in closed:
+        if not o.entry_btc_regime:
+            continue
+        src = _re.sub(r'×[0-9.]+$', '', (o.entry_strategy or '').replace('FLIP:', ''))  # strip ×N variant
+        key = (src, o.direction)
+        slot = _rx.setdefault(key, {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': [], 'all': []})
+        slot[_rb(o.entry_btc_regime)].append(o)
+        slot['all'].append(o)
+    regime_xtab = []
+    for (src, fd), b in sorted(_rx.items(), key=lambda kv: -len(kv[1]['all'])):
+        regime_xtab.append({
+            "source": src, "direction": fd,
+            "sbull": _agg_rx(b['sbull']), "hbull": _agg_rx(b['hbull']),
+            "sbear": _agg_rx(b['sbear']), "hbear": _agg_rx(b['hbear']),
+            "chop": _agg_rx(b['chop']), "all": _agg_rx(b['all']),
+        })
+    return {"rows": rows, "overall": overall, "regime_xtab": regime_xtab}
 
 
 def _compute_leash_shadow(orders):

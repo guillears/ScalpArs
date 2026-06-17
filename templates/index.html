@@ -1150,6 +1150,26 @@
                         </table>
                     </div>
                     <div id="flip-trades-summary" class="text-xs text-gray-400 mt-2"></div>
+                    <!-- LIVE Flip Trades × BTC-Regime (Jun 17) — real-trade twin of the phantom Source×Regime -->
+                    <div class="mt-4">
+                        <div class="text-xs font-semibold text-fuchsia-300 mb-1">🌗 Flip Trades × BTC-Regime <span class="text-gray-500 font-normal">— LIVE realized, the <span class="text-cyan-300">AUTHORITATIVE regime-gate surface</span> (the phantom Source×Regime is the proxy). Each live flip source split by regime: N / WR / avg% / <span class="text-gray-400">$ de-muxed to 1×</span>. A SHORT row positive in BEAR + negative in BULL = the gate is correct. Sparse until N accrues — lead with N.</span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">Source (dir)</th>
+                                    <th class="text-right px-2 text-emerald-400">S.BULL N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-emerald-400/70">H.BULL N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-red-400">S.BEAR N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-red-400/70">H.BEAR N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-amber-400/70">CHOP N/WR/avg/$</th>
+                                    <th class="text-right px-2">ALL N/WR/avg/$</th>
+                                </tr></thead>
+                                <tbody id="flip-regime-xtab-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No closed flip trades with regime tag yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
                 <!-- ===== FLIP TRADE LOG END ===== -->
 
@@ -8360,6 +8380,15 @@
                     const bx = _o.bug > 0 ? ` (${_o.bug} pre-fix bug-exit(s) excluded)` : '';
                     lines.push(`\nVERDICT: ${_o.verdict} — ${_o.n} valid flips, WR ${_o.wr}%, avg ${_o.avg_pct>=0?'+':''}${_o.avg_pct}%, net ${_o.total_usd>=0?'+$':'-$'}${Math.abs(_o.total_usd).toFixed(2)}${bx}`);
                 }
+                if (_flt1.regime_xtab && _flt1.regime_xtab.length) {
+                    lines.push('\n  ── FLIP TRADES × BTC-REGIME (LIVE realized — authoritative gate surface; phantom Source×Regime above is the proxy) — N/WR/avg% / $de-muxed-1× ──');
+                    lines.push('  Source (dir)                S.BULL               H.BULL               S.BEAR               H.BEAR               CHOP                 ALL');
+                    lines.push('  '+'-'.repeat(146));
+                    const _fxc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}` : '-';
+                    _flt1.regime_xtab.forEach(x => {
+                        lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_fxc(x.sbull).padEnd(20)} ${_fxc(x.hbull).padEnd(20)} ${_fxc(x.sbear).padEnd(20)} ${_fxc(x.hbear).padEnd(20)} ${_fxc(x.chop).padEnd(20)} ${_fxc(x.all)}`);
+                    });
+                }
             }
             // ===== FLIP TRADE LOG END =====
 
@@ -10142,6 +10171,15 @@
                     if (_o) {
                         const bx = _o.bug > 0 ? ` (${_o.bug} pre-fix bug-exit(s) excluded)` : '';
                         lines.push(`\nVERDICT: ${_o.verdict} — ${_o.n} valid flips, WR ${_o.wr}%, avg ${_o.avg_pct>=0?'+':''}${_o.avg_pct}%, net ${_o.total_usd>=0?'+$':'-$'}${Math.abs(_o.total_usd).toFixed(2)}${bx}`);
+                    }
+                    if (_flt1.regime_xtab && _flt1.regime_xtab.length) {
+                        lines.push('\n  ── FLIP TRADES × BTC-REGIME (LIVE realized — authoritative gate surface; phantom Source×Regime above is the proxy) — N/WR/avg% / $de-muxed-1× ──');
+                        lines.push('  Source (dir)                S.BULL               H.BULL               S.BEAR               H.BEAR               CHOP                 ALL');
+                        lines.push('  '+'-'.repeat(146));
+                        const _fxc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}` : '-';
+                        _flt1.regime_xtab.forEach(x => {
+                            lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_fxc2(x.sbull).padEnd(20)} ${_fxc2(x.hbull).padEnd(20)} ${_fxc2(x.sbear).padEnd(20)} ${_fxc2(x.hbear).padEnd(20)} ${_fxc2(x.chop).padEnd(20)} ${_fxc2(x.all)}`);
+                        });
                     }
                 }
                 // ===== FLIP TRADE LOG END =====
@@ -12997,6 +13035,25 @@
                             const bug = (_ftOv.bug > 0) ? ` · <span class="text-amber-500/70">${_ftOv.bug} pre-fix bug-exit(s) excluded</span>` : '';
                             _ftSum.innerHTML = `Verdict: <span class="${vc} font-semibold">${_ftOv.verdict}</span> — ${_ftOv.n} valid flips · WR ${_ftOv.wr}% · avg <span class="${_ftOv.avg_pct>=0?'text-emerald-400':'text-red-400'}">${_ftOv.avg_pct>=0?'+':''}${_ftOv.avg_pct}%</span> · net <span class="${uc}">${_ftOv.total_usd>=0?'+$':'-$'}${Math.abs(_ftOv.total_usd).toFixed(2)}</span>${bug}`;
                         } else { _ftSum.innerHTML = ''; }
+                    }
+                    // LIVE Flip Trades × BTC-Regime (Jun 17)
+                    const _frxBody = document.getElementById('flip-regime-xtab-body');
+                    if (_frxBody) {
+                        const _frx = (data.flip_trades.regime_xtab) || [];
+                        const _fxm = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg_pct>=0?'text-emerald-400':'text-red-400'}">${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}</span>/<span class="${m.usd>=0?'text-emerald-400/70':'text-red-400/70'}">${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}</span>` : '<span class="text-gray-600">-</span>';
+                        if (_frx.length) {
+                            _frxBody.innerHTML = _frx.map(x => `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${x.direction==='LONG'?'text-cyan-300':'text-gray-300'}">${x.source} ${x.direction}</td>
+                                    <td class="px-2 py-1 text-right">${_fxm(x.sbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_fxm(x.hbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_fxm(x.sbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_fxm(x.hbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_fxm(x.chop)}</td>
+                                    <td class="px-2 py-1 text-right">${_fxm(x.all)}</td>
+                                </tr>`).join('');
+                        } else {
+                            _frxBody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No closed flip trades with regime tag yet</td></tr>';
+                        }
                     }
                 }
                 // ===== FLIP TRADE LOG END =====

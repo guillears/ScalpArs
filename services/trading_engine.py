@@ -316,33 +316,41 @@ def _flip_filters(source, ind):
         if source == "FAN_RATIO_GATE":
             stretch = ind.get('ema5_stretch')
             brsi = ind.get('btc_rsi'); badx = ind.get('btc_adx')
-            # 1) thin-fuel block
-            smin = float(getattr(th, 'flip_fan_stretch_min', 0.0) or 0.0)
-            if smin > 0 and stretch is not None and stretch < smin:
-                return (True, "FLIP_FAN_STRETCH", 1.0, 1.0, None)
-            # 2) regime block — fade into a strong, un-exhausted bull
-            rmin = float(getattr(th, 'flip_fan_block_btc_rsi', 0.0) or 0.0)
-            amin = float(getattr(th, 'flip_fan_block_btc_adx', 0.0) or 0.0)
-            if rmin > 0 and amin > 0 and brsi is not None and badx is not None and brsi >= rmin and badx >= amin:
-                return (True, "FLIP_FAN_REGIME", 1.0, 1.0, None)
-            # 3) size/lev multiplier cells. Format matches the other multiplier cells:
-            #    btc_rsi_lo-hi : btc_adx_lo-hi : size_mult [: lev_mult]  (lev optional, defaults 1.0)
             size = 1.0; lev = 1.0
-            rule = (getattr(th, 'flip_fan_mult_rule', '') or '').strip()
-            if rule and brsi is not None and badx is not None:
-                for cellspec in rule.split(','):
-                    try:
-                        parts = [p.strip() for p in cellspec.strip().split(':')]
-                        if len(parts) < 3:
+            # Jun 17 — the FAN entry filters (thin-fuel, regime-block) AND the size/lev multiplier
+            # cell are ALL derived & validated ONLY on SHORT fades (the strong-bear mirror). A FAN
+            # flip-LONG (blocked SHORT -> LONG) must NOT inherit them — it would size 2x into a
+            # bearish BTC (the cell's BTC RSI 40-45 x ADX>=35 fires on macro state regardless of
+            # direction) and the short-reasoning regime-block is backwards for a long. Gate them all
+            # to flip_dir=='SHORT'; a flip-LONG falls through at 1x with no FAN entry veto.
+            # (Operator-confirmed on the BCHUSDT flip-LONG that wrongly carried FAN_RATIO_GATE x2.)
+            if ind.get('flip_dir') == 'SHORT':
+                # 1) thin-fuel block
+                smin = float(getattr(th, 'flip_fan_stretch_min', 0.0) or 0.0)
+                if smin > 0 and stretch is not None and stretch < smin:
+                    return (True, "FLIP_FAN_STRETCH", 1.0, 1.0, None)
+                # 2) regime block — fade into a strong, un-exhausted bull
+                rmin = float(getattr(th, 'flip_fan_block_btc_rsi', 0.0) or 0.0)
+                amin = float(getattr(th, 'flip_fan_block_btc_adx', 0.0) or 0.0)
+                if rmin > 0 and amin > 0 and brsi is not None and badx is not None and brsi >= rmin and badx >= amin:
+                    return (True, "FLIP_FAN_REGIME", 1.0, 1.0, None)
+                # 3) size/lev multiplier cells. Format matches the other multiplier cells:
+                #    btc_rsi_lo-hi : btc_adx_lo-hi : size_mult [: lev_mult]  (lev optional, defaults 1.0)
+                rule = (getattr(th, 'flip_fan_mult_rule', '') or '').strip()
+                if rule and brsi is not None and badx is not None:
+                    for cellspec in rule.split(','):
+                        try:
+                            parts = [p.strip() for p in cellspec.strip().split(':')]
+                            if len(parts) < 3:
+                                continue
+                            rlo, rhi = map(float, parts[0].split('-')); alo, ahi = map(float, parts[1].split('-'))
+                            if rlo <= brsi < rhi and alo <= badx < ahi:
+                                size = float(parts[2])
+                                lev = float(parts[3]) if len(parts) >= 4 and parts[3] else 1.0
+                                break
+                        except (ValueError, TypeError):
                             continue
-                        rlo, rhi = map(float, parts[0].split('-')); alo, ahi = map(float, parts[1].split('-'))
-                        if rlo <= brsi < rhi and alo <= badx < ahi:
-                            size = float(parts[2])
-                            lev = float(parts[3]) if len(parts) >= 4 and parts[3] else 1.0
-                            break
-                    except (ValueError, TypeError):
-                        continue
-            # 4) exit mode
+            # 4) exit mode (short runner stretch-trail; short-only at execution, harmless for longs)
             exitm = "strpk" if getattr(th, 'flip_fan_runner_strpk', False) else None
             return (False, None, size, lev, exitm)
         # LONG_UNMATCHED_ONLY / PAIR_RSI_OB: no entry filters yet (their own data pending), but

@@ -9163,6 +9163,12 @@ def _compute_leash_shadow(orders):
         ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest stretch-trail)
         ('stren', 'shadow_stren_pnl', 'shadow_stren_reason', 'shadow_stren_min'),  # exit when stretch collapses to entry level
         ('strpk_signed', 'shadow_strpk_signed_pnl', 'shadow_strpk_signed_reason', 'shadow_strpk_signed_min'),  # hold to EMA5 cross
+        # Jun 16 — ATR-floor (chandelier) give-back trail at N=0.5/1.0/1.5. LIVE = N=0.5, so the
+        # 'actual' row ≈ 'atr05' = faithfulness check; 'atr10'/'atr15' = the N-counterfactuals.
+        # (No reason col — the leash stamps 'atr'/'hard_sl'; pass the pnl col for reason too, unused.)
+        ('atr05', 'shadow_atr05_pnl', 'shadow_atr05_pnl', 'shadow_atr05_min'),  # N=0.5 (= live)
+        ('atr10', 'shadow_atr10_pnl', 'shadow_atr10_pnl', 'shadow_atr10_min'),  # N=1.0 counterfactual
+        ('atr15', 'shadow_atr15_pnl', 'shadow_atr15_pnl', 'shadow_atr15_min'),  # N=1.5 counterfactual
     ]
     # armed + shadow-populated cohort
     rows = [o for o in orders

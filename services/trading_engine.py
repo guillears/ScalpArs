@@ -8914,7 +8914,7 @@ class TradingEngine:
                         # tiny freshly-armed peak. Fallback to K×peak_stretch when use_atr=false.
                         _sp_use_atr = getattr(_sp_th, 'runner_trail_short_use_atr', True)
                         _sp_atr = order_info.get('entry_atr_pct')
-                        _sp_fire = False; _sp_why = ""
+                        _sp_fire = False; _sp_why = ""; _sp_bound = None
                         if current_peak >= _sp_arm:
                             if _sp_use_atr and _sp_atr and _sp_atr > 0:
                                 _sp_n = float(getattr(_sp_th, 'runner_trail_short_atr_mult', 1.0) or 1.0)
@@ -8933,6 +8933,7 @@ class TradingEngine:
                                 _sp_k = float(getattr(_sp_th, 'runner_trail_short_k', 0.5) or 0.5)
                                 if _sp_pk > 0 and _ls_stretch <= _sp_pk * _sp_k:
                                     _sp_fire = True
+                                    _sp_bound = "stretch"
                                     _sp_why = f"stretch {_ls_stretch:.3f} <= {_sp_k}x peak {_sp_pk:.3f} (peak={current_peak:.2f}%)"
                         if _sp_fire:
                             logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} SHORT: {_sp_why} -> close")
@@ -8942,6 +8943,7 @@ class TradingEngine:
                                 _sp_order = _spr.scalar_one_or_none()
                                 if _sp_order:
                                     _sp_order.runner_peak_stretch = _sp_pk  # persist for the CSV/report
+                                    _sp_order.runner_trail_bound = _sp_bound  # Jun 17: lock/atr/stretch — which mechanism bound this exit
                                     _sp_closed = await self.close_position(db, _sp_order, current_price, "RUNNER_TRAIL")
                                     if _sp_closed:
                                         logger.info(f"[REALTIME_RUNNER_TRAIL] {pair} closed at {current_price} pnl={pnl_pct:.4f}%")

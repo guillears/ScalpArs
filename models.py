@@ -527,6 +527,10 @@ class Order(Base):
     # fire RUNNER_TRAIL when live stretch ≤ runner_trail_k × this. Persisted so it
     # survives bot restart (re-arms cleanly otherwise). See CLAUDE.md Jun 1.
     runner_peak_stretch = Column(Float, nullable=True)
+    # Jun 17 — which mechanism bound the runner-trail exit: 'lock' (BE-ratchet), 'atr'
+    # (ATR-floor give-back), or 'stretch' (K×peak-stretch fallback). Lets the report tell a
+    # ratchet-save apart from a normal ATR exit (both close as FLIP_RUNNER_TRAIL).
+    runner_trail_bound = Column(String(15), nullable=True)
 
     # Signal Lost Flag: trade was in signal-lost zone but kept open
     signal_lost_flagged = Column(Boolean, nullable=True, default=False)

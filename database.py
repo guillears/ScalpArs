@@ -445,7 +445,8 @@ async def init_db():
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} FLOAT"))
                 for _sc in ('shadow_tight_reason','shadow_wide_reason','shadow_tierA_reason','shadow_tierB_reason',
                             'shadow_strpk_reason','shadow_stren_reason',
-                            'shadow_strpk04_reason','shadow_strpk03_reason','shadow_strpk_signed_reason'):
+                            'shadow_strpk04_reason','shadow_strpk03_reason','shadow_strpk_signed_reason',
+                            'runner_trail_bound'):  # Jun 17: lock/atr/stretch — which mechanism bound the runner-trail exit
                     if _sc not in columns:
                         connection.execute(text(f"ALTER TABLE orders ADD COLUMN {_sc} VARCHAR(15)"))
                 # ===== LEASH SHADOW END =====

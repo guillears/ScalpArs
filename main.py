@@ -9077,7 +9077,36 @@ async def _compute_phantom_flip_performance(db, is_paper):
         # notional ($500 × 20×) → 1% ≈ $100. This is Δavg% × 100 (intuition only, not measured $).
         _delta_usd = round(_delta * 100.0, 1) if _delta is not None else None
         leftover_filter_test.append({"filter": _lbl, "kept": _k, "blocked": _bk, "delta": _delta, "delta_usd": _delta_usd, "verdict": _verdict})
-    return {"rows": rows, "total": total, "fan_curve": fan_curve, "leftover_filter_test": leftover_filter_test}
+
+    # Jun 17 — SOURCE × BTC-REGIME cross-tab (the BULL-MECHANISM hunt). Each flip source split by
+    # regime bucket so we see WHICH signal pays in WHICH regime — not just "flips pay" but e.g.
+    # "BTC_RSI_ADX_CROSS LONG in HEALTHY_BULL". Keeps source (row) AND regime (col) so we never lose
+    # which signal we're looking at. Forward-only (phantoms with regime=NULL pre-capture are skipped).
+    def _regbucket(reg):
+        r = (reg or '').upper()
+        if 'BULL' in r:
+            return 'bull'
+        if 'BEAR' in r:
+            return 'bear'
+        return 'chop'  # CHOPPY_* / NEUTRAL / unknown
+    _xt = {}
+    for _fp in flips:
+        if not _fp.entry_btc_regime:
+            continue
+        _key = (_fp.source_filter, _fp.flip_direction)
+        _slot = _xt.setdefault(_key, {'bull': [], 'bear': [], 'chop': [], 'all': []})
+        _slot[_regbucket(_fp.entry_btc_regime)].append(_fp)
+        _slot['all'].append(_fp)
+    source_regime_xtab = []
+    for (_src, _fd), _b in sorted(_xt.items(), key=lambda kv: -len(kv[1]['all'])):
+        source_regime_xtab.append({
+            "source": _src, "direction": _fd,
+            "bull": _agg(_b['bull']), "bear": _agg(_b['bear']),
+            "chop": _agg(_b['chop']), "all": _agg(_b['all']),
+        })
+
+    return {"rows": rows, "total": total, "fan_curve": fan_curve,
+            "leftover_filter_test": leftover_filter_test, "source_regime_xtab": source_regime_xtab}
 
 
 def _compute_flip_trades(flip_orders):

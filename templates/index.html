@@ -2483,6 +2483,24 @@
                             <div class="text-[10px] text-gray-600 mt-1">Excluded (no short version / not reconstructable): ATR_GAP_LONG, BTC_ACCEL_CHASE_LONG, RSI_SPIKE_GUARD, SPIKE_GUARD. Verdict gated at N≥10 both sides. Confirm cross-batch before shipping any as a live gate.</div>
                         </div>
                     </div>
+                    <!-- SOURCE × BTC-REGIME (Jun 17) — the bull-mechanism hunt -->
+                    <div class="mt-4">
+                        <div class="text-xs font-semibold text-fuchsia-300 mb-1">🌗 Source × BTC-Regime <span class="text-gray-500 font-normal">— each flip signal split by regime so we never lose WHICH signal. <span class="text-cyan-300">LONG rows = bull-mechanism candidate</span>: when a BULL window fills, the source with the edge in the BULL column is the bull signal to build. SHORT rows = the proven bear mechanism (confirm it fails in BULL = regime-gate trigger).</span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">Source (dir)</th>
+                                    <th class="text-right px-2 text-emerald-400/80">BULL N/WR/avg</th>
+                                    <th class="text-right px-2">BEAR N/WR/avg</th>
+                                    <th class="text-right px-2 text-amber-400/70">CHOP N/WR/avg</th>
+                                    <th class="text-right px-2">ALL N/WR/avg</th>
+                                </tr></thead>
+                                <tbody id="phantom-source-regime-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="5" class="px-2 py-3 text-center text-gray-500">No regime-tagged phantoms yet (forward-only)</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
                 <!-- ===== PHANTOM FLIP END ===== -->
 
@@ -8299,6 +8317,15 @@
                         lines.push(`  ${c.filter.padEnd(32)} ${_lfm(c.kept).padEnd(22)} ${_lfm(c.blocked).padEnd(21)} ${(c.delta!=null?(c.delta>=0?'+':'')+c.delta.toFixed(3):'-').padStart(7)}  ${(c.delta_usd!=null?(c.delta_usd>=0?'+$':'-$')+Math.abs(c.delta_usd).toFixed(0):'-').padStart(7)}   ${c.verdict}`);
                     });
                 }
+                if (_pf1.source_regime_xtab && _pf1.source_regime_xtab.length) {
+                    lines.push('\n  ── SOURCE × BTC-REGIME (BULL-mechanism hunt: which signal pays in which regime) — LONG = bull candidate ──');
+                    lines.push('  Source (dir)                BULL N/WR/avg      BEAR N/WR/avg      CHOP N/WR/avg      ALL N/WR/avg');
+                    lines.push('  '+'-'.repeat(96));
+                    const _xc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}` : '-';
+                    _pf1.source_regime_xtab.forEach(x => {
+                        lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_xc(x.bull).padEnd(18)} ${_xc(x.bear).padEnd(18)} ${_xc(x.chop).padEnd(18)} ${_xc(x.all)}`);
+                    });
+                }
             }
             // ===== PHANTOM FLIP END =====
 
@@ -10080,6 +10107,15 @@
                         const _lfm2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
                         _pf1.leftover_filter_test.forEach(c => {
                             lines.push(`  ${c.filter.padEnd(32)} ${_lfm2(c.kept).padEnd(22)} ${_lfm2(c.blocked).padEnd(21)} ${(c.delta!=null?(c.delta>=0?'+':'')+c.delta.toFixed(3):'-').padStart(7)}  ${(c.delta_usd!=null?(c.delta_usd>=0?'+$':'-$')+Math.abs(c.delta_usd).toFixed(0):'-').padStart(7)}   ${c.verdict}`);
+                        });
+                    }
+                    if (_pf1.source_regime_xtab && _pf1.source_regime_xtab.length) {
+                        lines.push('\n  ── SOURCE × BTC-REGIME (BULL-mechanism hunt: which signal pays in which regime) — LONG = bull candidate ──');
+                        lines.push('  Source (dir)                BULL N/WR/avg      BEAR N/WR/avg      CHOP N/WR/avg      ALL N/WR/avg');
+                        lines.push('  '+'-'.repeat(96));
+                        const _xc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}` : '-';
+                        _pf1.source_regime_xtab.forEach(x => {
+                            lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_xc2(x.bull).padEnd(18)} ${_xc2(x.bear).padEnd(18)} ${_xc2(x.chop).padEnd(18)} ${_xc2(x.all)}`);
                         });
                     }
                 }
@@ -12886,6 +12922,22 @@
                                 </tr>`).join('');
                         } else {
                             _lfBody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No FAN short phantoms captured yet (forward-only)</td></tr>';
+                        }
+                    }
+                    const _xtBody = document.getElementById('phantom-source-regime-body');
+                    if (_xtBody) {
+                        const _xt = _pf.source_regime_xtab || [];
+                        const _xm = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg_pct>=0?'text-emerald-400':'text-red-400'}">${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}</span>` : '<span class="text-gray-600">-</span>';
+                        if (_xt.length) {
+                            _xtBody.innerHTML = _xt.map(x => `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 ${x.direction==='LONG'?'text-cyan-300':'text-gray-300'}">${x.source} ${x.direction}</td>
+                                    <td class="px-2 py-1 text-right">${_xm(x.bull)}</td>
+                                    <td class="px-2 py-1 text-right">${_xm(x.bear)}</td>
+                                    <td class="px-2 py-1 text-right">${_xm(x.chop)}</td>
+                                    <td class="px-2 py-1 text-right">${_xm(x.all)}</td>
+                                </tr>`).join('');
+                        } else {
+                            _xtBody.innerHTML = '<tr><td colspan="5" class="px-2 py-3 text-center text-gray-500">No regime-tagged phantoms yet (forward-only)</td></tr>';
                         }
                     }
                 }

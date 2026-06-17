@@ -9283,20 +9283,40 @@ def _compute_leash_shadow(orders):
         actual_dur_min = round(sum(_durs) / len(_durs), 1) if _durs else None
         leash_rows = []
         for name, pcol, rcol, mcol in LEASHES:
-            evals = []
-            for o in coh:
-                ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
-                if ev is not None:
-                    evals.append(ev)
-            n = len(evals)
-            total = sum(evals)
-            avg = total / n if n else 0.0
+            # Jun 17 — IN-TRADE HONEST. Cap every shadow eval at the trade's IN-TRADE peak
+            # (o.peak_pnl). A shadow "exit" above the in-trade peak is impossible to realize while
+            # the position is live — it's POST-EXIT CONTINUATION (the leash keeps ticking past the
+            # live close; e.g. an illiquid micro-cap wicking +10% 30s after we exited). The capped
+            # value = what a better trail could ACTUALLY have banked in-trade; the stripped excess is
+            # surfaced as postexit_usd (NOT capturable without holding past the live exit). ALL of
+            # avg/total/Δvsact/CF$/Δ$/%MaxPk/verdict below now use the capped value → the table stops
+            # crediting post-exit money as "left on the table". Single pass.
+            n = 0
+            total = 0.0           # in-trade-capped close %, summed
+            cf_usd = 0.0          # in-trade-capped $
+            postexit_usd = 0.0    # stripped post-exit continuation $ (raw above in-trade peak)
+            act_usd_m = 0.0
+            matched_actual_pct = 0.0  # actual P&L% over ONLY this leash's covered trades (apples-to-apples)
             clean = trap = slconv = 0
             cwins, ctraps, evs, mps = [], [], [], []
             for o in coh:
-                ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
+                raw = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
+                if raw is None:
+                    continue
+                _pk = o.peak_pnl or 0.0
+                ev = min(raw, _pk)  # honest in-trade ceiling — can't realize above the in-trade peak
+                _notl = (getattr(o, 'notional_value', 0) or 0.0)
+                n += 1
+                total += ev
+                if name == 'actual':
+                    cf_usd += (o.pnl or 0.0)  # actual close <= peak → no post-exit excess
+                else:
+                    cf_usd += (ev / 100.0) * _notl
+                    postexit_usd += (max(0.0, raw - _pk) / 100.0) * _notl
+                act_usd_m += (o.pnl or 0.0)
+                matched_actual_pct += (o.pnl_percentage or 0.0)
                 av = o.pnl_percentage
-                if name != 'actual' and ev is not None and av is not None:
+                if name != 'actual' and av is not None:
                     d = ev - av
                     if d > 0.1:
                         clean += 1; cwins.append(d)
@@ -9304,29 +9324,11 @@ def _compute_leash_shadow(orders):
                         trap += 1; ctraps.append(d)
                     if (getattr(o, rcol, '') or '') == 'hard_sl':
                         slconv += 1
-                mp = max(o.peak_pnl or 0, o.post_exit_peak_pnl or 0)
-                if mp > 0 and ev is not None:
-                    mps.append(mp); evs.append(ev)
-            # $ counterfactual: cf_$ = (leash% / 100) × notional_value (matches pnl=pct×notional/100)
-            # matched_actual_pct = actual P&L% over ONLY the trades this leash covers — so an
-            # under-covered leash (fewer trades than the slice, e.g. a post-deploy-only variant on a
-            # mixed cohort) is compared apples-to-apples, not vs the full-slice actual (which produced
-            # phantom negatives / "✗ hurts"). Consistent with how delta_usd is already matched.
-            cf_usd = 0.0
-            act_usd_m = 0.0
-            matched_actual_pct = 0.0
-            for o in coh:
-                ev = (o.pnl_percentage if name == 'actual' else getattr(o, pcol, None))
-                if ev is None:
-                    continue
-                if name == 'actual':
-                    cf_usd += (o.pnl or 0.0)
-                else:
-                    cf_usd += (ev / 100.0) * (getattr(o, 'notional_value', 0) or 0.0)
-                act_usd_m += (o.pnl or 0.0)
-                matched_actual_pct += (o.pnl_percentage or 0.0)
-            delta = total - matched_actual_pct
-            delta_usd = cf_usd - act_usd_m
+                if _pk > 0:  # %MaxPk denominator = in-trade peak (was max(peak, post_exit_peak) — inflated)
+                    mps.append(_pk); evs.append(ev)
+            avg = total / n if n else 0.0
+            delta = total - matched_actual_pct  # in-trade Δvsact (pp)
+            delta_usd = cf_usd - act_usd_m      # in-trade Δ$
             # avg fire-minute (from open); actual row = avg trade duration
             if name == 'actual':
                 fire_min = actual_dur_min
@@ -9346,7 +9348,7 @@ def _compute_leash_shadow(orders):
             elif name == 'tight':
                 verdict = '✓ sim valid' if abs(delta) <= max(0.5, 0.1 * n) else '⚠ sim off'
             elif delta > 0.5 and clean >= 2 * max(trap, 1):
-                verdict = '★ helps'
+                verdict = '★ helps'  # now requires IN-TRADE edge, not post-exit fantasy
             elif delta < -0.5:
                 verdict = '✗ hurts'
             else:
@@ -9356,6 +9358,7 @@ def _compute_leash_shadow(orders):
                 'actual_avg_close': actual_avg_close, 'no_data': no_data,
                 'fire_min': fire_min, 'post_close': post_close,
                 'act_usd': round(act_usd_m, 2), 'cf_usd': round(cf_usd, 2), 'delta_usd': round(delta_usd, 2),
+                'postexit_usd': round(postexit_usd, 2),
                 'delta': round(delta, 2), 'clean': clean, 'trap': trap,
                 'avg_clean': round(sum(cwins) / len(cwins), 2) if cwins else 0.0,
                 'avg_trap': round(sum(ctraps) / len(ctraps), 2) if ctraps else 0.0,

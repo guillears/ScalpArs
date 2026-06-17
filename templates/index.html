@@ -2397,7 +2397,8 @@
                                     <th class="px-2 py-2 font-medium text-right">Δ vs Act</th>
                                     <th class="px-2 py-2 font-medium text-right">Act$</th>
                                     <th class="px-2 py-2 font-medium text-right">CF$</th>
-                                    <th class="px-2 py-2 font-medium text-right">Δ$</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="In-trade Δ$: money a better trail could ACTUALLY bank within the trade (capped at the in-trade peak).">Δ$</th>
+                                    <th class="px-2 py-2 font-medium text-right" title="Post-exit continuation: price kept moving AFTER the live close — NOT capturable without holding past the exit. CF$ = Act$ + Δ$ + PostX$.">PostX$</th>
                                     <th class="px-2 py-2 font-medium text-center">Clean</th>
                                     <th class="px-2 py-2 font-medium text-center">Trap</th>
                                     <th class="px-2 py-2 font-medium text-right">AvgClnΔ</th>
@@ -8274,15 +8275,16 @@
             const _ls1 = perf.leash_shadow || {};
             if (_ls1.slices && _ls1.slices.length) {
                 lines.push(`## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=${_ls1.cohort_n || 0}]`);
-                lines.push('  Leash           N   Avg Cls%  ActCls%  Total%   Δvsact      Act$      CF$       Δ$   Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk     Min  Verdict');
-                lines.push('-'.repeat(134));
+                lines.push('  IN-TRADE HONEST: all %/$ capped at the in-trade peak. Δ$ = money a better trail could ACTUALLY bank in-trade. PostX$ = post-exit continuation (price kept going AFTER live close — NOT capturable without holding past exit; CF$ = Act$ + Δ$ + PostX$).');
+                lines.push('  Leash           N   Avg Cls%  ActCls%  Total%   Δvsact      Act$      CF$       Δ$   PostX$   Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk     Min  Verdict');
+                lines.push('-'.repeat(144));
                 const _lp = (v, w) => String(v == null ? '-' : v).padStart(w);
                 const _le = (v, w) => String(v == null ? '-' : v).padEnd(w);
                 _ls1.slices.forEach(sl => {
                     lines.push(sl.slice);
                     sl.rows.forEach(r => {
                         const a = r.leash === 'actual' || r.no_data;
-                        lines.push(`  ${_le(r.leash, 14)}${_lp(r.n, 4)} ${_lp(r.avg.toFixed(3), 9)} ${_lp(r.actual_avg_close.toFixed(3), 8)} ${_lp(r.total.toFixed(2), 8)} ${a ? '      -' : _lp((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${_lp('$' + Math.round(r.act_usd), 9)} ${_lp('$' + Math.round(r.cf_usd), 9)} ${a ? '       -' : _lp((r.delta_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.delta_usd)), 8)} ${a ? '  -' : _lp(r.clean, 3)} ${a ? '  -' : _lp(r.trap, 3)} ${a ? '      -' : _lp(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp(r.sl_conv, 3)} ${_lp(r.pct_max + '%', 6)} ${_lp(r.fire_min == null ? '-' : r.fire_min.toFixed(1) + 'm' + (r.post_close ? 'p' : ''), 7)}  ${r.verdict}`);
+                        lines.push(`  ${_le(r.leash, 14)}${_lp(r.n, 4)} ${_lp(r.avg.toFixed(3), 9)} ${_lp(r.actual_avg_close.toFixed(3), 8)} ${_lp(r.total.toFixed(2), 8)} ${a ? '      -' : _lp((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${_lp('$' + Math.round(r.act_usd), 9)} ${_lp('$' + Math.round(r.cf_usd), 9)} ${a ? '       -' : _lp((r.delta_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.delta_usd)), 8)} ${a ? '       -' : _lp((r.postexit_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.postexit_usd || 0)), 8)} ${a ? '  -' : _lp(r.clean, 3)} ${a ? '  -' : _lp(r.trap, 3)} ${a ? '      -' : _lp(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp(r.sl_conv, 3)} ${_lp(r.pct_max + '%', 6)} ${_lp(r.fire_min == null ? '-' : r.fire_min.toFixed(1) + 'm' + (r.post_close ? 'p' : ''), 7)}  ${r.verdict}`);
                     });
                 });
                 lines.push('');
@@ -10066,15 +10068,16 @@
                 const _ls2 = perf.leash_shadow || {};
                 if (_ls2.slices && _ls2.slices.length) {
                     lines.push(`## Leash Shadow: Runner Exit Comparison (observation-only)  [armed cohort N=${_ls2.cohort_n || 0}]`);
-                    lines.push('  Leash           N   Avg Cls%  ActCls%  Total%   Δvsact      Act$      CF$       Δ$   Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk     Min  Verdict');
-                    lines.push('-'.repeat(134));
+                    lines.push('  IN-TRADE HONEST: all %/$ capped at the in-trade peak. Δ$ = money a better trail could ACTUALLY bank in-trade. PostX$ = post-exit continuation (price kept going AFTER live close — NOT capturable without holding past exit; CF$ = Act$ + Δ$ + PostX$).');
+                    lines.push('  Leash           N   Avg Cls%  ActCls%  Total%   Δvsact      Act$      CF$       Δ$   PostX$   Cln Trp  AvgClnΔ AvgTrpΔ SLcv %MaxPk     Min  Verdict');
+                    lines.push('-'.repeat(144));
                     const _lp2 = (v, w) => String(v == null ? '-' : v).padStart(w);
                     const _le2 = (v, w) => String(v == null ? '-' : v).padEnd(w);
                     _ls2.slices.forEach(sl => {
                         lines.push(sl.slice);
                         sl.rows.forEach(r => {
                             const a = r.leash === 'actual' || r.no_data;
-                            lines.push(`  ${_le2(r.leash, 14)}${_lp2(r.n, 4)} ${_lp2(r.avg.toFixed(3), 9)} ${_lp2(r.actual_avg_close.toFixed(3), 8)} ${_lp2(r.total.toFixed(2), 8)} ${a ? '      -' : _lp2((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${_lp2('$' + Math.round(r.act_usd), 9)} ${_lp2('$' + Math.round(r.cf_usd), 9)} ${a ? '       -' : _lp2((r.delta_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.delta_usd)), 8)} ${a ? '  -' : _lp2(r.clean, 3)} ${a ? '  -' : _lp2(r.trap, 3)} ${a ? '      -' : _lp2(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp2(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp2(r.sl_conv, 3)} ${_lp2(r.pct_max + '%', 6)} ${_lp2(r.fire_min == null ? '-' : r.fire_min.toFixed(1) + 'm' + (r.post_close ? 'p' : ''), 7)}  ${r.verdict}`);
+                            lines.push(`  ${_le2(r.leash, 14)}${_lp2(r.n, 4)} ${_lp2(r.avg.toFixed(3), 9)} ${_lp2(r.actual_avg_close.toFixed(3), 8)} ${_lp2(r.total.toFixed(2), 8)} ${a ? '      -' : _lp2((r.delta >= 0 ? '+' : '') + r.delta.toFixed(2), 7)} ${_lp2('$' + Math.round(r.act_usd), 9)} ${_lp2('$' + Math.round(r.cf_usd), 9)} ${a ? '       -' : _lp2((r.delta_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.delta_usd)), 8)} ${a ? '       -' : _lp2((r.postexit_usd >= 0 ? '+$' : '-$') + Math.abs(Math.round(r.postexit_usd || 0)), 8)} ${a ? '  -' : _lp2(r.clean, 3)} ${a ? '  -' : _lp2(r.trap, 3)} ${a ? '      -' : _lp2(r.avg_clean.toFixed(2), 7)} ${a ? '      -' : _lp2(r.avg_trap.toFixed(2), 7)} ${a ? '  -' : _lp2(r.sl_conv, 3)} ${_lp2(r.pct_max + '%', 6)} ${_lp2(r.fire_min == null ? '-' : r.fire_min.toFixed(1) + 'm' + (r.post_close ? 'p' : ''), 7)}  ${r.verdict}`);
                         });
                     });
                     lines.push('');
@@ -12812,7 +12815,7 @@
                         let html = '';
                         (_ls.slices || []).forEach(sl => {
                             const gateCls = sl.is_gate ? 'text-emerald-300 font-bold' : sl.is_sub ? 'text-gray-500' : 'text-gray-300 font-semibold';
-                            html += `<tr class="border-b border-white/5"><td colspan="17" class="px-2 pt-2 pb-1 ${gateCls}">${sl.slice}</td></tr>`;
+                            html += `<tr class="border-b border-white/5"><td colspan="18" class="px-2 pt-2 pb-1 ${gateCls}">${sl.slice}</td></tr>`;
                             (sl.rows || []).forEach(r => {
                                 const dCls = r.leash === 'actual' || r.leash === 'tight' ? 'text-gray-400'
                                     : r.delta > 0.5 ? 'text-emerald-400 font-semibold'
@@ -12836,6 +12839,7 @@
                                     <td class="px-2 py-1 text-right text-gray-400">${r.no_data ? '—' : dUsd(r.act_usd)}</td>
                                     <td class="px-2 py-1 text-right">${r.no_data ? '—' : dUsd(r.cf_usd)}</td>
                                     <td class="px-2 py-1 text-right ${duCls}">${(r.leash === 'actual' || r.no_data) ? '—' : dUsd(r.delta_usd)}</td>
+                                    <td class="px-2 py-1 text-right text-gray-500" title="Post-exit continuation — price kept moving AFTER the live close; NOT capturable without holding past the exit">${(r.leash === 'actual' || r.no_data) ? '—' : dUsd(r.postexit_usd)}</td>
                                     <td class="px-2 py-1 text-center text-emerald-400">${(r.leash === 'actual' || r.no_data) ? '—' : r.clean}</td>
                                     <td class="px-2 py-1 text-center text-red-400">${(r.leash === 'actual' || r.no_data) ? '—' : r.trap}</td>
                                     <td class="px-2 py-1 text-right">${(r.leash === 'actual' || r.no_data) ? '—' : num(r.avg_clean)}</td>
@@ -12847,7 +12851,7 @@
                                 </tr>`;
                             });
                         });
-                        _lsBody.innerHTML = html || '<tr><td colspan="17" class="px-2 py-2 text-gray-500">(no data)</td></tr>';
+                        _lsBody.innerHTML = html || '<tr><td colspan="18" class="px-2 py-2 text-gray-500">(no data)</td></tr>';
                     }
                     if (_lsDrill && (_ls.drill || []).length) {
                         const n2 = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2));

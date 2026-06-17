@@ -313,6 +313,20 @@ def _flip_filters(source, ind):
             _regset = {s.strip() for s in _regs.split(',') if s.strip()}
             if _adxd is not None and _reg and _adxd < _amax and _reg in _regset:
                 return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
+        # High-ATR bear block (Jun 17): the REGIME-INVERTED hole in FLIP_SHORT_REGIME's bear exemption.
+        # A high-ATR parabolic pump in a strong bear is a counter-trend short-SQUEEZE that keeps ripping →
+        # the short never arms and the high ATR gaps the −0.70 SL to ~−1.2 (ESPORTS 4.0, HUSDT 3.0 = 0%WR/
+        # −$245). The CUT IS HIGH (≥3, NOT ≥2): below ~2.5 bear shorts are net-positive (PORTAL 1.5 +$322,
+        # BR 2.0 +$272, STG 1.5 +$40) — cutting at 2 would kill proven winners. Same high-ATR pair WINS in
+        # bull (regime inversion) so the block is bear-only. Operator-directed N=2/one-window → TIGHT REVERT.
+        # Fail-open: missing atr/regime or min=0 → no block.
+        _haregs = (getattr(th, 'flip_short_atr_block_regimes', '') or '').strip()
+        if ind.get('flip_dir') == 'SHORT' and _haregs:
+            _hamin = float(getattr(th, 'flip_short_atr_block_min', 0.0) or 0.0)
+            _hatr = ind.get('atr_pct'); _hareg = ind.get('btc_regime')
+            _haset = {s.strip() for s in _haregs.split(',') if s.strip()}
+            if _hamin > 0 and _hatr is not None and _hatr >= _hamin and _hareg and _hareg in _haset:
+                return (True, "FLIP_SHORT_HIATR", 1.0, 1.0, None)
         # Mirror for flip-LONGS (Jun 17): block a long flip when BTC regime ∈ bear set. A flip-LONG
         # fades a blocked SHORT -> goes LONG; in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO
         # this batch: 2/0%WR/-$220, both straight to SL). UNLIKE the short gate, the observed long
@@ -3093,6 +3107,8 @@ class TradingEngine:
                 'flip_dir': flip_dir,
                 'adx_delta': _ef.get('entry_adx_delta') if _ef.get('entry_adx_delta') is not None else _ind.get('adx_delta'),
                 'btc_regime': _ff_reg,
+                'atr_pct': (_ef.get('entry_atr_pct') if _ef.get('entry_atr_pct') is not None
+                            else (round(_ind['atr'] / price * 100, 4) if (_ind.get('atr') and price) else _ind.get('atr_pct'))),
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:

@@ -5866,6 +5866,12 @@
                                     <span class="text-cyan-300 whitespace-nowrap">in regimes</span>
                                     <input type="text" id="config-flip-long-regime-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-cyan-200 text-left text-xs" placeholder="STRONG_BEAR,HEALTHY_BEAR,CHOPPY_FLAT">
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 17: high-ATR bear block — the regime-inverted hole in the short-flip bear exemption. Block a flip-SHORT when pair ATR% ≥ the number AND BTC regime is in the list. A high-ATR parabolic pump in a strong bear is a counter-trend short-squeeze that gaps the stop (ESPORTS 4.0 / HUSDT 3.0 = 0%WR/−$245). CUT is 3.0 not 2.0 — ATR<2.5 bear shorts are net-positive (PORTAL/BR/STG). 0 = off, empty regimes = off. The same high-ATR pair WINS in a bull, so this is bear-only.">
+                                    <span class="text-rose-300 whitespace-nowrap">Short flip: block ATR% ≥</span>
+                                    <input type="number" id="config-flip-short-atr-block-min" step="0.5" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
+                                    <span class="text-rose-300 whitespace-nowrap">in regimes</span>
+                                    <input type="text" id="config-flip-short-atr-block-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-left text-xs" placeholder="STRONG_BEAR,HEALTHY_BEAR,BEAR_EXHAUSTED">
+                                </div>
                             </div>
                             <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
                             <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
@@ -17548,6 +17554,8 @@
                 _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
                 _setVal('config-flip-long-regime-adxd-max', config.thresholds.flip_long_regime_block_adxd_max);
                 _setVal('config-flip-long-regime-regimes', config.thresholds.flip_long_regime_block_regimes || '');
+                _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
+                _setVal('config-flip-short-atr-block-regimes', config.thresholds.flip_short_atr_block_regimes || '');
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
                 try {
                     const _mc = ((config.thresholds.flip_fan_mult_rule || '').split(',')[0] || '').trim();
@@ -18801,6 +18809,8 @@
                     flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),
                     flip_long_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-long-regime-adxd-max') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_long_regime_block_regimes: ((document.getElementById('config-flip-long-regime-regimes') || {}).value || '').trim(),
+                    flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_atr_block_regimes: ((document.getElementById('config-flip-short-atr-block-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),
                     flip_fan_mult_rule: (function(){

@@ -496,6 +496,11 @@ class SignalThresholds(BaseModel):
     # TIGHT REVERT: re-open if these cells flip to WR>45% on N>=15 fresh. Empty regimes = OFF.
     flip_short_regime_block_adxd_max: float = 0.0   # block flip-SHORT when entry ADXΔ < this (0.0 = the ADXΔ<0 cut)
     flip_short_regime_block_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-SHORTS in; empty = filter OFF
+    # Jun 17 — high-ATR bear block (the regime-inverted hole in the bear exemption above). Block flip-SHORT
+    # when pair ATR% ≥ min AND BTC regime ∈ bear set. High-ATR parabolic pump in a bear = counter-trend
+    # squeeze (ESPORTS 4.0/HUSDT 3.0 = 0%WR/−$245). CUT=3.0 not 2.0 (ATR<2.5 bear shorts net-positive).
+    flip_short_atr_block_min: float = 3.0   # block flip-SHORT when pair ATR% ≥ this (0 = off)
+    flip_short_atr_block_regimes: str = "STRONG_BEAR,HEALTHY_BEAR,BEAR_EXHAUSTED"  # ...in these bear regimes; empty = OFF
     # Jun 17 — MIRROR of the short gate for flip-LONGS. A flip-LONG fades a blocked SHORT -> goes LONG;
     # in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO this batch: 2/0%WR/-$220, straight to SL).
     # The observed long losers were ADXΔ-AGNOSTIC (ADXΔ +1.5, regime was the killer) → adxd_max default

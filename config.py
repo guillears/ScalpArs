@@ -378,7 +378,7 @@ class SignalThresholds(BaseModel):
     # so the floor RISES with the peak instead of sticking at the lock. Binds only when frac×peak < N×ATR
     # (the high-ATR/modest-peak case); normal-ATR runners unaffected (ATR-floor stays tighter). 0 = off.
     # frac 0.35 from the good-batch sweep + noise-stop constraint (tighter over-fits / re-introduces noise-stops).
-    runner_trail_short_giveback_frac: float = 0.35      # cap the give-back at this × peak (0 = off, use raw N×ATR)
+    runner_trail_short_giveback_frac: float = 0.0       # Jun 17: DISABLED. The cap protected bull/chop bounce-fades (now blocked by FLIP_SHORT_REGIME) but CLIPPED bear-regime trend runners (SKYAI +0.30 close vs +3.92 continuation, -0.02 retrace). Lock (BE-ratchet) is the round-trip backstop; cap was redundant tightening on the now-filtered population. 0 = off, raw N×ATR. Revert if an armed bear runner round-trips peak≥0.45→≤0 on N≥3.
     # May 7 (Phase 2): early-arm trailing zone. Trailing activates with a tight
     # pullback when peak is between this threshold and tp_min (the regular L1
     # arming point). Locks in profit on moderate-momentum trades that peak in
@@ -496,6 +496,12 @@ class SignalThresholds(BaseModel):
     # TIGHT REVERT: re-open if these cells flip to WR>45% on N>=15 fresh. Empty regimes = OFF.
     flip_short_regime_block_adxd_max: float = 0.0   # block flip-SHORT when entry ADXΔ < this (0.0 = the ADXΔ<0 cut)
     flip_short_regime_block_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-SHORTS in; empty = filter OFF
+    # Jun 17 — MIRROR of the short gate for flip-LONGS. A flip-LONG fades a blocked SHORT -> goes LONG;
+    # in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO this batch: 2/0%WR/-$220, straight to SL).
+    # The observed long losers were ADXΔ-AGNOSTIC (ADXΔ +1.5, regime was the killer) → adxd_max default
+    # 99 = REGIME-ONLY block; lower it later only if a long ADXΔ cell proves out cross-batch.
+    flip_long_regime_block_adxd_max: float = 99.0   # block flip-LONG when entry ADXΔ < this (99 = regime-only, no ADXΔ cut)
+    flip_long_regime_block_regimes: str = "STRONG_BEAR,HEALTHY_BEAR,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-LONGS in; empty = filter OFF
     # Jun 17 — fan-SPIKE block (ALL flip sources, not just FAN). Block the flip when the pair's
     # entry fan ratio (|EMA5-8 gap| / |EMA8-13 gap|) >= this — a violently-accelerating parabolic
     # fan that the fade gets run over by (never arms, straight to SL). Cross-batch N=3, 0% WR,

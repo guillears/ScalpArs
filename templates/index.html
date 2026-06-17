@@ -2401,6 +2401,10 @@
                         <span class="text-cyan-300">strpk/strpk03</span>=stretch-trail from peak (K=0.5/0.3, lower=looser) ·
                         <span class="text-cyan-300">stren</span>=exit when extension collapses to entry level ·
                         <span class="text-cyan-300">strpk_signed</span>=hold until price crosses back below EMA5 (full-ride).
+                        <span class="text-amber-300">CONFIG-DECISION rows (Jun 17, lock-aware = mirror the live floor max(peak−N×ATR, lock)):</span>
+                        <span class="text-emerald-300">atr05</span>=the EXACT live config (N=0.5, cap-off, lock-on) ·
+                        <span class="text-emerald-300">atr10/atr15</span>=the N=1.0/1.5 candidates for <code>runner_trail_short_atr_mult</code> — promote N only if atr10 beats atr05 cumulatively on N≥8 fresh armed shorts ·
+                        <span class="text-cyan-300">cap025/035/050</span>=give-back-cap candidates (cap currently OFF live; re-introduce only if a cap row beats atr05).
                         <span class="text-emerald-300">Δ</span>=leash total% − actual total%. <span class="text-emerald-300">Clean/Trap</span>=trades where leash beat/lost vs actual by &gt;0.1%.
                         <span class="text-amber-400">SHIPPED Jun 12 (override): strpk is now the LIVE SHORT exit (Runner Stretch-Trail SHORT — arm 0.45, K=0.5, no ATR gate, EMA13 suppressed once armed). This table is now the REVERT MONITOR: the strpk row should ≈ actual (sanity); if shadow_tight beats actual cumulatively on N≥8 fresh armed shorts → revert. LONGS expected ~baseline (trail already optimal).</span>
                     </p>
@@ -5855,6 +5859,12 @@
                                     <input type="number" id="config-flip-short-regime-adxd-max" step="0.1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-right">
                                     <span class="text-amber-300 whitespace-nowrap">in regimes</span>
                                     <input type="text" id="config-flip-short-regime-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-left text-xs" placeholder="STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT">
+                                </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 17: MIRROR of the short gate for flip-LONGS. A flip-LONG fades a blocked SHORT → goes LONG; block it when BTC regime is in the list. Strong-bear flip-LONGS = long-into-the-trend (AAVE/TAO this batch: 2/0%WR/-$220, straight to SL). Observed long losers were ADXΔ-agnostic → ADXΔ default 99 = regime-only block. Empty regimes = filter OFF. Bull regimes excluded — that's where the flip-long would be with the trend.">
+                                    <span class="text-cyan-300 whitespace-nowrap">Long flip: block ADXΔ &lt;</span>
+                                    <input type="number" id="config-flip-long-regime-adxd-max" step="0.1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-cyan-200 text-right">
+                                    <span class="text-cyan-300 whitespace-nowrap">in regimes</span>
+                                    <input type="text" id="config-flip-long-regime-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-cyan-200 text-left text-xs" placeholder="STRONG_BEAR,HEALTHY_BEAR,CHOPPY_FLAT">
                                 </div>
                             </div>
                             <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
@@ -17536,6 +17546,8 @@
                 _setVal('config-flip-fan-spike-max', config.thresholds.flip_fan_spike_max);
                 _setVal('config-flip-short-regime-adxd-max', config.thresholds.flip_short_regime_block_adxd_max);
                 _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
+                _setVal('config-flip-long-regime-adxd-max', config.thresholds.flip_long_regime_block_adxd_max);
+                _setVal('config-flip-long-regime-regimes', config.thresholds.flip_long_regime_block_regimes || '');
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
                 try {
                     const _mc = ((config.thresholds.flip_fan_mult_rule || '').split(',')[0] || '').trim();
@@ -18787,6 +18799,8 @@
                     flip_fan_spike_max: parseFloat((document.getElementById('config-flip-fan-spike-max') || {}).value) || 0,
                     flip_short_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-regime-adxd-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),
+                    flip_long_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-long-regime-adxd-max') || {}).value); return isNaN(v) ? 99 : v; })(),
+                    flip_long_regime_block_regimes: ((document.getElementById('config-flip-long-regime-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),
                     flip_fan_mult_rule: (function(){

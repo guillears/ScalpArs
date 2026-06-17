@@ -313,6 +313,19 @@ def _flip_filters(source, ind):
             _regset = {s.strip() for s in _regs.split(',') if s.strip()}
             if _adxd is not None and _reg and _adxd < _amax and _reg in _regset:
                 return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
+        # Mirror for flip-LONGS (Jun 17): block a long flip when BTC regime ∈ bear set. A flip-LONG
+        # fades a blocked SHORT -> goes LONG; in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO
+        # this batch: 2/0%WR/-$220, both straight to SL). UNLIKE the short gate, the observed long
+        # losers were ADXΔ-AGNOSTIC (ADXΔ +1.5 — regime was the killer, not falling ADX) → default
+        # adxd_max high (99) so the gate is regime-dominant; operator can lower it to add an ADXΔ
+        # cut later if a long ADXΔ cell proves out. Fail-open: empty regimes or missing regime → no block.
+        _lregs = (getattr(th, 'flip_long_regime_block_regimes', '') or '').strip()
+        if ind.get('flip_dir') == 'LONG' and _lregs:
+            _ladxd = ind.get('adx_delta'); _lreg = ind.get('btc_regime')
+            _lamax = float(getattr(th, 'flip_long_regime_block_adxd_max', 99.0) or 99.0)
+            _lregset = {s.strip() for s in _lregs.split(',') if s.strip()}
+            if _lreg and _lreg in _lregset and (_ladxd is None or _ladxd < _lamax):
+                return (True, "FLIP_LONG_REGIME", 1.0, 1.0, None)
         if source == "FAN_RATIO_GATE":
             stretch = ind.get('ema5_stretch')
             brsi = ind.get('btc_rsi'); badx = ind.get('btc_adx')
@@ -436,10 +449,19 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     if es is not None and stretch <= es:
                         st['sexits'][sname] = (round(pnl_pct, 4), 'stretch')
         # ---- ATR-floored give-back exits (chandelier): exit when P&L retraces > N×ATR from peak.
-        # Same backstops. The candidate to replace the strpk ratio-trail (which collapses on a
-        # tiny freshly-armed peak). _aatr = the pair's entry ATR% captured at first tick. ----
+        # Jun 17 PM: now LOCK-AWARE — floor = max(peak − N×ATR, lock), mirroring the LIVE policy
+        # (cap-off since Jun 17, BE-ratchet/lock ON). So atr05 == the EXACT live config (N=0.5),
+        # and atr10/atr15 are the N=1.0/1.5 candidates under the SAME lock → the clean decision
+        # surface for runner_trail_short_atr_mult. (Pre-Jun-17 these were lockless = the cap-era
+        # chandelier; the lock now backstops the low-peak give-back that N alone can't.)
+        # _aatr = the pair's entry ATR% captured at first tick. ----
         _aatr = st.get('atr')
         if _aatr and _aatr > 0:
+            try:
+                _alock = float(getattr(config.trading_config.thresholds, 'runner_trail_short_be_lock_pct', 0.10) or 0.10)
+                _aratchet = bool(getattr(config.trading_config.thresholds, 'runner_trail_short_be_ratchet_enabled', True))
+            except Exception:
+                _alock, _aratchet = 0.10, True
             for aname, _aN in _ATR_N.items():
                 if st['aexits'][aname] is not None:
                     continue
@@ -449,8 +471,10 @@ def _leash_update(order_id, pnl_pct, peak_hint=None, ema13_crossed=False, signal
                     st['aexits'][aname] = (round(pnl_pct, 4), 'ema13'); continue
                 if signal_lost:
                     st['aexits'][aname] = (round(pnl_pct, 4), 'signal_lost'); continue
-                if pnl_pct <= rmax - _aN * _aatr:
-                    st['aexits'][aname] = (round(pnl_pct, 4), 'atr')
+                _araw = rmax - _aN * _aatr
+                _afloor = max(_araw, _alock) if _aratchet else _araw
+                if pnl_pct <= _afloor:
+                    st['aexits'][aname] = (round(pnl_pct, 4), 'lock' if (_aratchet and _alock > _araw) else 'atr')
         # ---- give-back-CAP shadows (Jun 17 PM): mirror the LIVE exit (ATR-floor at live N + lock)
         # but cap the give-back at frac×peak; vary frac to tune runner_trail_short_giveback_frac. ----
         if _aatr and _aatr > 0:

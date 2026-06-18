@@ -9171,6 +9171,11 @@ async def _compute_phantom_flip_performance(db, is_paper):
             if 'BEAR' in r:
                 return 'sbear' if 'STRONG' in r else 'hbear'
             return 'chop'
+        # LIVE marker (Jun 18): a fan bucket trades live when its low edge is inside the current
+        # bull_long_fan_max gate (config-driven, auto-updates on widen — mirrors the DZ marker).
+        # The sleeve ALSO requires regime ∈ bull_long_regimes (the green H.BULL column).
+        _bl_th = config.trading_config.thresholds
+        _bl_fan_max = float(getattr(_bl_th, 'bull_long_fan_max', 0.85) or 0.0)
         for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
             _b = [r for r in _bl if _lo <= (r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13) < _hi]
             if not _b:
@@ -9180,6 +9185,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
                 _by[_blreg(getattr(r, 'entry_btc_regime', None))].append(r)
             bull_long_curve.append({
                 "bucket": f"{_lo:.2f}-{_hi:.2f}",
+                "live": (_bl_fan_max > 0 and _lo < _bl_fan_max),
                 "all": _mini(_b),
                 "sbull": _mini(_by['sbull']), "hbull": _mini(_by['hbull']),
                 "sbear": _mini(_by['sbear']), "hbear": _mini(_by['hbear']),

@@ -1230,6 +1230,7 @@
                             <table class="w-full text-xs">
                                 <thead class="text-gray-400 uppercase"><tr>
                                     <th class="text-left py-1 px-2">Fan Bucket</th>
+                                    <th class="text-center px-2" title="Trades LIVE now? ✓ = fan bucket inside bull_long_fan_max (config-driven). The sleeve also requires regime ∈ bull_long_regimes — the green H.BULL column.">LIVE</th>
                                     <th class="text-right px-2">N (all)</th>
                                     <th class="text-right px-2">All Avg%</th>
                                     <th class="text-right px-2 text-emerald-400">S.BULL N/WR/avg</th>
@@ -1239,7 +1240,7 @@
                                     <th class="text-right px-2 text-amber-400/70">CHOP N/WR/avg</th>
                                 </tr></thead>
                                 <tbody id="bull-long-curve-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="8" class="px-2 py-3 text-center text-gray-500">No virtual longs captured yet (forward-only)</td></tr>
+                                    <tr><td colspan="9" class="px-2 py-3 text-center text-gray-500">No virtual longs captured yet (forward-only)</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -5999,7 +6000,7 @@
                         </div>
                         <p class="text-xs text-gray-400 mb-2 leading-relaxed">When a LONG <strong class="text-emerald-300">PASSES</strong> the fan gate (low fan ratio) in an allowed bull regime, open the <strong class="text-emerald-300">same direction</strong> as a real momentum long (build, NOT a fade). Runs the <strong class="text-gray-200">normal long exit</strong> stack — it is NOT a flip. Multipliers default 1.0 (no amplification); leverage stays normal.</p>
                         <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                            <label class="flex items-center justify-between gap-2" title="Only fire when the pair fan ratio |EMA5-8 gap|/|EMA8-13 gap| < this (low fan = clean early trend that passed the fan filter)."><span class="text-gray-400">Fire when fan ratio &lt;</span><input type="number" id="config-bull-long-fan-max" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="col-span-2 flex items-center justify-between gap-2" title="Only fire when the pair fan ratio |EMA5-8 gap|/|EMA8-13 gap| < this (low fan = clean early trend that passed the fan filter)."><span class="text-gray-400">Fire when fan ratio &lt;</span><input type="number" id="config-bull-long-fan-max" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Investment-side multiplier on top of base sizing. 1.0 = no amplification."><span class="text-gray-400">Invest multi</span><input type="number" id="config-bull-long-size-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Leverage-side multiplier. 1.0 = normal STRONG_BUY leverage (e.g. 20×)."><span class="text-gray-400">Lev multi</span><input type="number" id="config-bull-long-lev-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="col-span-2 flex items-center gap-2" title="CSV of BTC regimes the sleeve fires in (e.g. HEALTHY_BULL). Empty = filter OFF (never fires)."><span class="text-gray-400 whitespace-nowrap">In regimes</span><input type="text" id="config-bull-long-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-left text-xs" placeholder="HEALTHY_BULL"></label>
@@ -8541,12 +8542,12 @@
                 }
                 if (_pf1b.bull_long_curve && _pf1b.bull_long_curve.length) {
                     lines.push('\n  ── BULL-LONG CURVE (virtual longs by fan ratio × regime) — flat phantom model (arm0.45/trail0.25/SL-0.70), relative comparator; live sleeve uses normal long exit (ships higher) ──');
-                    lines.push('  FanBucket     N(all)  all%     S.BULL N/WR/avg     H.BULL N/WR/avg     S.BEAR N/WR/avg     H.BEAR N/WR/avg     CHOP N/WR/avg');
+                    lines.push('  FanBucket    LIVE  N(all)  all%     S.BULL N/WR/avg     H.BULL N/WR/avg     S.BEAR N/WR/avg     H.BEAR N/WR/avg     CHOP N/WR/avg   (LIVE ✓ = fan < bull_long_fan_max; sleeve also needs regime ∈ bull_long_regimes)');
                     lines.push('  '+'-'.repeat(124));
                     const _bc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
                     _pf1b.bull_long_curve.forEach(c => {
                         const a0=c.all;
-                        lines.push(`  ${c.bucket.padEnd(12)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc(c.sbull).padEnd(18)} ${_bc(c.hbull).padEnd(18)} ${_bc(c.sbear).padEnd(18)} ${_bc(c.hbear).padEnd(18)} ${_bc(c.chop)}`);
+                        lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc(c.sbull).padEnd(18)} ${_bc(c.hbull).padEnd(18)} ${_bc(c.sbear).padEnd(18)} ${_bc(c.hbear).padEnd(18)} ${_bc(c.chop)}`);
                     });
                 }
             }
@@ -10372,12 +10373,12 @@
                     }
                     if (_pf2b.bull_long_curve && _pf2b.bull_long_curve.length) {
                         lines.push('\n  ── BULL-LONG CURVE (virtual longs by fan ratio × regime) — flat phantom model (arm0.45/trail0.25/SL-0.70), relative comparator; live sleeve uses normal long exit (ships higher) ──');
-                        lines.push('  FanBucket     N(all)  all%     S.BULL N/WR/avg     H.BULL N/WR/avg     S.BEAR N/WR/avg     H.BEAR N/WR/avg     CHOP N/WR/avg');
+                        lines.push('  FanBucket    LIVE  N(all)  all%     S.BULL N/WR/avg     H.BULL N/WR/avg     S.BEAR N/WR/avg     H.BEAR N/WR/avg     CHOP N/WR/avg   (LIVE ✓ = fan < bull_long_fan_max; sleeve also needs regime ∈ bull_long_regimes)');
                         lines.push('  '+'-'.repeat(124));
                         const _bc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
                         _pf2b.bull_long_curve.forEach(c => {
                             const a0=c.all;
-                            lines.push(`  ${c.bucket.padEnd(12)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc2(c.sbull).padEnd(18)} ${_bc2(c.hbull).padEnd(18)} ${_bc2(c.sbear).padEnd(18)} ${_bc2(c.hbear).padEnd(18)} ${_bc2(c.chop)}`);
+                            lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc2(c.sbull).padEnd(18)} ${_bc2(c.hbull).padEnd(18)} ${_bc2(c.sbear).padEnd(18)} ${_bc2(c.hbear).padEnd(18)} ${_bc2(c.chop)}`);
                         });
                     }
                 }
@@ -13333,6 +13334,7 @@
                                 const a0 = c.all;
                                 return `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1 text-gray-200 font-mono">${c.bucket}</td>
+                                    <td class="px-2 py-1 text-center ${c.live?'text-emerald-400':'text-gray-600'}">${c.live?'✓':'·'}</td>
                                     <td class="px-2 py-1 text-right text-gray-300">${a0?a0.n:0}</td>
                                     <td class="px-2 py-1 text-right ${a0&&a0.avg>=0?'text-emerald-400':'text-red-400'}">${a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-'}</td>
                                     <td class="px-2 py-1 text-right">${_bm(c.sbull)}</td>
@@ -13343,7 +13345,7 @@
                                 </tr>`;
                             }).join('');
                         } else {
-                            _blcBody.innerHTML = '<tr><td colspan="8" class="px-2 py-3 text-center text-gray-500">No virtual longs captured yet (forward-only)</td></tr>';
+                            _blcBody.innerHTML = '<tr><td colspan="9" class="px-2 py-3 text-center text-gray-500">No virtual longs captured yet (forward-only)</td></tr>';
                         }
                     }
                 }

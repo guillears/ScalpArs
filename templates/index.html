@@ -5866,6 +5866,11 @@
                                     <span class="text-rose-300 whitespace-nowrap ml-2">· block EMA5 stretch ≥</span>
                                     <input type="number" id="config-flip-short-stretch-max" step="0.5" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right" title="Jun 17 (B1): anti-parabola — block flip-SHORT when EMA5 stretch% ≥ this. Shorting a vertical blow-off (ESPORTS 10.47% = −2.25% gapped stop). Pool stretch≥2 = N=2/0%WR, 0 winners removed. 0 = off.">
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 18: BTC 30m-RSI-rising block — the cleanest cross-batch differentiator. FAN flip-shorts LOSE when BTC 30m RSI is rising (macro bouncing → the faded pump squeezes) and PAY when falling (rising −$1031 vs falling +$811 over 2 batches). Block flip-SHORT when (BTC RSI − BTC RSI 6 bars ago / 30m) > this. 0 = block ANY 30m-RSI rise; 99 = off.">
+                                    <span class="text-emerald-300 whitespace-nowrap">Short flip: block when BTC 30m RSI rise &gt;</span>
+                                    <input type="number" id="config-flip-short-btc30-rise" step="0.5" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right">
+                                    <span class="text-gray-500 text-[10px]">(0 = block any rise · 99 = off)</span>
+                                </div>
                                 <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 17: MIRROR of the short gate for flip-LONGS. A flip-LONG fades a blocked SHORT → goes LONG; block it when BTC regime is in the list. Strong-bear flip-LONGS = long-into-the-trend (AAVE/TAO this batch: 2/0%WR/-$220, straight to SL). Observed long losers were ADXΔ-agnostic → ADXΔ default 99 = regime-only block. Empty regimes = filter OFF. Bull regimes excluded — that's where the flip-long would be with the trend.">
                                     <span class="text-cyan-300 whitespace-nowrap">Long flip: block ADXΔ &lt;</span>
                                     <input type="number" id="config-flip-long-regime-adxd-max" step="0.1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-cyan-200 text-right">
@@ -17560,6 +17565,7 @@
                 _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
                 _setVal('config-flip-short-regime-anyadxd', config.thresholds.flip_short_regime_block_any_adxd_regimes || '');
                 _setVal('config-flip-short-stretch-max', config.thresholds.flip_short_stretch_block_max);
+                _setVal('config-flip-short-btc30-rise', config.thresholds.flip_short_btc30_rise_block_min);
                 _setVal('config-flip-long-regime-adxd-max', config.thresholds.flip_long_regime_block_adxd_max);
                 _setVal('config-flip-long-regime-regimes', config.thresholds.flip_long_regime_block_regimes || '');
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
@@ -18817,6 +18823,7 @@
                     flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),
                     flip_short_regime_block_any_adxd_regimes: ((document.getElementById('config-flip-short-regime-anyadxd') || {}).value || '').trim(),
                     flip_short_stretch_block_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-stretch-max') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_btc30_rise_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-btc30-rise') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_long_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-long-regime-adxd-max') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_long_regime_block_regimes: ((document.getElementById('config-flip-long-regime-regimes') || {}).value || '').trim(),
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),

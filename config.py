@@ -504,6 +504,11 @@ class SignalThresholds(BaseModel):
     # that keeps ripping; ESPORTS 10.47% stretch = −2.25% gapped stop in 0s). Pool stretch≥2 = N=2/0%WR
     # (ASTER+ESPORTS), 0 winners removed (1–2% band 67%WR preserved). Regime-agnostic catastrophe guard.
     flip_short_stretch_block_max: float = 2.0   # block flip-SHORT when entry EMA5 stretch% ≥ this (0 = off)
+    # Jun 18 — BTC 30m-RSI-rising block (the cleanest cross-batch differentiator). FAN flip-SHORTS LOSE when
+    # BTC 30m RSI is rising (macro bouncing → the faded pump squeezes) and PAY when falling. 2-batch consistent:
+    # BTC-30m-rising −$1031 vs falling +$811; today −$965 of the −$998 FAN loss was BTC-30m-rising. Block SHORT
+    # when (entry_btc_rsi − entry_btc_rsi_prev6) > this. 0.0 = block ANY 30m-RSI rise; 99 = OFF.
+    flip_short_btc30_rise_block_min: float = 0.0
     # Jun 17 — high-ATR bear block (the regime-inverted hole in the bear exemption above). Block flip-SHORT
     # when pair ATR% ≥ min AND BTC regime ∈ bear set. High-ATR parabolic pump in a bear = counter-trend
     # squeeze (ESPORTS 4.0/HUSDT 3.0 = 0%WR/−$245). CUT=3.0 not 2.0 (ATR<2.5 bear shorts net-positive).

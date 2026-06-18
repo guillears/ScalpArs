@@ -327,6 +327,15 @@ def _flip_filters(source, ind):
                 return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
             if _adxd is not None and _reg and _adxd < _amax and _reg in _regset:
                 return (True, "FLIP_SHORT_REGIME", 1.0, 1.0, None)
+        # BTC 30m-RSI-rising block for flip-SHORTS (Jun 18): the cleanest cross-batch differentiator. FAN
+        # flip-shorts LOSE when BTC 30m RSI is rising (macro bouncing → the faded pump squeezes with it) and
+        # PAY when falling. 2-batch consistent (rising −$1031 vs falling +$811; today −$965/−$998 was rising).
+        # Block SHORT when (btc_rsi − btc_rsi_prev6) > min. Fail-open: missing data or min≥99 → no block.
+        _b30min = float(getattr(th, 'flip_short_btc30_rise_block_min', 99.0) or 0.0)
+        if ind.get('flip_dir') == 'SHORT' and _b30min < 99:
+            _br, _br6 = ind.get('btc_rsi'), ind.get('btc_rsi_prev6')
+            if _br is not None and _br6 is not None and (_br - _br6) > _b30min:
+                return (True, "FLIP_SHORT_BTC30_RISE", 1.0, 1.0, None)
         # High-ATR bear block (Jun 17): the REGIME-INVERTED hole in FLIP_SHORT_REGIME's bear exemption.
         # A high-ATR parabolic pump in a strong bear is a counter-trend short-SQUEEZE that keeps ripping →
         # the short never arms and the high ATR gaps the −0.70 SL to ~−1.2 (ESPORTS 4.0, HUSDT 3.0 = 0%WR/
@@ -3116,6 +3125,7 @@ class TradingEngine:
             _ff_in = {
                 'ema5_stretch': _ef.get('entry_ema5_stretch') if _ef.get('entry_ema5_stretch') is not None else _ind.get('ema5_stretch'),
                 'btc_rsi': _ef.get('entry_btc_rsi') if _ef.get('entry_btc_rsi') is not None else _g.get('_current_btc_rsi'),
+                'btc_rsi_prev6': _ef.get('entry_btc_rsi_prev6') if _ef.get('entry_btc_rsi_prev6') is not None else _g.get('_current_btc_rsi_prev6'),
                 'btc_adx': _ef.get('entry_btc_adx') if _ef.get('entry_btc_adx') is not None else _g.get('_current_btc_adx'),
                 'fan_ratio': (abs(_g58 / _g813) if (_g58 is not None and _g813) else None),
                 'flip_dir': flip_dir,

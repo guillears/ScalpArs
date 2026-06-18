@@ -9019,13 +9019,25 @@ async def _compute_phantom_flip_performance(db, is_paper):
             return None
         w = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
         return {"n": n, "wr": round(100.0 * w / n, 0), "avg": round(sum((r.pnl_pct or 0) for r in rs) / n, 3)}
-    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 99.0)]:
+    # Jun 18: DZ marker now tracks the LIVE fan_ratio_block_long band instead of a hardcoded
+    # May-29 snapshot — opening the 3-5 band (or any block-band edit) reflects automatically.
+    # Buckets split 5-10 (now trades) vs 10-99 (spike-vetoed) to match flip_fan_spike_max=10.
+    _dz_bands = []
+    for _p in (getattr(config.trading_config.thresholds, 'fan_ratio_block_long', '') or '').split(','):
+        _p = _p.strip()
+        if '-' in _p:
+            try:
+                _a, _bb = _p.split('-'); _dz_bands.append((float(_a), float(_bb)))
+            except (ValueError, TypeError):
+                pass
+    _in_dz = lambda lo: any(a <= lo < b for a, b in _dz_bands)
+    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
         _b = [r for r in _fanflips if _lo <= (r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13) < _hi]
         if not _b:
             continue
         fan_curve.append({
             "bucket": f"{_lo:.2f}-{_hi:.2f}",
-            "in_deadzone": (0.85 <= _lo < 3.0) or (_lo >= 5.0),  # the May-29 long-block bands
+            "in_deadzone": _in_dz(_lo),
             "all": _mini(_b),
             "aligned": _mini([r for r in _b if _fan_align(r) is True]),
             "counter": _mini([r for r in _b if _fan_align(r) is False]),

@@ -2515,12 +2515,12 @@
                             <table class="w-full text-xs">
                                 <thead class="text-gray-400 uppercase"><tr>
                                     <th class="text-left py-1 px-2">Source (dir)</th>
-                                    <th class="text-right px-2 text-emerald-400">S.BULL N/WR/avg</th>
-                                    <th class="text-right px-2 text-emerald-400/70">H.BULL N/WR/avg</th>
-                                    <th class="text-right px-2 text-red-400">S.BEAR N/WR/avg</th>
-                                    <th class="text-right px-2 text-red-400/70">H.BEAR N/WR/avg</th>
-                                    <th class="text-right px-2 text-amber-400/70">CHOP N/WR/avg</th>
-                                    <th class="text-right px-2">ALL N/WR/avg</th>
+                                    <th class="text-right px-2 text-emerald-400">S.BULL N/WR/avg/Σ</th>
+                                    <th class="text-right px-2 text-emerald-400/70">H.BULL N/WR/avg/Σ</th>
+                                    <th class="text-right px-2 text-red-400">S.BEAR N/WR/avg/Σ</th>
+                                    <th class="text-right px-2 text-red-400/70">H.BEAR N/WR/avg/Σ</th>
+                                    <th class="text-right px-2 text-amber-400/70">CHOP N/WR/avg/Σ</th>
+                                    <th class="text-right px-2">ALL N/WR/avg/Σ</th>
                                 </tr></thead>
                                 <tbody id="phantom-source-regime-body" class="divide-y divide-white/5">
                                     <tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No regime-tagged phantoms yet (forward-only)</td></tr>
@@ -8376,9 +8376,9 @@
                 }
                 if (_pf1.source_regime_xtab && _pf1.source_regime_xtab.length) {
                     lines.push('\n  ── SOURCE × BTC-REGIME (BULL-mechanism hunt: which signal pays in which regime) — LONG = bull candidate; BULL split STRONG vs HEALTHY ──');
-                    lines.push('  Source (dir)                S.BULL N/WR/avg    H.BULL N/WR/avg    S.BEAR N/WR/avg    H.BEAR N/WR/avg    CHOP N/WR/avg      ALL N/WR/avg');
+                    lines.push('  Source (dir)                S.BULL N/WR/avg/Σ      H.BULL N/WR/avg/Σ      S.BEAR N/WR/avg/Σ      H.BEAR N/WR/avg/Σ      CHOP N/WR/avg/Σ        ALL N/WR/avg/Σ');
                     lines.push('  '+'-'.repeat(132));
-                    const _xc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}` : '-';
+                    const _xc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/Σ${m.total_pct>=0?'+':''}${m.total_pct.toFixed(1)}` : '-';
                     _pf1.source_regime_xtab.forEach(x => {
                         lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_xc(x.sbull).padEnd(18)} ${_xc(x.hbull).padEnd(18)} ${_xc(x.sbear).padEnd(18)} ${_xc(x.hbear).padEnd(18)} ${_xc(x.chop).padEnd(18)} ${_xc(x.all)}`);
                     });
@@ -10170,9 +10170,9 @@
                     }
                     if (_pf1.source_regime_xtab && _pf1.source_regime_xtab.length) {
                         lines.push('\n  ── SOURCE × BTC-REGIME (BULL-mechanism hunt: which signal pays in which regime) — LONG = bull candidate; BULL split STRONG vs HEALTHY ──');
-                        lines.push('  Source (dir)                S.BULL N/WR/avg    H.BULL N/WR/avg    S.BEAR N/WR/avg    H.BEAR N/WR/avg    CHOP N/WR/avg      ALL N/WR/avg');
+                        lines.push('  Source (dir)                S.BULL N/WR/avg/Σ      H.BULL N/WR/avg/Σ      S.BEAR N/WR/avg/Σ      H.BEAR N/WR/avg/Σ      CHOP N/WR/avg/Σ        ALL N/WR/avg/Σ');
                         lines.push('  '+'-'.repeat(132));
-                        const _xc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}` : '-';
+                        const _xc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/Σ${m.total_pct>=0?'+':''}${m.total_pct.toFixed(1)}` : '-';
                         _pf1.source_regime_xtab.forEach(x => {
                             lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_xc2(x.sbull).padEnd(18)} ${_xc2(x.hbull).padEnd(18)} ${_xc2(x.sbear).padEnd(18)} ${_xc2(x.hbear).padEnd(18)} ${_xc2(x.chop).padEnd(18)} ${_xc2(x.all)}`);
                         });
@@ -12996,7 +12996,7 @@
                     const _xtBody = document.getElementById('phantom-source-regime-body');
                     if (_xtBody) {
                         const _xt = _pf.source_regime_xtab || [];
-                        const _xm = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg_pct>=0?'text-emerald-400':'text-red-400'}">${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}</span>` : '<span class="text-gray-600">-</span>';
+                        const _xm = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg_pct>=0?'text-emerald-400':'text-red-400'}">${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}</span>/<span class="text-gray-400">Σ${m.total_pct>=0?'+':''}${m.total_pct.toFixed(1)}</span>` : '<span class="text-gray-600">-</span>';
                         if (_xt.length) {
                             _xtBody.innerHTML = _xt.map(x => `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1 ${x.direction==='LONG'?'text-cyan-300':'text-gray-300'}">${x.source} ${x.direction}</td>

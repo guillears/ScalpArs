@@ -5272,8 +5272,17 @@ class TradingEngine:
                     final_pnl = ((entry - price) / entry) * 100 - _fd
 
                 exit_time = info["exit_time"]
-                peak_minutes = (info["peak_at"] - exit_time).total_seconds() / 60.0
-                trough_minutes = (info["trough_at"] - exit_time).total_seconds() / 60.0
+                # peak_at is stamped on a new HIGH, trough_at on a new LOW (see ~L5048/5051) —
+                # that's LONG-centric. For a SHORT the favorable "peak" is the LOW price, so the
+                # minutes must flip to MATCH the direction-aware peak_pnl/trough_pnl above. Without
+                # this, every SHORT's peak_minutes reports the brief post-exit high-tick (~0.0m)
+                # instead of when the real favorable move landed. (Jun 18 bugfix.)
+                if direction == "LONG":
+                    peak_minutes = (info["peak_at"] - exit_time).total_seconds() / 60.0
+                    trough_minutes = (info["trough_at"] - exit_time).total_seconds() / 60.0
+                else:
+                    peak_minutes = (info["trough_at"] - exit_time).total_seconds() / 60.0
+                    trough_minutes = (info["peak_at"] - exit_time).total_seconds() / 60.0
                 sig_lost_minutes = None
                 if info["signal_lost_at"]:
                     sig_lost_minutes = (info["signal_lost_at"] - exit_time).total_seconds() / 60.0
@@ -6521,6 +6530,21 @@ class TradingEngine:
                     if _px2:
                         _seed_phantom_flip(_p, _px2, "SHORT", filter_name,
                                            entry_fields=self._flip_entry_fields(_current_pair_holder, flip_dir="LONG"))
+                except Exception:
+                    pass
+            # Jun 18: SHORT-fade phantom trackers — fade a BLOCKED LONG to a SHORT for the two
+            # biggest UNTRACKED long-blockers. PAIR_RANGE_POSITION_MAX = long blocked at the TOP of
+            # its range → short the range top (textbook mean-reversion). PAIR_ADX_MAX = long blocked
+            # for an over-extended/exhausted trend → fade short (same logic as the fan dead-zone).
+            # Observation-only; ~270 blocks/batch each so they accrue N fast. Routes into the
+            # Source×Regime tracker as "<src> SHORT" rows (distinct from the existing SHORT-block
+            # "<src> LONG" fade rows). Mirror of the PAIR_RSI_RANGE>65 LONG→SHORT seed above.
+            if direction == "LONG" and filter_name in ("PAIR_RANGE_POSITION_MAX", "PAIR_ADX_MAX"):
+                try:
+                    _px3 = _current_pair_holder.get('price')
+                    if _px3:
+                        _seed_phantom_flip(_p, _px3, "LONG", filter_name,
+                                           entry_fields=self._flip_entry_fields(_current_pair_holder, flip_dir="SHORT"))
                 except Exception:
                     pass
 

@@ -530,6 +530,20 @@ class SignalThresholds(BaseModel):
     flip_fan_runner_strpk: bool = True        # exit FAN flips via the SHORT runner stretch-trail (strpk, arm 0.45/K0.5) instead of trailing-like-a-long. Reuses runner_trail_short_* params
     flip_runner_strpk_shorts: bool = True     # Jun 16: extend the SHORT runner stretch-trail (strpk) to the NON-FAN flip short sleeves too (PAIR_RSI_OB, LONG_UNMATCHED_ONLY). A flip short runs strpk if FAN+flip_fan_runner_strpk OR non-FAN+this. = strpk for ALL flip shorts
     flip_fan_mult_rule: str = "40-45:35-99:2.0:1.0"  # btc_rsi_lo-hi : btc_adx_lo-hi : size_mult : lev_mult cells (lev optional, defaults 1.0; same 4-part format as the other multiplier cells). Strong-bear cell N=10/90%WR/+$308 @2x size/1x lev. Empty = off. BELOW N>=30 gate — operator override
+    # === Bull-Long Entry Sleeve (Jun 18) — the BUILD-side twin of the flip sleeve.
+    # When a LONG PASSES the fan gate (low fan ratio) in a HEALTHY_BULL regime, open the
+    # SAME direction (a real momentum-style long, NOT a fade) and let it run on the NORMAL
+    # long exit stack (per-level trailing, ATR-widened SL) — it is NOT tagged _is_flip.
+    # Multipliers default 1.0 (no amplification); leverage stays the normal STRONG_BUY level.
+    # Tagged entry_strategy="BULL_LONG"; bypasses the long_unmatched_only + pattern-cell
+    # entry blocks (it is explicitly a trend-build, not a pattern-matched late long). All
+    # hard risk controls (max-open, existing-position, cooldown, liquidity caps) still apply.
+    # TO REMOVE: grep "BULL_LONG" / "bull_long" + the main.py bull-long perf blocks + the UI.
+    bull_long_enabled: bool = True                     # master toggle for the bull-long sleeve
+    bull_long_regimes: str = "HEALTHY_BULL"            # CSV of BTC regimes the sleeve fires in
+    bull_long_fan_max: float = 0.85                    # only fire when pair fan ratio < this (low fan = clean early trend)
+    bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
+    bull_long_lev_mult: float = 1.0                    # leverage multiplier (1.0 = normal leverage)
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min
     # — the dead-tape, no-fuel fade zone (mirror of the high-ATR runner finding).
     # LONG <0.25%: 5-batch 12% WR / -$230 (cleanest loser sub-band), 0 overlap with

@@ -1174,6 +1174,80 @@
                 <!-- ===== FLIP TRADE LOG END ===== -->
 
 
+                <!-- ===== BULL-LONG TRADE LOG (Jun 18, LIVE build-side long sleeve) ===== -->
+                <div class="mt-6 pt-6 border-t border-violet-900/40">
+                    <h3 class="text-sm font-semibold text-emerald-300 mb-2">🐂 Bull-Long Trade Log <span class="text-emerald-500/70 text-xs font-normal">build-side long · fan-PASS in bull regime · NORMAL exit</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">A <strong class="text-emerald-300">real momentum long</strong> opened when a long <strong class="text-gray-300">PASSES</strong> the fan gate (low fan ratio) in an allowed bull regime — same direction as the signal (build, NOT a fade). Runs the <strong class="text-gray-300">normal long exit stack</strong> (per-level trailing, ATR-widened SL); it is NOT <code>_is_flip</code>. Multipliers default <strong>1.0</strong> (no amplification), leverage stays normal. <strong class="text-gray-300">Verdict</strong> builds to N≥15.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 uppercase">
+                                <tr>
+                                    <th class="text-left py-1 px-2">Sleeve</th>
+                                    <th class="text-right px-2" title="Number of closed bull-longs">N</th>
+                                    <th class="text-right px-2" title="distinct pairs">Pairs</th>
+                                    <th class="text-right px-2" title="% of N from the single most common pair — ≥60% = concentrated">Top%</th>
+                                    <th class="text-right px-2">WR%</th>
+                                    <th class="text-right px-2">Avg %</th>
+                                    <th class="text-right px-2">Total $</th>
+                                    <th class="text-right px-2" title="Avg max favorable excursion">Peak %</th>
+                                    <th class="text-right px-2" title="% closed at SL">SL%</th>
+                                    <th class="text-right px-2" title="Investment-side multiplier (default 1.0)">Size×</th>
+                                    <th class="text-right px-2" title="Leverage-side multiplier (default 1.0)">Lev×</th>
+                                    <th class="text-right px-2" title="$ the multiplier added vs the same trades de-multiplied to 1×">Δ$ vs 1×</th>
+                                    <th class="text-left px-2" title="Multiplier verdict">Mult</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bull-long-trades-body" class="divide-y divide-white/5">
+                                <tr><td colspan="13" class="py-3 text-center text-gray-500">No bull-longs closed yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="bull-long-trades-summary" class="text-xs text-gray-400 mt-2"></div>
+                    <!-- Bull-Long × BTC-Regime row -->
+                    <div class="mt-3">
+                        <div class="text-xs font-semibold text-emerald-300 mb-1">🐂 Bull-Long × BTC-Regime <span class="text-gray-500 font-normal">— LIVE realized, N / WR / avg% / <span class="text-gray-400">$ de-muxed to 1×</span> per regime.</span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">BULL_LONG</th>
+                                    <th class="text-right px-2 text-emerald-400">S.BULL N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-emerald-400/70">H.BULL N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-red-400">S.BEAR N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-red-400/70">H.BEAR N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-amber-400/70">CHOP N/WR/avg/$</th>
+                                    <th class="text-right px-2">ALL N/WR/avg/$</th>
+                                </tr></thead>
+                                <tbody id="bull-long-regime-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No closed bull-longs with regime tag yet</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- BULL-LONG CURVE (phantom) -->
+                    <div class="mt-4">
+                        <div class="text-xs font-semibold text-emerald-300 mb-1">🐂 Bull-Long Curve <span class="text-gray-500 font-normal">— virtual longs by fan ratio × regime (where does a build-side long pay?). <span class="text-amber-400/80">flat phantom model (arm0.45/trail0.25/SL-0.70) — relative comparator; live sleeve uses normal long exit (ships higher)</span></span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">Fan Bucket</th>
+                                    <th class="text-right px-2">N (all)</th>
+                                    <th class="text-right px-2">All Avg%</th>
+                                    <th class="text-right px-2 text-emerald-400">S.BULL N/WR/avg</th>
+                                    <th class="text-right px-2 text-emerald-400/70">H.BULL N/WR/avg</th>
+                                    <th class="text-right px-2 text-red-400">S.BEAR N/WR/avg</th>
+                                    <th class="text-right px-2 text-red-400/70">H.BEAR N/WR/avg</th>
+                                    <th class="text-right px-2 text-amber-400/70">CHOP N/WR/avg</th>
+                                </tr></thead>
+                                <tbody id="bull-long-curve-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="8" class="px-2 py-3 text-center text-gray-500">No virtual longs captured yet (forward-only)</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- ===== BULL-LONG TRADE LOG END ===== -->
+
+
                 <!-- EMA13 Strict-Mode Performance (May 8, 2026 — tracks ema13_cross_requires_stack_flip toggle) -->
                 <div class="mt-6 pt-6 border-t border-violet-900/40">
                     <h3 class="text-sm font-semibold text-amber-300 mb-2">🛡️ EMA13 Strict-Mode Performance</h3>
@@ -5913,6 +5987,26 @@
                         </details>
                     </div>
                     <!-- ===== FLIP ENTRY CONFIG END ===== -->
+                    <!-- ===== BULL-LONG ENTRY SLEEVE (Jun 18, LIVE build-side long) ===== -->
+                    <div class="mt-4 mb-2 px-4 py-3 rounded-lg border border-emerald-800/40 bg-emerald-950/10">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-emerald-300 font-semibold">🐂 Bull-Long Entry Sleeve <span class="text-emerald-500/70 text-[11px] font-normal align-middle">LIVE · Jun 18</span></span>
+                            <label class="inline-flex items-center cursor-pointer">
+                                <span class="mr-2 text-xs text-gray-400">Master</span>
+                                <input type="checkbox" id="config-bull-long-enabled" class="sr-only peer" checked>
+                                <div class="relative w-9 h-5 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-400 mb-2 leading-relaxed">When a LONG <strong class="text-emerald-300">PASSES</strong> the fan gate (low fan ratio) in an allowed bull regime, open the <strong class="text-emerald-300">same direction</strong> as a real momentum long (build, NOT a fade). Runs the <strong class="text-gray-200">normal long exit</strong> stack — it is NOT a flip. Multipliers default 1.0 (no amplification); leverage stays normal.</p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                            <label class="flex items-center justify-between gap-2" title="Only fire when the pair fan ratio |EMA5-8 gap|/|EMA8-13 gap| < this (low fan = clean early trend that passed the fan filter)."><span class="text-gray-400">Fire when fan ratio &lt;</span><input type="number" id="config-bull-long-fan-max" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="flex items-center justify-between gap-2" title="Investment-side multiplier on top of base sizing. 1.0 = no amplification."><span class="text-gray-400">Invest multi</span><input type="number" id="config-bull-long-size-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="flex items-center justify-between gap-2" title="Leverage-side multiplier. 1.0 = normal STRONG_BUY leverage (e.g. 20×)."><span class="text-gray-400">Lev multi</span><input type="number" id="config-bull-long-lev-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="col-span-2 flex items-center gap-2" title="CSV of BTC regimes the sleeve fires in (e.g. HEALTHY_BULL). Empty = filter OFF (never fires)."><span class="text-gray-400 whitespace-nowrap">In regimes</span><input type="text" id="config-bull-long-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-left text-xs" placeholder="HEALTHY_BULL"></label>
+                        </div>
+                        <p class="text-[10px] text-gray-600 mt-2">Revert gate: at N≥15, review if WR&lt;55% or avg≤+0.05%. Set both multipliers to 1.0 to ship at base size/leverage.</p>
+                    </div>
+                    <!-- ===== BULL-LONG ENTRY CONFIG END ===== -->
                     <div class="mt-3 mb-2 px-4">
                         <div class="flex items-center gap-3 mb-1">
                             <span class="text-sm text-gray-300">BTC 1h × BTC 5m RSI Direction Cross-Filter <span class="text-fuchsia-400 text-xs">(May 26 PM)</span></span>
@@ -8419,6 +8513,45 @@
             }
             // ===== FLIP TRADE LOG END =====
 
+            // ===== BULL-LONG TRADE LOG (Jun 18) — build-side long sleeve =====
+            const _blt1 = perf.bull_long_trades || {};
+            const _pf1b = perf.phantom_flip || {};
+            if ((_blt1.rows && _blt1.rows.length) || (_blt1.overall && _blt1.overall.n) || (_pf1b.bull_long_curve && _pf1b.bull_long_curve.length)) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Bull-Long Trade Log (build-side long: long PASSES fan gate in bull regime, NORMAL exit — NOT a fade)\n');
+                lines.push('Sleeve        N   Pairs  Top%   WR%   Avg%      Total$     Peak%    SL%   Size  Lev   Δ$ 1x      Mult');
+                lines.push('-'.repeat(108));
+                (_blt1.rows || []).forEach(r => {
+                    const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
+                    const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
+                    const sz = ((r.size_mult!=null?r.size_mult:1).toFixed(1)+'x').padStart(4);
+                    const lv = ((r.lev_mult!=null?r.lev_mult:1).toFixed(1)+'x').padStart(4);
+                    const du = (r.eff_mult>1 ? (r.delta_usd>=0?'+$':'-$')+Math.abs(r.delta_usd).toFixed(2) : '-').padStart(8);
+                    lines.push(`${(r.trigger||'').padEnd(12)}  ${String(r.n).padStart(2)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${sz}  ${lv}  ${du}  ${r.mult_verdict||'-'}`);
+                });
+                const _blo = _blt1.overall;
+                if (_blo) lines.push(`\nVERDICT: ${_blo.verdict}${_blo.n? ` — ${_blo.n} bull-longs, WR ${_blo.wr}%, avg ${_blo.avg_pct>=0?'+':''}${_blo.avg_pct}%, net ${_blo.total_usd>=0?'+$':'-$'}${Math.abs(_blo.total_usd).toFixed(2)}` : ''}`);
+                const _blr = _blt1.regime_row;
+                const _brx = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}` : '-';
+                if (_blr && _blr.all) {
+                    lines.push('\n  ── BULL-LONG × BTC-REGIME (LIVE realized) — N/WR/avg% / $de-muxed-1× ──');
+                    lines.push('  S.BULL               H.BULL               S.BEAR               H.BEAR               CHOP                 ALL');
+                    lines.push('  '+'-'.repeat(120));
+                    lines.push(`  ${_brx(_blr.sbull).padEnd(20)} ${_brx(_blr.hbull).padEnd(20)} ${_brx(_blr.sbear).padEnd(20)} ${_brx(_blr.hbear).padEnd(20)} ${_brx(_blr.chop).padEnd(20)} ${_brx(_blr.all)}`);
+                }
+                if (_pf1b.bull_long_curve && _pf1b.bull_long_curve.length) {
+                    lines.push('\n  ── BULL-LONG CURVE (virtual longs by fan ratio × regime) — flat phantom model (arm0.45/trail0.25/SL-0.70), relative comparator; live sleeve uses normal long exit (ships higher) ──');
+                    lines.push('  FanBucket     N(all)  all%     S.BULL N/WR/avg     H.BULL N/WR/avg     S.BEAR N/WR/avg     H.BEAR N/WR/avg     CHOP N/WR/avg');
+                    lines.push('  '+'-'.repeat(124));
+                    const _bc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
+                    _pf1b.bull_long_curve.forEach(c => {
+                        const a0=c.all;
+                        lines.push(`  ${c.bucket.padEnd(12)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc(c.sbull).padEnd(18)} ${_bc(c.hbull).padEnd(18)} ${_bc(c.sbear).padEnd(18)} ${_bc(c.hbear).padEnd(18)} ${_bc(c.chop)}`);
+                    });
+                }
+            }
+            // ===== BULL-LONG TRADE LOG END =====
+
 
             // EMA13 Strict-Mode Performance (May 8, 2026)
             const _esp1 = perf.ema13_strict_performance || {};
@@ -10210,6 +10343,45 @@
                     }
                 }
                 // ===== FLIP TRADE LOG END =====
+
+                // ===== BULL-LONG TRADE LOG (Jun 18) — build-side long sleeve =====
+                const _blt2 = perf.bull_long_trades || {};
+                const _pf2b = perf.phantom_flip || {};
+                if ((_blt2.rows && _blt2.rows.length) || (_blt2.overall && _blt2.overall.n) || (_pf2b.bull_long_curve && _pf2b.bull_long_curve.length)) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Bull-Long Trade Log (build-side long: long PASSES fan gate in bull regime, NORMAL exit — NOT a fade)\n');
+                    lines.push('Sleeve        N   Pairs  Top%   WR%   Avg%      Total$     Peak%    SL%   Size  Lev   Δ$ 1x      Mult');
+                    lines.push('-'.repeat(108));
+                    (_blt2.rows || []).forEach(r => {
+                        const pairs = (r.distinct_pairs!=null? String(r.distinct_pairs):'-').padStart(4);
+                        const topsh = (r.top_pair_share!=null? r.top_pair_share.toFixed(0)+'%':'-').padStart(5);
+                        const sz = ((r.size_mult!=null?r.size_mult:1).toFixed(1)+'x').padStart(4);
+                        const lv = ((r.lev_mult!=null?r.lev_mult:1).toFixed(1)+'x').padStart(4);
+                        const du = (r.eff_mult>1 ? (r.delta_usd>=0?'+$':'-$')+Math.abs(r.delta_usd).toFixed(2) : '-').padStart(8);
+                        lines.push(`${(r.trigger||'').padEnd(12)}  ${String(r.n).padStart(2)}  ${pairs}  ${topsh}  ${(r.wr.toFixed(0)+'%').padStart(5)}  ${((r.avg_pct>=0?'+':'')+r.avg_pct.toFixed(3)+'%').padStart(8)}  ${((r.total_usd>=0?'+$':'-$')+Math.abs(r.total_usd).toFixed(2)).padStart(9)}  ${('+'+r.peak_pct.toFixed(2)).padStart(6)}  ${(r.sl_rate.toFixed(0)+'%').padStart(4)}  ${sz}  ${lv}  ${du}  ${r.mult_verdict||'-'}`);
+                    });
+                    const _blo2 = _blt2.overall;
+                    if (_blo2) lines.push(`\nVERDICT: ${_blo2.verdict}${_blo2.n? ` — ${_blo2.n} bull-longs, WR ${_blo2.wr}%, avg ${_blo2.avg_pct>=0?'+':''}${_blo2.avg_pct}%, net ${_blo2.total_usd>=0?'+$':'-$'}${Math.abs(_blo2.total_usd).toFixed(2)}` : ''}`);
+                    const _blr2 = _blt2.regime_row;
+                    const _brx2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}` : '-';
+                    if (_blr2 && _blr2.all) {
+                        lines.push('\n  ── BULL-LONG × BTC-REGIME (LIVE realized) — N/WR/avg% / $de-muxed-1× ──');
+                        lines.push('  S.BULL               H.BULL               S.BEAR               H.BEAR               CHOP                 ALL');
+                        lines.push('  '+'-'.repeat(120));
+                        lines.push(`  ${_brx2(_blr2.sbull).padEnd(20)} ${_brx2(_blr2.hbull).padEnd(20)} ${_brx2(_blr2.sbear).padEnd(20)} ${_brx2(_blr2.hbear).padEnd(20)} ${_brx2(_blr2.chop).padEnd(20)} ${_brx2(_blr2.all)}`);
+                    }
+                    if (_pf2b.bull_long_curve && _pf2b.bull_long_curve.length) {
+                        lines.push('\n  ── BULL-LONG CURVE (virtual longs by fan ratio × regime) — flat phantom model (arm0.45/trail0.25/SL-0.70), relative comparator; live sleeve uses normal long exit (ships higher) ──');
+                        lines.push('  FanBucket     N(all)  all%     S.BULL N/WR/avg     H.BULL N/WR/avg     S.BEAR N/WR/avg     H.BEAR N/WR/avg     CHOP N/WR/avg');
+                        lines.push('  '+'-'.repeat(124));
+                        const _bc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
+                        _pf2b.bull_long_curve.forEach(c => {
+                            const a0=c.all;
+                            lines.push(`  ${c.bucket.padEnd(12)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc2(c.sbull).padEnd(18)} ${_bc2(c.hbull).padEnd(18)} ${_bc2(c.sbear).padEnd(18)} ${_bc2(c.hbear).padEnd(18)} ${_bc2(c.chop)}`);
+                        });
+                    }
+                }
+                // ===== BULL-LONG TRADE LOG END =====
 
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)
@@ -13084,6 +13256,98 @@
                     }
                 }
                 // ===== FLIP TRADE LOG END =====
+
+                // ===== BULL-LONG TRADE LOG (Jun 18) =====
+                if (data.bull_long_trades) {
+                    const _blRows = (data.bull_long_trades.rows) || [];
+                    const _blOv = (data.bull_long_trades.overall) || null;
+                    const _blBody = document.getElementById('bull-long-trades-body');
+                    if (_blBody) {
+                        if (_blRows.length) {
+                            _blBody.innerHTML = _blRows.map(t => {
+                                const ac = t.avg_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const uc = t.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                                const _topc = (t.top_pair_share!=null && t.top_pair_share>=60) ? 'text-amber-400' : 'text-gray-400';
+                                const _mv = t.mult_verdict || '—';
+                                const _mvc = _mv.startsWith('★') ? 'text-emerald-400' : (_mv.startsWith('✗') ? 'text-red-400' : 'text-gray-500');
+                                const _du = (t.delta_usd!=null) ? t.delta_usd : 0;
+                                const _duc = (t.eff_mult>1) ? (_du>=0 ? 'text-emerald-400' : 'text-red-400') : 'text-gray-600';
+                                const _szc = (t.size_mult>1) ? 'text-emerald-300 font-semibold' : 'text-gray-500';
+                                const _lvc = (t.lev_mult>1) ? 'text-emerald-300 font-semibold' : 'text-gray-500';
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1.5 text-emerald-300 font-mono text-[11px]">${t.trigger}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-200">${t.n}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-300">${t.distinct_pairs!=null?t.distinct_pairs:'-'}</td>
+                                    <td class="px-2 py-1.5 text-right ${_topc}" title="${t.top_pair||''}">${t.top_pair_share!=null?t.top_pair_share.toFixed(0)+'%':'-'}</td>
+                                    <td class="px-2 py-1.5 text-right ${t.wr>55?'text-emerald-400':'text-gray-300'}">${t.wr.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${ac}">${t.avg_pct>=0?'+':''}${t.avg_pct.toFixed(3)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${uc} font-bold">${t.total_usd>=0?'+$':'-$'}${Math.abs(t.total_usd).toFixed(2)}</td>
+                                    <td class="px-2 py-1.5 text-right text-emerald-400/70">+${t.peak_pct.toFixed(2)}</td>
+                                    <td class="px-2 py-1.5 text-right text-gray-400">${t.sl_rate.toFixed(0)}%</td>
+                                    <td class="px-2 py-1.5 text-right ${_szc}">${(t.size_mult!=null?t.size_mult:1).toFixed(1)}×</td>
+                                    <td class="px-2 py-1.5 text-right ${_lvc}">${(t.lev_mult!=null?t.lev_mult:1).toFixed(1)}×</td>
+                                    <td class="px-2 py-1.5 text-right ${_duc}">${t.eff_mult>1?(_du>=0?'+$':'-$')+Math.abs(_du).toFixed(2):'—'}</td>
+                                    <td class="px-2 py-1.5 text-left ${_mvc} text-[11px]">${_mv}</td>
+                                </tr>`;
+                            }).join('');
+                        } else {
+                            _blBody.innerHTML = '<tr><td colspan="13" class="py-3 text-center text-gray-500">No bull-longs closed yet</td></tr>';
+                        }
+                    }
+                    const _blSum = document.getElementById('bull-long-trades-summary');
+                    if (_blSum) {
+                        if (_blOv && _blOv.n > 0) {
+                            const vc = (_blOv.verdict||'').startsWith('★') ? 'text-emerald-400' : ((_blOv.verdict||'').startsWith('✗') ? 'text-red-400' : 'text-amber-400');
+                            const uc = _blOv.total_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            _blSum.innerHTML = `VERDICT: <span class="${vc} font-semibold">${_blOv.verdict}</span> — ${_blOv.n} bull-longs · WR ${_blOv.wr}% · avg <span class="${_blOv.avg_pct>=0?'text-emerald-400':'text-red-400'}">${_blOv.avg_pct>=0?'+':''}${_blOv.avg_pct}%</span> · net <span class="${uc}">${_blOv.total_usd>=0?'+$':'-$'}${Math.abs(_blOv.total_usd).toFixed(2)}</span>`;
+                        } else { _blSum.innerHTML = (_blOv ? `VERDICT: <span class="text-amber-400 font-semibold">${_blOv.verdict}</span>` : ''); }
+                    }
+                    // Bull-Long × BTC-Regime
+                    const _blrBody = document.getElementById('bull-long-regime-body');
+                    if (_blrBody) {
+                        const _rr = (data.bull_long_trades.regime_row) || null;
+                        const _bxm = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg_pct>=0?'text-emerald-400':'text-red-400'}">${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}</span>/<span class="${m.usd>=0?'text-emerald-400/70':'text-red-400/70'}">${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}</span>` : '<span class="text-gray-600">-</span>';
+                        if (_rr && _rr.all) {
+                            _blrBody.innerHTML = `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 text-emerald-300">BULL_LONG LONG</td>
+                                    <td class="px-2 py-1 text-right">${_bxm(_rr.sbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_bxm(_rr.hbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_bxm(_rr.sbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_bxm(_rr.hbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_bxm(_rr.chop)}</td>
+                                    <td class="px-2 py-1 text-right">${_bxm(_rr.all)}</td>
+                                </tr>`;
+                        } else {
+                            _blrBody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No closed bull-longs with regime tag yet</td></tr>';
+                        }
+                    }
+                }
+                // Bull-Long Curve (phantom) — lives under phantom_flip payload
+                if (data.phantom_flip) {
+                    const _blcBody = document.getElementById('bull-long-curve-body');
+                    if (_blcBody) {
+                        const _blc = (data.phantom_flip.bull_long_curve) || [];
+                        const _bm = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg>=0?'text-emerald-400':'text-red-400'}">${m.avg>=0?'+':''}${m.avg.toFixed(3)}</span>` : '<span class="text-gray-600">-</span>';
+                        if (_blc.length) {
+                            _blcBody.innerHTML = _blc.map(c => {
+                                const a0 = c.all;
+                                return `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 text-gray-200 font-mono">${c.bucket}</td>
+                                    <td class="px-2 py-1 text-right text-gray-300">${a0?a0.n:0}</td>
+                                    <td class="px-2 py-1 text-right ${a0&&a0.avg>=0?'text-emerald-400':'text-red-400'}">${a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-'}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(c.sbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(c.hbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(c.sbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(c.hbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(c.chop)}</td>
+                                </tr>`;
+                            }).join('');
+                        } else {
+                            _blcBody.innerHTML = '<tr><td colspan="8" class="px-2 py-3 text-center text-gray-500">No virtual longs captured yet (forward-only)</td></tr>';
+                        }
+                    }
+                }
+                // ===== BULL-LONG TRADE LOG END =====
 
 
                 // EMA13 Strict-Mode Performance (May 8, 2026)
@@ -17561,6 +17825,13 @@
                 _setVal('config-flip-fan-block-btc-rsi', config.thresholds.flip_fan_block_btc_rsi);
                 _setVal('config-flip-fan-block-btc-adx', config.thresholds.flip_fan_block_btc_adx);
                 _setVal('config-flip-fan-spike-max', config.thresholds.flip_fan_spike_max);
+                // Bull-Long Entry sleeve (Jun 18)
+                const _blEn = document.getElementById('config-bull-long-enabled');
+                if (_blEn) _blEn.checked = (config.thresholds.bull_long_enabled === true);
+                _setVal('config-bull-long-fan-max', config.thresholds.bull_long_fan_max);
+                _setVal('config-bull-long-size-mult', config.thresholds.bull_long_size_mult);
+                _setVal('config-bull-long-lev-mult', config.thresholds.bull_long_lev_mult);
+                _setVal('config-bull-long-regimes', config.thresholds.bull_long_regimes);
                 _setVal('config-flip-short-regime-adxd-max', config.thresholds.flip_short_regime_block_adxd_max);
                 _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
                 _setVal('config-flip-short-regime-anyadxd', config.thresholds.flip_short_regime_block_any_adxd_regimes || '');
@@ -18815,6 +19086,12 @@
                     fan_ratio_filter_enabled: ((document.getElementById('config-fan-ratio-filter-enabled') || {}).checked === true),
                     flip_entry_enabled: ((document.getElementById('config-flip-entry-enabled') || {}).checked === true),
                     flip_entry_sources: ((document.getElementById('config-flip-entry-sources') || {}).value || '').trim(),
+                    // Bull-Long Entry sleeve (Jun 18)
+                    bull_long_enabled: ((document.getElementById('config-bull-long-enabled') || {}).checked === true),
+                    bull_long_regimes: ((document.getElementById('config-bull-long-regimes') || {}).value || '').trim(),
+                    bull_long_fan_max: parseFloat((document.getElementById('config-bull-long-fan-max') || {}).value) || 0,
+                    bull_long_size_mult: parseFloat((document.getElementById('config-bull-long-size-mult') || {}).value) || 1.0,
+                    bull_long_lev_mult: parseFloat((document.getElementById('config-bull-long-lev-mult') || {}).value) || 1.0,
                     flip_fan_stretch_min: parseFloat((document.getElementById('config-flip-fan-stretch-min') || {}).value) || 0,
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,

@@ -3165,6 +3165,80 @@ class TradingEngine:
         except Exception as e:
             logger.error(f"[FLIP_ENTRY] {pair}: flip open failed for {source}/{blocked_signal}: {e}")
 
+    async def _maybe_open_bull_long(self, db, pair, indicators, isolate=False, entry_fields=None):
+        """Bull-Long Entry trigger (Jun 18) — the BUILD-side twin of the flip sleeve. When a
+        LONG PASSES the fan gate (low fan ratio) in an allowed bull regime, open the SAME
+        direction as a REAL momentum long (NOT a fade) and let it ride the NORMAL long exit
+        stack. Tagged entry_strategy="BULL_LONG" via open_position(bull_long=True); it is NOT
+        _is_flip so it flows through per-level trailing / ATR-widened SL like any long. Sizes at
+        base × bull_long_size_mult × bull_long_lev_mult (both default 1.0 = no amplification,
+        normal leverage). Fail-silent + isolatable so a bull-long bug can NEVER break the scan
+        or the monitor loop (mirrors _maybe_open_flip). De-duped per pair/30min via the same
+        _PFLIP_COOLDOWN infra (key "pair|BULL_LONG") so a pair sitting in the zone across scan
+        cycles opens at most one bull-long per cooldown window. All hard risk controls
+        (max-open, existing-position, cooldown, liquidity caps) are enforced inside
+        open_position. TO REMOVE: grep "BULL_LONG" / "bull_long" / "_maybe_open_bull_long"."""
+        try:
+            _th = config.trading_config.thresholds
+            if not getattr(_th, 'bull_long_enabled', False):
+                return
+            price = indicators.get('price') if indicators else None
+            if not price or price <= 0:
+                return
+            _ef = dict(entry_fields or {})
+            _ind = indicators or {}
+            # fan ratio = |EMA5-8 gap| / |EMA8-13 gap| (mirror _maybe_open_flip's computation)
+            _g58 = _ef.get('entry_ema_gap_5_8'); _g813 = _ef.get('entry_ema_gap_8_13')
+            if _g58 is None and _ind.get('ema5') and _ind.get('ema8'):
+                _g58 = abs((_ind['ema5'] - _ind['ema8']) / _ind['ema8'] * 100)
+            if _g813 is None and _ind.get('ema8') and _ind.get('ema13'):
+                _g813 = abs((_ind['ema8'] - _ind['ema13']) / _ind['ema13'] * 100)
+            _fan_ratio = (abs(_g58 / _g813) if (_g58 is not None and _g813) else None)
+            if _fan_ratio is None:
+                return
+            _fan_max = getattr(_th, 'bull_long_fan_max', 0.85) or 0.0
+            if _fan_max > 0 and _fan_ratio >= _fan_max:
+                return
+            # BTC regime — prefer the recorded entry regime, else classify from live globals.
+            _g = globals()
+            _reg = _ef.get('entry_btc_regime')
+            if _reg is None:
+                try:
+                    _reg = classify_btc_regime(_g.get('_current_btc_adx'), _g.get('_current_btc_rsi'), _g.get('_btc_ema20_slope_pct'))
+                except Exception:
+                    _reg = None
+            _allowed = {r.strip().upper() for r in (getattr(_th, 'bull_long_regimes', '') or '').split(',') if r.strip()}
+            if not _allowed or (_reg or '').upper() not in _allowed:
+                return
+            # De-dupe per pair / cooldown window (reuse the phantom-flip cooldown infra).
+            _ck = f"{pair}|BULL_LONG"
+            _now = _leash_time.time()
+            if _now - _PFLIP_COOLDOWN.get(_ck, 0) < _PFLIP_COOLDOWN_MIN * 60:
+                return
+            _size_mult = getattr(_th, 'bull_long_size_mult', 1.0) or 1.0
+            _lev_mult = getattr(_th, 'bull_long_lev_mult', 1.0) or 1.0
+            async def _open(_db):
+                return await self.open_position(
+                    db=_db, pair=pair, direction="LONG", confidence="STRONG_BUY",
+                    current_price=price,
+                    entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
+                    entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
+                    entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
+                    bull_long=True, bull_long_size_mult=_size_mult, bull_long_lev_mult=_lev_mult,
+                    **_ef,
+                )
+            if isolate:
+                async with AsyncSessionLocal() as _bdb:
+                    order = await _open(_bdb)
+            else:
+                order = await _open(db)
+            if order:
+                # only stamp the cooldown on a REAL open (so a max-open skip can retry next cycle)
+                _PFLIP_COOLDOWN[_ck] = _now
+                logger.info(f"[BULL_LONG] {pair}: opened bull-long (fan={_fan_ratio:.2f} regime={_reg} id={order.id})")
+        except Exception as e:
+            logger.error(f"[BULL_LONG] {pair}: bull-long open failed: {e}")
+
     async def open_position(
         self,
         db: AsyncSession,
@@ -3225,6 +3299,12 @@ class TradingEngine:
         flip_cell_mult: float = 1.0,
         flip_cell_lev_mult: float = 1.0,
         flip_exit_mode: str = None,
+        # Jun 18: Bull-Long Entry sleeve — when set, this is a REAL build-side LONG (NOT a
+        # fade). Tagged entry_strategy="BULL_LONG"; bypasses the long-unmatched + pattern-cell
+        # entry blocks; sizes base × size_mult × lev_mult. NOT _is_flip → normal long exit.
+        bull_long: bool = False,
+        bull_long_size_mult: float = 1.0,
+        bull_long_lev_mult: float = 1.0,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -3367,7 +3447,7 @@ class TradingEngine:
         # Jun 9: "keep only unmatched longs" — the LONG pattern library selects for losers
         # (every C/W pattern net-negative); the edge is the no-pattern runner cohort (85% WR).
         # Block any LONG that matches ANY C or W pattern. Counter LONG_UNMATCHED_ONLY.
-        if direction == "LONG" and not flip_source and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
+        if direction == "LONG" and not flip_source and not bull_long and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
@@ -3425,7 +3505,7 @@ class TradingEngine:
         )
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
-        if _pcell_block and not flip_source:
+        if _pcell_block and not flip_source and not bull_long:
             logger.info(f"[PATTERN_CELL_BLOCK] {pair} {direction}: entry blocked by pattern-cell rule (signature={_pcell_src})")
             try:
                 self._record_filter_block("PATTERN_CELL_BLOCK", direction)
@@ -3530,6 +3610,23 @@ class TradingEngine:
                 cell_src = f"FLIP:{flip_source}{_tag}"
             _mult_target = "both"
             # Re-apply the hard caps (the clamp above ran before this override).
+            if cell_mult > _inv_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
+                cell_mult = _inv_cap
+            if cell_lev_mult > _lev_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
+                cell_lev_mult = _lev_cap
+            cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.5, cell_lev_mult)
+
+        # Jun 18: Bull-Long sleeve overrides ALL momentum multipliers — a real build-side long
+        # sizes at base × bull_long_size_mult × bull_long_lev_mult (no pattern/RSI×ADX boost).
+        # Defaults are 1.0/1.0 (no amplification, normal leverage). Carries a distinct cell_src
+        # so it groups as its OWN row in Multiplier Cell Performance. Hard caps below still clamp.
+        if bull_long:
+            cell_mult = bull_long_size_mult or 1.0
+            cell_lev_mult = bull_long_lev_mult or 1.0
+            cell_src = "BULL_LONG"
+            _mult_target = "both"
             if cell_mult > _inv_cap:
                 logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
                 cell_mult = _inv_cap
@@ -3887,7 +3984,8 @@ class TradingEngine:
             cell_multiplier_source=cell_src,
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
-            entry_strategy=(f"FLIP:{flip_source}" if flip_source else "MOMENTUM"),
+            # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
+            entry_strategy=("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -4022,7 +4120,7 @@ class TradingEngine:
             order_cache_entry = {
                 'id': order.id,
                 'direction': direction,
-                'entry_strategy': (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"),  # Jun 15: flips now exit via the realtime stack (entry_strategy gates _is_flip)
+                'entry_strategy': ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")),  # Jun 15: flips now exit via the realtime stack (entry_strategy gates _is_flip); Jun 18: BULL_LONG is a real long → normal exit (not FLIP: → not _is_flip)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -7164,6 +7262,17 @@ class TradingEngine:
                                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
                                         except Exception:
                                             pass
+                                        # Jun 18 BULL-LONG phantom — a virtual LONG on the BLOCKED long, across
+                                        # ALL fan × regime buckets (the Bull-Long Curve observation table). mode='PASS'
+                                        # + blocked_direction="LONG" → flip_dir resolves to LONG (same as the PASS seed
+                                        # above; a virtual same-direction long, NOT a fade). Distinct source so it pools
+                                        # separately from PASS:FAN_RATIO_GATE. Observation-only; the LIVE bull-long opens
+                                        # in the FAN_CONTROL else-branch below (where longs actually PASS the fan filter).
+                                        try:
+                                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "BLOCK:FAN_RATIO_GATE",
+                                                               entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
+                                        except Exception:
+                                            pass
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -7182,6 +7291,24 @@ class TradingEngine:
                                                    entry_fields=self._flip_entry_fields(indicators, flip_dir=_ctrl_dir, scan=self._flip_scan_ctx(locals())))
                             except Exception:
                                 pass
+                            # Jun 18 BULL-LONG — this branch = the long PASSED the fan filter (fan ratio
+                            # OUTSIDE every dead-zone band). For a LONG this is the live build-side site.
+                            if signal == "LONG":
+                                # Phantom virtual-long for the PASS fan buckets (Bull-Long Curve observation
+                                # table) — same direction, NOT a fade (mode='PASS', blocked_direction="LONG").
+                                try:
+                                    _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:FAN_RATIO_GATE",
+                                                       entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
+                                except Exception:
+                                    pass
+                                # LIVE bull-long open — self-gates on bull_long_enabled / fan < bull_long_fan_max
+                                # / regime ∈ bull_long_regimes. Fail-silent + isolated (mirrors the flip hook).
+                                try:
+                                    await self._maybe_open_bull_long(
+                                        db, pair, indicators,
+                                        entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())))
+                                except Exception:
+                                    pass
 
             # Pair ATR minimum filter (June 1, 2026). Block entries when pair
             # ATR% < min — the dead-tape / no-fuel fade zone (mirror of the

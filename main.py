@@ -6806,6 +6806,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         entry_funnel = {
             "blocked_by_filter_room": _fb.get('total_room', 0),
             "blocked_at_max": _fb.get('total_full', 0),
+            "cap_skip_normal": (trading_engine._cap_skip_counts or {}).get('normal', 0),
+            "cap_skip_flip": (trading_engine._cap_skip_counts or {}).get('flip', 0),
             "blocked_long": _fb.get('total_long', 0),
             "blocked_short": _fb.get('total_short', 0),
             "opened_normal": _nL + _nS, "opened_normal_long": _nL, "opened_normal_short": _nS,
@@ -6815,7 +6817,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         }
     except Exception as e:
         logger.error(f"[PERF] Error computing Entry Funnel: {e}")
-        entry_funnel = {"blocked_by_filter_room": 0, "blocked_at_max": 0, "blocked_long": 0,
+        entry_funnel = {"blocked_by_filter_room": 0, "blocked_at_max": 0, "cap_skip_normal": 0, "cap_skip_flip": 0, "blocked_long": 0,
                         "blocked_short": 0, "opened_normal": 0, "opened_normal_long": 0, "opened_normal_short": 0,
                         "opened_flip": 0, "opened_flip_long": 0, "opened_flip_short": 0, "top_blockers": []}
 

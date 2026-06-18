@@ -898,6 +898,10 @@ class TradingEngine:
         # Key: (filter_name, direction) → count. Reset on bot start.
         # See CLAUDE.md May 5 entry on BTC Trend Filter for context.
         self._filter_block_counts: Dict[tuple, int] = {}
+        # Jun 18: REAL cap-cost — fully-qualified signals turned away by the position cap (open_position
+        # max-pos gate), split normal vs flip. Distinct from the filter-blocks-while-full "blocked_at_max"
+        # (which counts filter rejections during full scans, not trades the cap actually prevented). In-memory.
+        self._cap_skip_counts: Dict[str, int] = {"normal": 0, "flip": 0}
 
         # Per-pair last block reason (May 26) — keyed by pair → filter tag.
         # Updated at every _record_filter_block call site. Read by main.py
@@ -3267,6 +3271,9 @@ class TradingEngine:
         _open_count_now = total_open.scalar()
         if _open_count_now >= _eff_max_pos:
             logger.warning(f"[SKIP] {pair}: Max open positions ({_eff_max_pos}) reached")
+            # Jun 18: the REAL cap-cost — a fully-qualified signal we couldn't open because full.
+            try: self._cap_skip_counts["flip" if flip_source else "normal"] += 1
+            except Exception: pass
             return None
         # Jun 2: this open sits in the "redeploy band" if it's beyond the normal
         # max_open_positions — only reachable because redeploy raised the ceiling.

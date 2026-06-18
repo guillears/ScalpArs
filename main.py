@@ -9159,6 +9159,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
     # comparator only; the LIVE bull-long sleeve uses the normal long exit (ships higher). Pulls
     # from _all_flips (PASS:* are filtered out of `flips`). Forward-only; fail-silent.
     bull_long_curve = []
+    bull_long_curve_total = None
     try:
         _bl = [r for r in _all_flips
                if (getattr(r, 'source_filter', '') or '') in ("PASS:FAN_RATIO_GATE", "BLOCK:FAN_RATIO_GATE")
@@ -9191,12 +9192,25 @@ async def _compute_phantom_flip_performance(db, is_paper):
                 "sbear": _mini(_by['sbear']), "hbear": _mini(_by['hbear']),
                 "chop": _mini(_by['chop']),
             })
+        # TOTALS footer row (Jun 18) — aggregate ALL virtual longs per regime column across every
+        # fan bucket, so each column has its summatory N/WR/avg at the bottom.
+        if bull_long_curve:
+            _tby = {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': []}
+            for r in _bl:
+                _tby[_blreg(getattr(r, 'entry_btc_regime', None))].append(r)
+            bull_long_curve_total = {
+                "all": _mini(_bl),
+                "sbull": _mini(_tby['sbull']), "hbull": _mini(_tby['hbull']),
+                "sbear": _mini(_tby['sbear']), "hbear": _mini(_tby['hbear']),
+                "chop": _mini(_tby['chop']),
+            }
     except Exception:
         bull_long_curve = []
+        bull_long_curve_total = None
 
     return {"rows": rows, "total": total, "fan_curve": fan_curve,
             "leftover_filter_test": leftover_filter_test, "source_regime_xtab": source_regime_xtab,
-            "bull_long_curve": bull_long_curve}
+            "bull_long_curve": bull_long_curve, "bull_long_curve_total": bull_long_curve_total}
 
 
 def _compute_flip_trades(flip_orders):

@@ -3236,8 +3236,10 @@ class TradingEngine:
                 # only stamp the cooldown on a REAL open (so a max-open skip can retry next cycle)
                 _PFLIP_COOLDOWN[_ck] = _now
                 logger.info(f"[BULL_LONG] {pair}: opened bull-long (fan={_fan_ratio:.2f} regime={_reg} id={order.id})")
+            return order  # caller uses this to PRE-EMPT the flip-fade (don't open opposite positions)
         except Exception as e:
             logger.error(f"[BULL_LONG] {pair}: bull-long open failed: {e}")
+            return None
 
     async def open_position(
         self,
@@ -7251,28 +7253,34 @@ class TradingEngine:
                                     _fan_ef = self._flip_entry_fields(indicators, flip_dir=_fan_dir, scan=self._flip_scan_ctx(locals()))
                                     _seed_phantom_flip(pair, indicators.get('price'), signal, "FAN_RATIO_GATE",
                                                        entry_fields=_fan_ef)
-                                    # Jun 14: Flip Entry — fade the block live (both sides)
-                                    await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
-                                                                entry_fields=_fan_ef)
-                                    # Jun 17 passthrough-long (un-block hunt): clean A/B vs the fade
-                                    # above — same blocked long tracked as a LONG; regime says which wins.
+                                    # Jun 17 passthrough-long phantom (un-block hunt) + Jun 18 LIVE bull-long.
+                                    _bl_opened = False
                                     if signal == "LONG":
+                                        # PASS:FAN_RATIO_GATE phantom — the BLOCKED long tracked as a virtual LONG
+                                        # (fan ≥ 0.85). The validated bull-long population (H.BULL 94% WR). Feeds the
+                                        # Bull-Long Curve by fan × regime.
                                         try:
                                             _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:FAN_RATIO_GATE",
                                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
                                         except Exception:
                                             pass
-                                        # Jun 18 BULL-LONG phantom — a virtual LONG on the BLOCKED long, across
-                                        # ALL fan × regime buckets (the Bull-Long Curve observation table). mode='PASS'
-                                        # + blocked_direction="LONG" → flip_dir resolves to LONG (same as the PASS seed
-                                        # above; a virtual same-direction long, NOT a fade). Distinct source so it pools
-                                        # separately from PASS:FAN_RATIO_GATE. Observation-only; the LIVE bull-long opens
-                                        # in the FAN_CONTROL else-branch below (where longs actually PASS the fan filter).
+                                        # Jun 18 (CORRECTED) LIVE bull-long — un-block the long. THIS is the validated
+                                        # population (blocked long, fan ≥ 0.85). Self-gates: enabled / fan < bull_long_fan_max
+                                        # (5.0) / regime ∈ bull_long_regimes. PRE-EMPTS the flip-short fade — in its regime
+                                        # (H.BULL) the long should be UN-BLOCKED, not faded short (flip-shorts lose in H.BULL
+                                        # anyway), and opening both would race for the one-per-pair slot.
                                         try:
-                                            _seed_phantom_flip(pair, indicators.get('price'), "LONG", "BLOCK:FAN_RATIO_GATE",
-                                                               entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
+                                            _bl_o = await self._maybe_open_bull_long(
+                                                db, pair, indicators,
+                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())))
+                                            _bl_opened = bool(_bl_o)
                                         except Exception:
                                             pass
+                                    # Flip Entry — fade the block live (both sides), UNLESS a bull-long already
+                                    # un-blocked this long (avoid opposite positions on the same pair).
+                                    if not _bl_opened:
+                                        await self._maybe_open_flip(db, pair, signal, "FAN_RATIO_GATE", indicators,
+                                                                    entry_fields=_fan_ef)
                                     signal = "NO_TRADE"
                                     break
                             except (ValueError, TypeError):
@@ -7291,24 +7299,10 @@ class TradingEngine:
                                                    entry_fields=self._flip_entry_fields(indicators, flip_dir=_ctrl_dir, scan=self._flip_scan_ctx(locals())))
                             except Exception:
                                 pass
-                            # Jun 18 BULL-LONG — this branch = the long PASSED the fan filter (fan ratio
-                            # OUTSIDE every dead-zone band). For a LONG this is the live build-side site.
-                            if signal == "LONG":
-                                # Phantom virtual-long for the PASS fan buckets (Bull-Long Curve observation
-                                # table) — same direction, NOT a fade (mode='PASS', blocked_direction="LONG").
-                                try:
-                                    _seed_phantom_flip(pair, indicators.get('price'), "LONG", "PASS:FAN_RATIO_GATE",
-                                                       entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())), mode='PASS')
-                                except Exception:
-                                    pass
-                                # LIVE bull-long open — self-gates on bull_long_enabled / fan < bull_long_fan_max
-                                # / regime ∈ bull_long_regimes. Fail-silent + isolated (mirrors the flip hook).
-                                try:
-                                    await self._maybe_open_bull_long(
-                                        db, pair, indicators,
-                                        entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())))
-                                except Exception:
-                                    pass
+                            # Jun 18 (CORRECTED): the BULL-LONG live open + PASS phantom were wrongly placed
+                            # here (fan-PASSED branch, fan < 0.85 — a rare, UNVALIDATED population). The validated
+                            # bull-long is the BLOCKED-long passthrough (fan ≥ 0.85) — both now live in the block
+                            # branch above. This else-branch keeps only the FAN_CONTROL short-fade control.
 
             # Pair ATR minimum filter (June 1, 2026). Block entries when pair
             # ATR% < min — the dead-tape / no-fuel fade zone (mirror of the

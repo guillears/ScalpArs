@@ -541,7 +541,7 @@ class SignalThresholds(BaseModel):
     # TO REMOVE: grep "BULL_LONG" / "bull_long" + the main.py bull-long perf blocks + the UI.
     bull_long_enabled: bool = True                     # master toggle for the bull-long sleeve
     bull_long_regimes: str = "HEALTHY_BULL"            # CSV of BTC regimes the sleeve fires in
-    bull_long_fan_max: float = 0.85                    # only fire when pair fan ratio < this (low fan = clean early trend)
+    bull_long_fan_max: float = 5.0                     # upper fan bound of the traded BLOCKED-long zone (fires on blocked longs fan 0.85..this; H.BULL edge runs 0.85-5)
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
     bull_long_lev_mult: float = 1.0                    # leverage multiplier (1.0 = normal leverage)
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min

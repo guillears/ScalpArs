@@ -8549,6 +8549,12 @@
                         const a0=c.all;
                         lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc(c.sbull).padEnd(18)} ${_bc(c.hbull).padEnd(18)} ${_bc(c.sbear).padEnd(18)} ${_bc(c.hbear).padEnd(18)} ${_bc(c.chop)}`);
                     });
+                    const _blct1 = _pf1b.bull_long_curve_total;
+                    if (_blct1) {
+                        const t0=_blct1.all;
+                        lines.push('  '+'-'.repeat(124));
+                        lines.push(`  ${'TOTAL'.padEnd(12)} ${''.padEnd(4)} ${String(t0?t0.n:0).padStart(5)}  ${(t0?(t0.avg>=0?'+':'')+t0.avg.toFixed(3):'-').padStart(7)}   ${_bc(_blct1.sbull).padEnd(18)} ${_bc(_blct1.hbull).padEnd(18)} ${_bc(_blct1.sbear).padEnd(18)} ${_bc(_blct1.hbear).padEnd(18)} ${_bc(_blct1.chop)}`);
+                    }
                 }
             }
             // ===== BULL-LONG TRADE LOG END =====
@@ -10380,6 +10386,12 @@
                             const a0=c.all;
                             lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_bc2(c.sbull).padEnd(18)} ${_bc2(c.hbull).padEnd(18)} ${_bc2(c.sbear).padEnd(18)} ${_bc2(c.hbear).padEnd(18)} ${_bc2(c.chop)}`);
                         });
+                        const _blct2 = _pf2b.bull_long_curve_total;
+                        if (_blct2) {
+                            const t0=_blct2.all;
+                            lines.push('  '+'-'.repeat(124));
+                            lines.push(`  ${'TOTAL'.padEnd(12)} ${''.padEnd(4)} ${String(t0?t0.n:0).padStart(5)}  ${(t0?(t0.avg>=0?'+':'')+t0.avg.toFixed(3):'-').padStart(7)}   ${_bc2(_blct2.sbull).padEnd(18)} ${_bc2(_blct2.hbull).padEnd(18)} ${_bc2(_blct2.sbear).padEnd(18)} ${_bc2(_blct2.hbear).padEnd(18)} ${_bc2(_blct2.chop)}`);
+                        }
                     }
                 }
                 // ===== BULL-LONG TRADE LOG END =====
@@ -13344,6 +13356,21 @@
                                     <td class="px-2 py-1 text-right">${_bm(c.chop)}</td>
                                 </tr>`;
                             }).join('');
+                            const _blct = data.phantom_flip.bull_long_curve_total;
+                            if (_blct) {
+                                const _t0 = _blct.all;
+                                _blcBody.innerHTML += `<tr class="border-t-2 border-white/20 font-semibold bg-white/5">
+                                    <td class="px-2 py-1 text-gray-100">TOTAL</td>
+                                    <td class="px-2 py-1"></td>
+                                    <td class="px-2 py-1 text-right text-gray-100">${_t0?_t0.n:0}</td>
+                                    <td class="px-2 py-1 text-right ${_t0&&_t0.avg>=0?'text-emerald-400':'text-red-400'}">${_t0?(_t0.avg>=0?'+':'')+_t0.avg.toFixed(3):'-'}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(_blct.sbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(_blct.hbull)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(_blct.sbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(_blct.hbear)}</td>
+                                    <td class="px-2 py-1 text-right">${_bm(_blct.chop)}</td>
+                                </tr>`;
+                            }
                         } else {
                             _blcBody.innerHTML = '<tr><td colspan="9" class="px-2 py-3 text-center text-gray-500">No virtual longs captured yet (forward-only)</td></tr>';
                         }

@@ -9070,7 +9070,11 @@ class TradingEngine:
                         _sp_use_atr = getattr(_sp_th, 'runner_trail_short_use_atr', True)
                         _sp_atr = order_info.get('entry_atr_pct')
                         _sp_fire = False; _sp_why = ""; _sp_bound = None
-                        if current_peak >= _sp_arm:
+                        # Jun 18: 0.005pp float-tolerance on the arm, matching the standard trailing
+                        # path (line ~8567, effective_tp_target − 0.005). Without it the flip arm was
+                        # STRICTER than the UI/standard arm → a peak of +0.4471% showed armed in the UI
+                        # but the BE-ratchet never engaged (JTO −1.04 SL that should have locked +0.10).
+                        if current_peak >= _sp_arm - 0.005:
                             if _sp_use_atr and _sp_atr and _sp_atr > 0:
                                 _sp_n = float(getattr(_sp_th, 'runner_trail_short_atr_mult', 0.5) or 0.5)
                                 # Jun 17 PM give-back CAP: never give back more than frac×peak, so a high-ATR

@@ -9030,7 +9030,8 @@ async def _compute_phantom_flip_performance(db, is_paper):
         if n == 0:
             return None
         w = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
-        return {"n": n, "wr": round(100.0 * w / n, 0), "avg": round(sum((r.pnl_pct or 0) for r in rs) / n, 3)}
+        _tot = sum((r.pnl_pct or 0) for r in rs)
+        return {"n": n, "wr": round(100.0 * w / n, 0), "avg": round(_tot / n, 3), "tot": round(_tot, 1)}
     # Jun 18: DZ marker now tracks the LIVE fan_ratio_block_long band instead of a hardcoded
     # May-29 snapshot — opening the 3-5 band (or any block-band edit) reflects automatically.
     # Buckets split 5-10 (now trades) vs 10-99 (spike-vetoed) to match flip_fan_spike_max=10.

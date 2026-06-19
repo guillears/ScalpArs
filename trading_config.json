@@ -215,7 +215,7 @@
     "bull_long_regimes": "HEALTHY_BULL",
     "bull_long_fan_max": 5.0,
     "bull_long_size_mult": 1.0,
-    "bull_long_lev_mult": 1.0,
+    "bull_long_lev_mult": 0.05,
     "btc_1h_5m_rsi_dir_filter_long": "",
     "btc_1h_5m_rsi_dir_filter_short": "RR",
     "btc_1h_5m_rsi_dir_filter_enabled": true,

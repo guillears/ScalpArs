@@ -3639,7 +3639,10 @@ class TradingEngine:
             if cell_lev_mult > _lev_cap:
                 logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
                 cell_lev_mult = _lev_cap
-            cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.5, cell_lev_mult)
+            # Jun 18: bull-long is an OBSERVATION sleeve — allow it to DE-lever well below
+            # the 0.5 floor (0.05 × 20× base = 1× live) so it keeps collecting WR / range-pos
+            # data at minimal $ risk while we hunt the clean 2nd variable. Size floor stays 0.5.
+            cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.05, cell_lev_mult)
 
         investment, leverage, cell_capped = self.calculate_position_size(
             available, confidence, total_portfolio=total_portfolio,

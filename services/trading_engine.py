@@ -3747,7 +3747,10 @@ class TradingEngine:
             if cell_lev_mult > _lev_cap:
                 logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
                 cell_lev_mult = _lev_cap
-            cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.5, cell_lev_mult)
+            # Jun 19: lev floor scoped to 0.05 (was 0.5) so a flip source can DE-lever to 1× observation
+            # (0.05 × 20× base = 1×, e.g. PAIR_RSI_OB:1.0:0.05). Size floor stays 0.5. A source at lev 1.0
+            # (FAN) is unaffected (max(0.05,1.0)=1.0). Mirrors the bull/bounce-long branches.
+            cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.05, cell_lev_mult)
 
         # Jun 18: Bull-Long sleeve overrides ALL momentum multipliers — a real build-side long
         # sizes at base × bull_long_size_mult × bull_long_lev_mult (no pattern/RSI×ADX boost).

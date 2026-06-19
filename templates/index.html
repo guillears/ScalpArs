@@ -17784,7 +17784,7 @@
         const FLIP_SOURCES = [
             { key: 'FAN_RATIO_GATE', desc: 'Fan-ratio dead-zone block → fade the opposite side', note: '⚠ de-muxed 2×→1× Jun 15 (live ✗ harmful: N=24/50%/−0.24%) — on instant-review' },
             { key: 'LONG_UNMATCHED_ONLY', desc: 'Matched (C/W) long blocked → fade to short', note: '⚠ below-evidence (phantom N≈9 · WR 67%) — Jun 15 override @1x' },
-            { key: 'PAIR_RSI_OB', desc: 'Overbought long (RSI>65) blocked → fade to short', note: '✅ RE-ENABLED Jun 19 @0.5× — STRONG_BULL-only (own filter, not FAN\'s). Cross-batch S.BULL 76–80% WR / +0.20..+0.32 vs H.BULL 29–47% neg. Flat flip exit = validated exit.' },
+            { key: 'PAIR_RSI_OB', desc: 'Overbought long (RSI>65) blocked → fade to short', note: '✅ RE-ENABLED Jun 19 @1× size × 0.05 lev (= 1× live obs, like bull/bounce) — STRONG_BULL-only (own filter, not FAN\'s). Cross-batch S.BULL 76–80% WR / +0.20..+0.32 vs H.BULL 29–47% neg. Flat flip exit = validated exit.' },
         ];
         function renderFlipSources() {
             const list = document.getElementById('flip-sources-list');

@@ -554,7 +554,7 @@ class SignalThresholds(BaseModel):
     bull_long_enabled: bool = True                     # master toggle for the bull-long sleeve
     bull_long_regimes: str = "HEALTHY_BULL"            # CSV of BTC regimes the sleeve fires in
     bull_long_fan_max: float = 10.0                    # upper fan bound (Jun 19: 5→10; 1× obs, no bull-regime data above fan 3 — harmless widen for free data)
-    bull_long_fan_min: float = 1.0                     # lower fan bound (Jun 19: 1.65→1.0 to collect 1.00-1.65 mid-band live data at 1× — still blocks the 0.85-1.00 0%-WR floor). 0 = disabled
+    bull_long_fan_min: float = 1.35                    # lower fan bound (Jun 19: 1.0→1.35 — 1.00-1.35 worsened to 39%WR/-$658 with more data; keep 1.35-1.65 ambiguous band at 1×). 0 = disabled
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
     bull_long_lev_mult: float = 1.0                    # leverage multiplier (1.0 = normal leverage)
     # Bounce-Long sleeve (Jun 19, 2026) — oversold-WASHOUT dead-cat bounce LONG. Fades the

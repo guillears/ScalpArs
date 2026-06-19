@@ -9421,7 +9421,28 @@ def _compute_bull_long_trades(bull_long_orders):
         "sbear": _agg_rx(slot['sbear']), "hbear": _agg_rx(slot['hbear']),
         "chop": _agg_rx(slot['chop']), "all": _agg_rx(slot['all']),
     }
-    return {"rows": rows, "overall": overall, "regime_row": regime_row}
+    # × FAN-BUCKET rows (Jun 18) — the LIVE realized bull-longs split by entry fan ratio. This is
+    # the REAL decision surface for bull_long_fan_max (the phantom Bull-Long Curve is the proxy).
+    # N / WR / avg% / $ de-muxed-1× per fan bucket; same buckets as the curve so live ↔ phantom line
+    # up. LIVE ✓ = bucket inside the current fan_max gate (config-driven, mirrors the curve marker).
+    try:
+        _bl_fan_max = float(getattr(config.trading_config.thresholds, 'bull_long_fan_max', 5.0) or 0.0)
+    except Exception:
+        _bl_fan_max = 0.0
+    fan_rows = []
+    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
+        _fb = []
+        for o in closed:
+            _g813 = abs(o.entry_ema_gap_8_13 or 0)
+            if _g813 <= 1e-9:
+                continue
+            _fan = abs(o.entry_ema_gap_5_8 or 0) / _g813
+            if _lo <= _fan < _hi:
+                _fb.append(o)
+        if _fb:
+            _a = _agg_rx(_fb)
+            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": (_bl_fan_max > 0 and _lo < _bl_fan_max), **(_a or {})})
+    return {"rows": rows, "overall": overall, "regime_row": regime_row, "fan_rows": fan_rows}
 
 
 def _compute_leash_shadow(orders):

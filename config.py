@@ -514,6 +514,12 @@ class SignalThresholds(BaseModel):
     # squeeze (ESPORTS 4.0/HUSDT 3.0 = 0%WR/−$245). CUT=3.0 not 2.0 (ATR<2.5 bear shorts net-positive).
     flip_short_atr_block_min: float = 3.0   # block flip-SHORT when pair ATR% ≥ this (0 = off)
     flip_short_atr_block_regimes: str = "STRONG_BEAR,HEALTHY_BEAR,BEAR_EXHAUSTED"  # ...in these bear regimes; empty = OFF
+    # Jun 19 — pair-RSI floor for flip-SHORTS. Fade quality scales with how overbought the blocked long was.
+    # Cross-batch (Jun17/18/19, deduped): RSI<55 = N=21/57%WR/−0.094%/Σ−1.98 (the only consistently-negative
+    # zone); RSI≥55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = N=24/71%WR/+0.187%. Block
+    # SHORT when pair RSI < this. Operator-directed, N below the locked filter gate → TIGHT REVERT.
+    # 0 = OFF (fail-open on missing rsi too).
+    flip_short_rsi_min: float = 0.0   # block flip-SHORT when entry pair RSI < this (0 = off)
     # Jun 17 — MIRROR of the short gate for flip-LONGS. A flip-LONG fades a blocked SHORT -> goes LONG;
     # in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO this batch: 2/0%WR/-$220, straight to SL).
     # The observed long losers were ADXΔ-AGNOSTIC (ADXΔ +1.5, regime was the killer) → adxd_max default

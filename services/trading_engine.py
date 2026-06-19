@@ -350,6 +350,16 @@ def _flip_filters(source, ind):
             _haset = {s.strip() for s in _haregs.split(',') if s.strip()}
             if _hamin > 0 and _hatr is not None and _hatr >= _hamin and _hareg and _hareg in _haset:
                 return (True, "FLIP_SHORT_HIATR", 1.0, 1.0, None)
+        # Pair-RSI floor for flip-SHORTS (Jun 19): fade quality scales with how overbought the blocked
+        # long was. Cross-batch (Jun17/18/19 deduped) RSI<55 = N=21/57%WR/-0.094%/Σ-1.98 (only consistently
+        # negative zone); RSI>=55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = 71%WR/+0.187.
+        # Block SHORT when pair RSI < min. Operator-directed, N below filter gate → TIGHT REVERT.
+        # Fail-open: missing rsi or min=0 → no block.
+        _rmin = float(getattr(th, 'flip_short_rsi_min', 0.0) or 0.0)
+        if ind.get('flip_dir') == 'SHORT' and _rmin > 0:
+            _prsi = ind.get('pair_rsi')
+            if _prsi is not None and _prsi < _rmin:
+                return (True, "FLIP_SHORT_RSI_MIN", 1.0, 1.0, None)
         # Mirror for flip-LONGS (Jun 17): block a long flip when BTC regime ∈ bear set. A flip-LONG
         # fades a blocked SHORT -> goes LONG; in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO
         # this batch: 2/0%WR/-$220, both straight to SL). UNLIKE the short gate, the observed long
@@ -3132,6 +3142,7 @@ class TradingEngine:
                 'btc_rsi_prev6': _ef.get('entry_btc_rsi_prev6') if _ef.get('entry_btc_rsi_prev6') is not None else _g.get('_current_btc_rsi_prev6'),
                 'btc_adx': _ef.get('entry_btc_adx') if _ef.get('entry_btc_adx') is not None else _g.get('_current_btc_adx'),
                 'fan_ratio': (abs(_g58 / _g813) if (_g58 is not None and _g813) else None),
+                'pair_rsi': _ef.get('entry_rsi') if _ef.get('entry_rsi') is not None else _ind.get('rsi'),
                 'flip_dir': flip_dir,
                 'adx_delta': _ef.get('entry_adx_delta') if _ef.get('entry_adx_delta') is not None else _ind.get('adx_delta'),
                 'btc_regime': _ff_reg,

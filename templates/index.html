@@ -548,6 +548,13 @@
                         <option value="PAIR_RSI_OB">🔀 PAIR_RSI_OB</option>
                     </select>
                     <span id="flip-source-filter-badge" class="text-xs text-gray-500"></span>
+                    <span class="text-sm font-semibold text-cyan-300">Filter by Direction:</span>
+                    <select id="direction-filter" class="bg-white/5 border border-cyan-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="Isolate LONGs or SHORTs — flip-shorts and bull-longs share BTC regimes, so per-regime tables blend both books">
+                        <option value="">All Directions</option>
+                        <option value="LONG">🟢 LONGs only</option>
+                        <option value="SHORT">🔴 SHORTs only</option>
+                    </select>
+                    <span id="direction-filter-badge" class="text-xs text-gray-500"></span>
                     <button id="copy-analytics-btn" onclick="copyAnalytics()" class="ml-auto px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded transition-colors">Copy Analytics</button>
                     <button id="copy-split-btn" onclick="copySplitReport()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium rounded transition-colors">Copy Split Report</button>
                     <a id="download-orders-csv-btn" href="/api/orders/export.csv" download class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded transition-colors" title="Download all CLOSED + SIGNAL_EXPIRED orders for current mode (paper/live) as CSV — no row limit, every Order column included. Use for counterfactual analysis, cross-sample re-binning, custom cross-tabs." onclick="this.href='/api/orders/export.csv?t=' + Date.now()">Download Orders CSV</a>
@@ -5977,6 +5984,11 @@
                                     <span class="text-rose-300 whitespace-nowrap">in regimes</span>
                                     <input type="text" id="config-flip-short-atr-block-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-left text-xs" placeholder="STRONG_BEAR,HEALTHY_BEAR,BEAR_EXHAUSTED">
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 19: pair-RSI floor for flip-SHORTS — fade quality scales with how overbought the blocked long was. Block a flip-SHORT when entry pair RSI < the number. Cross-batch (Jun17/18/19, deduped): RSI<55 = N=21/57%WR/−0.094%/Σ−1.98 (only consistently-negative zone); RSI≥55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60–65 = 71%WR/+0.187%. Operator-directed, N below the locked filter gate → tight revert. 0 = off.">
+                                    <span class="text-rose-300 whitespace-nowrap">Short flip: block pair RSI &lt;</span>
+                                    <input type="number" id="config-flip-short-rsi-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
+                                    <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 55 — fade only overbought blocked-longs)</span>
+                                </div>
                             </div>
                             <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
                             <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
@@ -9605,6 +9617,7 @@
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const _flipSrc1 = (document.getElementById('flip-source-filter') || {}).value || '';
+                const _dir1 = (document.getElementById('direction-filter') || {}).value || '';
                 const _params1 = [];
                 if (regimeFilter) _params1.push(`regime=${regimeFilter}`);
                 if (windowFilter && windowFilter !== 'custom') {
@@ -9615,6 +9628,9 @@
                     if (_from && _to) { _params1.push(`from_date=${_from}`); _params1.push(`to_date=${_to}`); }
                 }
                 if (_flipSrc1) _params1.push(`flip_source=${encodeURIComponent(_flipSrc1)}`);
+                if (_dir1) _params1.push(`direction=${encodeURIComponent(_dir1)}`);
+                const _dirBadge = document.getElementById('direction-filter-badge');
+                if (_dirBadge) _dirBadge.textContent = _dir1 ? `${_dir1}s only` : '';
                 // (Pair Rank Performance block removed here — it was a stray duplicate that ran
                 //  BEFORE `perf`/`lines`/`hr2` are declared below, throwing a TDZ ReferenceError
                 //  that flipped the button to "Failed!". The correctly-placed copy lives later in
@@ -11359,7 +11375,8 @@
             try {
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const _flipSrcSplit = (document.getElementById('flip-source-filter') || {}).value || '';
-                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '');
+                const _dirSplit = (document.getElementById('direction-filter') || {}).value || '';
+                const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '');
                 const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
@@ -11490,6 +11507,7 @@
                 const regimeFilter = document.getElementById('regime-filter').value;
                 const windowFilter = (document.getElementById('window-filter') || {}).value || '';
                 const flipSourceFilter = (document.getElementById('flip-source-filter') || {}).value || '';
+                const directionFilter = (document.getElementById('direction-filter') || {}).value || '';
                 const params = [];
                 if (regimeFilter) params.push(`regime=${regimeFilter}`);
                 // window_hours OR (from_date, to_date) per dropdown selection
@@ -11504,9 +11522,12 @@
                     }
                 }
                 if (flipSourceFilter) params.push(`flip_source=${encodeURIComponent(flipSourceFilter)}`);
+                if (directionFilter) params.push(`direction=${encodeURIComponent(directionFilter)}`);
                 const queryStr = params.length ? '?' + params.join('&') : '';
                 const badge = document.getElementById('regime-filter-badge');
                 badge.textContent = regimeFilter ? `Showing ${regimeFilter} trades only` : '';
+                const dBadge = document.getElementById('direction-filter-badge');
+                if (dBadge) dBadge.textContent = directionFilter ? `${directionFilter}s only` : '';
                 const fsBadge = document.getElementById('flip-source-filter-badge');
                 if (fsBadge) {
                     const fsLabel = { 'MOMENTUM':'non-flip momentum only','FLIP':'all flips only','FAN_RATIO_GATE':'FAN_RATIO_GATE flips only','LONG_UNMATCHED_ONLY':'LONG_UNMATCHED_ONLY flips only','PAIR_RSI_OB':'PAIR_RSI_OB flips only' }[flipSourceFilter];
@@ -17921,6 +17942,7 @@
                 _setVal('config-flip-long-regime-adxd-max', config.thresholds.flip_long_regime_block_adxd_max);
                 _setVal('config-flip-long-regime-regimes', config.thresholds.flip_long_regime_block_regimes || '');
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
+                _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
                 _setVal('config-flip-short-atr-block-regimes', config.thresholds.flip_short_atr_block_regimes || '');
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
                 try {
@@ -19185,6 +19207,7 @@
                     flip_long_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-long-regime-adxd-max') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_long_regime_block_regimes: ((document.getElementById('config-flip-long-regime-regimes') || {}).value || '').trim(),
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_atr_block_regimes: ((document.getElementById('config-flip-short-atr-block-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),

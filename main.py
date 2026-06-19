@@ -1681,7 +1681,7 @@ async def reconcile_positions(db: AsyncSession = Depends(get_db)):
 @app.get("/api/performance")
 async def get_performance(regime: str = None, window_hours: int = None,
                           from_date: str = None, to_date: str = None,
-                          flip_source: str = None,
+                          flip_source: str = None, direction: str = None,
                           db: AsyncSession = Depends(get_db)):
     """Get closed orders performance metrics, optionally filtered by macro trend regime and/or time window.
 
@@ -1699,7 +1699,8 @@ async def get_performance(regime: str = None, window_hours: int = None,
 
     try:
         return await _compute_performance(db, regime=regime, window_hours=window_hours,
-                                          from_date=from_date, to_date=to_date, flip_source=flip_source)
+                                          from_date=from_date, to_date=to_date, flip_source=flip_source,
+                                          direction=direction)
     except Exception as e:
         logger.error(f"[PERF] Unhandled error in get_performance: {e}\n{traceback.format_exc()}")
         return {
@@ -2898,7 +2899,8 @@ def _compute_liquidity_sizing(orders):
 
 
 async def _compute_performance(db: AsyncSession, regime: str = None, window_hours: int = None,
-                                from_date: str = None, to_date: str = None, flip_source: str = None):
+                                from_date: str = None, to_date: str = None, flip_source: str = None,
+                                direction: str = None):
     result = await db.execute(
         select(Order)
         .where(and_(Order.status == "CLOSED", Order.is_paper == trading_engine.is_paper_mode))
@@ -3031,6 +3033,15 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # SIGNAL_EXPIRED rows are aborted maker entries (never flips) → keep only for MOMENTUM/ALL
         if _fs != 'MOMENTUM':
             signal_expired_orders = []
+
+    # Jun 19: Direction filter (LONG / SHORT). Composes AFTER regime + window + flip_source.
+    # Now that flip-shorts and bull-longs coexist in the same BTC regime, a per-regime table
+    # blends both books — this isolates one side so WR / avg% reflect a single direction.
+    _dir = (direction or '').strip().upper()
+    if _dir in ('LONG', 'SHORT'):
+        orders = [o for o in orders if (getattr(o, 'direction', None) or '').upper() == _dir]
+        signal_expired_orders = [o for o in signal_expired_orders
+                                 if (getattr(o, 'direction', None) or '').upper() == _dir]
 
     if not orders:
         logger.warning("[PERF] No closed orders found for is_paper=%s (regime=%s), returning empty performance",

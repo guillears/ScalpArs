@@ -205,6 +205,7 @@
     "flip_short_stretch_block_max": 2.0,
     "flip_short_btc30_rise_block_min": 0.0,
     "flip_short_atr_block_min": 3.0,
+    "flip_short_rsi_min": 55.0,
     "flip_short_atr_block_regimes": "STRONG_BEAR,HEALTHY_BEAR,BEAR_EXHAUSTED",
     "flip_long_regime_block_adxd_max": 99.0,
     "flip_long_regime_block_regimes": "STRONG_BEAR,HEALTHY_BEAR,CHOPPY_FLAT",
@@ -274,7 +275,7 @@
         "pattern": "W2+W1",
         "direction": "SHORT",
         "inv_mult": 2.0,
-        "lev_mult": 1.5
+        "lev_mult": 1.0
       },
       {
         "pattern": "W4",
@@ -311,7 +312,7 @@
         "pattern": "C1",
         "direction": "SHORT",
         "inv_mult": 2.0,
-        "lev_mult": 1.5,
+        "lev_mult": 1.0,
         "fixed_sl_pct": -0.7
       },
       {

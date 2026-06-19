@@ -295,6 +295,21 @@ def _flip_filters(source, ind):
     Returns (blocked: bool, reason: str|None, size_mult: float, lev_mult: float, exit_mode: str|None)."""
     try:
         th = config.trading_config.thresholds
+        # PAIR_RSI_OB source (Jun 19): the overbought-fade short (a LONG blocked at pair RSI>65 → fade
+        # SHORT). Its OWN per-source filter — fires ONLY in the validated regime allow-list (STRONG_BULL).
+        # Cross-batch (Jun18/19, independent windows): S.BULL 76-80% WR / +0.20..+0.32 vs H.BULL 29-47% /
+        # negative — a clean regime split. Validated under the FLAT flip exit (= the live flip exit), so the
+        # phantom→live haircut is just fees/slippage. RETURNS EARLY so it does NOT inherit FAN's flip-short
+        # gates (FAN blocks STRONG_BULL — the exact OPPOSITE of what this source needs). Fail-open: empty
+        # allow-list → block (off). TIGHT REVERT: at live N≥15, restrict regimes→'' (off) if WR≤65% OR
+        # avg≤+0.05% OR the S.BULL losers gap the SL beyond ~−0.85% (counter-trend tail check).
+        if source == 'PAIR_RSI_OB':
+            if ind.get('flip_dir') == 'SHORT':
+                _ob_set = {s.strip().upper() for s in (getattr(th, 'flip_pair_rsi_ob_short_regimes', '') or '').split(',') if s.strip()}
+                _ob_reg = (ind.get('btc_regime') or '').upper()
+                if not _ob_set or _ob_reg not in _ob_set:
+                    return (True, "FLIP_PAIR_RSI_OB_REGIME", 1.0, 1.0, None)
+            return (False, None, 1.0, 1.0, None)
         # Universal fan-SPIKE block (ALL sources, Jun 17): refuse a flip that fades a violently-
         # accelerating parabolic fan (ratio >= flip_fan_spike_max) — it never arms, runs to SL.
         # Cross-batch N=3 / 0% WR (ASTER/VELVET/ALLO). Mirrors the live long-side fan>=5 block.

@@ -514,6 +514,10 @@ class SignalThresholds(BaseModel):
     # squeeze (ESPORTS 4.0/HUSDT 3.0 = 0%WR/−$245). CUT=3.0 not 2.0 (ATR<2.5 bear shorts net-positive).
     flip_short_atr_block_min: float = 3.0   # block flip-SHORT when pair ATR% ≥ this (0 = off)
     flip_short_atr_block_regimes: str = "STRONG_BEAR,HEALTHY_BEAR,BEAR_EXHAUSTED"  # ...in these bear regimes; empty = OFF
+    # Jun 19 — PAIR_RSI_OB per-source regime ALLOW-LIST (overbought-fade short fires ONLY here). Cross-batch
+    # S.BULL 76-80% WR vs H.BULL 29-47% — scope to STRONG_BULL only. Empty = source OFF. Decoupled from the
+    # FAN flip-short gates above (PAIR_RSI_OB returns early in _flip_filters, never inherits them).
+    flip_pair_rsi_ob_short_regimes: str = "STRONG_BULL"  # PAIR_RSI_OB flip-SHORT fires ONLY in these regimes; empty = OFF
     # Jun 19 — pair-RSI floor for flip-SHORTS. Fade quality scales with how overbought the blocked long was.
     # Cross-batch (Jun17/18/19, deduped): RSI<55 = N=21/57%WR/−0.094%/Σ−1.98 (the only consistently-negative
     # zone); RSI≥55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = N=24/71%WR/+0.187%. Block

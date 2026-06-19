@@ -9059,13 +9059,20 @@ async def _compute_phantom_flip_performance(db, is_paper):
             except (ValueError, TypeError):
                 pass
     _in_dz = lambda lo: any(a <= lo < b for a, b in _dz_bands)
-    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
+    # Jun 19: split the old 10-99 tail into 10-15 / 15-20 / 20-99 + add per-bucket Avg/Min/Max fan
+    # so the high-fan zone (where flip_fan_spike_max=10 vetoes) is auditable — do the winners hug
+    # just above 10 (→ raise the spike block) or spread to 99? avg_fan answers "where inside the bucket".
+    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 20.0), (20.0, 99.0)]:
         _b = [r for r in _fanflips if _lo <= (r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13) < _hi]
         if not _b:
             continue
+        _fans = [r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13 for r in _b]
         fan_curve.append({
             "bucket": f"{_lo:.2f}-{_hi:.2f}",
             "in_deadzone": _in_dz(_lo),
+            "avg_fan": round(sum(_fans) / len(_fans), 2),
+            "min_fan": round(min(_fans), 2),
+            "max_fan": round(max(_fans), 2),
             "all": _mini(_b),
             "aligned": _mini([r for r in _b if _fan_align(r) is True]),
             "counter": _mini([r for r in _b if _fan_align(r) is False]),
@@ -9193,6 +9200,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
         # The sleeve ALSO requires regime ∈ bull_long_regimes (the green H.BULL column).
         _bl_th = config.trading_config.thresholds
         _bl_fan_max = float(getattr(_bl_th, 'bull_long_fan_max', 0.85) or 0.0)
+        _bl_fan_min = float(getattr(_bl_th, 'bull_long_fan_min', 0.0) or 0.0)
         for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
             _b = [r for r in _bl if _lo <= (r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13) < _hi]
             if not _b:
@@ -9202,7 +9210,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
                 _by[_blreg(getattr(r, 'entry_btc_regime', None))].append(r)
             bull_long_curve.append({
                 "bucket": f"{_lo:.2f}-{_hi:.2f}",
-                "live": (_bl_fan_max > 0 and _lo < _bl_fan_max),
+                "live": (_bl_fan_max > 0 and _lo < _bl_fan_max and (_bl_fan_min <= 0 or _hi > _bl_fan_min)),
                 "all": _mini(_b),
                 "sbull": _mini(_by['sbull']), "hbull": _mini(_by['hbull']),
                 "sbear": _mini(_by['sbear']), "hbear": _mini(_by['hbear']),
@@ -9519,8 +9527,10 @@ def _compute_bull_long_trades(bull_long_orders):
     # up. LIVE ✓ = bucket inside the current fan_max gate (config-driven, mirrors the curve marker).
     try:
         _bl_fan_max = float(getattr(config.trading_config.thresholds, 'bull_long_fan_max', 5.0) or 0.0)
+        _bl_fan_min = float(getattr(config.trading_config.thresholds, 'bull_long_fan_min', 0.0) or 0.0)
     except Exception:
         _bl_fan_max = 0.0
+        _bl_fan_min = 0.0
     fan_rows = []
     for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
         _fb = []
@@ -9533,7 +9543,7 @@ def _compute_bull_long_trades(bull_long_orders):
                 _fb.append(o)
         if _fb:
             _a = _agg_rx(_fb)
-            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": (_bl_fan_max > 0 and _lo < _bl_fan_max), **(_a or {})})
+            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": (_bl_fan_max > 0 and _lo < _bl_fan_max and (_bl_fan_min <= 0 or _hi > _bl_fan_min)), **(_a or {})})
     return {"rows": rows, "overall": overall, "regime_row": regime_row, "fan_rows": fan_rows}
 
 

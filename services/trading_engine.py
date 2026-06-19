@@ -3225,6 +3225,11 @@ class TradingEngine:
             _fan_max = getattr(_th, 'bull_long_fan_max', 0.85) or 0.0
             if _fan_max > 0 and _fan_ratio >= _fan_max:
                 return
+            # Floor: low-fan (flat/decelerating) build-side longs bleed (live fan <1.65 = net loser);
+            # require real fan acceleration. 0 = disabled. Jun 19.
+            _fan_min = getattr(_th, 'bull_long_fan_min', 0.0) or 0.0
+            if _fan_min > 0 and _fan_ratio < _fan_min:
+                return
             # BTC regime — prefer the recorded entry regime, else classify from live globals.
             _g = globals()
             _reg = _ef.get('entry_btc_regime')

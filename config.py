@@ -553,7 +553,8 @@ class SignalThresholds(BaseModel):
     # TO REMOVE: grep "BULL_LONG" / "bull_long" + the main.py bull-long perf blocks + the UI.
     bull_long_enabled: bool = True                     # master toggle for the bull-long sleeve
     bull_long_regimes: str = "HEALTHY_BULL"            # CSV of BTC regimes the sleeve fires in
-    bull_long_fan_max: float = 5.0                     # upper fan bound of the traded BLOCKED-long zone (fires on blocked longs fan 0.85..this; H.BULL edge runs 0.85-5)
+    bull_long_fan_max: float = 10.0                    # upper fan bound (Jun 19: 5→10; 1× obs, no bull-regime data above fan 3 — harmless widen for free data)
+    bull_long_fan_min: float = 1.65                    # lower fan bound (Jun 19: live fan <1.65 = net loser -$1021/N20; ≥1.65 = +$619/N11 → require fan acceleration). 0 = disabled
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
     bull_long_lev_mult: float = 1.0                    # leverage multiplier (1.0 = normal leverage)
     # Bounce-Long sleeve (Jun 19, 2026) — oversold-WASHOUT dead-cat bounce LONG. Fades the

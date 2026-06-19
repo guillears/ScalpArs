@@ -2630,13 +2630,14 @@
                                 <thead class="text-gray-400 uppercase"><tr>
                                     <th class="text-left py-1 px-2">Fan Bucket</th>
                                     <th class="text-center px-2" title="In the May-29 fan dead-zone block band?">DZ</th>
+                                    <th class="text-right px-2 text-sky-300/80" title="Average actual fan ratio of the trades in this bucket (hover a cell for min/max). Shows WHERE inside the bucket the trades sit — esp. useful for the 10+ zone vs the flip_fan_spike_max=10 block.">Avg Fan</th>
                                     <th class="text-right px-2">N (all)</th>
                                     <th class="text-right px-2">All Avg%</th>
                                     <th class="text-right px-2 text-emerald-400/80">Aligned N/WR/Avg</th>
                                     <th class="text-right px-2 text-red-400/70">Counter N/WR/Avg</th>
                                 </tr></thead>
                                 <tbody id="phantom-fan-curve-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No FAN fades captured yet (forward-only)</td></tr>
+                                    <tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No FAN fades captured yet (forward-only)</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -6093,7 +6094,8 @@
                         </div>
                         <p class="text-xs text-gray-400 mb-2 leading-relaxed">When a LONG <strong class="text-emerald-300">PASSES</strong> the fan gate (low fan ratio) in an allowed bull regime, open the <strong class="text-emerald-300">same direction</strong> as a real momentum long (build, NOT a fade). Runs the <strong class="text-gray-200">normal long exit</strong> stack — it is NOT a flip. Multipliers default 1.0 (no amplification); leverage stays normal.</p>
                         <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                            <label class="col-span-2 flex items-center justify-between gap-2" title="Only fire when the pair fan ratio |EMA5-8 gap|/|EMA8-13 gap| < this (low fan = clean early trend that passed the fan filter)."><span class="text-gray-400">Fire when fan ratio &lt;</span><input type="number" id="config-bull-long-fan-max" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="flex items-center justify-between gap-2" title="Lower fan bound: only fire when fan ratio |EMA5-8 gap|/|EMA8-13 gap| ≥ this (require real fan acceleration; live fan <1.65 = net loser). 0 = disabled."><span class="text-gray-400">Fan ratio ≥</span><input type="number" id="config-bull-long-fan-min" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="flex items-center justify-between gap-2" title="Upper fan bound: only fire when fan ratio |EMA5-8 gap|/|EMA8-13 gap| < this (block parabolic blow-offs). 0 = disabled."><span class="text-gray-400">Fan ratio &lt;</span><input type="number" id="config-bull-long-fan-max" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Investment-side multiplier on top of base sizing. 1.0 = no amplification."><span class="text-gray-400">Invest multi</span><input type="number" id="config-bull-long-size-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Leverage-side multiplier. 1.0 = normal STRONG_BUY leverage (e.g. 20×)."><span class="text-gray-400">Lev multi</span><input type="number" id="config-bull-long-lev-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="col-span-2 flex items-center gap-2" title="CSV of BTC regimes the sleeve fires in (e.g. HEALTHY_BULL). Empty = filter OFF (never fires)."><span class="text-gray-400 whitespace-nowrap">In regimes</span><input type="text" id="config-bull-long-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-left text-xs" placeholder="HEALTHY_BULL"></label>
@@ -8565,12 +8567,12 @@
                 }
                 if (_pf1.fan_curve && _pf1.fan_curve.length) {
                     lines.push('\n  ── FAN-RATIO CURVE (all FAN fades by fan ratio × regime alignment; DZ = May-29 dead-zone band) — where does the ALIGNED edge peak? ──');
-                    lines.push('  FanBucket     DZ   N(all)  all%     aligned N/WR/avg          counter N/WR/avg');
-                    lines.push('  '+'-'.repeat(92));
+                    lines.push('  FanBucket     DZ   AvgFan  N(all)  all%     aligned N/WR/avg          counter N/WR/avg');
+                    lines.push('  '+'-'.repeat(100));
                     const _fc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
                     _pf1.fan_curve.forEach(c => {
                         const a0=c.all;
-                        lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc(c.aligned).padEnd(24)} ${_fc(c.counter)}`);
+                        lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${(c.avg_fan!=null?c.avg_fan.toFixed(2):'-').padStart(6)}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc(c.aligned).padEnd(24)} ${_fc(c.counter)}`);
                     });
                 }
                 if (_pf1.leftover_filter_test && _pf1.leftover_filter_test.length) {
@@ -10443,12 +10445,12 @@
                     }
                     if (_pf1.fan_curve && _pf1.fan_curve.length) {
                         lines.push('\n  ── FAN-RATIO CURVE (all FAN fades by fan ratio × regime alignment; DZ = May-29 dead-zone band) — where does the ALIGNED edge peak? ──');
-                        lines.push('  FanBucket     DZ   N(all)  all%     aligned N/WR/avg          counter N/WR/avg');
-                        lines.push('  '+'-'.repeat(92));
+                        lines.push('  FanBucket     DZ   AvgFan  N(all)  all%     aligned N/WR/avg          counter N/WR/avg');
+                        lines.push('  '+'-'.repeat(100));
                         const _fc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}` : '-';
                         _pf1.fan_curve.forEach(c => {
                             const a0=c.all;
-                            lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc2(c.aligned).padEnd(24)} ${_fc2(c.counter)}`);
+                            lines.push(`  ${c.bucket.padEnd(12)} ${(c.in_deadzone?'DZ':'· ')}  ${(c.avg_fan!=null?c.avg_fan.toFixed(2):'-').padStart(6)}  ${String(a0?a0.n:0).padStart(5)}  ${(a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-').padStart(7)}   ${_fc2(c.aligned).padEnd(24)} ${_fc2(c.counter)}`);
                         });
                     }
                     if (_pf1.leftover_filter_test && _pf1.leftover_filter_test.length) {
@@ -13342,6 +13344,7 @@
                                 return `<tr class="hover:bg-white/5">
                                     <td class="px-2 py-1 text-gray-200 font-mono">${c.bucket}</td>
                                     <td class="px-2 py-1 text-center ${c.in_deadzone?'text-amber-400':'text-gray-600'}">${c.in_deadzone?'DZ':'·'}</td>
+                                    <td class="px-2 py-1 text-right text-sky-300 font-mono" title="bucket actuals — min ${c.min_fan!=null?c.min_fan.toFixed(2):'-'} / max ${c.max_fan!=null?c.max_fan.toFixed(2):'-'}">${c.avg_fan!=null?c.avg_fan.toFixed(2):'-'}</td>
                                     <td class="px-2 py-1 text-right text-gray-300">${a0?a0.n:0}</td>
                                     <td class="px-2 py-1 text-right ${a0&&a0.avg>=0?'text-emerald-400':'text-red-400'}">${a0?(a0.avg>=0?'+':'')+a0.avg.toFixed(3):'-'}</td>
                                     <td class="px-2 py-1 text-right">${_mini(c.aligned)}</td>
@@ -13349,7 +13352,7 @@
                                 </tr>`;
                             }).join('');
                         } else {
-                            _fcBody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No FAN fades captured yet (forward-only)</td></tr>';
+                            _fcBody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No FAN fades captured yet (forward-only)</td></tr>';
                         }
                     }
                     const _lfBody = document.getElementById('phantom-leftover-filter-body');
@@ -18129,6 +18132,7 @@
                 const _blEn = document.getElementById('config-bull-long-enabled');
                 if (_blEn) _blEn.checked = (config.thresholds.bull_long_enabled === true);
                 _setVal('config-bull-long-fan-max', config.thresholds.bull_long_fan_max);
+                _setVal('config-bull-long-fan-min', config.thresholds.bull_long_fan_min);
                 _setVal('config-bull-long-size-mult', config.thresholds.bull_long_size_mult);
                 _setVal('config-bull-long-lev-mult', config.thresholds.bull_long_lev_mult);
                 _setVal('config-bull-long-regimes', config.thresholds.bull_long_regimes);
@@ -19398,6 +19402,7 @@
                     bull_long_enabled: ((document.getElementById('config-bull-long-enabled') || {}).checked === true),
                     bull_long_regimes: ((document.getElementById('config-bull-long-regimes') || {}).value || '').trim(),
                     bull_long_fan_max: parseFloat((document.getElementById('config-bull-long-fan-max') || {}).value) || 0,
+                    bull_long_fan_min: parseFloat((document.getElementById('config-bull-long-fan-min') || {}).value) || 0,
                     bull_long_size_mult: parseFloat((document.getElementById('config-bull-long-size-mult') || {}).value) || 1.0,
                     bull_long_lev_mult: parseFloat((document.getElementById('config-bull-long-lev-mult') || {}).value) || 1.0,
                     bounce_long_enabled: ((document.getElementById('config-bounce-long-enabled') || {}).checked === true),
@@ -19714,30 +19719,44 @@
 })();
 </script>
 
-<!-- Smart scroll toggle (Jun 19) — bottom-left counterpart to the SCALPARS logo (top).
-     Near the top → shows ↓ (jump to bottom); near the bottom → flips to ↑ (back to top).
-     Smooth-scrolls to match the logo's motion. -->
-<button id="scroll-toggle" type="button" title="Jump to bottom"
-        class="fixed bottom-5 left-5 z-50 w-10 h-10 flex items-center justify-center rounded-full
-               bg-white/10 hover:bg-white/20 border border-white/15 text-emerald-300
-               backdrop-blur-sm shadow-lg opacity-60 hover:opacity-100 transition-all"
-        onclick="(function(){var atTop=(window.scrollY||document.documentElement.scrollTop) < (document.documentElement.scrollHeight - window.innerHeight)/2; window.scrollTo({ top: atTop ? document.documentElement.scrollHeight : 0, behavior: 'smooth' });})()">
-    <svg id="scroll-toggle-icon" xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-</button>
+<!-- Scroll controls (Jun 19) — bottom-left, stacked ↑ / ↓. Constant affordance (up=top, down=bottom);
+     the irrelevant arrow dims at the extremes (already at top → ↑ greyed; at bottom → ↓ greyed).
+     Smooth-scrolls to match the SCALPARS logo's motion. -->
+<div class="fixed bottom-5 left-5 z-50 flex flex-col gap-2">
+    <button id="scroll-up" type="button" title="Back to top"
+            class="w-10 h-10 flex items-center justify-center rounded-full
+                   bg-white/10 hover:bg-white/20 border border-white/15 text-emerald-300
+                   backdrop-blur-sm shadow-lg opacity-60 hover:opacity-100 transition-all"
+            onclick="window.scrollTo({ top: 0, behavior: 'smooth' })">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
+        </svg>
+    </button>
+    <button id="scroll-down" type="button" title="Jump to bottom"
+            class="w-10 h-10 flex items-center justify-center rounded-full
+                   bg-white/10 hover:bg-white/20 border border-white/15 text-emerald-300
+                   backdrop-blur-sm shadow-lg opacity-60 hover:opacity-100 transition-all"
+            onclick="window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+    </button>
+</div>
 <script>
 (function(){
-    var btn = document.getElementById('scroll-toggle');
-    var icon = document.getElementById('scroll-toggle-icon');
-    if (!btn || !icon) return;
-    var DOWN = 'M19 9l-7 7-7-7';   // chevron ↓ (go to bottom)
-    var UP   = 'M5 15l7-7 7 7';    // chevron ↑ (back to top)
+    var up = document.getElementById('scroll-up');
+    var down = document.getElementById('scroll-down');
+    if (!up || !down) return;
+    // dim (not hide) the arrow that can't do anything — keeps both targets in fixed positions.
     function sync(){
         var y = window.scrollY || document.documentElement.scrollTop;
-        var atTop = y < (document.documentElement.scrollHeight - window.innerHeight) / 2;
-        icon.querySelector('path').setAttribute('d', atTop ? DOWN : UP);
-        btn.title = atTop ? 'Jump to bottom' : 'Back to top';
+        var max = document.documentElement.scrollHeight - window.innerHeight;
+        var atTop = y <= 4;
+        var atBottom = y >= max - 4;
+        up.style.opacity = atTop ? '0.2' : '';
+        up.style.pointerEvents = atTop ? 'none' : '';
+        down.style.opacity = atBottom ? '0.2' : '';
+        down.style.pointerEvents = atBottom ? 'none' : '';
     }
     window.addEventListener('scroll', sync, { passive: true });
     window.addEventListener('resize', sync, { passive: true });

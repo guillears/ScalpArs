@@ -3210,6 +3210,10 @@ class TradingEngine:
             _allowed = {r.strip().upper() for r in (getattr(_th, 'bull_long_regimes', '') or '').split(',') if r.strip()}
             if not _allowed or (_reg or '').upper() not in _allowed:
                 return
+            # Stamp the GATED regime onto the order so it records exactly what the sleeve admitted on
+            # (else open_position re-classifies and can land on null/NEUTRAL → the bull-long drops out of
+            # the regime tables, the live gate surface). Jun 18 bugfix.
+            _ef['entry_btc_regime'] = _reg
             # De-dupe per pair / cooldown window (reuse the phantom-flip cooldown infra).
             _ck = f"{pair}|BULL_LONG"
             _now = _leash_time.time()

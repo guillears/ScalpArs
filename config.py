@@ -550,6 +550,18 @@ class SignalThresholds(BaseModel):
     bull_long_fan_max: float = 5.0                     # upper fan bound of the traded BLOCKED-long zone (fires on blocked longs fan 0.85..this; H.BULL edge runs 0.85-5)
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
     bull_long_lev_mult: float = 1.0                    # leverage multiplier (1.0 = normal leverage)
+    # Bounce-Long sleeve (Jun 19, 2026) — oversold-WASHOUT dead-cat bounce LONG. Fades the
+    # BTC_RSI_ADX_CROSS oversold short-block: in a bear, a SHORT blocked because BTC is washed out
+    # (the validated BTC RSI × BTC ADX cells) → open a REAL LONG to catch the bounce. NORMAL long
+    # exit (not _is_flip), own sleeve (never routes through _flip_filters → the flip-long bear veto
+    # does NOT apply). Validated phantom BTC_RSI_ADX_CROSS LONG: N=21, 95% WR, 0% SL, ALL H.BEAR.
+    # TIGHT cells only: 25-30:20-25 (89% WR) + 30-35:15-20 (100% WR). 1× observation (lev_mult 0.05).
+    # TO REMOVE: grep "BOUNCE_LONG" / "bounce_long" + the main.py bounce-long perf blocks + the UI.
+    bounce_long_enabled: bool = True                   # master toggle for the bounce-long sleeve
+    bounce_long_regimes: str = "HEALTHY_BEAR"          # CSV of BTC regimes the sleeve fires in
+    bounce_long_btc_cells: str = "25-30:20-25,30-35:15-20"  # TIGHT (BTC RSI lo-hi : BTC ADX lo-hi) washout cells; empty = OFF
+    bounce_long_size_mult: float = 1.0                 # investment multiplier (1.0 = no amplification)
+    bounce_long_lev_mult: float = 0.05                 # leverage multiplier (0.05 × 20× base = 1× live observation)
     # Pair ATR minimum filter (June 1, 2026). Block entries when pair ATR% < min
     # — the dead-tape, no-fuel fade zone (mirror of the high-ATR runner finding).
     # LONG <0.25%: 5-batch 12% WR / -$230 (cleanest loser sub-band), 0 overlap with

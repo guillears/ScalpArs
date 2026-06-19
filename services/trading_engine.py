@@ -3256,6 +3256,99 @@ class TradingEngine:
             logger.error(f"[BULL_LONG] {pair}: bull-long open failed: {e}")
             return None
 
+    async def _maybe_open_bounce_long(self, db, pair, indicators, isolate=False, entry_fields=None):
+        """Bounce-Long Entry trigger (Jun 19) — the oversold-WASHOUT-bounce sleeve. In an allowed
+        BEAR regime, when a SHORT is blocked by BTC_RSI_ADX_CROSS because BTC is washed out (the
+        validated BTC RSI × BTC ADX cells), open a REAL LONG (NOT a fade) to catch the dead-cat
+        bounce and let it ride the NORMAL long exit stack. Tagged entry_strategy="BOUNCE_LONG" via
+        open_position(bounce_long=True); NOT _is_flip → normal per-level trailing / ATR-widened SL,
+        exactly like BULL_LONG. Sizes base × bounce_long_size_mult × bounce_long_lev_mult (1.0 / 0.05
+        = 1× observation). Fail-silent + isolatable. De-duped per pair/30min (key "pair|BOUNCE_LONG").
+        Validated (phantom BTC_RSI_ADX_CROSS LONG): N=21, 95% WR, 0% SL, ALL H.BEAR; TIGHT cells only
+        25-30:20-25 (89%) + 30-35:15-20 (100%). Its OWN sleeve — never calls _flip_filters, so the
+        flip-long bear veto does NOT apply (that gate is correct for the FAN fade; this is the opposite
+        thesis). TO REMOVE: grep "BOUNCE_LONG" / "bounce_long" / "_maybe_open_bounce_long"."""
+        try:
+            _th = config.trading_config.thresholds
+            if not getattr(_th, 'bounce_long_enabled', False):
+                return
+            price = indicators.get('price') if indicators else None
+            if not price or price <= 0:
+                return
+            _ef = dict(entry_fields or {})
+            _ind = indicators or {}
+            _g = globals()
+            # BTC RSI / ADX — prefer the recorded entry fields, else live globals.
+            _brsi = _ef.get('entry_btc_rsi'); _badx = _ef.get('entry_btc_adx')
+            if _brsi is None:
+                _brsi = _g.get('_current_btc_rsi')
+            if _badx is None:
+                _badx = _g.get('_current_btc_adx')
+            if _brsi is None or _badx is None:
+                return
+            # TIGHT (BTC RSI × BTC ADX) cell gate — fire ONLY inside a validated washout cell.
+            # Format "rsi_lo-rsi_hi:adx_lo-adx_hi,..." (mirrors btc_rsi_adx_multiplier_*). Empty = OFF.
+            _cells = (getattr(_th, 'bounce_long_btc_cells', '') or '').strip()
+            if not _cells:
+                return
+            _hit = False
+            for _cell in _cells.split(','):
+                _cell = _cell.strip()
+                if not _cell or ':' not in _cell:
+                    continue
+                try:
+                    _rb, _ab = _cell.split(':')
+                    _rlo, _rhi = (float(x) for x in _rb.split('-'))
+                    _alo, _ahi = (float(x) for x in _ab.split('-'))
+                except (ValueError, TypeError):
+                    continue
+                if _rlo <= _brsi < _rhi and _alo <= _badx < _ahi:
+                    _hit = True
+                    break
+            if not _hit:
+                return
+            # BTC regime — prefer recorded entry regime, else classify from live globals.
+            _reg = _ef.get('entry_btc_regime')
+            if _reg is None:
+                try:
+                    _reg = classify_btc_regime(_g.get('_current_btc_adx'), _g.get('_current_btc_rsi'), _g.get('_btc_ema20_slope_pct'))
+                except Exception:
+                    _reg = None
+            _allowed = {r.strip().upper() for r in (getattr(_th, 'bounce_long_regimes', '') or '').split(',') if r.strip()}
+            if not _allowed or (_reg or '').upper() not in _allowed:
+                return
+            # Stamp the GATED regime onto the order (BULL_LONG bugfix mirror — else open_position
+            # re-classifies and can land on null/NEUTRAL, dropping the bounce-long out of the regime tables).
+            _ef['entry_btc_regime'] = _reg
+            _ck = f"{pair}|BOUNCE_LONG"
+            _now = _leash_time.time()
+            if _now - _PFLIP_COOLDOWN.get(_ck, 0) < _PFLIP_COOLDOWN_MIN * 60:
+                return
+            _size_mult = getattr(_th, 'bounce_long_size_mult', 1.0) or 1.0
+            _lev_mult = getattr(_th, 'bounce_long_lev_mult', 1.0) or 1.0
+            async def _open(_db):
+                return await self.open_position(
+                    db=_db, pair=pair, direction="LONG", confidence="STRONG_BUY",
+                    current_price=price,
+                    entry_rsi=_ef.pop('entry_rsi', None) or indicators.get('rsi'),
+                    entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
+                    entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
+                    bounce_long=True, bounce_long_size_mult=_size_mult, bounce_long_lev_mult=_lev_mult,
+                    **_ef,
+                )
+            if isolate:
+                async with AsyncSessionLocal() as _bdb:
+                    order = await _open(_bdb)
+            else:
+                order = await _open(db)
+            if order:
+                _PFLIP_COOLDOWN[_ck] = _now
+                logger.info(f"[BOUNCE_LONG] {pair}: opened bounce-long (btcRSI={_brsi:.1f} btcADX={_badx:.1f} regime={_reg} id={order.id})")
+            return order
+        except Exception as e:
+            logger.error(f"[BOUNCE_LONG] {pair}: bounce-long open failed: {e}")
+            return None
+
     async def open_position(
         self,
         db: AsyncSession,
@@ -3322,6 +3415,12 @@ class TradingEngine:
         bull_long: bool = False,
         bull_long_size_mult: float = 1.0,
         bull_long_lev_mult: float = 1.0,
+        # Jun 19: Bounce-Long sleeve — oversold-washout dead-cat bounce LONG (fades the BTC_RSI_ADX_CROSS
+        # oversold short-block). Tagged entry_strategy="BOUNCE_LONG"; same bypasses + NOT _is_flip →
+        # normal long exit, exactly like bull_long. Sizes base × size_mult × lev_mult (1.0 / 0.05 = 1×).
+        bounce_long: bool = False,
+        bounce_long_size_mult: float = 1.0,
+        bounce_long_lev_mult: float = 1.0,
     ) -> Optional[Order]:
         """Open a new position"""
         if not self.is_running:
@@ -3464,7 +3563,7 @@ class TradingEngine:
         # Jun 9: "keep only unmatched longs" — the LONG pattern library selects for losers
         # (every C/W pattern net-negative); the edge is the no-pattern runner cohort (85% WR).
         # Block any LONG that matches ANY C or W pattern. Counter LONG_UNMATCHED_ONLY.
-        if direction == "LONG" and not flip_source and not bull_long and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
+        if direction == "LONG" and not flip_source and not bull_long and not bounce_long and getattr(config.trading_config.thresholds, 'long_unmatched_only', False) and (_pc_any_e or _pw_any_e):
             logger.info(f"[LONG_UNMATCHED_ONLY] {pair}: LONG blocked — matched a pattern (c_any={_pc_any_e}, w_any={_pw_any_e})")
             try:
                 self._record_filter_block("LONG_UNMATCHED_ONLY", "LONG")
@@ -3522,7 +3621,7 @@ class TradingEngine:
         )
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
-        if _pcell_block and not flip_source and not bull_long:
+        if _pcell_block and not flip_source and not bull_long and not bounce_long:
             logger.info(f"[PATTERN_CELL_BLOCK] {pair} {direction}: entry blocked by pattern-cell rule (signature={_pcell_src})")
             try:
                 self._record_filter_block("PATTERN_CELL_BLOCK", direction)
@@ -3653,6 +3752,21 @@ class TradingEngine:
             # Jun 18: bull-long is an OBSERVATION sleeve — allow it to DE-lever well below
             # the 0.5 floor (0.05 × 20× base = 1× live) so it keeps collecting WR / range-pos
             # data at minimal $ risk while we hunt the clean 2nd variable. Size floor stays 0.5.
+            cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.05, cell_lev_mult)
+
+        # Jun 19: Bounce-Long sleeve — same override as bull-long (own cell_src row, de-lever to 1×
+        # for observation). Size floor stays 0.5; lev floor scoped to 0.05 (0.05 × 20× = 1× live).
+        if bounce_long:
+            cell_mult = bounce_long_size_mult or 1.0
+            cell_lev_mult = bounce_long_lev_mult or 1.0
+            cell_src = "BOUNCE_LONG"
+            _mult_target = "both"
+            if cell_mult > _inv_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
+                cell_mult = _inv_cap
+            if cell_lev_mult > _lev_cap:
+                logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested lev={cell_lev_mult}x, hard-capped to lev={_lev_cap}x")
+                cell_lev_mult = _lev_cap
             cell_mult, cell_lev_mult = max(0.5, cell_mult), max(0.05, cell_lev_mult)
 
         investment, leverage, cell_capped = self.calculate_position_size(
@@ -4005,7 +4119,7 @@ class TradingEngine:
             cell_multiplier_capped=cell_capped,
             # Jun 14: Flip Entry sleeve strategy tag (segregates flip P&L from momentum)
             # Jun 18: BULL_LONG tag for the build-side sleeve (real long, normal exit; NOT _is_flip)
-            entry_strategy=("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")),
+            entry_strategy=("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))),
             # Initialize dynamic TP tracking
             current_tp_level=1,
             dynamic_tp_target=conf_config.tp_min,
@@ -4140,7 +4254,7 @@ class TradingEngine:
             order_cache_entry = {
                 'id': order.id,
                 'direction': direction,
-                'entry_strategy': ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM")),  # Jun 15: flips now exit via the realtime stack (entry_strategy gates _is_flip); Jun 18: BULL_LONG is a real long → normal exit (not FLIP: → not _is_flip)
+                'entry_strategy': ("BOUNCE_LONG" if bounce_long else ("BULL_LONG" if bull_long else (f"FLIP:{flip_source}" if flip_source else "MOMENTUM"))),  # Jun 15: flips now exit via the realtime stack (entry_strategy gates _is_flip); Jun 18: BULL_LONG real long → normal exit; Jun 19: BOUNCE_LONG same (not FLIP: → not _is_flip)
                 'entry_ema5_stretch': entry_ema5_stretch,  # LEASH SHADOW (May 30) — stretch-exit entry anchor
                 'entry_price': actual_price,
                 'quantity': quantity,
@@ -7120,6 +7234,16 @@ class TradingEngine:
                                     if (signal == "LONG" and btc_rsi >= 70) or (signal == "SHORT" and btc_rsi <= 35):
                                         _seed_phantom_flip(pair, indicators.get('price'), signal, "BTC_RSI_ADX_CROSS",
                                                            entry_fields=self._flip_entry_fields(indicators, flip_dir=('SHORT' if signal == 'LONG' else 'LONG'), scan=self._flip_scan_ctx(locals())))
+                                    # Jun 19 LIVE bounce-long — fade the OVERSOLD short-block into a real LONG
+                                    # (washout dead-cat bounce). Self-gates: enabled / tight BTC RSI×ADX cells /
+                                    # regime ∈ bounce_long_regimes. Phantom above keeps running as the proxy.
+                                    if signal == "SHORT" and btc_rsi <= 35:
+                                        try:
+                                            await self._maybe_open_bounce_long(
+                                                db, pair, indicators,
+                                                entry_fields=self._flip_entry_fields(indicators, flip_dir='LONG', scan=self._flip_scan_ctx(locals())))
+                                        except Exception:
+                                            pass
                                     # Jun 17 passthrough-long (un-block hunt): ALL long blocks (not just
                                     # RSI extremes) — does this macro cross over-block good bull longs?
                                     if signal == "LONG":

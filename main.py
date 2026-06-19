@@ -2917,6 +2917,9 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # DO flow into normal long performance tables (operator choice, mirrors the flip visibility
     # rule). Split out here for the dedicated Bull-Long Trade Log scorecard below.
     _bull_long_orders = [o for o in all_orders if (getattr(o, 'entry_strategy', None) or '') == 'BULL_LONG']
+    # Jun 19: Bounce-Long sleeve — oversold-washout bounce longs (entry_strategy=="BOUNCE_LONG").
+    # Same visibility rule as bull-long; split out for the dedicated Bounce-Long Trade Log below.
+    _bounce_long_orders = [o for o in all_orders if (getattr(o, 'entry_strategy', None) or '') == 'BOUNCE_LONG']
 
     # Amendment #7 (Apr 18): also fetch SIGNAL_EXPIRED rows for Entry Type Performance.
     # These are aborted entry attempts where the signal went stale during the maker wait.
@@ -7021,6 +7024,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
         "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14 — merged scorecard; replaced flip_entry)
         "bull_long_trades": _compute_bull_long_trades(_bull_long_orders),  # BULL-LONG TRADE LOG (Jun 18 — build-side long sleeve)
+        "bounce_long_trades": _compute_bounce_long_trades(_bounce_long_orders),  # BOUNCE-LONG TRADE LOG (Jun 19 — oversold-washout bounce sleeve)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -9345,6 +9349,83 @@ def _compute_flip_trades(flip_orders):
             "chop": _agg_rx(b['chop']), "all": _agg_rx(b['all']),
         })
     return {"rows": rows, "overall": overall, "regime_xtab": regime_xtab}
+
+
+def _compute_bounce_long_trades(bounce_long_orders):
+    """Bounce-Long Trade Log (Jun 19) — live scorecard for the oversold-WASHOUT bounce sleeve
+    (entry_strategy=="BOUNCE_LONG"): a real LONG opened when a SHORT is blocked by BTC_RSI_ADX_CROSS
+    in a washout cell, run on the NORMAL long exit stack. Same shape as the Bull-Long Trade Log
+    (N / Pairs / Top% / WR% / Avg% / Total$ / Peak% / SL% / Size× / Lev× / Δ$-1× / Mult) + a
+    ×BTC-REGIME breakdown + a BUILDING verdict. % is leverage-invariant; $ de-muxed to 1× in regime."""
+    from collections import Counter
+    closed = [o for o in bounce_long_orders if o.status == "CLOSED" and o.pnl_percentage is not None]
+    rows = []
+    if closed:
+        rs = closed
+        n = len(rs)
+        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
+        tot = sum((r.pnl_percentage or 0) for r in rs)
+        usd = sum((r.pnl or 0) for r in rs)
+        peak = sum((r.peak_pnl or 0) for r in rs) / n
+        sl = sum(1 for r in rs if ("STOP_LOSS" in (r.close_reason or "")))
+        pc = Counter((r.pair or '?') for r in rs)
+        top_pair, top_n = pc.most_common(1)[0]
+        size_mult = Counter(round(r.cell_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
+        lev_mult = Counter(round(r.cell_lev_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
+        rows.append({
+            "trigger": "BOUNCE_LONG", "direction": "LONG", "n": n,
+            "wr": round(100.0 * wins / n, 1), "avg_pct": round(tot / n, 3),
+            "total_pct": round(tot, 2), "total_usd": round(usd, 2),
+            "peak_pct": round(peak, 3), "sl_rate": round(100.0 * sl / n, 0),
+            "distinct_pairs": len(pc), "top_pair": top_pair, "top_pair_share": round(100.0 * top_n / n, 0),
+            "size_mult": size_mult, "lev_mult": lev_mult, "eff_mult": round(size_mult * lev_mult, 2),
+            "delta_usd": "—", "mult_verdict": "—",
+        })
+    n = len(closed)
+    if n == 0:
+        overall = {"n": 0, "verdict": "⏳ no bounce-longs yet", "wr": 0, "avg_pct": 0, "total_usd": 0}
+    else:
+        w = sum(1 for o in closed if (o.pnl_percentage or 0) > 0)
+        t = sum((o.pnl_percentage or 0) for o in closed)
+        u = sum((o.pnl or 0) for o in closed)
+        wr = round(100.0 * w / n, 1)
+        avg = round(t / n, 3)
+        if n < 15:
+            ov = f"⏳ BUILDING {n}/15"
+        elif wr >= 70 and avg > 0.05:
+            ov = "★ PAYING"
+        else:
+            ov = "✗ LOSING — review"
+        overall = {"n": n, "verdict": ov, "wr": wr, "avg_pct": avg, "total_usd": round(u, 2)}
+
+    def _rb(reg):
+        r = (reg or '').upper()
+        if 'BULL' in r:
+            return 'sbull' if 'STRONG' in r else 'hbull'
+        if 'BEAR' in r:
+            return 'sbear' if 'STRONG' in r else 'hbear'
+        return 'chop'
+
+    def _agg_rx(rs):
+        m = len(rs)
+        if m == 0:
+            return None
+        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
+        tot = sum((r.pnl_percentage or 0) for r in rs)
+        usd = sum((r.pnl or 0) / max((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0), 1e-9) for r in rs)
+        return {"n": m, "wr": round(100.0 * wins / m, 1), "avg_pct": round(tot / m, 3), "usd": round(usd, 2)}
+    slot = {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': [], 'all': []}
+    for o in closed:
+        if not o.entry_btc_regime:
+            continue
+        slot[_rb(o.entry_btc_regime)].append(o)
+        slot['all'].append(o)
+    regime_row = {
+        "sbull": _agg_rx(slot['sbull']), "hbull": _agg_rx(slot['hbull']),
+        "sbear": _agg_rx(slot['sbear']), "hbear": _agg_rx(slot['hbear']),
+        "chop": _agg_rx(slot['chop']), "all": _agg_rx(slot['all']),
+    }
+    return {"rows": rows, "overall": overall, "regime_row": regime_row}
 
 
 def _compute_bull_long_trades(bull_long_orders):

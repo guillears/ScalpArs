@@ -9263,7 +9263,9 @@ async def _compute_phantom_flip_performance(db, is_paper):
             _lv = [o for o in _ob_live if o.entry_rsi is not None and _lo <= o.entry_rsi < _hi]
             _ph = [f for f in _ob_ph if f.entry_rsi is not None and _lo <= f.entry_rsi < _hi]
             pair_rsi_ob_buckets["rsi"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
-        for _lo, _hi, _lbl in [(0, 18, '<18'), (18, 22, '18-22'), (22, 26, '22-26'), (26, 30, '26-30'), (30, 99, '30+')]:
+        # Match the "Performance by Entry ADX" bins (main.py ~3648) for cross-table consistency,
+        # + a <15 catch-all (low ADX = ranging = the fade's best zone; the normal table omits it).
+        for _lo, _hi, _lbl in [(0, 15, '<15'), (15, 18, '15-18'), (18, 22, '18-22'), (22, 25, '22-25'), (25, 28, '25-28'), (28, 30, '28-30'), (30, 33, '30-33'), (33, 99, '33+')]:
             _lv = [o for o in _ob_live if o.entry_adx is not None and _lo <= o.entry_adx < _hi]
             _ph = [f for f in _ob_ph if f.entry_adx is not None and _lo <= f.entry_adx < _hi]
             pair_rsi_ob_buckets["adx"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})

@@ -487,6 +487,11 @@ class SignalThresholds(BaseModel):
     flip_fan_stretch_min: float = 0.12        # block FAN flip if entry EMA5 stretch < this (thin fuel, batch N=10/10%WR/-$495). 0 = off
     flip_fan_block_btc_rsi: float = 60.0      # block FAN flip if BTC RSI >= this AND BTC ADX >= flip_fan_block_btc_adx (fade into strong un-exhausted bull: N=19/47%WR/-$416). 0 = off
     flip_fan_block_btc_adx: float = 30.0      # paired with flip_fan_block_btc_rsi
+    # U3 (Jun 20, N=14/1-weekend DISCIPLINE-OVERRIDE): block FAN flip-short when BTC ATR% < this — the
+    # weekend thin-liquidity regime (20× gap-through-SL fat tails). FAN-only (PAIR_RSI_OB returns early).
+    # Jun20 Sat sub-0.10 cell = N=14/36%WR/-$775, all gaps; weekday Jun17/18 never dipped <0.109 = regime
+    # is weekend-only. Counter FLIP_FAN_LOATR. 0 = off. TIGHT REVERT: →0 if next weekend's sub-0.10 phantom ≥45% WR on N≥6.
+    flip_fan_btc_atr_min: float = 0.10
     # Jun 17 — 2D regime×ADXΔ block for flip-SHORTS (ALL sources). Block a short flip when entry
     # ADXΔ < adxd_max AND BTC regime ∈ regimes set. Cross-batch (76+39+11 pool, deduped) the cell
     # BULL/CHOP ∧ ADXΔ<0 = N=38 / 40%WR / -0.34% / -$1070; 96% of its losers peak < 0.45 arm so the

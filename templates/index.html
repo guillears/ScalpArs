@@ -6051,6 +6051,7 @@
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Strpk runner-trail exit</span><input type="checkbox" id="config-flip-fan-runner-strpk" class="sr-only peer"><div class="relative w-9 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-fuchsia-500"></div></label>
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">Block BTC RSI ≥</span><input type="number" id="config-flip-fan-block-btc-rsi" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
                                 <label class="flex items-center justify-between gap-2"><span class="text-gray-400">&nbsp;&nbsp;&amp; BTC ADX ≥</span><input type="number" id="config-flip-fan-block-btc-adx" step="1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-gray-200 text-right"></label>
+                                <label class="flex items-center justify-between gap-2" title="U3 (Jun 20, N=14/1-weekend DISCIPLINE-OVERRIDE): block FAN flip-SHORT when BTC ATR% < this — the weekend thin-liquidity regime where 20× shorts gap through the SL. FAN-only (PAIR_RSI_OB has its own gates). Jun20 Sat sub-0.10 = N=14/36%WR/-$775, all straight-to-SL gaps; weekday Jun17/18 never dipped <0.109 → regime is weekend-only. Counter FLIP_FAN_LOATR. 0 = off. TIGHT REVERT: →0 if next weekend's sub-0.10 fades hit ≥45% WR on N≥6."><span class="text-cyan-300">Block BTC ATR% &lt;</span><input type="number" id="config-flip-fan-btc-atr-min" step="0.01" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-cyan-200 text-right"></label>
                                 <label class="flex items-center justify-between gap-2" title="Jun 17: block ANY flip (all sources) when the pair fan ratio |EMA5-8 gap|/|EMA8-13 gap| ≥ this — a violently-accelerating parabolic spike the fade gets run over by. Cross-batch N=3/0%WR (ASTER/VELVET/ALLO). Mirrors the live long-side fan≥5 block. 0 = off."><span class="text-amber-300">Block fan ratio ≥</span><input type="number" id="config-flip-fan-spike-max" step="0.5" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-right"></label>
                                 <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 17: 2D regime×ADXΔ block for flip-SHORTS (all sources). Block a short flip when entry ADXΔ < the number AND BTC regime is in the list. Cross-batch BULL/CHOP ∧ ADXΔ<0 = N=38/40%WR/-$1070; 96% of losers peak below the 0.45 arm so exits can't save them → entry block. ADXΔ 0.0 = the ADXΔ<0 cut. Empty regimes = filter OFF. Bear regimes excluded on purpose — that's where the flip-short edge lives.">
                                     <span class="text-amber-300 whitespace-nowrap">Short flip: block ADXΔ &lt;</span>
@@ -18223,6 +18224,7 @@
                 _setVal('config-flip-fan-stretch-min', config.thresholds.flip_fan_stretch_min);
                 _setVal('config-flip-fan-block-btc-rsi', config.thresholds.flip_fan_block_btc_rsi);
                 _setVal('config-flip-fan-block-btc-adx', config.thresholds.flip_fan_block_btc_adx);
+                _setVal('config-flip-fan-btc-atr-min', config.thresholds.flip_fan_btc_atr_min);
                 _setVal('config-flip-fan-spike-max', config.thresholds.flip_fan_spike_max);
                 // Bull-Long Entry sleeve (Jun 18)
                 const _blEn = document.getElementById('config-bull-long-enabled');
@@ -19510,6 +19512,7 @@
                     flip_fan_stretch_min: parseFloat((document.getElementById('config-flip-fan-stretch-min') || {}).value) || 0,
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,
+                    flip_fan_btc_atr_min: parseFloat((document.getElementById('config-flip-fan-btc-atr-min') || {}).value) || 0,
                     flip_fan_spike_max: parseFloat((document.getElementById('config-flip-fan-spike-max') || {}).value) || 0,
                     flip_short_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-regime-adxd-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),

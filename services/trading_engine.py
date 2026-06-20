@@ -410,6 +410,19 @@ def _flip_filters(source, ind):
             # to flip_dir=='SHORT'; a flip-LONG falls through at 1x with no FAN entry veto.
             # (Operator-confirmed on the BCHUSDT flip-LONG that wrongly carried FAN_RATIO_GATE x2.)
             if ind.get('flip_dir') == 'SHORT':
+                # U3 (Jun 20) — block FAN flip-short when BTC ATR% < min (weekend thin-liquidity
+                # regime). FAN-ONLY: the sub-0.10 losses are 20× gap-through-SL fat tails clustered
+                # in bear/chop; PAIR_RSI_OB (S.BULL, pADX>=40) is a different setup handled by its own
+                # floor, so it returns early above and never reaches here. Cross-batch context: weekday
+                # batches (Jun17 Wed / Jun18 Thu) never dipped <0.109 → the regime is weekend-only;
+                # the Jun20 Saturday cell = N=14/36%WR/-$775, every loss a straight-to-SL gap. N=14 /
+                # ONE weekend DISCIPLINE-OVERRIDE → TIGHT REVERT (set min→0 if next weekend's sub-0.10
+                # phantom-fade ≥45% WR on N≥6). Fail-open: missing btc_atr or min=0 → no block.
+                _loatr = float(getattr(th, 'flip_fan_btc_atr_min', 0.0) or 0.0)
+                if _loatr > 0:
+                    _batr = ind.get('btc_atr_pct')
+                    if _batr is not None and _batr < _loatr:
+                        return (True, "FLIP_FAN_LOATR", 1.0, 1.0, None)
                 # 1) thin-fuel block
                 smin = float(getattr(th, 'flip_fan_stretch_min', 0.0) or 0.0)
                 if smin > 0 and stretch is not None and stretch < smin:
@@ -3170,6 +3183,11 @@ class TradingEngine:
                 'pair_rsi': _ef.get('entry_rsi') if _ef.get('entry_rsi') is not None else _ind.get('rsi'),
                 'flip_dir': flip_dir,
                 'adx_delta': _ef.get('entry_adx_delta') if _ef.get('entry_adx_delta') is not None else _ind.get('adx_delta'),
+                # pair ADX — required by the PAIR_RSI_OB ADX floor (flip_pair_rsi_ob_adx_min); was
+                # missing, so ind.get('adx') returned None and the floor never fired (Jun 20 fix).
+                'adx': _ef.get('entry_adx') if _ef.get('entry_adx') is not None else _ind.get('adx'),
+                # BTC ATR% — required by U3 (flip_fan_btc_atr_min), the FAN sub-0.10 weekend block.
+                'btc_atr_pct': _ef.get('entry_btc_atr_pct') if _ef.get('entry_btc_atr_pct') is not None else _g.get('_current_btc_atr_pct'),
                 'btc_regime': _ff_reg,
                 'atr_pct': (_ef.get('entry_atr_pct') if _ef.get('entry_atr_pct') is not None
                             else (round(_ind['atr'] / price * 100, 4) if (_ind.get('atr') and price) else _ind.get('atr_pct'))),

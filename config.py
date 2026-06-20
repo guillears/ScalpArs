@@ -520,11 +520,12 @@ class SignalThresholds(BaseModel):
     # S.BULL 76-80% WR vs H.BULL 29-47% — scope to STRONG_BULL only. Empty = source OFF. Decoupled from the
     # FAN flip-short gates above (PAIR_RSI_OB returns early in _flip_filters, never inherits them).
     flip_pair_rsi_ob_short_regimes: str = "STRONG_BULL"  # PAIR_RSI_OB flip-SHORT fires ONLY in these regimes; empty = OFF
-    # Jun 20 — PAIR_RSI_OB pair-ADX floor (N=9 DISCIPLINE-OVERRIDE). Overbought-fade pays ONLY at pair ADX≥33:
-    # live bucket 33+ = 9/89%WR/+$698; every bucket <33 net-negative (18-22 −$75, 22-25 −$138, 25-28 −$163,
-    # 28-30 −$76, 30-33 −$91). N=9<<30 gate → shipped per operator override; TIGHT REVERT: set →0 at live N≥15
-    # if 33+ WR≤70% OR avg≤+0.05%. 0 = disabled. Counter FLIP_PAIR_RSI_OB_ADX.
-    flip_pair_rsi_ob_adx_min: float = 33.0
+    # Jun 20 — PAIR_RSI_OB pair-ADX floor (N=8 DISCIPLINE-OVERRIDE, RAISED 33→40 same day). The 33+ cell
+    # decomposed when split: 33-40 = N=5/20%WR/−$237 (a LOSER band) vs 40+ = N=8/88%WR/+$668 — the edge is
+    # entirely ADX≥40. Raised the floor to 40 (operator). Still N=8 in-sample + 20× → TIGHT REVERT: set →0
+    # (or de-lever lev→0.05) at live N≥15 new fires if the 40+ cell WR≤70% OR avg≤+0.05%. 0 = disabled.
+    # Counter FLIP_PAIR_RSI_OB_ADX. (Prior 33-floor cell had already decayed 9/89%/+$698 → 13/62%/+$431.)
+    flip_pair_rsi_ob_adx_min: float = 40.0
     # Jun 19 — pair-RSI floor for flip-SHORTS. Fade quality scales with how overbought the blocked long was.
     # Cross-batch (Jun17/18/19, deduped): RSI<55 = N=21/57%WR/−0.094%/Σ−1.98 (the only consistently-negative
     # zone); RSI≥55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = N=24/71%WR/+0.187%. Block

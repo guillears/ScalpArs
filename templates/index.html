@@ -546,6 +546,8 @@
                         <option value="FAN_RATIO_GATE">🔀 FAN_RATIO_GATE</option>
                         <option value="LONG_UNMATCHED_ONLY">🔀 LONG_UNMATCHED_ONLY</option>
                         <option value="PAIR_RSI_OB">🔀 PAIR_RSI_OB</option>
+                        <option value="BULL_LONG">🐂 BULL_LONG</option>
+                        <option value="BOUNCE_LONG">🐻↩ BOUNCE_LONG</option>
                     </select>
                     <span id="flip-source-filter-badge" class="text-xs text-gray-500"></span>
                     <span class="text-sm font-semibold text-cyan-300">Filter by Direction:</span>
@@ -11743,7 +11745,7 @@
                 if (dBadge) dBadge.textContent = directionFilter ? `${directionFilter}s only` : '';
                 const fsBadge = document.getElementById('flip-source-filter-badge');
                 if (fsBadge) {
-                    const fsLabel = { 'MOMENTUM':'non-flip momentum only','FLIP':'all flips only','FAN_RATIO_GATE':'FAN_RATIO_GATE flips only','LONG_UNMATCHED_ONLY':'LONG_UNMATCHED_ONLY flips only','PAIR_RSI_OB':'PAIR_RSI_OB flips only' }[flipSourceFilter];
+                    const fsLabel = { 'MOMENTUM':'non-flip momentum only','FLIP':'all flips only','FAN_RATIO_GATE':'FAN_RATIO_GATE flips only','LONG_UNMATCHED_ONLY':'LONG_UNMATCHED_ONLY flips only','PAIR_RSI_OB':'PAIR_RSI_OB flips only','BULL_LONG':'Bull-Long sleeve only','BOUNCE_LONG':'Bounce-Long sleeve only' }[flipSourceFilter];
                     fsBadge.textContent = fsLabel ? `Showing ${fsLabel}` : '';
                 }
                 const wBadge = document.getElementById('window-filter-badge');

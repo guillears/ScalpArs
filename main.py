@@ -3031,8 +3031,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         elif _fs == 'MOMENTUM':
             orders = [o for o in orders if not _es(o).startswith('FLIP:')]
         else:
+            # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
+            # sleeves (BULL_LONG / BOUNCE_LONG) carry a BARE entry_strategy, so accept an
+            # exact match too — lets the filter isolate those long sleeves the same way.
             _pre = f'FLIP:{_fs}'
-            orders = [o for o in orders if _es(o).upper().startswith(_pre)]
+            orders = [o for o in orders if _es(o).upper().startswith(_pre) or _es(o).upper() == _fs]
         # SIGNAL_EXPIRED rows are aborted maker entries (never flips) → keep only for MOMENTUM/ALL
         if _fs != 'MOMENTUM':
             signal_expired_orders = []

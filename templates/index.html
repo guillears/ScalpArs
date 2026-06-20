@@ -6115,6 +6115,15 @@
                                 <input type="number" step="0.5" id="config-flip-pair-rsi-ob-adx-min" class="w-24 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right text-xs" placeholder="33">
                                 <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off · ship 33 · N=9 override + 20× lev)</span>
                             </div>
+                            <div class="col-span-2 flex items-center gap-2 flex-wrap mt-2" title="U3-followup (Jun 20): the overbought-fade seed was choked above BTC ADX 40 — an accidental inheritance of the long pipeline's BTC_ADX_GATE_HIGH veto (the fade is a SHORT in STRONG_BULL; the long's BTC-ADX ceiling is irrelevant, and overbought pairs are richest when BTC trends hardest). This decouples the seed. off = choked >40 (old behavior) · phantom = seed phantom-only at >40 (observe, no live trade) · live = seed live at >40, DE-RISKED to lev 0.05 (1× eff) since that cohort has zero prior data — the validated [28,40] cohort stays 20×. Promote >40 on its own evidence; revert to off if it whipsaws (WR≤45% on N≥8).">
+                                <span class="text-cyan-300 whitespace-nowrap">BTC-ADX&gt;40 fade</span>
+                                <select id="config-flip-pair-rsi-ob-btc-adx-high-mode" class="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-cyan-200 text-xs">
+                                    <option value="off">off (choked &gt;40)</option>
+                                    <option value="phantom">phantom (observe)</option>
+                                    <option value="live">live (de-risked 1×)</option>
+                                </select>
+                                <span class="text-gray-500 text-xs whitespace-nowrap">(decouple seed from BTC-ADX-high veto)</span>
+                            </div>
                             <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400">Jun 20: lev 1×→20× + ADX≥40 floor (operator override; raised 33→40 — 33-40 was a −$237 loser band, edge is ADX≥40 = 8/88%/+$668).</span> Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85% (regime) / 40+ WR≤70% or avg≤+0.05% (ADX). Counters <code>FLIP_PAIR_RSI_OB_REGIME</code> / <code>FLIP_PAIR_RSI_OB_ADX</code>.</p>
                         </div>
                         <!-- All-sleeves strpk exit (Jun 16) -->
@@ -18251,6 +18260,7 @@
                 _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
                 _setVal('config-flip-pair-rsi-ob-regimes', config.thresholds.flip_pair_rsi_ob_short_regimes);
                 _setVal('config-flip-pair-rsi-ob-adx-min', config.thresholds.flip_pair_rsi_ob_adx_min);
+                _setVal('config-flip-pair-rsi-ob-btc-adx-high-mode', config.thresholds.flip_pair_rsi_ob_btc_adx_high_mode);
                 _setVal('config-flip-short-atr-block-regimes', config.thresholds.flip_short_atr_block_regimes || '');
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
                 try {
@@ -19525,6 +19535,7 @@
                     flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_short_regimes: ((document.getElementById('config-flip-pair-rsi-ob-regimes') || {}).value || '').trim(),
                     flip_pair_rsi_ob_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-pair-rsi-ob-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_pair_rsi_ob_btc_adx_high_mode: ((document.getElementById('config-flip-pair-rsi-ob-btc-adx-high-mode') || {}).value || 'off').trim(),
                     flip_short_atr_block_regimes: ((document.getElementById('config-flip-short-atr-block-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),

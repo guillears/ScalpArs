@@ -319,6 +319,14 @@ def _flip_filters(source, ind):
                     _ob_adx = ind.get('adx')
                     if _ob_adx is not None and _ob_adx < _ob_amin:
                         return (True, "FLIP_PAIR_RSI_OB_ADX", 1.0, 1.0, None)
+                # U3-followup (Jun 20): de-risk the newly-unchoked BTC-ADX>max_long cohort (its seed was
+                # decoupled from the long's BTC_ADX_GATE_HIGH veto and it has ZERO prior data) to 1x eff
+                # (lev 0.05); the validated [min,max_long] cohort stays at full 20x. Boundary = the same
+                # btc_adx_max_long ceiling that defines the seed-through cohort. Promote on its own evidence.
+                _bmax = float(getattr(th, 'btc_adx_max_long', 100) or 100)
+                _bnow = ind.get('btc_adx')
+                if _bmax < 100 and _bnow is not None and _bnow > _bmax:
+                    return (False, None, 1.0, 0.05, None)
             return (False, None, 1.0, 1.0, None)
         # Universal fan-SPIKE block (ALL sources, Jun 17): refuse a flip that fades a violently-
         # accelerating parabolic fan (ratio >= flip_fan_spike_max) — it never arms, runs to SL.
@@ -6776,14 +6784,25 @@ class TradingEngine:
             # Suppress pair-level block recording for directions that BTC-level
             # filters would have vetoed anyway. This makes Filter Blocks counts
             # reflect the *decisive* last gate, not artifacts of evaluation order.
-            if direction == "LONG" and _btc_macro_blocks_long is not None:
+            # U3-followup (Jun 20): the PAIR_RSI_OB overbought-fade is a SHORT in STRONG_BULL — the
+            # long's BTC-ADX ceiling is irrelevant to it, and overbought pairs are richest exactly when
+            # BTC trends hardest (ADX>40 — the band the long veto used to choke the seed). When the long's
+            # SOLE macro veto is BTC_ADX_GATE_HIGH and the mode is on, seed the fade THROUGH the veto
+            # (phantom always; live only if mode==live). Its own gates (STRONG_BULL + pADX>=40) + the
+            # ADX>40 de-risk (lev 0.05 in _flip_filters) still apply downstream.
+            _rsiob_mode = (getattr(config.trading_config.thresholds, 'flip_pair_rsi_ob_btc_adx_high_mode', 'off') or 'off').lower()
+            _seed_through = (direction == "LONG" and _btc_macro_blocks_long == "BTC_ADX_GATE_HIGH" and _rsiob_mode != 'off')
+            if direction == "LONG" and _btc_macro_blocks_long is not None and not _seed_through:
                 return
             if direction == "SHORT" and _btc_macro_blocks_short is not None:
                 return
-            self._record_filter_block(filter_name, direction, had_room=_scan_had_room_snapshot)
             _p = _current_pair_holder.get('pair')
-            if _p:
-                self._last_pair_block_reason[_p] = filter_name
+            # When seeding THROUGH a macro veto, suppress the redundant pair-block count + decisive-reason
+            # stamp (keeps Filter Blocks = the decisive BTC gate, not an evaluation-order artifact).
+            if not _seed_through:
+                self._record_filter_block(filter_name, direction, had_room=_scan_had_room_snapshot)
+                if _p:
+                    self._last_pair_block_reason[_p] = filter_name
             # Jun 15: phantom — fade the OVERBOUGHT-long RSI block to a SHORT (dedup-pool
             # NP=28% for RSI>65 longs, the data's top fade candidate). Seed ONLY the
             # overbought case (rsi > long_rsi_max), NOT the oversold-long block (those
@@ -6796,10 +6815,10 @@ class TradingEngine:
                     if _rsi is not None and _px and _rsi > _rmax:
                         _seed_phantom_flip(_p, _px, "LONG", "Pair RSI >65",
                                            entry_fields=self._flip_entry_fields(_current_pair_holder, flip_dir="SHORT"))
-                        # Jun 16: also mark this pair so Phase 3 can open the LIVE flip
-                        # (PAIR_RSI_OB source). The block fires inside get_signal (signal is
-                        # already NO_TRADE by Phase 3), so the marker rides the _collected row.
-                        _current_pair_holder['rsi_ob_flip'] = True
+                        # Jun 16: mark for the LIVE flip (Phase 3). Through a BTC-ADX-high veto, go live
+                        # only when mode==live (phantom mode observes the ADX>40 cohort without trading).
+                        if not _seed_through or _rsiob_mode == 'live':
+                            _current_pair_holder['rsi_ob_flip'] = True
                 except Exception:
                     pass
             # Jun 16: LONG-fade phantom trackers — fade a BLOCKED SHORT to a LONG (block→fade,

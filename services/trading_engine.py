@@ -309,6 +309,16 @@ def _flip_filters(source, ind):
                 _ob_reg = (ind.get('btc_regime') or '').upper()
                 if not _ob_set or _ob_reg not in _ob_set:
                     return (True, "FLIP_PAIR_RSI_OB_REGIME", 1.0, 1.0, None)
+                # Pair-ADX floor (Jun 20, N=9 DISCIPLINE-OVERRIDE): the overbought-fade pays ONLY on a
+                # blow-off in a STRONGLY-trending pair — live pair-ADX bucket 33+ = 9/89% WR/+$698; every
+                # bucket <33 net-negative (18-22 −$75, 22-25 −$138, 25-28 −$163, 28-30 −$76, 30-33 −$91).
+                # N=9 << the N≥30 gate → shipped with a TIGHT REVERT (flip_pair_rsi_ob_adx_min→0). Fail-open:
+                # missing adx or min=0 → no block. Counter FLIP_PAIR_RSI_OB_ADX.
+                _ob_amin = float(getattr(th, 'flip_pair_rsi_ob_adx_min', 0.0) or 0.0)
+                if _ob_amin > 0:
+                    _ob_adx = ind.get('adx')
+                    if _ob_adx is not None and _ob_adx < _ob_amin:
+                        return (True, "FLIP_PAIR_RSI_OB_ADX", 1.0, 1.0, None)
             return (False, None, 1.0, 1.0, None)
         # Universal fan-SPIKE block (ALL sources, Jun 17): refuse a flip that fades a violently-
         # accelerating parabolic fan (ratio >= flip_fan_spike_max) — it never arms, runs to SL.

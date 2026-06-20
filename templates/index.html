@@ -6094,7 +6094,12 @@
                                 <input type="text" id="config-flip-pair-rsi-ob-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-left text-xs" placeholder="STRONG_BULL">
                                 <span class="text-gray-500 text-xs whitespace-nowrap">(empty = off · ship STRONG_BULL)</span>
                             </div>
-                            <p class="text-[10px] text-gray-600 mt-2">Started at <span class="text-rose-300">0.5× size</span> (reduced exposure) to de-risk the counter-trend tail; flat flip exit. Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85%. Counter <code>FLIP_PAIR_RSI_OB_REGIME</code>.</p>
+                            <div class="col-span-2 flex items-center gap-2 flex-wrap mt-2" title="Jun 20 (N=9 DISCIPLINE-OVERRIDE): fire the overbought-fade ONLY when pair ADX ≥ this. Live pair-ADX bucket 33+ = 9/89% WR/+$698; every bucket <33 net-negative (18-22 −$75, 22-25 −$138, 25-28 −$163, 28-30 −$76, 30-33 −$91) — the fade only pays on a blow-off in a strongly-trending pair. N=9 << the N≥30 gate → TIGHT REVERT: set to 0 at live N≥15 if 33+ WR≤70% or avg≤+0.05%. 0 = disabled. Counter FLIP_PAIR_RSI_OB_ADX.">
+                                <span class="text-rose-300 whitespace-nowrap">Min pair ADX</span>
+                                <input type="number" step="0.5" id="config-flip-pair-rsi-ob-adx-min" class="w-24 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right text-xs" placeholder="33">
+                                <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off · ship 33 · N=9 override + 20× lev)</span>
+                            </div>
+                            <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400">Jun 20: lev 1×→20× + ADX≥33 floor (operator N=9 override).</span> Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85% (regime) / 33+ WR≤70% or avg≤+0.05% (ADX). Counters <code>FLIP_PAIR_RSI_OB_REGIME</code> / <code>FLIP_PAIR_RSI_OB_ADX</code>.</p>
                         </div>
                         <!-- All-sleeves strpk exit (Jun 16) -->
                         <div class="mt-3 px-3 py-2 rounded bg-cyan-950/15 border border-cyan-800/30">
@@ -18225,6 +18230,7 @@
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
                 _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
                 _setVal('config-flip-pair-rsi-ob-regimes', config.thresholds.flip_pair_rsi_ob_short_regimes);
+                _setVal('config-flip-pair-rsi-ob-adx-min', config.thresholds.flip_pair_rsi_ob_adx_min);
                 _setVal('config-flip-short-atr-block-regimes', config.thresholds.flip_short_atr_block_regimes || '');
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
                 try {
@@ -19497,6 +19503,7 @@
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_short_regimes: ((document.getElementById('config-flip-pair-rsi-ob-regimes') || {}).value || '').trim(),
+                    flip_pair_rsi_ob_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-pair-rsi-ob-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_atr_block_regimes: ((document.getElementById('config-flip-short-atr-block-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),

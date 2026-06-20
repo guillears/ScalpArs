@@ -480,7 +480,7 @@ class SignalThresholds(BaseModel):
     # SOURCE present = active (both sides); size_mult scales per-trade investment vs base.
     # FAN_RATIO_GATE shipped on N=97/39-pair/Top6%/WR69%/+0.175% phantom (in-sample).
     flip_entry_enabled: bool = True                       # master kill-switch for the whole sleeve
-    flip_entry_sources: str = "FAN_RATIO_GATE:1.0,PAIR_RSI_OB:1.0:0.05"  # SOURCE:size:lev (lev optional→1.0). Jun 19: PAIR_RSI_OB @1x size × 0.05 lev = 1× live observation (S.BULL-only). Jun 16 PM: RE-ACTIVATED PAIR_RSI_OB. Jun 17 PM: LONG_UNMATCHED_ONLY DISABLED (live off, phantom-only) — live N=0 both batches + phantom N≈8/38%WR/-0.190% ✗ whipsaws = starved & losing; phantom seed is decoupled (always fires) so it keeps tracking for a future re-enable. FAN_RATIO DE-MUXED 2x→1x Jun 15 (multiplier gate ✗ HARMFUL: live N=24/50%WR/-0.24%/-$912). RE-ENABLE LONG_UNMATCHED_ONLY only if its phantom clears WR≥55% AND net-positive on N≥20. [phantom prior PAIR_RSI_OB N=11/82%WR/+0.405%]
+    flip_entry_sources: str = "FAN_RATIO_GATE:1.0,PAIR_RSI_OB:1.0:1.0"  # SOURCE:size:lev (lev optional→1.0). Jun 20: PAIR_RSI_OB lev 0.05→1.0 = full 20× (operator N=9 override, paired with the ADX≥33 floor — winner cell only). Jun 19: was @1x size × 0.05 lev = 1× live observation (S.BULL-only). Jun 16 PM: RE-ACTIVATED PAIR_RSI_OB. Jun 17 PM: LONG_UNMATCHED_ONLY DISABLED (live off, phantom-only) — live N=0 both batches + phantom N≈8/38%WR/-0.190% ✗ whipsaws = starved & losing; phantom seed is decoupled (always fires) so it keeps tracking for a future re-enable. FAN_RATIO DE-MUXED 2x→1x Jun 15 (multiplier gate ✗ HARMFUL: live N=24/50%WR/-0.24%/-$912). RE-ENABLE LONG_UNMATCHED_ONLY only if its phantom clears WR≥55% AND net-positive on N≥20. [phantom prior PAIR_RSI_OB N=11/82%WR/+0.405%]
     # ── FAN_RATIO_GATE flip filter section (Jun 16, 76-trade batch). Source-namespaced
     #    (`flip_fan_*`); future sources get parallel `flip_unmatched_*`/`flip_pairsi_*` sets,
     #    evaluated independently in _flip_filters(). All fail-open. Block reasons FLIP_FAN_*.
@@ -520,6 +520,11 @@ class SignalThresholds(BaseModel):
     # S.BULL 76-80% WR vs H.BULL 29-47% — scope to STRONG_BULL only. Empty = source OFF. Decoupled from the
     # FAN flip-short gates above (PAIR_RSI_OB returns early in _flip_filters, never inherits them).
     flip_pair_rsi_ob_short_regimes: str = "STRONG_BULL"  # PAIR_RSI_OB flip-SHORT fires ONLY in these regimes; empty = OFF
+    # Jun 20 — PAIR_RSI_OB pair-ADX floor (N=9 DISCIPLINE-OVERRIDE). Overbought-fade pays ONLY at pair ADX≥33:
+    # live bucket 33+ = 9/89%WR/+$698; every bucket <33 net-negative (18-22 −$75, 22-25 −$138, 25-28 −$163,
+    # 28-30 −$76, 30-33 −$91). N=9<<30 gate → shipped per operator override; TIGHT REVERT: set →0 at live N≥15
+    # if 33+ WR≤70% OR avg≤+0.05%. 0 = disabled. Counter FLIP_PAIR_RSI_OB_ADX.
+    flip_pair_rsi_ob_adx_min: float = 33.0
     # Jun 19 — pair-RSI floor for flip-SHORTS. Fade quality scales with how overbought the blocked long was.
     # Cross-batch (Jun17/18/19, deduped): RSI<55 = N=21/57%WR/−0.094%/Σ−1.98 (the only consistently-negative
     # zone); RSI≥55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = N=24/71%WR/+0.187%. Block
@@ -553,8 +558,8 @@ class SignalThresholds(BaseModel):
     # TO REMOVE: grep "BULL_LONG" / "bull_long" + the main.py bull-long perf blocks + the UI.
     bull_long_enabled: bool = True                     # master toggle for the bull-long sleeve
     bull_long_regimes: str = "HEALTHY_BULL"            # CSV of BTC regimes the sleeve fires in
-    bull_long_fan_max: float = 10.0                    # upper fan bound (Jun 19: 5→10; 1× obs, no bull-regime data above fan 3 — harmless widen for free data)
-    bull_long_fan_min: float = 1.35                    # lower fan bound (Jun 19: 1.0→1.35 — 1.00-1.35 worsened to 39%WR/-$658 with more data; keep 1.35-1.65 ambiguous band at 1×). 0 = disabled
+    bull_long_fan_max: float = 3.0                     # upper fan bound (Jun 20: 10→3.0 — cap the sweet spot; live fan 3.0-5.0 = 2/0%/−$206, 5-10 = 1/0%/−$130 = small-N losers above 3)
+    bull_long_fan_min: float = 1.65                    # lower fan bound (Jun 20: 1.35→1.65 — restrict to the only positive bands; live 1.65-2.0 = 5/80%/+$175, 2.0-3.0 = 10/90%/+$705 vs below-1.65 all net-neg). 0 = disabled
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
     bull_long_lev_mult: float = 1.0                    # leverage multiplier (1.0 = normal leverage)
     # Bounce-Long sleeve (Jun 19, 2026) — oversold-WASHOUT dead-cat bounce LONG. Fades the

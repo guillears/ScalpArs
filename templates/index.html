@@ -1177,6 +1177,35 @@
                             </table>
                         </div>
                     </div>
+                    <!-- PAIR_RSI_OB × RSI / pADX Bucket (Jun 19) — overbought-fade 2nd-variable surfaces. LIVE + S.BULL phantom proxy -->
+                    <div class="mt-4">
+                        <div class="text-xs font-semibold text-pink-300 mb-1">🎯 PAIR_RSI_OB × RSI Bucket <span class="text-gray-500 font-normal">— overbought-fade short by entry pair RSI (how stretched = reversion fuel). <span class="text-pink-200">LIVE</span> realized (N/WR/avg%/$ de-muxed 1×) + <span class="text-fuchsia-300">phantom proxy</span> (Pair RSI &gt;65 fade, S.BULL-scoped to the live gate — high-fidelity, same flat exit). Forward-only; lead with N.</span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">RSI Bucket</th>
+                                    <th class="text-right px-2 text-pink-200">LIVE N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-fuchsia-300/80">PHANTOM S.BULL N/WR/avg</th>
+                                </tr></thead>
+                                <tbody id="pair-rsi-ob-rsi-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="3" class="px-2 py-3 text-center text-gray-500">No PAIR_RSI_OB data yet (forward-only)</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-xs font-semibold text-pink-300 mb-1 mt-3">🎯 PAIR_RSI_OB × Pair ADX Bucket <span class="text-gray-500 font-normal">— same fade by pair ADX (trend strength fighting the reversion). Low ADX = ranging → fade pays; high ADX = strong trend → squeeze risk. Same LIVE + S.BULL phantom split.</span></div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead class="text-gray-400 uppercase"><tr>
+                                    <th class="text-left py-1 px-2">pADX Bucket</th>
+                                    <th class="text-right px-2 text-pink-200">LIVE N/WR/avg/$</th>
+                                    <th class="text-right px-2 text-fuchsia-300/80">PHANTOM S.BULL N/WR/avg</th>
+                                </tr></thead>
+                                <tbody id="pair-rsi-ob-adx-body" class="divide-y divide-white/5">
+                                    <tr><td colspan="3" class="px-2 py-3 text-center text-gray-500">No PAIR_RSI_OB data yet (forward-only)</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
                 <!-- ===== FLIP TRADE LOG END ===== -->
 
@@ -8626,6 +8655,19 @@
                         lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_fxc(x.sbull).padEnd(20)} ${_fxc(x.hbull).padEnd(20)} ${_fxc(x.sbear).padEnd(20)} ${_fxc(x.hbear).padEnd(20)} ${_fxc(x.chop).padEnd(20)} ${_fxc(x.all)}`);
                     });
                 }
+                if (_pf1.pair_rsi_ob_buckets && (_pf1.pair_rsi_ob_buckets.rsi || _pf1.pair_rsi_ob_buckets.adx)) {
+                    const _obx = _pf1.pair_rsi_ob_buckets;
+                    const _obl = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}` : '-';
+                    const _obp = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}` : '-';
+                    const _obtab = (title, arr) => {
+                        lines.push('\n  ── PAIR_RSI_OB × '+title+' (overbought-fade short; LIVE realized + S.BULL phantom proxy, same flat exit) — LIVE N/WR/avg%/$1× | PHANTOM N/WR/avg% ──');
+                        lines.push('  Bucket       LIVE                       PHANTOM(S.BULL)');
+                        lines.push('  '+'-'.repeat(70));
+                        (arr||[]).filter(r=>r.live||r.phantom).forEach(r => lines.push(`  ${r.bucket.padEnd(12)} ${_obl(r.live).padEnd(26)} ${_obp(r.phantom)}`));
+                    };
+                    _obtab('RSI Bucket', _obx.rsi);
+                    _obtab('Pair ADX Bucket', _obx.adx);
+                }
             }
             // ===== FLIP TRADE LOG END =====
 
@@ -10501,6 +10543,19 @@
                         _flt1.regime_xtab.forEach(x => {
                             lines.push(`  ${(x.source+' '+x.direction).padEnd(26)} ${_fxc2(x.sbull).padEnd(20)} ${_fxc2(x.hbull).padEnd(20)} ${_fxc2(x.sbear).padEnd(20)} ${_fxc2(x.hbear).padEnd(20)} ${_fxc2(x.chop).padEnd(20)} ${_fxc2(x.all)}`);
                         });
+                    }
+                    if (_pf1.pair_rsi_ob_buckets && (_pf1.pair_rsi_ob_buckets.rsi || _pf1.pair_rsi_ob_buckets.adx)) {
+                        const _obx2 = _pf1.pair_rsi_ob_buckets;
+                        const _obl2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}/${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}` : '-';
+                        const _obp2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}` : '-';
+                        const _obtab2 = (title, arr) => {
+                            lines.push('\n  ── PAIR_RSI_OB × '+title+' (overbought-fade short; LIVE realized + S.BULL phantom proxy, same flat exit) — LIVE N/WR/avg%/$1× | PHANTOM N/WR/avg% ──');
+                            lines.push('  Bucket       LIVE                       PHANTOM(S.BULL)');
+                            lines.push('  '+'-'.repeat(70));
+                            (arr||[]).filter(r=>r.live||r.phantom).forEach(r => lines.push(`  ${r.bucket.padEnd(12)} ${_obl2(r.live).padEnd(26)} ${_obp2(r.phantom)}`));
+                        };
+                        _obtab2('RSI Bucket', _obx2.rsi);
+                        _obtab2('Pair ADX Bucket', _obx2.adx);
                     }
                 }
                 // ===== FLIP TRADE LOG END =====
@@ -13462,6 +13517,24 @@
                             _frxBody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No closed flip trades with regime tag yet</td></tr>';
                         }
                     }
+                }
+                // PAIR_RSI_OB × RSI / pADX buckets (data in phantom_flip payload)
+                {
+                    const _obk = (data.phantom_flip && data.phantom_flip.pair_rsi_ob_buckets) || {};
+                    const _obl = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg_pct>=0?'text-emerald-400':'text-red-400'}">${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}</span>/<span class="${m.usd>=0?'text-emerald-400/70':'text-red-400/70'}">${m.usd>=0?'+$':'-$'}${Math.abs(m.usd).toFixed(0)}</span>` : '<span class="text-gray-600">-</span>';
+                    const _obp = (m) => m ? `${m.n}/${m.wr.toFixed(0)}%/<span class="${m.avg_pct>=0?'text-emerald-400':'text-red-400'}">${m.avg_pct>=0?'+':''}${m.avg_pct.toFixed(2)}</span>` : '<span class="text-gray-600">-</span>';
+                    const _obRender = (bodyId, arr) => {
+                        const b = document.getElementById(bodyId);
+                        if (!b) return;
+                        const rows = (arr || []).filter(r => r.live || r.phantom);
+                        b.innerHTML = rows.length ? rows.map(r => `<tr class="hover:bg-white/5">
+                                    <td class="px-2 py-1 text-gray-200 font-mono">${r.bucket}</td>
+                                    <td class="px-2 py-1 text-right">${_obl(r.live)}</td>
+                                    <td class="px-2 py-1 text-right">${_obp(r.phantom)}</td>
+                                </tr>`).join('') : '<tr><td colspan="3" class="px-2 py-3 text-center text-gray-500">No PAIR_RSI_OB data yet (forward-only)</td></tr>';
+                    };
+                    _obRender('pair-rsi-ob-rsi-body', _obk.rsi);
+                    _obRender('pair-rsi-ob-adx-body', _obk.adx);
                 }
                 // ===== FLIP TRADE LOG END =====
 

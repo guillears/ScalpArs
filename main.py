@@ -9232,9 +9232,48 @@ async def _compute_phantom_flip_performance(db, is_paper):
         bull_long_curve = []
         bull_long_curve_total = None
 
+    # Jun 19 — PAIR_RSI_OB × RSI / pADX bucket tables. The overbought-fade short's 2nd variables:
+    # RSI (how overbought = reversion fuel) and pADX (trend strength fighting the fade). LIVE
+    # (entry_strategy FLIP:PAIR_RSI_OB) is sparse; the phantom "Pair RSI >65" SHORT scoped to the
+    # live gate's regime (STRONG_BULL) is the high-fidelity proxy — PAIR_RSI_OB shares the flat flip
+    # exit the phantom models, so the only haircut is fees/slippage. Each bucket: live {n,wr,avg%,$1×}
+    # + phantom {n,wr,avg%} (S.BULL). Forward-only observation; never ship off the live N.
+    pair_rsi_ob_buckets = {"rsi": [], "adx": []}
+    try:
+        _ob_live = (await db.execute(select(Order).where(and_(
+            Order.is_paper == is_paper, Order.status == "CLOSED",
+            Order.entry_strategy == "FLIP:PAIR_RSI_OB", Order.pnl_percentage.isnot(None))))).scalars().all()
+        _ob_ph = [f for f in flips if (getattr(f, 'source_filter', '') or '') == 'Pair RSI >65'
+                  and (getattr(f, 'flip_direction', '') or '') == 'SHORT'
+                  and (getattr(f, 'entry_btc_regime', '') or '').upper() == 'STRONG_BULL']
+        def _obl(rs):
+            n = len(rs)
+            if not n:
+                return None
+            w = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
+            usd = sum((r.pnl or 0) / max((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0), 1e-9) for r in rs)
+            return {"n": n, "wr": round(100.0 * w / n, 1), "avg_pct": round(sum((r.pnl_percentage or 0) for r in rs) / n, 3), "usd": round(usd, 2)}
+        def _obp(rs):
+            n = len(rs)
+            if not n:
+                return None
+            w = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
+            return {"n": n, "wr": round(100.0 * w / n, 1), "avg_pct": round(sum((r.pnl_pct or 0) for r in rs) / n, 3)}
+        for _lo, _hi, _lbl in [(65, 70, '65-70'), (70, 75, '70-75'), (75, 80, '75-80'), (80, 85, '80-85'), (85, 90, '85-90'), (90, 100, '90-100')]:
+            _lv = [o for o in _ob_live if o.entry_rsi is not None and _lo <= o.entry_rsi < _hi]
+            _ph = [f for f in _ob_ph if f.entry_rsi is not None and _lo <= f.entry_rsi < _hi]
+            pair_rsi_ob_buckets["rsi"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
+        for _lo, _hi, _lbl in [(0, 18, '<18'), (18, 22, '18-22'), (22, 26, '22-26'), (26, 30, '26-30'), (30, 99, '30+')]:
+            _lv = [o for o in _ob_live if o.entry_adx is not None and _lo <= o.entry_adx < _hi]
+            _ph = [f for f in _ob_ph if f.entry_adx is not None and _lo <= f.entry_adx < _hi]
+            pair_rsi_ob_buckets["adx"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
+    except Exception:
+        pair_rsi_ob_buckets = {"rsi": [], "adx": []}
+
     return {"rows": rows, "total": total, "fan_curve": fan_curve,
             "leftover_filter_test": leftover_filter_test, "source_regime_xtab": source_regime_xtab,
-            "bull_long_curve": bull_long_curve, "bull_long_curve_total": bull_long_curve_total}
+            "bull_long_curve": bull_long_curve, "bull_long_curve_total": bull_long_curve_total,
+            "pair_rsi_ob_buckets": pair_rsi_ob_buckets}
 
 
 def _compute_flip_trades(flip_orders):

@@ -319,14 +319,11 @@ def _flip_filters(source, ind):
                     _ob_adx = ind.get('adx')
                     if _ob_adx is not None and _ob_adx < _ob_amin:
                         return (True, "FLIP_PAIR_RSI_OB_ADX", 1.0, 1.0, None)
-                # U3-followup (Jun 20): de-risk the newly-unchoked BTC-ADX>max_long cohort (its seed was
-                # decoupled from the long's BTC_ADX_GATE_HIGH veto and it has ZERO prior data) to 1x eff
-                # (lev 0.05); the validated [min,max_long] cohort stays at full 20x. Boundary = the same
-                # btc_adx_max_long ceiling that defines the seed-through cohort. Promote on its own evidence.
-                _bmax = float(getattr(th, 'btc_adx_max_long', 100) or 100)
-                _bnow = ind.get('btc_adx')
-                if _bmax < 100 and _bnow is not None and _bnow > _bmax:
-                    return (False, None, 1.0, 0.05, None)
+                # Jun 21: the BTC-ADX>40 cohort is PROMOTED from de-risked 1x to full 20x after its first
+                # live batch — at the raised pADX>=45 floor it was 17/82%WR/+0.20%avg with BE-compat 67%
+                # (≥60% of losers armed, only 1/17 gapped). De-risk removed → all pADX>=45 STRONG_BULL fires
+                # at full lev regardless of BTC ADX. N=17/one-batch DISCIPLINE-OVERRIDE; revert = set
+                # flip_pair_rsi_ob_btc_adx_high_mode→off (stops the >40 seed) and/or floor→40.
             return (False, None, 1.0, 1.0, None)
         # Universal fan-SPIKE block (ALL sources, Jun 17): refuse a flip that fades a violently-
         # accelerating parabolic fan (ratio >= flip_fan_spike_max) — it never arms, runs to SL.

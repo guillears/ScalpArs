@@ -530,14 +530,17 @@ class SignalThresholds(BaseModel):
     # entirely ADX≥40. Raised the floor to 40 (operator). Still N=8 in-sample + 20× → TIGHT REVERT: set →0
     # (or de-lever lev→0.05) at live N≥15 new fires if the 40+ cell WR≤70% OR avg≤+0.05%. 0 = disabled.
     # Counter FLIP_PAIR_RSI_OB_ADX. (Prior 33-floor cell had already decayed 9/89%/+$698 → 13/62%/+$431.)
-    flip_pair_rsi_ob_adx_min: float = 40.0
+    # Jun 21 — RAISED 40→45: in the newly-unchoked BTC-ADX>40 regime the 40-45 band = 17/47%WR/−$605
+    # (loser) while 45+ = 17/82%WR/+$347 (+0.20% avg, BE-compat 67%). When BTC trends this hard, only the
+    # most extreme pair blow-offs (pADX≥45) mean-revert; 40-45 squeezes. N=17/one-batch DISCIPLINE-OVERRIDE.
+    flip_pair_rsi_ob_adx_min: float = 45.0
     # U3-followup (Jun 20): the overbought-fade seed was choked above BTC ADX 40 — an ACCIDENTAL
     # inheritance of the long pipeline's BTC_ADX_GATE_HIGH veto (the fade is a SHORT; the long's
     # ceiling is irrelevant to it, and overbought pairs are richest when BTC trends hardest). This
     # decouples the seed from that veto. off = current (seed choked >40) · phantom = seed phantom-only
-    # at >40 (observe, no live trade) · live = seed live at >40, de-risked to lev 0.05 (1x eff) since
-    # that cohort has ZERO prior data, while the validated [28,40] cohort stays 20x. PROMOTE the >40
-    # cohort to full lev on its own evidence; REVERT to off if its fades whipsaw (WR<=45% on N>=8).
+    # at >40 (observe, no live trade) · live = seed live at >40. Jun 21: the >40 cohort was PROMOTED to
+    # full 20x (de-risk removed in _flip_filters) after its first batch held at the 45 floor. REVERT the
+    # whole >40 experiment by setting this to off (stops the >40 seed); the [28,40] cohort is unaffected.
     flip_pair_rsi_ob_btc_adx_high_mode: str = "off"
     # Jun 19 — pair-RSI floor for flip-SHORTS. Fade quality scales with how overbought the blocked long was.
     # Cross-batch (Jun17/18/19, deduped): RSI<55 = N=21/57%WR/−0.094%/Σ−1.98 (the only consistently-negative

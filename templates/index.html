@@ -4256,6 +4256,49 @@
                     </div>
                 </div>
 
+                <!-- Hold-Time × ATR (duration-primary, Jun 21) -->
+                <div class="mt-6 border-t border-amber-900/40 pt-4">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-1">⏱ Hold-Time × ATR <span class="text-gray-500 font-normal">— the EFFECT side</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">Duration-primary companion: as hold-time grows, does the edge decay, does <span class="text-amber-400/80">RegChg%</span> climb, and does avg ATR fall (the inverse of ATR→speed)?</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-amber-900/40">
+                                <th class="px-2 py-1 text-left">Duration</th>
+                                <th class="px-2 py-1 text-right">#</th>
+                                <th class="px-2 py-1 text-center">Dir</th>
+                                <th class="px-2 py-1 text-right">Win%</th>
+                                <th class="px-2 py-1 text-right">Avg P&L%</th>
+                                <th class="px-2 py-1 text-right">RegChg%</th>
+                                <th class="px-2 py-1 text-right">Avg ATR%</th>
+                            </tr></thead>
+                            <tbody id="holdtime-atr-body" class="divide-y divide-white/5">
+                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Regime-Drift × Outcome (Jun 21) -->
+                <div class="mt-6 border-t border-amber-900/40 pt-4">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-1">🎲 Regime-Drift × Outcome <span class="text-gray-500 font-normal">— does drift → random?</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">The decisive test: if DRIFTED (entry BTC regime ≠ exit) is ~50% WR / ~0 avg while HELD carries the edge → slow trades drift to noise. Split by direction.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead><tr class="text-gray-400 border-b border-amber-900/40">
+                                <th class="px-2 py-1 text-left">Regime</th>
+                                <th class="px-2 py-1 text-right">N</th>
+                                <th class="px-2 py-1 text-right">Win%</th>
+                                <th class="px-2 py-1 text-right">Avg P&L%</th>
+                                <th class="px-2 py-1 text-right">Avg Hold</th>
+                                <th class="px-2 py-1 text-right">Avg ATR%</th>
+                            </tr></thead>
+                            <tbody id="regime-drift-body" class="divide-y divide-white/5">
+                                <tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Per-Pair Performance -->
                 <div class="mt-6 border-t border-white/5 pt-4">
                     <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Pair</h3>
@@ -9553,6 +9596,30 @@
                 }
             }
 
+            if (perf.holdtime_atr_table && perf.holdtime_atr_table.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Hold-Time × ATR (duration-primary — the EFFECT side, Jun 21)\n');
+                lines.push(`${'Duration'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(8)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'RegChg%'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
+                for (const r of perf.holdtime_atr_table) {
+                    const dir = `${r.longs}L/${r.shorts}S`;
+                    const atr = r.avg_atr != null ? (r.avg_atr.toFixed(3) + '%') : '-';
+                    lines.push(`${r.duration.padEnd(10)} ${String(r.n).padEnd(5)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.reg_chg + '%').padStart(8)} ${atr.padStart(8)}`);
+                }
+            }
+
+            if (perf.regime_drift_outcome && perf.regime_drift_outcome.rows && perf.regime_drift_outcome.rows.length > 0) {
+                lines.push(`\n${hr2}`);
+                lines.push('## Regime-Drift × Outcome (does drift → random? — Jun 21)\n');
+                lines.push('If DRIFTED (entry BTC regime ≠ exit) is ~50% WR / ~0 avg while HELD carries the edge → slow trades drift to noise.');
+                lines.push(`${'Regime'.padEnd(9)} ${'N'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'AvgHold'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
+                let rdDir = null;
+                for (const r of perf.regime_drift_outcome.rows) {
+                    if (r.direction !== rdDir) { rdDir = r.direction; lines.push(`[${rdDir}]`); }
+                    const atr = r.avg_atr != null ? (r.avg_atr.toFixed(3) + '%') : '-';
+                    lines.push(`${r.drift.padEnd(9)} ${String(r.n).padEnd(5)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.avg_hold + 'm').padStart(8)} ${atr.padStart(8)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by BTC Entry RSI\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
@@ -11511,6 +11578,32 @@
                         const cells = r.cells.map(c => cfmt(c).padEnd(14)).join('');
                         const band = `${r.n}/${r.wr}%/${r.avg >= 0 ? '+' : ''}${r.avg.toFixed(3)}`;
                         lines.push(`${r.atr.padEnd(9)} ${cells} ${band.padEnd(16)} ${(r.med_dur + 'm').padEnd(8)} ${(r.reg_chg + '%').padEnd(7)}`);
+                    }
+                }
+
+                // --- Hold-Time × ATR (duration-primary, Jun 21) ---
+                if (perf.holdtime_atr_table && perf.holdtime_atr_table.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Hold-Time × ATR (duration-primary — the EFFECT side, Jun 21)\n');
+                    lines.push(`${'Duration'.padEnd(10)} ${'#'.padEnd(5)} ${'Dir'.padEnd(8)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'RegChg%'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
+                    for (const r of perf.holdtime_atr_table) {
+                        const dir = `${r.longs}L/${r.shorts}S`;
+                        const atr = r.avg_atr != null ? (r.avg_atr.toFixed(3) + '%') : '-';
+                        lines.push(`${r.duration.padEnd(10)} ${String(r.n).padEnd(5)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.reg_chg + '%').padStart(8)} ${atr.padStart(8)}`);
+                    }
+                }
+
+                // --- Regime-Drift × Outcome (Jun 21) ---
+                if (perf.regime_drift_outcome && perf.regime_drift_outcome.rows && perf.regime_drift_outcome.rows.length > 0) {
+                    lines.push(`\n${hr2}`);
+                    lines.push('## Regime-Drift × Outcome (does drift → random? — Jun 21)\n');
+                    lines.push('If DRIFTED (entry BTC regime ≠ exit) is ~50% WR / ~0 avg while HELD carries the edge → slow trades drift to noise.');
+                    lines.push(`${'Regime'.padEnd(9)} ${'N'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'AvgHold'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
+                    let rdDir = null;
+                    for (const r of perf.regime_drift_outcome.rows) {
+                        if (r.direction !== rdDir) { rdDir = r.direction; lines.push(`[${rdDir}]`); }
+                        const atr = r.avg_atr != null ? (r.avg_atr.toFixed(3) + '%') : '-';
+                        lines.push(`${r.drift.padEnd(9)} ${String(r.n).padEnd(5)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.avg_hold + 'm').padStart(8)} ${atr.padStart(8)}`);
                     }
                 }
 
@@ -16874,6 +16967,61 @@
                         ahtBody.innerHTML = html;
                     } else {
                         ahtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                    }
+                }
+
+                // Hold-Time × ATR (duration-primary, Jun 21)
+                const htAtrBody = document.getElementById('holdtime-atr-body');
+                if (htAtrBody) {
+                    const d = data.holdtime_atr_table;
+                    if (d && d.length > 0) {
+                        htAtrBody.innerHTML = d.map(r => {
+                            const wrCls = r.win_rate >= 55 ? 'text-emerald-400' : (r.win_rate < 45 ? 'text-red-400' : 'text-gray-300');
+                            const avgCls = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const regCls = r.reg_chg >= 60 ? 'text-amber-400 font-semibold' : 'text-gray-400';
+                            return `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-amber-300 font-medium">${r.duration}</td>
+                                <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                <td class="px-2 py-1.5 text-center"><span class="text-emerald-400">${r.longs}L</span>/<span class="text-red-400">${r.shorts}S</span></td>
+                                <td class="px-2 py-1.5 text-right ${wrCls}">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-2 py-1.5 text-right ${avgCls}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1.5 text-right ${regCls}">${r.reg_chg}%</td>
+                                <td class="px-2 py-1.5 text-right text-amber-400">${r.avg_atr != null ? r.avg_atr.toFixed(3) + '%' : '-'}</td>
+                            </tr>`;
+                        }).join('');
+                    } else {
+                        htAtrBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                    }
+                }
+
+                // Regime-Drift × Outcome (Jun 21)
+                const rdBody = document.getElementById('regime-drift-body');
+                if (rdBody) {
+                    const rd = data.regime_drift_outcome;
+                    if (rd && rd.rows && rd.rows.length > 0) {
+                        let html = '';
+                        let curDir = null;
+                        for (const r of rd.rows) {
+                            if (r.direction !== curDir) {
+                                curDir = r.direction;
+                                const dc = curDir === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                html += `<tr class="bg-white/5"><td colspan="6" class="px-2 py-1 font-semibold ${dc}">${curDir}</td></tr>`;
+                            }
+                            const wrCls = r.win_rate >= 55 ? 'text-emerald-400' : (r.win_rate < 45 ? 'text-red-400' : 'text-gray-300');
+                            const avgCls = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const driftCls = r.drift === 'DRIFTED' ? 'text-amber-400' : 'text-gray-300';
+                            html += `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 ${driftCls} font-medium">${r.drift}</td>
+                                <td class="px-2 py-1.5 text-right">${r.n}</td>
+                                <td class="px-2 py-1.5 text-right ${wrCls}">${r.win_rate.toFixed(1)}%</td>
+                                <td class="px-2 py-1.5 text-right ${avgCls}">${r.avg_pnl_pct >= 0 ? '+' : ''}${r.avg_pnl_pct.toFixed(3)}%</td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.avg_hold}m</td>
+                                <td class="px-2 py-1.5 text-right text-amber-400">${r.avg_atr != null ? r.avg_atr.toFixed(3) + '%' : '-'}</td>
+                            </tr>`;
+                        }
+                        rdBody.innerHTML = html;
+                    } else {
+                        rdBody.innerHTML = '<tr><td colspan="6" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                     }
                 }
 

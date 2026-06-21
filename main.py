@@ -2461,6 +2461,79 @@ def _compute_atr_holdtime_crosstab(orders):
     return {"dur_labels": [b[0] for b in dur_buckets], "rows": rows}
 
 
+def _compute_holdtime_atr_table(orders):
+    """Hold-Time-primary companion to the ATR cross-tab (Jun 21).
+
+    Rows = duration bands; cols = N / L/S / WR / Avg% / RegChg% / avg-ATR.
+    Tests the EFFECT side of the ATR theory: as hold-time grows, does the edge
+    decay, does BTC-regime drift climb, and does avg ATR FALL (the inverse of
+    the ATR→speed relation)? All inputs are existing Order columns.
+    """
+    def _dv(o):
+        return o.direction.value if hasattr(o.direction, "value") else o.direction
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None
+              and o.opened_at and o.closed_at]
+    dur_buckets = [("<10m", 0, 10), ("10-20m", 10, 20), ("20-40m", 20, 40),
+                   ("40-90m", 40, 90), (">90m", 90, 1e12)]
+
+    def _dur(o):
+        return (o.closed_at - o.opened_at).total_seconds() / 60.0
+    rows = []
+    for dlbl, dlo, dhi in dur_buckets:
+        b = [o for o in closed if dlo <= _dur(o) < dhi]
+        if not b:
+            continue
+        n = len(b)
+        longs = sum(1 for o in b if _dv(o) == "LONG")
+        wins = sum(1 for o in b if o.pnl > 0)
+        reg = sum(1 for o in b if o.exit_btc_regime is not None
+                  and o.entry_btc_regime != o.exit_btc_regime)
+        atrs = [o.entry_atr_pct for o in b if o.entry_atr_pct is not None]
+        rows.append({
+            "duration": dlbl, "n": n, "longs": longs, "shorts": n - longs,
+            "win_rate": round(100 * wins / n, 1),
+            "avg_pnl_pct": round(sum(o.pnl_percentage or 0 for o in b) / n, 3),
+            "reg_chg": round(100 * reg / n),
+            "avg_atr": round(sum(atrs) / len(atrs), 3) if atrs else None,
+        })
+    return rows
+
+
+def _compute_regime_drift_outcome(orders):
+    """Regime-Drift × Outcome — the decisive test of "drift → random" (Jun 21).
+
+    2 rows (regime HELD: entry==exit · DRIFTED: entry!=exit) × direction. If the
+    DRIFTED row is ~50% WR / ~0 avg (random) while HELD carries the edge, that
+    confirms the slow-trade-drifts-to-noise mechanism behind the ATR theory.
+    Split by direction so a sleeve confound can't mask it.
+    """
+    def _dv(o):
+        return o.direction.value if hasattr(o.direction, "value") else o.direction
+
+    def _dur(o):
+        return (o.closed_at - o.opened_at).total_seconds() / 60.0
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None
+              and o.opened_at and o.closed_at and o.exit_btc_regime is not None]
+    rows = []
+    for D in ("LONG", "SHORT"):
+        d_orders = [o for o in closed if _dv(o) == D]
+        for lbl, held in (("HELD", True), ("DRIFTED", False)):
+            b = [o for o in d_orders if (o.entry_btc_regime == o.exit_btc_regime) == held]
+            if not b:
+                continue
+            n = len(b)
+            wins = sum(1 for o in b if o.pnl > 0)
+            atrs = [o.entry_atr_pct for o in b if o.entry_atr_pct is not None]
+            rows.append({
+                "direction": D, "drift": lbl, "n": n,
+                "win_rate": round(100 * wins / n, 1),
+                "avg_pnl_pct": round(sum(o.pnl_percentage or 0 for o in b) / n, 3),
+                "avg_hold": round(sum(_dur(o) for o in b) / n),
+                "avg_atr": round(sum(atrs) / len(atrs), 3) if atrs else None,
+            })
+    return {"rows": rows}
+
+
 def _compute_volume_intersection_crosstab(orders):
     """May 10 evening: 2D cross-tab of Global Vol Ratio (rows) × Pair Vol USD (cols).
 
@@ -7029,6 +7102,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         # May 9: ATR bucket performance — tests "high volatility = loss driver" hypothesis
         "atr_bucket_performance": _compute_atr_bucket_performance(orders),
         "atr_holdtime_crosstab": _compute_atr_holdtime_crosstab(orders),
+        "holdtime_atr_table": _compute_holdtime_atr_table(orders),
+        "regime_drift_outcome": _compute_regime_drift_outcome(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
         # Pattern Cell Ship Performance (May 21, NEW — pattern-based rules per CLAUDE.md May 21 ship)

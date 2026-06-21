@@ -1207,15 +1207,15 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div class="text-xs font-semibold text-emerald-300 mb-1 mt-3">🎯 PAIR_RSI_OB · ADX≥40 × RSI Bucket <span class="text-gray-500 font-normal">— the shipped <span class="text-emerald-200">ADX≥40 @20×</span> cell, split by entry RSI: is the +$ broad across the cohort or concentrated in 1-2 RSI cells? (anti-overfit on the N=8 cohort). Same LIVE + S.BULL phantom.</span></div>
+                        <div class="text-xs font-semibold text-emerald-300 mb-1 mt-3">🎯 PAIR_RSI_OB · ADX≥45 × RSI Bucket <span class="text-gray-500 font-normal">— the shipped <span class="text-emerald-200">ADX≥45 @20×</span> cell, split by entry RSI: is the +$ broad across the cohort or concentrated in 1-2 RSI cells? (anti-overfit on the cohort). Same LIVE + S.BULL phantom.</span></div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-xs">
                                 <thead class="text-gray-400 uppercase"><tr>
-                                    <th class="text-left py-1 px-2">RSI (ADX≥40)</th>
+                                    <th class="text-left py-1 px-2">RSI (ADX≥45)</th>
                                     <th class="text-right px-2 text-pink-200">LIVE N/WR/avg/$</th>
                                     <th class="text-right px-2 text-fuchsia-300/80">PHANTOM S.BULL N/WR/avg</th>
                                 </tr></thead>
-                                <tbody id="pair-rsi-ob-adx40-rsi-body" class="divide-y divide-white/5">
+                                <tbody id="pair-rsi-ob-adx45-rsi-body" class="divide-y divide-white/5">
                                     <tr><td colspan="3" class="px-2 py-3 text-center text-gray-500">No PAIR_RSI_OB data yet (forward-only)</td></tr>
                                 </tbody>
                             </table>
@@ -6129,7 +6129,7 @@
                                 </select>
                                 <span class="text-gray-500 text-xs whitespace-nowrap">(decouple seed from BTC-ADX-high veto)</span>
                             </div>
-                            <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400">Jun 20: lev 1×→20× + ADX≥40 floor (operator override; raised 33→40 — 33-40 was a −$237 loser band, edge is ADX≥40 = 8/88%/+$668).</span> Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85% (regime) / 40+ WR≤70% or avg≤+0.05% (ADX). Counters <code>FLIP_PAIR_RSI_OB_REGIME</code> / <code>FLIP_PAIR_RSI_OB_ADX</code>.</p>
+                            <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400">Jun 21: lev 1×→20× + ADX≥45 floor (operator override; raised 40→45 — 40-45 was a 17/47%/−$605 loser band, edge is ADX≥45 = 17/82%/+$347).</span> Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85% (regime) / 45+ WR≤70% or avg≤+0.05% (ADX). Counters <code>FLIP_PAIR_RSI_OB_REGIME</code> / <code>FLIP_PAIR_RSI_OB_ADX</code>.</p>
                         </div>
                         <!-- All-sleeves strpk exit (Jun 16) -->
                         <div class="mt-3 px-3 py-2 rounded bg-cyan-950/15 border border-cyan-800/30">
@@ -8702,7 +8702,7 @@
                     };
                     _obtab('RSI Bucket', _obx.rsi);
                     _obtab('Pair ADX Bucket', _obx.adx);
-                    _obtab('ADX≥40 × RSI Bucket (shipped @20× cell, split by RSI)', _obx.adx40_rsi);
+                    _obtab('ADX≥45 × RSI Bucket (shipped @20× cell, split by RSI)', _obx.adx45_rsi);
                 }
             }
             // ===== FLIP TRADE LOG END =====
@@ -10592,7 +10592,7 @@
                         };
                         _obtab2('RSI Bucket', _obx2.rsi);
                         _obtab2('Pair ADX Bucket', _obx2.adx);
-                        _obtab2('ADX≥40 × RSI Bucket (shipped @20× cell, split by RSI)', _obx2.adx40_rsi);
+                        _obtab2('ADX≥45 × RSI Bucket (shipped @20× cell, split by RSI)', _obx2.adx45_rsi);
                     }
                 }
                 // ===== FLIP TRADE LOG END =====
@@ -13572,7 +13572,7 @@
                     };
                     _obRender('pair-rsi-ob-rsi-body', _obk.rsi);
                     _obRender('pair-rsi-ob-adx-body', _obk.adx);
-                    _obRender('pair-rsi-ob-adx40-rsi-body', _obk.adx40_rsi);
+                    _obRender('pair-rsi-ob-adx45-rsi-body', _obk.adx45_rsi);
                 }
                 // ===== FLIP TRADE LOG END =====
 

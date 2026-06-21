@@ -9241,7 +9241,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
     # live gate's regime (STRONG_BULL) is the high-fidelity proxy — PAIR_RSI_OB shares the flat flip
     # exit the phantom models, so the only haircut is fees/slippage. Each bucket: live {n,wr,avg%,$1×}
     # + phantom {n,wr,avg%} (S.BULL). Forward-only observation; never ship off the live N.
-    pair_rsi_ob_buckets = {"rsi": [], "adx": [], "adx40_rsi": []}
+    pair_rsi_ob_buckets = {"rsi": [], "adx": [], "adx45_rsi": []}
     try:
         _ob_live = (await db.execute(select(Order).where(and_(
             Order.is_paper == is_paper, Order.status == "CLOSED",
@@ -9274,18 +9274,18 @@ async def _compute_phantom_flip_performance(db, is_paper):
             _lv = [o for o in _ob_live if o.entry_adx is not None and _lo <= o.entry_adx < _hi]
             _ph = [f for f in _ob_ph if f.entry_adx is not None and _lo <= f.entry_adx < _hi]
             pair_rsi_ob_buckets["adx"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
-        # Jun 20 — 40+ ADX cohort × RSI cross-bucket (RAISED 33→40 same day): the split showed the edge is
-        # ADX≥40 (33-40 = 5/20%/−$237 loser; 40+ = 8/88%/+$668), so the live floor moved to 40 — this table
-        # now mirrors the live gate. Split the 40+ winner by entry RSI to check the +$ is broad, not 1-2 cells
-        # (anti-overfit on the N=8 cohort). Same LIVE (de-muxed 1×) + S.BULL phantom split.
-        _lv40 = [o for o in _ob_live if o.entry_adx is not None and o.entry_adx >= 40]
-        _ph40 = [f for f in _ob_ph if f.entry_adx is not None and f.entry_adx >= 40]
+        # Jun 21 — 45+ ADX cohort × RSI cross-bucket (floor RAISED 40→45, promoted 1×→20× same day): the
+        # 40-45 band was a 17/47%WR/−$605 loser, 45+ = 17/82%WR/+$347 — so the live floor moved to 45 and
+        # this table now mirrors the live gate. Split the 45+ cohort by entry RSI to check the +$ is broad,
+        # not 1-2 cells (anti-overfit). Same LIVE (de-muxed 1×) + S.BULL phantom split.
+        _lv45 = [o for o in _ob_live if o.entry_adx is not None and o.entry_adx >= 45]
+        _ph45 = [f for f in _ob_ph if f.entry_adx is not None and f.entry_adx >= 45]
         for _lo, _hi, _lbl in [(65, 70, '65-70'), (70, 75, '70-75'), (75, 80, '75-80'), (80, 85, '80-85'), (85, 100, '85-100')]:
-            _lv = [o for o in _lv40 if o.entry_rsi is not None and _lo <= o.entry_rsi < _hi]
-            _ph = [f for f in _ph40 if f.entry_rsi is not None and _lo <= f.entry_rsi < _hi]
-            pair_rsi_ob_buckets["adx40_rsi"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
+            _lv = [o for o in _lv45 if o.entry_rsi is not None and _lo <= o.entry_rsi < _hi]
+            _ph = [f for f in _ph45 if f.entry_rsi is not None and _lo <= f.entry_rsi < _hi]
+            pair_rsi_ob_buckets["adx45_rsi"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
     except Exception:
-        pair_rsi_ob_buckets = {"rsi": [], "adx": [], "adx40_rsi": []}
+        pair_rsi_ob_buckets = {"rsi": [], "adx": [], "adx45_rsi": []}
 
     return {"rows": rows, "total": total, "fan_curve": fan_curve,
             "leftover_filter_test": leftover_filter_test, "source_regime_xtab": source_regime_xtab,

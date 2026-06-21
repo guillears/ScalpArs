@@ -207,6 +207,7 @@
     "flip_short_btc30_rise_block_min": 0.0,
     "flip_short_atr_block_min": 3.0,
     "flip_short_rsi_min": 55.0,
+    "flip_short_pair_gap_max": 1.0,
     "flip_pair_rsi_ob_short_regimes": "STRONG_BULL",
     "flip_pair_rsi_ob_adx_min": 45.0,
     "flip_pair_rsi_ob_btc_adx_high_mode": "live",

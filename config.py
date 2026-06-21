@@ -548,6 +548,16 @@ class SignalThresholds(BaseModel):
     # SHORT when pair RSI < this. Operator-directed, N below the locked filter gate → TIGHT REVERT.
     # 0 = OFF (fail-open on missing rsi too).
     flip_short_rsi_min: float = 0.0   # block flip-SHORT when entry pair RSI < this (0 = off)
+    # Jun 21 — pair EMA13-EMA50 gap ceiling for flip-SHORTS. Refuse to fade a pair already steeply
+    # extended above its OWN 4h trend (gap = (EMA13-EMA50)/EMA50 %): a parabola that keeps ripping →
+    # the 20× short gaps the SL to ~-1.2%. Cross-batch FAN survivors (Jun17-21 deduped): gap≥1.0 =
+    # N=16/44%WR/-0.359%avg/Σ-$461, net-negative every batch; the 0-1.0 band is the fade sweet spot
+    # (19/87%WR/+0.45%). ONE-SIDED (positive tail only): a big NEGATIVE gap is with-trend momentum that
+    # WINS (≤-1.5 = +0.79%), so it is NOT blocked. The flip-side of the live non-flip pair_trend_short
+    # filter, tuned for flips (which want MILD extension to fade). N=16 / DISCIPLINE-OVERRIDE (< the
+    # N≥30 gate). Counter FLIP_SHORT_PAIR_GAP. 0 = OFF (fail-open on missing gap too).
+    # TIGHT REVERT: →0 if blocked gap≥1.0 flip-shorts hit ≥50% WR on N≥10 fresh.
+    flip_short_pair_gap_max: float = 1.0   # block flip-SHORT when pair EMA13-EMA50 gap% ≥ this (0 = off)
     # Jun 17 — MIRROR of the short gate for flip-LONGS. A flip-LONG fades a blocked SHORT -> goes LONG;
     # in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO this batch: 2/0%WR/-$220, straight to SL).
     # The observed long losers were ADXΔ-AGNOSTIC (ADXΔ +1.5, regime was the killer) → adxd_max default

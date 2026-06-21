@@ -6087,6 +6087,11 @@
                                     <input type="number" id="config-flip-short-rsi-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
                                     <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 55 — fade only overbought blocked-longs)</span>
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 21: pair EMA13–EMA50 gap ceiling for flip-SHORTS — refuse to fade a pair already steeply extended above its OWN 4h trend (gap = (EMA13−EMA50)/EMA50 %). A parabola that keeps ripping → the 20× short gaps the SL to ~−1.2%. Cross-batch FAN survivors (Jun17–21 deduped): gap≥1.0 = N=16/44%WR/−0.359%/Σ−$461 (net-negative every batch); the 0–1.0 band is the fade sweet spot (19/87%WR/+0.45%). ONE-SIDED — a big NEGATIVE gap is with-trend momentum that WINS (≤−1.5 = +0.79%), so it is NOT blocked. N=16/DISCIPLINE-OVERRIDE. Counter FLIP_SHORT_PAIR_GAP. 0 = off. TIGHT REVERT: →0 if blocked gap≥1.0 flip-shorts hit ≥50% WR on N≥10 fresh.">
+                                    <span class="text-rose-300 whitespace-nowrap">Short flip: block pair EMA13–EMA50 gap% ≥</span>
+                                    <input type="number" id="config-flip-short-pair-gap-max" step="0.1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
+                                    <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 1.0 — don't fade a parabolic pair; one-sided, positive only)</span>
+                                </div>
                             </div>
                             <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
                             <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
@@ -18258,6 +18263,7 @@
                 _setVal('config-flip-long-regime-regimes', config.thresholds.flip_long_regime_block_regimes || '');
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
                 _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
+                _setVal('config-flip-short-pair-gap-max', config.thresholds.flip_short_pair_gap_max);
                 _setVal('config-flip-pair-rsi-ob-regimes', config.thresholds.flip_pair_rsi_ob_short_regimes);
                 _setVal('config-flip-pair-rsi-ob-adx-min', config.thresholds.flip_pair_rsi_ob_adx_min);
                 _setVal('config-flip-pair-rsi-ob-btc-adx-high-mode', config.thresholds.flip_pair_rsi_ob_btc_adx_high_mode);
@@ -19533,6 +19539,7 @@
                     flip_long_regime_block_regimes: ((document.getElementById('config-flip-long-regime-regimes') || {}).value || '').trim(),
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_short_regimes: ((document.getElementById('config-flip-pair-rsi-ob-regimes') || {}).value || '').trim(),
                     flip_pair_rsi_ob_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-pair-rsi-ob-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_btc_adx_high_mode: ((document.getElementById('config-flip-pair-rsi-ob-btc-adx-high-mode') || {}).value || 'off').trim(),

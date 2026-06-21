@@ -2399,6 +2399,68 @@ def _compute_atr_bucket_performance(orders):
     return rows
 
 
+def _compute_atr_holdtime_crosstab(orders):
+    """ATR × Hold-Time Cross-Tab, split by direction (Jun 21).
+
+    Tests the theory: high-ATR trades resolve FAST (hit the fixed ±% stops
+    quickly, while the entry thesis still holds); low-ATR trades grind SLOWLY,
+    and in the "meanwhile" BTC conditions drift from entry → random outcome.
+    Rows = ATR bands × duration cols; per-ATR marginals = median hold-time +
+    regime-change% (entry_btc_regime != exit_btc_regime — the drift mechanism).
+    SPLIT BY DIRECTION because ATR correlates with sleeve (high-ATR ~ FAN
+    shorts w/ runner edge, low-ATR ~ bull-longs) — un-split it reads as an ATR
+    edge that is really a sleeve edge. All inputs are existing Order columns.
+    """
+    def _dv(o):
+        return o.direction.value if hasattr(o.direction, "value") else o.direction
+    closed = [o for o in orders if o.status == "CLOSED" and o.entry_atr_pct is not None
+              and o.pnl is not None and o.opened_at and o.closed_at]
+    atr_buckets = [("<0.5", 0.0, 0.5), ("0.5-1.0", 0.5, 1.0), ("1.0-1.5", 1.0, 1.5),
+                   ("1.5-2.5", 1.5, 2.5), (">2.5", 2.5, 999.0)]
+    dur_buckets = [("<10m", 0, 10), ("10-20m", 10, 20), ("20-40m", 20, 40),
+                   ("40-90m", 40, 90), (">90m", 90, 1e12)]
+
+    def _dur(o):
+        return (o.closed_at - o.opened_at).total_seconds() / 60.0
+
+    rows = []
+    for D in ("LONG", "SHORT"):
+        d_orders = [o for o in closed if _dv(o) == D]
+        for albl, alo, ahi in atr_buckets:
+            band = [o for o in d_orders if alo <= o.entry_atr_pct < ahi]
+            if not band:
+                continue
+            n = len(band)
+            wins = sum(1 for o in band if o.pnl > 0)
+            durs = sorted(_dur(o) for o in band)
+            med = durs[len(durs) // 2]
+            reg = sum(1 for o in band if o.exit_btc_regime is not None
+                      and o.entry_btc_regime != o.exit_btc_regime)
+            cells = []
+            for dlbl, dlo, dhi in dur_buckets:
+                c = [o for o in band if dlo <= _dur(o) < dhi]
+                if c:
+                    cw = sum(1 for o in c if o.pnl > 0)
+                    cells.append({
+                        "n": len(c),
+                        "wr": round(100 * cw / len(c)),
+                        "avg": round(sum(o.pnl_percentage or 0 for o in c) / len(c), 2),
+                    })
+                else:
+                    cells.append(None)
+            rows.append({
+                "direction": D,
+                "atr": albl,
+                "n": n,
+                "wr": round(100 * wins / n),
+                "avg": round(sum(o.pnl_percentage or 0 for o in band) / n, 3),
+                "med_dur": round(med),
+                "reg_chg": round(100 * reg / n),
+                "cells": cells,
+            })
+    return {"dur_labels": [b[0] for b in dur_buckets], "rows": rows}
+
+
 def _compute_volume_intersection_crosstab(orders):
     """May 10 evening: 2D cross-tab of Global Vol Ratio (rows) × Pair Vol USD (cols).
 
@@ -6966,6 +7028,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pair_rank_performance": _compute_pair_rank_performance(orders),
         # May 9: ATR bucket performance — tests "high volatility = loss driver" hypothesis
         "atr_bucket_performance": _compute_atr_bucket_performance(orders),
+        "atr_holdtime_crosstab": _compute_atr_holdtime_crosstab(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
         # Pattern Cell Ship Performance (May 21, NEW — pattern-based rules per CLAUDE.md May 21 ship)

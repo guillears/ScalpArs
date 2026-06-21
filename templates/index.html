@@ -4230,6 +4230,32 @@
                     </div>
                 </div>
 
+                <!-- ATR × Hold-Time Cross-Tab (Jun 21) -->
+                <div class="mt-6 border-t border-amber-900/40 pt-4">
+                    <h3 class="text-sm font-semibold text-amber-300 mb-1">📊 ATR × Hold-Time Cross-Tab <span class="text-gray-500 font-normal">— split by direction</span></h3>
+                    <p class="text-xs text-gray-500 mb-3">Theory: high ATR resolves FAST (entry thesis still holds); low ATR grinds SLOW → BTC regime drifts from entry → random. Cell = N / Win% / Avg&nbsp;P&L%. <span class="text-amber-400/80">RegChg%</span> = entry BTC regime ≠ exit regime (the drift mechanism). Split LONG/SHORT because ATR correlates with sleeve.</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs">
+                            <thead>
+                                <tr class="text-gray-400 border-b border-amber-900/40">
+                                    <th class="px-2 py-1 text-left">ATR%</th>
+                                    <th class="px-2 py-1 text-right">&lt;10m</th>
+                                    <th class="px-2 py-1 text-right">10-20m</th>
+                                    <th class="px-2 py-1 text-right">20-40m</th>
+                                    <th class="px-2 py-1 text-right">40-90m</th>
+                                    <th class="px-2 py-1 text-right">&gt;90m</th>
+                                    <th class="px-2 py-1 text-right border-l border-amber-900/40">Band N/WR/Avg</th>
+                                    <th class="px-2 py-1 text-right">MedHold</th>
+                                    <th class="px-2 py-1 text-right">RegChg%</th>
+                                </tr>
+                            </thead>
+                            <tbody id="atr-holdtime-body" class="divide-y divide-white/5">
+                                <tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Per-Pair Performance -->
                 <div class="mt-6 border-t border-white/5 pt-4">
                     <h3 class="text-sm font-semibold text-gray-300 mb-1">Performance by Pair</h3>
@@ -9510,6 +9536,23 @@
                 }
             }
 
+            if (perf.atr_holdtime_crosstab && perf.atr_holdtime_crosstab.rows && perf.atr_holdtime_crosstab.rows.length > 0) {
+                const aht = perf.atr_holdtime_crosstab;
+                lines.push(`\n${hr2}`);
+                lines.push('## ATR × Hold-Time Cross-Tab (split by direction — Jun 21)\n');
+                lines.push('Theory: high ATR = fast resolution (entry thesis holds); low ATR = slow grind → BTC regime drifts → random. Cell = N/WR%/avg%. RegChg% = entry≠exit BTC regime (the drift mechanism).');
+                const dl = aht.dur_labels || [];
+                const cfmt = (c) => c ? `${c.n}/${c.wr}%/${c.avg >= 0 ? '+' : ''}${c.avg.toFixed(2)}` : '-';
+                lines.push(`${'ATR%'.padEnd(9)} ${dl.map(d => d.padEnd(14)).join('')} ${'Band'.padEnd(16)} ${'MedHold'.padEnd(8)} ${'RegChg%'.padEnd(7)}`);
+                let ahtDir = null;
+                for (const r of aht.rows) {
+                    if (r.direction !== ahtDir) { ahtDir = r.direction; lines.push(`[${ahtDir}]`); }
+                    const cells = r.cells.map(c => cfmt(c).padEnd(14)).join('');
+                    const band = `${r.n}/${r.wr}%/${r.avg >= 0 ? '+' : ''}${r.avg.toFixed(3)}`;
+                    lines.push(`${r.atr.padEnd(9)} ${cells} ${band.padEnd(16)} ${(r.med_dur + 'm').padEnd(8)} ${(r.reg_chg + '%').padEnd(7)}`);
+                }
+            }
+
             lines.push(`\n${hr2}`);
             lines.push('## Performance by BTC Entry RSI\n');
             lines.push(`${'Range'.padEnd(12)} ${'#'.padEnd(5)} ${'Dir'.padEnd(7)} ${'Win%'.padEnd(6)} ${'Total$'.padEnd(12)} ${'Avg$'.padEnd(10)} ${'Avg%'.padEnd(10)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'AvgGap'.padEnd(8)}`);
@@ -11450,6 +11493,24 @@
                     for (const r of perf.atr_bucket_performance) {
                         const dir = `${r.longs}L/${r.shorts}S`;
                         lines.push(`${r.range.padEnd(14)} ${String(r.trades).padEnd(5)} ${dir.padEnd(8)} ${(r.win_rate.toFixed(1)+'%').padEnd(7)} ${(r.avg_atr_pct.toFixed(3)+'%').padStart(9)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${('$'+r.avg_pnl.toFixed(2)).padStart(10)} ${('$'+r.total_pnl.toFixed(2)).padStart(12)} ${r.avg_rsi.toFixed(1).padStart(7)} ${r.avg_adx.toFixed(1).padStart(7)}`);
+                    }
+                }
+
+                // --- ATR × Hold-Time Cross-Tab (Jun 21) ---
+                if (perf.atr_holdtime_crosstab && perf.atr_holdtime_crosstab.rows && perf.atr_holdtime_crosstab.rows.length > 0) {
+                    const aht = perf.atr_holdtime_crosstab;
+                    lines.push(`\n${hr2}`);
+                    lines.push('## ATR × Hold-Time Cross-Tab (split by direction — Jun 21)\n');
+                    lines.push('Theory: high ATR = fast resolution (entry thesis holds); low ATR = slow grind → BTC regime drifts → random. Cell = N/WR%/avg%. RegChg% = entry≠exit BTC regime (the drift mechanism).');
+                    const dl = aht.dur_labels || [];
+                    const cfmt = (c) => c ? `${c.n}/${c.wr}%/${c.avg >= 0 ? '+' : ''}${c.avg.toFixed(2)}` : '-';
+                    lines.push(`${'ATR%'.padEnd(9)} ${dl.map(d => d.padEnd(14)).join('')} ${'Band'.padEnd(16)} ${'MedHold'.padEnd(8)} ${'RegChg%'.padEnd(7)}`);
+                    let ahtDir = null;
+                    for (const r of aht.rows) {
+                        if (r.direction !== ahtDir) { ahtDir = r.direction; lines.push(`[${ahtDir}]`); }
+                        const cells = r.cells.map(c => cfmt(c).padEnd(14)).join('');
+                        const band = `${r.n}/${r.wr}%/${r.avg >= 0 ? '+' : ''}${r.avg.toFixed(3)}`;
+                        lines.push(`${r.atr.padEnd(9)} ${cells} ${band.padEnd(16)} ${(r.med_dur + 'm').padEnd(8)} ${(r.reg_chg + '%').padEnd(7)}`);
                     }
                 }
 
@@ -16778,6 +16839,41 @@
                         }).join('');
                     } else {
                         atrBucketBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                    }
+                }
+
+                // ATR × Hold-Time Cross-Tab (Jun 21)
+                const ahtBody = document.getElementById('atr-holdtime-body');
+                if (ahtBody) {
+                    const aht = data.atr_holdtime_crosstab;
+                    if (aht && aht.rows && aht.rows.length > 0) {
+                        const cell = (c) => {
+                            if (!c) return '<td class="px-2 py-1.5 text-right text-gray-600">–</td>';
+                            const avgCls = c.avg >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const wrCls = c.wr >= 55 ? 'text-emerald-300' : (c.wr < 45 ? 'text-red-300' : 'text-gray-300');
+                            return `<td class="px-2 py-1.5 text-right whitespace-nowrap"><span class="text-gray-400">${c.n}</span>/<span class="${wrCls}">${c.wr}%</span>/<span class="${avgCls}">${c.avg >= 0 ? '+' : ''}${c.avg.toFixed(2)}</span></td>`;
+                        };
+                        let html = '';
+                        let curDir = null;
+                        for (const r of aht.rows) {
+                            if (r.direction !== curDir) {
+                                curDir = r.direction;
+                                const dc = curDir === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                                html += `<tr class="bg-white/5"><td colspan="9" class="px-2 py-1 font-semibold ${dc}">${curDir}</td></tr>`;
+                            }
+                            const bandCls = r.avg >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const regCls = r.reg_chg >= 60 ? 'text-amber-400 font-semibold' : 'text-gray-400';
+                            html += `<tr class="hover:bg-white/5">
+                                <td class="px-2 py-1.5 text-amber-300 font-medium">${r.atr}</td>
+                                ${r.cells.map(cell).join('')}
+                                <td class="px-2 py-1.5 text-right border-l border-amber-900/40 whitespace-nowrap"><span class="text-gray-400">${r.n}</span>/${r.wr}%/<span class="${bandCls}">${r.avg >= 0 ? '+' : ''}${r.avg.toFixed(3)}</span></td>
+                                <td class="px-2 py-1.5 text-right text-gray-400">${r.med_dur}m</td>
+                                <td class="px-2 py-1.5 text-right ${regCls}">${r.reg_chg}%</td>
+                            </tr>`;
+                        }
+                        ahtBody.innerHTML = html;
+                    } else {
+                        ahtBody.innerHTML = '<tr><td colspan="9" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                     }
                 }
 

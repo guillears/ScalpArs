@@ -584,11 +584,18 @@ class SignalThresholds(BaseModel):
     # hard risk controls (max-open, existing-position, cooldown, liquidity caps) still apply.
     # TO REMOVE: grep "BULL_LONG" / "bull_long" + the main.py bull-long perf blocks + the UI.
     bull_long_enabled: bool = True                     # master toggle for the bull-long sleeve
-    bull_long_regimes: str = "HEALTHY_BULL"            # CSV of BTC regimes the sleeve fires in
-    bull_long_fan_max: float = 3.0                     # upper fan bound (Jun 20: 10→3.0 — cap the sweet spot; live fan 3.0-5.0 = 2/0%/−$206, 5-10 = 1/0%/−$130 = small-N losers above 3)
-    bull_long_fan_min: float = 1.65                    # lower fan bound (Jun 20: 1.35→1.65 — restrict to the only positive bands; live 1.65-2.0 = 5/80%/+$175, 2.0-3.0 = 10/90%/+$705 vs below-1.65 all net-neg). 0 = disabled
+    # Jun 21 — converted to a 1× OBSERVATION ARM. The cross-batch dig (N=52) showed fan bucket & regime
+    # are NOT the driver of bull-long outcomes — BTC momentum/extension at entry is: BTC 30m-RSI Δ≥+12 =
+    # 26/73%WR/+0.149% (the winning band) and BTC EMA13-EMA50 gap≥+0.06 = 22/27%WR/−$430 (the whole loss).
+    # So we OPEN the aperture (broaden regimes + widen fan) at 1× and TRACK those two cells × regime to
+    # confirm the real gate before re-levering. Bear regimes EXCLUDED (build-side long-into-bear = the
+    # opposite thesis; flip-LONG bear evidence = 2/0%/−$220). REVERT: any single bull-long gaps past
+    # ~−1.0% OR the arm <40% WR at N≥20 → cut back to bull_long_regimes=HEALTHY_BULL, fan 1.65–3.0, lev 0.05.
+    bull_long_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT,CHOPPY_WEAK"  # obs-arm regimes (no bear)
+    bull_long_fan_max: float = 5.0                     # upper fan bound (Jun 21: 3.0→5.0 obs-arm — fan is a suspected red herring; widen + track BTC-momentum instead)
+    bull_long_fan_min: float = 1.35                    # lower fan bound (Jun 21: 1.65→1.35 obs-arm; sub-1.35 stays excluded = big-N clear loser −$1151/19). 0 = disabled
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
-    bull_long_lev_mult: float = 1.0                    # leverage multiplier (1.0 = normal leverage)
+    bull_long_lev_mult: float = 0.05                   # leverage multiplier (Jun 21: 1.0/20×→0.05/1× — de-risked observation; sleeve was net-losing at 20× and the real gate is unproven)
     # Bounce-Long sleeve (Jun 19, 2026) — oversold-WASHOUT dead-cat bounce LONG. Fades the
     # BTC_RSI_ADX_CROSS oversold short-block: in a bear, a SHORT blocked because BTC is washed out
     # (the validated BTC RSI × BTC ADX cells) → open a REAL LONG to catch the bounce. NORMAL long

@@ -2566,6 +2566,40 @@ def _compute_regime_drift_outcome(orders):
     return {"rows": rows}
 
 
+def _compute_regime_exit_counterfactual(orders):
+    """Regime-Change-Exit counterfactual (Jun 21) — your idea: when the BTC regime
+    turns mid-trade, is THAT the moment to exit (lock the P&L) instead of holding
+    to SL? The phantom moment is already stamped: regime_opposite_pnl (OPPOSITE/
+    full-reversal = the DRIFT-ADVERSE case) and regime_neutral_pnl (NEUTRAL/soft =
+    DRIFT-soft). Kept SEPARATE because they behave differently — adverse mostly
+    dies (exit wins), soft recovers ~1/3 of the time (exiting chops comebacks).
+    Decision aid for the disabled `regime_change_exit` feature. Zero new columns.
+    """
+    def _dv(o):
+        return o.direction.value if hasattr(o.direction, "value") else o.direction
+    closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None]
+    rows = []
+    for flip_lbl, col in (("OPPOSITE (adverse)", "regime_opposite_pnl"),
+                          ("NEUTRAL (soft)", "regime_neutral_pnl")):
+        for D in ("ALL", "LONG", "SHORT"):
+            grp = [o for o in closed if getattr(o, col, None) is not None
+                   and (D == "ALL" or _dv(o) == D)]
+            if not grp:
+                continue
+            n = len(grp)
+            en = sum(getattr(o, col) for o in grp) / n
+            ho = sum(o.pnl_percentage or 0 for o in grp) / n
+            sl = sum(1 for o in grp if "STOP_LOSS" in (o.close_reason or ""))
+            rec = sum(1 for o in grp if (o.pnl_percentage or 0) > getattr(o, col))
+            rows.append({
+                "flip": flip_lbl, "direction": D, "n": n,
+                "exit_now": round(en, 3), "hold": round(ho, 3),
+                "delta": round(ho - en, 3),
+                "sl_pct": round(100 * sl / n), "recovered_pct": round(100 * rec / n),
+            })
+    return rows
+
+
 def _compute_volume_intersection_crosstab(orders):
     """May 10 evening: 2D cross-tab of Global Vol Ratio (rows) × Pair Vol USD (cols).
 
@@ -7138,6 +7172,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "atr_holdtime_crosstab": _compute_atr_holdtime_crosstab(orders),
         "holdtime_atr_table": _compute_holdtime_atr_table(orders),
         "regime_drift_outcome": _compute_regime_drift_outcome(orders),
+        "regime_exit_counterfactual": _compute_regime_exit_counterfactual(orders),
         # Premium Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
         "multiplier_cell_performance": _compute_multiplier_cell_performance(orders),
         # Pattern Cell Ship Performance (May 21, NEW — pattern-based rules per CLAUDE.md May 21 ship)

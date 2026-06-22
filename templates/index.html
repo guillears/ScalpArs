@@ -362,7 +362,8 @@
                                 <th class="px-4 py-3 font-medium">Pair</th>
                                 <th class="px-4 py-3 font-medium">Confidence</th>
                                 <th class="px-4 py-3 font-medium">Direction</th>
-                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
+                                <th class="px-4 py-3 font-medium text-center" title="Which sleeve opened this position (matches the Filter by Flip Source names)">Strategy</th>
+                                <th class="px-4 py-3 font-medium text-center" title="Order fill type (TAKER / MAKER)">Entry Type</th>
                                 <th class="px-4 py-3 font-medium text-right">Investment</th>
                                 <th class="px-4 py-3 font-medium text-right">Leverage</th>
                                 <th class="px-4 py-3 font-medium text-right">Notional</th>
@@ -379,7 +380,7 @@
                         </thead>
                         <tbody id="open-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="17" class="px-4 py-8 text-center text-gray-500">No open orders</td>
+                                <td colspan="18" class="px-4 py-8 text-center text-gray-500">No open orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -397,7 +398,8 @@
                                 <th class="px-4 py-3 font-medium">Pair</th>
                                 <th class="px-4 py-3 font-medium">Confidence</th>
                                 <th class="px-4 py-3 font-medium">Direction</th>
-                                <th class="px-4 py-3 font-medium text-center">Entry Type</th>
+                                <th class="px-4 py-3 font-medium text-center" title="Which sleeve opened this position (matches the Filter by Flip Source names)">Strategy</th>
+                                <th class="px-4 py-3 font-medium text-center" title="Order fill type (TAKER / MAKER)">Entry Type</th>
                                 <th class="px-4 py-3 font-medium text-center">Exit Type</th>
                                 <th class="px-4 py-3 font-medium text-right">Investment</th>
                                 <th class="px-4 py-3 font-medium text-right">Leverage</th>
@@ -414,7 +416,7 @@
                         </thead>
                         <tbody id="closed-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="18" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
+                                <td colspan="19" class="px-4 py-8 text-center text-gray-500">No closed orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -17663,12 +17665,21 @@
                         tpTierBadge = ` <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${bgClass} ${textClass}" title="${title}">${label}</span>`;
                     }
                     
+                    // Strategy / sleeve badge (matches the Filter by Flip Source names)
+                    const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
+                    const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw;
+                    const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
+                        : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
+                        : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
+                        : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
+                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span></td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-right">${formatUSD(o.investment)}</td>
                             <td class="px-4 py-3 text-right">${o.leverage}x</td>
@@ -17725,7 +17736,7 @@
                 const tbody = document.getElementById('closed-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="18" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No closed orders</td></tr>';
                     return;
                 }
                 
@@ -17765,6 +17776,14 @@
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400">FALLBACK</span>'
                         : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-gray-500/20 text-gray-400">TAKER</span>';
                     
+                    // Strategy / sleeve badge (matches the Filter by Flip Source names)
+                    const _isFlipStrat = (o.entry_strategy || '').startsWith('FLIP:');
+                    const _stratRaw = _isFlipStrat ? (o.entry_strategy || '').slice(5) : ((o.entry_strategy || 'MOMENTUM'));
+                    const _stratLabel = _stratRaw === 'BULL_LONG' ? 'BULL-LONG' : _stratRaw === 'BOUNCE_LONG' ? 'BOUNCE-LONG' : _stratRaw;
+                    const _stratColor = _isFlipStrat ? 'bg-sky-500/20 text-sky-300'
+                        : _stratRaw === 'BULL_LONG' ? 'bg-emerald-500/20 text-emerald-300'
+                        : _stratRaw === 'BOUNCE_LONG' ? 'bg-amber-500/20 text-amber-300'
+                        : 'bg-gray-500/20 text-gray-400';
                     return `
                         <tr class="hover:bg-white/5 transition">
                             <td class="px-4 py-3 text-sm">${formatTime(o.opened_at)}</td>
@@ -17772,6 +17791,7 @@
                             <td class="px-4 py-3 font-medium">${o.pair}</td>
                             <td class="px-4 py-3 ${confClass}">${o.confidence || '-'}</td>
                             <td class="px-4 py-3 ${dirClass} font-medium">${o.direction}</td>
+                            <td class="px-4 py-3 text-center"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${_stratColor}">${_stratLabel}</span></td>
                             <td class="px-4 py-3 text-center">${eotBadge}</td>
                             <td class="px-4 py-3 text-center">${exotBadge}</td>
                             <td class="px-4 py-3 text-right ${(() => {

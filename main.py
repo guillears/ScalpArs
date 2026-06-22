@@ -1276,6 +1276,7 @@ async def get_closed_orders(db: AsyncSession = Depends(get_db)):
             "entry_quality_score": o.entry_quality_score,
             "entry_btc_regime": o.entry_btc_regime,
             "exit_btc_regime": o.exit_btc_regime,
+            "entry_strategy": getattr(o, 'entry_strategy', None),  # Jun 22: Strategy column in Closed Orders table
         })
 
     return orders_data

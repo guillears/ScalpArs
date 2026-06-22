@@ -319,6 +319,16 @@ def _flip_filters(source, ind):
                     _ob_adx = ind.get('adx')
                     if _ob_adx is not None and _ob_adx < _ob_amin:
                         return (True, "FLIP_PAIR_RSI_OB_ADX", 1.0, 1.0, None)
+                # Jun 22 — pair EMA13-EMA50 gap ceiling (parabola guard). PAIR_RSI_OB returns early below so it
+                # never inherited the universal flip_short_pair_gap_max block; replicate it here on its OWN field.
+                # Don't fade a pair already steeply extended above its 4h trend (gap≥max) — it never arms and the
+                # 20× gaps the SL. N=22 in-sample but mirrors the cross-batch FAN gap filter. Counter
+                # FLIP_PAIR_RSI_OB_GAP. Fail-open: missing gap or max=0 → no block.
+                _ob_pgmax = float(getattr(th, 'flip_pair_rsi_ob_pair_gap_max', 0.0) or 0.0)
+                if _ob_pgmax > 0:
+                    _ob_pgap = ind.get('pair_gap')
+                    if _ob_pgap is not None and _ob_pgap >= _ob_pgmax:
+                        return (True, "FLIP_PAIR_RSI_OB_GAP", 1.0, 1.0, None)
                 # Jun 21: the BTC-ADX>40 cohort is PROMOTED from de-risked 1x to full 20x after its first
                 # live batch — at the raised pADX>=45 floor it was 17/82%WR/+0.20%avg with BE-compat 67%
                 # (≥60% of losers armed, only 1/17 gapped). De-risk removed → all pADX>=45 STRONG_BULL fires

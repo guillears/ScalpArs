@@ -542,6 +542,17 @@ class SignalThresholds(BaseModel):
     # full 20x (de-risk removed in _flip_filters) after its first batch held at the 45 floor. REVERT the
     # whole >40 experiment by setting this to off (stops the >40 seed); the [28,40] cohort is unaffected.
     flip_pair_rsi_ob_btc_adx_high_mode: str = "off"
+    # Jun 22 — PAIR_RSI_OB pair EMA13-EMA50 gap ceiling (the parabola guard). The overbought-fade pays only
+    # on a pair that's overbought but still NEAR its own 4h trend; a pair already steeply extended above EMA50
+    # (gap≥1.0%) is a parabola that keeps ripping → the 20× short never arms (peak ~0) and gaps the SL to ~-1.2%.
+    # Latest batch (N=22, in-sample, single STRONG_BULL window): gap≥1.0 = 19/32%WR/-$1080 vs gap<1.0 = 3/100%/+$97
+    # → the block flips the cohort -$983 → +$97. Per-trade-proven the losers gap-down (peak<0.20) so an exit can't
+    # save them; only this entry block does. DISCIPLINE-OVERRIDE (N=22<30, one window) but mirrors the cross-batch
+    # FAN gap≥1.0 filter (flip_short_pair_gap_max, N=16 J17-21, same mechanism) → extends a proven gate to the
+    # sister source that previously RETURNED EARLY and skipped it. SEPARATE field (not flip_short_pair_gap_max) so
+    # its revert clock is independent of FAN. Counter FLIP_PAIR_RSI_OB_GAP. 0 = OFF (fail-open on missing gap).
+    # TIGHT REVERT: set →0 if blocked (gap≥1.0) PAIR_RSI_OB fades show ≥50% WR on N≥10 fresh.
+    flip_pair_rsi_ob_pair_gap_max: float = 1.0
     # Jun 19 — pair-RSI floor for flip-SHORTS. Fade quality scales with how overbought the blocked long was.
     # Cross-batch (Jun17/18/19, deduped): RSI<55 = N=21/57%WR/−0.094%/Σ−1.98 (the only consistently-negative
     # zone); RSI≥55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = N=24/71%WR/+0.187%. Block
@@ -593,7 +604,7 @@ class SignalThresholds(BaseModel):
     # ~−1.0% OR the arm <40% WR at N≥20 → cut back to bull_long_regimes=HEALTHY_BULL, fan 1.65–3.0, lev 0.05.
     bull_long_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT,CHOPPY_WEAK"  # obs-arm regimes (no bear)
     bull_long_fan_max: float = 5.0                     # upper fan bound (Jun 21: 3.0→5.0 obs-arm — fan is a suspected red herring; widen + track BTC-momentum instead)
-    bull_long_fan_min: float = 1.35                    # lower fan bound (Jun 21: 1.65→1.35 obs-arm; sub-1.35 stays excluded = big-N clear loser −$1151/19). 0 = disabled
+    bull_long_fan_min: float = 1.0                     # lower fan bound (Jun 22: 1.35→1.0 — operator widens the obs aperture down to fan 1.0 to collect the 1.0-1.35 band; NOTE that band is a documented loser at 20× [06-20: 14/36%WR/−$732], opened ONLY because the arm runs at 1×/0.05-lev observation. 0 = disabled
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
     bull_long_lev_mult: float = 0.05                   # leverage multiplier (Jun 21: 1.0/20×→0.05/1× — de-risked observation; sleeve was net-losing at 20× and the real gate is unproven)
     # Bounce-Long sleeve (Jun 19, 2026) — oversold-WASHOUT dead-cat bounce LONG. Fades the

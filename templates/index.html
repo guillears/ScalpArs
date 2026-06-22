@@ -4312,8 +4312,8 @@
                                 <th class="px-2 py-1 text-right">Exit@flip$</th>
                                 <th class="px-2 py-1 text-right">Hold@close%</th>
                                 <th class="px-2 py-1 text-right">Hold@close$</th>
-                                <th class="px-2 py-1 text-right">Δ</th>
-                                <th class="px-2 py-1 text-right">Δ$</th>
+                                <th class="px-2 py-1 text-right">Δ% <span class="text-gray-600 font-normal">(hold−exit)</span></th>
+                                <th class="px-2 py-1 text-right">Δ$ <span class="text-gray-600 font-normal">(hold−exit)</span></th>
                                 <th class="px-2 py-1 text-right">SL%</th>
                                 <th class="px-2 py-1 text-right">Recov%</th>
                             </tr></thead>
@@ -6223,7 +6223,12 @@
                                 </select>
                                 <span class="text-gray-500 text-xs whitespace-nowrap">(decouple seed from BTC-ADX-high veto)</span>
                             </div>
-                            <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400">Jun 21: lev 1×→20× + ADX≥45 floor (operator override; raised 40→45 — 40-45 was a 17/47%/−$605 loser band, edge is ADX≥45 = 17/82%/+$347).</span> Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85% (regime) / 45+ WR≤70% or avg≤+0.05% (ADX). Counters <code>FLIP_PAIR_RSI_OB_REGIME</code> / <code>FLIP_PAIR_RSI_OB_ADX</code>.</p>
+                            <div class="col-span-2 flex items-center gap-2 flex-wrap mt-2" title="Jun 22 (N=22 DISCIPLINE-OVERRIDE, in-sample 1 STRONG_BULL window): block the overbought-fade when the pair's (EMA13−EMA50)/EMA50 gap% ≥ this — a parabola already steeply above its own 4h trend keeps ripping, the 20× short never arms (peak ~0) and gaps the SL to ~−1.2%. Batch: gap≥1.0 = 19/32%WR/−$1080 vs gap<1.0 = 3/100%/+$97 → flips the cohort −$983 → +$97. Mirrors the cross-batch FAN gap≥1.0 filter (N=16 J17-21, same mechanism); separate field so its revert clock is independent. 0 = off · ship 1.0. Counter FLIP_PAIR_RSI_OB_GAP. TIGHT REVERT: set to 0 if blocked gap≥1.0 fades show ≥50% WR on N≥10 fresh.">
+                                <span class="text-rose-300 whitespace-nowrap">Max pair EMA13-50 gap%</span>
+                                <input type="number" step="0.1" id="config-flip-pair-rsi-ob-pair-gap-max" class="w-24 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right text-xs" placeholder="1.0">
+                                <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off · ship 1.0 · parabola guard, blocks SYN/EIGEN gappers)</span>
+                            </div>
+                            <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400">Jun 21: lev 1×→20× + ADX≥45 floor (operator override; raised 40→45 — 40-45 was a 17/47%/−$605 loser band, edge is ADX≥45 = 17/82%/+$347).</span> Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85% (regime) / 45+ WR≤70% or avg≤+0.05% (ADX). Counters <code>FLIP_PAIR_RSI_OB_REGIME</code> / <code>FLIP_PAIR_RSI_OB_ADX</code> / <code>FLIP_PAIR_RSI_OB_GAP</code>.</p>
                         </div>
                         <!-- All-sleeves strpk exit (Jun 16) -->
                         <div class="mt-3 px-3 py-2 rounded bg-cyan-950/15 border border-cyan-800/30">
@@ -9649,11 +9654,11 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Regime-Change-Exit Counterfactual (exit at the flip vs hold to SL — Jun 21)\n');
                 lines.push('Recov% = closed better than the flip-moment P&L (came back); SL% = died at stop; Δ = hold − exit (negative ⇒ exiting wins). OPPOSITE = adverse reversal; NEUTRAL = soft drift.');
-                lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Exit$'.padEnd(11)} ${'Hold@close'.padEnd(11)} ${'Hold$'.padEnd(11)} ${'Δ'.padEnd(8)} ${'Δ$'.padEnd(11)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
+                lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Exit$'.padEnd(11)} ${'Hold@close'.padEnd(11)} ${'Hold$'.padEnd(11)} ${'Δ%(h-x)'.padEnd(9)} ${'Δ$(h-x)'.padEnd(11)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
                 let recfFlip = null;
                 for (const r of perf.regime_exit_counterfactual) {
                     if (r.flip !== recfFlip) { recfFlip = r.flip; lines.push(`[${recfFlip}]`); }
-                    lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.exit_now_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.exit_now_usd).toFixed(2)).padStart(11)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.hold_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.hold_usd).toFixed(2)).padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)).padStart(8)} ${((r.delta_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.delta_usd).toFixed(2)).padStart(11)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
+                    lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.exit_now_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.exit_now_usd).toFixed(2)).padStart(11)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.hold_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.hold_usd).toFixed(2)).padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3) + '%').padStart(9)} ${((r.delta_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.delta_usd).toFixed(2)).padStart(11)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
                 }
             }
 
@@ -11649,11 +11654,11 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Regime-Change-Exit Counterfactual (exit at the flip vs hold to SL — Jun 21)\n');
                     lines.push('Recov% = closed better than the flip-moment P&L (came back); SL% = died at stop; Δ = hold − exit (negative ⇒ exiting wins). OPPOSITE = adverse reversal; NEUTRAL = soft drift.');
-                    lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Exit$'.padEnd(11)} ${'Hold@close'.padEnd(11)} ${'Hold$'.padEnd(11)} ${'Δ'.padEnd(8)} ${'Δ$'.padEnd(11)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
+                    lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Exit$'.padEnd(11)} ${'Hold@close'.padEnd(11)} ${'Hold$'.padEnd(11)} ${'Δ%(h-x)'.padEnd(9)} ${'Δ$(h-x)'.padEnd(11)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
                     let recfFlip = null;
                     for (const r of perf.regime_exit_counterfactual) {
                         if (r.flip !== recfFlip) { recfFlip = r.flip; lines.push(`[${recfFlip}]`); }
-                        lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.exit_now_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.exit_now_usd).toFixed(2)).padStart(11)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.hold_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.hold_usd).toFixed(2)).padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)).padStart(8)} ${((r.delta_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.delta_usd).toFixed(2)).padStart(11)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
+                        lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.exit_now_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.exit_now_usd).toFixed(2)).padStart(11)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.hold_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.hold_usd).toFixed(2)).padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3) + '%').padStart(9)} ${((r.delta_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.delta_usd).toFixed(2)).padStart(11)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
                     }
                 }
 
@@ -17103,7 +17108,7 @@
                                 <td class="px-2 py-1.5 text-right ${enUsdCls}">${r.exit_now_usd >= 0 ? '+' : '-'}$${Math.abs(r.exit_now_usd).toFixed(2)}</td>
                                 <td class="px-2 py-1.5 text-right ${hoCls}">${r.hold >= 0 ? '+' : ''}${r.hold.toFixed(3)}%</td>
                                 <td class="px-2 py-1.5 text-right ${hoUsdCls}">${r.hold_usd >= 0 ? '+' : '-'}$${Math.abs(r.hold_usd).toFixed(2)}</td>
-                                <td class="px-2 py-1.5 text-right ${dCls}">${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(3)}</td>
+                                <td class="px-2 py-1.5 text-right ${dCls}">${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(3)}%</td>
                                 <td class="px-2 py-1.5 text-right ${dUsdCls}">${r.delta_usd >= 0 ? '+' : '-'}$${Math.abs(r.delta_usd).toFixed(2)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-400">${r.sl_pct}%</td>
                                 <td class="px-2 py-1.5 text-right ${recCls}">${r.recovered_pct}%</td>
@@ -18600,6 +18605,7 @@
                 _setVal('config-flip-short-pair-gap-max', config.thresholds.flip_short_pair_gap_max);
                 _setVal('config-flip-pair-rsi-ob-regimes', config.thresholds.flip_pair_rsi_ob_short_regimes);
                 _setVal('config-flip-pair-rsi-ob-adx-min', config.thresholds.flip_pair_rsi_ob_adx_min);
+                _setVal('config-flip-pair-rsi-ob-pair-gap-max', config.thresholds.flip_pair_rsi_ob_pair_gap_max);
                 _setVal('config-flip-pair-rsi-ob-btc-adx-high-mode', config.thresholds.flip_pair_rsi_ob_btc_adx_high_mode);
                 _setVal('config-flip-short-atr-block-regimes', config.thresholds.flip_short_atr_block_regimes || '');
                 // Multiplier cell: parse "rsiLo-rsiHi:adxLo-adxHi:size[:lev]" (first cell) into the 6 fields
@@ -19876,6 +19882,7 @@
                     flip_short_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_short_regimes: ((document.getElementById('config-flip-pair-rsi-ob-regimes') || {}).value || '').trim(),
                     flip_pair_rsi_ob_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-pair-rsi-ob-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_pair_rsi_ob_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-pair-rsi-ob-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_btc_adx_high_mode: ((document.getElementById('config-flip-pair-rsi-ob-btc-adx-high-mode') || {}).value || 'off').trim(),
                     flip_short_atr_block_regimes: ((document.getElementById('config-flip-short-atr-block-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),

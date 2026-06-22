@@ -3239,7 +3239,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         if _fs == 'FLIP':
             orders = [o for o in orders if _es(o).startswith('FLIP:')]
         elif _fs == 'MOMENTUM':
-            orders = [o for o in orders if not _es(o).startswith('FLIP:')]
+            # Non-flip (momentum) = PURE momentum only. Exclude flips (FLIP:*) AND the
+            # build-side sleeves (BULL_LONG / BOUNCE_LONG) — they're their own strategies
+            # with their own dropdown filters, not pure momentum (Jun 22).
+            _SLEEVES = ('BULL_LONG', 'BOUNCE_LONG')
+            orders = [o for o in orders if not _es(o).startswith('FLIP:') and _es(o).upper() not in _SLEEVES]
         else:
             # FLIP sources match FLIP:<name> (incl. ×N mult variants). Non-flip build-side
             # sleeves (BULL_LONG / BOUNCE_LONG) carry a BARE entry_strategy, so accept an

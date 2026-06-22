@@ -4309,13 +4309,16 @@
                                 <th class="px-2 py-1 text-left">Flip / Dir</th>
                                 <th class="px-2 py-1 text-right">N</th>
                                 <th class="px-2 py-1 text-right">Exit@flip%</th>
+                                <th class="px-2 py-1 text-right">Exit@flip$</th>
                                 <th class="px-2 py-1 text-right">Hold@close%</th>
+                                <th class="px-2 py-1 text-right">Hold@close$</th>
                                 <th class="px-2 py-1 text-right">Δ</th>
+                                <th class="px-2 py-1 text-right">Δ$</th>
                                 <th class="px-2 py-1 text-right">SL%</th>
                                 <th class="px-2 py-1 text-right">Recov%</th>
                             </tr></thead>
                             <tbody id="regime-exit-cf-body" class="divide-y divide-white/5">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
+                                <tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -9646,11 +9649,11 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Regime-Change-Exit Counterfactual (exit at the flip vs hold to SL — Jun 21)\n');
                 lines.push('Recov% = closed better than the flip-moment P&L (came back); SL% = died at stop; Δ = hold − exit (negative ⇒ exiting wins). OPPOSITE = adverse reversal; NEUTRAL = soft drift.');
-                lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Hold@close'.padEnd(11)} ${'Δ'.padEnd(8)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
+                lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Exit$'.padEnd(11)} ${'Hold@close'.padEnd(11)} ${'Hold$'.padEnd(11)} ${'Δ'.padEnd(8)} ${'Δ$'.padEnd(11)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
                 let recfFlip = null;
                 for (const r of perf.regime_exit_counterfactual) {
                     if (r.flip !== recfFlip) { recfFlip = r.flip; lines.push(`[${recfFlip}]`); }
-                    lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)).padStart(8)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
+                    lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.exit_now_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.exit_now_usd).toFixed(2)).padStart(11)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.hold_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.hold_usd).toFixed(2)).padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)).padStart(8)} ${((r.delta_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.delta_usd).toFixed(2)).padStart(11)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
                 }
             }
 
@@ -11646,11 +11649,11 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Regime-Change-Exit Counterfactual (exit at the flip vs hold to SL — Jun 21)\n');
                     lines.push('Recov% = closed better than the flip-moment P&L (came back); SL% = died at stop; Δ = hold − exit (negative ⇒ exiting wins). OPPOSITE = adverse reversal; NEUTRAL = soft drift.');
-                    lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Hold@close'.padEnd(11)} ${'Δ'.padEnd(8)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
+                    lines.push(`${'Flip/Dir'.padEnd(14)} ${'N'.padEnd(5)} ${'Exit@flip'.padEnd(10)} ${'Exit$'.padEnd(11)} ${'Hold@close'.padEnd(11)} ${'Hold$'.padEnd(11)} ${'Δ'.padEnd(8)} ${'Δ$'.padEnd(11)} ${'SL%'.padEnd(5)} ${'Recov%'.padEnd(6)}`);
                     let recfFlip = null;
                     for (const r of perf.regime_exit_counterfactual) {
                         if (r.flip !== recfFlip) { recfFlip = r.flip; lines.push(`[${recfFlip}]`); }
-                        lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)).padStart(8)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
+                        lines.push(`${('  ' + r.direction).padEnd(14)} ${String(r.n).padEnd(5)} ${((r.exit_now >= 0 ? '+' : '') + r.exit_now.toFixed(3) + '%').padStart(10)} ${((r.exit_now_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.exit_now_usd).toFixed(2)).padStart(11)} ${((r.hold >= 0 ? '+' : '') + r.hold.toFixed(3) + '%').padStart(11)} ${((r.hold_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.hold_usd).toFixed(2)).padStart(11)} ${((r.delta >= 0 ? '+' : '') + r.delta.toFixed(3)).padStart(8)} ${((r.delta_usd >= 0 ? '+' : '-') + '$' + Math.abs(r.delta_usd).toFixed(2)).padStart(11)} ${(r.sl_pct + '%').padStart(5)} ${(r.recovered_pct + '%').padStart(6)}`);
                     }
                 }
 
@@ -17083,26 +17086,32 @@
                             if (r.flip !== curFlip) {
                                 curFlip = r.flip;
                                 const fc = curFlip.startsWith('OPPOSITE') ? 'text-red-400' : 'text-amber-400';
-                                html += `<tr class="bg-white/5"><td colspan="7" class="px-2 py-1 font-semibold ${fc}">${curFlip}</td></tr>`;
+                                html += `<tr class="bg-white/5"><td colspan="10" class="px-2 py-1 font-semibold ${fc}">${curFlip}</td></tr>`;
                             }
                             const dCls = r.delta < -0.03 ? 'text-emerald-400' : (r.delta > 0.03 ? 'text-red-400' : 'text-gray-300');
                             const recCls = r.recovered_pct >= 40 ? 'text-amber-400 font-semibold' : 'text-gray-400';
                             const enCls = r.exit_now >= 0 ? 'text-emerald-400' : 'text-red-400';
                             const hoCls = r.hold >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const enUsdCls = r.exit_now_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const hoUsdCls = r.hold_usd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                            const dUsdCls = r.delta_usd < -0.005 ? 'text-emerald-400' : (r.delta_usd > 0.005 ? 'text-red-400' : 'text-gray-300');
                             const dirCls = r.direction === 'ALL' ? 'text-gray-200 font-medium' : 'text-gray-400 pl-4';
                             html += `<tr class="hover:bg-white/5">
                                 <td class="px-2 py-1.5 ${dirCls}">${r.direction}</td>
                                 <td class="px-2 py-1.5 text-right">${r.n}</td>
                                 <td class="px-2 py-1.5 text-right ${enCls}">${r.exit_now >= 0 ? '+' : ''}${r.exit_now.toFixed(3)}%</td>
+                                <td class="px-2 py-1.5 text-right ${enUsdCls}">${r.exit_now_usd >= 0 ? '+' : '-'}$${Math.abs(r.exit_now_usd).toFixed(2)}</td>
                                 <td class="px-2 py-1.5 text-right ${hoCls}">${r.hold >= 0 ? '+' : ''}${r.hold.toFixed(3)}%</td>
+                                <td class="px-2 py-1.5 text-right ${hoUsdCls}">${r.hold_usd >= 0 ? '+' : '-'}$${Math.abs(r.hold_usd).toFixed(2)}</td>
                                 <td class="px-2 py-1.5 text-right ${dCls}">${r.delta >= 0 ? '+' : ''}${r.delta.toFixed(3)}</td>
+                                <td class="px-2 py-1.5 text-right ${dUsdCls}">${r.delta_usd >= 0 ? '+' : '-'}$${Math.abs(r.delta_usd).toFixed(2)}</td>
                                 <td class="px-2 py-1.5 text-right text-gray-400">${r.sl_pct}%</td>
                                 <td class="px-2 py-1.5 text-right ${recCls}">${r.recovered_pct}%</td>
                             </tr>`;
                         }
                         recfBody.innerHTML = html;
                     } else {
-                        recfBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
+                        recfBody.innerHTML = '<tr><td colspan="10" class="px-3 py-4 text-center text-gray-500">No data yet</td></tr>';
                     }
                 }
 

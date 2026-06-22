@@ -2591,10 +2591,15 @@ def _compute_regime_exit_counterfactual(orders):
             ho = sum(o.pnl_percentage or 0 for o in grp) / n
             sl = sum(1 for o in grp if "STOP_LOSS" in (o.close_reason or ""))
             rec = sum(1 for o in grp if (o.pnl_percentage or 0) > getattr(o, col))
+            # net $: exit-at-flip = investment × leverage × flip_pct/100 ; hold = actual pnl
+            exit_usd = sum((o.investment or 0) * (o.leverage or 0) * getattr(o, col) / 100 for o in grp)
+            hold_usd = sum(o.pnl or 0 for o in grp)
             rows.append({
                 "flip": flip_lbl, "direction": D, "n": n,
                 "exit_now": round(en, 3), "hold": round(ho, 3),
                 "delta": round(ho - en, 3),
+                "exit_now_usd": round(exit_usd, 2), "hold_usd": round(hold_usd, 2),
+                "delta_usd": round(hold_usd - exit_usd, 2),
                 "sl_pct": round(100 * sl / n), "recovered_pct": round(100 * rec / n),
             })
     return rows

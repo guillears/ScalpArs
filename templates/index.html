@@ -6224,9 +6224,9 @@
                                 <span class="text-gray-500 text-xs whitespace-nowrap">(decouple seed from BTC-ADX-high veto)</span>
                             </div>
                             <div class="col-span-2 flex items-center gap-2 flex-wrap mt-2" title="Jun 22 (N=22 DISCIPLINE-OVERRIDE, in-sample 1 STRONG_BULL window): block the overbought-fade when the pair's (EMA13−EMA50)/EMA50 gap% ≥ this — a parabola already steeply above its own 4h trend keeps ripping, the 20× short never arms (peak ~0) and gaps the SL to ~−1.2%. Batch: gap≥1.0 = 19/32%WR/−$1080 vs gap<1.0 = 3/100%/+$97 → flips the cohort −$983 → +$97. Mirrors the cross-batch FAN gap≥1.0 filter (N=16 J17-21, same mechanism); separate field so its revert clock is independent. 0 = off · ship 1.0. Counter FLIP_PAIR_RSI_OB_GAP. TIGHT REVERT: set to 0 if blocked gap≥1.0 fades show ≥50% WR on N≥10 fresh.">
-                                <span class="text-rose-300 whitespace-nowrap">Max pair EMA13-50 gap%</span>
+                                <span class="text-rose-300 whitespace-nowrap">Block pair EMA13–EMA50 gap% ≥</span>
                                 <input type="number" step="0.1" id="config-flip-pair-rsi-ob-pair-gap-max" class="w-24 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right text-xs" placeholder="1.0">
-                                <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off · ship 1.0 · parabola guard, blocks SYN/EIGEN gappers)</span>
+                                <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 1.0 — don't fade a parabolic pair; one-sided, positive only)</span>
                             </div>
                             <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400">Jun 21: lev 1×→20× + ADX≥45 floor (operator override; raised 40→45 — 40-45 was a 17/47%/−$605 loser band, edge is ADX≥45 = 17/82%/+$347).</span> Revert at N≥15 if WR≤65% or avg≤+0.05% or S.BULL losers gap past ~−0.85% (regime) / 45+ WR≤70% or avg≤+0.05% (ADX). Counters <code>FLIP_PAIR_RSI_OB_REGIME</code> / <code>FLIP_PAIR_RSI_OB_ADX</code> / <code>FLIP_PAIR_RSI_OB_GAP</code>.</p>
                         </div>

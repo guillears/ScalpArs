@@ -199,7 +199,7 @@
     "fan_ratio_block_short": "1.00-1.90",
     "fan_ratio_filter_enabled": true,
     "flip_entry_enabled": true,
-    "flip_entry_sources": "FAN_RATIO_GATE:1.0,PAIR_RSI_OB:1.0:1.0",
+    "flip_entry_sources": "FAN_RATIO_GATE:1.0,PAIR_RSI_OB:1.0:0.05",
     "flip_fan_stretch_min": 0.12,
     "flip_fan_block_btc_rsi": 60.0,
     "flip_fan_block_btc_adx": 30.0,

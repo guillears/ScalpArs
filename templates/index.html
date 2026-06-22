@@ -3442,7 +3442,7 @@
                 <!-- Regime Transition Impact -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Regime Transition Impact</h3>
-                    <p class="text-xs text-gray-500 mb-3">Compares trades where BTC regime stayed the same vs trades where it shifted between entry and exit. Tells us if regime stability matters.</p>
+                    <p class="text-xs text-gray-500 mb-3">Compares trades where the BTC regime <span class="text-amber-400/80">family</span> stayed the same (SAME_FAMILY) vs trades where the market <span class="text-amber-400/80">direction</span> turned (DIRECTION_SHIFT) between entry and exit. Family-level (Jun 21): a HEALTHY↔STRONG intensity wobble is NOT a shift — only BULL/BEAR/TRANSITION/CHOP changes count.</p>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
@@ -9611,12 +9611,12 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Regime-Drift × Outcome (does drift → random? — Jun 21)\n');
                 lines.push('If DRIFTED (entry BTC regime ≠ exit) is ~50% WR / ~0 avg while HELD carries the edge → slow trades drift to noise.');
-                lines.push(`${'Regime'.padEnd(9)} ${'N'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'AvgHold'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
+                lines.push(`${'Regime'.padEnd(14)} ${'N'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'AvgHold'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
                 let rdDir = null;
                 for (const r of perf.regime_drift_outcome.rows) {
                     if (r.direction !== rdDir) { rdDir = r.direction; lines.push(`[${rdDir}]`); }
                     const atr = r.avg_atr != null ? (r.avg_atr.toFixed(3) + '%') : '-';
-                    lines.push(`${r.drift.padEnd(9)} ${String(r.n).padEnd(5)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.avg_hold + 'm').padStart(8)} ${atr.padStart(8)}`);
+                    lines.push(`${r.drift.padEnd(14)} ${String(r.n).padEnd(5)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.avg_hold + 'm').padStart(8)} ${atr.padStart(8)}`);
                 }
             }
 
@@ -11598,12 +11598,12 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Regime-Drift × Outcome (does drift → random? — Jun 21)\n');
                     lines.push('If DRIFTED (entry BTC regime ≠ exit) is ~50% WR / ~0 avg while HELD carries the edge → slow trades drift to noise.');
-                    lines.push(`${'Regime'.padEnd(9)} ${'N'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'AvgHold'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
+                    lines.push(`${'Regime'.padEnd(14)} ${'N'.padEnd(5)} ${'Win%'.padEnd(7)} ${'Avg%'.padEnd(9)} ${'AvgHold'.padEnd(8)} ${'AvgATR%'.padEnd(8)}`);
                     let rdDir = null;
                     for (const r of perf.regime_drift_outcome.rows) {
                         if (r.direction !== rdDir) { rdDir = r.direction; lines.push(`[${rdDir}]`); }
                         const atr = r.avg_atr != null ? (r.avg_atr.toFixed(3) + '%') : '-';
-                        lines.push(`${r.drift.padEnd(9)} ${String(r.n).padEnd(5)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.avg_hold + 'm').padStart(8)} ${atr.padStart(8)}`);
+                        lines.push(`${r.drift.padEnd(14)} ${String(r.n).padEnd(5)} ${(r.win_rate.toFixed(1) + '%').padEnd(7)} ${((r.avg_pnl_pct >= 0 ? '+' : '') + r.avg_pnl_pct.toFixed(3) + '%').padStart(9)} ${(r.avg_hold + 'm').padStart(8)} ${atr.padStart(8)}`);
                     }
                 }
 
@@ -14896,7 +14896,7 @@
                         const pnlPctClass = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const totalPnlClass = (r.total_pnl_usd || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
                         const wrClass = r.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
-                        const labelColor = r.range === 'SAME_REGIME' ? 'text-emerald-400' : 'text-yellow-400';
+                        const labelColor = r.range === 'SAME_FAMILY' ? 'text-emerald-400' : 'text-yellow-400';
                         return `
                             <tr class="hover:bg-white/5">
                                 <td class="px-3 py-2 font-medium ${labelColor}">${r.range}</td>
@@ -17009,7 +17009,7 @@
                             }
                             const wrCls = r.win_rate >= 55 ? 'text-emerald-400' : (r.win_rate < 45 ? 'text-red-400' : 'text-gray-300');
                             const avgCls = (r.avg_pnl_pct || 0) >= 0 ? 'text-emerald-400' : 'text-red-400';
-                            const driftCls = r.drift === 'DRIFTED' ? 'text-amber-400' : 'text-gray-300';
+                            const driftCls = r.drift === 'DRIFT-ADVERSE' ? 'text-red-400 font-semibold' : (r.drift === 'DRIFT-soft' ? 'text-amber-400' : 'text-gray-300');
                             html += `<tr class="hover:bg-white/5">
                                 <td class="px-2 py-1.5 ${driftCls} font-medium">${r.drift}</td>
                                 <td class="px-2 py-1.5 text-right">${r.n}</td>

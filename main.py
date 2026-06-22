@@ -2399,6 +2399,26 @@ def _compute_atr_bucket_performance(orders):
     return rows
 
 
+def _regime_family(r):
+    """Collapse fine BTC-regime labels to DIRECTION families (Jun 21).
+
+    BULL = STRONG/HEALTHY_BULL · BEAR = STRONG/HEALTHY_BEAR · TRANSITION =
+    *_EXHAUSTED (a trend ENDING — its own bucket, NOT folded into parent, so an
+    exhausting trend reads as a real shift) · CHOP = CHOPPY_* . Used by the
+    regime-drift tables + Regime Transition so "shift" means the market
+    DIRECTION turned, not an intensity wobble (HEALTHY↔STRONG = same family).
+    """
+    if r in ("STRONG_BULL", "HEALTHY_BULL"):
+        return "BULL"
+    if r in ("STRONG_BEAR", "HEALTHY_BEAR"):
+        return "BEAR"
+    if r in ("BULL_EXHAUSTED", "BEAR_EXHAUSTED"):
+        return "TRANSITION"
+    if r in ("CHOPPY_FLAT", "CHOPPY_WEAK"):
+        return "CHOP"
+    return r or "UNKNOWN"
+
+
 def _compute_atr_holdtime_crosstab(orders):
     """ATR × Hold-Time Cross-Tab, split by direction (Jun 21).
 
@@ -2435,7 +2455,7 @@ def _compute_atr_holdtime_crosstab(orders):
             durs = sorted(_dur(o) for o in band)
             med = durs[len(durs) // 2]
             reg = sum(1 for o in band if o.exit_btc_regime is not None
-                      and o.entry_btc_regime != o.exit_btc_regime)
+                      and _regime_family(o.entry_btc_regime) != _regime_family(o.exit_btc_regime))
             cells = []
             for dlbl, dlo, dhi in dur_buckets:
                 c = [o for o in band if dlo <= _dur(o) < dhi]
@@ -2487,7 +2507,7 @@ def _compute_holdtime_atr_table(orders):
         longs = sum(1 for o in b if _dv(o) == "LONG")
         wins = sum(1 for o in b if o.pnl > 0)
         reg = sum(1 for o in b if o.exit_btc_regime is not None
-                  and o.entry_btc_regime != o.exit_btc_regime)
+                  and _regime_family(o.entry_btc_regime) != _regime_family(o.exit_btc_regime))
         atrs = [o.entry_atr_pct for o in b if o.entry_atr_pct is not None]
         rows.append({
             "duration": dlbl, "n": n, "longs": longs, "shorts": n - longs,
@@ -2502,23 +2522,35 @@ def _compute_holdtime_atr_table(orders):
 def _compute_regime_drift_outcome(orders):
     """Regime-Drift × Outcome — the decisive test of "drift → random" (Jun 21).
 
-    2 rows (regime HELD: entry==exit · DRIFTED: entry!=exit) × direction. If the
-    DRIFTED row is ~50% WR / ~0 avg (random) while HELD carries the edge, that
-    confirms the slow-trade-drifts-to-noise mechanism behind the ATR theory.
-    Split by direction so a sleeve confound can't mask it.
+    3 rows × direction, drift measured at the FAMILY level (intensity wobbles
+    like HEALTHY↔STRONG do NOT count): HELD = same family · DRIFT-soft = family
+    changed to TRANSITION/CHOP (degraded, not reversed) · DRIFT-ADVERSE =
+    drifted to the OPPOSITE pole (LONG→BEAR, SHORT→BULL — the thesis-killer).
+    If DRIFT-ADVERSE is the random/losing bucket while HELD carries the edge,
+    that confirms the slow-trade-drifts-against-you mechanism. Split by
+    direction so the fade-vs-trend asymmetry (a fade WANTS the reversal) shows.
     """
     def _dv(o):
         return o.direction.value if hasattr(o.direction, "value") else o.direction
 
     def _dur(o):
         return (o.closed_at - o.opened_at).total_seconds() / 60.0
+
+    def _drift(o):
+        ef, xf = _regime_family(o.entry_btc_regime), _regime_family(o.exit_btc_regime)
+        if ef == xf:
+            return "HELD"
+        d = _dv(o)
+        if (d == "LONG" and xf == "BEAR") or (d == "SHORT" and xf == "BULL"):
+            return "DRIFT-ADVERSE"
+        return "DRIFT-soft"
     closed = [o for o in orders if o.status == "CLOSED" and o.pnl is not None
               and o.opened_at and o.closed_at and o.exit_btc_regime is not None]
     rows = []
     for D in ("LONG", "SHORT"):
         d_orders = [o for o in closed if _dv(o) == D]
-        for lbl, held in (("HELD", True), ("DRIFTED", False)):
-            b = [o for o in d_orders if (o.entry_btc_regime == o.exit_btc_regime) == held]
+        for lbl in ("HELD", "DRIFT-soft", "DRIFT-ADVERSE"):
+            b = [o for o in d_orders if _drift(o) == lbl]
             if not b:
                 continue
             n = len(b)
@@ -5087,9 +5119,11 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
 
             # Regime Transition Performance — entry vs exit regime
             transition_orders = [o for o in regime_orders if o.exit_btc_regime is not None]
-            same_regime = [o for o in transition_orders if o.entry_btc_regime == o.exit_btc_regime]
-            shifted_regime = [o for o in transition_orders if o.entry_btc_regime != o.exit_btc_regime]
-            for label, group in [("SAME_REGIME", same_regime), ("REGIME_SHIFT", shifted_regime)]:
+            # Jun 21: family-level — a HEALTHY↔STRONG intensity wobble is NOT a shift;
+            # only a DIRECTION change (BULL/BEAR/TRANSITION/CHOP) counts. Shared helper.
+            same_regime = [o for o in transition_orders if _regime_family(o.entry_btc_regime) == _regime_family(o.exit_btc_regime)]
+            shifted_regime = [o for o in transition_orders if _regime_family(o.entry_btc_regime) != _regime_family(o.exit_btc_regime)]
+            for label, group in [("SAME_FAMILY", same_regime), ("DIRECTION_SHIFT", shifted_regime)]:
                 if not group:
                     continue
                 count = len(group)

@@ -9815,7 +9815,12 @@ def _compute_bull_long_trades(bull_long_orders):
                 _fb.append(o)
         if _fb:
             _a = _agg_rx(_fb)
-            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": (_bl_fan_max > 0 and _lo < _bl_fan_max and (_bl_fan_min <= 0 or _hi > _bl_fan_min)), **(_a or {})})
+            # Per-regime entry-count split within the bucket (Jun 22) — how many S.BULL / H.BULL /
+            # other (CHOP+bear; dropped from the live sleeve 06-22). _sb+_hb+_oth == n (reconciles).
+            _sb = sum(1 for o in _fb if _rb(o.entry_btc_regime) == 'sbull')
+            _hb = sum(1 for o in _fb if _rb(o.entry_btc_regime) == 'hbull')
+            _oth = len(_fb) - _sb - _hb
+            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": (_bl_fan_max > 0 and _lo < _bl_fan_max and (_bl_fan_min <= 0 or _hi > _bl_fan_min)), "sbull_n": _sb, "hbull_n": _hb, "other_n": _oth, **(_a or {})})
     return {"rows": rows, "overall": overall, "regime_row": regime_row, "fan_rows": fan_rows}
 
 

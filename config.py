@@ -602,8 +602,8 @@ class SignalThresholds(BaseModel):
     # confirm the real gate before re-levering. Bear regimes EXCLUDED (build-side long-into-bear = the
     # opposite thesis; flip-LONG bear evidence = 2/0%/−$220). REVERT: any single bull-long gaps past
     # ~−1.0% OR the arm <40% WR at N≥20 → cut back to bull_long_regimes=HEALTHY_BULL, fan 1.65–3.0, lev 0.05.
-    bull_long_regimes: str = "STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT,CHOPPY_WEAK"  # obs-arm regimes (no bear)
-    bull_long_fan_max: float = 5.0                     # upper fan bound (Jun 21: 3.0→5.0 obs-arm — fan is a suspected red herring; widen + track BTC-momentum instead)
+    bull_long_regimes: str = "STRONG_BULL,HEALTHY_BULL"  # obs-arm regimes (Jun 22: dropped CHOPPY_FLAT,CHOPPY_WEAK — CHOP was the whole live drain [18/56%/-0.247%/-$482 de-mux; >½ sleeve volume]; bull regimes alone = 14/64%/+0.155%. No bear)
+    bull_long_fan_max: float = 2.0                     # upper fan bound (Jun 22: 5.0→2.0 — operator narrows LIVE aperture to fan 1.0-2.0, current best-belief band; fan>2 gives bull-regime wins back this batch [S.BULL 2-3/3-5 = SL losers, CHOP 2-3 = 6/33%/-0.564]. ⚠ IN-SAMPLE: fan 2-3 was the WINNER on 06-20 (10/90%/+$705) → it INVERTS cross-batch. Safe to narrow only b/c (a) obs-lev 0.05×, (b) phantom Bull-Long Curve still tracks fan 2-5 regardless. Jun 21 was 3.0→5.0 obs-arm)
     bull_long_fan_min: float = 1.0                     # lower fan bound (Jun 22: 1.35→1.0 — operator widens the obs aperture down to fan 1.0 to collect the 1.0-1.35 band; NOTE that band is a documented loser at 20× [06-20: 14/36%WR/−$732], opened ONLY because the arm runs at 1×/0.05-lev observation. 0 = disabled
     bull_long_size_mult: float = 1.0                   # investment multiplier (1.0 = no amplification)
     bull_long_lev_mult: float = 0.05                   # leverage multiplier (Jun 21: 1.0/20×→0.05/1× — de-risked observation; sleeve was net-losing at 20× and the real gate is unproven)

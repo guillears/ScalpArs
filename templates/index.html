@@ -1283,12 +1283,13 @@
                                     <th class="text-left py-1 px-2">Fan Bucket</th>
                                     <th class="text-center px-2">LIVE</th>
                                     <th class="text-right px-2">N</th>
+                                    <th class="text-right px-2" title="entry-count split: S.BULL / H.BULL / other (CHOP+bear, dropped from live 06-22)">S/H/o</th>
                                     <th class="text-right px-2">WR%</th>
                                     <th class="text-right px-2">Avg%</th>
                                     <th class="text-right px-2">$ (1×)</th>
                                 </tr></thead>
                                 <tbody id="bull-long-fan-body" class="divide-y divide-white/5">
-                                    <tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No closed bull-longs yet (forward-only)</td></tr>
+                                    <tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No closed bull-longs yet (forward-only)</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -8858,10 +8859,10 @@
                 }
                 if (_blt1.fan_rows && _blt1.fan_rows.length) {
                     lines.push('\n  ── BULL-LONG × FAN BUCKET (LIVE realized — the REAL surface for bull_long_fan_max; Curve below is the phantom proxy) — N/WR/avg% / $de-muxed-1× ──');
-                    lines.push('  FanBucket    LIVE   N    WR%     Avg%      $(1x)');
-                    lines.push('  '+'-'.repeat(54));
+                    lines.push('  FanBucket    LIVE   N   S/H/o    WR%     Avg%      $(1x)   (S/H/o = entry count: S.BULL/H.BULL/other[CHOP+bear, dropped from live 06-22])');
+                    lines.push('  '+'-'.repeat(66));
                     _blt1.fan_rows.forEach(c => {
-                        lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(c.n).padStart(3)}  ${(c.wr.toFixed(0)+'%').padStart(5)}  ${((c.avg_pct>=0?'+':'')+c.avg_pct.toFixed(3)).padStart(7)}  ${((c.usd>=0?'+$':'-$')+Math.abs(c.usd).toFixed(0)).padStart(7)}`);
+                        lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(c.n).padStart(3)}  ${((c.sbull_n||0)+'/'+(c.hbull_n||0)+'/'+(c.other_n||0)).padStart(7)}  ${(c.wr.toFixed(0)+'%').padStart(5)}  ${((c.avg_pct>=0?'+':'')+c.avg_pct.toFixed(3)).padStart(7)}  ${((c.usd>=0?'+$':'-$')+Math.abs(c.usd).toFixed(0)).padStart(7)}`);
                     });
                 }
                 if (_pf1b.bull_long_curve && _pf1b.bull_long_curve.length) {
@@ -10802,10 +10803,10 @@
                     }
                     if (_blt2.fan_rows && _blt2.fan_rows.length) {
                         lines.push('\n  ── BULL-LONG × FAN BUCKET (LIVE realized — the REAL surface for bull_long_fan_max; Curve below is the phantom proxy) — N/WR/avg% / $de-muxed-1× ──');
-                        lines.push('  FanBucket    LIVE   N    WR%     Avg%      $(1x)');
-                        lines.push('  '+'-'.repeat(54));
+                        lines.push('  FanBucket    LIVE   N   S/H/o    WR%     Avg%      $(1x)   (S/H/o = entry count: S.BULL/H.BULL/other[CHOP+bear, dropped from live 06-22])');
+                        lines.push('  '+'-'.repeat(66));
                         _blt2.fan_rows.forEach(c => {
-                            lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(c.n).padStart(3)}  ${(c.wr.toFixed(0)+'%').padStart(5)}  ${((c.avg_pct>=0?'+':'')+c.avg_pct.toFixed(3)).padStart(7)}  ${((c.usd>=0?'+$':'-$')+Math.abs(c.usd).toFixed(0)).padStart(7)}`);
+                            lines.push(`  ${c.bucket.padEnd(12)} ${(c.live?'✓':'·').padEnd(4)} ${String(c.n).padStart(3)}  ${((c.sbull_n||0)+'/'+(c.hbull_n||0)+'/'+(c.other_n||0)).padStart(7)}  ${(c.wr.toFixed(0)+'%').padStart(5)}  ${((c.avg_pct>=0?'+':'')+c.avg_pct.toFixed(3)).padStart(7)}  ${((c.usd>=0?'+$':'-$')+Math.abs(c.usd).toFixed(0)).padStart(7)}`);
                         });
                     }
                     if (_pf2b.bull_long_curve && _pf2b.bull_long_curve.length) {
@@ -13883,12 +13884,13 @@
                                     <td class="px-2 py-1 text-gray-200 font-mono">${c.bucket}</td>
                                     <td class="px-2 py-1 text-center ${c.live?'text-emerald-400':'text-gray-600'}">${c.live?'✓':'·'}</td>
                                     <td class="px-2 py-1 text-right text-gray-300">${c.n}</td>
+                                    <td class="px-2 py-1 text-right text-gray-400 font-mono">${c.sbull_n||0}/${c.hbull_n||0}/${c.other_n||0}</td>
                                     <td class="px-2 py-1 text-right">${c.wr.toFixed(0)}%</td>
                                     <td class="px-2 py-1 text-right ${c.avg_pct>=0?'text-emerald-400':'text-red-400'}">${c.avg_pct>=0?'+':''}${c.avg_pct.toFixed(3)}</td>
                                     <td class="px-2 py-1 text-right ${c.usd>=0?'text-emerald-400/70':'text-red-400/70'}">${c.usd>=0?'+$':'-$'}${Math.abs(c.usd).toFixed(0)}</td>
                                 </tr>`).join('');
                         } else {
-                            _blfBody.innerHTML = '<tr><td colspan="6" class="px-2 py-3 text-center text-gray-500">No closed bull-longs yet (forward-only)</td></tr>';
+                            _blfBody.innerHTML = '<tr><td colspan="7" class="px-2 py-3 text-center text-gray-500">No closed bull-longs yet (forward-only)</td></tr>';
                         }
                     }
                 }

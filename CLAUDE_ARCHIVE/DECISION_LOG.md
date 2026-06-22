@@ -1136,3 +1136,10 @@ All three are staged together this commit. py+json AST clean.
 
 **Framing:** NOT a hard rule / not a re-lever. Stays at 0.05× observation. Companion CURRENT_STATE "🔭 OBSERVATION-FOR-REVIEW" note records the future-review trigger: IF S+H BULL fan ≤2.0 reaches N≥30 cumulative across ≥2 batches holding WR≥70%/avg≥+0.15% → THEN consider re-lever. Until then keep collecting.
 **Files:** config.py, trading_config.json, main.py, templates/index.html, CLAUDE_CURRENT_STATE.md.
+
+---
+## 2026-06-22 — FAN flip multiplier DROPPED: strong-bear 2× cell → 1×
+**Change:** `flip_fan_mult_rule` `"40-45:35-99:2.0:1.0"` → **`"40-45:35-99:1.0:1.0"`** (BTC RSI 40-45 × BTC ADX≥35 strong-bear cell; size 2.0→1.0). config.py + trading_config.json + CLAUDE_CURRENT_STATE.md (FAN-flip line ④).
+**Why:** First fresh live fire was ✗ — EIGENUSDT SHORT −1.206% / **−$209.02** (the batch's worst loss); the 2× doubled a −$104.51 1× baseline loss. The trade peaked **+0.166%**, which FAILS the locked **2× BE-compatibility gate** (≥60% of a cell's losses must peak ≥+0.20% so caps can bound the tail) → caps structurally couldn't bound it, which is exactly why 2× hurt. Cell was already a below-N≥30 discipline override. Multiplying a fade-short amplifies the gap-through-SL tail = the realized risk.
+**Discipline note:** Formal multiplier verdict gate is ≥5 fresh fires (we're at N=1), so not a formal "✗ HARMFUL" call — but de-levering a loser is the asymmetric always-allowed side, AND the BE-compat gate is independently failed regardless of N. The FAN_RATIO_GATE flip itself stays 1× (validated winner, +$548 this batch) — only the amplifier is removed.
+**Re-earn gate:** restore a multiplier only at N≥5 fresh fires + Total$>0 + BE-compatibility (≥60% of losses peak ≥+0.20%). Existing UI field (Invest Multi) — no new D11 wiring.

@@ -584,7 +584,7 @@ class SignalThresholds(BaseModel):
     flip_fan_spike_max: float = 5.0           # block any flip when pair fan ratio >= this (0 = off). TIGHT REVERT: re-open if fan>=5 flips >=40% WR on N>=5 fresh
     flip_fan_runner_strpk: bool = True        # exit FAN flips via the SHORT runner stretch-trail (strpk, arm 0.45/K0.5) instead of trailing-like-a-long. Reuses runner_trail_short_* params
     flip_runner_strpk_shorts: bool = True     # Jun 16: extend the SHORT runner stretch-trail (strpk) to the NON-FAN flip short sleeves too (PAIR_RSI_OB, LONG_UNMATCHED_ONLY). A flip short runs strpk if FAN+flip_fan_runner_strpk OR non-FAN+this. = strpk for ALL flip shorts
-    flip_fan_mult_rule: str = "40-45:35-99:2.0:1.0"  # btc_rsi_lo-hi : btc_adx_lo-hi : size_mult : lev_mult cells (lev optional, defaults 1.0; same 4-part format as the other multiplier cells). Strong-bear cell N=10/90%WR/+$308 @2x size/1x lev. Empty = off. BELOW N>=30 gate — operator override
+    flip_fan_mult_rule: str = "40-45:35-99:1.0:1.0"  # btc_rsi_lo-hi : btc_adx_lo-hi : size_mult : lev_mult cells (lev optional, defaults 1.0; same 4-part format as the other multiplier cells). Jun 22: size 2.0→1.0 (multiplier DROPPED) — first fresh fire was ✗ (EIGENUSDT −1.206%/−$209, 2× doubled a −$104 loss; peak +0.166% FAILS the 2× BE-compatibility gate [≥60% of losses must peak ≥+0.20%]). Cell stays in observation; re-earn at N≥5 fresh fires + Total$>0 + BE-compat. The FAN flip itself stays 1× (validated winner). Empty = off
     # === Bull-Long Entry Sleeve (Jun 18) — the BUILD-side twin of the flip sleeve.
     # When a LONG PASSES the fan gate (low fan ratio) in a HEALTHY_BULL regime, open the
     # SAME direction (a real momentum-style long, NOT a fade) and let it run on the NORMAL

@@ -221,7 +221,7 @@
     "flip_long_regime_block_regimes": "STRONG_BEAR,HEALTHY_BEAR,CHOPPY_FLAT",
     "flip_fan_runner_strpk": true,
     "flip_runner_strpk_shorts": true,
-    "flip_fan_mult_rule": "40-45:35-99:2.0:1.0",
+    "flip_fan_mult_rule": "40-45:35-99:1.0:1.0",
     "bull_long_enabled": true,
     "bull_long_regimes": "STRONG_BULL,HEALTHY_BULL",
     "bull_long_fan_max": 2.0,

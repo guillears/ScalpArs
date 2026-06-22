@@ -1098,6 +1098,22 @@ class TradingConfig(BaseModel):
     bnb_check_interval_hours: int = 12
     bnb_runway_hours: int = 24
     paper_bnb_initial_usd: float = 500.0
+    # BNB AUTO-SELL (Jun 22) — symmetric rebalance. The buy path tops BNB UP to a 24h
+    # runway, but never claws back: when activity slows the 24h burn rate decays, runway
+    # inflates, and the over-funded reserve locks USDT out of trading (tradable balance =
+    # ... − bnb_swaps). Auto-sell drains the excess back to tradable USDT when the reserve
+    # is genuinely over-funded. HYSTERESIS (anti-churn, matters LIVE where each swap costs
+    # ~0.15-0.2% round-trip — invisible in paper): sell ceiling 48h is 2× the 24h buy floor,
+    # and we sell DOWN TO 36h (not the floor) so a small burn uptick won't immediately re-buy.
+    # The trigger uses max(24h, 12h) burn so a RECENT pickup keeps more BNB (don't sell into
+    # rising fees). Runs on the same 6h scheduled check (≤1 action/6h) and is mathematically
+    # unable to fire in the 6h right after a buy (runway can't double that fast).
+    # NOTE: code default is False (a fresh deploy without trading_config.json stays safe/off),
+    # but trading_config.json sets it true — the operator opted in. The json value wins at runtime.
+    bnb_auto_sell_enabled: bool = False
+    bnb_sell_runway_hours: float = 48.0   # sell when BNB runway > this (ceiling). 0 = off.
+    bnb_sell_target_hours: float = 36.0   # sell DOWN TO this runway (buffer above the 24h buy floor).
+    bnb_min_sell_usd: float = 50.0        # min auto-sell size (avoid tiny churn swaps).
     
     # Trading pairs limit (how many top pairs by volume to trade)
     trading_pairs_limit: int = 20  # 5, 10, 20, or 50

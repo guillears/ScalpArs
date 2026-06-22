@@ -5389,6 +5389,30 @@
                             <p class="text-xs text-gray-500 mt-1">Hours of fee coverage to maintain</p>
                         </div>
                     </div>
+                    <div class="mt-4 p-3 rounded-lg border border-emerald-900/40 bg-emerald-950/10">
+                        <div class="flex items-center gap-3 mb-3" title="Jun 22 — symmetric rebalance. The buy path only tops BNB UP; when activity slows the burn rate decays and the reserve over-funds, locking USDT out of trading. Auto-sell drains the excess back. Sells on the same scheduled-check interval; cannot fire in the 6h right after a buy (runway can't double that fast). Conservative burn = max(24h,12h) so it never sells into rising activity.">
+                            <label class="text-sm text-emerald-300 font-semibold">BNB Auto-Sell (drain excess → tradable USDT)</label>
+                            <select id="config-bnb-auto-sell-enabled" class="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500">
+                                <option value="false">OFF</option>
+                                <option value="true">ON</option>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-3 gap-3">
+                            <div title="Sell when BNB runway exceeds this (ceiling). Default 48h = 2× the buy target, a wide band so it only sells when genuinely over-funded. 0 = off.">
+                                <label class="block text-xs text-gray-400 mb-1">Sell ceiling</label>
+                                <div class="flex"><input type="number" id="config-bnb-sell-runway-hours" min="0" max="336" step="1" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="48"><span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-2 py-1.5 text-gray-400 text-xs">hrs</span></div>
+                            </div>
+                            <div title="After triggering, sell BNB down to THIS runway — a buffer above the 24h buy floor so a small burn uptick won't immediately re-buy. Default 36h.">
+                                <label class="block text-xs text-gray-400 mb-1">Sell down to</label>
+                                <div class="flex"><input type="number" id="config-bnb-sell-target-hours" min="0" max="336" step="1" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-l-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="36"><span class="bg-white/10 border border-white/10 border-l-0 rounded-r-lg px-2 py-1.5 text-gray-400 text-xs">hrs</span></div>
+                            </div>
+                            <div title="Minimum auto-sell size — avoids tiny churn swaps (live each swap costs ~0.15-0.2% round-trip). Default $50.">
+                                <label class="block text-xs text-gray-400 mb-1">Min sell</label>
+                                <div class="flex"><span class="bg-white/10 border border-white/10 border-r-0 rounded-l-lg px-2 py-1.5 text-gray-400 text-xs">$</span><input type="number" id="config-bnb-min-sell-usd" min="5" step="5" class="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-r-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" value="50"></div>
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-2">Hold band: buy ≤ runway target · sell ≥ ceiling, down to target. Wide gap = anti-churn (matters live).</p>
+                    </div>
                     <div class="mt-4 flex items-center gap-3">
                         <label class="text-sm text-gray-400 w-32">Manual BNB Buy:</label>
                         <div class="flex">
@@ -9929,8 +9953,9 @@
             const emergencyCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'emergency').length;
             const scheduledCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'scheduled').length;
             const manualCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'manual').length;
+            const autoSellCount = swaps.filter(s => (s.swap_type || '').toLowerCase() === 'auto_sell').length;
             lines.push(hr2);
-            lines.push(`Summary: Total USDT swapped: $${totalUsdt.toFixed(2)}  |  Emergency: ${emergencyCount}  |  Scheduled: ${scheduledCount}  |  Manual: ${manualCount}`);
+            lines.push(`Summary: Total USDT swapped: $${totalUsdt.toFixed(2)}  |  Emergency: ${emergencyCount}  |  Scheduled: ${scheduledCount}  |  Manual: ${manualCount}  |  Auto-Sell: ${autoSellCount}`);
             return lines;
         }
 
@@ -17898,6 +17923,8 @@
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400">MANUAL BUY</span>'
                         : s.swap_type === 'manual_sell'
                         ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-orange-500/20 text-orange-400">MANUAL SELL</span>'
+                        : s.swap_type === 'auto_sell'
+                        ? '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400">AUTO SELL</span>'
                         : '<span class="px-1.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">AUTO</span>';
                     // BNB direction-aware coloring: BUY = BNB rises (green if increase), SELL = BNB drops (orange)
                     const afterClass = s.post_bnb_usd > s.pre_bnb_usd
@@ -18335,6 +18362,10 @@
                 document.getElementById('config-paper-bnb-initial').value = config.paper_bnb_initial_usd || 500;
                 document.getElementById('config-bnb-check-interval').value = config.bnb_check_interval_hours || 12;
                 document.getElementById('config-bnb-runway-hours').value = config.bnb_runway_hours || 24;
+                document.getElementById('config-bnb-auto-sell-enabled').value = config.bnb_auto_sell_enabled ? 'true' : 'false';
+                document.getElementById('config-bnb-sell-runway-hours').value = config.bnb_sell_runway_hours != null ? config.bnb_sell_runway_hours : 48;
+                document.getElementById('config-bnb-sell-target-hours').value = config.bnb_sell_target_hours != null ? config.bnb_sell_target_hours : 36;
+                document.getElementById('config-bnb-min-sell-usd').value = config.bnb_min_sell_usd != null ? config.bnb_min_sell_usd : 50;
                 document.getElementById('config-cooldown-loss').value = config.investment.cooldown_after_loss_minutes || 5;
                 document.getElementById('config-max-positions').value = config.investment.max_open_positions || 100;
                 document.getElementById('config-min-investment').value = config.investment.min_investment_size || 100;
@@ -19678,6 +19709,10 @@
                 paper_bnb_initial_usd: safeFloat(document.getElementById('config-paper-bnb-initial').value),
                 bnb_check_interval_hours: parseInt(document.getElementById('config-bnb-check-interval').value) || 12,
                 bnb_runway_hours: parseInt(document.getElementById('config-bnb-runway-hours').value) || 24,
+                bnb_auto_sell_enabled: document.getElementById('config-bnb-auto-sell-enabled').value === 'true',
+                bnb_sell_runway_hours: parseFloat(document.getElementById('config-bnb-sell-runway-hours').value) || 0,
+                bnb_sell_target_hours: parseFloat(document.getElementById('config-bnb-sell-target-hours').value) || 0,
+                bnb_min_sell_usd: parseFloat(document.getElementById('config-bnb-min-sell-usd').value) || 50,
                 investment: {
                     mode: invMode,
                     fixed_amount: invMode === 'fixed' ? invValue : 100,

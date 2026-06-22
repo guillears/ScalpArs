@@ -378,6 +378,10 @@ class ConfigUpdate(BaseModel):
     bnb_check_interval_hours: Optional[int] = None
     bnb_runway_hours: Optional[int] = None
     paper_bnb_initial_usd: Optional[float] = None
+    bnb_auto_sell_enabled: Optional[bool] = None
+    bnb_sell_runway_hours: Optional[float] = None
+    bnb_sell_target_hours: Optional[float] = None
+    bnb_min_sell_usd: Optional[float] = None
     investment: Optional[Dict] = None
     thresholds: Optional[Dict] = None
     confidence_levels: Optional[Dict] = None

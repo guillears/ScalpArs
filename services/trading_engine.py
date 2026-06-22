@@ -1688,6 +1688,91 @@ class TradingEngine:
                 f"for ${result['cost_usdt']:.2f} @ ${result['price']:.2f}"
             )
 
+    async def _execute_bnb_sell(self, db: AsyncSession, target_usd: float, swap_type: str = "auto_sell"):
+        """Sell EXCESS BNB→USDT down to target_usd (paper or live). Symmetric counterpart of
+        _execute_bnb_swap (Jun 22). Reuses the proven manual-sell mechanics: logs a NEGATIVE
+        amount_usdt so the reverse-derived paper balance INCREASES by the proceeds, and the
+        live path calls binance_service.sell_bnb (the same call the manual-sell endpoint uses).
+        Fully guarded: respects bnb_min_sell_usd, never sells below target_usd, fail-safe on
+        price/API errors. Caller (bnb_scheduled_check) gates the trigger; this only executes."""
+        tc = config.trading_config
+        if not tc.bnb_swap_enabled or not tc.bnb_auto_sell_enabled:
+            return
+        min_sell = max(float(tc.bnb_min_sell_usd or 0), 5.0)  # floor mirrors the $5 buy guard
+
+        if self.is_paper_mode:
+            current_bnb = self.paper_bnb_balance_usd
+            excess = current_bnb - target_usd
+            if excess < min_sell:
+                logger.info(f"[BNB_SELL] Skipped: excess ${excess:.2f} below ${min_sell:.2f} min")
+                return
+
+            bnb_price = await binance_service.get_bnb_price()
+            if bnb_price <= 0:
+                bnb_price = 600.0  # fallback for paper mode
+
+            pre_bnb = self.paper_bnb_balance_usd
+            pre_usdt = self.paper_balance
+            self.paper_bnb_balance_usd -= excess
+            if self.paper_bnb_balance_usd < 0:
+                self.paper_bnb_balance_usd = 0
+
+            swap_log = BnbSwapLog(
+                swap_type=swap_type,
+                amount_usdt=-excess,  # negative = USDT inflow (BNB → USDT)
+                bnb_price=bnb_price,
+                amount_bnb=round(excess / bnb_price, 6),
+                pre_bnb_usd=pre_bnb,
+                post_bnb_usd=self.paper_bnb_balance_usd,
+                pre_usdt=pre_usdt,
+                post_usdt=pre_usdt + excess,
+                burn_rate=self._bnb_burn_rate,
+                is_paper=True,
+            )
+            db.add(swap_log)
+            await db.commit()
+
+            await self._recalculate_paper_balance(db)
+            await self.save_state(db)
+            logger.info(
+                f"[BNB_SELL] Paper {swap_type}: sold ${excess:.2f} of BNB → USDT @ ${bnb_price:.2f}. "
+                f"BNB: ${pre_bnb:.2f} → ${self.paper_bnb_balance_usd:.2f}"
+            )
+        else:
+            balance = await binance_service.get_balance()
+            bnb_price = await binance_service.get_bnb_price()
+            if bnb_price <= 0:
+                return
+            current_bnb_usd = balance['bnb_total'] * bnb_price
+            excess = current_bnb_usd - target_usd
+            if excess < min_sell:
+                return
+
+            result = await binance_service.sell_bnb(excess)
+            if not result:
+                logger.error(f"[BNB_SELL] Live {swap_type} failed — check Binance API logs")
+                return
+
+            new_balance = await binance_service.get_balance()
+            swap_log = BnbSwapLog(
+                swap_type=swap_type,
+                amount_usdt=-result['proceeds_usdt'],  # negative = USDT inflow
+                bnb_price=result['price'],
+                amount_bnb=result['bnb_amount'],
+                pre_bnb_usd=current_bnb_usd,
+                post_bnb_usd=new_balance['bnb_total'] * result['price'],
+                pre_usdt=balance['usdt_free'],
+                post_usdt=new_balance['usdt_free'],
+                burn_rate=self._bnb_burn_rate,
+                is_paper=False,
+            )
+            db.add(swap_log)
+            await db.commit()
+            logger.info(
+                f"[BNB_SELL] Live {swap_type}: sold {result['bnb_amount']:.4f} BNB "
+                f"for ${result['proceeds_usdt']:.2f} @ ${result['price']:.2f}"
+            )
+
     async def _recompute_bnb_burn_rate(self, db: AsyncSession) -> float:
         """Recompute self._bnb_burn_rate, _bnb_projected_need, _bnb_emergency_threshold
         from CLOSED orders in DB. Returns fees_24h.
@@ -1870,6 +1955,27 @@ class TradingEngine:
         
         if current_bnb < self._bnb_projected_need:
             await self._execute_bnb_swap(db, swap_type="scheduled")
+        elif tc.bnb_auto_sell_enabled:
+            # Symmetric rebalance (Jun 22): the reserve can drift ABOVE need when the 24h
+            # burn rate decays after an activity slowdown (runway inflates), locking USDT out
+            # of trading. Sell the excess back. CONSERVATIVE burn = max(24h, 12h) so a recent
+            # pickup (rising 12h fees) keeps MORE BNB — never sell into rising activity. Ceiling
+            # 48h >> the 24h buy floor and we sell DOWN TO 36h (a buffer, not the floor); the
+            # wide band + 6h interval prevent buy/sell churn, and runway can't double inside one
+            # 6h window so this can't fire right after a buy. Mutually exclusive with the buy (elif).
+            burn_12h = (self._bnb_emergency_threshold / 12.0) if self._bnb_emergency_threshold > 0 else 0.0
+            sell_burn = max(self._bnb_burn_rate, burn_12h)
+            sell_runway_h = float(tc.bnb_sell_runway_hours or 0)
+            if sell_burn > 0 and sell_runway_h > 0:
+                sell_ceiling = sell_burn * sell_runway_h
+                if current_bnb > sell_ceiling:
+                    target_usd = sell_burn * float(tc.bnb_sell_target_hours or 0)
+                    logger.info(
+                        f"[BNB_CHECK] Reserve over-funded: BNB ${current_bnb:.2f} > ceiling "
+                        f"${sell_ceiling:.2f} ({sell_runway_h:.0f}h @ ${sell_burn:.2f}/hr). "
+                        f"Auto-selling down to ${target_usd:.2f} ({tc.bnb_sell_target_hours:.0f}h)."
+                    )
+                    await self._execute_bnb_sell(db, target_usd, swap_type="auto_sell")
 
     async def get_available_balance(self, db: AsyncSession) -> float:
         """Get available balance for trading.

@@ -459,6 +459,17 @@ def _flip_filters(source, ind):
                 amin = float(getattr(th, 'flip_fan_block_btc_adx', 0.0) or 0.0)
                 if rmin > 0 and amin > 0 and brsi is not None and badx is not None and brsi >= rmin and badx >= amin:
                     return (True, "FLIP_FAN_REGIME", 1.0, 1.0, None)
+                # 2b) pair-ADX floor (Jun 23) — FAN flips BYPASS the momentum short system's pair-ADX
+                # requirement (Pair ADX Dir rising + ADX-Strong>20), so they fire weak-trend fades
+                # (pADX 15-19) with no follow-through that chop/gap back. Restore the floor. Cross-batch
+                # (3 batches J20/J22a/J22b, deduped N=89): pADX>=20 = 42/71%WR/+$482 vs <20 = 47/51%WR/-$850
+                # (the whole drain); KEEP>BLOCK + WR up every batch; loss diffuse (top-2 pairs 28% →
+                # dimension not blacklist). Fail-open: missing adx or min=0.
+                _padxmin = float(getattr(th, 'flip_fan_pair_adx_min', 0.0) or 0.0)
+                if _padxmin > 0:
+                    _padx = ind.get('adx')
+                    if _padx is not None and _padx < _padxmin:
+                        return (True, "FLIP_FAN_PAIR_ADX", 1.0, 1.0, None)
                 # 3) size/lev multiplier cells. Format matches the other multiplier cells:
                 #    btc_rsi_lo-hi : btc_adx_lo-hi : size_mult [: lev_mult]  (lev optional, defaults 1.0)
                 rule = (getattr(th, 'flip_fan_mult_rule', '') or '').strip()

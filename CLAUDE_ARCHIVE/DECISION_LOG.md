@@ -1156,3 +1156,16 @@ All three are staged together this commit. py+json AST clean.
 ## 2026-06-22 — Blacklist EIGENUSDT (structural SL-gapper insurance, operator-directed)
 **Change:** `pair_blacklist` += `EIGENUSDT` (trading_config.json; now 13 pairs).
 **Rationale (explicitly NOT the batch $):** EIGEN was 35% of this batch's loss (−$729.6/9 trades), BUT 8 of 9 were gap≥1.0 PAIR_RSI_OB trades the gap filter already blocks + the 9th's 2× is already dropped → re-sim under the current stack = ~−$104 go-forward. So the −$729 does NOT justify a block (already neutralized). The REAL basis: EIGEN is a structural **SL-gapper** — every loss closes ~−1.2%, blowing through the −0.70 stop by ~0.5%, INCLUDING a clean low-gap (0.28) FAN flip. That's the illiquid-meme-gapper profile the existing blacklist targets (ENA/RAVE/VVV/ESPORTS). Matters more now that bull-long is at 20× (a gap-through is a ruin-axis tail). **Caveat (acknowledged): the filter-RESISTANT evidence is N=1** (the one low-gap gap-through); the gap filter already catches EIGEN's high-gap losses. This is an insurance call, low opportunity cost (gappy alt, not a core pair), not a data-proven dimension filter. **REVERT if needed:** remove from `pair_blacklist` (no code). Existing field — no D11.
+
+---
+## 2026-06-23 — SHIP: FAN flip pair-ADX floor (flip_fan_pair_adx_min=20)
+**Change:** new `flip_fan_pair_adx_min: float = 20.0`. Blocks FAN flip-SHORT when entry pair ADX < 20 (counter `FLIP_FAN_PAIR_ADX`, gate in the FAN-SHORT branch of `_flip_filters`, reads `ind['adx']`). config.py + trading_config.json + engine + UI input (`config-flip-fan-pair-adx-min`, same row format as the gap filter) + load/save. ConfigUpdate.thresholds is `Optional[Dict]` → generic, no whitelist edit.
+**Mechanism:** FAN flips bypass the momentum short system's pair-ADX requirement (`Pair ADX Dir: rising` + ADX-Strong>20), so they fire weak-trend fades (pADX 15-19) with no follow-through that chop/gap the 20× SL. The floor restores what momentum already enforces — principled, not data-mined.
+**Evidence — 3-batch deduped N=89** (J20 pre-reset, J22 20:28, J23 00:54 — all ran the identical FAN filter stack since 06-16):
+- pADX≥20 KEEP = 42/71%WR/+$482 · pADX<20 BLOCK = 47/51%WR/−$850 (the whole drain).
+- Per batch KEEP/BLOCK: J20 27/67%/+$94 vs 34/56%/−$319 · J22a 11/82%/+$399 vs 8/62%/+$24 · J22b 4/75%/−$11 vs 5/0%/−$555. KEEP>BLOCK + WR-up in all three.
+- Kept cohort N=42 clears the N≥30 gate at 71% WR.
+**Per-pair concentration check (PASSED):** block gross loss −$2,260 diffuse across ~17 pairs — top-1 (MET) 18%, top-2 28%, top-3 38% (well under the 60%/1-2-pair blacklist threshold → dimension filter is correct). MET decomposes: ADX<20 = 4/−$396 vs ADX≥20 = 1/+$153 (bad-condition, not bad-pair; a blacklist would wrongly kill the winner). SAND only fired <20 (all losers) → correctly cut.
+**Cost acknowledged:** sacrifices the occasional sub-20-ADX winner (HU = 6/+$204 at low ADX). Diffuse loss + 3-batch consistency + mechanism outweigh it.
+**TIGHT REVERT:** set `flip_fan_pair_adx_min`→0 if pADX≥20 FAN flips drop ≤60% WR on N≥15 fresh.
+**Context:** chosen over a regime-conditional fast-exit (operator-rejected — fast-exit capped winners on the winning batch for only +$58 and was a weak/asymmetric lever). The pADX floor is surgical (cuts weak-trend entries, not winners broadly).

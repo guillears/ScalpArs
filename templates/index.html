@@ -6213,6 +6213,11 @@
                                     <input type="number" id="config-flip-short-pair-gap-max" step="0.1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
                                     <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 1.0 — don't fade a parabolic pair; one-sided, positive only)</span>
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 23: pair-ADX floor for FAN flip-SHORTS — they BYPASS the momentum short system's pair-ADX requirement (Pair ADX Dir rising + ADX-Strong>20), so they fire weak-trend fades (pADX 15-19) with no follow-through that chop/gap the 20× stop. Restore the floor. Cross-batch 3 batches (J20/J22a/J22b, deduped N=89): pADX≥20 = 42/71%WR/+$482 vs <20 = 47/51%WR/−$850 (the entire drain); KEEP beats BLOCK and WR rises in EVERY batch. Loss diffuse (top-2 pairs 28% → dimension filter, not a blacklist; MET loses at low ADX but WINS at high). Counter FLIP_FAN_PAIR_ADX. 0 = off. TIGHT REVERT: →0 if pADX≥20 flips ≤60% WR on N≥15 fresh.">
+                                    <span class="text-rose-300 whitespace-nowrap">Short flip: block pair ADX &lt;</span>
+                                    <input type="number" id="config-flip-fan-pair-adx-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
+                                    <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 20 — FAN flips bypass the momentum ADX floor; weak-trend fades chop)</span>
+                                </div>
                             </div>
                             <!-- Multiplier cell — same RSI/ADX min-max + Invest/Lev multi layout as the other multiplier cells (Jun 16) -->
                             <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
@@ -18656,6 +18661,7 @@
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
                 _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
                 _setVal('config-flip-short-pair-gap-max', config.thresholds.flip_short_pair_gap_max);
+                _setVal('config-flip-fan-pair-adx-min', config.thresholds.flip_fan_pair_adx_min);
                 _setVal('config-flip-pair-rsi-ob-regimes', config.thresholds.flip_pair_rsi_ob_short_regimes);
                 _setVal('config-flip-pair-rsi-ob-adx-min', config.thresholds.flip_pair_rsi_ob_adx_min);
                 _setVal('config-flip-pair-rsi-ob-pair-gap-max', config.thresholds.flip_pair_rsi_ob_pair_gap_max);
@@ -19937,6 +19943,7 @@
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_fan_pair_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-fan-pair-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_short_regimes: ((document.getElementById('config-flip-pair-rsi-ob-regimes') || {}).value || '').trim(),
                     flip_pair_rsi_ob_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-pair-rsi-ob-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_pair_rsi_ob_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-pair-rsi-ob-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),

@@ -487,6 +487,7 @@ class SignalThresholds(BaseModel):
     flip_fan_stretch_min: float = 0.12        # block FAN flip if entry EMA5 stretch < this (thin fuel, batch N=10/10%WR/-$495). 0 = off
     flip_fan_block_btc_rsi: float = 60.0      # block FAN flip if BTC RSI >= this AND BTC ADX >= flip_fan_block_btc_adx (fade into strong un-exhausted bull: N=19/47%WR/-$416). 0 = off
     flip_fan_block_btc_adx: float = 30.0      # paired with flip_fan_block_btc_rsi
+    flip_fan_pair_adx_min: float = 20.0       # block FAN flip-SHORT when entry pair ADX < this (0=off). FAN flips BYPASS the momentum short system's pair-ADX floor (Pair ADX Dir rising + ADX-Strong>20) → they fire weak-trend fades (pADX 15-19) with no follow-through that chop/gap back. Restore it. Cross-batch 3 batches (J20/J22a/J22b, deduped N=89): pADX>=20 = 42/71%WR/+$482 vs <20 = 47/51%WR/-$850 (the entire drain); KEEP>BLOCK + WR up EVERY batch; loss diffuse (top-2 pairs 28% → dimension not blacklist). Counter FLIP_FAN_PAIR_ADX. TIGHT REVERT: →0 if pADX>=20 flips ≤60% WR on N≥15 fresh
     # U3 (Jun 20, N=14/1-weekend DISCIPLINE-OVERRIDE): block FAN flip-short when BTC ATR% < this — the
     # weekend thin-liquidity regime (20× gap-through-SL fat tails). FAN-only (PAIR_RSI_OB returns early).
     # Jun20 Sat sub-0.10 cell = N=14/36%WR/-$775, all gaps; weekday Jun17/18 never dipped <0.109 = regime

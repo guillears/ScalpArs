@@ -1243,3 +1243,24 @@ All three are staged together this commit. py+json AST clean.
 **RE-LEVER gate (tightened):** only at N≥30 cumulative AND WR≥70% AND avg≥+0.15% across ≥2 batches (cross-batch-STABLE). Never again on a single in-sample band. Sleeve stays at 1×/0.05 observation, collecting.
 
 **Also in this terrible batch (logged, not yet actioned):** BICO flip-short −$125 (pADX 20.6, already blocked going forward by today's flip_fan_pair_adx_min=21) · AAVE FAN flip-short −$86 in H.BULL pADX22.5 ADXΔ+0.47 (leaked FLIP_SHORT_REGIME which needs ADXΔ<0 + S.BULL-only B2 → the standing flip-universal-regime-gate gap) · HYPE UNMATCHED-LONG 2× −$62 (Δ$ vs 1× −$28, the ✗-harmful 2× cell accruing toward its N≥5 demote gate).
+
+---
+
+## 2026-06-23 — FAN flip-short CHOPPY_FLAT soft spot (WATCHLIST, no ship — re-sim refuted raw signal)
+
+**Trigger:** fresh post-reset batch — 2 ALLO FAN flip-shorts both lost (CHOP regime, pADX 22.6/24.3, ADXΔ +0.28/+0.87, both never-armed → −$96/−$97). Both passed the new pADX≥21 floor and leaked FLIP_SHORT_REGIME (which only blocks bull/chop when ADXΔ<0). (Also confirmed same batch: BULL_LONG de-lever working — BEL bull-long ran at 1× = −$5.97 vs ~−$119 at 20×.)
+
+**Raw read (multi-era pool):** CHOPPY_FLAT FAN flip-short = N=44/43%WR/−$1,352; the ADXΔ≥0 slice that leaks the gate = N=33/45%/−$1,085.
+
+**Re-sim under CURRENT filter stack (pADX≥21, fan<10, stretch∈[0.12,2), BTC RSI60&ADX30, BTC30-rise, pair-gap≥1, pair-RSI≥55, BTC-ATR≥0.10, ATR≥3-bear, regime∧ADXΔ<0):**
+- FAN flip-short survivors = **N=50 / 74% WR / +$802** (raw −$3,103 was stale; sleeve net-positive under current stack — matches the 06-21 filter-overlap audit).
+- By regime: H.BEAR 13/92%/+$881 · S.BEAR 18/78%/+$284 · H.BULL 5/60%/−$7 · **CHOPPY_FLAT 7/43%/−$317** (only negative regime).
+- CHOP-block counterfactual: +$802 → +$1,119 / 79% WR (removes 7 = 3W/4L).
+
+**Why NOT shipped:**
+1. N=7 ≪ N≥30.
+2. CHOP survivor loss is **83% in 2 pairs** (ALLO −$192, PLAY −$170) → locked rule: ≥60% in 1–2 pairs = pair-blacklist signal, not a dimension/regime filter.
+3. Pair-blacklist also fails: ALLO's CHOP winners (J20 ×2, pADX 17.7) are now pADX≥21-blocked → only N=2 ALLO survivors (today's losers); PLAY N=1.
+4. Per-date CHOP survivors mixed (J15 −, J18 +, J22 −, J23 −), tiny N each.
+
+**Decision (locked) at N≥15 cross-batch CHOP survivors:** (a) diffuse → add CHOPPY_FLAT to `flip_short_regime_block_any_adxd_regimes`; (b) ALLO/PLAY-concentrated → 2-pair blacklist; (c) reverts positive → nothing. Until then observation-only; no config touched. ALLO itself NOT blacklisted (net-mixed, winners would be forfeited).

@@ -6310,6 +6310,7 @@
                             <label class="flex items-center justify-between gap-2" title="Lower fan bound: only fire when fan ratio |EMA5-8 gap|/|EMA8-13 gap| ≥ this (require real fan acceleration; live fan <1.65 = net loser). 0 = disabled."><span class="text-gray-400">Fan ratio ≥</span><input type="number" id="config-bull-long-fan-min" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Upper fan bound: only fire when fan ratio |EMA5-8 gap|/|EMA8-13 gap| < this (block parabolic blow-offs). 0 = disabled."><span class="text-gray-400">Fan ratio &lt;</span><input type="number" id="config-bull-long-fan-max" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Investment-side multiplier on top of base sizing. 1.0 = no amplification."><span class="text-gray-400">Invest multi</span><input type="number" id="config-bull-long-size-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="flex items-center justify-between gap-2" title="Max concurrent OPEN bull-longs (0 = uncapped). Reserves book slots for higher-conviction MOMENTUM/UNMATCHED longs — a 1×-obs bull cluster must not monopolize the max-open book."><span class="text-gray-400">Max concurrent</span><input type="number" id="config-bull-long-max-concurrent" step="1" min="0" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Leverage-side multiplier. 1.0 = normal STRONG_BUY leverage (e.g. 20×)."><span class="text-gray-400">Lev multi</span><input type="number" id="config-bull-long-lev-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="col-span-2 flex items-center gap-2" title="CSV of BTC regimes the sleeve fires in (e.g. HEALTHY_BULL). Empty = filter OFF (never fires)."><span class="text-gray-400 whitespace-nowrap">In regimes</span><input type="text" id="config-bull-long-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-left text-xs" placeholder="HEALTHY_BULL"></label>
                         </div>
@@ -18780,6 +18781,7 @@
                 _setVal('config-bull-long-fan-max', config.thresholds.bull_long_fan_max);
                 _setVal('config-bull-long-fan-min', config.thresholds.bull_long_fan_min);
                 _setVal('config-bull-long-size-mult', config.thresholds.bull_long_size_mult);
+                _setVal('config-bull-long-max-concurrent', config.thresholds.bull_long_max_concurrent);
                 _setVal('config-bull-long-lev-mult', config.thresholds.bull_long_lev_mult);
                 _setVal('config-bull-long-regimes', config.thresholds.bull_long_regimes);
                 const _bnEn = document.getElementById('config-bounce-long-enabled');
@@ -20059,6 +20061,7 @@
                     bull_long_fan_max: parseFloat((document.getElementById('config-bull-long-fan-max') || {}).value) || 0,
                     bull_long_fan_min: parseFloat((document.getElementById('config-bull-long-fan-min') || {}).value) || 0,
                     bull_long_size_mult: parseFloat((document.getElementById('config-bull-long-size-mult') || {}).value) || 1.0,
+                    bull_long_max_concurrent: parseInt((document.getElementById('config-bull-long-max-concurrent') || {}).value) || 0,
                     bull_long_lev_mult: parseFloat((document.getElementById('config-bull-long-lev-mult') || {}).value) || 1.0,
                     bounce_long_enabled: ((document.getElementById('config-bounce-long-enabled') || {}).checked === true),
                     bounce_long_regimes: ((document.getElementById('config-bounce-long-regimes') || {}).value || '').trim(),

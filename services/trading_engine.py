@@ -3427,6 +3427,21 @@ class TradingEngine:
             _now = _leash_time.time()
             if _now - _PFLIP_COOLDOWN.get(_ck, 0) < _PFLIP_COOLDOWN_MIN * 60:
                 return
+            # Per-sleeve concurrency cap (Jun 23): reserve book slots for higher-conviction
+            # sleeves (MOMENTUM / UNMATCHED longs). BULL_LONG is a 1×-obs sleeve — a bull cluster
+            # must not monopolize the max-open book and crowd out proven longs. 0 = uncapped.
+            _bl_cap = int(getattr(_th, 'bull_long_max_concurrent', 0) or 0)
+            if _bl_cap > 0:
+                _bl_open = (await db.execute(
+                    select(func.count(Order.id)).where(and_(
+                        Order.status == "OPEN",
+                        Order.is_paper == self.is_paper_mode,
+                        Order.entry_strategy == "BULL_LONG",
+                    ))
+                )).scalar() or 0
+                if _bl_open >= _bl_cap:
+                    self._record_filter_block("BULL_LONG_MAX", "LONG")
+                    return
             _size_mult = getattr(_th, 'bull_long_size_mult', 1.0) or 1.0
             _lev_mult = getattr(_th, 'bull_long_lev_mult', 1.0) or 1.0
             async def _open(_db):

@@ -1264,3 +1264,17 @@ All three are staged together this commit. py+json AST clean.
 4. Per-date CHOP survivors mixed (J15 −, J18 +, J22 −, J23 −), tiny N each.
 
 **Decision (locked) at N≥15 cross-batch CHOP survivors:** (a) diffuse → add CHOPPY_FLAT to `flip_short_regime_block_any_adxd_regimes`; (b) ALLO/PLAY-concentrated → 2-pair blacklist; (c) reverts positive → nothing. Until then observation-only; no config touched. ALLO itself NOT blacklisted (net-mixed, winners would be forfeited).
+
+---
+
+## 2026-06-23 — BULL_LONG concurrency cap (bull_long_max_concurrent=3)
+
+**Change:** new field `bull_long_max_concurrent` = 3 (0 = uncapped). Caps the number of *concurrent OPEN* BULL_LONG positions. Operator-requested.
+
+**Rationale:** BULL_LONG is a de-levered 1×-observation sleeve. In a bull cluster many pairs fan up at once (the 06-23 batch opened 5-7 bull-longs within ~5 min), which can fill the entire max-5 book and crowd out higher-conviction MOMENTUM / UNMATCHED longs. Capping at 3 reserves ≥2 slots for the proven sleeves. A low-conviction obs sleeve monopolizing the position book is backwards.
+
+**Engine:** gate in `_maybe_open_bull_long` (after the per-pair cooldown, before sizing) — counts `Order.status=='OPEN' & entry_strategy=='BULL_LONG'`; if ≥ cap, `_record_filter_block('BULL_LONG_MAX','LONG')` and return. Soft cap (count-then-open not atomic, but the per-pair/30min cooldown + open_position's own max-open make clustering rare; fine for an obs sleeve).
+
+**D11 full:** config.py default (3) + evidence comment · trading_config.json (3) · engine gate · UI input `config-bull-long-max-concurrent` · load + save handlers. Verified: field across 3 code surfaces, UI id count=3, python compiles, JSON valid.
+
+**Caveat:** caps concurrency, not trade quality — assumes a better long is waiting when bull-longs fill up. The entry-funnel cap-cost counter (1 norm / 0 flip last batch) says the 5-cap rarely binds on the good cohort historically, so the benefit is cluster-specific, not per-batch. Cheap insurance, not a P&L lever. Watch the new BULL_LONG_MAX counter to confirm it earns its place. Reversible: set →0 to uncap.

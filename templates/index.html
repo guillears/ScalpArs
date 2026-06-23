@@ -544,12 +544,12 @@
                     <select id="flip-source-filter" class="bg-white/5 border border-fuchsia-500/20 rounded px-3 py-1.5 text-white text-sm" onchange="loadPerformance()" title="Slice every table by entry-strategy source — per-flip-sleeve evaluation in isolation">
                         <option value="">All Sources</option>
                         <option value="MOMENTUM">Non-flip (momentum)</option>
-                        <option value="FLIP">All flips</option>
                         <option value="FAN_RATIO_GATE">🔀 FAN_RATIO_GATE</option>
-                        <option value="LONG_UNMATCHED_ONLY">🔀 LONG_UNMATCHED_ONLY</option>
-                        <option value="PAIR_RSI_OB">🔀 PAIR_RSI_OB</option>
                         <option value="BULL_LONG">🐂 BULL_LONG</option>
-                        <option value="BOUNCE_LONG">🐻↩ BOUNCE_LONG</option>
+                        <!-- Jun 23: removed dead/redundant options post-reset — All flips (==FAN, the only live flip),
+                             LONG_UNMATCHED_ONLY / PAIR_RSI_OB / BOUNCE_LONG (all disabled → 0 trades post-reset).
+                             The server still accepts these flip_source values, so re-add the <option> here if a
+                             sleeve is re-enabled (or switch to a data-driven dropdown). -->
                     </select>
                     <span id="flip-source-filter-badge" class="text-xs text-gray-500"></span>
                     <span class="text-sm font-semibold text-cyan-300">Filter by Direction:</span>

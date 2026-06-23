@@ -595,7 +595,7 @@ class SignalThresholds(BaseModel):
     # entry blocks (it is explicitly a trend-build, not a pattern-matched late long). All
     # hard risk controls (max-open, existing-position, cooldown, liquidity caps) still apply.
     # TO REMOVE: grep "BULL_LONG" / "bull_long" + the main.py bull-long perf blocks + the UI.
-    bull_long_enabled: bool = True                     # master toggle for the bull-long sleeve
+    bull_long_enabled: bool = False                    # master toggle for the bull-long sleeve. Jun 23: DISABLED (operator) — focus the max-5 book on the proven FAN-flip + MOMENTUM/UNMATCHED sleeves; bull-long never found a stable edge (de-levered to 1×, instant gate tripped same week). Phantom Bull-Long Curve keeps tracking (independent of this toggle) → re-enable as a clean EXPERIMENT later. Re-enable bar: a cross-batch-STABLE band/regime edge in the phantom curve.
     # Jun 21 — converted to a 1× OBSERVATION ARM. The cross-batch dig (N=52) showed fan bucket & regime
     # are NOT the driver of bull-long outcomes — BTC momentum/extension at entry is: BTC 30m-RSI Δ≥+12 =
     # 26/73%WR/+0.149% (the winning band) and BTC EMA13-EMA50 gap≥+0.06 = 22/27%WR/−$430 (the whole loss).

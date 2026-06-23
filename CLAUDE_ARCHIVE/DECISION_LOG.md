@@ -1278,3 +1278,17 @@ All three are staged together this commit. py+json AST clean.
 **D11 full:** config.py default (3) + evidence comment · trading_config.json (3) · engine gate · UI input `config-bull-long-max-concurrent` · load + save handlers. Verified: field across 3 code surfaces, UI id count=3, python compiles, JSON valid.
 
 **Caveat:** caps concurrency, not trade quality — assumes a better long is waiting when bull-longs fill up. The entry-funnel cap-cost counter (1 norm / 0 flip last batch) says the 5-cap rarely binds on the good cohort historically, so the benefit is cluster-specific, not per-batch. Cheap insurance, not a P&L lever. Watch the new BULL_LONG_MAX counter to confirm it earns its place. Reversible: set →0 to uncap.
+
+---
+
+## 2026-06-23 — BULL_LONG sleeve DISABLED (bull_long_enabled=false)
+
+**Change:** `bull_long_enabled` true → false (config.py default + trading_config.json). Operator-directed.
+
+**Rationale:** the build-side bull-long sleeve never established a stable edge — it was re-levered to 20× on an N=8 in-sample band (06-22), tripped its instant revert gate the very next batch (7t/29%WR/−$335), and was de-levered to 1× observation. Keeping a no-edge 1×-obs sleeve consuming slots in the max-5 book competes with the proven FAN-flip + MOMENTUM/UNMATCHED longs. Decision: turn it OFF entirely and dedicate the book to what works; re-introduce bull-long later as a clean, isolated EXPERIMENT rather than a permanently-on drain.
+
+**Data retention:** the phantom Bull-Long Curve (virtual longs by fan×regime) is seeded independently of `bull_long_enabled`, so observation data keeps accruing while the live sleeve is off. The de-lever (lev_mult 0.05) and concurrency cap (max_concurrent 3) remain set but inert.
+
+**Re-enable bar:** a cross-batch-STABLE (≥3 batch) band/regime edge in the phantom curve — not another single-in-sample band. When re-enabled, start as a 1× observation experiment, never straight to leverage.
+
+**Config-only** (existing fields). Related: BULL_LONG de-lever + concurrency cap (same day, both now inert under the disable).

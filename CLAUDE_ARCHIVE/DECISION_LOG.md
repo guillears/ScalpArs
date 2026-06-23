@@ -1199,3 +1199,24 @@ All three are staged together this commit. py+json AST clean.
 - Winners are indistinguishable from losers on every captured dimension = no-edge counter-trend long. Same verdict + same action as PAIR_RSI_OB (disabled same day).
 **Tracking-watchlist deliberately NOT added:** the candidate fields (entry_btc_rsi_1h/_prev, entry_btc_rsi_prev6, entry_dist_from_ema13_pct) already exist on every Order and were just falsified — nothing to instrument.
 **Status:** disabled, not deleted. Phantom seed stays decoupled (always fires) → keeps tracking. RE-ENABLE only on a cross-batch-STABLE (≥3 batch) separator. Existing field — no D11.
+
+---
+
+## 2026-06-23 — FAN flip pair-ADX floor RAISED 20→21 (commit af29d28)
+
+**Change:** `flip_fan_pair_adx_min` 20.0 → 21.0 (config.py default + trading_config.json). Value-only; engine gate + UI input already shipped same day with the @20 floor.
+
+**Trigger:** operator flagged BICOUSDT FAN flip-short, 2026-06-23 13:31 — lost −1.222% (−$124.59) in 20 seconds, never armed (peak 0.00%), straight to FLIP_STOP_LOSS L1. pADX at entry = 20.6 (cleared the @20 floor by a hair). ATR 1.16%, pair gap −2.07% (with-trend, negative → not caught by the gap≥1.0 block), range-pos 96%.
+
+**Cross-batch dig (4 batches J20-23, deduped by (opened_at,pair,direction), CLOSED only, N=102 FAN flip-shorts; non-blacklisted base N=92):**
+- **Reframe: 97% of all FAN-short loss is the never-armed (peak<0.45) straight-to-SL gap-through bucket** (38 trades, −40.1% of −41.2% total loss). Armed-then-lost = 4 trades / −1.1%. → entry-selection problem, not exit.
+- **pADX floor sweep (non-blacklisted):** 20 = 42/71%/+0.123/+5.16 · **21 = 36/75%/+0.207/+7.47** · 22 = 27/78%/+0.203/+5.47 · 23 = 19/79%/+0.229/+4.36.
+- **20-21 marginal band = N=6/50%WR/−2.31%** (BICO −1.22 + HEI −1.19 never-armed gappers + HOME −0.82, vs only WLD/XMR/JTO +0.93) → net-negative, the 20 floor leaked it.
+- **21-22 band = N=9/67%WR/+1.99% (POSITIVE, incl. ORDI +2.80% runner)** → going to 22 sacrifices real upside and flips J20 to −2.8. So 21 is the stop.
+- Per-date floor 21: J18 +1.3 · J19 −0.9 · J20 +0.9 · J21 +3.2 · J22 +1.2 · J23 +1.8 = positive 5/6.
+
+**Rejected alternatives:** ATR≥1.1 cut — fails anti-overfit (non-monotonic mid-hole, ≥1.5 breakeven; single-batch J20-dominated; 66% of its loss in 2 pairs BICO/HEI → per locked rule that's a pair-blacklist signal not a dimension filter). De-lever — declined by operator (P&L% is leverage-invariant; sleeve is net-positive under current stack, so the edge wins at all leverage). Residual after pADX≥21 is pair-concentrated (BICO/HEI/RIF recurring never-armed gappers) → future per-pair watchlist, not shipped.
+
+**Discipline notes:** in-sample on the same 4 batches; deciding band N=6 marginal (30-50% haircut → real ~+1.2 to +1.6%); 2nd finer re-cut on a dimension shipped the SAME day (re-overfit risk acknowledged, same pattern as the old PAIR_RSI_OB 33→40→45 saga). Mechanism sound (BICO/HEI gappers cluster just above 20).
+
+**TIGHT REVERT:** `flip_fan_pair_adx_min`→20 if 20-21-band FAN shorts come back ≥55% WR on N≥8 fresh; →0 if pADX≥21 FAN flips drop ≤60% WR on N≥15 fresh.

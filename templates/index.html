@@ -909,7 +909,7 @@
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
-                                <tr class="text-gray-400 text-left border-b border-white/10">
+                                <tr class="text-gray-400 text-left border-b border-white/10" id="entry-cond-outcome-head">
                                     <th class="px-3 py-2 font-medium">Outcome</th>
                                     <th class="px-3 py-2 font-medium text-center">#</th>
                                     <th class="px-3 py-2 font-medium text-center">Conf</th>
@@ -954,6 +954,24 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Entry Conditions by Strategy (Jun 23 — operator) — same column set, grouped by sleeve -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Conditions by Strategy</h3>
+                    <p class="text-xs text-gray-500 mb-3">Same columns as Entry Conditions by Outcome, grouped by entry-strategy sleeve (FAN_RATIO_GATE / BULL_LONG / MOMENTUM / PAIR_RSI_OB / BOUNCE_LONG), one row per sleeve×direction. Sorted by Total$ desc.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-sm">
+                        <thead><tr class="text-gray-400 text-left border-b border-white/10" id="entry-cond-strat-head"></tr></thead>
+                        <tbody id="entry-conditions-strategy-body" class="divide-y divide-white/5"><tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr></tbody>
+                    </table></div>
+                </div>
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Entry Conditions by Strategy — Winners vs Losers</h3>
+                    <p class="text-xs text-gray-500 mb-3">The per-sleeve winner-vs-loser entry profile — the native version of the FAN-flip / bull-long separator digs. A dimension only matters if winners and losers actually differ on it within the sleeve.</p>
+                    <div class="overflow-x-auto"><table class="w-full text-sm">
+                        <thead><tr class="text-gray-400 text-left border-b border-white/10" id="entry-cond-strat-out-head"></tr></thead>
+                        <tbody id="entry-conditions-strategy-outcome-body" class="divide-y divide-white/5"><tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr></tbody>
+                    </table></div>
                 </div>
 
                 <!-- Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) -->
@@ -8266,6 +8284,28 @@
                 lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${gap813Str.padEnd(9)} ${fanStr.padEnd(6)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
             }
 
+            // Entry Conditions by Strategy + by Strategy×Outcome (Jun 23) — same column set, grouped by sleeve
+            const _ecStratHdr = (first) => `${first.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`;
+            const _ecStratLine = (r, label, isWinnerRow) => {
+                const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                const g = (v,nd,pct,sign) => v==null?'-':((sign&&v>=0?'+':'')+v.toFixed(nd)+(pct?'%':''));
+                const _slP=r.sl_positive_no_be||0,_slN=r.sl_never_positive||0,_slBE=r.sl_be_was_active||0;
+                const slProfStr=(isWinnerRow||(_slP+_slN+_slBE)===0)?'-':(`P:${_slP} N:${_slN}`+(_slBE>0?` BE:${_slBE}`:''));
+                return `${label.padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${g(r.avg_rsi,1).padEnd(8)} ${g(r.avg_adx,1).padEnd(8)} ${(r.adx_rising+'R/'+r.adx_falling+'F').padEnd(8)} ${((r.rsi_rising||0)+'R/'+(r.rsi_falling||0)+'F').padEnd(8)} ${g(r.avg_gap,2,1).padEnd(8)} ${g(r.avg_gap58,2,1).padEnd(8)} ${g(r.avg_gap813,2,1).padEnd(9)} ${g(r.avg_fan_ratio,2).padEnd(6)} ${g(r.avg_stretch,2,1).padEnd(9)} ${g(r.avg_ema20_slope,2,1).padEnd(10)} ${g(r.avg_btc_slope,2,1).padEnd(9)} ${g(r.avg_btc_rsi,1).padEnd(8)} ${g(r.avg_btc_adx,1).padEnd(8)} ${(r.btc_adx_rising+'R/'+r.btc_adx_falling+'F').padEnd(10)} ${((r.btc_rsi_rising||0)+'R/'+(r.btc_rsi_falling||0)+'F').padEnd(10)} ${g(r.avg_adx_delta,2,0,1).padEnd(8)} ${g(r.avg_range_position,0,1).padEnd(8)} ${g(r.avg_breadth,1,1).padEnd(9)} ${g(r.avg_atr_pct,2,1).padEnd(8)} ${g(r.avg_btc_trend_gap,2,1,1).padEnd(10)} ${g(r.avg_exit_btc_trend_gap,2,1,1).padEnd(15)} ${g(r.avg_global_vol_ratio,2).padEnd(10)} ${_fmtVolUSDexp(r.avg_pair_vol_usd).padEnd(10)} ${g(r.avg_ext_pct,3,1,1).padEnd(9)} ${g(r.avg_btc_ext_pct,3,1,1).padEnd(11)} ${g(r.avg_btc_1h_slope,3,1,1).padEnd(11)} ${g(r.avg_peak_pct,4,1,1).padEnd(10)} ${g(r.avg_trough_pct,4,1,1).padEnd(11)} ${g(r.worst_trough_pct,4,1,1).padEnd(13)} ${g(r.avg_pnl_pct,4,1,1).padEnd(10)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration||'-'}`;
+            };
+            lines.push(`\n${hr2}`);
+            lines.push('## Entry Conditions by Strategy\n');
+            lines.push(_ecStratHdr('Strategy'));
+            for (const r of (perf.entry_conditions_by_strategy || [])) {
+                lines.push(_ecStratLine(r, `${r.strategy} ${r.direction === 'LONG' ? 'L' : 'S'}`, false));
+            }
+            lines.push(`\n${hr2}`);
+            lines.push('## Entry Conditions by Strategy — Winners vs Losers\n');
+            lines.push(_ecStratHdr('Strategy / Outcome'));
+            for (const r of (perf.entry_conditions_by_strategy_outcome || [])) {
+                lines.push(_ecStratLine(r, `${r.strategy} ${r.outcome === 'Winners' ? 'Wn' : 'Ls'} ${r.direction === 'LONG' ? 'L' : 'S'}`, r.outcome === 'Winners'));
+            }
+
             // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
             const _fmtSrc1 = (s) => { const m = s && s.match(/^SCORE_(\d+)-/); return m ? `Score ${m[1]}` : s; };
             const _renderMultExport = (rows, label, summary) => {
@@ -10218,6 +10258,28 @@
                     const _gvolStrO = r.avg_global_vol_ratio != null ? r.avg_global_vol_ratio.toFixed(2) : '-';
                     const _pvolStrO = _fmtVolUSDexp2(r.avg_pair_vol_usd);
                     lines.push(`${(r.outcome + dirSuffix).padEnd(14)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${rsiStr.padEnd(8)} ${adxStr.padEnd(8)} ${adxDirStr.padEnd(8)} ${rsiDirStr.padEnd(8)} ${gapStr.padEnd(8)} ${gap58Str.padEnd(8)} ${gap813Str.padEnd(9)} ${fanStr.padEnd(6)} ${stretchStr.padEnd(9)} ${slopeStr.padEnd(10)} ${btcSlopeStr.padEnd(9)} ${btcRsiStr.padEnd(8)} ${btcAdxStr.padEnd(8)} ${btcAdxDirStr.padEnd(10)} ${btcRsiDirStr.padEnd(10)} ${adxDeltaStr.padEnd(8)} ${rngPosStr.padEnd(8)} ${breadthStr.padEnd(9)} ${atrStr.padEnd(8)} ${btcTrendStr.padEnd(10)} ${exitBtcStr.padEnd(15)} ${_gvolStrO.padEnd(10)} ${_pvolStrO.padEnd(10)} ${(r.avg_ext_pct != null ? ((r.avg_ext_pct >= 0 ? '+' : '') + r.avg_ext_pct.toFixed(3) + '%') : '-').padEnd(9)} ${(r.avg_btc_ext_pct != null ? ((r.avg_btc_ext_pct >= 0 ? '+' : '') + r.avg_btc_ext_pct.toFixed(3) + '%') : '-').padEnd(11)} ${(r.avg_btc_1h_slope != null ? ((r.avg_btc_1h_slope >= 0 ? '+' : '') + r.avg_btc_1h_slope.toFixed(3) + '%') : '-').padEnd(11)} ${peakStr.padEnd(10)} ${troughStr.padEnd(11)} ${worstTroughStr.padEnd(13)} ${pnlStr.padEnd(10)} ${totalUsdStr.padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration || '-'}`);
+                }
+
+                // Entry Conditions by Strategy + by Strategy×Outcome (Jun 23) — same column set, grouped by sleeve
+                const _ecStratHdr2 = (first) => `${first.padEnd(26)} ${'#'.padEnd(5)} ${'Conf'.padEnd(14)} ${'AvgRSI'.padEnd(8)} ${'AvgADX'.padEnd(8)} ${'ADXDir'.padEnd(8)} ${'RSIDir'.padEnd(8)} ${'AvgGap'.padEnd(8)} ${'Gap5-8'.padEnd(8)} ${'Gap8-13'.padEnd(9)} ${'FanR'.padEnd(6)} ${'Stretch'.padEnd(9)} ${'EMA20Slp'.padEnd(10)} ${'BTCSlp'.padEnd(9)} ${'BTCRSI'.padEnd(8)} ${'BTCADX'.padEnd(8)} ${'BTCADXDir'.padEnd(10)} ${'BTCRSIDir'.padEnd(10)} ${'ADXΔ'.padEnd(8)} ${'RngPos'.padEnd(8)} ${'Breadth'.padEnd(9)} ${'ATR%'.padEnd(8)} ${'BTCTrend'.padEnd(10)} ${'BTCTrend(exit)'.padEnd(15)} ${'GlobalVol'.padEnd(10)} ${'PairVol$'.padEnd(10)} ${'AvgExt%'.padEnd(9)} ${'AvgBTCExt%'.padEnd(11)} ${'Avg1hSlope'.padEnd(11)} ${'AvgPeak%'.padEnd(10)} ${'AvgTrough%'.padEnd(11)} ${'WorstTrough%'.padEnd(13)} ${'AvgP&L%'.padEnd(10)} ${'Total$'.padEnd(12)} ${'SLProf'.padEnd(14)} ${'Duration'}`;
+                const _ecStratLine2 = (r, label, isWinnerRow) => {
+                    const confStr = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`${c[0]}:${n}`).join(' ');
+                    const g = (v,nd,pct,sign) => v==null?'-':((sign&&v>=0?'+':'')+v.toFixed(nd)+(pct?'%':''));
+                    const _slP=r.sl_positive_no_be||0,_slN=r.sl_never_positive||0,_slBE=r.sl_be_was_active||0;
+                    const slProfStr=(isWinnerRow||(_slP+_slN+_slBE)===0)?'-':(`P:${_slP} N:${_slN}`+(_slBE>0?` BE:${_slBE}`:''));
+                    return `${label.padEnd(26)} ${String(r.trades).padEnd(5)} ${confStr.padEnd(14)} ${g(r.avg_rsi,1).padEnd(8)} ${g(r.avg_adx,1).padEnd(8)} ${(r.adx_rising+'R/'+r.adx_falling+'F').padEnd(8)} ${((r.rsi_rising||0)+'R/'+(r.rsi_falling||0)+'F').padEnd(8)} ${g(r.avg_gap,2,1).padEnd(8)} ${g(r.avg_gap58,2,1).padEnd(8)} ${g(r.avg_gap813,2,1).padEnd(9)} ${g(r.avg_fan_ratio,2).padEnd(6)} ${g(r.avg_stretch,2,1).padEnd(9)} ${g(r.avg_ema20_slope,2,1).padEnd(10)} ${g(r.avg_btc_slope,2,1).padEnd(9)} ${g(r.avg_btc_rsi,1).padEnd(8)} ${g(r.avg_btc_adx,1).padEnd(8)} ${(r.btc_adx_rising+'R/'+r.btc_adx_falling+'F').padEnd(10)} ${((r.btc_rsi_rising||0)+'R/'+(r.btc_rsi_falling||0)+'F').padEnd(10)} ${g(r.avg_adx_delta,2,0,1).padEnd(8)} ${g(r.avg_range_position,0,1).padEnd(8)} ${g(r.avg_breadth,1,1).padEnd(9)} ${g(r.avg_atr_pct,2,1).padEnd(8)} ${g(r.avg_btc_trend_gap,2,1,1).padEnd(10)} ${g(r.avg_exit_btc_trend_gap,2,1,1).padEnd(15)} ${g(r.avg_global_vol_ratio,2).padEnd(10)} ${_fmtVolUSDexp2(r.avg_pair_vol_usd).padEnd(10)} ${g(r.avg_ext_pct,3,1,1).padEnd(9)} ${g(r.avg_btc_ext_pct,3,1,1).padEnd(11)} ${g(r.avg_btc_1h_slope,3,1,1).padEnd(11)} ${g(r.avg_peak_pct,4,1,1).padEnd(10)} ${g(r.avg_trough_pct,4,1,1).padEnd(11)} ${g(r.worst_trough_pct,4,1,1).padEnd(13)} ${g(r.avg_pnl_pct,4,1,1).padEnd(10)} ${('$'+(r.total_pnl_usd||0).toFixed(2)).padEnd(12)} ${slProfStr.padEnd(14)} ${r.avg_duration||'-'}`;
+                };
+                lines.push(`\n${hr2}`);
+                lines.push('## Entry Conditions by Strategy\n');
+                lines.push(_ecStratHdr2('Strategy'));
+                for (const r of (perf.entry_conditions_by_strategy || [])) {
+                    lines.push(_ecStratLine2(r, `${r.strategy} ${r.direction === 'LONG' ? 'L' : 'S'}`, false));
+                }
+                lines.push(`\n${hr2}`);
+                lines.push('## Entry Conditions by Strategy — Winners vs Losers\n');
+                lines.push(_ecStratHdr2('Strategy / Outcome'));
+                for (const r of (perf.entry_conditions_by_strategy_outcome || [])) {
+                    lines.push(_ecStratLine2(r, `${r.strategy} ${r.outcome === 'Winners' ? 'Wn' : 'Ls'} ${r.direction === 'LONG' ? 'L' : 'S'}`, r.outcome === 'Winners'));
                 }
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3)
@@ -12531,6 +12593,81 @@
                 } else {
                     ecoBody.innerHTML = '<tr><td colspan="29" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                 }
+
+                // Entry Conditions by Strategy + by Strategy×Outcome (Jun 23) — same column set as by Outcome,
+                // grouped by sleeve. Shares one row-renderer; headers cloned from the by-Outcome thead.
+                (function renderEntryCondByStrategy() {
+                  try {
+                    const _confColors = { 'VERY_STRONG':'text-purple-400','STRONG_BUY':'text-pink-400','LOW':'text-yellow-400','MEDIUM':'text-orange-400','HIGH':'text-emerald-400','EXTREME':'text-blue-400' };
+                    const _stratRow = (r, firstCell, isWinnerRow) => {
+                        const pnlClass = r.avg_pnl_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const peakClass = r.avg_peak_pct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const totalPnlUsd = r.total_pnl_usd || 0;
+                        const totalPnlClass = totalPnlUsd >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const confBadges = Object.entries(r.by_confidence || {}).sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<span class="${_confColors[c]||'text-gray-400'} text-xs">${c[0]}:${n}</span>`).join(' ') || '-';
+                        const adxDirStr = `<span class="text-emerald-400 text-xs">${r.adx_rising}R</span>/<span class="text-red-400 text-xs">${r.adx_falling}F</span>`;
+                        const btcAdxDirStr = `<span class="text-emerald-400 text-xs">${r.btc_adx_rising}R</span>/<span class="text-red-400 text-xs">${r.btc_adx_falling}F</span>`;
+                        const btcRsiDirStr = `<span class="text-emerald-400 text-xs">${r.btc_rsi_rising||0}R</span>/<span class="text-red-400 text-xs">${r.btc_rsi_falling||0}F</span>`;
+                        const rsiDirStr = `<span class="text-emerald-400 text-xs">${r.rsi_rising||0}R</span>/<span class="text-red-400 text-xs">${r.rsi_falling||0}F</span>`;
+                        const slSum = (r.sl_positive_no_be||0)+(r.sl_never_positive||0)+(r.sl_be_was_active||0);
+                        return `<tr class="hover:bg-white/5">
+                            ${firstCell}
+                            <td class="px-3 py-2 text-center">${r.trades}</td>
+                            <td class="px-3 py-2 text-center">${confBadges}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_rsi!=null?safe(r.avg_rsi).toFixed(1):'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_adx!=null?safe(r.avg_adx).toFixed(1):'-'}</td>
+                            <td class="px-3 py-2 text-center">${adxDirStr}</td>
+                            <td class="px-3 py-2 text-center">${rsiDirStr}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_gap!=null?safe(r.avg_gap).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_gap58!=null?safe(r.avg_gap58).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_gap813!=null?safe(r.avg_gap813).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_fan_ratio!=null?(safe(r.avg_fan_ratio)>=1.1?'text-orange-400':(safe(r.avg_fan_ratio)<0.45?'text-cyan-400':'text-gray-300')):'text-gray-400'}">${r.avg_fan_ratio!=null?safe(r.avg_fan_ratio).toFixed(2):'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_stretch!=null?safe(r.avg_stretch).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_ema20_slope!=null?safe(r.avg_ema20_slope).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_btc_slope!=null?safe(r.avg_btc_slope).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_btc_rsi!=null?safe(r.avg_btc_rsi).toFixed(1):'-'}</td>
+                            <td class="px-3 py-2 text-right">${r.avg_btc_adx!=null?safe(r.avg_btc_adx).toFixed(1):'-'}</td>
+                            <td class="px-3 py-2 text-center">${btcAdxDirStr}</td>
+                            <td class="px-3 py-2 text-center">${btcRsiDirStr}</td>
+                            <td class="px-3 py-2 text-right text-orange-400">${r.avg_adx_delta!=null?(safe(r.avg_adx_delta)>=0?'+':'')+safe(r.avg_adx_delta).toFixed(2):'-'}</td>
+                            <td class="px-3 py-2 text-right text-cyan-400">${r.avg_range_position!=null?safe(r.avg_range_position).toFixed(0)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right text-blue-400">${r.avg_breadth!=null?safe(r.avg_breadth).toFixed(1)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right text-amber-400">${r.avg_atr_pct!=null?safe(r.avg_atr_pct).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_btc_trend_gap!=null?(safe(r.avg_btc_trend_gap)>=0?'text-emerald-400':'text-red-400'):'text-gray-400'}">${r.avg_btc_trend_gap!=null?(safe(r.avg_btc_trend_gap)>=0?'+':'')+safe(r.avg_btc_trend_gap).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_pair_ema20_ema50_gap!=null?(safe(r.avg_pair_ema20_ema50_gap)>=0?'text-emerald-400':'text-red-400'):'text-gray-400'}">${r.avg_pair_ema20_ema50_gap!=null?(safe(r.avg_pair_ema20_ema50_gap)>=0?'+':'')+safe(r.avg_pair_ema20_ema50_gap).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_exit_btc_trend_gap!=null?(safe(r.avg_exit_btc_trend_gap)>=0?'text-emerald-400':'text-red-400'):'text-gray-400'}">${r.avg_exit_btc_trend_gap!=null?(safe(r.avg_exit_btc_trend_gap)>=0?'+':'')+safe(r.avg_exit_btc_trend_gap).toFixed(2)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right text-teal-300">${r.avg_global_vol_ratio!=null?r.avg_global_vol_ratio.toFixed(2):'-'}</td>
+                            <td class="px-3 py-2 text-right text-teal-300">${r.avg_pair_vol_usd!=null?(r.avg_pair_vol_usd>=1e9?'$'+(r.avg_pair_vol_usd/1e9).toFixed(2)+'B':'$'+(r.avg_pair_vol_usd/1e6).toFixed(0)+'M'):'-'}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_ext_pct!=null?(safe(r.avg_ext_pct)>0.10?'text-red-400':(safe(r.avg_ext_pct)<0?'text-emerald-400':'text-amber-300')):'text-gray-400'}">${r.avg_ext_pct!=null?(safe(r.avg_ext_pct)>=0?'+':'')+safe(r.avg_ext_pct).toFixed(3)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_btc_ext_pct!=null?(safe(r.avg_btc_ext_pct)>0.10?'text-red-400':(safe(r.avg_btc_ext_pct)<0?'text-emerald-400':'text-amber-300')):'text-gray-400'}">${r.avg_btc_ext_pct!=null?(safe(r.avg_btc_ext_pct)>=0?'+':'')+safe(r.avg_btc_ext_pct).toFixed(3)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${r.avg_btc_1h_slope!=null?(safe(r.avg_btc_1h_slope)>0?'text-emerald-400':(safe(r.avg_btc_1h_slope)<0?'text-red-400':'text-amber-300')):'text-gray-400'}">${r.avg_btc_1h_slope!=null?(safe(r.avg_btc_1h_slope)>=0?'+':'')+safe(r.avg_btc_1h_slope).toFixed(3)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${peakClass} font-medium">${safe(r.avg_peak_pct)>=0?'+':''}${safe(r.avg_peak_pct).toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right text-red-300">${r.avg_trough_pct!=null?(r.avg_trough_pct>=0?'+':'')+r.avg_trough_pct.toFixed(4)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right text-red-400 font-medium">${r.worst_trough_pct!=null?(r.worst_trough_pct>=0?'+':'')+r.worst_trough_pct.toFixed(4)+'%':'-'}</td>
+                            <td class="px-3 py-2 text-right ${pnlClass} font-medium">${safe(r.avg_pnl_pct)>=0?'+':''}${safe(r.avg_pnl_pct).toFixed(4)}%</td>
+                            <td class="px-3 py-2 text-right ${totalPnlClass} font-medium">$${safe(totalPnlUsd).toFixed(2)}</td>
+                            <td class="px-3 py-2 text-center text-xs">${(isWinnerRow||slSum===0)?'<span class="text-gray-500">-</span>':`<span class="text-amber-400">P:${r.sl_positive_no_be||0}</span> <span class="text-red-400">N:${r.sl_never_positive||0}</span>${(r.sl_be_was_active||0)>0?` <span class="text-orange-400">BE:${r.sl_be_was_active}</span>`:''}`}</td>
+                            <td class="px-3 py-2 text-center text-gray-400 text-xs">${r.avg_duration||'-'}</td>
+                        </tr>`;
+                    };
+                    // Clone the by-Outcome header into both strategy tables (swap first label)
+                    const _srcHead = document.getElementById('entry-cond-outcome-head');
+                    const _h1 = document.getElementById('entry-cond-strat-head');
+                    const _h2 = document.getElementById('entry-cond-strat-out-head');
+                    if (_srcHead) {
+                        const _hh = _srcHead.innerHTML.replace('>Outcome<', '>Strategy<');
+                        if (_h1) _h1.innerHTML = _hh;
+                        if (_h2) _h2.innerHTML = _hh;
+                    }
+                    const _dirColor = (d) => d === 'LONG' ? 'text-emerald-400' : 'text-red-400';
+                    const _b1 = document.getElementById('entry-conditions-strategy-body');
+                    const rows1 = data.entry_conditions_by_strategy || [];
+                    if (_b1) _b1.innerHTML = rows1.length ? rows1.map(r => _stratRow(r, `<td class="px-3 py-2 font-medium text-gray-200">${r.strategy} <span class="${_dirColor(r.direction)} text-xs font-normal">${r.direction==='LONG'?'L':'S'}</span></td>`, false)).join('') : '<tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                    const _b2 = document.getElementById('entry-conditions-strategy-outcome-body');
+                    const rows2 = data.entry_conditions_by_strategy_outcome || [];
+                    if (_b2) _b2.innerHTML = rows2.length ? rows2.map(r => { const isW = r.outcome === 'Winners'; return _stratRow(r, `<td class="px-3 py-2 font-medium"><span class="text-gray-200">${r.strategy}</span> <span class="${isW?'text-emerald-400':'text-red-400'} text-xs">${r.outcome}</span> <span class="${_dirColor(r.direction)} text-xs font-normal">${r.direction==='LONG'?'L':'S'}</span></td>`, isW); }).join('') : '<tr><td colspan="33" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                  } catch (e) { console.error('[entry-cond-by-strategy] render error', e); }
+                })();
 
                 // Multiplier Cell Performance (May 4, 2026 — Phase 3 Position Multiplier)
                 const _formatMultSource = (src) => {

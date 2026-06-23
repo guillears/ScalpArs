@@ -1741,6 +1741,8 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
+            "entry_conditions_by_strategy": [],
+            "entry_conditions_by_strategy_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -3344,6 +3346,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "hold_time_expectancy": [],
             "entry_conditions_by_reason": [],
             "entry_conditions_by_outcome": [],
+            "entry_conditions_by_strategy": [],
+            "entry_conditions_by_strategy_outcome": [],
             "multiplier_cell_performance": {"longs": [], "shorts": [], "summary": {}},
             "pattern_cell_performance": {"rules": [], "summary": {}},
             "extension_multiplier_performance": {"rules": [], "summary": {}},
@@ -5820,6 +5824,114 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         logger.error(f"[PERF] Error computing entry conditions by outcome: {e}\n{traceback.format_exc()}")
         entry_conditions_by_outcome = []
 
+    # Entry Conditions by Strategy (Jun 23 — operator) — the same wide entry-condition
+    # column set as "by Close Reason" / "by Outcome", but grouped by entry_strategy SLEEVE
+    # (FAN_RATIO_GATE / BULL_LONG / MOMENTUM / PAIR_RSI_OB / BOUNCE_LONG). Operationalises the
+    # per-sleeve winner-vs-loser separator analysis we kept doing by hand from the CSV.
+    # Two tables: (1) one row per sleeve×direction; (2) Winners/Losers within each sleeve.
+    # Self-contained nested row-builder so the existing two tables stay untouched. Read-only.
+    def _ec_row(group, direction):
+        """Full entry-condition column set for a group of orders (no label fields)."""
+        count = len(group)
+        ec_conf = {}
+        for o in group:
+            c = o.confidence or "UNKNOWN"
+            ec_conf[c] = ec_conf.get(c, 0) + 1
+        def _avg(vals, nd):
+            return round(sum(vals) / len(vals), nd) if vals else None
+        rsis = [o.entry_rsi for o in group if o.entry_rsi is not None]
+        adxs = [o.entry_adx for o in group if o.entry_adx is not None]
+        gaps = [o.entry_gap for o in group if o.entry_gap is not None]
+        gaps58 = [o.entry_ema_gap_5_8 for o in group if o.entry_ema_gap_5_8 is not None]
+        gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in group if getattr(o, 'entry_ema_gap_8_13', None) is not None]
+        stretches = [o.entry_ema5_stretch for o in group if o.entry_ema5_stretch is not None]
+        slopes = [abs(o.entry_ema20_slope) for o in group if o.entry_ema20_slope is not None]
+        btc_slopes = [abs(o.entry_btc_ema20_slope) for o in group if o.entry_btc_ema20_slope is not None]
+        btc_adxs = [o.entry_btc_adx for o in group if o.entry_btc_adx is not None]
+        btc_rsis = [o.entry_btc_rsi for o in group if o.entry_btc_rsi is not None]
+        adx_rising = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx > o.entry_adx_prev)
+        adx_falling = sum(1 for o in group if o.entry_adx is not None and o.entry_adx_prev is not None and o.entry_adx <= o.entry_adx_prev)
+        btc_adx_rising = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx > o.entry_btc_adx_prev)
+        btc_adx_falling = sum(1 for o in group if o.entry_btc_adx is not None and o.entry_btc_adx_prev is not None and o.entry_btc_adx <= o.entry_btc_adx_prev)
+        btc_rsi_rising = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi > o.entry_btc_rsi_prev)
+        btc_rsi_falling = sum(1 for o in group if o.entry_btc_rsi is not None and o.entry_btc_rsi_prev is not None and o.entry_btc_rsi <= o.entry_btc_rsi_prev)
+        rsi_rising = sum(1 for o in group if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None and o.entry_rsi > o.entry_rsi_prev)
+        rsi_falling = sum(1 for o in group if o.entry_rsi is not None and getattr(o, 'entry_rsi_prev', None) is not None and o.entry_rsi <= o.entry_rsi_prev)
+        btc_rsi_30m_rising = sum(1 for o in group if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None and o.entry_btc_rsi > o.entry_btc_rsi_prev6)
+        btc_rsi_30m_falling = sum(1 for o in group if o.entry_btc_rsi is not None and getattr(o, 'entry_btc_rsi_prev6', None) is not None and o.entry_btc_rsi <= o.entry_btc_rsi_prev6)
+        btc_atrs = [getattr(o, 'entry_btc_atr_pct', None) for o in group if getattr(o, 'entry_btc_atr_pct', None) is not None]
+        ema5_dists = [o.entry_price_vs_ema5_pct for o in group if o.entry_price_vs_ema5_pct is not None]
+        adx_deltas = [o.entry_adx_delta for o in group if o.entry_adx_delta is not None]
+        range_positions = [o.entry_range_position for o in group if o.entry_range_position is not None]
+        atr_pcts = [o.entry_atr_pct for o in group if getattr(o, 'entry_atr_pct', None) is not None]
+        global_vol_ratios = [o.entry_global_volume_ratio for o in group if getattr(o, 'entry_global_volume_ratio', None) is not None]
+        btc_trend_gaps = [o.entry_btc_trend_gap_pct for o in group if getattr(o, 'entry_btc_trend_gap_pct', None) is not None]
+        pair_ema20_ema50_gaps = [getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) for o in group if getattr(o, 'entry_pair_ema20_ema50_gap_pct', None) is not None]
+        exit_btc_trend_gaps = [getattr(o, 'exit_btc_trend_gap_pct', None) for o in group if getattr(o, 'exit_btc_trend_gap_pct', None) is not None]
+        pair_vol_usds = [getattr(o, 'entry_pair_volume_24h_usd', None) for o in group if getattr(o, 'entry_pair_volume_24h_usd', None) is not None]
+        ext_vals = [(getattr(o, 'entry_dist_from_ema13_pct', None) if direction == 'LONG' else -getattr(o, 'entry_dist_from_ema13_pct', None)) for o in group if getattr(o, 'entry_dist_from_ema13_pct', None) is not None]
+        btc_ext_vals = [(getattr(o, 'entry_btc_dist_from_ema13_pct', None) if direction == 'LONG' else -getattr(o, 'entry_btc_dist_from_ema13_pct', None)) for o in group if getattr(o, 'entry_btc_dist_from_ema13_pct', None) is not None]
+        btc_1h_slopes = [getattr(o, 'entry_btc_1h_slope', None) for o in group if getattr(o, 'entry_btc_1h_slope', None) is not None]
+        breadths = [o.entry_bull_pct for o in group if o.entry_bull_pct is not None] if direction == 'LONG' else [o.entry_bear_pct for o in group if o.entry_bear_pct is not None]
+        peaks = [o.peak_pnl or 0 for o in group]
+        troughs = [o.trough_pnl for o in group if o.trough_pnl is not None]
+        pnls = [o.pnl_percentage or 0 for o in group]
+        # SL profile — count among the LOSERS in this group (works for mixed/pure groups).
+        sl_p = sl_n = sl_be = 0
+        for o in group:
+            if (o.pnl or 0) > 0:
+                continue
+            _cfg = config.trading_config.confidence_levels.get(o.confidence or "LOW", config.trading_config.confidence_levels.get("LOW"))
+            _trig = _cfg.be_level1_trigger if _cfg else 0.15
+            _pk = o.peak_pnl or 0
+            if _pk >= _trig: sl_be += 1
+            elif _pk > 0: sl_p += 1
+            else: sl_n += 1
+        _durs = [(o.closed_at - o.opened_at).total_seconds() for o in group if o.closed_at and o.opened_at]
+        _avgd = sum(_durs) / len(_durs) if _durs else 0
+        _h, _r = divmod(int(_avgd), 3600); _m, _s = divmod(_r, 60)
+        return {
+            "trades": count, "by_confidence": ec_conf, "avg_fan_ratio": _avg_fan(group),
+            "avg_rsi": _avg(rsis, 1), "avg_adx": _avg(adxs, 1), "adx_rising": adx_rising, "adx_falling": adx_falling,
+            "avg_gap": _avg(gaps, 4), "avg_gap58": _avg(gaps58, 4), "avg_gap813": _avg(gaps813, 4),
+            "avg_stretch": _avg(stretches, 4), "avg_ema20_slope": _avg(slopes, 4), "avg_btc_slope": _avg(btc_slopes, 4),
+            "avg_btc_rsi": _avg(btc_rsis, 1), "avg_btc_adx": _avg(btc_adxs, 1), "btc_adx_rising": btc_adx_rising, "btc_adx_falling": btc_adx_falling,
+            "btc_rsi_rising": btc_rsi_rising, "btc_rsi_falling": btc_rsi_falling, "rsi_rising": rsi_rising, "rsi_falling": rsi_falling,
+            "btc_rsi_30m_rising": btc_rsi_30m_rising, "btc_rsi_30m_falling": btc_rsi_30m_falling, "avg_btc_atr_pct": _avg(btc_atrs, 4),
+            "avg_ema5_dist": _avg(ema5_dists, 4), "avg_adx_delta": _avg(adx_deltas, 4), "avg_range_position": _avg(range_positions, 1),
+            "avg_breadth": _avg(breadths, 1), "avg_atr_pct": _avg(atr_pcts, 4), "avg_global_vol_ratio": _avg(global_vol_ratios, 3),
+            "avg_btc_trend_gap": _avg(btc_trend_gaps, 4), "avg_pair_ema20_ema50_gap": _avg(pair_ema20_ema50_gaps, 4),
+            "avg_exit_btc_trend_gap": _avg(exit_btc_trend_gaps, 4), "avg_pair_vol_usd": (round(sum(pair_vol_usds) / len(pair_vol_usds), 0) if pair_vol_usds else None),
+            "avg_ext_pct": _avg(ext_vals, 4), "avg_btc_ext_pct": _avg(btc_ext_vals, 4), "avg_btc_1h_slope": _avg(btc_1h_slopes, 4),
+            "avg_peak_pct": round(sum(peaks) / count, 4) if count else None, "avg_trough_pct": _avg(troughs, 4),
+            "worst_trough_pct": round(min(troughs), 4) if troughs else None,
+            "avg_pnl_pct": round(sum(pnls) / count, 4) if count else None, "total_pnl_usd": round(sum(o.pnl or 0 for o in group), 2),
+            "avg_duration": f"{_h:02d}:{_m:02d}:{_s:02d}",
+            "sl_positive_no_be": sl_p, "sl_never_positive": sl_n, "sl_be_was_active": sl_be,
+        }
+    def _strat_label(o):
+        s = (getattr(o, 'entry_strategy', None) or 'MOMENTUM')
+        return s[5:] if s.startswith('FLIP:') else s
+    entry_conditions_by_strategy = []
+    entry_conditions_by_strategy_outcome = []
+    try:
+        _strat_groups = {}        # (strategy, direction) -> [orders]
+        _strat_out_groups = {}    # (strategy, direction, outcome) -> [orders]
+        for o in orders:
+            d = o.direction if o.direction in ('LONG', 'SHORT') else 'LONG'
+            sl = _strat_label(o)
+            _strat_groups.setdefault((sl, d), []).append(o)
+            oc = 'Winners' if (o.pnl or 0) > 0 else 'Losers'
+            _strat_out_groups.setdefault((sl, d, oc), []).append(o)
+        for (sl, d), grp in sorted(_strat_groups.items(), key=lambda kv: (-sum(x.pnl or 0 for x in kv[1]))):
+            entry_conditions_by_strategy.append({"strategy": sl, "direction": d, **_ec_row(grp, d)})
+        for (sl, d, oc), grp in sorted(_strat_out_groups.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2] != 'Winners')):
+            entry_conditions_by_strategy_outcome.append({"strategy": sl, "direction": d, "outcome": oc, **_ec_row(grp, d)})
+    except Exception as e:
+        logger.error(f"[PERF] Error computing entry conditions by strategy: {e}\n{traceback.format_exc()}")
+        entry_conditions_by_strategy = []
+        entry_conditions_by_strategy_outcome = []
+
     # Stop Loss Deep Dive + Winning Trades Drawdown
     stop_loss_deep_dive = {"total_sl_trades": 0, "be_was_active": {"count": 0}, "positive_no_be": {"count": 0}, "never_positive": {"count": 0}, "avg_peak_all_sl": 0}
     winning_trades_drawdown = []
@@ -7164,6 +7276,8 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "hold_time_expectancy": hold_time_expectancy,
         "entry_conditions_by_reason": entry_conditions_by_reason,
         "entry_conditions_by_outcome": entry_conditions_by_outcome,
+        "entry_conditions_by_strategy": entry_conditions_by_strategy,
+        "entry_conditions_by_strategy_outcome": entry_conditions_by_strategy_outcome,
         "flagged_exits": flagged_exits,
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),

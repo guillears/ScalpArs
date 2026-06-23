@@ -1169,3 +1169,10 @@ All three are staged together this commit. py+json AST clean.
 **Cost acknowledged:** sacrifices the occasional sub-20-ADX winner (HU = 6/+$204 at low ADX). Diffuse loss + 3-batch consistency + mechanism outweigh it.
 **TIGHT REVERT:** set `flip_fan_pair_adx_min`→0 if pADX≥20 FAN flips drop ≤60% WR on N≥15 fresh.
 **Context:** chosen over a regime-conditional fast-exit (operator-rejected — fast-exit capped winners on the winning batch for only +$58 and was a weak/asymmetric lever). The pADX floor is surgical (cuts weak-trend entries, not winners broadly).
+
+---
+## 2026-06-23 — SHIP (analytics): Entry Conditions by Strategy + by Strategy×Outcome
+**What:** two new report tables below "Entry Conditions by Outcome", mirroring its full wide column set but grouped by `entry_strategy` sleeve: (1) "Entry Conditions by Strategy" = one row per sleeve×direction; (2) "Entry Conditions by Strategy — Winners vs Losers" = W/L profile within each sleeve. Strategies: FAN_RATIO_GATE / PAIR_RSI_OB / LONG_UNMATCHED_ONLY (FLIP: prefix stripped) · BULL_LONG · BOUNCE_LONG · MOMENTUM.
+**Why:** operationalises the per-sleeve winner-vs-loser separator analysis we kept doing by hand from the CSV (the FAN-flip pADX≥20 dig, bull-long separators). The W/L-by-strategy table = read it first each batch to spot a dimension where winners≠losers within a sleeve.
+**Build:** nested `_ec_row(group, direction)` in `_compute_performance` returns the full ~40-col entry-condition dict (SL profile computed over the group's losers so it works for mixed groups); existing two tables left untouched (no refactor risk). Payload keys `entry_conditions_by_strategy` + `entry_conditions_by_strategy_outcome` (+ empty-default in both early-return paths). D12 complete: UI 2 tables (header cloned from the by-Outcome thead via JS, shared `_stratRow` renderer wrapped in try/catch so a render bug can't break the dashboard) + BOTH text exports (clipboard `_ecStratLine` + saved-file `_ecStratLine2`). Read-only — zero engine/config/risk.
+**Verify:** main.py parses; D12 grep — export header ×2, UI bodies wired, payload keys ×3 (1 real + 2 fallback).

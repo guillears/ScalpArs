@@ -1292,3 +1292,20 @@ All three are staged together this commit. py+json AST clean.
 **Re-enable bar:** a cross-batch-STABLE (≥3 batch) band/regime edge in the phantom curve — not another single-in-sample band. When re-enabled, start as a 1× observation experiment, never straight to leverage.
 
 **Config-only** (existing fields). Related: BULL_LONG de-lever + concurrency cap (same day, both now inert under the disable).
+
+---
+
+## 2026-06-23 — FAN flip-short CHOPPY_FLAT block (all ADXΔ) — operator discipline-override
+
+**Change:** `flip_short_regime_block_any_adxd_regimes` "" → "CHOPPY_FLAT" (config.py + trading_config.json). Config-only — the B2 "block-any-ADXΔ" path in `_flip_filters` (line ~366) was already wired (used for STRONG_BULL Jun-17, emptied Jun-19). Now blocks ALL flip-SHORTS in CHOPPY_FLAT regardless of ADXΔ. Universal flip-short gate; FAN is the only live flip source so in practice it's the FAN gate. CHOPPY_FLAT remains in `flip_short_regime_block_regimes` too (ADXΔ<0 path) — redundant now, harmless (any-set check fires first).
+
+**Why:** the existing regime gate only blocked bull/chop when ADXΔ<0; the CHOP∧ADXΔ≥0 slice leaked and lost (today's 2 ALLO shorts −$192, both pADX≥21, ADXΔ +0.28/+0.87, never-armed). Mechanism: a FAN fade needs downward follow-through to profit; CHOP has no trend → the fade never arms (peak ≈0) → 20× SL whipsaw.
+
+**Evidence (current-stack re-sim, FAN flip-short survivors):** total N=50/74%WR/+$802; by regime CHOPPY_FLAT is the ONLY negative one (N=7/43%/−$317). Raw (pre-filter) CHOP = N=44/43%/−$1352; ADXΔ≥0 leak = N=33/45%/−$1085. Bear regimes carry the edge (H.BEAR +$881, S.BEAR +$284).
+
+**Discipline-override (acknowledged, per CLAUDE.md):**
+- N=7 current-stack survivors ≪ N≥30 gate.
+- CHOP survivor loss is 83% in 2 pairs (ALLO −$192, PLAY −$170) → the locked rule says pair-concentration ⇒ blacklist not dimension filter. BUT neither pair clears blacklist individually: ALLO = 50% WR coin-flip with a +$404 fat-tail winner; PLAY = stale (last 06-15), 44% WR under current stack, half its raw loss already filtered. So a pair blacklist isn't available — the regime gate is the lever, and the mechanism (chop hostile to fades) is sound + consistent with the bear-pays/bull-loses gradient.
+- Operator-directed after seeing this analysis (I had recommended watchlist).
+
+**TIGHT REVERT (tighter than standard):** remove CHOPPY_FLAT from `flip_short_regime_block_any_adxd_regimes` if would-be-blocked CHOP FAN-shorts hit ≥50% WR on N≥10 fresh (phantom still seeds the blocked side; watch FLIP_SHORT_REGIME counter + the CHOP phantom row). Cost: clips the occasional CHOP winner (HU +1.71).

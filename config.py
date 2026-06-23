@@ -507,7 +507,7 @@ class SignalThresholds(BaseModel):
     # (Jun18 9/78%/+0.46, Jun19 11/82%/+0.24 — two independent windows; H.BULL stays a real live loser).
     # The dangerous S.BULL fades are already fenced by stretch≥2 + fan-spike≥10 + BTC RSI≥60/ADX≥30, so
     # this regime gate was redundant belt-and-suspenders over-blocking the milder (winning) S.BULL fades.
-    flip_short_regime_block_any_adxd_regimes: str = ""  # CSV; empty = OFF. Jun 19: emptied (un-block S.BULL FAN-short).
+    flip_short_regime_block_any_adxd_regimes: str = "CHOPPY_FLAT"  # CSV; empty = OFF. Block flip-SHORT in these regimes regardless of ADXΔ. Jun 19: emptied (un-block S.BULL FAN-short). Jun 23: ="CHOPPY_FLAT" (operator) — block ALL CHOP FAN-shorts (was only ADXΔ<0 via _regs; the ADXΔ≥0 slice LEAKED and lost). Mechanism: a fade needs downward follow-through; CHOP provides none → never arms → 20× SL whipsaw. Current-stack survivors CHOP = only negative regime (N=7/43%WR/−$317; raw CHOP N=44/43%/−$1352). ⚠ DISCIPLINE-OVERRIDE: N=7 survivors < N≥30, loss 83% in 2 pairs (ALLO/PLAY) which neither clears blacklist individually. TIGHT REVERT: remove CHOPPY_FLAT if would-be-blocked CHOP FAN-shorts hit ≥50% WR on N≥10 fresh.
     # Jun 17 (B1) — anti-parabola: block flip-SHORT when EMA5 stretch% ≥ this (shorting a vertical blow-off
     # that keeps ripping; ESPORTS 10.47% stretch = −2.25% gapped stop in 0s). Pool stretch≥2 = N=2/0%WR
     # (ASTER+ESPORTS), 0 winners removed (1–2% band 67%WR preserved). Regime-agnostic catastrophe guard.

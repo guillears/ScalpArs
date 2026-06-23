@@ -207,7 +207,7 @@
     "flip_fan_btc_atr_min": 0.10,
     "flip_short_regime_block_adxd_max": 0.0,
     "flip_short_regime_block_regimes": "HEALTHY_BULL,CHOPPY_FLAT",
-    "flip_short_regime_block_any_adxd_regimes": "",
+    "flip_short_regime_block_any_adxd_regimes": "CHOPPY_FLAT",
     "flip_short_stretch_block_max": 2.0,
     "flip_short_btc30_rise_block_min": 0.0,
     "flip_short_atr_block_min": 3.0,

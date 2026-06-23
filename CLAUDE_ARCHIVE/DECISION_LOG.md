@@ -1220,3 +1220,26 @@ All three are staged together this commit. py+json AST clean.
 **Discipline notes:** in-sample on the same 4 batches; deciding band N=6 marginal (30-50% haircut → real ~+1.2 to +1.6%); 2nd finer re-cut on a dimension shipped the SAME day (re-overfit risk acknowledged, same pattern as the old PAIR_RSI_OB 33→40→45 saga). Mechanism sound (BICO/HEI gappers cluster just above 20).
 
 **TIGHT REVERT:** `flip_fan_pair_adx_min`→20 if 20-21-band FAN shorts come back ≥55% WR on N≥8 fresh; →0 if pADX≥21 FAN flips drop ≤60% WR on N≥15 fresh.
+
+---
+
+## 2026-06-23 — BULL-LONG DE-LEVERED 20×→1× obs (INSTANT revert gate tripped)
+
+**Change:** `bull_long_lev_mult` 1.0 → 0.05 (config.py + trading_config.json). Band/regime config (S+H BULL × fan 1.35-2.0) unchanged — leverage only.
+
+**Trigger:** the 06-22 operator re-lever to 20× (shipped on N=8/88%WR/+0.55% in-sample, fresh-reset) failed its locked INSTANT revert gate on the very next batch (orders CSV 2026-06-23 14:46):
+- BULL_LONG = **7 trades / 29% WR (2W/5L) / −$335.24**, ALL HEALTHY_BULL.
+- INSTANT gate arm ① "≥3 of first 6 hit SL" → **4 of first 6 hit SL** (AAVE/TNSR/ALLO/XLM).
+- INSTANT gate arm ② "any single gaps past −1.0%" → **TNSR −1.19%, ALLO −1.01%** both gapped.
+- Per-trade: BEL −0.28(TRAIL) · AAVE −0.70(SL) · ONDO +0.19(W) · TNSR −1.19(SL) · ALLO −1.01(SL) · XLM −0.73(SL) · LINK +0.27(W).
+- The fan **1.65-2.0** sub-band = 5/20%WR/−$264 — inverted exactly as the cross-batch warning predicted (06-20 fan 2-3 = 90%/+$705 → 06-22 loser; same instability one band over).
+
+**Mechanism:** broken R:R amplified by 20× — wins +0.19/+0.27% vs losses −0.70 to −1.19%. In H.BULL chop the build-side long got stopped repeatedly; 20× turned −0.7 to −1.2% price moves into −$68 to −$116 hits.
+
+**ATR check (operator's open watchlist):** NOT the separator this batch — the 2 winners (LINK 0.31, ONDO 0.41) were the LOWEST-ATR; losers averaged ATR 0.82. Argues against a low-ATR floor; pair-ATR<0.3 watchlist still has zero in-sample fires (lowest was 0.31).
+
+**Discipline:** pre-committed INSTANT gate = automatic, no re-litigation ("pre-committed gates do not move"). The re-lever was an acknowledged N=8 in-sample discipline-override; it regressed on first fresh data exactly as flagged.
+
+**RE-LEVER gate (tightened):** only at N≥30 cumulative AND WR≥70% AND avg≥+0.15% across ≥2 batches (cross-batch-STABLE). Never again on a single in-sample band. Sleeve stays at 1×/0.05 observation, collecting.
+
+**Also in this terrible batch (logged, not yet actioned):** BICO flip-short −$125 (pADX 20.6, already blocked going forward by today's flip_fan_pair_adx_min=21) · AAVE FAN flip-short −$86 in H.BULL pADX22.5 ADXΔ+0.47 (leaked FLIP_SHORT_REGIME which needs ADXΔ<0 + S.BULL-only B2 → the standing flip-universal-regime-gate gap) · HYPE UNMATCHED-LONG 2× −$62 (Δ$ vs 1× −$28, the ✗-harmful 2× cell accruing toward its N≥5 demote gate).

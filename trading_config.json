@@ -203,7 +203,7 @@
     "flip_fan_stretch_min": 0.12,
     "flip_fan_block_btc_rsi": 60.0,
     "flip_fan_block_btc_adx": 30.0,
-    "flip_fan_pair_adx_min": 20.0,
+    "flip_fan_pair_adx_min": 21.0,
     "flip_fan_btc_atr_min": 0.10,
     "flip_short_regime_block_adxd_max": 0.0,
     "flip_short_regime_block_regimes": "HEALTHY_BULL,CHOPPY_FLAT",

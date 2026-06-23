@@ -3958,6 +3958,13 @@ class TradingEngine:
             cell_lev_mult = bull_long_lev_mult or 1.0
             cell_src = "BULL_LONG"
             _mult_target = "both"
+            # Jun 23: flat fixed SL for the bull-long revival TEST. Re-sim showed the flat -0.70
+            # SL beat the live ATR-widened -1.20 exit for this cohort (-0.151 → -0.078). Stamp it
+            # onto the order so the existing PATTERN_FIXED_SL exit path enforces a flat -0.70
+            # (fires before the normal -1.20 can engage). Negative = active; 0 = off (normal exit).
+            _bl_sl = getattr(config.trading_config.thresholds, 'bull_long_fixed_sl', 0.0) or 0.0
+            if _bl_sl < 0:
+                _pcell_fixed_sl = _bl_sl
             if cell_mult > _inv_cap:
                 logger.info(f"[CELL_MULT_CAPPED_HARD] {pair} {direction}: {cell_src} requested inv={cell_mult}x, hard-capped to inv={_inv_cap}x")
                 cell_mult = _inv_cap

@@ -1309,3 +1309,17 @@ All three are staged together this commit. py+json AST clean.
 - Operator-directed after seeing this analysis (I had recommended watchlist).
 
 **TIGHT REVERT (tighter than standard):** remove CHOPPY_FLAT from `flip_short_regime_block_any_adxd_regimes` if would-be-blocked CHOP FAN-shorts hit ≥50% WR on N≥10 fresh (phantom still seeds the blocked side; watch FLIP_SHORT_REGIME counter + the CHOP phantom row). Cost: clips the occasional CHOP winner (HU +1.71).
+
+---
+
+## 2026-06-23 — BULL-LONG revived as a zero-risk OBSERVATION TEST (flat -0.70 SL)
+
+**Change:** `bull_long_enabled` false→true @ 1× obs (`bull_long_lev_mult=0.05`), `bull_long_fan_max` 2.0→3.0 (now S+H BULL × fan 1.35-3.0), cap 3 (already), + NEW field `bull_long_fixed_sl=-0.70`. D11 full (config.py + json + engine + UI input `config-bull-long-fixed-sl` + load/save).
+
+**Why a test, and why now:** after exhausting the long-side hunt this week (bull-long extension, pullback N=0, un-throttle unmatched 51% base rate, regime-split matched patterns all negative), the one open lever left was the EXIT. Re-sim of the 109 actual bull-longs under the flat phantom exit (arm0.45/trail0.25/SL-0.70) vs their live normal exit: ALL -0.151→-0.078, H.BULL -0.188→-0.161, **S.BULL +0.077→+0.365** — the flat -0.70 SL (tighter than the live ATR-widened -1.20) caps the gap-through tail and materially helps. It doesn't flip the cohort positive overall (still -0.078 even optimistically), but S.BULL turns clearly positive and the live disaster's -1.0/-1.2 losses would've been -0.70. So: test bull-long under the BETTER exit, at 1× (zero ruin risk — the -$335 disaster was the 20×), to definitively settle it.
+
+**Engine:** in open_position's `if bull_long:` block, override `_pcell_fixed_sl = bull_long_fixed_sl` when negative → stamped as `pattern_fixed_sl_pct` on the order + cache → enforced by the existing PATTERN_FIXED_SL realtime exit (fires at -0.70, before the normal -1.20). Arm/trail unchanged. 0 = off (normal exit).
+
+**Scope rationale:** S+H BULL only (drop CHOP -0.155 even flat, drop bear = long-into-downtrend wrong-thesis). Fan 1.35-3.0 (exclude confirmed losers <1.35 [25%WR] & ≥3.0; cross-batch N=86 shows 2-3 ≈ 1.65-2.0 so widen from 2.0→3.0 to not pre-fit). Cap 3 keeps it off the FAN/MOMENTUM book.
+
+**LOCKED DECISION GATE:** run to N≥30 per regime (S.BULL/H.BULL tagged separately) across ≥2 batches. A cell graduates to consider-leverage ONLY at WR≥65% AND avg≥+0.10% cross-batch under the flat SL. NEVER re-lever on test data alone (the exact 06-22 N=8 mistake). Two clean outcomes: (a) a found long-sleeve, or (b) the non-edge confirmed under the best exit → close the question and commit bull-market growth to the parked Donchian module. Cost at 1× obs ≈ $0.

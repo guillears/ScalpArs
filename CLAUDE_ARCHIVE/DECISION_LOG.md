@@ -1189,3 +1189,13 @@ All three are staged together this commit. py+json AST clean.
 - **Fast-exit (0.2%/5min) fails:** of 76 cross-batch losers, 54% DOA (peak<0.05%) + 22% peak 0.05-0.20% → **76% never reach +0.2%** so fast-exit can't fire; it saves only 11/76 while capping 11/67 winners → net +0.04%/trade = noise. (The losers go straight-to-SL because the overbought pair keeps ripping — an ENTRY failure no exit fixes.)
 - **dist-from-EMA13 is a real separator but redundant:** cross-batch (N=143) losers more extended (1.34% vs 0.99%), >0.7% zone = 39%WR/−0.39% drain, sweet spot 0.4-0.7% only positive bucket — BUT 74% of dist≥0.7 is already gap≥1.0-blocked, and on the full stack only 1 of 22 survivors has dist≥0.7 (a winner) → adds 0.
 **Status:** disabled, not deleted. Phantom seed stays decoupled (always fires) → keeps tracking. RE-ENABLE only if the phantom shows a cross-batch-STABLE (≥3 batch) separator the live filters don't already capture. Existing field — no D11.
+
+---
+## 2026-06-23 — DISABLE BOUNCE_LONG (bounce_long_enabled=false)
+**Change:** `bounce_long_enabled` true→**false**. config.py + trading_config.json. Operator-directed.
+**Why — no edge, both entry theses falsified cross-batch (N=8 deduped = 2W/6L / −0.443% avg):**
+- **dist-from-EMA13 does NOT separate:** WIN mean −0.597 vs LOSS −0.741, but driven entirely by one outlier (WU −1.80). Strip it and the 5 remaining losers (−0.39..−0.69) bracket both winners (−0.59/−0.60); 2 losers (XRP −0.39, WLD −0.49) were *closer* to EMA13 than both wins.
+- **BTC 30m-RSI Δ (exhaustion-gate thesis) is INVERTED:** both winners fired at Δ≈−16 (deeply negative / still plunging); the two mildest deltas (−7/−8) were losers → "fire only when the impulse decelerates" would have blocked both winners. BTC 1h Δ doesn't separate either.
+- Winners are indistinguishable from losers on every captured dimension = no-edge counter-trend long. Same verdict + same action as PAIR_RSI_OB (disabled same day).
+**Tracking-watchlist deliberately NOT added:** the candidate fields (entry_btc_rsi_1h/_prev, entry_btc_rsi_prev6, entry_dist_from_ema13_pct) already exist on every Order and were just falsified — nothing to instrument.
+**Status:** disabled, not deleted. Phantom seed stays decoupled (always fires) → keeps tracking. RE-ENABLE only on a cross-batch-STABLE (≥3 batch) separator. Existing field — no D11.

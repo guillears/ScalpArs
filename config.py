@@ -615,7 +615,7 @@ class SignalThresholds(BaseModel):
     # does NOT apply). Validated phantom BTC_RSI_ADX_CROSS LONG: N=21, 95% WR, 0% SL, ALL H.BEAR.
     # TIGHT cells only: 25-30:20-25 (89% WR) + 30-35:15-20 (100% WR). 1× observation (lev_mult 0.05).
     # TO REMOVE: grep "BOUNCE_LONG" / "bounce_long" + the main.py bounce-long perf blocks + the UI.
-    bounce_long_enabled: bool = True                   # master toggle for the bounce-long sleeve
+    bounce_long_enabled: bool = False                  # master toggle (Jun 23: DISABLED — cross-batch N=8 = 2W/6L/−0.443%, no-edge counter-trend long; both entry theses FAILED to separate W/L: dist-from-EMA13 (win −0.60 sits in the loser cluster, only the WU −1.80 outlier supports "extended=bad") AND BTC 30m-RSI Δ (winners at −16 deeply-negative, the mildest deltas −7/−8 were losers → exhaustion-gate inverted). Phantom seed stays decoupled → keeps tracking for a future re-enable if a cross-batch-stable separator emerges)
     bounce_long_regimes: str = "HEALTHY_BEAR"          # CSV of BTC regimes the sleeve fires in
     bounce_long_btc_cells: str = "25-30:20-25,30-35:15-20"  # TIGHT (BTC RSI lo-hi : BTC ADX lo-hi) washout cells; empty = OFF
     bounce_long_size_mult: float = 1.0                 # investment multiplier (1.0 = no amplification)

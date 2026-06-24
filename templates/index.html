@@ -1321,7 +1321,7 @@
                             <table class="w-full text-xs">
                                 <thead class="text-gray-400 uppercase"><tr>
                                     <th class="text-left py-1 px-2">Fan Bucket</th>
-                                    <th class="text-center px-2" title="Trades LIVE now? ✓ = fan bucket inside bull_long_fan_max (config-driven). The sleeve also requires regime ∈ bull_long_regimes — the green H.BULL column.">LIVE</th>
+                                    <th class="text-center px-2" title="Trades LIVE now? ✓ = fan bucket inside the live per-regime window (bull_long_fan_by_regime, union over allowed regimes; falls back to the global fan_min/max). The sleeve also requires regime ∈ bull_long_regimes — the green H.BULL column.">LIVE</th>
                                     <th class="text-right px-2">N (all)</th>
                                     <th class="text-right px-2">All Avg%</th>
                                     <th class="text-right px-2 text-emerald-400">S.BULL N/WR/avg/Σ</th>
@@ -8917,7 +8917,7 @@
                 }
                 if (_pf1b.bull_long_curve && _pf1b.bull_long_curve.length) {
                     lines.push('\n  ── BULL-LONG CURVE (virtual longs by fan ratio × regime) — flat phantom model (arm0.45/trail0.25/SL-0.70), relative comparator; live sleeve uses normal long exit (ships higher) ──');
-                    lines.push('  FanBucket    LIVE  N(all)  all%     S.BULL N/WR/avg/Σ   H.BULL N/WR/avg/Σ   S.BEAR N/WR/avg/Σ   H.BEAR N/WR/avg/Σ   CHOP N/WR/avg/Σ   (LIVE ✓ = fan < bull_long_fan_max; sleeve also needs regime ∈ bull_long_regimes)');
+                    lines.push('  FanBucket    LIVE  N(all)  all%     S.BULL N/WR/avg/Σ   H.BULL N/WR/avg/Σ   S.BEAR N/WR/avg/Σ   H.BEAR N/WR/avg/Σ   CHOP N/WR/avg/Σ   (LIVE ✓ = fan inside the live per-regime window [bull_long_fan_by_regime, union over allowed regimes]; sleeve also needs regime ∈ bull_long_regimes)');
                     lines.push('  '+'-'.repeat(124));
                     const _bc = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}/Σ${m.tot>=0?'+':''}${(m.tot||0).toFixed(1)}` : '-';
                     _pf1b.bull_long_curve.forEach(c => {
@@ -10883,7 +10883,7 @@
                     }
                     if (_pf2b.bull_long_curve && _pf2b.bull_long_curve.length) {
                         lines.push('\n  ── BULL-LONG CURVE (virtual longs by fan ratio × regime) — flat phantom model (arm0.45/trail0.25/SL-0.70), relative comparator; live sleeve uses normal long exit (ships higher) ──');
-                        lines.push('  FanBucket    LIVE  N(all)  all%     S.BULL N/WR/avg/Σ   H.BULL N/WR/avg/Σ   S.BEAR N/WR/avg/Σ   H.BEAR N/WR/avg/Σ   CHOP N/WR/avg/Σ   (LIVE ✓ = fan < bull_long_fan_max; sleeve also needs regime ∈ bull_long_regimes)');
+                        lines.push('  FanBucket    LIVE  N(all)  all%     S.BULL N/WR/avg/Σ   H.BULL N/WR/avg/Σ   S.BEAR N/WR/avg/Σ   H.BEAR N/WR/avg/Σ   CHOP N/WR/avg/Σ   (LIVE ✓ = fan inside the live per-regime window [bull_long_fan_by_regime, union over allowed regimes]; sleeve also needs regime ∈ bull_long_regimes)');
                         lines.push('  '+'-'.repeat(124));
                         const _bc2 = (m)=> m ? `${m.n}/${m.wr.toFixed(0)}%/${m.avg>=0?'+':''}${m.avg.toFixed(3)}/Σ${m.tot>=0?'+':''}${(m.tot||0).toFixed(1)}` : '-';
                         _pf2b.bull_long_curve.forEach(c => {

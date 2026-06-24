@@ -1380,3 +1380,15 @@ All three are staged together this commit. py+json AST clean.
 **Pre-reset snapshot saved:** reports/orders_2026-06-24_prereset_preregimefan_20x_39trades_-178.csv (39 closed, net −$178: 2 BULLISH FAN-flip longs, 16 BEARISH shorts, 21 NEUTRAL bull-longs) + _results.txt stub (operator to paste the text report). This captures state immediately before the reset that applies ALLO blacklist + per-regime fan + 20×.
 
 **Files:** config.py (bull_long_lev_mult default 0.05→1.0 + override note) · trading_config.json (1.0). Not committed/pushed (no authorization).
+
+---
+
+## 2026-06-24 — BULL_LONG global fan bounds → union (1.35/3.0) + regime-aware LIVE marker
+
+**Action (operator-directed, cosmetic/consistency):**
+- `bull_long_fan_min` 0.85→1.35, `bull_long_fan_max` 5.0→3.0 (config.py + trading_config.json). These globals are INERT while both bull regimes are mapped in `bull_long_fan_by_regime` (the per-regime window overrides them) — set to the union of the per-regime windows purely so the UI fallback isn't contradictory (0.85/5 looked like it allowed bands the sleeve actually blocks). No behavior change: STRONG_BULL still 1.35-2.0, HEALTHY_BULL still 2.0-3.0.
+- Report Bull-Long×Fan "LIVE ✓" marker made regime-aware: new `_bull_long_fan_live(lo,hi,th)` in main.py computes live = bucket overlaps the union of per-regime windows (bull_long_fan_by_regime) with global fan_min/max fallback for allowed-but-unmapped regimes; mirrors the engine gate. Replaces the old global-`fan_max`-only check in BOTH the live fan-bucket table (`fan_rows`) and the phantom Bull-Long Curve. Fixes the stale ✓ that ticked buckets up to 5.0 as live. Export header strings (both text-report functions) + UI tooltip updated to match (D12).
+
+**Verified:** main.py ast-parses; helper unit-test → live True only for 1.35-1.65/1.65-2.0/2.0-3.0 buckets, False for 0.85-1.35 and 3.0-5.0 (= union of the two regime windows). config.py/json values updated.
+
+**Not committed at write time** (committed/pushed in the same operator-authorized push).

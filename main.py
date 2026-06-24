@@ -9548,7 +9548,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
                 _by[_blreg(getattr(r, 'entry_btc_regime', None))].append(r)
             bull_long_curve.append({
                 "bucket": f"{_lo:.2f}-{_hi:.2f}",
-                "live": (_bl_fan_max > 0 and _lo < _bl_fan_max and (_bl_fan_min <= 0 or _hi > _bl_fan_min)),
+                "live": _bull_long_fan_live(_lo, _hi, _bl_th),
                 "all": _mini(_b),
                 "sbull": _mini(_by['sbull']), "hbull": _mini(_by['hbull']),
                 "sbear": _mini(_by['sbear']), "hbear": _mini(_by['hbear']),
@@ -9827,6 +9827,37 @@ def _compute_bounce_long_trades(bounce_long_orders):
     return {"rows": rows, "overall": overall, "regime_row": regime_row}
 
 
+def _bull_long_fan_live(lo, hi, th):
+    """Regime-aware LIVE marker for the Bull-Long fan-bucket tables (Jun 24).
+    A fan bucket [lo,hi) trades live if it overlaps the fan window of ANY allowed
+    bull_long regime. Per-regime windows (bull_long_fan_by_regime "REGIME:min-max,...")
+    OVERRIDE the global bull_long_fan_min/max; an allowed regime NOT in the map uses the
+    global; empty map → global only. Mirrors the engine gate in _maybe_open_bull_long so the
+    report ✓ reflects what actually fires (not just the now-inert global fan_max)."""
+    try:
+        g_min = float(getattr(th, 'bull_long_fan_min', 0.0) or 0.0)
+        g_max = float(getattr(th, 'bull_long_fan_max', 0.0) or 0.0)
+        allowed = [r.strip().upper() for r in (getattr(th, 'bull_long_regimes', '') or '').split(',') if r.strip()]
+        by = {}
+        for tok in (getattr(th, 'bull_long_fan_by_regime', '') or '').split(','):
+            tok = tok.strip()
+            if not tok or ':' not in tok:
+                continue
+            rk, _, rv = tok.partition(':')
+            try:
+                a, _, b = rv.strip().partition('-')
+                by[rk.strip().upper()] = (float(a), float(b))
+            except Exception:
+                pass
+        windows = [by.get(r, (g_min, g_max)) for r in allowed] if allowed else [(g_min, g_max)]
+        for (w_min, w_max) in windows:
+            if w_max > 0 and lo < w_max and (w_min <= 0 or hi > w_min):
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def _compute_bull_long_trades(bull_long_orders):
     """Bull-Long Trade Log (Jun 18) — live scorecard for the build-side LONG sleeve
     (entry_strategy=="BULL_LONG"): a real momentum long opened when a long PASSES the fan
@@ -9939,7 +9970,7 @@ def _compute_bull_long_trades(bull_long_orders):
             _sb = sum(1 for o in _fb if _rb(o.entry_btc_regime) == 'sbull')
             _hb = sum(1 for o in _fb if _rb(o.entry_btc_regime) == 'hbull')
             _oth = len(_fb) - _sb - _hb
-            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": (_bl_fan_max > 0 and _lo < _bl_fan_max and (_bl_fan_min <= 0 or _hi > _bl_fan_min)), "sbull_n": _sb, "hbull_n": _hb, "other_n": _oth, **(_a or {})})
+            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": _bull_long_fan_live(_lo, _hi, config.trading_config.thresholds), "sbull_n": _sb, "hbull_n": _hb, "other_n": _oth, **(_a or {})})
     return {"rows": rows, "overall": overall, "regime_row": regime_row, "fan_rows": fan_rows}
 
 

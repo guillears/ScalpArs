@@ -6309,6 +6309,7 @@
                         <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                             <label class="flex items-center justify-between gap-2" title="Lower fan bound: only fire when fan ratio |EMA5-8 gap|/|EMA8-13 gap| ≥ this (require real fan acceleration; live fan <1.65 = net loser). 0 = disabled."><span class="text-gray-400">Fan ratio ≥</span><input type="number" id="config-bull-long-fan-min" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Upper fan bound: only fire when fan ratio |EMA5-8 gap|/|EMA8-13 gap| < this (block parabolic blow-offs). 0 = disabled."><span class="text-gray-400">Fan ratio &lt;</span><input type="number" id="config-bull-long-fan-max" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
+                            <label class="flex items-center justify-between gap-2" title="PER-REGIME fan window (overrides the global Fan ratio ≥/< above when the gated regime is mapped). Format: REGIME:min-max,REGIME:min-max. Jun 24 cross-batch: STRONG_BULL:1.35-2.0 (73%WR), HEALTHY_BULL:2.0-3.0 (67%WR); the HEALTHY_BULL 0.85-1.35 band was ~the whole sleeve loss. Empty = OFF (use globals)."><span class="text-gray-400">Fan by regime</span><input type="text" id="config-bull-long-fan-by-regime" class="w-56 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right text-xs"></label>
                             <label class="flex items-center justify-between gap-2" title="Investment-side multiplier on top of base sizing. 1.0 = no amplification."><span class="text-gray-400">Invest multi</span><input type="number" id="config-bull-long-size-mult" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Max concurrent OPEN bull-longs (0 = uncapped). Reserves book slots for higher-conviction MOMENTUM/UNMATCHED longs — a 1×-obs bull cluster must not monopolize the max-open book."><span class="text-gray-400">Max concurrent</span><input type="number" id="config-bull-long-max-concurrent" step="1" min="0" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
                             <label class="flex items-center justify-between gap-2" title="Flat fixed SL% for bull-longs (negative = active e.g. -0.70, 0 = off → normal ATR-widened exit). Re-sim found flat -0.70 beats the live -1.20 ATR-widened SL for this cohort (caps the gap-through tail)."><span class="text-gray-400">Fixed SL%</span><input type="number" id="config-bull-long-fixed-sl" step="0.05" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right"></label>
@@ -18781,6 +18782,7 @@
                 if (_blEn) _blEn.checked = (config.thresholds.bull_long_enabled === true);
                 _setVal('config-bull-long-fan-max', config.thresholds.bull_long_fan_max);
                 _setVal('config-bull-long-fan-min', config.thresholds.bull_long_fan_min);
+                _setVal('config-bull-long-fan-by-regime', config.thresholds.bull_long_fan_by_regime);
                 _setVal('config-bull-long-size-mult', config.thresholds.bull_long_size_mult);
                 _setVal('config-bull-long-max-concurrent', config.thresholds.bull_long_max_concurrent);
                 _setVal('config-bull-long-fixed-sl', config.thresholds.bull_long_fixed_sl);
@@ -20062,6 +20064,7 @@
                     bull_long_regimes: ((document.getElementById('config-bull-long-regimes') || {}).value || '').trim(),
                     bull_long_fan_max: parseFloat((document.getElementById('config-bull-long-fan-max') || {}).value) || 0,
                     bull_long_fan_min: parseFloat((document.getElementById('config-bull-long-fan-min') || {}).value) || 0,
+                    bull_long_fan_by_regime: ((document.getElementById('config-bull-long-fan-by-regime') || {}).value || '').trim(),
                     bull_long_size_mult: parseFloat((document.getElementById('config-bull-long-size-mult') || {}).value) || 1.0,
                     bull_long_max_concurrent: parseInt((document.getElementById('config-bull-long-max-concurrent') || {}).value) || 0,
                     bull_long_fixed_sl: parseFloat((document.getElementById('config-bull-long-fixed-sl') || {}).value) || 0,

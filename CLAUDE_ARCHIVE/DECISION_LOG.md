@@ -1323,3 +1323,60 @@ All three are staged together this commit. py+json AST clean.
 **Scope rationale:** S+H BULL only (drop CHOP -0.155 even flat, drop bear = long-into-downtrend wrong-thesis). Fan 1.35-3.0 (exclude confirmed losers <1.35 [25%WR] & ≥3.0; cross-batch N=86 shows 2-3 ≈ 1.65-2.0 so widen from 2.0→3.0 to not pre-fit). Cap 3 keeps it off the FAN/MOMENTUM book.
 
 **LOCKED DECISION GATE:** run to N≥30 per regime (S.BULL/H.BULL tagged separately) across ≥2 batches. A cell graduates to consider-leverage ONLY at WR≥65% AND avg≥+0.10% cross-batch under the flat SL. NEVER re-lever on test data alone (the exact 06-22 N=8 mistake). Two clean outcomes: (a) a found long-sleeve, or (b) the non-edge confirmed under the best exit → close the question and commit bull-market growth to the parked Donchian module. Cost at 1× obs ≈ $0.
+
+---
+
+## 2026-06-24 — ALLOUSDT BLACKLISTED (per-pair lever) + `flip_fan_btc_adx_min` REFUTED (no ship)
+
+**Action:** added `ALLOUSDT` to `pair_blacklist` (trading_config.json). No other config change. Resolves the 2026-06-23 "FAN flip-short CHOPPY_FLAT soft spot / ALLO+PLAY" watchlist.
+
+**Context:** operator asked whether a BTC-ADX floor on FAN flip-shorts (`flip_fan_btc_adx_min`) should ship, after the 06-24 batch showed a clear late-night loss cluster (BTC ADX ~20-23) vs a morning winning cluster (BTC ADX 25-39), corroborated by the batch's "Performance by BTC ADX" table (20-25 = 16.7%WR/−$330; 25-30 = 100%/+$216; 35-40 = 100%/+$124) and the 5m×1h slope-alignment split (aligned-down +$125 vs counter-trend −$200).
+
+**Cross-batch test (deduped pool, CLOSED, FROM 2026-05-04, entry_strategy=FLIP:FAN_RATIO_GATE ∧ SHORT, re-sim under CURRENT stack = drop CHOPPY_FLAT + pair-ADX<21): N=69.**
+- BTC ADX buckets: <22 N=7/43%/−1.91% · 22-25 N=10/70%/+1.36% · 25-30 N=14/71%/+3.63% · 30-35 N=23/65%/−0.70% · ≥35 N=15/67%/−1.28%. **Non-monotonic** — low AND high negative, mid-band (22-30) positive. Per locked rule = confound, not a single-variable edge. The ≥30 leg is high-WR-but-net-losing (fat-tail) → fix sizing/pairs, not block.
+- **Overlap audit (decisive):** `<22 ALL pairs = N=7/43%WR/−1.91%` vs `<22 excl ALLO+LAYER = N=4/75%WR/+1.11%`. The entire "<22 loses" signal is ALLO+LAYER. `<25 excl ALLO+LAYER = N=12/75%WR/+2.50%`. A <22 block would chop NEAR/APT-type winners to catch losers the ALLO blacklist removes surgically. **Locked per-pair-concentration rule fires (~100% of loss in 2 pairs ≫ 60% threshold): pair blacklist, not dimension filter.**
+- **Time-window evidence = same two pairs, not BTC ADX:** 06-24 late-night losers were LAYER (bADX19.7, −1.20) + ALLO (bADX22.4, −1.19); morning winners WLD/DEXE/BICO + LAYER again (bADX26.5, +0.96). LAYER lost at low bADX and won at high bADX *same day* → "time of day / BTC ADX" and "which pair fired" are the same axis; the pair axis isolates losers without collateral damage.
+
+**ALLO evidence (the ship):** cross-batch deduped FAN flip-shorts = 9 trades / 6 dates (J18,J20,J23,J24) / 33% WR / −4.14%; the entire ALLO loss is the flip-short sleeve (normal longs net-positive +0.32%). Under CURRENT stack the residue = 0W/3L / −3.45% / 3 dates, all full FLIP_STOP_LOSS gap-throughs (BICO failure mode). Forfeits ~zero current-config upside (CHOP winners now blocked; bull-longs disabled). REVERT GATE: un-blacklist if would-be ALLO flip-shorts run ≥50% WR on N≥5 fresh.
+
+**LAYER NOT blacklisted:** breakeven under current stack (2W/2L / +0.16%); losses were at low BTC ADX or now-disabled BULL_LONG. Within-LAYER trend-strength pattern noted (loses low-ADX, wins high-ADX) but N=4-5 ≪ act threshold. Watchlist.
+
+**Files:** trading_config.json (pair_blacklist +ALLOUSDT). CURRENT_STATE updated in place (blacklist line 15 pairs + ALLO ship entry + BTC-ADX refutation entry, replacing the 06-23 ALLO/PLAY watchlist). config.py default unchanged (blacklist lives in json). Not committed/pushed (no operator authorization).
+
+---
+
+## 2026-06-24 — BULL_LONG per-regime fan window SHIPPED (`bull_long_fan_by_regime`) + RSI-ceiling candidate REFUTED
+
+**Action:** new config field `bull_long_fan_by_regime = "STRONG_BULL:1.35-2.0,HEALTHY_BULL:2.0-3.0"`. Per-regime fan window overrides global `bull_long_fan_min/max` when the gated regime is mapped; globals (still 0.85/5.0) remain the fallback for any allowed-but-unmapped regime. Operator-directed.
+
+**Why:** operator asked to implement the regime-specific winning fan bands found in the cross-batch dig.
+
+**Evidence (deduped pool, CLOSED, FROM 2026-05-04, entry_strategy=BULL_LONG, re-sim under current sleeve: regime∈{S_BULL,H_BULL} ∧ fan 0.85-5.0): N=106, 50.9% WR, −0.106% avg, −11.27% total (net losing).**
+- By regime: STRONG_BULL 16/62.5%/+0.156%/+2.5% (3 dates) · HEALTHY_BULL 90/48.9%/−0.153%/−13.8% (6 dates) · CHOPPY_FLAT 18/55.6%/−0.247% (already blocked).
+- Regime×fan: **HEALTHY_BULL × 0.85-1.35 = 25/28%/−12.0%** (≈ entire sleeve loss; the band the 06-23 fan_min 1.35→0.85 widening imported) · HEALTHY_BULL × 1.35-2.0 = 37/54%/−3.6 · **HEALTHY_BULL × 2.0-3.0 = 24/67%/+3.9 (6 dates)** · H_BULL 3.0-5.0 = 4/25%/−2.1 · **STRONG_BULL × 1.35-2.0 = 11/73%/+5.1 (3 dates)** · S_BULL other bands N≤2 negative.
+- Indicators do NOT separate within either regime: BTC RSI flat (W/L 62.0 vs 61.9; bands 55-60/60-65/65+ all ~50%), ADXΔ & PairTrend INVERTED in HEALTHY (ADXΔ>0.5 = 20%WR/−5.5%, PairTrend>0.1 = 29%/−6.0%, BTC RSI 65+ = 38%/−3.9% — the "momentum-quality" tails are the losers). STRONG_BULL indicators point the right way but N=16 with every sub-cell N≤4 and PairTrend sign-flips vs HEALTHY = confound/noise. Conclusion: fan×regime is the only axis.
+- Mechanism: BULL_LONG buys a long that already passed the fan gate in a bull regime = entering an extended 5m pop; low fan (no thrust) fizzles, high-fan parabola reverts; the workable band differs by regime (strong bull carries a modest 1.35-2.0 entry, softer healthy bull needs 2.0-3.0 pair thrust).
+
+**Counterfactual:** restricting to the two windowed cells removes the −12.0% HEALTHY low-fan leak; the prior global counterfactual (fan 1.35-3.0 = +4.7% on N=74) corroborates. In-sample-haircut caveat: positive cells N=11/24, partly in-sample; sleeve stays at 1×-obs (lev 0.05).
+
+**RSI-ceiling candidate (06-24 single-batch RSI≥62 = 5L/0W) — REFUTED:** does not survive cross-batch (RSI flat within both regimes). Do not ship `bull_long_rsi_max`. CURRENT_STATE watchlist marked refuted.
+
+**Implementation (D11 full):** config.py `bull_long_fan_by_regime` default + evidence comment + NOTE on fan_min that per-regime overrides globals · trading_config.json value · engine `_maybe_open_bull_long` reordered (regime resolved BEFORE fan; per-regime window parsed `REGIME:min-max`, fallback to globals) · UI text input `config-bull-long-fan-by-regime` (templates/index.html) · load (_setVal) + save (trimmed string). Verified: both files ast-parse; gate truth-table correct (H_BULL fan1.0 blocked / 2.5 fires; S_BULL fan1.5 fires / 2.5 blocked; unmapped regime → global 0.85-5.0). Known cosmetic gap: report Bull-Long×Fan "LIVE ✓" still keys off global bull_long_fan_max (not per-regime).
+
+**REVERT GATE:** drop a regime's entry if its windowed cell runs ≤45% WR on N≥10 fresh. Re-lever still gated at N≥30 cumulative + WR≥65%/avg≥+0.10% across ≥2 batches.
+
+**Not committed/pushed** (no operator authorization).
+
+---
+
+## 2026-06-24 — BULL_LONG re-levered 1×→20× (DISCIPLINE-OVERRIDE) on the cleaned per-regime fan cell + pre-reset snapshot
+
+**Action:** `bull_long_lev_mult` 0.05→1.0 (1×→20×), operator-directed, applied together with the new per-regime fan window (S.BULL 1.35-2.0 / H.BULL 2.0-3.0) and the ALLOUSDT blacklist. Reset taken ~16:06 UTC-3 to apply all three.
+
+**Override acknowledgment (anti-overfit rule):** below the locked re-lever gate (N≥30 cumulative + WR≥65-70%/avg≥+0.10% across ≥2 batches). The windowed cells are N=11 (S.BULL 1.35-2.0, 73% WR, +5.1%) and N=24 (H.BULL 2.0-3.0, 67% WR, +3.9%), partly in-sample. Operator-directed; carries a TIGHTER-than-standard revert (below). Rationale for shipping despite the gate: the per-regime window excludes the loser bands every prior 20× attempt traded — the 06-22 20× re-lever tripped its instant gate the next batch but it was on the OLD wide fan (incl. the inverting 1.65-2.0 and sub-1.35 bands now excluded).
+
+**TIGHT REVERT (override-grade, automatic):** INSTANT de-lever bull_long_lev_mult→0.05 if 3 of the first 6 new bull-longs hit SL OR any single bull-long gaps past ~−1.0%; de-lever at N≥10 fresh windowed bull-longs if WR≤60% OR avg≤+0.05%.
+
+**Pre-reset snapshot saved:** reports/orders_2026-06-24_prereset_preregimefan_20x_39trades_-178.csv (39 closed, net −$178: 2 BULLISH FAN-flip longs, 16 BEARISH shorts, 21 NEUTRAL bull-longs) + _results.txt stub (operator to paste the text report). This captures state immediately before the reset that applies ALLO blacklist + per-regime fan + 20×.
+
+**Files:** config.py (bull_long_lev_mult default 0.05→1.0 + override note) · trading_config.json (1.0). Not committed/pushed (no authorization).

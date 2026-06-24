@@ -3399,15 +3399,8 @@ class TradingEngine:
             _fan_ratio = (abs(_g58 / _g813) if (_g58 is not None and _g813) else None)
             if _fan_ratio is None:
                 return
-            _fan_max = getattr(_th, 'bull_long_fan_max', 0.85) or 0.0
-            if _fan_max > 0 and _fan_ratio >= _fan_max:
-                return
-            # Floor: low-fan (flat/decelerating) build-side longs bleed (live fan <1.65 = net loser);
-            # require real fan acceleration. 0 = disabled. Jun 19.
-            _fan_min = getattr(_th, 'bull_long_fan_min', 0.0) or 0.0
-            if _fan_min > 0 and _fan_ratio < _fan_min:
-                return
-            # BTC regime — prefer the recorded entry regime, else classify from live globals.
+            # BTC regime FIRST (the per-regime fan window needs it) — prefer the recorded entry regime,
+            # else classify from live globals.
             _g = globals()
             _reg = _ef.get('entry_btc_regime')
             if _reg is None:
@@ -3416,12 +3409,37 @@ class TradingEngine:
                 except Exception:
                     _reg = None
             _allowed = {r.strip().upper() for r in (getattr(_th, 'bull_long_regimes', '') or '').split(',') if r.strip()}
-            if not _allowed or (_reg or '').upper() not in _allowed:
+            _rkey = (_reg or '').upper()
+            if not _allowed or _rkey not in _allowed:
                 return
             # Stamp the GATED regime onto the order so it records exactly what the sleeve admitted on
             # (else open_position re-classifies and can land on null/NEUTRAL → the bull-long drops out of
             # the regime tables, the live gate surface). Jun 18 bugfix.
             _ef['entry_btc_regime'] = _reg
+            # Fan window: PER-REGIME override (bull_long_fan_by_regime = "REGIME:min-max,...") if the gated
+            # regime is mapped, else fall back to the global bull_long_fan_min/max. Low-fan (flat/decelerating)
+            # build-side longs bleed; the winning band is regime-specific (Jun 24 cross-batch: S.BULL 1.35-2.0,
+            # H.BULL 2.0-3.0). 0 = that bound disabled.
+            _fan_min = getattr(_th, 'bull_long_fan_min', 0.0) or 0.0
+            _fan_max = getattr(_th, 'bull_long_fan_max', 0.0) or 0.0
+            _by_reg = getattr(_th, 'bull_long_fan_by_regime', '') or ''
+            if _by_reg.strip():
+                for _tok in _by_reg.split(','):
+                    _tok = _tok.strip()
+                    if not _tok or ':' not in _tok:
+                        continue
+                    _rk, _, _rv = _tok.partition(':')
+                    if _rk.strip().upper() == _rkey:
+                        try:
+                            _lo, _, _hi = _rv.strip().partition('-')
+                            _fan_min, _fan_max = float(_lo), float(_hi)
+                        except Exception:
+                            pass
+                        break
+            if _fan_min > 0 and _fan_ratio < _fan_min:
+                return
+            if _fan_max > 0 and _fan_ratio >= _fan_max:
+                return
             # De-dupe per pair / cooldown window (reuse the phantom-flip cooldown infra).
             _ck = f"{pair}|BULL_LONG"
             _now = _leash_time.time()

@@ -5255,7 +5255,22 @@
                                     <input type="number" step="0.05" min="0" max="1" id="config-runner-trail-k" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
                                 </label>
                             </div>
-                            <p class="text-xs text-gray-500 mt-1">Hand off tight trailing → stretch-trail once a high-ATR LONG peaks ≥ arm; exit when live |price−EMA5| stretch ≤ k × peak stretch (or EMA13 / hard SL). Close reason <code class="text-cyan-300">RUNNER_TRAIL</code>. Track results in the 🏃 Runner Trail Performance table (net-gain-vs-tight).</p>
+                            <div class="flex items-center gap-3 flex-wrap mt-2">
+                                <label class="flex items-center text-sm text-cyan-300" title="ATR-floor (chandelier) trail: exit only when P&L gives back > N×ATR% from peak (a first bounce can't trip it). OFF = K×peak-stretch ratio trail. Mirrors the SHORT runner.">ATR-floor
+                                    <input type="checkbox" id="config-runner-trail-use-atr" class="ml-2" checked>
+                                    <span class="ml-2 text-gray-400">N ×ATR</span>
+                                    <input type="number" step="0.1" min="0" id="config-runner-trail-atr-mult" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.5">
+                                </label>
+                                <label class="flex items-center text-sm text-yellow-300" title="BE-ratchet: once armed, clamp the exit floor to ≥ lock% so a runner can't round-trip into a loss.">BE-ratchet
+                                    <input type="checkbox" id="config-runner-trail-be-ratchet" class="ml-2" checked>
+                                    <span class="ml-2 text-gray-400">lock%</span>
+                                    <input type="number" step="0.05" id="config-runner-trail-be-lock" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0.10">
+                                </label>
+                                <label class="flex items-center text-sm text-purple-300" title="Give-back cap: never give back more than frac×peak from the peak (0 = off, raw N×ATR). Caps the surrender on high-ATR longs.">give-back×pk
+                                    <input type="number" step="0.05" min="0" max="1" id="config-runner-trail-giveback-frac" class="w-16 ml-2 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-center" value="0">
+                                </label>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">Jun 24 — LONG now runs the SHORT-parity exit: once a LONG peaks ≥ arm, exit on the <strong>ATR-floor</strong> (give back &gt; N×ATR from peak, capped at give-back×pk), floored by the <strong>BE-ratchet</strong> lock; <code>use_atr</code> off → K×peak-stretch fallback. Backstops (EMA13 / hard SL) still fire. Close reason <code class="text-cyan-300">RUNNER_TRAIL</code>. <span class="text-amber-400/80">Shipped ON ahead of the N≥30 shadow gate (operator) — non-flip longs only; flip-LONGs deferred.</span> Track in the 🏃 Runner Trail Performance table.</p>
                             <div class="border-t border-cyan-500/20 mt-3 pt-2">
                                 <label class="block text-sm text-red-300 mb-2">🏃 Runner Stretch-Trail (SHORT) <span class="text-xs text-gray-400 font-normal">(Jun 12 — shadow-strpk promotion, DISCIPLINE-OVERRIDE N=20)</span></label>
                                 <div class="flex items-center gap-3 flex-wrap">
@@ -18651,6 +18666,11 @@
                 { const _e=document.getElementById('config-runner-trail-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_atr_min !== undefined ? config.thresholds.runner_trail_atr_min : 1.0; }
                 { const _e=document.getElementById('config-runner-trail-arm-peak'); if(_e) _e.value = config.thresholds.runner_trail_arm_peak !== undefined ? config.thresholds.runner_trail_arm_peak : 0.70; }
                 { const _e=document.getElementById('config-runner-trail-k'); if(_e) _e.value = config.thresholds.runner_trail_k !== undefined ? config.thresholds.runner_trail_k : 0.5; }
+                { const _e=document.getElementById('config-runner-trail-use-atr'); if(_e) _e.checked = config.thresholds.runner_trail_use_atr !== undefined ? !!config.thresholds.runner_trail_use_atr : true; }
+                { const _e=document.getElementById('config-runner-trail-atr-mult'); if(_e) _e.value = config.thresholds.runner_trail_atr_mult !== undefined ? config.thresholds.runner_trail_atr_mult : 0.5; }
+                { const _e=document.getElementById('config-runner-trail-be-ratchet'); if(_e) _e.checked = config.thresholds.runner_trail_be_ratchet_enabled !== undefined ? !!config.thresholds.runner_trail_be_ratchet_enabled : true; }
+                { const _e=document.getElementById('config-runner-trail-be-lock'); if(_e) _e.value = config.thresholds.runner_trail_be_lock_pct !== undefined ? config.thresholds.runner_trail_be_lock_pct : 0.10; }
+                { const _e=document.getElementById('config-runner-trail-giveback-frac'); if(_e) _e.value = config.thresholds.runner_trail_giveback_frac !== undefined ? config.thresholds.runner_trail_giveback_frac : 0.0; }
                 { const _e=document.getElementById('config-runner-trail-short-enabled'); if(_e) _e.checked = config.thresholds.runner_trail_short_enabled !== undefined ? !!config.thresholds.runner_trail_short_enabled : true; }
                 { const _e=document.getElementById('config-runner-trail-short-atr-min'); if(_e) _e.value = config.thresholds.runner_trail_short_atr_min !== undefined ? config.thresholds.runner_trail_short_atr_min : 0.0; }
                 { const _e=document.getElementById('config-runner-trail-short-arm-peak'); if(_e) _e.value = config.thresholds.runner_trail_short_arm_peak !== undefined ? config.thresholds.runner_trail_short_arm_peak : 0.45; }
@@ -19981,6 +20001,11 @@
                     runner_trail_atr_min: safeFloat(document.getElementById('config-runner-trail-atr-min')?.value || 1.0),
                     runner_trail_arm_peak: safeFloat(document.getElementById('config-runner-trail-arm-peak')?.value || 0.70),
                     runner_trail_k: safeFloat(document.getElementById('config-runner-trail-k')?.value || 0.5),
+                    runner_trail_use_atr: (document.getElementById('config-runner-trail-use-atr')?.checked === true),
+                    runner_trail_atr_mult: safeFloat(document.getElementById('config-runner-trail-atr-mult')?.value || 0.5),
+                    runner_trail_be_ratchet_enabled: (document.getElementById('config-runner-trail-be-ratchet')?.checked === true),
+                    runner_trail_be_lock_pct: safeFloat(document.getElementById('config-runner-trail-be-lock')?.value || 0.10),
+                    runner_trail_giveback_frac: safeFloat(document.getElementById('config-runner-trail-giveback-frac')?.value || 0.0),
                     runner_trail_short_enabled: (document.getElementById('config-runner-trail-short-enabled')||{checked:true}).checked,
                     runner_trail_short_atr_min: safeFloat(document.getElementById('config-runner-trail-short-atr-min')?.value || 0),
                     runner_trail_short_arm_peak: safeFloat(document.getElementById('config-runner-trail-short-arm-peak')?.value || 0.45),

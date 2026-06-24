@@ -1392,3 +1392,21 @@ All three are staged together this commit. py+json AST clean.
 **Verified:** main.py ast-parses; helper unit-test → live True only for 1.35-1.65/1.65-2.0/2.0-3.0 buckets, False for 0.85-1.35 and 3.0-5.0 (= union of the two regime windows). config.py/json values updated.
 
 **Not committed at write time** (committed/pushed in the same operator-authorized push).
+
+---
+
+## 2026-06-24 — LONG runner exit: SHORT-parity machinery SHIPPED + ENABLED (Option A)
+
+**Action (operator-directed):** gave the LONG runner the same exit mechanism the shorts run — ATR-floor (chandelier) + BE-ratchet lock + give-back cap — on independent `runner_trail_*` fields, and turned it ON.
+
+**Config:** `runner_trail_enabled` false→true · `runner_trail_atr_min` 1.0→0.0 · `runner_trail_arm_peak` 0.70→0.45 · `runner_trail_k` 0.5 (kept) · NEW `runner_trail_use_atr=true / runner_trail_atr_mult=0.5 / runner_trail_be_ratchet_enabled=true / runner_trail_be_lock_pct=0.10 / runner_trail_giveback_frac=0.0` — all mirroring the live-proven `runner_trail_short_*` values.
+
+**Engine:** added the ATR-floor decision to the LONG branch of `check_exit_conditions` (services/indicators.py). Math is direction-agnostic P&L: once armed (peak_pnl ≥ arm), giveback = N×entry_atr_pct (capped at frac×peak if frac>0), floor = peak_pnl − giveback, ratcheted to ≥ be_lock_pct; fire RUNNER_TRAIL when pnl_pct ≤ floor. `use_atr=false` → existing K×peak-stretch fallback. SHORT path here UNCHANGED (its ATR-floor fires in the realtime strpk block; `_l_use_atr` stays False for SHORT). Once armed, tight-trailing is suppressed (existing realtime + handoff logic) so the runner owns the profit side; EMA13 / hard SL still backstop.
+
+**Scope:** NON-FLIP longs only (BULL_LONG, MOMENTUM long, normal longs) via the existing `not is_flip` gate. **Flip-LONGs DEFERRED** (the dormant N=2 FAN⊘SHORT→LONG idle-insurance sleeve — build the flip-long trail with its source per the standing twin watchlist; not worth a hot-path change to the realtime block for 2 trades now).
+
+**Discipline:** shipped ON ahead of the N≥30 Leash-Shadow strpk-LONG validation gate — explicit operator override. Rationale: a runner trail is net-PROTECTIVE (it banks armed peaks and the ratchet caps round-trips into losses), and the bull-longs are now at 20× where round-tripping to the hard SL is the costly failure mode. Downside of a bug is bounded (exits armed longs early, never worsens a loss past the existing SL). Could not runtime-test locally (no pydantic_settings); verified by ast-parse + logic trace + UI id counts (3× each).
+
+**REVERT GATE:** `runner_trail_enabled=false` if armed long runners net WORSE than the `actual` long baseline on N≥10 fresh closes, OR if any armed long round-trips peak≥0.45 → ≤0 (ratchet failure).
+
+**D11 full:** config.py (defaults + 5 new fields + evidence) · trading_config.json · services/indicators.py (engine) · templates/index.html (5 UI inputs in the LONG box + load + save). CURRENT_STATE watchlist entry converted to SHIP. Committed/pushed same turn (operator authorized).

@@ -937,11 +937,20 @@ def check_exit_conditions(
         from config import trading_config as _rtc
         # Jun 12: direction-aware. LONG keeps its (currently OFF) Jun-1 config;
         # SHORT ships ON (no ATR gate, arm 0.45, K=0.5 — the measured strpk).
+        # Jun 24: LONG now reads the full short-parity machinery (ATR-floor + BE-ratchet
+        # + give-back cap) on its own runner_trail_* fields; SHORT keeps K-trail here (its
+        # ATR-floor fires in the realtime strpk block) → _l_use_atr stays False for SHORT.
+        _l_use_atr = False; _l_n = 0.0; _l_frac = 0.0; _l_lock = 0.0; _l_ratchet = False
         if direction == "LONG":
             _rh_en = getattr(_rtc.thresholds, 'runner_trail_enabled', False)
-            _rh_amin = float(getattr(_rtc.thresholds, 'runner_trail_atr_min', 1.0) or 0.0)
-            _rh_arm = float(getattr(_rtc.thresholds, 'runner_trail_arm_peak', 0.70) or 0.70)
+            _rh_amin = float(getattr(_rtc.thresholds, 'runner_trail_atr_min', 0.0) or 0.0)
+            _rh_arm = float(getattr(_rtc.thresholds, 'runner_trail_arm_peak', 0.45) or 0.45)
             _rt_k = float(getattr(_rtc.thresholds, 'runner_trail_k', 0.5) or 0.5)
+            _l_use_atr = bool(getattr(_rtc.thresholds, 'runner_trail_use_atr', True))
+            _l_n = float(getattr(_rtc.thresholds, 'runner_trail_atr_mult', 0.5) or 0.5)
+            _l_frac = float(getattr(_rtc.thresholds, 'runner_trail_giveback_frac', 0.0) or 0.0)
+            _l_lock = float(getattr(_rtc.thresholds, 'runner_trail_be_lock_pct', 0.10) or 0.10)
+            _l_ratchet = bool(getattr(_rtc.thresholds, 'runner_trail_be_ratchet_enabled', True))
         else:
             _rh_en = getattr(_rtc.thresholds, 'runner_trail_short_enabled', False)
             _rh_amin = float(getattr(_rtc.thresholds, 'runner_trail_short_atr_min', 0.0) or 0.0)
@@ -951,11 +960,32 @@ def check_exit_conditions(
                 and (_rh_amin <= 0
                      or (entry_atr_pct is not None and entry_atr_pct >= _rh_amin))):
             _handoff_suppress_trailing = True  # take over the profit-taking side
-            # SIGNED stretch (matches the validated shadow strpk): fires when the
+            if _l_use_atr and entry_atr_pct and entry_atr_pct > 0:
+                # ATR-floor (chandelier) + give-back cap + BE-ratchet — mirror of the SHORT
+                # realtime runner (direction-agnostic P&L math). Exit when P&L gives back
+                # > N×ATR% from peak (capped at frac×peak), floored by the ratchet lock.
+                _l_giveback = _l_n * entry_atr_pct
+                if _l_frac > 0 and peak_pnl > 0 and _l_frac * peak_pnl < _l_giveback:
+                    _l_giveback = _l_frac * peak_pnl
+                _l_floor = peak_pnl - _l_giveback
+                if _l_ratchet:
+                    _l_floor = max(_l_floor, _l_lock)
+                if pnl_pct <= _l_floor:
+                    logger.info(f"[RUNNER_TRAIL] {direction} L{current_tp_level}: pnl {pnl_pct:.3f}% <= floor {_l_floor:.3f}% "
+                                f"(peak={peak_pnl:.3f}%, giveback={_l_giveback:.3f}%) — runner banked")
+                    return {
+                        "should_close": True,
+                        "reason": f"RUNNER_TRAIL L{current_tp_level}",
+                        "peak_pnl": peak_pnl,
+                        "trough_pnl": trough_pnl,
+                        "tp_level": current_tp_level
+                    }
+            # SIGNED stretch K-trail (matches the validated shadow strpk): fires when the
             # favorable extension retraces to ≤ k× its peak — INCLUDING when price
             # crosses back below EMA5 (signed goes negative). Do NOT use abs() here
             # or it re-introduces the unsigned fader-ride bug (CLAUDE.md May 31).
-            if (current_stretch is not None and peak_stretch is not None
+            # Fallback when use_atr=false (and the live SHORT path here).
+            elif (current_stretch is not None and peak_stretch is not None
                     and peak_stretch > 0 and current_stretch <= _rt_k * peak_stretch):
                 logger.info(f"[RUNNER_TRAIL] {direction} L{current_tp_level}: stretch {current_stretch:.3f}% <= "
                             f"{_rt_k}× peak {peak_stretch:.3f}% — runner banked, pnl={pnl_pct:.4f}%, peak={peak_pnl:.4f}%")

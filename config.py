@@ -340,9 +340,23 @@ class SignalThresholds(BaseModel):
     # stretch-trail only governs the profit-taking side. See CLAUDE.md Jun 1.
     # Validated: shadow-armed LONG arm-0.70 strpk net +4.57 vs actual −1.36 (N=16).
     runner_trail_enabled: bool = True
-    runner_trail_atr_min: float = 1.0    # only pairs with entry ATR ≥ this get the loose leash
-    runner_trail_arm_peak: float = 0.70  # handoff point: peak P&L ≥ this swaps tight→stretch trail
-    runner_trail_k: float = 0.5          # exit when live stretch ≤ k × peak stretch (unsigned, matches shadow strpk)
+    runner_trail_atr_min: float = 0.0    # Jun 24: 1.0→0.0 (no ATR gate, mirror the SHORT runner) when porting the short exit to longs
+    runner_trail_arm_peak: float = 0.45  # Jun 24: 0.70→0.45 (mirror SHORT arm) — peak P&L ≥ this swaps tight→stretch/ATR-floor trail
+    runner_trail_k: float = 0.5          # exit when live stretch ≤ k × peak stretch (unsigned, matches shadow strpk) — fallback when use_atr=false
+    # Jun 24 — LONG-runner parity with the SHORT runner (operator-directed): give longs the SAME
+    # ATR-floor (chandelier) + BE-ratchet + give-back-cap machinery the shorts run, on independent
+    # runner_trail_* fields (so longs can be tuned tighter — the VELVET shadow showed long peaks are
+    # smaller, ATR give-back too wide). Direction-agnostic P&L math, applied in indicators.py's LONG
+    # runner branch. Mirrors runner_trail_short_{use_atr,atr_mult,be_ratchet_enabled,be_lock_pct,giveback_frac}.
+    # OBSERVATION caveat: shipped ON ahead of the N≥30 Leash-Shadow strpk-LONG gate (operator call);
+    # affects non-flip LONG sleeves (BULL_LONG, MOMENTUM long, normal longs). Flip-LONGs (is_flip) keep
+    # their existing exit — deferred (the dormant idle-insurance sleeve, build with its source). REVERT:
+    # turn off if armed long runners net WORSE than the `actual` long baseline on N≥10 fresh closes.
+    runner_trail_use_atr: bool = True            # true = ATR-floor (chandelier) trail; false = K×peak_stretch ratio trail
+    runner_trail_atr_mult: float = 0.5           # N — give back N×ATR% from peak before exit (hard SL still backstops)
+    runner_trail_be_ratchet_enabled: bool = True # true = clamp the armed exit floor to >= be_lock_pct
+    runner_trail_be_lock_pct: float = 0.10       # min P&L an armed long runner may give back to (the ratchet lock)
+    runner_trail_giveback_frac: float = 0.0      # cap give-back at frac×peak (0 = off, raw N×ATR). Off to start, mirror current short
     # Jun 12 — SHORT-side runner stretch-trail (DISCIPLINE-OVERRIDE ship, N=20<30).
     # Evidence: shadow strpk on current-stack book shorts = Δ+5.1pp/+$996 vs actual
     # (N=20, 13/7 better); recent era (Jun 9+) 8/0 better, +$979. Shorts are

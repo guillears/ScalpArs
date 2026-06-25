@@ -400,6 +400,16 @@ def _flip_filters(source, ind):
             _prsi = ind.get('pair_rsi')
             if _prsi is not None and _prsi < _rmin:
                 return (True, "FLIP_SHORT_RSI_MIN", 1.0, 1.0, None)
+        # Quality-score floor for flip-SHORTS (Jun 25): the global Entry-Quality-Score filter
+        # blocks score ≤1 for NORMAL entries but flips BYPASS it. Cross-batch FAN flip-short is
+        # monotonic in quality score; score ≤1 is the only negative band (N=18/56%WR/−2.98%/8 dates,
+        # loss diffuse across 16 pairs). Block flip-SHORT when score < min (min=2 → blocks ≤1).
+        # Fail-open: missing score or min=0 → no block. Counter FLIP_SHORT_QUALITY.
+        _qmin = float(getattr(th, 'flip_short_quality_min', 0.0) or 0.0)
+        if ind.get('flip_dir') == 'SHORT' and _qmin > 0:
+            _qsc = ind.get('quality_score')
+            if _qsc is not None and _qsc < _qmin:
+                return (True, "FLIP_SHORT_QUALITY", 1.0, 1.0, None)
         # Pair EMA13-EMA50 gap ceiling for flip-SHORTS (Jun 21): refuse to fade a pair already steeply
         # extended above its OWN 4h trend — a parabola that keeps ripping → the 20× short gaps the SL
         # to ~-1.2%. Cross-batch FAN survivors (Jun17-21 deduped) gap≥1.0 = N=16/44%WR/-0.359%/Σ-$461,
@@ -3340,6 +3350,8 @@ class TradingEngine:
                 'pair_gap': (_ef.get('entry_pair_ema20_ema50_gap_pct') if _ef.get('entry_pair_ema20_ema50_gap_pct') is not None
                              else (round((_ind['ema13'] - _ind['ema50']) / _ind['ema50'] * 100, 4)
                                    if (_ind.get('ema13') is not None and _ind.get('ema50')) else None)),
+                # entry quality score — required by the flip-SHORT quality floor (flip_short_quality_min). Jun 25.
+                'quality_score': _ef.get('entry_quality_score'),
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:

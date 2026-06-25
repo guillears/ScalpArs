@@ -354,7 +354,7 @@ class SignalThresholds(BaseModel):
     # turn off if armed long runners net WORSE than the `actual` long baseline on N≥10 fresh closes.
     runner_trail_use_atr: bool = True            # true = ATR-floor (chandelier) trail; false = K×peak_stretch ratio trail
     runner_trail_atr_mult: float = 0.5           # N — give back N×ATR% from peak before exit (hard SL still backstops)
-    runner_trail_be_ratchet_enabled: bool = True # true = clamp the armed exit floor to >= be_lock_pct
+    runner_trail_be_ratchet_enabled: bool = False # (LONG) Jun 25: operator DISABLED — armed long runners now exit on the bare ATR-floor (peak − N×ATR), no +be_lock_pct clamp; hard SL still backstops. (SHORT ratchet runner_trail_short_be_ratchet_enabled stays ON — proven.)
     runner_trail_be_lock_pct: float = 0.10       # min P&L an armed long runner may give back to (the ratchet lock)
     runner_trail_giveback_frac: float = 0.0      # cap give-back at frac×peak (0 = off, raw N×ATR). Off to start, mirror current short
     # Jun 12 — SHORT-side runner stretch-trail (DISCIPLINE-OVERRIDE ship, N=20<30).
@@ -574,6 +574,7 @@ class SignalThresholds(BaseModel):
     # SHORT when pair RSI < this. Operator-directed, N below the locked filter gate → TIGHT REVERT.
     # 0 = OFF (fail-open on missing rsi too).
     flip_short_rsi_min: float = 0.0   # block flip-SHORT when entry pair RSI < this (0 = off)
+    flip_short_quality_min: float = 2.0   # block flip-SHORT when entry quality score < this (so =2 blocks score ≤1). 0 = off. Jun 25: extends the global Entry-Quality-Score floor (already blocks ≤1 for NORMAL entries: validated N=95/34.7%WR/−$684) to the flip-short sleeve, which BYPASSES it. Cross-batch FAN flip-short (deduped, current stack): score is monotonic (1→4 = 56/64/76/80% WR, −0.17→+0.56% avg); score≤1 = N=18/56%WR/−2.98%/8 dates (the only negative band), loss DIFFUSE (16 pairs, top 21% — not pair-concentrated). Score 0 ≈ empty (N=2). Confirmed on 06-25 batch (score≤1 = 3/3 losers, −$249, incl. SAHARA −$145 gap-through; sleeve −$337→−$88). ⚠ N=18 < N≥30 gate = DISCIPLINE-OVERRIDE, but the score≤1 threshold itself is already globally validated — we only close the flip bypass. Counter FLIP_SHORT_QUALITY. TIGHT REVERT: →0 if would-be-blocked (score≤1) flip-shorts run ≥55% WR on N≥10 fresh.
     # Jun 21 — pair EMA13-EMA50 gap ceiling for flip-SHORTS. Refuse to fade a pair already steeply
     # extended above its OWN 4h trend (gap = (EMA13-EMA50)/EMA50 %): a parabola that keeps ripping →
     # the 20× short gaps the SL to ~-1.2%. Cross-batch FAN survivors (Jun17-21 deduped): gap≥1.0 =
@@ -609,7 +610,7 @@ class SignalThresholds(BaseModel):
     # entry blocks (it is explicitly a trend-build, not a pattern-matched late long). All
     # hard risk controls (max-open, existing-position, cooldown, liquidity caps) still apply.
     # TO REMOVE: grep "BULL_LONG" / "bull_long" + the main.py bull-long perf blocks + the UI.
-    bull_long_enabled: bool = True                     # master toggle. Jun 23: RE-ENABLED as a zero-risk OBSERVATION TEST (1× obs, lev 0.05) — does bull-long become viable under the FLAT -0.70 SL (which beat the live ATR-widened -1.20 in re-sim: -0.151→-0.078)? Scoped to S+H BULL × fan 1.35-3.0 (excludes confirmed losers <1.35 [25%WR] & ≥3.0 + CHOP/bear), capped at 3 concurrent. DECISION GATE: N≥30 per regime across ≥2 batches; a cell graduates to leverage ONLY at WR≥65% & avg≥+0.10% cross-batch — never re-lever on test data alone (the 06-22 mistake). Prior is negative (probably a non-edge); test settles it at ~$0 cost.
+    bull_long_enabled: bool = False                    # master toggle. Jun 25: DISABLED (operator) — the 20× re-lever tripped its instant-revert gate (4 of 5 hit the −0.70 SL, 1W/4L/−$299) and the deep cross-batch dig confirmed the sleeve is structurally "arm-or-die" (38% never arm → straight to SL) with NO entry separator that survives (BTC RSI/ADX/ADXΔ all refuted; range-position only a weak cross-batch tendency that didn't help this batch). Windowed cell is only +0.16%/trade at 1× — too thin/variance-heavy for leverage, and unfixable by entry filters. Long-side scaling belongs to the parked Donchian module, not this scalp sleeve. Per-regime fan window + flat SL config retained but inert. RE-ENABLE only with a genuinely new edge (e.g. an arm-predictor) — not another leverage attempt.
     # Jun 21 — converted to a 1× OBSERVATION ARM. The cross-batch dig (N=52) showed fan bucket & regime
     # are NOT the driver of bull-long outcomes — BTC momentum/extension at entry is: BTC 30m-RSI Δ≥+12 =
     # 26/73%WR/+0.149% (the winning band) and BTC EMA13-EMA50 gap≥+0.06 = 22/27%WR/−$430 (the whole loss).

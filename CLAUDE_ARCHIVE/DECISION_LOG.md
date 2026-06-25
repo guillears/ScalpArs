@@ -1410,3 +1410,38 @@ All three are staged together this commit. py+json AST clean.
 **REVERT GATE:** `runner_trail_enabled=false` if armed long runners net WORSE than the `actual` long baseline on N≥10 fresh closes, OR if any armed long round-trips peak≥0.45 → ≤0 (ratchet failure).
 
 **D11 full:** config.py (defaults + 5 new fields + evidence) · trading_config.json · services/indicators.py (engine) · templates/index.html (5 UI inputs in the LONG box + load + save). CURRENT_STATE watchlist entry converted to SHIP. Committed/pushed same turn (operator authorized).
+
+---
+
+## 2026-06-25 — FLIP-SHORT quality-score floor SHIPPED (`flip_short_quality_min=2.0`, blocks score ≤1)
+
+**Action (operator-directed):** block flip-SHORT entries with entry quality score ≤1, by extending the already-shipped global Entry-Quality-Score filter (which blocks ≤1 for NORMAL entries but which flips BYPASS) to the flip-short sleeve. New config `flip_short_quality_min` (block when score < min; =2 → blocks 0,1). Counter `FLIP_SHORT_QUALITY`.
+
+**Evidence (deduped pool, CLOSED, FROM 2026-05-04, FLIP:FAN_RATIO_GATE ∧ SHORT, current stack = drop CHOPPY_FLAT + pADX<21 + blacklist; N=66, +6.18%):**
+- By quality score (monotonic): 0 = N=2/50%/−0.32% (≈empty) · 1 = N=16/56%/−2.67%/8 dates · 2 = N=25/64%/+1.75% · 3 = N=17/76%/+4.46% · 4 = N=5/80%/+2.79% · 5 = N=1.
+- score≤1 cut cohort = N=18/56%WR/−2.98%/8 dates. **Per-pair concentration PASSED:** 16 pairs, top SAHARA 21% of gross loss (no 1–2 pair domination) → genuine dimensional effect, not a pair issue.
+- 06-25 batch confirm: FAN flip-short 9t/−$337; score≤1 = 3/3 losers (SUI score0 −88, PAXG −16, SAHARA −145), −$249, zero winners cut → sleeve −$337→−$88. Report's own phantom LEFTOVER-FILTER TEST flags `Quality score >1: kept 71%/+0.127 vs blocked 52%/−0.045 → ★ gate candidate`.
+
+**Discipline:** N=18 < the locked Pattern-C filter gate (N≥30/WR≤40%/avg≤−0.20%) → DISCIPLINE-OVERRIDE. Mitigation: the score≤1 threshold is NOT a novel filter — it's globally validated (N=95) and live for normal entries; this only closes the flip bypass. Concentration check passed; monotonic; mechanism sound (low score = weak setup). Score 0 immaterial (N=2) — the band doing the work is score 1.
+
+**Implementation (D11 full):** config.py `flip_short_quality_min=2.0` + evidence · trading_config.json 2.0 · services/trading_engine.py (check in `_flip_filters` FAN-SHORT branch + `quality_score` added to `_ff_in`; block auto-recorded via existing `_record_filter_block(_reason, flip_dir)`) · templates/index.html (input `config-flip-short-quality-min` + load + save). Verified: ast-parse OK, json=2.0, UI id 3×.
+
+**REVERT GATE:** `flip_short_quality_min`→0 if would-be-blocked (score≤1) flip-shorts run ≥55% WR on N≥10 fresh.
+
+**Not committed/pushed at write time** (awaiting explicit operator authorization — "ship it" does not authorize git per CLAUDE.md).
+
+---
+
+## 2026-06-25 — DISABLE BULL_LONG sleeve + DISABLE LONG runner BE-ratchet (operator-directed)
+
+**Context:** The 06-24 operator-directed 20× re-lever of BULL_LONG (on the cleaned per-regime fan cell) tripped its instant-revert gate on the very next batch.
+
+**1) BULL_LONG DISABLED — `bull_long_enabled: true→false`** (config.py line 613 + trading_config.json).
+- **Gate trip:** 06-25 batch ran 5 bull-longs, 1W/4L, **−$299; 4 of 5 hit the −0.70 flat SL** → exceeds "3 of first 6 hit SL" instant-de-lever trigger.
+- **Deep cross-batch dig (N≈135):** sleeve is structurally **arm-or-die** — windowed losers avg peak ≈+0.08%, 13/15 never reach the +0.20% arm band → straight to SL; winners avg peak ≈+1.07%. **No entry separator survives cross-batch:** BTC RSI / BTC ADX / ADXΔ / pTrend all refuted or non-monotonic. Range-position is the only mild tendency (low-range wins ~82%, top-of-range 85+ loses ~39%/−10.5%) but had **ZERO impact on 06-25** (all 5 were mid-range 54–75).
+- **Verdict:** windowed cell ≈+0.16%/trade at 1× — too thin and too SL-variance-heavy (≈38% never-arm SL rate) for ANY leverage, and unfixable by entry filters. Chose full DISABLE over de-lever-to-1× (cleaner; 1× edge not worth the slot/complexity). Per-regime fan config + flat −0.70 SL + cap 3 retained but inert. Long-side scaling deferred to the parked Donchian module. **RE-ENABLE only with a genuinely NEW edge (an arm-predictor) — not another leverage attempt.**
+
+**2) LONG runner BE-ratchet DISABLED — `runner_trail_be_ratchet_enabled: true→false`** (config.py line 357 + trading_config.json).
+- Armed LONG runners now exit on the bare ATR-floor (peak − 0.5×ATR), no +be_lock_pct clamp; hard SL still backstops. **SHORT ratchet `runner_trail_short_be_ratchet_enabled` left ON (proven).** `runner_trail_enabled` itself stays ON; only the LONG ratchet clamp is removed.
+
+**Not committed/pushed at write time** (awaiting explicit operator authorization — bundled with the still-staged flip-short quality floor). trading_config.json included in the push set per standing rule.

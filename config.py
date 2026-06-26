@@ -1077,6 +1077,15 @@ class InvestmentConfig(BaseModel):
     #    ceiling) to deploy the freed capital — gated by ② + tradeable margin.
     redeploy_leftover_enabled: bool = False
     max_open_positions_hard: int = 10  # absolute ceiling when redeploying
+    # ④ Balance→leverage schedule (Jun 26): a balance-aware leverage CEILING — de-lever as the
+    #    account grows so a fat-tail/correlated event can't end the (now larger) account. Format:
+    #    "bal0:lev0, bal1:lev1, ..." ascending balance tiers; the cap = highest tier ≤ current equity.
+    #    e.g. "0:20, 10000:15, 25000:10, 100000:5" → ≥$0 cap 20×, ≥$10k 15×, ≥$25k 10×, ≥$100k 5×.
+    #    Empty = OFF (no cap, current behavior). Clamps the FINAL leverage (after the cell lev-mult),
+    #    sits alongside the gross cap as the second systemic risk knob. Genuinely inert until balance
+    #    crosses the first non-base tier. Tier VALUES should come from the tail-stressed blended-pool
+    #    Kelly (growth-optimal ≈ fractional-Kelly < 20×), not round guesses → see GO-LIVE TODO.
+    leverage_balance_schedule: str = ""  # "0:20, 10000:15, 25000:10, 100000:5"; empty = off
 
 
 class TradingConfig(BaseModel):

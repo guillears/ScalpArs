@@ -4718,6 +4718,17 @@
                             </div>
                             <p class="text-xs text-gray-500 mt-1">③ When ① throttles a slot, open more positions (up to Hard cap) to deploy the freed capital. Default OFF.</p>
                         </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm text-gray-400 mb-2">④ Balance → Leverage Schedule</label>
+                            <div id="lev-schedule-rows" class="space-y-2">
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="lev-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="0"><span class="text-gray-500">→</span><input type="number" class="lev-sched-lev w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" step="1" placeholder="20"><span class="text-gray-500 text-sm">×</span></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="lev-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="10000"><span class="text-gray-500">→</span><input type="number" class="lev-sched-lev w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" step="1" placeholder="15"><span class="text-gray-500 text-sm">×</span></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="lev-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="25000"><span class="text-gray-500">→</span><input type="number" class="lev-sched-lev w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" step="1" placeholder="10"><span class="text-gray-500 text-sm">×</span></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="lev-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="100000"><span class="text-gray-500">→</span><input type="number" class="lev-sched-lev w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" step="1" placeholder="5"><span class="text-gray-500 text-sm">×</span></div>
+                                <div class="flex items-center gap-2"><span class="text-gray-500 text-sm w-16 text-right">≥ $</span><input type="number" class="lev-sched-bal w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="0" step="1000" placeholder="—"><span class="text-gray-500">→</span><input type="number" class="lev-sched-lev w-20 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500" min="1" step="1" placeholder="—"><span class="text-gray-500 text-sm">×</span></div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1">④ Each line = "at balance ≥ $X, cap leverage to N×" (ascending). Final ceiling = highest tier ≤ equity — de-lever as the account grows (ruin-risk knob, sibling of ②). Leave all blank = off. <span id="lev-schedule-readout" class="text-emerald-400/80"></span></p>
+                        </div>
                     </div>
                     <!-- ===== INVESTMENT PARAMS BOX END — exit-behavior toggles below ===== -->
                     </div>
@@ -17916,6 +17927,37 @@
                 _liqSet('config-max-open-positions-hard', config.investment.max_open_positions_hard, 10);
                 const _rde = document.getElementById('config-redeploy-leftover-enabled');
                 if (_rde) _rde.checked = !!config.investment.redeploy_leftover_enabled;
+                // ④ Balance→leverage schedule (per-line rows) + live readout (active tier @ balance)
+                window._levSchedBalance = (typeof config.paper_balance === 'number') ? config.paper_balance : 0;
+                const _levBals = Array.from(document.querySelectorAll('.lev-sched-bal'));
+                const _levLevs = Array.from(document.querySelectorAll('.lev-sched-lev'));
+                const _readLevTiers = function(){
+                    const t = [];
+                    for (let i = 0; i < _levBals.length; i++) {
+                        const b = (_levBals[i].value || '').trim(), l = (_levLevs[i].value || '').trim();
+                        if (b !== '' && l !== '') { const bn = parseFloat(b), ln = parseFloat(l); if (!isNaN(bn) && !isNaN(ln)) t.push([bn, ln]); }
+                    }
+                    t.sort((a, b) => a[0] - b[0]); return t;
+                };
+                const _updLevRead = function(){
+                    const out = document.getElementById('lev-schedule-readout'); if (!out) return;
+                    const t = _readLevTiers(); const bal = Number(window._levSchedBalance || 0);
+                    if (!t.length) { out.textContent = ''; return; }
+                    let cap = null; for (const tier of t) { if (bal >= tier[0]) cap = tier[1]; else break; }
+                    out.textContent = (cap !== null) ? `→ active: ${cap}× @ $${Math.round(bal).toLocaleString()}` : `→ off (balance below first tier)`;
+                };
+                (function(){
+                    const s = (config.investment.leverage_balance_schedule || '').trim();
+                    const tiers = [];
+                    if (s) { s.split(',').forEach(p => { const m = p.split(':'); if (m.length === 2) { const b = parseFloat(m[0]), l = parseFloat(m[1]); if (!isNaN(b) && !isNaN(l)) tiers.push([b, l]); } }); }
+                    tiers.sort((a, b) => a[0] - b[0]);
+                    for (let i = 0; i < _levBals.length; i++) {
+                        if (i < tiers.length) { _levBals[i].value = tiers[i][0]; _levLevs[i].value = tiers[i][1]; }
+                        else { _levBals[i].value = ''; _levLevs[i].value = ''; }
+                        _levBals[i].oninput = _updLevRead; _levLevs[i].oninput = _updLevRead;
+                    }
+                    _updLevRead();
+                })();
 
                 // Trading pairs limit & blacklist + new-listing filter
                 document.getElementById('top-pairs-limit').value = config.trading_pairs_limit || 50;
@@ -19255,7 +19297,8 @@
                     max_notional_hard_ceiling: safeFloat(document.getElementById('config-max-notional-hard-ceiling')?.value) || 0,
                     max_gross_leverage: safeFloat(document.getElementById('config-max-gross-leverage')?.value) || 0,
                     max_open_positions_hard: parseInt(document.getElementById('config-max-open-positions-hard')?.value) || 10,
-                    redeploy_leftover_enabled: !!document.getElementById('config-redeploy-leftover-enabled')?.checked
+                    redeploy_leftover_enabled: !!document.getElementById('config-redeploy-leftover-enabled')?.checked,
+                    leverage_balance_schedule: (function(){ const t = []; const bs = document.querySelectorAll('.lev-sched-bal'), ls = document.querySelectorAll('.lev-sched-lev'); for (let i = 0; i < bs.length; i++) { const b = (bs[i].value || '').trim(), l = (ls[i].value || '').trim(); if (b !== '' && l !== '') { const bn = parseFloat(b), ln = parseFloat(l); if (!isNaN(bn) && !isNaN(ln)) t.push([bn, ln]); } } t.sort((a, b) => a[0] - b[0]); return t.map(x => x[0] + ':' + x[1]).join(', '); })()
                 },
                 thresholds: {
                     long_rsi_extreme: safeFloat(document.getElementById('config-long-rsi-extreme').value),

@@ -310,6 +310,35 @@ def _fan_qs_cell_match(th, qs, bear, rng):
     except (ValueError, TypeError):
         return (1.0, 1.0, None)
 
+def _lookup_leverage_schedule(schedule, equity):
+    """Balance→leverage CEILING (Jun 26). schedule = "bal0:lev0, bal1:lev1, ..." ascending
+    balance tiers; returns the max leverage for the highest balance threshold ≤ equity, or
+    None if the schedule is empty/unparseable/equity below the lowest tier. Fail-open (None →
+    no cap) so a malformed schedule can never block trading or shrink leverage unexpectedly."""
+    try:
+        s = (schedule or '').strip()
+        if not s or equity is None:
+            return None
+        tiers = []
+        for part in s.split(','):
+            part = part.strip()
+            if not part:
+                continue
+            bal, lev = part.split(':')
+            tiers.append((float(bal.strip()), float(lev.strip())))
+        if not tiers:
+            return None
+        tiers.sort()
+        cap = None
+        for bal, lev in tiers:
+            if equity >= bal:
+                cap = lev
+            else:
+                break
+        return cap
+    except (ValueError, TypeError):
+        return None
+
 def _flip_filters(source, ind):
     """Source-namespaced flip filter layer (Jun 16). Given the flip's `source` and the
     blocked entry's `indicators`, decide whether to VETO the flip, how much to SIZE it, and
@@ -2110,6 +2139,17 @@ class TradingEngine:
         # === Premium Multiplier: leverage-side path (active in "leverage" or "both") ===
         if apply_lev and cell_lev_multiplier and cell_lev_multiplier != 1.0:
             leverage = max(1, int(round(leverage * cell_lev_multiplier)))
+
+        # ④ Balance→leverage schedule (Jun 26): final leverage CEILING based on current equity
+        # (de-lever-as-you-grow risk knob). Applied AFTER the cell lev-mult so it bounds the
+        # effective leverage. Empty schedule → None → no cap (current behavior). Fail-open.
+        _sched_equity = total_portfolio if total_portfolio else available_balance
+        _sched_cap = _lookup_leverage_schedule(
+            getattr(tc.investment, 'leverage_balance_schedule', ''), _sched_equity)
+        if _sched_cap is not None and _sched_cap >= 1 and leverage > _sched_cap:
+            logger.info(f"[LEV_SCHEDULE] leverage {leverage}x -> {int(round(_sched_cap))}x "
+                        f"(equity ${_sched_equity:,.0f}, schedule cap)")
+            leverage = max(1, int(round(_sched_cap)))
 
         return investment, leverage, capped_by_balance
 

@@ -39,7 +39,8 @@
     "max_notional_hard_ceiling": 500000,
     "max_gross_leverage": 30.0,
     "redeploy_leftover_enabled": false,
-    "max_open_positions_hard": 10
+    "max_open_positions_hard": 10,
+    "leverage_balance_schedule": ""
   },
   "thresholds": {
     "long_rsi_extreme": 45.0,

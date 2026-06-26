@@ -285,6 +285,31 @@ def _flip_size_mult(source):
 def _flip_lev_mult(source):
     return _flip_registry().get(source, (1.0, 1.0))[1]
 
+def _fan_qs_cell_match(th, qs, bear, rng):
+    """FAN flip-SHORT 'winner cell' (Jun 26). Spec `flip_fan_qs_cell` =
+    qs_min : bear_min : range_lo-range_hi : size [: lev]. Returns (size, lev, tag) when the
+    entry's quality_score ≥ qs_min AND entry_bear_pct ≥ bear_min AND
+    range_lo ≤ entry_range_position ≤ range_hi (both ends inclusive, matching the +$671
+    winner-cell analysis); else (1.0, 1.0, None). Tag is returned even at size/lev 1.0 so the
+    cohort gets its OWN row in Multiplier Cell Performance for tracking. Fail-open on any error."""
+    try:
+        spec = (getattr(th, 'flip_fan_qs_cell', '') or '').strip()
+        if not spec or qs is None or bear is None or rng is None:
+            return (1.0, 1.0, None)
+        parts = [p.strip() for p in spec.split(':')]
+        if len(parts) < 4:
+            return (1.0, 1.0, None)
+        qs_min = float(parts[0]); bear_min = float(parts[1])
+        rlo, rhi = map(float, parts[2].split('-'))
+        if qs >= qs_min and bear >= bear_min and rlo <= rng <= rhi:
+            size = float(parts[3])
+            lev = float(parts[4]) if len(parts) >= 5 and parts[4] else 1.0
+            tag = "[QS≥%g×BEAR≥%g×RNG%g-%g]" % (qs_min, bear_min, rlo, rhi)
+            return (size, lev, tag)
+        return (1.0, 1.0, None)
+    except (ValueError, TypeError):
+        return (1.0, 1.0, None)
+
 def _flip_filters(source, ind):
     """Source-namespaced flip filter layer (Jun 16). Given the flip's `source` and the
     blocked entry's `indicators`, decide whether to VETO the flip, how much to SIZE it, and
@@ -480,22 +505,10 @@ def _flip_filters(source, ind):
                     _padx = ind.get('adx')
                     if _padx is not None and _padx < _padxmin:
                         return (True, "FLIP_FAN_PAIR_ADX", 1.0, 1.0, None)
-                # 3) size/lev multiplier cells. Format matches the other multiplier cells:
-                #    btc_rsi_lo-hi : btc_adx_lo-hi : size_mult [: lev_mult]  (lev optional, defaults 1.0)
-                rule = (getattr(th, 'flip_fan_mult_rule', '') or '').strip()
-                if rule and brsi is not None and badx is not None:
-                    for cellspec in rule.split(','):
-                        try:
-                            parts = [p.strip() for p in cellspec.strip().split(':')]
-                            if len(parts) < 3:
-                                continue
-                            rlo, rhi = map(float, parts[0].split('-')); alo, ahi = map(float, parts[1].split('-'))
-                            if rlo <= brsi < rhi and alo <= badx < ahi:
-                                size = float(parts[2])
-                                lev = float(parts[3]) if len(parts) >= 4 and parts[3] else 1.0
-                                break
-                        except (ValueError, TypeError):
-                            continue
+                # 3) size/lev multiplier — the FAN flip-SHORT "winner cell" (qs/bear/range) is
+                #    applied DOWNSTREAM in _maybe_open_flip via _fan_qs_cell_match (so it can carry
+                #    a distinct cell_multiplier_source tag even at 1× for tracking). This branch
+                #    leaves size/lev at 1.0; the override happens at the open site.
             # 4) exit mode (short runner stretch-trail; short-only at execution, harmless for longs)
             exitm = "strpk" if getattr(th, 'flip_fan_runner_strpk', False) else None
             return (False, None, size, lev, exitm)
@@ -3352,6 +3365,10 @@ class TradingEngine:
                                    if (_ind.get('ema13') is not None and _ind.get('ema50')) else None)),
                 # entry quality score — required by the flip-SHORT quality floor (flip_short_quality_min). Jun 25.
                 'quality_score': _ef.get('entry_quality_score'),
+                # market breadth + range position — required by the FAN flip-SHORT winner cell
+                # (flip_fan_qs_cell), applied below. Jun 26.
+                'bear_pct': _ef.get('entry_bear_pct'),
+                'range_position': _ef.get('entry_range_position'),
             }
             _blocked, _reason, _flip_cell_mult, _flip_cell_lev_mult, _flip_exit_mode = _flip_filters(source, _ff_in)
             if _blocked:
@@ -3360,6 +3377,15 @@ class TradingEngine:
                 logger.info(f"[FLIP_FILTER] {pair}: {source} flip vetoed by {_reason} "
                             f"(stretch={_ff_in.get('ema5_stretch')}, btcRSI={_ff_in.get('btc_rsi')}, btcADX={_ff_in.get('btc_adx')})")
                 return
+            # FAN flip-SHORT winner cell (Jun 26): qs≥3 × bear≥70 × range 60-90. SHORT flips only;
+            # applies size/lev (default 1×=inert) AND a distinct cell tag so the cohort tracks as its
+            # own row in Multiplier Cell Performance. Non-FAN sources / flip-LONGs leave it untouched.
+            _flip_cell_tag = None
+            if source == "FAN_RATIO_GATE" and flip_dir == "SHORT":
+                _cs, _cl, _ct = _fan_qs_cell_match(config.trading_config.thresholds, _ff_in.get('quality_score'),
+                                                   _ff_in.get('bear_pct'), _ff_in.get('range_position'))
+                if _ct:
+                    _flip_cell_mult, _flip_cell_lev_mult, _flip_cell_tag = _cs, _cl, _ct
             async def _open(_db):
                 return await self.open_position(
                     db=_db, pair=pair, direction=flip_dir, confidence="STRONG_BUY",
@@ -3368,6 +3394,7 @@ class TradingEngine:
                     entry_adx=_ef.pop('entry_adx', None) or indicators.get('adx'),
                     entry_atr_pct=_ef.pop('entry_atr_pct', None) or indicators.get('atr_pct'),
                     flip_source=source, flip_cell_mult=_flip_cell_mult, flip_cell_lev_mult=_flip_cell_lev_mult, flip_exit_mode=_flip_exit_mode,
+                    flip_cell_tag=_flip_cell_tag,
                     **_ef,
                 )
             if isolate:
@@ -3650,6 +3677,7 @@ class TradingEngine:
         flip_source: str = None,
         flip_cell_mult: float = 1.0,
         flip_cell_lev_mult: float = 1.0,
+        flip_cell_tag: str = None,
         flip_exit_mode: str = None,
         # Jun 18: Bull-Long Entry sleeve — when set, this is a REAL build-side LONG (NOT a
         # fade). Tagged entry_strategy="BULL_LONG"; bypasses the long-unmatched + pattern-cell
@@ -3956,16 +3984,17 @@ class TradingEngine:
         # force multiplier_target="both" so size AND lev apply. Hard caps below still clamp.
         if flip_source:
             cell_mult, cell_lev_mult, cell_src = _flip_size_mult(flip_source), _flip_lev_mult(flip_source), f"FLIP:{flip_source}"
-            # Jun 16: per-source CONDITIONAL cell multiplier from _flip_filters (e.g. FAN's
-            # strong-bear BTC RSI40-45×ADX≥35 cell @2× size / 1× lev). Multiplies the registry
-            # size AND leverage and carries a distinct cell_src so it groups as its OWN row in
-            # Multiplier Cell Performance (the flip multiplier table). Hard caps below still clamp.
-            if (flip_cell_mult and flip_cell_mult != 1.0) or (flip_cell_lev_mult and flip_cell_lev_mult != 1.0):
+            # Jun 16: per-source CONDITIONAL cell multiplier (e.g. FAN's qs/bear/range winner cell).
+            # Multiplies the registry size AND leverage and carries a distinct cell_src so it groups
+            # as its OWN row in Multiplier Cell Performance. Jun 26: a flip_cell_tag (FAN winner cell)
+            # forces the distinct source EVEN at 1× so the inert track-only cell still gets its own
+            # row; the ×/L size tag is appended only when the multiplier actually differs from 1.0.
+            if flip_cell_tag or (flip_cell_mult and flip_cell_mult != 1.0) or (flip_cell_lev_mult and flip_cell_lev_mult != 1.0):
                 cell_mult = cell_mult * (flip_cell_mult or 1.0)
                 cell_lev_mult = cell_lev_mult * (flip_cell_lev_mult or 1.0)
                 _tag = f"×{flip_cell_mult:g}" if flip_cell_mult and flip_cell_mult != 1.0 else ""
                 _tag += f"L{flip_cell_lev_mult:g}" if flip_cell_lev_mult and flip_cell_lev_mult != 1.0 else ""
-                cell_src = f"FLIP:{flip_source}{_tag}"
+                cell_src = f"FLIP:{flip_source}{flip_cell_tag or ''}{_tag}"
             _mult_target = "both"
             # Re-apply the hard caps (the clamp above ran before this override).
             if cell_mult > _inv_cap:

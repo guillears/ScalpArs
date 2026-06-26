@@ -9293,7 +9293,10 @@ async def _compute_phantom_flip_performance(db, is_paper):
         ("BTC_ADX_BLOCK_SHORT", ("LONG",),         True),
         ("PAIR_RSI_ADX_CROSS",  ("LONG",),         True),
         ("PAIR_TREND_FILTER",   ("LONG", "SHORT"), True),
-        ("BTC_RSI_ADX_CROSS",   ("LONG", "SHORT"), True),
+        # Jun 26: BTC_RSI_ADX_CROSS removed — its SHORT ★ ("fade BTC overbought", phantom N=28/71%/+0.41%,
+        # cell BTC RSI 70-75 +0.61%) is REFUTED cross-batch: ZERO real short fills at BTC RSI ≥70, and the
+        # adjacent real band (65-70) is 75/40%WR/-0.31%/-$1466 — a loser. Same overbought-fade phantom
+        # mirage as PAIR_RSI_OB. Its LONG fade (✗ whipsaws) was the dead bounce-long thesis. → DECISION_LOG.
     ]
     for src, _dirs, _subrows in source_specs:
         for fd in _dirs:

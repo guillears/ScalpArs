@@ -1476,3 +1476,18 @@ Both scoped to FAN flip-gate trades (entry_strategy=FLIP:FAN_RATIO_GATE), surviv
 **3) 4-cohort note (not a watchlist, recorded):** last-5 QS≥2 FAN flip-SHORT — W-only N=17/88%/+0.467%/+$792 (star), C-only N=28/50%/−$376 + Both-C&W N=16/50%/−$295 (the losers), TRULY UNMATCHED N=9/67%/+0.112%/+$129 (positive → NOT a block, contra the full-pool −$124 read). If any cohort is suspect it's the C-pattern-matched fades, not unmatched.
 
 Docs only; no config/code change.
+
+---
+
+## 2026-06-26 — REFUTED + removed: BTC_RSI_ADX_CROSS "fade BTC overbought" SHORT phantom (Phantom Flip Tracker)
+
+**Trigger:** Operator flagged the lone ★ in the Phantom Flip Tracker — `BTC_RSI_ADX_CROSS` fade-to-SHORT: phantom N=28 / 71% WR / +0.406% avg / +11.37% total / SL 25% ("★ flip pays"), concentrated in **BTC RSI 70-75 × ADX 30-35** (N=17 / 65% WR / +0.607% / +10.32%). Mechanism = a LONG blocked because BTC is overbought (RSI 70-75) → fade into a SHORT (= short the BTC top in a bull).
+
+**Cross-batch check (complete pool N=1799, 896 real shorts w/ btc_rsi) — REFUTED:**
+- **BTC RSI 70-75: ZERO real short fills** (and 75+: zero). The phantom's ★ cell has no realized counterpart — the bot never shorts there (BTC-RSI>60 shorts are gated out). Pure virtual-fill artifact.
+- Nearest real band **BTC RSI 65-70 = N=75 / 40% WR / −0.310% avg / −$1,466** — the worst short band in the pool. 55-60 = 19/16%/−0.703%. Shorting into elevated BTC RSI fights the trend and loses.
+- This is the BTC-level twin of PAIR_RSI_OB (pair overbought-fade, killed 06-26: phantom 76-80% WR vs live 39%). Same overbought-fade family, same phantom-overstatement mechanism (virtual entry at clean price + flat exit on a trade the live bot never takes).
+
+**Pattern (3rd this session):** phantom signals that looked great and died on cross-check — bull-long (88% phantom / 47% live), PAIR_RSI_OB (76-80% / 39%), now BTC_RSI_ADX_CROSS short (★ phantom / 0 real fills, adjacent band −$1,466). Treat any Phantom-Flip-Tracker ★ as guilty-until-proven; the tracker systematically overstates because the live entry is gated out or fills worse. Whole tracker pooled = N=900/52%WR/−0.028%/−24.88% = fade-the-block is a non-edge.
+
+**Action:** removed `BTC_RSI_ADX_CROSS` (both dirs) from the Phantom Flip Tracker `source_specs` (main.py). Its LONG fade (✗ whipsaws) was the dead bounce-long thesis; its SHORT fade is the refuted ★. Remaining tracker sources: PAIR_ADX_MAX, BTC_ADX_BLOCK_SHORT, PAIR_RSI_ADX_CROSS, PAIR_TREND_FILTER. **DO NOT re-investigate a BTC-overbought-fade short.** Docs + 1-line source removal only; no engine/config change.

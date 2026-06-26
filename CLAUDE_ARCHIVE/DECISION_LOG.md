@@ -1491,3 +1491,68 @@ Docs only; no config/code change.
 **Pattern (3rd this session):** phantom signals that looked great and died on cross-check — bull-long (88% phantom / 47% live), PAIR_RSI_OB (76-80% / 39%), now BTC_RSI_ADX_CROSS short (★ phantom / 0 real fills, adjacent band −$1,466). Treat any Phantom-Flip-Tracker ★ as guilty-until-proven; the tracker systematically overstates because the live entry is gated out or fills worse. Whole tracker pooled = N=900/52%WR/−0.028%/−24.88% = fade-the-block is a non-edge.
 
 **Action:** removed `BTC_RSI_ADX_CROSS` (both dirs) from the Phantom Flip Tracker `source_specs` (main.py). Its LONG fade (✗ whipsaws) was the dead bounce-long thesis; its SHORT fade is the refuted ★. Remaining tracker sources: PAIR_ADX_MAX, BTC_ADX_BLOCK_SHORT, PAIR_RSI_ADX_CROSS, PAIR_TREND_FILTER. **DO NOT re-investigate a BTC-overbought-fade short.** Docs + 1-line source removal only; no engine/config change.
+
+---
+
+## 2026-06-26 — WATCHLIST: FAN flip-SHORT dimensional separators (range<50 / BEAR_EXHAUSTED blocks + qs≥3×bear≥70×range60-90 winner cell)
+
+Dimensional dig of the FAN flip QS≥2 cohort (last-5-batch deduped, N=72) to test whether qs=2 should be blocked OR a sub-dimension is the real separator.
+
+**Dimensional tables (all QS≥2):**
+- Breadth (bear%): <60 16/62%/+0.025/−$46 · 60-70 24/54%/−0.164/−$442 · 70-80 14/64%/−0.004/+$52 · 80+ 18/67%/+0.353/+$583.
+- Range position: <50 8/38%/−0.443/−$388 · 50-60 5/60%/−0.124/−$68 · 60-90 51/65%/+0.149/+$692 · 90-100 8/62%/−0.084/−$88.
+- BTC regime: HEALTHY_BEAR 35/63%/+0.132/+$433 · STRONG_BEAR 24/67%/+0.088/+$169 · BEAR_EXHAUSTED 6/33%/−0.433/−$307 · HEALTHY_BULL 2/50%/−0.556/−$103.
+
+**KEY confound test:** within the favorable bucket (bear%≥70 AND range 60-90, N=26): qs=2 = 12/42%/−0.110% (still loses) vs qs=3 = 7/71%/+0.430% vs qs=4 = 6/100%/+0.548%. → **QS and the dimensions are INDEPENDENT separators; they stack.** qs=2 is genuinely weak (not a confound) but DIFFUSE/weak as a blanket cut.
+
+**Candidate comparison vs Pattern-C gate (WR≤40% AND avg≤−0.20%):**
+- range<50: N=8/38%/−0.443/−$388 — CLEARS gate. Mechanism: short a pair already in lower-half of range = no downside left to fade.
+- BEAR_EXHAUSTED: N=6/33%/−0.433/−$307 — CLEARS gate. Mechanism: fade into exhausting bear → bounce overruns the short.
+- qs=2 blanket: N=37/51%/−0.073/−$377 — FAILS gate (>50% WR, thin avg, contains winners e.g. qs=2 at 80%+ breadth +$203).
+- Breadth 60-70: 24/54%/−0.164 — FAILS (>40% WR); and breadth is non-monotonic across qs=2 (confound).
+- WINNER cell (multiplier track): qs≥3 AND bear≥70 AND range 60-90 = N=14/~79%/+0.49%/+$671.
+
+**qs=2-specific carve REJECTED:** within the 37 qs=2 trades, breadth is non-monotonic (U-shape: loss in 60-80 mid-band, +ve flanks = confound); range 50-70 is the loss slice (−$479) but W-vs-L entry means are near-identical (bear 66.0/65.0, rangePos 77.9/73.3, RSI 58.9/57.3 — feature-inseparable); loss diffuse across 23 pairs (top-2=27%, not blacklist). So qs=2 winners can't be reliably picked at entry.
+
+**⚠ ALL N's ABOVE ARE IN-SAMPLE-DERIVED → FORWARD-N=0 for the gate.** range<50 (N=8) and BEAR_EXHAUSTED (N=6) are tiny + in-sample = pure hypotheses; need N≥30 fresh out-of-sample holding the C-gate before any ship. Rare sub-conditions → accumulate slowly (many batches).
+
+**Action:** added a consolidated watchlist line (range<50 block / BEAR_EXHAUSTED block / qs≥3×bear≥70×range60-90 winner cell) to CURRENT_STATE; annotated the qs=2 line as the WEAKEST candidate (dimensions-first). No config/code change.
+
+---
+
+## 2026-06-26 — UPDATE: range<50 vs BEAR_EXHAUSTED overlap (FAN flip-SHORT block candidates)
+
+Checked overlap of the two block candidates on the QS≥2 N=72 cohort. **They overlap heavily — largely the SAME loser slice (low-range fade in an exhausted bear):**
+- range<50 ∩ BEAR_EXHAUSTED = 4 trades (25%WR/−0.372%/−$193).
+- UNION (range<50 OR BEX) = 10 unique (8+6−4), 40%WR/−0.465%/−$502.
+- range<50's regime mix: 4 BEAR_EXHAUSTED, 2 H.BULL, 1 STRONG_BEAR, 1 H.BEAR. BEX's range mix: 4 of 6 are <50.
+
+**Block-impact on N=72 (baseline 61.1%WR/+0.038%/+$147.5):**
+- block range<50 → 64t/64.1%/+0.099%/+$535.8 (Δ +$388)
+- block BEAR_EXHAUSTED → 66t/63.6%/+0.081%/+$455.0 (Δ +$307)
+- block UNION → 62t/64.5%/+0.120%/+$649.9 (Δ +$502, NOT +$695 — the 4 shared trades mean you can't sum them)
+
+**Conclusion:** range<50 is the broader, mechanism-fundamental cut (captures 4 of 6 BEX losers; +$388 of the +$502 combined uplift). BEAR_EXHAUSTED adds only ~$114 unique. → reframed CURRENT_STATE: range<50 = PRIMARY filter, BEX = small non-overlapping residual; concentrate forward-N accrual on range<50; re-test whether BEX adds unique value before adding it separately. Still in-sample / FORWARD-N=0. No config/code change.
+
+---
+
+## 2026-06-26 — FAN flip-short: dimensional blocks REFUTED out-of-sample; winner-cell multiplier SURVIVES; qs=2 NOT a clean loser; + pool-contamination lesson
+
+**Context:** continued the 06-26 dimensional dig. First fresh out-of-sample batch arrived (06-26 14:28 / 15:02 snapshots) + operator pushed twice on numbers that didn't match the earlier screenshot → forced a full reconciliation that exposed two pool-construction errors of mine. No config/code change. CURRENT_STATE lines 84 + 86 edited in place; this is the archival record.
+
+**Saved canonical reference:** `reports/flip5batch_curated_jun20-25_FANflipshort_72pool.csv` — deduped union of the 5 curated reports/ batch files (`orders_2026-06-25_1839...`, `orders_2026-06-24_prereset...`, `orders_2026-06-23_prereset...`, `batch_2026-06-22_2028...`, `flip_ref_2026-06-20_presreset...`), key=(opened_at,pair,direction), CLOSED, FLIP:FAN_RATIO_GATE → N=104 flip-shorts, qs≥2 subset = the **72-pool**. This file matches the original line-86 figures and the screenshot exactly; use it, not ad-hoc globs.
+
+**Canonical 72-pool numbers (the source of truth):** qs=2 N=37/51.4%WR/−0.073%/−$377 (mild doubt zone, FAILS C-gate) · qs≥3 N=35/71.4%/+0.156%/+$524 (positive) · winner cell (qs≥3×bear≥70×range60-90) N=14/85.7%WR/+0.463%/+$671 · range<50 N=8/37.5%/−$388 · BEAR_EXHAUSTED N=6/33.3%/−$307 · full pool ≈breakeven (+$148/72).
+
+**① Dimensional BLOCKS refuted out-of-sample.** range<50 + BEAR_EXHAUSTED were clean C-gate losers IN-SAMPLE (−$388 / −$307) but the 06-26 batch (FAN flip-shorts N=7, 3W/4L, −$196) refuted both: the 3 real losers (IDU/LTC/TAO) were all qs=2, range 70–80, mostly HEALTHY_BULL — none range<50, none BEAR_EXHAUSTED. Blocking range<50 = removes +$61.5 net (kills AAVE +$78 winner); blocking BEX = removes INJ +$36 winner; both = removes +$97.6 of winners. Same overfit failure mode as bull-long / PAIR_RSI_OB / BTC_RSI_ADX_CROSS phantoms breaking on first contact (tiny in-sample N=8/N=6). VERDICT: ship NEITHER block; kept as a closed negative so the dead leads aren't re-derived.
+
+**② Winner-cell multiplier SURVIVES.** Canonical 72-pool N=14/85.7%/+0.463%/+$671 — clears the W→MULT gate on WR, avg, $; fails only N=14<30. Out-of-sample 06-26 fired once = INJ +$36 (1-for-1 positive). Multiplier impact: 1.5× pool Δ +$336, 2× pool Δ +$671. ⚠ BE-compat FAILS for 2× (0/2 cell losers peaked ≥+0.20% — gate needs ≥60%) → a 2× amplifies gap-to-SL tails; would ship 1.5× first per Phase-3 staging regardless. Remains a LIVE multiplier candidate pending FORWARD-N (cadence thin, ~1-3 fires/batch).
+
+**③ qs=2 floor→3 — NOT a clean in-sample loser.** On the canonical pool qs=2 is the original mild doubt zone (−$377, 51.4% WR), FAILS the C-gate (wins >50%). It led only on the small 06-26 batch (0/3, −$306, caught all losers). NET: in-sample favors the dimensions over qs=2; first out-of-sample favors qs=2; both low-N. Stays a floor-raise WATCH; PROMOTE only if qs=2 FAN flip-shorts hold ≤45% WR AND avg≤−0.10% on N≥30 FORWARD across ≥2 batches.
+
+**④ POOL-CONTAMINATION LESSON (the reason for the back-and-forth).** I twice produced wrong numbers the operator caught by comparing to the screenshot:
+- (a) Scored `reports/flip_ref_2026-06-16_76trades.csv` raw → PRE-filter (gap≥1.0, FAN_LOATR shipped AFTER 06-16) → over-counts losers; falsely showed "all qs buckets lost." RETRACTED. Violated the locked rule "re-simulate under the CURRENT filter stack before any counterfactual."
+- (b) Globbed ALL Downloads `scalpars_orders_paper_*.csv` with opened_at≥06-20 → pulled the 06-20 PRE-RESET disaster batch the curated files excluded; falsely showed qs=2=−$734/qs≥3≈breakeven/cell=+$393. RETRACTED.
+- FIX: canonical FAN-flip pool = the 5 curated reports/ files only (frozen csv above); recorded to memory (`reference_fan_flip_72pool.md`) so it can't recur. Always reconcile FAN-flip stats against the curated csv, not ad-hoc globs.
+
+**No config/code/git change. Watchlist (CURRENT_STATE) lines 84 + 86 corrected in place with retraction notes.**

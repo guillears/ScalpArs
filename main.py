@@ -3125,15 +3125,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
     # flip P&L into Overall Performance / Daily Compound). Still split out separately
     # for the dedicated Flip Entry Sleeve section below.
     _flip_orders = [o for o in all_orders if (getattr(o, 'entry_strategy', None) or '').startswith('FLIP:')]
-    # Jun 18: Bull-Long sleeve — real build-side longs (entry_strategy=="BULL_LONG"). NOT flips
-    # (they don't start with "FLIP:" so they're already excluded from every flip table) and they
-    # DO flow into normal long performance tables (operator choice, mirrors the flip visibility
-    # rule). Split out here for the dedicated Bull-Long Trade Log scorecard below.
-    _bull_long_orders = [o for o in all_orders if (getattr(o, 'entry_strategy', None) or '') == 'BULL_LONG']
-    # Jun 19: Bounce-Long sleeve — oversold-washout bounce longs (entry_strategy=="BOUNCE_LONG").
-    # Same visibility rule as bull-long; split out for the dedicated Bounce-Long Trade Log below.
-    _bounce_long_orders = [o for o in all_orders if (getattr(o, 'entry_strategy', None) or '') == 'BOUNCE_LONG']
-
     # Amendment #7 (Apr 18): also fetch SIGNAL_EXPIRED rows for Entry Type Performance.
     # These are aborted entry attempts where the signal went stale during the maker wait.
     # They are NOT real trades (no PnL, no fill) so they are excluded from every
@@ -7361,8 +7352,6 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "leash_shadow": _compute_leash_shadow(orders),  # LEASH SHADOW (May 30, observation-only)
         "phantom_flip": await _compute_phantom_flip_performance(db, trading_engine.is_paper_mode),  # PHANTOM FLIP (Jun 13, observation-only)
         "flip_trades": _compute_flip_trades(_flip_orders),  # FLIP TRADE LOG (Jun 14 — merged scorecard; replaced flip_entry)
-        "bull_long_trades": _compute_bull_long_trades(_bull_long_orders),  # BULL-LONG TRADE LOG (Jun 18 — build-side long sleeve)
-        "bounce_long_trades": _compute_bounce_long_trades(_bounce_long_orders),  # BOUNCE-LONG TRADE LOG (Jun 19 — oversold-washout bounce sleeve)
         "runner_trail_perf": _compute_runner_trail_performance(orders),  # RUNNER TRAIL (Jun 1)
         "liquidity_sizing": _compute_liquidity_sizing(orders),  # LIQUIDITY SIZING (Jun 2, observation-only)
         # Fast-exit counterfactual grid (May 13 — Option A analytics).
@@ -9225,10 +9214,10 @@ async def _compute_phantom_flip_performance(db, is_paper):
         # fade tracker rows / "All phantom flips" aggregate / fan-curve / leftover test. They are
         # a different mechanism (same-direction, not a fade) and route ONLY into the Source×Regime
         # cross-tab below (which already buckets by direction — LONG = bull candidate).
-        # Jun 18: also split off BLOCK:* virtual-longs (the Bull-Long Curve build-side phantoms,
-        # mode='PASS' same-direction longs) — like PASS:* they are NOT fades, so they must not
-        # pollute the fade tracker rows / aggregate / fan-curve / leftover test. They route into
-        # the bull_long_curve below (and the Source×Regime cross-tab, which buckets by direction).
+        # Jun 18: also split off BLOCK:* / PASS:* virtual same-direction longs — they are NOT fades,
+        # so they must not pollute the fade tracker rows / aggregate / fan-curve / leftover test.
+        # (The Bull-Long Curve that consumed them was removed Jun 26; the exclusion stays so the
+        # FAN fade tracker remains clean.)
         flips = [f for f in _all_flips
                  if not (getattr(f, 'source_filter', '') or '').startswith('PASS:')
                  and not (getattr(f, 'source_filter', '') or '').startswith('BLOCK:')]
@@ -9297,15 +9286,14 @@ async def _compute_phantom_flip_performance(db, is_paper):
     #    cross mirror). Aligned/counter sub-rows carry over the one robust short-side lesson;
     #    FAN_CONTROL LONG serves as the shared long-side control.
     source_specs = [
-        ("FAN_CONTROL",         ("LONG", "SHORT"), True),
-        ("FAN_RATIO_GATE",      ("LONG",),         True),
+        # Jun 26: FAN_CONTROL + FAN_RATIO_GATE removed from this phantom table — both are LIVE now
+        # (real fade data in the Flip Trade Log / FAN-Ratio Curve), so the fade-the-block phantom is
+        # redundant. Pair RSI >65 + LONG_UNMATCHED_ONLY removed — those sleeves were eliminated.
         ("PAIR_ADX_MAX",        ("LONG",),         True),
         ("BTC_ADX_BLOCK_SHORT", ("LONG",),         True),
         ("PAIR_RSI_ADX_CROSS",  ("LONG",),         True),
         ("PAIR_TREND_FILTER",   ("LONG", "SHORT"), True),
         ("BTC_RSI_ADX_CROSS",   ("LONG", "SHORT"), True),
-        ("Pair RSI >65",        ("SHORT",),        False),
-        ("LONG_UNMATCHED_ONLY", ("SHORT",),        False),
     ]
     for src, _dirs, _subrows in source_specs:
         for fd in _dirs:
@@ -9512,120 +9500,8 @@ async def _compute_phantom_flip_performance(db, is_paper):
             "chop": _agg(_b['chop']), "all": _agg(_b['all']),
         })
 
-    # Jun 18 — BULL-LONG CURVE. The build-side twin of the Fan-Ratio Curve, LONG-only: pool the
-    # VIRTUAL LONGS (mode='PASS' same-direction longs, NOT fades) seeded across all fan buckets —
-    # PASS:FAN_RATIO_GATE (long passed the fan filter, low fan) + BLOCK:FAN_RATIO_GATE (long
-    # blocked by the fan gate, high fan). Bucket by fan ratio × BTC regime (6-way split) to map
-    # WHERE a build-side long pays. Flat phantom model (arm0.45/trail0.25/SL-0.70) — a RELATIVE
-    # comparator only; the LIVE bull-long sleeve uses the normal long exit (ships higher). Pulls
-    # from _all_flips (PASS:* are filtered out of `flips`). Forward-only; fail-silent.
-    bull_long_curve = []
-    bull_long_curve_total = None
-    try:
-        _bl = [r for r in _all_flips
-               if (getattr(r, 'source_filter', '') or '') in ("PASS:FAN_RATIO_GATE", "BLOCK:FAN_RATIO_GATE")
-               and getattr(r, 'flip_direction', None) == "LONG"
-               and r.entry_ema_gap_5_8 and r.entry_ema_gap_8_13]
-        def _blreg(reg):
-            r = (reg or '').upper()
-            if 'BULL' in r:
-                return 'sbull' if 'STRONG' in r else 'hbull'
-            if 'BEAR' in r:
-                return 'sbear' if 'STRONG' in r else 'hbear'
-            return 'chop'
-        # LIVE marker (Jun 18): a fan bucket trades live when its low edge is inside the current
-        # bull_long_fan_max gate (config-driven, auto-updates on widen — mirrors the DZ marker).
-        # The sleeve ALSO requires regime ∈ bull_long_regimes (the green H.BULL column).
-        _bl_th = config.trading_config.thresholds
-        _bl_fan_max = float(getattr(_bl_th, 'bull_long_fan_max', 0.85) or 0.0)
-        _bl_fan_min = float(getattr(_bl_th, 'bull_long_fan_min', 0.0) or 0.0)
-        for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
-            _b = [r for r in _bl if _lo <= (r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13) < _hi]
-            if not _b:
-                continue
-            _by = {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': []}
-            for r in _b:
-                _by[_blreg(getattr(r, 'entry_btc_regime', None))].append(r)
-            bull_long_curve.append({
-                "bucket": f"{_lo:.2f}-{_hi:.2f}",
-                "live": _bull_long_fan_live(_lo, _hi, _bl_th),
-                "all": _mini(_b),
-                "sbull": _mini(_by['sbull']), "hbull": _mini(_by['hbull']),
-                "sbear": _mini(_by['sbear']), "hbear": _mini(_by['hbear']),
-                "chop": _mini(_by['chop']),
-            })
-        # TOTALS footer row (Jun 18) — aggregate ALL virtual longs per regime column across every
-        # fan bucket, so each column has its summatory N/WR/avg at the bottom.
-        if bull_long_curve:
-            _tby = {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': []}
-            for r in _bl:
-                _tby[_blreg(getattr(r, 'entry_btc_regime', None))].append(r)
-            bull_long_curve_total = {
-                "all": _mini(_bl),
-                "sbull": _mini(_tby['sbull']), "hbull": _mini(_tby['hbull']),
-                "sbear": _mini(_tby['sbear']), "hbear": _mini(_tby['hbear']),
-                "chop": _mini(_tby['chop']),
-            }
-    except Exception:
-        bull_long_curve = []
-        bull_long_curve_total = None
-
-    # Jun 19 — PAIR_RSI_OB × RSI / pADX bucket tables. The overbought-fade short's 2nd variables:
-    # RSI (how overbought = reversion fuel) and pADX (trend strength fighting the fade). LIVE
-    # (entry_strategy FLIP:PAIR_RSI_OB) is sparse; the phantom "Pair RSI >65" SHORT scoped to the
-    # live gate's regime (STRONG_BULL) is the high-fidelity proxy — PAIR_RSI_OB shares the flat flip
-    # exit the phantom models, so the only haircut is fees/slippage. Each bucket: live {n,wr,avg%,$1×}
-    # + phantom {n,wr,avg%} (S.BULL). Forward-only observation; never ship off the live N.
-    pair_rsi_ob_buckets = {"rsi": [], "adx": [], "adx45_rsi": []}
-    try:
-        _ob_live = (await db.execute(select(Order).where(and_(
-            Order.is_paper == is_paper, Order.status == "CLOSED",
-            Order.entry_strategy == "FLIP:PAIR_RSI_OB", Order.pnl_percentage.isnot(None))))).scalars().all()
-        _ob_ph = [f for f in flips if (getattr(f, 'source_filter', '') or '') == 'Pair RSI >65'
-                  and (getattr(f, 'flip_direction', '') or '') == 'SHORT'
-                  and (getattr(f, 'entry_btc_regime', '') or '').upper() == 'STRONG_BULL']
-        def _obl(rs):
-            n = len(rs)
-            if not n:
-                return None
-            w = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
-            usd = sum((r.pnl or 0) / max((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0), 1e-9) for r in rs)
-            return {"n": n, "wr": round(100.0 * w / n, 1), "avg_pct": round(sum((r.pnl_percentage or 0) for r in rs) / n, 3), "usd": round(usd, 2)}
-        def _obp(rs):
-            n = len(rs)
-            if not n:
-                return None
-            w = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
-            return {"n": n, "wr": round(100.0 * w / n, 1), "avg_pct": round(sum((r.pnl_pct or 0) for r in rs) / n, 3)}
-        for _lo, _hi, _lbl in [(65, 70, '65-70'), (70, 75, '70-75'), (75, 80, '75-80'), (80, 85, '80-85'), (85, 90, '85-90'), (90, 100, '90-100')]:
-            _lv = [o for o in _ob_live if o.entry_rsi is not None and _lo <= o.entry_rsi < _hi]
-            _ph = [f for f in _ob_ph if f.entry_rsi is not None and _lo <= f.entry_rsi < _hi]
-            pair_rsi_ob_buckets["rsi"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
-        # Match the "Performance by Entry ADX" bins (main.py ~3648) for cross-table consistency,
-        # + a <15 catch-all (low ADX = ranging = the fade's best zone; the normal table omits it).
-        # Jun 20: 33+ split into 33-36/36-40/40-45/45+ — the 33+ cell is the live winner (shipped @20×),
-        # so resolve where above 33 it actually pays vs where the ADX floor (33) sits.
-        for _lo, _hi, _lbl in [(0, 15, '<15'), (15, 18, '15-18'), (18, 22, '18-22'), (22, 25, '22-25'), (25, 28, '25-28'), (28, 30, '28-30'), (30, 33, '30-33'), (33, 36, '33-36'), (36, 40, '36-40'), (40, 45, '40-45'), (45, 99, '45+')]:
-            _lv = [o for o in _ob_live if o.entry_adx is not None and _lo <= o.entry_adx < _hi]
-            _ph = [f for f in _ob_ph if f.entry_adx is not None and _lo <= f.entry_adx < _hi]
-            pair_rsi_ob_buckets["adx"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
-        # Jun 21 — 45+ ADX cohort × RSI cross-bucket (floor RAISED 40→45, promoted 1×→20× same day): the
-        # 40-45 band was a 17/47%WR/−$605 loser, 45+ = 17/82%WR/+$347 — so the live floor moved to 45 and
-        # this table now mirrors the live gate. Split the 45+ cohort by entry RSI to check the +$ is broad,
-        # not 1-2 cells (anti-overfit). Same LIVE (de-muxed 1×) + S.BULL phantom split.
-        _lv45 = [o for o in _ob_live if o.entry_adx is not None and o.entry_adx >= 45]
-        _ph45 = [f for f in _ob_ph if f.entry_adx is not None and f.entry_adx >= 45]
-        for _lo, _hi, _lbl in [(65, 70, '65-70'), (70, 75, '70-75'), (75, 80, '75-80'), (80, 85, '80-85'), (85, 100, '85-100')]:
-            _lv = [o for o in _lv45 if o.entry_rsi is not None and _lo <= o.entry_rsi < _hi]
-            _ph = [f for f in _ph45 if f.entry_rsi is not None and _lo <= f.entry_rsi < _hi]
-            pair_rsi_ob_buckets["adx45_rsi"].append({"bucket": _lbl, "live": _obl(_lv), "phantom": _obp(_ph)})
-    except Exception:
-        pair_rsi_ob_buckets = {"rsi": [], "adx": [], "adx45_rsi": []}
-
     return {"rows": rows, "total": total, "fan_curve": fan_curve,
-            "leftover_filter_test": leftover_filter_test, "source_regime_xtab": source_regime_xtab,
-            "bull_long_curve": bull_long_curve, "bull_long_curve_total": bull_long_curve_total,
-            "pair_rsi_ob_buckets": pair_rsi_ob_buckets}
+            "leftover_filter_test": leftover_filter_test, "source_regime_xtab": source_regime_xtab}
 
 
 def _compute_flip_trades(flip_orders):
@@ -9750,230 +9626,6 @@ def _compute_flip_trades(flip_orders):
     return {"rows": rows, "overall": overall, "regime_xtab": regime_xtab}
 
 
-def _compute_bounce_long_trades(bounce_long_orders):
-    """Bounce-Long Trade Log (Jun 19) — live scorecard for the oversold-WASHOUT bounce sleeve
-    (entry_strategy=="BOUNCE_LONG"): a real LONG opened when a SHORT is blocked by BTC_RSI_ADX_CROSS
-    in a washout cell, run on the NORMAL long exit stack. Same shape as the Bull-Long Trade Log
-    (N / Pairs / Top% / WR% / Avg% / Total$ / Peak% / SL% / Size× / Lev× / Δ$-1× / Mult) + a
-    ×BTC-REGIME breakdown + a BUILDING verdict. % is leverage-invariant; $ de-muxed to 1× in regime."""
-    from collections import Counter
-    closed = [o for o in bounce_long_orders if o.status == "CLOSED" and o.pnl_percentage is not None]
-    rows = []
-    if closed:
-        rs = closed
-        n = len(rs)
-        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
-        tot = sum((r.pnl_percentage or 0) for r in rs)
-        usd = sum((r.pnl or 0) for r in rs)
-        peak = sum((r.peak_pnl or 0) for r in rs) / n
-        sl = sum(1 for r in rs if ("STOP_LOSS" in (r.close_reason or "")))
-        pc = Counter((r.pair or '?') for r in rs)
-        top_pair, top_n = pc.most_common(1)[0]
-        size_mult = Counter(round(r.cell_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
-        lev_mult = Counter(round(r.cell_lev_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
-        rows.append({
-            "trigger": "BOUNCE_LONG", "direction": "LONG", "n": n,
-            "wr": round(100.0 * wins / n, 1), "avg_pct": round(tot / n, 3),
-            "total_pct": round(tot, 2), "total_usd": round(usd, 2),
-            "peak_pct": round(peak, 3), "sl_rate": round(100.0 * sl / n, 0),
-            "distinct_pairs": len(pc), "top_pair": top_pair, "top_pair_share": round(100.0 * top_n / n, 0),
-            "size_mult": size_mult, "lev_mult": lev_mult, "eff_mult": round(size_mult * lev_mult, 2),
-            "delta_usd": "—", "mult_verdict": "—",
-        })
-    n = len(closed)
-    if n == 0:
-        overall = {"n": 0, "verdict": "⏳ no bounce-longs yet", "wr": 0, "avg_pct": 0, "total_usd": 0}
-    else:
-        w = sum(1 for o in closed if (o.pnl_percentage or 0) > 0)
-        t = sum((o.pnl_percentage or 0) for o in closed)
-        u = sum((o.pnl or 0) for o in closed)
-        wr = round(100.0 * w / n, 1)
-        avg = round(t / n, 3)
-        if n < 15:
-            ov = f"⏳ BUILDING {n}/15"
-        elif wr >= 70 and avg > 0.05:
-            ov = "★ PAYING"
-        else:
-            ov = "✗ LOSING — review"
-        overall = {"n": n, "verdict": ov, "wr": wr, "avg_pct": avg, "total_usd": round(u, 2)}
-
-    def _rb(reg):
-        r = (reg or '').upper()
-        if 'BULL' in r:
-            return 'sbull' if 'STRONG' in r else 'hbull'
-        if 'BEAR' in r:
-            return 'sbear' if 'STRONG' in r else 'hbear'
-        return 'chop'
-
-    def _agg_rx(rs):
-        m = len(rs)
-        if m == 0:
-            return None
-        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
-        tot = sum((r.pnl_percentage or 0) for r in rs)
-        usd = sum((r.pnl or 0) / max((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0), 1e-9) for r in rs)
-        return {"n": m, "wr": round(100.0 * wins / m, 1), "avg_pct": round(tot / m, 3), "usd": round(usd, 2)}
-    slot = {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': [], 'all': []}
-    for o in closed:
-        if not o.entry_btc_regime:
-            continue
-        slot[_rb(o.entry_btc_regime)].append(o)
-        slot['all'].append(o)
-    regime_row = {
-        "sbull": _agg_rx(slot['sbull']), "hbull": _agg_rx(slot['hbull']),
-        "sbear": _agg_rx(slot['sbear']), "hbear": _agg_rx(slot['hbear']),
-        "chop": _agg_rx(slot['chop']), "all": _agg_rx(slot['all']),
-    }
-    return {"rows": rows, "overall": overall, "regime_row": regime_row}
-
-
-def _bull_long_fan_live(lo, hi, th):
-    """Regime-aware LIVE marker for the Bull-Long fan-bucket tables (Jun 24).
-    A fan bucket [lo,hi) trades live if it overlaps the fan window of ANY allowed
-    bull_long regime. Per-regime windows (bull_long_fan_by_regime "REGIME:min-max,...")
-    OVERRIDE the global bull_long_fan_min/max; an allowed regime NOT in the map uses the
-    global; empty map → global only. Mirrors the engine gate in _maybe_open_bull_long so the
-    report ✓ reflects what actually fires (not just the now-inert global fan_max)."""
-    try:
-        g_min = float(getattr(th, 'bull_long_fan_min', 0.0) or 0.0)
-        g_max = float(getattr(th, 'bull_long_fan_max', 0.0) or 0.0)
-        allowed = [r.strip().upper() for r in (getattr(th, 'bull_long_regimes', '') or '').split(',') if r.strip()]
-        by = {}
-        for tok in (getattr(th, 'bull_long_fan_by_regime', '') or '').split(','):
-            tok = tok.strip()
-            if not tok or ':' not in tok:
-                continue
-            rk, _, rv = tok.partition(':')
-            try:
-                a, _, b = rv.strip().partition('-')
-                by[rk.strip().upper()] = (float(a), float(b))
-            except Exception:
-                pass
-        windows = [by.get(r, (g_min, g_max)) for r in allowed] if allowed else [(g_min, g_max)]
-        for (w_min, w_max) in windows:
-            if w_max > 0 and lo < w_max and (w_min <= 0 or hi > w_min):
-                return True
-        return False
-    except Exception:
-        return False
-
-
-def _compute_bull_long_trades(bull_long_orders):
-    """Bull-Long Trade Log (Jun 18) — live scorecard for the build-side LONG sleeve
-    (entry_strategy=="BULL_LONG"): a real momentum long opened when a long PASSES the fan
-    gate in an allowed bull regime, run on the NORMAL long exit stack (NOT a fade). Mirrors
-    the Flip Trade Log shape (N / Pairs / Top% / WR% / Avg% / Total$ / Peak% / SL% / Size× /
-    Lev× / Δ$-vs-1× / Mult) plus a ×BTC-REGIME breakdown and a BUILDING verdict. % is the
-    leverage-invariant metric; $ is de-muxed to 1× in the de-multiplied views."""
-    from collections import Counter
-    closed = [o for o in bull_long_orders if o.status == "CLOSED" and o.pnl_percentage is not None]
-    rows = []
-    if closed:
-        rs = closed
-        n = len(rs)
-        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
-        tot = sum((r.pnl_percentage or 0) for r in rs)
-        usd = sum((r.pnl or 0) for r in rs)
-        peak = sum((r.peak_pnl or 0) for r in rs) / n
-        sl = sum(1 for r in rs if ("STOP_LOSS" in (r.close_reason or "")))
-        pc = Counter((r.pair or '?') for r in rs)
-        top_pair, top_n = pc.most_common(1)[0]
-        wr = round(100.0 * wins / n, 1)
-        avg = round(tot / n, 3)
-        size_mult = Counter(round(r.cell_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
-        lev_mult = Counter(round(r.cell_lev_multiplier or 1.0, 2) for r in rs).most_common(1)[0][0]
-        eff = round(size_mult * lev_mult, 2)
-        delta_usd = round(sum((r.pnl or 0) * (1 - 1.0 / ((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0)))
-                              for r in rs if (r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0) > 0), 2)
-        if eff <= 1.0:
-            mult_verdict = "—"                              # no multiplier applied (default 1×)
-        elif usd > 0:
-            mult_verdict = "★ working"
-        else:
-            mult_verdict = "✗ harmful → revert 1×"
-        rows.append({
-            "trigger": "BULL_LONG", "direction": "LONG", "n": n,
-            "wr": wr, "avg_pct": avg, "total_pct": round(tot, 2), "total_usd": round(usd, 2),
-            "peak_pct": round(peak, 3), "sl_rate": round(100.0 * sl / n, 0),
-            "distinct_pairs": len(pc), "top_pair": top_pair, "top_pair_share": round(100.0 * top_n / n, 0),
-            "size_mult": size_mult, "lev_mult": lev_mult, "eff_mult": eff,
-            "delta_usd": delta_usd, "mult_verdict": mult_verdict,
-        })
-    # Section verdict — BUILDING until N≥15 fresh bull-longs accrue.
-    n = len(closed)
-    if n == 0:
-        overall = {"n": 0, "verdict": "⏳ no bull-longs yet", "wr": 0, "avg_pct": 0, "total_usd": 0}
-    else:
-        w = sum(1 for o in closed if (o.pnl_percentage or 0) > 0)
-        t = sum((o.pnl_percentage or 0) for o in closed)
-        u = sum((o.pnl or 0) for o in closed)
-        wr = round(100.0 * w / n, 1)
-        avg = round(t / n, 3)
-        if n < 15:
-            ov = f"⏳ BUILDING {n}/15"
-        elif wr >= 55 and avg > 0.05:
-            ov = "★ PAYING"
-        else:
-            ov = "✗ LOSING — review"
-        overall = {"n": n, "verdict": ov, "wr": wr, "avg_pct": avg, "total_usd": round(u, 2)}
-    # ×BTC-REGIME row — N / WR / avg% / $ de-muxed to 1× per the 6-way regime split.
-    def _rb(reg):
-        r = (reg or '').upper()
-        if 'BULL' in r:
-            return 'sbull' if 'STRONG' in r else 'hbull'
-        if 'BEAR' in r:
-            return 'sbear' if 'STRONG' in r else 'hbear'
-        return 'chop'
-    def _agg_rx(rs):
-        m = len(rs)
-        if m == 0:
-            return None
-        wins = sum(1 for r in rs if (r.pnl_percentage or 0) > 0)
-        tot = sum((r.pnl_percentage or 0) for r in rs)
-        usd = sum((r.pnl or 0) / max((r.cell_multiplier or 1.0) * (r.cell_lev_multiplier or 1.0), 1e-9) for r in rs)
-        return {"n": m, "wr": round(100.0 * wins / m, 1), "avg_pct": round(tot / m, 3), "usd": round(usd, 2)}
-    slot = {'sbull': [], 'hbull': [], 'sbear': [], 'hbear': [], 'chop': [], 'all': []}
-    for o in closed:
-        if not o.entry_btc_regime:
-            continue
-        slot[_rb(o.entry_btc_regime)].append(o)
-        slot['all'].append(o)
-    regime_row = {
-        "sbull": _agg_rx(slot['sbull']), "hbull": _agg_rx(slot['hbull']),
-        "sbear": _agg_rx(slot['sbear']), "hbear": _agg_rx(slot['hbear']),
-        "chop": _agg_rx(slot['chop']), "all": _agg_rx(slot['all']),
-    }
-    # × FAN-BUCKET rows (Jun 18) — the LIVE realized bull-longs split by entry fan ratio. This is
-    # the REAL decision surface for bull_long_fan_max (the phantom Bull-Long Curve is the proxy).
-    # N / WR / avg% / $ de-muxed-1× per fan bucket; same buckets as the curve so live ↔ phantom line
-    # up. LIVE ✓ = bucket inside the current fan_max gate (config-driven, mirrors the curve marker).
-    try:
-        _bl_fan_max = float(getattr(config.trading_config.thresholds, 'bull_long_fan_max', 5.0) or 0.0)
-        _bl_fan_min = float(getattr(config.trading_config.thresholds, 'bull_long_fan_min', 0.0) or 0.0)
-    except Exception:
-        _bl_fan_max = 0.0
-        _bl_fan_min = 0.0
-    fan_rows = []
-    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 99.0)]:
-        _fb = []
-        for o in closed:
-            _g813 = abs(o.entry_ema_gap_8_13 or 0)
-            if _g813 <= 1e-9:
-                continue
-            _fan = abs(o.entry_ema_gap_5_8 or 0) / _g813
-            if _lo <= _fan < _hi:
-                _fb.append(o)
-        if _fb:
-            _a = _agg_rx(_fb)
-            # Per-regime entry-count split within the bucket (Jun 22) — how many S.BULL / H.BULL /
-            # other (CHOP+bear; dropped from the live sleeve 06-22). _sb+_hb+_oth == n (reconciles).
-            _sb = sum(1 for o in _fb if _rb(o.entry_btc_regime) == 'sbull')
-            _hb = sum(1 for o in _fb if _rb(o.entry_btc_regime) == 'hbull')
-            _oth = len(_fb) - _sb - _hb
-            fan_rows.append({"bucket": f"{_lo:.2f}-{_hi:.2f}", "live": _bull_long_fan_live(_lo, _hi, config.trading_config.thresholds), "sbull_n": _sb, "hbull_n": _hb, "other_n": _oth, **(_a or {})})
-    return {"rows": rows, "overall": overall, "regime_row": regime_row, "fan_rows": fan_rows}
-
-
 def _compute_leash_shadow(orders):
     """Leash Shadow Tracker report. Compares virtual trailing leashes (tight/wide/
     tierA/tierB) vs the actual exit on the runner-profile cohort, sliced by
@@ -9989,10 +9641,7 @@ def _compute_leash_shadow(orders):
     # pullback-rerun monster? / strpk_signed=ride the full move to the EMA5 cross.
     LEASHES = [
         ('actual', None, None, None),
-        ('tight', 'shadow_tight_pnl', 'shadow_tight_reason', 'shadow_tight_min'),  # 0.25 flat — sanity vs live exit chain
-        ('wide', 'shadow_wide_pnl', 'shadow_wide_reason', 'shadow_wide_min'),      # 0.60 flat
-        ('tierA', 'shadow_tierA_pnl', 'shadow_tierA_reason', 'shadow_tierA_min'),  # 0.25->0.80 after +1.0
-        ('tierB', 'shadow_tierB_pnl', 'shadow_tierB_reason', 'shadow_tierB_min'),  # 0.30->1.00 after +1.0
+        # Jun 26: removed tight/wide/tierA/tierB (flat & tiered leashes) — never used live.
         ('strpk', 'shadow_strpk_pnl', 'shadow_strpk_reason', 'shadow_strpk_min'),  # stretch-trail K=0.5
         ('strpk03', 'shadow_strpk03_pnl', 'shadow_strpk03_reason', 'shadow_strpk03_min'),  # K=0.3 (loosest stretch-trail)
         ('stren', 'shadow_stren_pnl', 'shadow_stren_reason', 'shadow_stren_min'),  # exit when stretch collapses to entry level
@@ -10110,8 +9759,6 @@ def _compute_leash_shadow(orders):
                 verdict = 'baseline'
             elif no_data:
                 verdict = '⏳ no data'
-            elif name == 'tight':
-                verdict = '✓ sim valid' if abs(delta) <= max(0.5, 0.1 * n) else '⚠ sim off'
             elif delta > 0.5 and clean >= 2 * max(trap, 1):
                 verdict = '★ helps'  # now requires IN-TRADE edge, not post-exit fantasy
             elif delta < -0.5:

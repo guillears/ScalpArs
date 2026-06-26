@@ -1445,3 +1445,34 @@ All three are staged together this commit. py+json AST clean.
 - Armed LONG runners now exit on the bare ATR-floor (peak − 0.5×ATR), no +be_lock_pct clamp; hard SL still backstops. **SHORT ratchet `runner_trail_short_be_ratchet_enabled` left ON (proven).** `runner_trail_enabled` itself stays ON; only the LONG ratchet clamp is removed.
 
 **Not committed/pushed at write time** (awaiting explicit operator authorization — bundled with the still-staged flip-short quality floor). trading_config.json included in the push set per standing rule.
+
+---
+
+## 2026-06-25 — WATCHLIST add: FAN flip-SHORT quality-score≥3 multiplier candidate (sleeve-scoped)
+
+**Trigger:** while reviewing the last-5-batch (06-20→06-25) current-stack survivor set (N=67/65.7%WR/+$1,725), qs=3 looked like a standout cell (+0.307%/74%WR). Operator asked whether the qs edge is in MOMENTUM, FAN flip, or both before watchlisting it as a multiplier.
+
+**Finding — it's a FAN-flip edge, NOT momentum.** Last-5-batch deduped, by sleeve × quality score:
+- **FAN flip (monotonic):** qs1 26/54%/−0.197% · qs2 37/51%/−0.073% · qs3 24/67%/+0.118% · qs4 10/80%/+0.247%. **qs≥3 = N=35/71.4%/+0.156%/+$524** · qs≤2 = N=69/53.6%/−0.101%/−$939. Flip-SHORT subset of qs≥3 = N=33/72.7%/+0.200%/+$627 (flip-LONG only N=2).
+- **MOMENTUM (no qs edge):** qs2 7/71%/+0.254% (its BEST) · qs3 7/57%/+0.175% · qs4 4/50%/−0.023%. Non-monotonic, qs≥3 (+0.076%) < qs≤2 (+0.254%). Quality score is NOT a momentum separator.
+
+**Verdict:** scope the multiplier candidate to **FAN flip-SHORT qs≥3 only**. In-sample it already clears the locked Pattern-W gate (N=35≥30, WR 71.4%≥70%, avg +0.156%≥+0.10%, Total$>0) — but it's the SAME data `flip_short_quality_min=2` was fit on; a 30–50% haircut drops +0.156% toward/under +0.10%, so NOT shipped. Complements the floor (block ≤1 / multiply ≥3 = caps-for-losers + multipliers-for-winners on one dial).
+
+**PROMOTE GATE:** N≥30 FORWARD (out-of-sample) FAN flip-short qs≥3 holding WR≥70% AND avg≥+0.10% → ship 1.5× (staging), step 2× after +50; BE-compat check before 2×. Watchlist line added to CURRENT_STATE. No config/code change. Cross-check overlap vs the EMA20-slope 0.20-0.30 candidate.
+
+---
+
+## 2026-06-26 — WATCHLIST add (×2, FAN flip-SHORT): QS=2 doubt-zone + H.BULL no-data capture
+
+Both scoped to FAN flip-gate trades (entry_strategy=FLIP:FAN_RATIO_GATE), survivors of the live qs≥1 floor.
+
+**1) QS=2 doubt-zone (possible floor raise 1→2... actually →3).** Distribution of QS≥2 FAN flips:
+- Last-5-batch: qs2 N=37/51.4%/−0.073%/−$377 · qs3 N=24/66.7%/+0.118%/+$223 · qs4 N=10/80%/+0.247%/+$280 (clean monotonic; edge only qs≥3).
+- Full-pool (all snapshots): qs2 N=99/53.5%/−0.112%/−$1,424 · qs3 N=57/61.4%/−0.030%/−$229 · qs4 N=16/68.8%/+0.367%/+$617. qs=2 loss DIFFUSE (44 pairs, top-8=57%, worst 11%) → cohort weakness, not blacklist.
+- **Not blocked:** qs=2 wins >50% ("high-WR net-losing" anti-pattern) and FAILS the locked Pattern-C gate (WR≤40% & avg≤−0.20%). It's ~58% of the surviving sleeve; qs=3 is only ~breakeven so floor→3 removes a near-neutral band, real edge is qs≥4 (small N). PROMOTE: raise flip_short_quality_min→3 only if qs=2 holds ≤45% WR AND avg≤−0.10% on N≥30 forward across ≥2 batches.
+
+**2) H.BULL FAN flip-short — no data.** Last 5 batches = ZERO H.BULL/S.BULL FAN flip-shorts (recent fires all bear/chop). Full-history H.BULL only N=5 (old). Recent regime edge: HEALTHY_BEAR N=35/63%/+0.132%/+$433 (engine), STRONG_BEAR N=24/67%/+0.088%, BEAR_EXHAUSTED N=6/33%/−0.433% (small loser). Next-batch: capture the FLIP_RATIO_GATE SHORT × H.BULL/S.BULL cells (first live bull fills); ties to the S.BULL-unblock-on-phantom watchlist.
+
+**3) 4-cohort note (not a watchlist, recorded):** last-5 QS≥2 FAN flip-SHORT — W-only N=17/88%/+0.467%/+$792 (star), C-only N=28/50%/−$376 + Both-C&W N=16/50%/−$295 (the losers), TRULY UNMATCHED N=9/67%/+0.112%/+$129 (positive → NOT a block, contra the full-pool −$124 read). If any cohort is suspect it's the C-pattern-matched fades, not unmatched.
+
+Docs only; no config/code change.

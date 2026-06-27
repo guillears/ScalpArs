@@ -375,12 +375,13 @@
                                 <th class="px-4 py-3 font-medium text-right">Current</th>
                                 <th class="px-4 py-3 font-medium text-right">Fee</th>
                                 <th class="px-4 py-3 font-medium text-right">High/Low</th>
+                                <th class="px-4 py-3 font-medium text-center" title="Entry Quality Score (0-6)">Q</th>
                                 <th class="px-4 py-3 font-medium text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody id="open-orders-table-body" class="divide-y divide-white/5">
                             <tr>
-                                <td colspan="18" class="px-4 py-8 text-center text-gray-500">No open orders</td>
+                                <td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td>
                             </tr>
                         </tbody>
                     </table>
@@ -17070,7 +17071,7 @@
                 const tbody = document.getElementById('open-orders-table-body');
                 
                 if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="17" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="19" class="px-4 py-8 text-center text-gray-500">No open orders</td></tr>';
                     return;
                 }
                 
@@ -17231,6 +17232,12 @@
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(o.current_price)}</td>
                             <td class="px-4 py-3 text-right text-yellow-400">${formatUSD(o.total_fees)}</td>
                             <td class="px-4 py-3 text-right font-mono">${formatPrice(highLow)}</td>
+                            <td class="px-4 py-3 text-center">${(() => {
+                                const qs = o.entry_quality_score;
+                                if (qs == null) return '<span class="text-gray-500">-</span>';
+                                const qColor = qs >= 4 ? 'bg-emerald-500/20 text-emerald-400' : qs >= 2 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-red-500/20 text-red-400';
+                                return `<span class="px-1.5 py-0.5 rounded text-xs font-medium ${qColor}">${qs}</span>`;
+                            })()}</td>
                             <td class="px-4 py-3 text-center">
                                 <button onclick="closeOrder(${o.id})" class="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded text-xs font-medium transition">
                                     Close

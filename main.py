@@ -1136,6 +1136,7 @@ async def get_open_orders(db: AsyncSession = Depends(get_db)):
             "total_fees": round(o.entry_fee + estimated_exit_fee, 4),
             "high_since_entry": o.high_price_since_entry,
             "low_since_entry": o.low_price_since_entry,
+            "entry_quality_score": getattr(o, 'entry_quality_score', None),  # Q column (parity with Closed Orders)
             "drop_from_peak": round(drop_from_peak, 2),
             # Display peak P&L: prefer cache (fresher than DB by up to one monitor-loop
             # interval), then enforce invariant peak >= current. Without the clamp the UI

@@ -1570,3 +1570,31 @@ Checked overlap of the two block candidates on the QS≥2 N=72 cohort. **They ov
 **TIGHT REVERT:** set `flip_long_enabled`→true if blocked flip-LONGs would have been **≥55% WR AND net-positive on N≥8 fresh** (the phantom/passthrough seed still observes the blocked flip-LONG side, so the counterfactual keeps accruing). Also revert if the disable removes a cross-batch-stable winning flip-LONG cell that emerges.
 
 **No risk to the long edge:** flip-LONGs are NOT the momentum/unmatched longs (those are the +EV engine, untouched). This only kills the FAN-flip-SHORT→LONG fade. CURRENT_STATE watchlist line flipped 🔭→✅.
+
+---
+
+## 2026-06-27 — REDUNDANCY CHECK: winner-cell 2× BE-compat retracted + qs floor→3 case weakened (both pre-filter-contaminated)
+
+**Trigger:** operator asked whether the candidates' losers are already caught by other live filters. Re-scored both against the current stack (pADX≥21 / gap≥1.0 / FAN_LOATR / stretch / regime / hi-ATR). Result: both candidates' raw pool numbers are dominated by PRE-FILTER ghost trades that no longer fire. No config/code change — analysis only; CURRENT_STATE qs=2 + winner-cell lines annotated.
+
+**① Winner cell (qs≥3×bear≥70×range60-90) — BE-compat objection RETRACTED.** The 2 cell losers (HUSDT −$150 / HMSTR −$100) that "gapped straight to SL, peak 0.00/0.018" both have pADX < 21 (17.4 / 15.4) and are dated 06-19 & 06-22 — BEFORE the pADX≥21 floor shipped (~06-23). Under the current stack they're blocked → don't fire. Re-scoped (pADX≥21): cell = **N=6, 6W/0L, 100%WR, +0.686%, +$433 — zero losers.** So the prior "BE-compat FAILS (0/2 armed) → don't 2×" is retracted: there are no un-armed gap losers left to amplify, and the tracked 1× cell only captures pADX≥21 members forward (auto-clean). REMAINING 2× blocker is purely forward-N (6 in-sample + 1 forward INJ vs N≥30) AND the cell overlaps the pADX floor (floor removed 6 of the 14 winners too). Verdict unchanged (no 2× now) but the REASON shifts from tail-risk to sample-size; when N≥30 forward accrues, stage 1.5×→2× normally.
+
+**② qs floor→3 (block qs≤2) — case WEAKENED, prior "cleaner override" lean RETRACTED.** Of the 37 in-sample qs=2 flip-shorts, **20 are already blocked by a live filter** (pADX<21 ×16, gap ×5, LOATR ×5) and carry the entire −$631 of loss. The **17 that pass the live stack** (what floor→3 would net-new block) = **11W/6L, 65%WR, +$255 — POSITIVE.** So in-sample, raising the floor removes a net-positive cohort (forfeits +$925 winners to kill −$670 losers). Forward (06-26+06-27, N=6, all pass) = 2W/4L, −$366. Current-stack qs=2 = in-sample **+$255** vs forward **−$366** = contradictory, combined ~−$111/N=23 ≈ breakeven. The strong −$377/−$743 case was pre-filter contamination. ⇒ NOT shippable; keep track-only; N≥30-forward gate stands. (Earlier this session I leaned "ship floor→3 as a clean override" — RETRACTED; it would block a net-positive in-sample cohort.)
+
+**Lesson (3rd time this session):** always score a candidate on CURRENT-STACK survivors, not the raw pool — the pADX-21/gap-1.0/LOATR floors already do most of the loser-removal, so marginal cohorts are far better (winner cell) or far less bad (qs=2) than the raw deduped pool shows. Same class as the 06-16-pre-filter and 06-20-glob retractions.
+
+---
+
+## 2026-06-27 — SHIP: winner-cell multiplier 2× SIZE (flip_fan_qs_cell 1.0→2.0; operator override)
+
+**Change:** `flip_fan_qs_cell` "3:70:60-90:1.0:1.0" → **"3:70:60-90:2.0:1.0"** (trading_config.json; config.py code-default stays inert 1.0:1.0). So a FAN flip-SHORT in the winner cell (qs≥3 AND bear%≥70 AND range 60-90) now sizes at **2× INVESTMENT / 1× leverage**. Engine path = `_fan_qs_cell_match` → cell tag → open_position cell_src `FLIP:FAN_RATIO_GATE[QS≥3×BEAR≥70×RNG60-90]×2`. 2× is exactly at the inv hard cap (2.0), so not clamped.
+
+**Why 2× SIZE not 2× LEV:** doubling investment doubles notional via more margin at the SAME 20× per-position leverage → liquidation distance unchanged (~−4.7%). Doubling LEVERAGE → 40× → halves the liquidation distance (~−2.35%), directly worsening the gap-to-SL tail. The lev field was deliberately left at 1.0.
+
+**Evidence (current-stack):** the winner cell screened to live survivors (pADX≥21) = N=6, 6W/0L, 100%WR, +0.69%, +$433 — **zero losers**. The prior "BE-compat FAILS (0/2 armed) → don't 2×" was RETRACTED 2026-06-27: the 2 gap-losers (HUSDT/HMSTR, peak 0.00/0.018) are PRE-pADX-floor ghosts (dated 06-19/06-22, blocked by the live pADX≥21 floor) → no un-armed gap losers left to amplify. Raw in-sample cell = N=14/86%/+$671; out-of-sample 06-26 = INJ +$36.
+
+**⚠ DISCIPLINE-OVERRIDE acknowledged:** forward-N=1 (one out-of-sample fire) is far below the locked W→MULT gate (N≥30 forward + WR≥70% + avg≥+0.10%), and this skips the mandated 1.5×-first Phase-3 staging (jumped straight to 2×). My analyst recommendation was to WAIT for forward-N; operator chose to ship now on the BE-clean current-stack cell. Justified by: cell is gap-loser-free under the live stack, 2× is SIZE-only (no leverage/liquidation change), it's at the hard cap, and it carries a tighter-than-standard revert.
+
+**TIGHT REVERT (override-grade):** set `flip_fan_qs_cell` size→1.0 if the 2× cell runs **WR<70% OR avg≤+0.05% OR Total$ negative on N≥5 fresh fires**, OR **INSTANT** revert if any single 2× cell trade gaps the SL past ~−1.0%. Track its row in 💰 Multiplier Cell Performance.
+
+**Scope:** only the qs≥3×bear≥70×range60-90 FAN flip-SHORT cell is 2×; all other flip-shorts stay 1×; flip-LONGs are disabled; momentum/unmatched longs untouched. CURRENT_STATE winner-cell line flipped to ✅ SHIPPED 2×.

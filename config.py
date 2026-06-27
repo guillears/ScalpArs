@@ -591,6 +591,16 @@ class SignalThresholds(BaseModel):
     # 99 = REGIME-ONLY block; lower it later only if a long ADXΔ cell proves out cross-batch.
     flip_long_regime_block_adxd_max: float = 99.0   # block flip-LONG when entry ADXΔ < this (99 = regime-only, no ADXΔ cut)
     flip_long_regime_block_regimes: str = "STRONG_BEAR,HEALTHY_BEAR,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-LONGS in; empty = filter OFF
+    # Jun 27: HARD-DISABLE the flip-LONG side entirely (fade blocked LONGs→SHORT only; never fade a
+    # blocked SHORT→LONG). Flip-LONG is a net-negative micro-sleeve: full-history N=8/5W-3L/62%WR but
+    # net −$297 (1:8 R:R — wins +$8..27, the 3 losers VELVET/HYPE/DYDX gap to −0.7/−1.2 SL). The regime
+    # block removes the H.BEAR/CHOP losers but the residual is H.BULL countertrend-longs (long an
+    # oversold/bottom-of-range pair that keeps falling): fresh DYDX −$115 (06-24) + XPL −$164 (06-27,
+    # RSI 32 / range 6%) = 0/2 H.BULL, −$279. ⚠ DISCIPLINE-OVERRIDE: N=2 fresh < the N≥10 gate, shipped
+    # on a clean mechanism. Default True (code-safe); json sets False (operator opted in). Counter
+    # FLIP_LONG_DISABLED. TIGHT REVERT: set True if blocked flip-LONGs would be ≥55% WR AND net-positive
+    # on N≥8 fresh (phantom/passthrough still observes the blocked side). → DECISION_LOG/CURRENT_STATE 2026-06-27.
+    flip_long_enabled: bool = True  # False = disable all flip-LONGs (short-fades only)
     # Jun 17 — fan-SPIKE block (ALL flip sources, not just FAN). Block the flip when the pair's
     # entry fan ratio (|EMA5-8 gap| / |EMA8-13 gap|) >= this — a violently-accelerating parabolic
     # fan that the fade gets run over by (never arms, straight to SL). Cross-batch N=3, 0% WR,

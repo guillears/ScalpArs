@@ -6049,6 +6049,7 @@
                                     <input type="number" id="config-flip-short-btc30-rise" step="0.5" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-emerald-200 text-right">
                                     <span class="text-gray-500 text-[10px]">(0 = block any rise · 99 = off)</span>
                                 </div>
+                                <label class="col-span-2 flex items-center justify-between gap-2 pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 27: HARD-DISABLE all flip-LONGs (fade blocked LONGs→SHORT only; never fade a blocked SHORT→LONG). Flip-LONG = net-negative micro-sleeve (N=8/−$297, 1:8 R:R; fresh H.BULL countertrend losers DYDX −$115 + XPL −$164 = 0/2). When OFF, no flip-LONG ever opens (counter FLIP_LONG_DISABLED). Discipline-override below the N≥10 gate."><span class="text-cyan-300">Flip-LONG enabled <span class="text-gray-600">(off = short-fades only)</span></span><input type="checkbox" id="config-flip-long-enabled" class="sr-only peer"><div class="relative w-9 h-5 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div></label>
                                 <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 17: MIRROR of the short gate for flip-LONGS. A flip-LONG fades a blocked SHORT → goes LONG; block it when BTC regime is in the list. Strong-bear flip-LONGS = long-into-the-trend (AAVE/TAO this batch: 2/0%WR/-$220, straight to SL). Observed long losers were ADXΔ-agnostic → ADXΔ default 99 = regime-only block. Empty regimes = filter OFF. Bull regimes excluded — that's where the flip-long would be with the trend.">
                                     <span class="text-cyan-300 whitespace-nowrap">Long flip: block ADXΔ &lt;</span>
                                     <input type="number" id="config-flip-long-regime-adxd-max" step="0.1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-cyan-200 text-right">
@@ -18206,6 +18207,8 @@
                 _setVal('config-flip-short-btc30-rise', config.thresholds.flip_short_btc30_rise_block_min);
                 _setVal('config-flip-long-regime-adxd-max', config.thresholds.flip_long_regime_block_adxd_max);
                 _setVal('config-flip-long-regime-regimes', config.thresholds.flip_long_regime_block_regimes || '');
+                const _flEn = document.getElementById('config-flip-long-enabled');
+                if (_flEn) _flEn.checked = (config.thresholds.flip_long_enabled !== false);
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
                 _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
                 _setVal('config-flip-short-quality-min', config.thresholds.flip_short_quality_min);
@@ -19479,6 +19482,7 @@
                     flip_short_btc30_rise_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-btc30-rise') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_long_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-long-regime-adxd-max') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_long_regime_block_regimes: ((document.getElementById('config-flip-long-regime-regimes') || {}).value || '').trim(),
+                    flip_long_enabled: ((document.getElementById('config-flip-long-enabled') || {}).checked === true),
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_quality_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-quality-min') || {}).value); return isNaN(v) ? 0 : v; })(),

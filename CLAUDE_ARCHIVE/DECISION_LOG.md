@@ -1556,3 +1556,17 @@ Checked overlap of the two block candidates on the QS≥2 N=72 cohort. **They ov
 - FIX: canonical FAN-flip pool = the 5 curated reports/ files only (frozen csv above); recorded to memory (`reference_fan_flip_72pool.md`) so it can't recur. Always reconcile FAN-flip stats against the curated csv, not ad-hoc globs.
 
 **No config/code/git change. Watchlist (CURRENT_STATE) lines 84 + 86 corrected in place with retraction notes.**
+
+---
+
+## 2026-06-27 — SHIP: FAN flip-LONG DISABLED (flip_long_enabled=false; discipline-override)
+
+**Change:** new `flip_long_enabled: bool` (config.py default True / trading_config.json false). Engine: hard gate at the top of the flip-LONG path in `_flip_filters` — `if flip_dir=='LONG' and not flip_long_enabled → (True, "FLIP_LONG_DISABLED", …)`, sits ABOVE the regime block (supersedes it). Counter FLIP_LONG_DISABLED via `_record_filter_block`. D11 full (config + json + engine + UI cyan toggle `config-flip-long-enabled` + load/save). So a blocked SHORT no longer fades to LONG; only blocked LONGs fade to SHORT.
+
+**Evidence:** FAN flip-LONG is a rare, structurally net-negative micro-sleeve — full-history deduped N=8, 5W/3L (62% WR) but **net −$297** (1:8 R:R: wins +$8..27, the 3 losers VELVET −$141 / HYPE −$120 / DYDX −$115 gap to the −0.7/−1.2 SL at 20×). Mechanism: a flip-LONG goes long into a pair that was about to be SHORTed (oversold / bottom-of-range / falling) = countertrend long → SL. The live `FLIP_LONG_REGIME` block already removes the H.BEAR/CHOP losers (VELVET/HYPE), so the residual is **H.BULL countertrend-longs** which that block can't catch. Forward H.BULL flip-LONGs: **DYDX −$115 (06-24) + XPL −$164 (06-27) = 0/2, −$279**. XPL (06-27): RSI 32.3, range position 6% (rock-bottom), ADXΔ +2.21 — long into a crash, straight to −1.10% SL; it was the single biggest loser of the 06-27 batch.
+
+**⚠ DISCIPLINE-OVERRIDE acknowledged:** N=2 fresh H.BULL losers is below the watchlist's own N≥10-fresh gate. Shipped anyway — operator-directed, clean & consistent mechanism (same arm-or-die / countertrend-long signature, 0/2 fresh + 0/3 full-history H.BEAR/CHOP already handled), and the flip-LONG fires only ~1/batch so N≥10 would take many weeks. Carries a TIGHTER-than-standard revert.
+
+**TIGHT REVERT:** set `flip_long_enabled`→true if blocked flip-LONGs would have been **≥55% WR AND net-positive on N≥8 fresh** (the phantom/passthrough seed still observes the blocked flip-LONG side, so the counterfactual keeps accruing). Also revert if the disable removes a cross-batch-stable winning flip-LONG cell that emerges.
+
+**No risk to the long edge:** flip-LONGs are NOT the momentum/unmatched longs (those are the +EV engine, untouched). This only kills the FAN-flip-SHORT→LONG fade. CURRENT_STATE watchlist line flipped 🔭→✅.

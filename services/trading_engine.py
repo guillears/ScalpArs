@@ -480,6 +480,12 @@ def _flip_filters(source, ind):
         # fades a blocked SHORT -> goes LONG; in a STRONG_BEAR that's long-into-the-trend (AAVE/TAO
         # this batch: 2/0%WR/-$220, both straight to SL). UNLIKE the short gate, the observed long
         # losers were ADXΔ-AGNOSTIC (ADXΔ +1.5 — regime was the killer, not falling ADX) → default
+        # Flip-LONG HARD DISABLE (Jun 27): fade blocked LONGs→SHORT only; never fade a blocked
+        # SHORT→LONG. Flip-LONG is a net-negative micro-sleeve (N=8/−$297; fresh H.BULL countertrend
+        # losers DYDX −$115 + XPL −$164 = 0/2). Discipline-override (N=2 < N≥10 gate). Counter
+        # FLIP_LONG_DISABLED. Fail-open: default enabled. Sits ABOVE the regime block (supersedes it).
+        if ind.get('flip_dir') == 'LONG' and not getattr(th, 'flip_long_enabled', True):
+            return (True, "FLIP_LONG_DISABLED", 1.0, 1.0, None)
         # adxd_max high (99) so the gate is regime-dominant; operator can lower it to add an ADXΔ
         # cut later if a long ADXΔ cell proves out. Fail-open: empty regimes or missing regime → no block.
         _lregs = (getattr(th, 'flip_long_regime_block_regimes', '') or '').strip()

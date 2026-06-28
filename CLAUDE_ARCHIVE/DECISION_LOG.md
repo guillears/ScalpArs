@@ -1622,3 +1622,26 @@ Checked overlap of the two block candidates on the QS≥2 N=72 cohort. **They ov
 **Forward record at 2×: N=2 = INJ +$36 (06-27) / WIF −$321 (06-28) = −$285.** The 2× was a forward-N=1 discipline-override from the start; two forward fires in, it's net-negative AND tripped the tail-gap guard. Cell reverts to 1× (track-only) and re-qualifies only via the normal W→MULT path (N≥30 forward, WR≥70%, avg≥+0.10%, then 1.5×-first staging).
 
 **Scope:** only the winner-cell sizing; the C1 de-mux and universal ADXΔ block (shipped 06-28 same day) are untouched. Same-batch context: unmatched-LONG 2× took 2 DOA stop-losses (JTO −257 / PENGU −179, both peak 0.000) — the DOA watch ticks up (~3/5) but the long 2× stays (still the engine, +$1,256 batch). Logged the WIF trigger to CURRENT_STATE; cell line flipped SHIPPED→REVERTED.
+
+---
+
+## 2026-06-28 — SHIP: Momentum-short dead-tape block (`momentum_short_btc_atr_min = 0.12`) [DISCIPLINE-OVERRIDE, N=5]
+
+**Decision:** New entry filter `momentum_short_btc_atr_min` (default 0.12, live 0.12). Blocks MOMENTUM-SHORT entries when BTC ATR% < 0.12. Counter `MOMENTUM_SHORT_LOATR`. Operator-directed ("makes theoretical sense + proven in this batch, ship it").
+
+**Origin — the morning −$1,075 (06-28 07:30-11am UTC-3) investigation.** Operator pushed hard for an analytical explanation of a 6-hour −$1,057 window. Decomposition: −$500 flip-shorts / −$435 momentum-LONGs (JTO −257, PENGU −179, both DOA peak 0.000) / −$139 momentum-shorts. Key reframes en route:
+- The momentum-LONG losses have NO entry fix — every cohort they fall in (BTC-ADX-rising +$854, HEALTHY_BULL +$1,115, low-BTC-ATR longs +$736/83%WR) is net-POSITIVE. The long engine is +EV; forfeiting their cohort costs more than it saves. ~$435 of the morning is unfilterable DOA.
+- "Low BTC ATR hurts both directions" was REFUTED on the sleeve split: L MOMENTUM <0.12 = 83%WR/+$736 (best cohort); the damage is SHORT-specific.
+- The broad "block all shorts when BTC quiet (ATR<0.12 OR 5m-rise≥3)" guard was REJECTED: 47% WR coin-flip, the 5m-rise arm blocks WINNING flip-shorts (+$252), the flip 0.10→0.12 extension forfeits +$340 of winners. Not shippable.
+
+**What survived — momentum-short × BTC ATR<0.12 ONLY.** Across ALL 26 dedup momentum-shorts (5 curated reports/ batches + Downloads 06-26/27/28): the ATR<0.12 band = **N=5 / 0%WR / 100%DOA / −$638** (AAVE −242, PUMP −115, ONDO −106, NEAR −98, HYPE −77; spanning 06-27 22:12 → 06-28 10:46 dead-BTC pockets, not one batch). **ZERO winners ever killed** — every momentum-short win had ATR ≥ 0.132. On the 5 curated current-filter batches it fires 0× (no momentum-short dipped <0.132; lowest 0.132) = neutral, untested in normal vol — it only acts in genuinely dead tapes where momentum-shorts are proven 0% WR.
+
+**Why a new field, not a tweak.** The two existing BTC-ATR floors miss this band: `flip_fan_btc_atr_min`=0.10 is FLIP-only; `btc_atr_btc_adx_filter_short` (<0.10) also requires BTC ADX≥30. Momentum-shorts at ATR 0.10-0.12 with normal ADX slip past both. The flip floor was deliberately NOT extended to 0.12 — flip-shorts WIN in the 0.10-0.12 band (14W/8L, +$340 on the curated pool; they fade a popping/quiet BTC). MOMENTUM-only.
+
+**Discipline note.** N=5 << the N≥30 Pattern-C→FILTER gate, so this is a DISCIPLINE-OVERRIDE. The override is justified by STRUCTURE, not hope: the failure mode operator cares about (killing winners) is zero by construction — the ATR<0.12 band contains only DOA shorts (BTC too quiet to fall). Worst case forfeits a momentum-short in a dead tape where they win ~0%.
+
+**D11 wiring (all 6, grep-verified, py compiles, json 0.12):** ① config.py field + evidence comment ② trading_config.json 0.12 ③ engine block in normal-entry SHORT chain after `BTC_ADX_BLOCK_SHORT` (fail-open on missing btc_atr_pct) ④ UI input `config-momentum-short-btc-atr-min` under the BTC-ATR×BTC-ADX short rules ⑤ load (`_setVal`) + save (`parseFloat … || 0`) ⑥ `_record_filter_block("MOMENTUM_SHORT_LOATR", …)` counter.
+
+**This-batch proof (06-28 15:08):** momentum-short ATR<0.12 = 5/5 losers, −$638, 100% DOA, 0 winners forfeited (the whole momentum-short loss of the batch).
+
+**TIGHT REVERT (override-grade):** set `momentum_short_btc_atr_min=0` if ANY momentum-short in the ATR<0.12 band closes ≥+0.30% (first time it would kill a winner), OR if blocked-zone WR ≥40% on N≥10 fresh.

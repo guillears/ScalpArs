@@ -7519,6 +7519,22 @@ class TradingEngine:
                         pass
                     signal = "NO_TRADE"
 
+            # MOMENTUM-SHORT dead-tape block — Jun 28, 2026 (see config.py momentum_short_btc_atr_min).
+            # Momentum SHORTs reach this normal-entry path (flips bypass it via _flip_filters), so a
+            # SHORT here IS a momentum short. Block when BTC ATR% < threshold — the dead-BTC band where
+            # momentum-shorts are 0% WR / 100% DOA cross-data and ZERO winners ever fell (winners all
+            # ATR≥0.132). 0 = off. Fail-open: missing btc_atr_pct → no block.
+            if signal == "SHORT":
+                _msatr_min = float(getattr(config.trading_config.thresholds, 'momentum_short_btc_atr_min', 0.0) or 0.0)
+                if _msatr_min > 0 and btc_atr_pct is not None and btc_atr_pct < _msatr_min:
+                    logger.info(
+                        f"[MOMENTUM_SHORT_LOATR] {pair}: momentum SHORT blocked — BTC ATR "
+                        f"{btc_atr_pct:.3f} < {_msatr_min} (dead-tape DOA band)"
+                    )
+                    self._record_filter_block("MOMENTUM_SHORT_LOATR", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "MOMENTUM_SHORT_LOATR"
+                    signal = "NO_TRADE"
+
             # BTC ADX Direction check — runs independently of BTC global filter
             # (Phase 1c Option B refactor, Apr 17).  Pre-refactor this lived inside
             # the `if btc_global_enabled:` block, so turning off Macro Trend

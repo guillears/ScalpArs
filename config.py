@@ -732,6 +732,18 @@ class SignalThresholds(BaseModel):
     btc_atr_btc_adx_filter_long: str = ""
     btc_atr_btc_adx_filter_short: str = "0.0-0.10:30-999"
     btc_atr_btc_adx_filter_enabled: bool = True
+    # Jun 28, 2026 — MOMENTUM-SHORT dead-tape block (DISCIPLINE-OVERRIDE, N=5). Block momentum
+    # SHORT entries when BTC ATR% < this. The two existing ATR floors miss this band: flip_fan_btc_atr_min
+    # (0.10) is FLIP-only; btc_atr_btc_adx_filter_short (<0.10) also needs BTC ADX≥30. Momentum-shorts at
+    # ATR 0.10-0.12 with normal ADX slip past both and die: across ALL 26 dedup momentum-shorts, the
+    # ATR<0.12 band = N=5 / 0% WR / 100% DOA / -$638 (AAVE -242, PUMP -115, ONDO -106, NEAR -98, HYPE -77),
+    # spanning the 06-27 22:12→06-28 10:46 dead-BTC pockets. ZERO winners ever killed (every momentum-short
+    # win had ATR≥0.132). Asymmetric safety: the band contains only DOA shorts (BTC too quiet to fall).
+    # On the 5 curated current-filter batches it fires 0× (neutral — no momentum-short dipped <0.132), so it
+    # can only act in genuinely dead tapes. MOMENTUM-only (flip-shorts WIN in 0.10-0.12, +$340 — do NOT extend
+    # the flip floor). Counter MOMENTUM_SHORT_LOATR. 0 = off. TIGHT REVERT: →0 if ANY momentum-short in the
+    # ATR<0.12 band closes ≥+0.30% (first time it would kill a winner), OR if blocked-zone WR ≥40% on N≥10 fresh.
+    momentum_short_btc_atr_min: float = 0.12
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

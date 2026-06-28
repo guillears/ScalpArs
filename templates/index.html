@@ -6210,6 +6210,7 @@
                                 <button type="button" onclick="addBtcAtrBtcAdxRow('short')" class="mt-1 text-xs text-red-400 hover:text-red-300">+ Add Rule</button>
                             </div>
                         </div>
+                        <label class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-700/40" title="Jun 28 (DISCIPLINE-OVERRIDE, N=5): block MOMENTUM-SHORT entries when BTC ATR% < this — the dead-tape DOA band. Distinct from the rules above: flip_fan_btc_atr_min (0.10) is FLIP-only, and the <0.10 short rule above also needs BTC ADX≥30; momentum-shorts at ATR 0.10-0.12 with normal ADX slip past both and die. Across all 26 dedup momentum-shorts: ATR<0.12 = N=5/0%WR/100%DOA/-$638, ZERO winners killed (all wins ATR≥0.132). MOMENTUM-only (flip-shorts WIN here). Counter MOMENTUM_SHORT_LOATR. 0 = off. TIGHT REVERT: →0 if any momentum-short <0.12 closes ≥+0.30%, or blocked-zone WR ≥40% on N≥10 fresh."><span class="text-red-300">Momentum-short: block BTC ATR% &lt;</span><input type="number" id="config-momentum-short-btc-atr-min" step="0.01" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-red-200 text-right"></label>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">Market Breadth Filter</span>
@@ -18211,6 +18212,7 @@
                 _setVal('config-flip-fan-block-btc-rsi', config.thresholds.flip_fan_block_btc_rsi);
                 _setVal('config-flip-fan-block-btc-adx', config.thresholds.flip_fan_block_btc_adx);
                 _setVal('config-flip-fan-btc-atr-min', config.thresholds.flip_fan_btc_atr_min);
+                _setVal('config-momentum-short-btc-atr-min', config.thresholds.momentum_short_btc_atr_min);
                 _setVal('config-flip-fan-spike-max', config.thresholds.flip_fan_spike_max);
                 _setVal('config-flip-short-regime-adxd-max', config.thresholds.flip_short_regime_block_adxd_max);
                 _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
@@ -19490,6 +19492,7 @@
                     flip_fan_block_btc_rsi: parseFloat((document.getElementById('config-flip-fan-block-btc-rsi') || {}).value) || 0,
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,
                     flip_fan_btc_atr_min: parseFloat((document.getElementById('config-flip-fan-btc-atr-min') || {}).value) || 0,
+                    momentum_short_btc_atr_min: parseFloat((document.getElementById('config-momentum-short-btc-atr-min') || {}).value) || 0,
                     flip_fan_spike_max: parseFloat((document.getElementById('config-flip-fan-spike-max') || {}).value) || 0,
                     flip_short_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-regime-adxd-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),

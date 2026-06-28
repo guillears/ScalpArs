@@ -464,6 +464,18 @@ def _flip_filters(source, ind):
             _qsc = ind.get('quality_score')
             if _qsc is not None and _qsc < _qmin:
                 return (True, "FLIP_SHORT_QUALITY", 1.0, 1.0, None)
+        # Universal collapsing-pair-ADX block for flip-SHORTS (Jun 28): flip shorts BYPASS the momentum-
+        # short `Pair ADX Dir S: rising` filter, so a flip-short can fire into a pair whose ADX is
+        # COLLAPSING (ADXΔ << 0 = the trend that justified the fade is dying → no follow-through →
+        # never arms → 20× gaps the SL). Strongest flip-short loser-separator cross-batch; 06-28 BEL
+        # (STRONG_BEAR, ADXΔ −1.02) = −$195 confirms (cut blocks BEL only, 0 winners, +$195). Block
+        # SHORT when ADXΔ < min. SENTINEL −99 = OFF. Counter FLIP_SHORT_ADXD (auto-recorded by the
+        # caller). Fail-open: missing ADXΔ or min≤−99 → no block.
+        _admin = float(getattr(th, 'flip_adx_delta_min', -99.0) or -99.0)
+        if ind.get('flip_dir') == 'SHORT' and _admin > -99:
+            _fad = ind.get('adx_delta')
+            if _fad is not None and _fad < _admin:
+                return (True, "FLIP_SHORT_ADXD", 1.0, 1.0, None)
         # Pair EMA13-EMA50 gap ceiling for flip-SHORTS (Jun 21): refuse to fade a pair already steeply
         # extended above its OWN 4h trend — a parabola that keeps ripping → the 20× short gaps the SL
         # to ~-1.2%. Cross-batch FAN survivors (Jun17-21 deduped) gap≥1.0 = N=16/44%WR/-0.359%/Σ-$461,
@@ -3935,6 +3947,19 @@ class TradingEngine:
                      'C6': _pc6_e, 'C7': _pc7_e, 'C8': _pc8_e, 'C9': _pc9_e},
             w_flags={'W1': _pw1_e, 'W2': _pw2_e, 'W3': _pw3_e, 'W4': _pw4_e, 'W5': _pw5_e, 'W6': _pw6_e},
         )
+        # C1 SHORT breadth-scoped de-mux (Jun 28): the C1 capitulation-chase 2× only earns its
+        # multiplier in the 70–85 bear-breadth band (cross-pool 73–76% WR / +avg; both tails 50–60%
+        # WR / −avg where the 2× merely amplifies fat-tail DOA losers). When a C1 SHORT cell would
+        # size >1×, KEEP it only inside [lo, hi), else DE-MUX to 1× (sizing only — entry NOT blocked;
+        # a 50%-WR cohort must be de-amplified, not blocked). 06-28: AAVE/HYPE −$242/−$186 → +$214.
+        if (direction == "SHORT" and _pcell_src and 'C1' in str(_pcell_src) and (_pcell_inv or 1.0) > 1.0
+                and getattr(config.trading_config.thresholds, 'c1_short_demux_breadth_enabled', False)):
+            _clo = float(getattr(config.trading_config.thresholds, 'c1_short_demux_breadth_lo', 70.0) or 0.0)
+            _chi = float(getattr(config.trading_config.thresholds, 'c1_short_demux_breadth_hi', 85.0) or 0.0)
+            if entry_bear_pct is None or not (_clo <= entry_bear_pct < _chi):
+                logger.info(f"[C1_DEMUX_BREADTH] {pair} SHORT: bear%={entry_bear_pct} outside [{_clo},{_chi}) "
+                            f"→ de-mux C1 {_pcell_inv}x/{_pcell_lev}x → 1x ({_pcell_src})")
+                _pcell_inv, _pcell_lev = 1.0, 1.0
         # Jun 8: pattern-cell BLOCK action — skip the entry entirely (no order, no exchange
         # call; we're before position sizing / Order creation). Counter PATTERN_CELL_BLOCK.
         if _pcell_block and not flip_source and not bull_long and not bounce_long:

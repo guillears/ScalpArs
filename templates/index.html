@@ -6038,6 +6038,11 @@
                                     <span class="text-amber-300 whitespace-nowrap">in regimes</span>
                                     <input type="text" id="config-flip-short-regime-regimes" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-amber-200 text-left text-xs" placeholder="STRONG_BULL,HEALTHY_BULL,CHOPPY_FLAT">
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 28: UNIVERSAL (all-regime) collapsing-pair-ADX block for flip-SHORTS. Flip shorts bypass the momentum-short 'Pair ADX Dir: rising' filter, so a flip-short can fire into a pair whose ADX is collapsing (ADXΔ<<0 = the faded trend is dying → no follow-through → never arms → 20× gaps the SL). Strongest flip-short loser-separator cross-batch; 06-28 BEL (STRONG_BEAR, ADXΔ −1.02) = −$195 confirms (blocks BEL only, 0 winners, +$195). Distinct from the regime-scoped cut above (that's bull/chop @ <0). Counter FLIP_SHORT_ADXD. −99 = OFF; live = −0.5. DISCIPLINE-OVERRIDE N=1 → revert to −99 if would-be-blocked flip-shorts hit ≥50% WR on N≥8.">
+                                    <span class="text-rose-300 whitespace-nowrap">Short flip: block ADXΔ &lt; (all regimes)</span>
+                                    <input type="number" id="config-flip-adx-delta-min" step="0.1" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right" placeholder="-0.5">
+                                    <span class="text-gray-500 text-xs">(−99 = off)</span>
+                                </div>
                                 <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 17 (B2): regimes where flip-SHORTS lose REGARDLESS of ADXΔ → block any-ADXΔ. STRONG_BULL loses in both ADXΔ halves (N=26; the ADXΔ<0-only gate let the worse ADXΔ≥0 cell −$531/N=15 leak through, incl. TAC/ESPORTS). Healthy-bull/chop stay at the ADXΔ<0 cut above (their ADXΔ≥0 ≈ breakeven). Empty = OFF.">
                                     <span class="text-orange-300 whitespace-nowrap">Short flip: block ANY ADXΔ in</span>
                                     <input type="text" id="config-flip-short-regime-anyadxd" class="flex-1 min-w-[150px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-orange-200 text-left text-xs" placeholder="STRONG_BULL">
@@ -6096,6 +6101,13 @@
                                 </div>
                             </div>
                             <p class="text-[10px] text-gray-600 mt-2"><span class="text-amber-400/80">SHORT flips only</span>: block thin-fuel (stretch&lt;0.12) + fade-into-strong-bull (BTC RSI≥60 &amp; ADX≥30); strpk exit; multiplier on the <span class="text-fuchsia-300/70">winner cell</span> (quality score ≥ QS, market breadth ≥ Bear%, range position within Lo–Hi inclusive). <span class="text-gray-500">A FAN flip-LONG (blocked SHORT → LONG) skips all three and sizes 1×.</span> Default 3 / 70 / 60–90 @ 1×/1× = INERT, shipped to TRACK its row in Multiplier Cell Performance (in-sample N=14/85.7%WR/+$671; needs forward-N). ⚠ BE-compat fails for 2× → if sizing up, 1.5× first. Set Invest/Lev to 1.0 to keep inert.</p>
+                            <!-- C1 SHORT multiplier breadth-scope de-mux (Jun 28) -->
+                            <div class="mt-2 pt-2 border-t border-fuchsia-800/20 flex items-center gap-2 flex-wrap text-xs" title="Jun 28: the C1 'capitulation-chase' SHORT 2× cell only earns its multiplier in the 70–85 bear-breadth band (cross-pool 73–76% WR / +avg). Both tails (<70 and ≥85) are 50–60% WR / −avg where the 2× merely amplifies fat-tail DOA losers. When ON, a C1 SHORT that would size >1× is DE-MUXED to 1× when entry bear% is OUTSIDE [Lo, Hi). Sizing only — entry is NOT blocked (a 50%-WR cohort must be de-amplified, not blocked). 06-28: AAVE (bear 87) & HYPE (bear 62) −$242/−$186 → +$214.">
+                                <label class="flex items-center gap-1"><input type="checkbox" id="config-c1-demux-breadth-enabled" class="accent-fuchsia-500"><span class="text-fuchsia-300">C1 SHORT 2× de-mux outside breadth window</span></label>
+                                <span class="text-gray-500">Bear% Lo</span><input type="number" id="config-c1-demux-breadth-lo" step="1" class="w-16 px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-fuchsia-200 text-center">
+                                <span class="text-gray-500">Hi</span><input type="number" id="config-c1-demux-breadth-hi" step="1" class="w-16 px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-fuchsia-200 text-center">
+                                <span class="text-gray-600">(keep 2× only when Lo ≤ bear% &lt; Hi; else 1×)</span>
+                            </div>
                         </div>
                         <!-- All-sleeves strpk exit (Jun 16) -->
                         <div class="mt-3 px-3 py-2 rounded bg-cyan-950/15 border border-cyan-800/30">
@@ -18203,6 +18215,10 @@
                 _setVal('config-flip-short-regime-adxd-max', config.thresholds.flip_short_regime_block_adxd_max);
                 _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
                 _setVal('config-flip-short-regime-anyadxd', config.thresholds.flip_short_regime_block_any_adxd_regimes || '');
+                _setVal('config-flip-adx-delta-min', config.thresholds.flip_adx_delta_min);
+                (function(){ const e=document.getElementById('config-c1-demux-breadth-enabled'); if(e) e.checked = (config.thresholds.c1_short_demux_breadth_enabled !== false); })();
+                _setVal('config-c1-demux-breadth-lo', config.thresholds.c1_short_demux_breadth_lo);
+                _setVal('config-c1-demux-breadth-hi', config.thresholds.c1_short_demux_breadth_hi);
                 _setVal('config-flip-short-stretch-max', config.thresholds.flip_short_stretch_block_max);
                 _setVal('config-flip-short-btc30-rise', config.thresholds.flip_short_btc30_rise_block_min);
                 _setVal('config-flip-long-regime-adxd-max', config.thresholds.flip_long_regime_block_adxd_max);
@@ -19478,6 +19494,10 @@
                     flip_short_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-regime-adxd-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),
                     flip_short_regime_block_any_adxd_regimes: ((document.getElementById('config-flip-short-regime-anyadxd') || {}).value || '').trim(),
+                    flip_adx_delta_min: (function(){ const v = parseFloat((document.getElementById('config-flip-adx-delta-min') || {}).value); return isNaN(v) ? -99 : v; })(),
+                    c1_short_demux_breadth_enabled: ((document.getElementById('config-c1-demux-breadth-enabled') || {}).checked === true),
+                    c1_short_demux_breadth_lo: (function(){ const v = parseFloat((document.getElementById('config-c1-demux-breadth-lo') || {}).value); return isNaN(v) ? 70 : v; })(),
+                    c1_short_demux_breadth_hi: (function(){ const v = parseFloat((document.getElementById('config-c1-demux-breadth-hi') || {}).value); return isNaN(v) ? 85 : v; })(),
                     flip_short_stretch_block_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-stretch-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_btc30_rise_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-btc30-rise') || {}).value); return isNaN(v) ? 99 : v; })(),
                     flip_long_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-long-regime-adxd-max') || {}).value); return isNaN(v) ? 99 : v; })(),

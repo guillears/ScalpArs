@@ -516,6 +516,16 @@ class SignalThresholds(BaseModel):
     # TIGHT REVERT: re-open if these cells flip to WR>45% on N>=15 fresh. Empty regimes = OFF.
     flip_short_regime_block_adxd_max: float = 0.0   # block flip-SHORT when entry ADXΔ < this (0.0 = the ADXΔ<0 cut)
     flip_short_regime_block_regimes: str = "HEALTHY_BULL,CHOPPY_FLAT"  # CSV of BTC regimes to block flip-SHORTS in (ADXΔ<adxd_max gate); empty = filter OFF. Jun 19: STRONG_BULL REMOVED (carve-out — see below).
+    # Jun 28 — UNIVERSAL (all-regime) collapsing-pair-ADX block for flip-SHORTS. Distinct from the
+    # regime-scoped gate above: flip shorts BYPASS the momentum-short `Pair ADX Dir S: rising` filter,
+    # so a flip-SHORT can fire into a pair whose ADX is COLLAPSING (ADXΔ << 0 = the very trend that
+    # justified the fade is dying → no downward follow-through → never arms → 20× gaps the SL). The
+    # strongest flip-short loser-separator cross-batch (the standing re-eval candidate). 06-28 BEL
+    # (STRONG_BEAR, ADXΔ −1.02) = −$195 is the fresh confirm; on that batch the cut blocks 1 (BEL),
+    # 0 winners touched, +$195. Block flip-SHORT when ADXΔ < this. SENTINEL −99.0 = OFF (code default);
+    # json ships −0.5 (LIVE). Counter FLIP_SHORT_ADXD. ⚠ DISCIPLINE-OVERRIDE: forward N=1 (BEL) — TIGHT
+    # REVERT: set back to −99 if would-be-blocked flip-shorts hit ≥50% WR on N≥8 fresh.
+    flip_adx_delta_min: float = -99.0
     # Jun 17 (B2) — regimes where flip-SHORTS lose REGARDLESS of ADXΔ → block any-ADXΔ. (Jun 19: EMPTIED.)
     # STRONG_BULL was blocked here on PHANTOM evidence; cross-batch S.BULL FAN-short is actually a WINNER
     # (Jun18 9/78%/+0.46, Jun19 11/82%/+0.24 — two independent windows; H.BULL stays a real live loser).
@@ -900,6 +910,16 @@ class SignalThresholds(BaseModel):
     pc_short_c1_rngpos_max: float = 15.0
     pc_short_c1_pair_gap_max: float = -0.50
     pc_short_c1_adxd_min: float = 1.0
+    # Jun 28 — C1 SHORT multiplier breadth-SCOPE (de-mux outside the window). The C1 capitulation-chase
+    # 2× only EARNS its multiplier in the 70–85 bear-breadth band: cross-pool (13-batch May26-Jun13 +
+    # all-history) the 70–85 band = 73–76% WR / +avg% / +$, while BOTH tails (<70 and ≥85) are 50–60%
+    # WR / −avg% and the 2× merely amplifies their fat-tail DOA losers. So when a C1 SHORT cell rule
+    # would size >1×, KEEP the multiplier only if lo ≤ entry_bear_pct < hi, else DE-MUX to 1× (sizing
+    # change only — entry is NOT blocked; a 50%-WR cohort must not be blocked, only de-amplified). 06-28:
+    # AAVE (bear 87) −$242→−$121 and HYPE (bear 62) −$186→−$93 = +$214 batch. enabled=False → no de-mux.
+    c1_short_demux_breadth_enabled: bool = True
+    c1_short_demux_breadth_lo: float = 70.0   # keep the C1 2× only when entry_bear_pct ≥ this …
+    c1_short_demux_breadth_hi: float = 85.0   # … AND entry_bear_pct < this; outside → 1×
     # SHORT C2 — Macro counter-trend (BTC RSI rising + BTC ADX falling + BTC Gap > -0.05)
     pc_short_c2_btc_gap_min: float = -0.05
     # SHORT C3 — Stretch exhaustion

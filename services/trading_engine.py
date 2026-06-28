@@ -7535,6 +7535,32 @@ class TradingEngine:
                     self._last_pair_block_reason[pair] = "MOMENTUM_SHORT_LOATR"
                     signal = "NO_TRADE"
 
+            # MOMENTUM-SHORT weak-capitulation block — Jun 28, 2026 (see config.py momentum_short_weakcap_*).
+            # Block momentum SHORT when ALL three hold: range_position < range_max (capitulation near low) AND
+            # pair ATR% < atr_max (low vol) AND pair ADX < padx_max (weak trend) = triple-weak DOA short with
+            # no follow-through. Blocks by BEHAVIOR (a low-pADX C1 like XLM is caught; trend-backed C1 pADX≥28
+            # still fires). Momentum-shorts reach this path; flips bypass. Fail-open on any missing input.
+            if signal == "SHORT" and getattr(config.trading_config.thresholds, 'momentum_short_weakcap_enabled', False):
+                _wc_th = config.trading_config.thresholds
+                _wc_rmax = float(getattr(_wc_th, 'momentum_short_weakcap_range_max', 0.0) or 0.0)
+                _wc_amax = float(getattr(_wc_th, 'momentum_short_weakcap_atr_max', 0.0) or 0.0)
+                _wc_pmax = float(getattr(_wc_th, 'momentum_short_weakcap_padx_max', 0.0) or 0.0)
+                _wc_adx = indicators.get('adx')
+                _wc_atr = indicators.get('atr_pct')
+                _wc_px = indicators.get('price'); _wc_hi = indicators.get('high_20'); _wc_lo = indicators.get('low_20')
+                _wc_rng = ((_wc_px - _wc_lo) / (_wc_hi - _wc_lo) * 100) if (_wc_px is not None and _wc_hi is not None and _wc_lo is not None and _wc_hi != _wc_lo) else None
+                if (_wc_rmax > 0 and _wc_amax > 0 and _wc_pmax > 0
+                        and _wc_rng is not None and _wc_rng < _wc_rmax
+                        and _wc_atr is not None and _wc_atr < _wc_amax
+                        and _wc_adx is not None and _wc_adx < _wc_pmax):
+                    logger.info(
+                        f"[MOMENTUM_SHORT_WEAKCAP] {pair}: momentum SHORT blocked — triple-weak DOA "
+                        f"(range {_wc_rng:.1f}<{_wc_rmax}, pATR {_wc_atr:.2f}<{_wc_amax}, pADX {_wc_adx:.1f}<{_wc_pmax})"
+                    )
+                    self._record_filter_block("MOMENTUM_SHORT_WEAKCAP", signal, had_room=_had_room)
+                    self._last_pair_block_reason[pair] = "MOMENTUM_SHORT_WEAKCAP"
+                    signal = "NO_TRADE"
+
             # BTC ADX Direction check — runs independently of BTC global filter
             # (Phase 1c Option B refactor, Apr 17).  Pre-refactor this lived inside
             # the `if btc_global_enabled:` block, so turning off Macro Trend

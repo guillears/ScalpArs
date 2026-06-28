@@ -6211,6 +6211,7 @@
                             </div>
                         </div>
                         <label class="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-gray-700/40" title="Jun 28 (DISCIPLINE-OVERRIDE, N=5): block MOMENTUM-SHORT entries when BTC ATR% < this — the dead-tape DOA band. Distinct from the rules above: flip_fan_btc_atr_min (0.10) is FLIP-only, and the <0.10 short rule above also needs BTC ADX≥30; momentum-shorts at ATR 0.10-0.12 with normal ADX slip past both and die. Across all 26 dedup momentum-shorts: ATR<0.12 = N=5/0%WR/100%DOA/-$638, ZERO winners killed (all wins ATR≥0.132). MOMENTUM-only (flip-shorts WIN here). Counter MOMENTUM_SHORT_LOATR. 0 = off. TIGHT REVERT: →0 if any momentum-short <0.12 closes ≥+0.30%, or blocked-zone WR ≥40% on N≥10 fresh."><span class="text-red-300">Momentum-short: block BTC ATR% &lt;</span><input type="number" id="config-momentum-short-btc-atr-min" step="0.01" class="w-20 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-red-200 text-right"></label>
+                        <div class="flex items-center gap-2 flex-wrap mt-2 pt-2 border-t border-gray-700/40 text-xs" title="Jun 28 (DISCIPLINE-OVERRIDE, N=4): block MOMENTUM-SHORT when ALL three hold — range position < Range (capitulation near the low) AND pair ATR% < ATR (low vol) AND pair ADX < pADX (weak trend). The triple-weak signature = a short with no follow-through → DOA straight to SL. COMBINED pool: N=4-5/0%WR/all peak<0.10/−$263..−$502, ZERO winners (the SUI +2.08% runner has pADX 31.7, above the cut). Blocks by BEHAVIOR not tag: a low-pADX C1 (XLM, the inside-band-2× DOA hole) is caught; trend-backed C1 (pADX≥28) still fires for its N≥5 gate. Counter MOMENTUM_SHORT_WEAKCAP. Toggle off to disable. TIGHT REVERT: disable if any blocked-band trade closes ≥+0.30%, or blocked-zone WR ≥40% on N≥8 fresh."><label class="flex items-center gap-1"><input type="checkbox" id="config-momentum-short-weakcap-enabled" class="accent-red-500"><span class="text-red-300">Momentum-short weak-capitulation block</span></label><span class="text-gray-500">Range&lt;</span><input type="number" id="config-momentum-short-weakcap-range-max" step="1" class="w-14 px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-red-200 text-center"><span class="text-gray-500">ATR&lt;</span><input type="number" id="config-momentum-short-weakcap-atr-max" step="0.05" class="w-14 px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-red-200 text-center"><span class="text-gray-500">pADX&lt;</span><input type="number" id="config-momentum-short-weakcap-padx-max" step="1" class="w-14 px-1.5 py-1 bg-gray-800 border border-gray-700 rounded text-red-200 text-center"></div>
                     </div>
                     <div class="mt-3 mb-2 px-4">
                         <span class="text-sm text-gray-300">Market Breadth Filter</span>
@@ -18213,6 +18214,10 @@
                 _setVal('config-flip-fan-block-btc-adx', config.thresholds.flip_fan_block_btc_adx);
                 _setVal('config-flip-fan-btc-atr-min', config.thresholds.flip_fan_btc_atr_min);
                 _setVal('config-momentum-short-btc-atr-min', config.thresholds.momentum_short_btc_atr_min);
+                (function(){ const e=document.getElementById('config-momentum-short-weakcap-enabled'); if(e) e.checked = (config.thresholds.momentum_short_weakcap_enabled !== false); })();
+                _setVal('config-momentum-short-weakcap-range-max', config.thresholds.momentum_short_weakcap_range_max);
+                _setVal('config-momentum-short-weakcap-atr-max', config.thresholds.momentum_short_weakcap_atr_max);
+                _setVal('config-momentum-short-weakcap-padx-max', config.thresholds.momentum_short_weakcap_padx_max);
                 _setVal('config-flip-fan-spike-max', config.thresholds.flip_fan_spike_max);
                 _setVal('config-flip-short-regime-adxd-max', config.thresholds.flip_short_regime_block_adxd_max);
                 _setVal('config-flip-short-regime-regimes', config.thresholds.flip_short_regime_block_regimes || '');
@@ -19493,6 +19498,10 @@
                     flip_fan_block_btc_adx: parseFloat((document.getElementById('config-flip-fan-block-btc-adx') || {}).value) || 0,
                     flip_fan_btc_atr_min: parseFloat((document.getElementById('config-flip-fan-btc-atr-min') || {}).value) || 0,
                     momentum_short_btc_atr_min: parseFloat((document.getElementById('config-momentum-short-btc-atr-min') || {}).value) || 0,
+                    momentum_short_weakcap_enabled: ((document.getElementById('config-momentum-short-weakcap-enabled') || {}).checked === true),
+                    momentum_short_weakcap_range_max: parseFloat((document.getElementById('config-momentum-short-weakcap-range-max') || {}).value) || 0,
+                    momentum_short_weakcap_atr_max: parseFloat((document.getElementById('config-momentum-short-weakcap-atr-max') || {}).value) || 0,
+                    momentum_short_weakcap_padx_max: parseFloat((document.getElementById('config-momentum-short-weakcap-padx-max') || {}).value) || 0,
                     flip_fan_spike_max: parseFloat((document.getElementById('config-flip-fan-spike-max') || {}).value) || 0,
                     flip_short_regime_block_adxd_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-regime-adxd-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_regime_block_regimes: ((document.getElementById('config-flip-short-regime-regimes') || {}).value || '').trim(),

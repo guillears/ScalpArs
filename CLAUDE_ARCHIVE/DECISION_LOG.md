@@ -1645,3 +1645,27 @@ Checked overlap of the two block candidates on the QS≥2 N=72 cohort. **They ov
 **This-batch proof (06-28 15:08):** momentum-short ATR<0.12 = 5/5 losers, −$638, 100% DOA, 0 winners forfeited (the whole momentum-short loss of the batch).
 
 **TIGHT REVERT (override-grade):** set `momentum_short_btc_atr_min=0` if ANY momentum-short in the ATR<0.12 band closes ≥+0.30% (first time it would kill a winner), OR if blocked-zone WR ≥40% on N≥10 fresh.
+
+---
+
+## 2026-06-28 — SHIP: Momentum-short weak-capitulation block (`momentum_short_weakcap_*`) [DISCIPLINE-OVERRIDE, N=4]
+
+**Decision:** New entry filter — block momentum SHORT when ALL three hold: `range_position < 15` AND `pair ATR% < 0.45` AND `pair ADX < 28`. Config `momentum_short_weakcap_enabled=true / range_max=15 / atr_max=0.45 / padx_max=28`. Counter `MOMENTUM_SHORT_WEAKCAP`. Operator-directed ("ship it").
+
+**Origin — chasing the MOM-short range<15 drag.** On the COMBINED dedup pool (`reports/COMBINED_momentum_flip_2026-06-16to28_DEDUP.csv`), MOM-short range<15 = N=18 / 39% WR / −$416. Investigation path:
+- **Exits refuted:** fast-exit/lower-TP all WORSE than actual (−$2.5k..−$6.5k) — losers peak <0.25% (too low to bank), winners run far (cap forfeits them). Give-back hypothesis dead; the losers are near-DOA.
+- **Broad `range<15 + pATR<0.45` blocker rejected:** forfeits the SUI +2.08% runner (+$157, same entry signature as losers) AND blocks 100% of C1 (all C1 is range<15) → kills the C1 N≥5 hold.
+- **The fix = add `pADX<28`:** pADX cleanly separates by behavior — the 3 winners (incl. SUI runner) all have pADX≥28; the DOA losers are pADX<28. Cut = N=4 non-C1 / 0W/4L / all peak<0.10 / −$263.
+- **Drop the non-C1 carve-out (operator insight "all C1 are negative"):** blocking by BEHAVIOR not tag — a low-pADX C1 (XLM, pADX 25.8, peak +0.00, the inside-band-2× DOA hole) IS caught at entry; trend-backed C1 (HYPE pADX 33.2) still fires for the N≥5 gate. This entry-blocks XLM (so the −$239 never opens) without needing a separate C1 revert, and resolves the "why protect an all-negative cohort" inconsistency.
+
+**Evidence:** the block cell = N=4 (non-C1) or 5 (incl XLM) / 0% WR / every trade peak<0.10 (DOA) / −$263..−$502. ZERO winners in the band — the SUI +2.08% runner sits at pADX 31.7, above padx_max. Mechanism triple-confirmed: capitulation entry (range<15) + low vol (pATR<0.45) + weak trend (pADX<28) = short with no follow-through.
+
+**Overall pool effect:** full screen +$2757 → **+$3258** (Δ +$501), MOM-short sleeve −$159 → positive, 0 winners forfeited, C1 gate preserved (HYPE still fires).
+
+**Discipline note.** N=4 << gate → DISCIPLINE-OVERRIDE, parallel to `momentum_short_btc_atr_min` (N=5). Asymmetric-safe: band holds only DOA losers (all peak<0.10), so winner-forfeit risk ~0 by construction; mechanism is structural, not curve-fit. In-sample on the COMBINED pool → apply 30-50% haircut for forward expectation.
+
+**D11 wiring (all 6, grep-verified, py+json compile):** ① config.py 4 fields + evidence comment ② trading_config.json ③ engine block in normal-entry SHORT chain after `MOMENTUM_SHORT_LOATR` (computes range_position from price/high_20/low_20; fail-open on missing inputs) ④ UI toggle+3 inputs under the momentum-short BTC-ATR field ⑤ load (checkbox + 3 `_setVal`) + save ⑥ `_record_filter_block("MOMENTUM_SHORT_WEAKCAP")`.
+
+**TIGHT REVERT (override-grade):** set `momentum_short_weakcap_enabled=false` if ANY blocked-band trade closes ≥+0.30% (first time it would kill a winner), OR blocked-zone WR ≥40% on N≥8 fresh.
+
+**Related (held, NOT shipped):** C1 2× cell stays as-is (breadth de-mux live) on the N≥5 verdict gate — the weak-cap block now entry-blocks the low-pADX C1 (XLM) so the C1 2× hold no longer carries that DOA-tail risk; the C1 gate accrues on trend-backed (pADX≥28) fires only. Watchlist.

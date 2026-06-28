@@ -744,6 +744,20 @@ class SignalThresholds(BaseModel):
     # the flip floor). Counter MOMENTUM_SHORT_LOATR. 0 = off. TIGHT REVERT: →0 if ANY momentum-short in the
     # ATR<0.12 band closes ≥+0.30% (first time it would kill a winner), OR if blocked-zone WR ≥40% on N≥10 fresh.
     momentum_short_btc_atr_min: float = 0.12
+    # Jun 28, 2026 — MOMENTUM-SHORT weak-capitulation block (DISCIPLINE-OVERRIDE, N=4). Block momentum
+    # SHORT when ALL three hold: range_position < range_max (capitulation entry near the low) AND pair
+    # ATR% < atr_max (low volatility) AND pair ADX < padx_max (weak trend). The triple-weak signature =
+    # a short with no follow-through → DOA straight to SL. On the COMBINED dedup pool the cell = N=4 (or 5
+    # incl. the low-pADX C1 XLM) / 0%WR / all peak<0.10 / −$263..−$502, ZERO winners (the SUI +2.08% runner
+    # has pADX 31.7, safely above padx_max). Blocks BY BEHAVIOR not by tag: a C1 capitulation short with
+    # pADX<28 (e.g. XLM, the inside-band-2× DOA hole) IS caught here, while trend-backed C1 (pADX≥28) still
+    # fires to resolve its N≥5 verdict gate. Distinct from momentum_short_btc_atr_min (that's BTC dead-tape;
+    # this is PAIR weak-trend). Counter MOMENTUM_SHORT_WEAKCAP. enabled=False → off. TIGHT REVERT: disable
+    # if ANY blocked-band trade closes ≥+0.30%, OR blocked-zone WR ≥40% on N≥8 fresh.
+    momentum_short_weakcap_enabled: bool = True
+    momentum_short_weakcap_range_max: float = 15.0   # block when entry range position % < this
+    momentum_short_weakcap_atr_max: float = 0.45     # AND pair ATR% < this
+    momentum_short_weakcap_padx_max: float = 28.0    # AND pair ADX < this
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

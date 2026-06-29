@@ -353,7 +353,7 @@ class SignalThresholds(BaseModel):
     # their existing exit — deferred (the dormant idle-insurance sleeve, build with its source). REVERT:
     # turn off if armed long runners net WORSE than the `actual` long baseline on N≥10 fresh closes.
     runner_trail_use_atr: bool = True            # true = ATR-floor (chandelier) trail; false = K×peak_stretch ratio trail
-    runner_trail_atr_mult: float = 0.5           # N — give back N×ATR% from peak before exit (hard SL still backstops)
+    runner_trail_atr_mult: float = 1.0           # N — give back N×ATR% from peak before exit (hard SL still backstops). Jun 29: 0.5→1.0 (LONG-only field; shorts use runner_trail_short_atr_mult, untouched at 0.5). Evidence: leash-shadow atr05-vs-atr10 across 10 batches, unmatched-longs N=31 → atr10 (1.0×) beat atr05 (0.5×) +0.231%/tr (+7.2 cum%), outlier-robust (drop ACTUSDT +0.144, ex-high-ATR<1.3 +0.105, drop-top-3-winners +0.053). 1.0 NOT 1.5 (1.5 over-widens, gives back even ≥2.0 ATR). FLAT not ATR-conditional (non-monotonic = confound). Right-tail edge: bounded-SL give-back vs open runner upside. REVERT if atr05≥atr10 over next N≥20 fresh armed longs.
     runner_trail_be_ratchet_enabled: bool = False # (LONG) Jun 25: operator DISABLED — armed long runners now exit on the bare ATR-floor (peak − N×ATR), no +be_lock_pct clamp; hard SL still backstops. (SHORT ratchet runner_trail_short_be_ratchet_enabled stays ON — proven.)
     runner_trail_be_lock_pct: float = 0.10       # min P&L an armed long runner may give back to (the ratchet lock)
     runner_trail_giveback_frac: float = 0.0      # cap give-back at frac×peak (0 = off, raw N×ATR). Off to start, mirror current short

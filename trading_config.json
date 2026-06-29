@@ -163,7 +163,7 @@
     "runner_trail_arm_peak": 0.45,
     "runner_trail_k": 0.5,
     "runner_trail_use_atr": true,
-    "runner_trail_atr_mult": 0.5,
+    "runner_trail_atr_mult": 1.0,
     "runner_trail_be_ratchet_enabled": false,
     "runner_trail_be_lock_pct": 0.1,
     "runner_trail_giveback_frac": 0.0,

@@ -4454,8 +4454,13 @@
 
         <!-- Configuration Panel -->
         <section>
-            <h2 class="text-lg font-semibold text-gray-300 mb-4">Trading Configuration</h2>
-            <div class="glass rounded-xl p-6 space-y-8">
+            <h2 class="text-lg font-semibold text-gray-300 mb-4 flex items-center justify-between cursor-pointer select-none hover:text-gray-100 transition-colors" onclick="document.getElementById('config-panel-body').classList.toggle('hidden'); this.querySelector('svg').classList.toggle('-rotate-90');" title="Show / hide configuration">
+                <span>Trading Configuration</span>
+                <svg class="w-5 h-5 text-gray-400 transition-transform duration-200 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            </h2>
+            <div id="config-panel-body" class="glass rounded-xl p-6 space-y-8 hidden">
                 
                 <!-- Investment Settings -->
                 <div>

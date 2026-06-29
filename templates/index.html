@@ -6077,6 +6077,11 @@
                                     <input type="number" id="config-flip-short-quality-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
                                     <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 2 — block weak-setup flip-shorts, score ≤1)</span>
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="2026-06-29: market-breadth FLOOR for flip-SHORTS — a fade-short needs the broad market falling to follow through; when breadth isn't bearish the fade has no tailwind → DOA grind → 20× SL gap. Block a flip-SHORT when entry bear% < the number. Fine bear-band split (COMBINED in-sample + 06-29 forward): the loss is concentrated ENTIRELY in bear<20 (1W/4L/−$314, NO high-ATR confound — genuine low-breadth DOA fades); bear 30-40 WINS (+$146) and 50-80 are the edge, so a <40 floor would forfeit winners — <20 is the only clean cut. 06-29 币安人生 (bear 17.5, −$95 DOA) is the lead OOS confirm; bear 20 & 32 flip-shorts won. Counter FLIP_SHORT_BEAR_MIN. 0 = off. ⚠ N=5/DISCIPLINE-OVERRIDE. TIGHT REVERT: →0 if blocked bear<20 flip-shorts hit >40% WR or net-positive on N≥10 fresh. Small leak (~−$95/batch) — the dominant loss is high-ATR SL gap-through (de-lever), NOT this.">
+                                    <span class="text-rose-300 whitespace-nowrap">Short flip: block market bear% &lt;</span>
+                                    <input type="number" id="config-flip-short-bear-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
+                                    <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 20 — block low-breadth no-tailwind fades)</span>
+                                </div>
                                 <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 21: pair EMA13–EMA50 gap ceiling for flip-SHORTS — refuse to fade a pair already steeply extended above its OWN 4h trend (gap = (EMA13−EMA50)/EMA50 %). A parabola that keeps ripping → the 20× short gaps the SL to ~−1.2%. Cross-batch FAN survivors (Jun17–21 deduped): gap≥1.0 = N=16/44%WR/−0.359%/Σ−$461 (net-negative every batch); the 0–1.0 band is the fade sweet spot (19/87%WR/+0.45%). ONE-SIDED — a big NEGATIVE gap is with-trend momentum that WINS (≤−1.5 = +0.79%), so it is NOT blocked. N=16/DISCIPLINE-OVERRIDE. Counter FLIP_SHORT_PAIR_GAP. 0 = off. TIGHT REVERT: →0 if blocked gap≥1.0 flip-shorts hit ≥50% WR on N≥10 fresh.">
                                     <span class="text-rose-300 whitespace-nowrap">Short flip: block pair EMA13–EMA50 gap% ≥</span>
                                     <input type="number" id="config-flip-short-pair-gap-max" step="0.1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
@@ -18235,6 +18240,7 @@
                 _setVal('config-flip-short-atr-block-min', config.thresholds.flip_short_atr_block_min);
                 _setVal('config-flip-short-rsi-min', config.thresholds.flip_short_rsi_min);
                 _setVal('config-flip-short-quality-min', config.thresholds.flip_short_quality_min);
+                _setVal('config-flip-short-bear-min', config.thresholds.flip_short_bear_min);
                 _setVal('config-flip-short-pair-gap-max', config.thresholds.flip_short_pair_gap_max);
                 _setVal('config-flip-fan-pair-adx-min', config.thresholds.flip_fan_pair_adx_min);
                 _setVal('config-flip-short-atr-block-regimes', config.thresholds.flip_short_atr_block_regimes || '');
@@ -19518,6 +19524,7 @@
                     flip_short_atr_block_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-atr-block-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_rsi_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-rsi-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_quality_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-quality-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_short_bear_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-bear-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_fan_pair_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-fan-pair-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_atr_block_regimes: ((document.getElementById('config-flip-short-atr-block-regimes') || {}).value || '').trim(),

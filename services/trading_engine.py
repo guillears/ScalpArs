@@ -464,6 +464,18 @@ def _flip_filters(source, ind):
             _qsc = ind.get('quality_score')
             if _qsc is not None and _qsc < _qmin:
                 return (True, "FLIP_SHORT_QUALITY", 1.0, 1.0, None)
+        # Market-breadth FLOOR for flip-SHORTS (2026-06-29): a fade-short needs the broad market falling
+        # to follow through; when breadth is bullish/neutral the fade has no tailwind → DOA grind → 20× SL
+        # gap. Fine bear-band split (COMBINED in-sample + 06-29 forward) localises the loss ENTIRELY to
+        # bear<20 (1W/4L/−$314, NO high-ATR confound); bear 30-40 WINS (+$146) and 50-80 are the edge, so
+        # only <20 is a clean cut (a <40 floor would forfeit winners). Block flip-SHORT when entry bear% <
+        # min (=20). Counter FLIP_SHORT_BEAR_MIN (auto-recorded by caller). Fail-open: missing bear% or
+        # min=0 → no block. N=5/DISCIPLINE-OVERRIDE → tight revert (see config flip_short_bear_min).
+        _bmin = float(getattr(th, 'flip_short_bear_min', 0.0) or 0.0)
+        if ind.get('flip_dir') == 'SHORT' and _bmin > 0:
+            _bp = ind.get('bear_pct')
+            if _bp is not None and _bp < _bmin:
+                return (True, "FLIP_SHORT_BEAR_MIN", 1.0, 1.0, None)
         # Universal collapsing-pair-ADX block for flip-SHORTS (Jun 28): flip shorts BYPASS the momentum-
         # short `Pair ADX Dir S: rising` filter, so a flip-short can fire into a pair whose ADX is
         # COLLAPSING (ADXΔ << 0 = the trend that justified the fade is dying → no follow-through →

@@ -583,6 +583,17 @@ class SignalThresholds(BaseModel):
     # zone); RSI≥55 = N=78/65%WR/+0.056%/Σ+4.33 (carries ~all the edge); 60-65 = N=24/71%WR/+0.187%. Block
     # SHORT when pair RSI < this. Operator-directed, N below the locked filter gate → TIGHT REVERT.
     # 0 = OFF (fail-open on missing rsi too).
+    # 2026-06-29: market-breadth FLOOR for flip-SHORTS — block a fade-short when the market isn't broadly
+    # bearish (no downside tailwind → DOA grind → 20× SL gap). Block flip-SHORT when entry_bear_pct < this.
+    # Fine bear-band split (COMBINED in-sample + 06-29 forward): the loss is concentrated ENTIRELY in
+    # bear<20 (in-sample 1W/3L/−$219, forward 0W/1L/−$95 = 1W/4L/−$314, NO high-ATR confound — genuine
+    # low-breadth DOA fades); bear 30-40 actually WINS (+$146) and 50-80 are the edge, so a <40 floor would
+    # forfeit winners — <20 is the only clean cut. The 06-29 币安人生 (bear 17.5, −$95 DOA) is the lead OOS
+    # confirm; bear 20 & 32 flip-shorts won. Counter FLIP_SHORT_BEAR_MIN. 0 = off. ⚠ N=5 < N≥30 gate =
+    # DISCIPLINE-OVERRIDE (low-stakes, rare ~1-2/wk, kills ~0 winners). TIGHT REVERT: →0 if would-be-blocked
+    # (bear<20) flip-shorts hit >40% WR or net-positive on N≥10 fresh. NOTE: addresses a small leak (~−$95/
+    # batch); the dominant loss is high-ATR SL gap-through (de-lever roadmap), NOT this.
+    flip_short_bear_min: float = 20.0
     flip_short_rsi_min: float = 0.0   # block flip-SHORT when entry pair RSI < this (0 = off)
     flip_short_quality_min: float = 2.0   # block flip-SHORT when entry quality score < this (so =2 blocks score ≤1). 0 = off. Jun 25: extends the global Entry-Quality-Score floor (already blocks ≤1 for NORMAL entries: validated N=95/34.7%WR/−$684) to the flip-short sleeve, which BYPASSES it. Cross-batch FAN flip-short (deduped, current stack): score is monotonic (1→4 = 56/64/76/80% WR, −0.17→+0.56% avg); score≤1 = N=18/56%WR/−2.98%/8 dates (the only negative band), loss DIFFUSE (16 pairs, top 21% — not pair-concentrated). Score 0 ≈ empty (N=2). Confirmed on 06-25 batch (score≤1 = 3/3 losers, −$249, incl. SAHARA −$145 gap-through; sleeve −$337→−$88). ⚠ N=18 < N≥30 gate = DISCIPLINE-OVERRIDE, but the score≤1 threshold itself is already globally validated — we only close the flip bypass. Counter FLIP_SHORT_QUALITY. TIGHT REVERT: →0 if would-be-blocked (score≤1) flip-shorts run ≥55% WR on N≥10 fresh.
     # Jun 21 — pair EMA13-EMA50 gap ceiling for flip-SHORTS. Refuse to fade a pair already steeply
@@ -943,7 +954,12 @@ class SignalThresholds(BaseModel):
     # would size >1×, KEEP the multiplier only if lo ≤ entry_bear_pct < hi, else DE-MUX to 1× (sizing
     # change only — entry is NOT blocked; a 50%-WR cohort must not be blocked, only de-amplified). 06-28:
     # AAVE (bear 87) −$242→−$121 and HYPE (bear 62) −$186→−$93 = +$214 batch. enabled=False → no de-mux.
-    c1_short_demux_breadth_enabled: bool = True
+    # 2026-06-29: C1 SHORT 2× REVERTED to 1× (see pattern_cell_rules C1 inv_mult 2.0→1.0) — pooled
+    # in-sample+forward C1 SHORT is 1W/4L / −$661@2× (−$330@1×), losing at EVERY quality score (qs=2
+    # holds the only winner; qs≥3 = 0W/2L), so the 2× was amplifying a now-losing cell on contaminated
+    # evidence. With C1 flat at 1× the breadth de-mux is moot → DISABLED. Re-enable only if C1 re-earns
+    # a multiplier (N≥30, WR≥70%, +avg%) cross-batch.
+    c1_short_demux_breadth_enabled: bool = False
     c1_short_demux_breadth_lo: float = 70.0   # keep the C1 2× only when entry_bear_pct ≥ this …
     c1_short_demux_breadth_hi: float = 85.0   # … AND entry_bear_pct < this; outside → 1×
     # SHORT C2 — Macro counter-trend (BTC RSI rising + BTC ADX falling + BTC Gap > -0.05)

@@ -1669,3 +1669,21 @@ Checked overlap of the two block candidates on the QS≥2 N=72 cohort. **They ov
 **TIGHT REVERT (override-grade):** set `momentum_short_weakcap_enabled=false` if ANY blocked-band trade closes ≥+0.30% (first time it would kill a winner), OR blocked-zone WR ≥40% on N≥8 fresh.
 
 **Related (held, NOT shipped):** C1 2× cell stays as-is (breadth de-mux live) on the N≥5 verdict gate — the weak-cap block now entry-blocks the low-pADX C1 (XLM) so the C1 2× hold no longer carries that DOA-tail risk; the C1 gate accrues on trend-backed (pADX≥28) fires only. Watchlist.
+
+---
+
+## 2026-06-29 — Two ships (C1 de-mux + flip-short bear floor) + exit/cell watchlist + forward batch
+
+**Context:** Post-reset forward batches 06-29 (13 trades, 7W/6L, −$442). Dominant loss = 3 high-ATR pairs (SKYAI/MANTA/AGLD, pATR 1.0-1.28%) gapping the −0.70 SL to −1.2% (−$396 ≈ 90% of the batch). De-mux/filter/exit all proven unable to reach the gap tail (de-lever roadmap remains the only lever; not an expectancy fix — variance/Kelly).
+
+**SHIP 1 — C1 SHORT 2×→1× + breadth de-mux disabled.** `pattern_cell_rules` C1 SHORT `inv_mult 2.0→1.0`; `c1_short_demux_breadth_enabled true→false` (config.py + trading_config.json). Pooled in-sample+forward C1 SHORT = 1W/4L / −$661@2× (−$330@1×), losing at EVERY qs (qs=2 holds the only winner WLD; qs≥3 = 0W/2L). The "de-mux only C1+qs2" hypothesis was tested and REFUTED (qs does not separate C1). REVERT: re-enable a C1 multiplier only at N≥30/WR≥70%/+avg cross-batch.
+
+**SHIP 2 — `flip_short_bear_min=20`** (config.py default 20.0; trading_config.json; engine `_flip_filters` SHORT block, counter `FLIP_SHORT_BEAR_MIN`; UI input + load/save in index.html). Block FAN flip-SHORT when entry bear% < 20. Fine bear-band split (COMBINED + 06-29 fwd) localises the loss ENTIRELY to bear<20 (1W/4L/−$314, no high-ATR confound); bear 30-40 WINS (+$146), 50-80 are the edge → floor=20 NOT 40 (a <40 floor forfeits winners). 06-29 币安人生 (bear 17.5, −$95 DOA) lead confirm. ⚠ N=5 DISCIPLINE-OVERRIDE. TIGHT REVERT: →0 if blocked bear<20 flip-shorts hit >40% WR or net-positive on N≥10 fresh.
+
+**REFUTED this session (do not re-propose):** (a) `FLIP_SHORT_HIATR` tightening — high-ATR flip-shorts WIN by sleeve (flip ≥0.9 = +$4.3/64%); whole-pool ≥0.9-negative was a screened-out-junk confound. (b) qs=2 flip-short floor→3 — qs=2 is the biggest winner cohort (+$519 in-sample); this batch's qs=2 −$215 was the high-ATR gap confound. (c) unmatched-long pADX<18 block (fails C-gate 4/50%/−0.197, non-monotonic, chops WLD; losers span both pADX extremes LTC15/JTO25.8 = feature-inseparable) and GVol≥0.85 de-mux (HARMFUL −$56, halves XPL +$314 winner) — logged D③, re-screen each batch. (d) regime as a dynamic-exit signal (transition does not separate long outcomes: HELD 77%/+0.161 vs DRIFTED 72%/+0.166).
+
+**WATCHLIST added:** (G) non-strict EMA13-cross exit for LONGS only — pool CF NET +2.3% (saves losers, momentum break real) vs SHORT −1.0% wash (fades whipsaw); catches LTC (crossed EMA13 −0.16% but strict held to −0.69% SL). Make strict toggle direction-aware; forward-validate via EMA13 Strict-Mode table, ship at N≥10-15 fresh. Short fast-exit ~0.25/5min = pool CF +13-14.6% (catches pop-then-gap SKYAI) BUT contradicts leash-shadow (wider trail helps shorts) + optimistic fill → forward-test only, reconcile first.
+
+**Pool:** COMBINED appended +13 (321→334 rows). Re-screened baseline (current stack, C1 1× + bear<20) = 97 / 69% / +$3210 (was 84/73%/+$3723 in-sample-only; now mixed in+forward).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

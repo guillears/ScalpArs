@@ -70,6 +70,11 @@ def sleeve(r):
         if batr is not None and batr < float(getattr(th, 'momentum_short_btc_atr_min', 0.0) or 0.0): return None  # MOMENTUM_SHORT_LOATR
         if rsi is not None and not (float(getattr(th,'momentum_short_rsi_min',0)) <= rsi <= float(getattr(th,'momentum_short_rsi_max',100))): return None
         if adx is not None and adxp is not None and adx <= adxp: return None  # Pair ADX Dir S: rising
+        # Jun 30: W1-regime block — current-stack parity with engine open_position
+        # (momentum_short_w1_block_regimes). W1 mom-short drains in HEALTHY_BEAR (N=20/40%/-$650),
+        # non-W1 control breakeven+ → block W1 in the listed regimes (STRONG_BEAR W1 exempt = wins).
+        _w1blk = {s.strip() for s in (getattr(th, 'momentum_short_w1_block_regimes', '') or '').split(',') if s.strip()}
+        if (r.get('entry_pattern_w1_match') or '').strip().lower() == 'true' and (r.get('entry_btc_regime') in _w1blk): return None  # MOMENTUM_SHORT_W1_REGIME
         return 'MOM_SHORT'
     return None
 
@@ -99,9 +104,17 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    assert len(ml) == 23 and round(ml_net) == 2146, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 23/$2146 — screen wrong, NOT freezing"
-    assert len(ms) == 28 and round(ms_net) == -122, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 28/-$122 (did you forget the C1 de-mux?) — NOT freezing"
-    print("\n✅ VALIDATION PASSED (MOM-long 23/$2146 + MOM-short 28/-$122). Freezing.")
+    # Anchors updated 2026-06-30: pool grown +11 (COMBINED 334→345 incl. 06-29/30 batch) AND the
+    # W1-HEALTHY_BEAR momentum-short block shipped (removes 20 W1-HEALTHY_BEAR mom-shorts). Independently
+    # reconciled: MOM-long 23→25 (+ACT+FARTCOIN); MOM-short 28→14, -$122→+$310 (= -122 +383 recovered
+    # from the 17 W1-HB removed +49 from batch survivors TAO/XLM/AAVE). Prior anchors (23/$2146, 28/-$122)
+    # archived in DECISION_LOG 2026-06-30.
+    _w1blk = {s.strip() for s in (getattr(th, 'momentum_short_w1_block_regimes', '') or '').split(',') if s.strip()}
+    _w1hb_surv = sum(1 for r in ms if (r.get('entry_pattern_w1_match') or '').strip().lower() == 'true' and r.get('entry_btc_regime') in _w1blk)
+    assert _w1hb_surv == 0, f"FAIL: {_w1hb_surv} W1-block-regime mom-shorts survived — W1 block not applied, NOT freezing"
+    assert len(ml) == 25 and round(ml_net) == 2496, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 25/$2496 — screen wrong, NOT freezing"
+    assert len(ms) == 14 and round(ms_net) == 310, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 14/$310 (C1 de-mux + W1 block?) — NOT freezing"
+    print("\n✅ VALIDATION PASSED (MOM-long 25/$2496 + MOM-short 14/$310 + 0 W1-block survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

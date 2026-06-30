@@ -770,6 +770,16 @@ class SignalThresholds(BaseModel):
     momentum_short_weakcap_range_max: float = 15.0   # block when entry range position % < this
     momentum_short_weakcap_atr_max: float = 0.45     # AND pair ATR% < this
     momentum_short_weakcap_padx_max: float = 28.0    # AND pair ADX < this
+    # Jun 30, 2026 — MOMENTUM-SHORT W1-regime block (DISCIPLINE-OVERRIDE, N=20). Block a momentum SHORT that
+    # matches pattern W1 ("HighConv trend") when entry BTC regime is in this comma-separated list. W1 fired as
+    # a SHORT drains specifically in HEALTHY_BEAR: 2 direction-consistent windows (SCREENED_BASELINE 06-16→28 +
+    # 06-29/30 batch) = W1 mom-short HEALTHY_BEAR N=20 / 40%WR / -$650 / avg -0.265%, while the non-W1 mom-short
+    # CONTROL in the same regime is breakeven+ (N=7 / +$24 / +0.014%) → discriminator is W1, not the regime
+    # (confound passed). Loss diffuse (no pair ≥60%). STRONG_BEAR W1 WINS (N=4/75%/+$229) → NOT listed (exempt).
+    # Momentum-shorts reach the entry path; flips bypass (gated by _flip_filters). Counter MOMENTUM_SHORT_W1_REGIME.
+    # Empty = off (filter universal-off). TIGHT REVERT (override): clear the list (→'') if this block's phantom
+    # (LONG fade) goes net-NEGATIVE on N≥10 fresh (= the blocked shorts would have won).
+    momentum_short_w1_block_regimes: str = 'HEALTHY_BEAR'
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

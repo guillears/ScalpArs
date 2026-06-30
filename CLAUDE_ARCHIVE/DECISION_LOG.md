@@ -1687,3 +1687,28 @@ Checked overlap of the two block candidates on the QS≥2 N=72 cohort. **They ov
 **Pool:** COMBINED appended +13 (321→334 rows). Re-screened baseline (current stack, C1 1× + bear<20) = 97 / 69% / +$3210 (was 84/73%/+$3723 in-sample-only; now mixed in+forward).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-06-30 — SHIP: MOMENTUM-SHORT W1-regime block (`momentum_short_w1_block_regimes='HEALTHY_BEAR'`) — DISCIPLINE-OVERRIDE N=20
+
+**What:** New entry filter. Block a MOMENTUM-SHORT that matches pattern **W1** ("HighConv trend") when entry BTC regime ∈ a comma-separated list (live = `HEALTHY_BEAR`). Empty = off. Flips bypass (gated by `_flip_filters`); momentum-shorts reach the `open_position` path.
+
+**Evidence (analysed ONLY on `reports/SCREENED_BASELINE.csv` per the screened-pool rule + the fresh 06-29/30 batch — 2 independent windows):**
+- W1 mom-short **HEALTHY_BEAR = N=20 / 40%WR / −$650 / avg −0.265%** (baseline 17·47%·−$383 + batch 3·0%·−$267, direction-consistent).
+- **Confound check PASSED:** non-W1 mom-short CONTROL in the SAME regime = **N=7 / +$24 / +0.014% (breakeven+)** → the drain is W1-specific, not a regime-wide "all shorts lose in HEALTHY_BEAR" effect.
+- Loss **diffuse** (no pair ≥60% — not a blacklist).
+- **STRONG_BEAR W1 WINS (N=4 / 75% / +$229)** → deliberately NOT in the block list (regime-asymmetry, same lesson as the FAN_PAIR_ADX STRONG_BEAR exemption).
+- Batch counterfactual: blocks exactly PUMP −$91 / NEAR −$75 / AVAX −$101 (**+$267**); preserves non-W1 winners XLM +$48 / AAVE +$68 and flip winner CHZ +$68. Bearish sleeve −$359 → −$92.
+
+**Gate status (transparent):** Locked promotion gate = N≥30 AND WR≤40% AND avg≤−0.20% AND NP≥60%. Here **N=20 < 30** and **WR=40% exactly at the bar** → **DISCIPLINE-OVERRIDE**. Justified per the methodology's "N≥30 *or* ≥3-sample direction-consistent cross-batch" clause: 2 independent windows same sign + a clean positive control + diffuse + regime-specific. avg −0.265% clears −0.20%.
+
+**Wiring (D11):** config.py default+comment · trading_config.json · engine block in `open_position` after `PATTERN_CELL_BLOCK` (`direction=="SHORT" and not flip_source and not bull_long and not bounce_long and _pw1_e and entry_btc_regime in list`), counter `MOMENTUM_SHORT_W1_REGIME` + `_seed_phantom_flip(...,"SHORT","MOMENTUM_SHORT_W1_REGIME")` LONG-fade for revert observability · UI text input under the momentum-short weak-cap row + load/save. Grep-verified id ×3; predicate dry-run over the 11-trade batch blocks exactly the 3 W1-HEALTHY_BEAR shorts and nothing else.
+
+**TIGHT REVERT:** clear the list (→'') if the `MOMENTUM_SHORT_W1_REGIME` phantom (LONG fade) goes **net-NEGATIVE on N≥10 fresh** (= the blocked shorts would have won). Widen to more regimes ONLY if STRONG_BEAR W1 mom-short flips negative on N≥10 (today exempt 4·75%·+$229).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+**POOL + BASELINE RE-FREEZE 2026-06-30 (same session, after the W1 ship + final batch):** COMBINED pool grown **334 → 345** (+11 = the 06-29/30 batch id 5-15, all new keys, deduped; pre-append snapshot at `reports/COMBINED_..._DEDUP.csv.prebatch_bak`). Batch CSV saved `reports/orders_2026-06-30_2208_11trades_postW1ship.csv` + text placeholder `reports/report_2026-06-30_2208_11trades.txt`. `scripts/screen_pool.py` updated: `sleeve()` MOM_SHORT now applies the W1-HEALTHY_BEAR block (current-stack parity); anchors updated **23/$2146 → 25/$2496 (MOM-long)** and **28/−$122 → 14/$310 (MOM-short)** + new assert `0 W1-block survivors`. Re-frozen `reports/SCREENED_BASELINE.csv` = **85 survivors: MOM-long 25·84%·+$2496 · MOM-short 14·57%·+$310 · FLIP-short 46·72%·+$561 · TOTAL 85·73%·+$3367.** **Archived prior baseline (pre-W1, pre-batch): MOM-long 23·83%·+$2146 · MOM-short 28·50%·−$122 · FLIP-short 43·74%·+$702.** Independent reconciliation: MOM-short 28·−$122 − 17 W1-HB-COMBINED (47%/−$383) + 3 batch survivors TAO/XLM/AAVE (−67/+48/+68) = 14·+$310 ✓. Operator resetting paper after this → next batch is fresh; compare it against THIS baseline.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

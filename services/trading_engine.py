@@ -3996,6 +3996,41 @@ class TradingEngine:
                 pass
             return None
 
+        # MOMENTUM-SHORT W1 regime block — Jun 30, 2026 (see config.py momentum_short_w1_block_regimes).
+        # W1 ("HighConv trend") fired as a SHORT drains specifically in HEALTHY_BEAR. Evidence (2
+        # direction-consistent windows): SCREENED_BASELINE (06-16→28) + 06-29/30 batch → W1 mom-short
+        # HEALTHY_BEAR N=20 / 40%WR / -$650 / avg -0.265%, while the non-W1 mom-short CONTROL in the
+        # SAME regime is breakeven+ (N=7 / +$24 / +0.014%) → the discriminator is W1, not the regime
+        # (confound check passed). Loss is diffuse (no pair ≥60%). STRONG_BEAR W1 WINS (N=4/75%/+$229)
+        # → EXEMPT: only regimes listed here block. Momentum-shorts reach this path; flips bypass it
+        # (gated upstream by _flip_filters). DISCIPLINE-OVERRIDE ship (N=20 < 30 promotion gate) →
+        # tracked via the phantom below. TIGHT REVERT: clear the regime list (→'') if this block's
+        # phantom (LONG fade) goes net-NEGATIVE on N≥10 fresh (= the blocked shorts would have WON).
+        # Empty list = filter off. Fail-open: missing regime → no block.
+        if direction == "SHORT" and not flip_source and not bull_long and not bounce_long and _pw1_e:
+            _w1blk = {s.strip() for s in (getattr(config.trading_config.thresholds, 'momentum_short_w1_block_regimes', '') or '').split(',') if s.strip()}
+            if entry_btc_regime in _w1blk:
+                logger.info(f"[MOMENTUM_SHORT_W1_REGIME] {pair}: W1 momentum SHORT blocked — regime {entry_btc_regime} in block-list {sorted(_w1blk)}")
+                try:
+                    self._record_filter_block("MOMENTUM_SHORT_W1_REGIME", "SHORT")
+                except Exception:
+                    pass
+                # Phantom fade (blocked SHORT → LONG) so the block stays observable for the revert gate:
+                # a net-NEGATIVE LONG fade means the blocked short would have won → revert signal.
+                try:
+                    _w1_ef = {k: v for k, v in {
+                        'entry_gap': entry_gap, 'entry_ema_gap_5_8': entry_ema_gap_5_8, 'entry_ema_gap_8_13': entry_ema_gap_8_13,
+                        'entry_ema5_stretch': entry_ema5_stretch, 'entry_rsi': entry_rsi, 'entry_adx': entry_adx,
+                        'entry_adx_delta': entry_adx_delta, 'entry_atr_pct': entry_atr_pct, 'entry_range_position': entry_range_position,
+                        'entry_pair_ema20_ema50_gap_pct': entry_pair_ema20_ema50_gap_pct, 'entry_dist_from_ema13_pct': entry_dist_from_ema13_pct,
+                        'entry_btc_adx': entry_btc_adx, 'entry_btc_rsi': entry_btc_rsi, 'entry_btc_atr_pct': entry_btc_atr_pct,
+                        'entry_quality_score': entry_quality_score, 'entry_bear_pct': entry_bear_pct,
+                    }.items() if v is not None}
+                    _seed_phantom_flip(pair, current_price, "SHORT", "MOMENTUM_SHORT_W1_REGIME", entry_fields=_w1_ef)
+                except Exception:
+                    pass
+                return None
+
         # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
         # Look up cell multiplier from BOTH pair-level (Pair RSI × Pair ADX) and BTC-level
         # (BTC RSI × BTC ADX) rule strings.  When both match, take HIGHER (max) — not multiply

@@ -779,7 +779,22 @@ class SignalThresholds(BaseModel):
     # Momentum-shorts reach the entry path; flips bypass (gated by _flip_filters). Counter MOMENTUM_SHORT_W1_REGIME.
     # Empty = off (filter universal-off). TIGHT REVERT (override): clear the list (→'') if this block's phantom
     # (LONG fade) goes net-NEGATIVE on N≥10 fresh (= the blocked shorts would have won).
-    momentum_short_w1_block_regimes: str = 'HEALTHY_BEAR'
+    momentum_short_w1_block_regimes: str = ''  # REVERTED 2026-06-30 (was 'HEALTHY_BEAR'). Failed the cross-period
+    # robustness test: the SAME W1+HEALTHY_BEAR+short entries WON +$1175/65%WR ≤06-13 and LOST -$650/40%WR 06-16→30
+    # — the regime LABEL did not capture what changed (follow-through: peak% halved +0.61→+0.34, 73%→45% reached
+    # +0.30). A robust filter encodes a stable entry-measurable condition; "HEALTHY_BEAR" did not → overfit-to-window.
+    # Replaced by momentum_short_pair_vol_max (the one separator that holds in BOTH periods). Empty = off.
+    # Jun 30, 2026 — MOMENTUM-SHORT high-pair-volume block. Block a momentum SHORT when entry pair-volume ratio
+    # (current vol vs its own recent avg) >= this (0 = off). Mechanism: shorting into HIGH pair volume = climactic/
+    # exhaustive move → bounce → fails to follow through; LOW pair volume = orderly continuation → follows through.
+    # This is the ONLY entry variable that separates mom-short winners/losers WITHOUT inverting across periods:
+    # pair_vol<1.0 = 69%WR/+$392 (06-16→30) AND 64%WR/+$449 (≤06-13); pair_vol>=1.0 = 28%WR/-$732 recent AND
+    # net-negative ≤06-13 → blocking >=1.0 is +EV in BOTH windows (unlike W1, which was +EV only recently).
+    # Momentum-only (flips bypass — handled in _flip_filters). NOTE: this is a MAX (block at/above); distinct from
+    # the legacy pair_volume_threshold_short=1.1 which is a MIN (require >=, the OPPOSITE) and stays OFF. Counter
+    # MOMENTUM_SHORT_PAIRVOL. DISCIPLINE-OVERRIDE (N=34 mom-short universe). TIGHT REVERT: set 0 if pair_vol>=1.0
+    # mom-shorts come back >=50% WR AND net-positive on N>=15 fresh, OR if pair_vol<1.0 (the kept side) drops <55% WR.
+    momentum_short_pair_vol_max: float = 1.0
     # Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier Mechanism, per CLAUDE.md May 3 design).
     # Format per rule: "<RSI_min>-<RSI_max>:<ADX_min>-<ADX_max>:<multiplier>", comma-separated.
     # Example: "55-60:22-25:2.0,60-65:18-22:1.5" — boost LONG entries in those two cells by the listed factor.

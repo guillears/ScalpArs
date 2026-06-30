@@ -4031,6 +4031,24 @@ class TradingEngine:
                     pass
                 return None
 
+        # MOMENTUM-SHORT high-pair-volume block — Jun 30, 2026 (see config.py momentum_short_pair_vol_max).
+        # Block a momentum SHORT when entry pair-volume ratio >= the threshold. Mechanism: shorting into HIGH
+        # pair volume = climactic/exhaustive move that bounces (no follow-through); LOW pair volume = orderly
+        # continuation that follows through. The ONLY entry separator that does NOT invert across periods:
+        # pair_vol<1.0 wins in BOTH (69%/+$392 recent, 64%/+$449 ≤06-13); pair_vol>=1.0 loses recent / net-neg
+        # old → blocking >=1.0 is +EV in both windows. Replaces the reverted W1-regime block. Momentum-only
+        # (flips bypass via _flip_filters). MAX semantics (block at/above); the legacy pair_volume_threshold_short
+        # is a MIN and stays OFF. Counter MOMENTUM_SHORT_PAIRVOL. 0 = off. Fail-open: missing pair-vol → no block.
+        if direction == "SHORT" and not flip_source and not bull_long and not bounce_long:
+            _pvmax = float(getattr(config.trading_config.thresholds, 'momentum_short_pair_vol_max', 0.0) or 0.0)
+            if _pvmax > 0 and entry_pair_volume_ratio is not None and entry_pair_volume_ratio >= _pvmax:
+                logger.info(f"[MOMENTUM_SHORT_PAIRVOL] {pair}: momentum SHORT blocked — pair-vol {entry_pair_volume_ratio:.2f} >= {_pvmax} (climactic/exhaustion)")
+                try:
+                    self._record_filter_block("MOMENTUM_SHORT_PAIRVOL", "SHORT")
+                except Exception:
+                    pass
+                return None
+
         # === Premium Multiplier (May 4, 2026 — Phase 3 Position Multiplier per CLAUDE.md May 3) ===
         # Look up cell multiplier from BOTH pair-level (Pair RSI × Pair ADX) and BTC-level
         # (BTC RSI × BTC ADX) rule strings.  When both match, take HIGHER (max) — not multiply

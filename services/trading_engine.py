@@ -3914,7 +3914,17 @@ class TradingEngine:
             # flip candidate (historical N=271, +0.142pp/trade proxy; C7 sub-cell +0.259).
             # Measures REALIZED matched-long→short P&L. Blocked dir LONG → flip SHORT.
             # Jun 14: tag the C/W family so the fade can be sub-divided (C+W / C / W).
-            _um_cohort = "C+W" if (_pc_any_e and _pw_any_e) else ("C" if _pc_any_e else "W")
+            # Jun 29: refine to the SPECIFIC matched patterns (e.g. "W6", "C6+W6") so high-value
+            # flip candidates break out for OOS phantom tracking. Lead candidate W6→flip-short
+            # (BTC bear-tailwind long fails → short with the bear): screen +0.199%/65%WR/N=26 but
+            # all in ONE bear window (May21-Jun5) → phantom-validate across ≥2 bear episodes before
+            # any capital. Family (C/W/C+W) still derivable from the codes; nothing keys off the
+            # old exact values (verified). Query PhantomFlip rows by cohort LIKE '%W6%' to read out.
+            _um_pats = "+".join(p for p, m in (
+                ("C1", _pc1_e), ("C2", _pc2_e), ("C3", _pc3_e), ("C4", _pc4_e), ("C5", _pc5_e),
+                ("C6", _pc6_e), ("C7", _pc7_e), ("C8", _pc8_e), ("C9", _pc9_e),
+                ("W1", _pw1_e), ("W2", _pw2_e), ("W3", _pw3_e), ("W4", _pw4_e), ("W5", _pw5_e), ("W6", _pw6_e)) if m)
+            _um_cohort = _um_pats or ("C+W" if (_pc_any_e and _pw_any_e) else ("C" if _pc_any_e else "W"))
             # Jun 15: forward THIS blocked-long's full entry context (open_position's own
             # derived params) so BOTH the phantom row AND the SHORT fade Order carry the same
             # analytics columns as a normal trade — ATR, fan-ratio gaps, stretch, range-pos,

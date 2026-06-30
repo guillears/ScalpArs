@@ -560,7 +560,11 @@ def _flip_filters(source, ind):
                 # (the whole drain); KEEP>BLOCK + WR up every batch; loss diffuse (top-2 pairs 28% →
                 # dimension not blacklist). Fail-open: missing adx or min=0.
                 _padxmin = float(getattr(th, 'flip_fan_pair_adx_min', 0.0) or 0.0)
-                if _padxmin > 0:
+                # 2026-06-30: regime exemption — the pADX<min floor LOSES in HEALTHY_BEAR (block correct)
+                # but WINS in STRONG_BEAR (78%WR/+$310, ex-top-2 +$58), so don't fire it there. Empty set
+                # = universal (no exemption). N=9/one-window DISCIPLINE-OVERRIDE; revert = clear the regimes.
+                _padx_exempt = {s.strip() for s in (getattr(th, 'flip_fan_pair_adx_exempt_regimes', '') or '').split(',') if s.strip()}
+                if _padxmin > 0 and (ind.get('btc_regime') or '') not in _padx_exempt:
                     _padx = ind.get('adx')
                     if _padx is not None and _padx < _padxmin:
                         return (True, "FLIP_FAN_PAIR_ADX", 1.0, 1.0, None)

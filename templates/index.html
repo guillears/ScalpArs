@@ -6097,6 +6097,11 @@
                                     <input type="number" id="config-flip-fan-pair-adx-min" step="1" class="w-16 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
                                     <span class="text-gray-500 text-xs whitespace-nowrap">(0 = off; ship 20 — FAN flips bypass the momentum ADX floor; weak-trend fades chop)</span>
                                 </div>
+                                <div class="col-span-2 flex items-center gap-2 flex-wrap pt-1 mt-1 border-t border-fuchsia-800/20" title="Jun 30: regimes where the pADX&lt;min floor does NOT apply (comma list). The pADX&lt;20 zone LOSES in HEALTHY_BEAR (N=7/29%WR/−$383, floor correct) but WINS in STRONG_BEAR (N=9/78%WR/+$310, ex-top-2 +$58) — in a strong bear even a weak-pADX pump deflates because macro is down. Recovers +$310/+9 trades. N=9/one-bear-window DISCIPLINE-OVERRIDE → TIGHT REVERT: clear (empty) if STRONG_BEAR pADX&lt;min flips net-negative on N≥10 fresh. Empty = universal.">
+                                    <span class="text-rose-300 whitespace-nowrap">…except in regimes</span>
+                                    <input type="text" id="config-flip-fan-pair-adx-exempt-regimes" class="w-40 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-rose-200 text-right">
+                                    <span class="text-gray-500 text-xs whitespace-nowrap">(comma list; STRONG_BEAR = pADX&lt;20 wins 78% there; empty = universal)</span>
+                                </div>
                             </div>
                             <!-- Multiplier cell — FAN flip-SHORT winner cell: qs / bear / range → Invest/Lev (Jun 26, replaced the retired BTC RSI×ADX cell) -->
                             <div class="mt-3 pt-2 border-t border-fuchsia-800/20">
@@ -18248,6 +18253,7 @@
                 _setVal('config-flip-short-bear-min', config.thresholds.flip_short_bear_min);
                 _setVal('config-flip-short-pair-gap-max', config.thresholds.flip_short_pair_gap_max);
                 _setVal('config-flip-fan-pair-adx-min', config.thresholds.flip_fan_pair_adx_min);
+                _setVal('config-flip-fan-pair-adx-exempt-regimes', config.thresholds.flip_fan_pair_adx_exempt_regimes);
                 _setVal('config-flip-short-atr-block-regimes', config.thresholds.flip_short_atr_block_regimes || '');
                 // Multiplier cell (FAN winner cell): parse "qsMin:bearMin:rangeLo-rangeHi:size[:lev]" into the 6 fields
                 try {
@@ -19532,6 +19538,7 @@
                     flip_short_bear_min: (function(){ const v = parseFloat((document.getElementById('config-flip-short-bear-min') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_short_pair_gap_max: (function(){ const v = parseFloat((document.getElementById('config-flip-short-pair-gap-max') || {}).value); return isNaN(v) ? 0 : v; })(),
                     flip_fan_pair_adx_min: (function(){ const v = parseFloat((document.getElementById('config-flip-fan-pair-adx-min') || {}).value); return isNaN(v) ? 0 : v; })(),
+                    flip_fan_pair_adx_exempt_regimes: ((document.getElementById('config-flip-fan-pair-adx-exempt-regimes') || {}).value || '').trim(),
                     flip_short_atr_block_regimes: ((document.getElementById('config-flip-short-atr-block-regimes') || {}).value || '').trim(),
                     flip_fan_runner_strpk: ((document.getElementById('config-flip-fan-runner-strpk') || {}).checked === true),
                     flip_runner_strpk_shorts: ((document.getElementById('config-flip-runner-strpk-shorts') || {}).checked === true),

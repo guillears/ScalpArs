@@ -9294,6 +9294,9 @@ async def _compute_phantom_flip_performance(db, is_paper):
         ("BTC_ADX_BLOCK_SHORT", ("LONG",),         True),
         ("PAIR_RSI_ADX_CROSS",  ("LONG",),         True),
         ("PAIR_TREND_FILTER",   ("LONG", "SHORT"), True),
+        # Jun 29: re-added matched-long→SHORT fade, broken out PER PATTERN cohort below (the W6
+        # bear-tailwind flip-short candidate lives here — appears as the "↳ W6" sub-row).
+        ("LONG_UNMATCHED_ONLY", ("SHORT",),        True),
         # Jun 26: BTC_RSI_ADX_CROSS removed — its SHORT ★ ("fade BTC overbought", phantom N=28/71%/+0.41%,
         # cell BTC RSI 70-75 +0.61%) is REFUTED cross-batch: ZERO real short fills at BTC RSI ≥70, and the
         # adjacent real band (65-70) is 75/40%WR/-0.31%/-$1466 — a loser. Same overbought-fade phantom
@@ -9338,6 +9341,21 @@ async def _compute_phantom_flip_performance(db, is_paper):
                     if cc and cc["n"] >= 3:
                         cc.update({"source": f"  ↳ BTCrsi{_rk}-{_rk+5} × adx{_ak}-{_ak+5}",
                                    "flip_direction": fd, "is_subrow": True})
+                        rows.append(cc)
+            # Jun 29: per-PATTERN cohort split of the matched-long fade. entry_cohort holds the
+            # joined pattern codes (e.g. "W6", "C6+W6"); split on "+" so each individual pattern
+            # gets an aggregated row (a C6+W6 flip counts toward BOTH C6 and W6 — matches the
+            # screen methodology). The W6 flip-short candidate surfaces as "↳ W6". Cells at N≥3.
+            if src == "LONG_UNMATCHED_ONLY":
+                _pat = {}
+                for r in sub:
+                    for _p in (r.entry_cohort or "").split("+"):
+                        if _p:
+                            _pat.setdefault(_p, []).append(r)
+                for _p, _prs in sorted(_pat.items(), key=lambda x: -len(x[1])):
+                    cc = _agg(_prs)
+                    if cc and cc["n"] >= 3:
+                        cc.update({"source": f"  ↳ {_p}", "flip_direction": fd, "is_subrow": True})
                         rows.append(cc)
     total = _agg(flips) or {}
     # verdict per row: does the flip pay? Concentration gates the ★ — a great-looking

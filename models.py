@@ -609,7 +609,7 @@ class PhantomFlip(Base):
     # Jun 14: for LONG_UNMATCHED_ONLY (matched-long fade) only — which pattern family the
     # blocked long matched, so the fade can be sub-divided. "C+W" / "C" / "W" (None for
     # other sources, where C/W is not computed at the seed site). Forward-only.
-    entry_cohort = Column(String(8), nullable=True)
+    entry_cohort = Column(String(32), nullable=True)  # Jun 29: 8->32 — now holds joined pattern codes ("C6+W6"); SQLite ignores length, PG-safe
     # Jun 15: full entry-indicator capture (parity with the flip Order / normal trade) so the
     # phantom POOL is analyzable by RSI / ATR / fan-ratio / regime cross-batch. Forward-only
     # (existing rows stay NULL). Populated from _flip_entry_fields() at seed time.

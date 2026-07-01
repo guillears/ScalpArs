@@ -4270,10 +4270,20 @@
                     <p id="pnl-distribution-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
                 </div>
 
+                <!-- MAE / MFE Scatter (Jul 1, 2026) — exit-optimization view -->
+                <div class="mt-6 pt-6 border-t border-white/10">
+                    <h3 class="text-sm font-semibold text-gray-300 mb-4">Excursion Scatter (MAE vs MFE)</h3>
+                    <p class="text-xs text-gray-500 mb-3">One dot per trade — how far it went <span class="text-red-300">against</span> you (Max Adverse Excursion, x) vs <span class="text-emerald-300">for</span> you (Max Favorable Excursion, y) before closing. Green = win, red = loss. Reads exit placement: how deep winners dip (→ safe SL room) and how much losers give back from peak (→ where BE/TP should lock in).</p>
+                    <div style="height: 360px; position: relative;">
+                        <canvas id="mae-mfe-chart"></canvas>
+                    </div>
+                    <p id="mae-mfe-empty" class="text-center text-gray-500 text-sm py-8">No data</p>
+                </div>
+
                 <!-- Performance by Hour -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Hour (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows. Bar opacity ∝ trade count (faint = low N = noise); no-trade hours are gaps, not 0%.</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows. Each hour is an independent bucket (Avg P&L = dots, not a trend line). Bar opacity ∝ trade count (faint = low N = noise); no-trade hours show no marker, not a fake 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="hourly-performance-chart"></canvas>
                     </div>
@@ -4283,7 +4293,7 @@
                 <!-- Performance by Day of Week -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Day of Week (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days. Bar opacity ∝ trade count (faint = low N = noise); no-trade days are gaps, not 0%.</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days. Each day is an independent bucket (Avg P&L = dots, not a trend line). Bar opacity ∝ trade count (faint = low N = noise); no-trade days show no marker, not a fake 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="daily-performance-chart"></canvas>
                     </div>
@@ -11583,6 +11593,7 @@
         let _lastPotHash = null;
         let _lastEqHash = null;
         let _lastDistHash = null;
+        let _lastMaeMfeHash = null;
         let _lastHourlyHash = null;
         let _lastDailyHash = null;
         let _lastDayTimeHash = null;
@@ -15315,12 +15326,35 @@
                         const cumValues = potData.map(b => b.cumulative_pnl || 0);
                         const barColors = pnlValues.map(v => v >= 0 ? 'rgba(52, 211, 153, 0.8)' : 'rgba(248, 113, 113, 0.8)');
 
-                        const startingBalance = (balData && data.total_pnl != null)
-                            ? (balData.usdt_balance || 0) + (balData.usdt_in_orders || 0) - (data.total_pnl || 0)
-                            : null;
+                        // TRUE immutable seed (paper_balance + paper_bnb_initial_usd) from the API — the
+                        // correct Starting Balance. Since total_portfolio = seed + closed_pnl, a curve of
+                        // (seed + cumulative_pnl) lands exactly on the account's Total Portfolio Value.
+                        // Fallback to the old reverse-derivation only if the API didn't supply the seed.
+                        const startingBalance = (balData && balData.starting_balance != null)
+                            ? balData.starting_balance
+                            : ((balData && data.total_pnl != null)
+                                ? (balData.usdt_balance || 0) + (balData.usdt_in_orders || 0) - (data.total_pnl || 0)
+                                : null);
                         const portfolioValues = startingBalance != null
                             ? cumValues.map(v => startingBalance + v)
                             : null;
+
+                        // Anchor the curve to the seed: prepend an origin point AT startingBalance so the
+                        // Portfolio Value line visibly rises from the dashed Starting Balance line through
+                        // the first bucket (the first bucket's gain becomes a real rising segment, not a
+                        // hidden jump). potMeta keeps tooltip rows aligned after the unshift.
+                        let potMeta = potData;
+                        if (portfolioValues) {
+                            labels.unshift('');
+                            pnlValues.unshift(null);
+                            barColors.unshift('rgba(0,0,0,0)');
+                            portfolioValues.unshift(startingBalance);
+                            potMeta = [null].concat(potData);
+                        }
+
+                        const sbLabel = startingBalance != null
+                            ? `Starting Balance ($${startingBalance.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})})`
+                            : 'Starting Balance';
 
                         const datasets = [
                             {
@@ -15336,10 +15370,10 @@
 
                         if (portfolioValues) {
                             datasets.push({
-                                label: 'Starting Balance',
+                                label: sbLabel,
                                 data: labels.map(() => startingBalance),
                                 type: 'line',
-                                borderColor: 'rgba(255, 255, 255, 0.25)',
+                                borderColor: 'rgba(255, 255, 255, 0.35)',
                                 borderWidth: 1,
                                 borderDash: [6, 4],
                                 pointRadius: 0,
@@ -15381,18 +15415,18 @@
                                 maintainAspectRatio: false,
                                 interaction: { mode: 'index', intersect: false },
                                 plugins: {
-                                    legend: { labels: { color: '#9ca3af', font: { size: 11 }, filter: item => item.text !== 'Starting Balance' } },
+                                    legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
                                     tooltip: {
                                         backgroundColor: 'rgba(17, 24, 39, 0.95)',
                                         titleColor: '#e5e7eb',
                                         bodyColor: '#d1d5db',
                                         borderColor: 'rgba(255,255,255,0.1)',
                                         borderWidth: 1,
-                                        filter: item => item.dataset.label !== 'Starting Balance',
                                         callbacks: {
                                             afterBody: function(ctx) {
                                                 const i = ctx[0].dataIndex;
-                                                const b = potData[i];
+                                                const b = potMeta[i];      // aligned to the (possibly anchored) labels
+                                                if (!b) return [];         // anchor origin row — no bucket behind it
                                                 const lines = [];
                                                 lines.push(`Cumulative P&L: $${(b.cumulative_pnl||0).toFixed(2)}`);
                                                 lines.push(`Trades: ${b.trades} (${b.longs}L/${b.shorts}S)`);
@@ -15684,6 +15718,92 @@
                     }
                 }
 
+                // MAE / MFE Excursion Scatter (Jul 1, 2026)
+                const mmCanvas = document.getElementById('mae-mfe-chart');
+                const mmEmpty = document.getElementById('mae-mfe-empty');
+                const mmData = data.mae_mfe;
+                const mmHash = JSON.stringify(mmData || []);
+                if (mmHash !== _lastMaeMfeHash) {
+                    _lastMaeMfeHash = mmHash;
+                    if (window._mmChart) { window._mmChart.destroy(); window._mmChart = null; }
+                    if (mmData && mmData.length > 0) {
+                        mmEmpty.style.display = 'none';
+                        mmCanvas.style.display = 'block';
+                        const _mmPoint = t => ({ x: t.mae, y: t.mfe, _t: t });
+                        const wins = mmData.filter(t => t.win).map(_mmPoint);
+                        const losses = mmData.filter(t => !t.win).map(_mmPoint);
+                        window._mmChart = new Chart(mmCanvas, {
+                            type: 'scatter',
+                            data: {
+                                datasets: [
+                                    {
+                                        label: `Wins (${wins.length})`,
+                                        data: wins,
+                                        backgroundColor: 'rgba(52, 211, 153, 0.6)',
+                                        borderColor: 'rgba(52, 211, 153, 0.9)',
+                                        borderWidth: 1,
+                                        pointRadius: 4,
+                                        pointHoverRadius: 6,
+                                    },
+                                    {
+                                        label: `Losses (${losses.length})`,
+                                        data: losses,
+                                        backgroundColor: 'rgba(248, 113, 113, 0.6)',
+                                        borderColor: 'rgba(248, 113, 113, 0.9)',
+                                        borderWidth: 1,
+                                        pointRadius: 4,
+                                        pointHoverRadius: 6,
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+                                    tooltip: {
+                                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                        titleColor: '#e5e7eb',
+                                        bodyColor: '#d1d5db',
+                                        borderColor: 'rgba(255,255,255,0.1)',
+                                        borderWidth: 1,
+                                        callbacks: {
+                                            title: () => '',
+                                            label: function(ctx) {
+                                                const t = ctx.raw._t;
+                                                const sg = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                                                const out = [
+                                                    `${t.pair} ${t.direction}`,
+                                                    `MAE (worst): ${sg(t.mae)}`,
+                                                    `MFE (best): ${sg(t.mfe)}`,
+                                                    `Final P&L: ${sg(t.pnl_pct)}`,
+                                                ];
+                                                if (t.dur_min != null) out.push(`Held: ${t.dur_min} min`);
+                                                return out;
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        title: { display: true, text: 'Max Adverse Excursion (worst dip) %', color: '#f87171', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', callback: v => v + '%' },
+                                        grid: { color: 'rgba(255,255,255,0.05)' },
+                                    },
+                                    y: {
+                                        title: { display: true, text: 'Max Favorable Excursion (best peak) %', color: '#34d399', font: { size: 11 } },
+                                        ticks: { color: '#9ca3af', callback: v => v + '%' },
+                                        grid: { color: 'rgba(255,255,255,0.05)' },
+                                    }
+                                }
+                            }
+                        });
+                    } else {
+                        mmEmpty.style.display = 'block';
+                        mmCanvas.style.display = 'none';
+                    }
+                }
+
                 // Hourly Performance Chart
                 const hourCanvas = document.getElementById('hourly-performance-chart');
                 const hourEmpty = document.getElementById('hourly-performance-empty');
@@ -15729,8 +15849,8 @@
                                         pointHoverRadius: 6,
                                         pointBackgroundColor: hourData.map(h => h.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
                                         fill: false,
-                                        tension: 0.3,
-                                        spanGaps: false,   // break the line across no-trade hours (null) — no fabricated 0%
+                                        showLine: false,   // hour-of-day is categorical, not a timeline — markers only,
+                                                           // no connecting segments that would imply a false intraday trend
                                         yAxisID: 'y1',
                                         order: 1,
                                     }
@@ -15826,8 +15946,7 @@
                                         pointHoverRadius: 7,
                                         pointBackgroundColor: dayData.map(d => d.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
                                         fill: false,
-                                        tension: 0.3,
-                                        spanGaps: false,   // break across no-trade days (null)
+                                        showLine: false,   // day-of-week is categorical — markers only, no Mon→Tue→Wed "trend"
                                         yAxisID: 'y1',
                                         order: 1,
                                     }

@@ -645,13 +645,22 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         open_orders = result.scalars().all()
         used_margin = sum(o.investment for o in open_orders)
         bnb_usd = trading_engine.paper_bnb_balance_usd
-        
+
+        # Immutable starting-capital baseline = paper_balance + paper_bnb_initial_usd, set ONCE at
+        # cold start and never drifted (trading_engine cold-start init). This is the CORRECT
+        # "Starting Balance" for the equity chart. NOTE: total_portfolio = seed + closed_pnl by
+        # construction, so a curve of (seed + cumulative_pnl) lands its endpoint exactly on this
+        # total — unlike the reverse-derived current−pnl figure, which drifts by the BNB fee burn.
+        _bs_row = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
+        starting_balance = getattr(_bs_row, 'runtime_initial_total_usd', None) if _bs_row else None
+
         return {
             "usdt_balance": balance,
             "bnb_balance": round(bnb_usd, 2),
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
             "total_portfolio": balance + used_margin + bnb_usd,
+            "starting_balance": round(starting_balance, 2) if starting_balance is not None else None,
             "is_paper": True
         }
     else:
@@ -667,6 +676,7 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance_is_usd": False,
             "usdt_in_orders": balance['usdt_used'],
             "total_portfolio": round(total, 2),
+            "starting_balance": None,  # live: no paper seed; chart falls back to reverse-derivation
             "is_paper": False
         }
 
@@ -1757,6 +1767,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "equity_curve": [],
             "pnl_distribution": [],
             "pnl_distribution_stats": None,
+            "mae_mfe": [],
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -2190,6 +2201,37 @@ def _compute_pnl_distribution_stats(orders):
         "avg_loss": round(avg_loss, 3) if avg_loss is not None else None,
         "payoff": round(payoff, 2) if payoff is not None else None,
     }
+
+
+def _compute_mae_mfe(orders):
+    """MAE/MFE scatter (Jul 1, 2026) — one point per closed trade for exit-optimization work.
+
+    x = MAE (max ADVERSE excursion = trough_pnl, worst P&L% reached during the trade, ≤ 0)
+    y = MFE (max FAVORABLE excursion = peak_pnl, best P&L% reached during the trade, ≥ 0)
+    Both track _close_pct (percent) and are written live by the tick loop (trading_engine).
+    Colored win/loss downstream. Reads: how deep winners dip (→ how much SL room is safe) and
+    how much losers give back from their peak (→ where BE/TP should lock in). A point needs BOTH
+    excursions to be placed on the 2D plane, so trades missing either are skipped."""
+    pts = []
+    for o in orders:
+        if o.pnl_percentage is None:
+            continue
+        mae, mfe = o.trough_pnl, o.peak_pnl
+        if mae is None or mfe is None:
+            continue
+        dur_min = None
+        if o.opened_at and o.closed_at:
+            dur_min = round((o.closed_at - o.opened_at).total_seconds() / 60.0, 1)
+        pts.append({
+            "pair": o.pair,
+            "direction": o.direction,
+            "mae": round(mae, 3),          # ≤ 0
+            "mfe": round(mfe, 3),          # ≥ 0
+            "pnl_pct": round(o.pnl_percentage, 3),
+            "win": (o.pnl_percentage or 0) > 0,
+            "dur_min": dur_min,
+        })
+    return pts
 
 
 def _compute_hourly_performance(orders):
@@ -3418,6 +3460,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "equity_curve": [],
             "pnl_distribution": [],
             "pnl_distribution_stats": None,
+            "mae_mfe": [],
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -7341,6 +7384,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),
         "pnl_distribution_stats": _compute_pnl_distribution_stats(orders),
+        "mae_mfe": _compute_mae_mfe(orders),
         "hourly_performance": _compute_hourly_performance(orders),
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),

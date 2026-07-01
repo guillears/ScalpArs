@@ -1739,3 +1739,40 @@ Operator principle: don't run phantoms we don't display — either keep the UI o
 - **Why safe:** the retired sources were the PRE-LIVE flip-short research surface; flip-shorts are now LIVE and analysed via SCREENED_BASELINE + the live Flip Trade Log (real fills, not naked fades). Their watchlist candidates (bear-70-80, qs≥3 multipliers) are already captured in CURRENT_STATE — nothing lost. Observation-only, ZERO live-trading impact (phantoms never trade).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-01 — Flip-short ENTRY-SEPARATOR search: tested EMA/RSI/DI variables + 10 DI-diff 2D combos → ALL REJECTED (overfit, invert out-of-sample)
+
+Operator-driven, triggered by an XPL flip-short loser (id 18, `FLIP:FAN_RATIO_GATE` SHORT, −0.79%, RSI rising +11 into a reversal bottom). Question: does any entry slope/momentum variable divide FAN flip-short winners vs losers? Analysed **SCREENED_BASELINE.csv** (46 flip-shorts, 71.7% WR) and cross-checked the fresh **07-01 batch** (9 flip-shorts) + dedupe pools.
+
+**Single-variable results (SCREENED_BASELINE flip-shorts):**
+- `entry_ema20_slope` — **no separation** (win-mean +0.166 ≈ loss-mean +0.181).
+- `entry_ema50_slope` / `entry_pair_ema20_ema50_gap_pct` (EMA13-50 gap, misnamed) — grade WR weakly but **NON-MONOTONIC** (terciles 56%→87%→73%) AND **no net-negative zone** (deepest-neg quartile still +0.120% avg / +1.44%). The two are highly correlated (carve identical trades) = one signal. Not a divider.
+- RSI-direction (`entry_rsi − entry_rsi_prev`) — **non-monotonic confound** (terciles 50%→87%→80%); XPL's big RSI-rise lands in the 80%-WR tercile. "Short into rising RSI = loser" is FALSE in data.
+- **DI-diff (`entry_pos_di − entry_neg_di`, +DI/−DI spread from Wilder DMI)** — the ONLY monotonic, net-negative single divider in-sample: terciles WR 87.5%→73.3%→**53.3%**, top tercile (>12.9) avg **−0.234% / −3.51%**. XPL sits here (13.2). Mechanism coherent (+DI≫−DI = bullish momentum = shorting into strength).
+
+**DI-diff filter before/after (block DI-diff ≥ 13):**
+| pool | before | after (kept) | blocked cohort |
+|---|---|---|---|
+| BASELINE ≤06-30 | 46·71.7%·+8.37% | 32·78.1%·+10.90% | 14 (8W/6L)·57.1%·**−2.53%** GOOD |
+| CURRENT 07-01 | 9·66.7%·+0.53% | 6·66.7%·+0.06% | 3 (2W/1L)·66.7%·**+0.47%** HARMFUL (inverts) |
+
+The blocked 07-01 trades: XPL id18 (DI 13.1, −0.79% ✓) but also JTO id17 (DI 15.6, **+0.79% ✗**) and XPL id12 (DI 21.6, **+0.48% ✗**). The 2 losers it MISSED (JTO id8 DI 9.1, TIA id7 DI 5.2) had LOW DI-diff — opposite of the baseline prediction.
+
+**10 DI-diff 2D combos (DI≥12 AND second var) — same cell, baseline vs 07-01:**
+- `ema13_50gap<0`: baseline 25.0%WR/−4.09% → 07-01 66.7%WR/**+0.47%** (inverted)
+- `ema50_slope<0`: 33.3%/−3.93% → 66.7%/**+0.47%** (inverted)
+- `pair_vol≥1.0`: 25.0%/−2.93% → 100%/**+1.26%** (inverted hard)
+- `global_vol≥1.0`: 33.3%/−4.32% → n=0
+- `adx_delta≥0.5`: 54.5%/−0.97% → 75%/**+0.64%** (inverted)
+- `dist_ema13≥0.7`: 45.5%/−2.34% → 100%/**+1.43%** (inverted hard)
+- (only cells negative on 07-01 were N=1 = XPL itself, circular)
+
+**EVERY 2D cell that looks clean in-sample (down to 25%WR/−4%) is net-POSITIVE out-of-sample.** Textbook overfitting on a 46-trade window — more slicing → cleaner in-sample fit + harder inversion.
+
+**Structural wall (why this can't be fixed by more analysis):** the FAN flip-short sleeve is <3 weeks old — **0 flip-shorts before ~06-13** in BOTH `dedupe_pool_FULL.csv` (525 shorts, `entry_strategy` all empty) and `dedupe_pool.csv` (503 shorts, empty). No historical window exists → cross-period validation (the W1-killer test) is IMPOSSIBLE; the ONLY test is forward, and the first forward batch (07-01) refutes every candidate.
+
+**VERDICT — do NOT ship any flip-short entry filter from these variables; do NOT re-derive.** Confirms the standing conclusion (memory `reference_combined_momflip_pool`): the flip-short sleeve is **inseparable at entry — the edge IS the sleeve**. Losers → pair-blacklist (when ≥60% of a loss zone is 1–2 pairs) or exit/BE mechanics, never entry dimensions. Note on DI: `entry_pos_di`/`entry_neg_di` ARE stored per-order (computed `services/indicators.py:47`) but the DI spread is NOT surfaced in any UI table (`avg_di_spread` is orphaned payload; `_di_spread_bucket` at main.py:2400 is dead code) — not worth building a table for a rejected signal. Value of this negative result: it prevented shipping a filter that would have removed net-positive trades live (+0.47% on the 07-01 batch alone).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

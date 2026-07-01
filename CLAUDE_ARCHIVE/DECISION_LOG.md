@@ -1776,3 +1776,24 @@ The blocked 07-01 trades: XPL id18 (DI 13.1, −0.79% ✓) but also JTO id17 (DI
 **VERDICT — do NOT ship any flip-short entry filter from these variables; do NOT re-derive.** Confirms the standing conclusion (memory `reference_combined_momflip_pool`): the flip-short sleeve is **inseparable at entry — the edge IS the sleeve**. Losers → pair-blacklist (when ≥60% of a loss zone is 1–2 pairs) or exit/BE mechanics, never entry dimensions. Note on DI: `entry_pos_di`/`entry_neg_di` ARE stored per-order (computed `services/indicators.py:47`) but the DI spread is NOT surfaced in any UI table (`avg_di_spread` is orphaned payload; `_di_spread_bucket` at main.py:2400 is dead code) — not worth building a table for a rejected signal. Value of this negative result: it prevented shipping a filter that would have removed net-positive trades live (+0.47% on the 07-01 batch alone).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-01 — Baseline re-freeze v3: weakcap parity closed in screen_pool.py (MOM-short 16/$392 → 15/$443)
+
+Caught in the Jul-1 operator-requested deep dive: `momentum_short_weakcap_*` (engine-live since Jun-28, blocks SHORT when range<15 ∧ pairATR<0.45 ∧ pairADX<28) was NEVER ported to `scripts/screen_pool.py` — the screen passed TAO 06-24 (rng 6 / pATR 0.29 / pADX 26.4, −$51 loser) that today's engine would block. Added the weakcap block to the MOM_SHORT branch (exact engine parity), anchors v2→v3.
+
+**SCREENED_BASELINE v3 (86 survivors): MOM-long 25·84%·+$2496 (unchanged) · MOM-short 15·73%·+$443 · FLIP-short 46·72%·+$561 (unchanged) · TOTAL 86·76%·+$3500.** Only TAO removed (the other 15 mom-shorts all pass weakcap — checked per-trade). Prior anchors archived: 23/$2146+28/−$122, 25/$2496+14/$310 (W1 v1), 25/$2496+16/$392 (v2).
+
+Also from the same deep dive (evidence, no ships):
+- **Exit stack VERIFIED GOOD on post-exit data:** every MOM-long loser SL (JTO would have bled to −2.2%) and every MOM-short EMA13-cross cut (SOL→−1.06, AAVE→−0.81, TAO→−0.81, FARTCOIN→−0.64 at 5min) was the right call. No exit change.
+- **⚠ shadow_atr05 flip-trail Δ+3.01% is CONTAMINATED — do NOT ship or re-derive:** the shadow does not respect the hard SL. Its "gains" are FLIP_STOP_LOSS trades riding through the stop and recovering (ID −0.98→+0.45, ONDO −0.70→+0.48, TIA −0.86→+0.49) and its tail is SKYAI −1.19→−6.66 (5.6× the SL on one position at 20×). Net +3.01% = +11.03 post-SL recoveries − 8.02 bleeds = fat-tail asymmetry, same class as the rejected caps-for-losers. Clean variants (tight/cap035/cap050) all Δ-negative → current FLIP trail (1.0×ATR + hard SL) is locally optimal among tested variants.
+- **GVol threshold sweep (both windows):** recent (baseline+07-01, N=28): de-mux netΔ$ ≈ 0 at every cut (−$71 @0.85 / +$51 @0.90 / −$36 @0.95 — noise; losers spread 0.79→1.10, no crisp separation). OLD pool (≤06-13, N=70 UNMATCHED longs): **0.85 is the ONLY cut with separation** (≥0.85 −0.132% vs <0.85 −0.016%; at ≥0.90 separation vanishes: −0.060 vs −0.052). → If the GVol de-mux ships, the threshold is 0.85 — 0.90+ would be recent-noise fitting.
+- MOM-short range-position ("don't short the hole") REFUTED: whole sleeve trades rng<25 and wins there; both buckets positive.
+- FLIP-short losers: 10/13 gap-through DOA across 10 DIFFERENT pairs → no blacklist add.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+**ADDENDUM (same day, operator methodology correction):** the GVol sweep's old-pool leg above must NOT be read as ship support — old-pool P&L reflects OLD exit mechanisms (inadmissible as evidence for the current stack; cross-period may only REFUTE, never SUPPORT — new memory `feedback_crossperiod_refute_only`). Baseline-only verdict (v3 + 07-01, N=28): GVol≥0.85 = 12·66.7%·+0.013% avg·+$142@2×, de-mux netΔ −$71 → **WATCHLIST, not ship.** Gate: promote if the cohort stays ≤+0.10% avg on N≥20 fresh (now 12, 1 fresh). The 0.85-threshold finding stands (0.90+ = noise-fitting) as the cut IF it ever ships. CURRENT_STATE item rewritten accordingly (the earlier "SHIP-worthy via cross-period" framing retracted).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

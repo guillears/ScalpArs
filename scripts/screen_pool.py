@@ -80,6 +80,17 @@ def sleeve(r):
         _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
         _pv = nf(r.get('entry_pair_volume_ratio'))
         if _pvmax > 0 and _pv is not None and _pv >= _pvmax: return None  # MOMENTUM_SHORT_PAIRVOL
+        # Jul 1: weak-capitulation block (momentum_short_weakcap_*, engine-live since Jun 28 but MISSING here
+        # until now — parity gap caught by the Jul-1 deep dive: TAO 06-24 survived the screen yet the live
+        # engine would block it). Block when range<15 AND pairATR<0.45 AND pairADX<28 = shorting a dead tape
+        # at the bottom of its range with no trend strength.
+        if getattr(th, 'momentum_short_weakcap_enabled', False):
+            _wc_r = nf(r.get('entry_range_position')); _wc_a = nf(r.get('entry_atr_pct')); _wc_x = nf(r.get('entry_adx'))
+            if (_wc_r is not None and _wc_a is not None and _wc_x is not None
+                    and _wc_r < float(getattr(th, 'momentum_short_weakcap_range_max', 0.0) or 0.0)
+                    and _wc_a < float(getattr(th, 'momentum_short_weakcap_atr_max', 0.0) or 0.0)
+                    and _wc_x < float(getattr(th, 'momentum_short_weakcap_padx_max', 0.0) or 0.0)):
+                return None  # MOMENTUM_SHORT_WEAKCAP
         return 'MOM_SHORT'
     return None
 
@@ -109,16 +120,17 @@ def main():
     # hard validation anchors (both must hold — these are the verified current-stack truth)
     ml = agg.get('MOM_LONG', []);  ms = agg.get('MOM_SHORT', [])
     ml_net = sum(pnl_current(x) for x in ml);  ms_net = sum(pnl_current(x) for x in ms)
-    # Anchors updated 2026-06-30 (v2): W1-regime block REVERTED (overfit, failed cross-period) and REPLACED by the
-    # pair_vol>=1.0 block (the one separator robust in BOTH periods). MOM-long 25/$2496 unchanged; MOM-short is now
-    # the low-pair-vol cohort = 16/$392 (= pair_vol<1.0 survivors; reconciles with the 16·69%·+$392 recent cut).
-    # Prior anchors archived in DECISION_LOG: 23/$2146+28/-$122 (pre-batch), 25/$2496+14/$310 (W1-block v1).
+    # Anchors updated 2026-07-01 (v3): weakcap parity closed — momentum_short_weakcap (engine-live Jun 28)
+    # was MISSING from the screen; adding it removes TAO 06-24 (-$51). MOM-short 16/$392 -> 15/$443.
+    # v2 (2026-06-30): W1-regime block REVERTED (overfit, failed cross-period), REPLACED by pair_vol>=1.0.
+    # Prior anchors archived in DECISION_LOG: 23/$2146+28/-$122 (pre-batch), 25/$2496+14/$310 (W1-block v1),
+    # 25/$2496+16/$392 (v2, pre-weakcap-parity).
     _pvmax = float(getattr(th, 'momentum_short_pair_vol_max', 0.0) or 0.0)
     _pv_surv = sum(1 for r in ms if _pvmax > 0 and nf(r.get('entry_pair_volume_ratio')) is not None and nf(r.get('entry_pair_volume_ratio')) >= _pvmax)
     assert _pv_surv == 0, f"FAIL: {_pv_surv} pair_vol>={_pvmax} mom-shorts survived — vol block not applied, NOT freezing"
     assert len(ml) == 25 and round(ml_net) == 2496, f"FAIL: MOM-long {len(ml)}/${ml_net:.0f} != 25/$2496 — screen wrong, NOT freezing"
-    assert len(ms) == 16 and round(ms_net) == 392, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 16/$392 (C1 de-mux + pair-vol block?) — NOT freezing"
-    print("\n✅ VALIDATION PASSED (MOM-long 25/$2496 + MOM-short 16/$392 + 0 pair-vol survivors). Freezing.")
+    assert len(ms) == 15 and round(ms_net) == 443, f"FAIL: MOM-short {len(ms)}/${ms_net:.0f} != 15/$443 (C1 de-mux + pair-vol + weakcap?) — NOT freezing"
+    print("\n✅ VALIDATION PASSED (MOM-long 25/$2496 + MOM-short 15/$443 + 0 pair-vol survivors). Freezing.")
     # freeze — add a de-muxed P&L column so downstream analysis uses current-sizing $ directly
     cols = list(rows[0].keys()) + ['screen_sleeve', 'pnl_current_sizing']
     with open(OUT, 'w', newline='') as f:

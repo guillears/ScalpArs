@@ -1756,6 +1756,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
+            "pnl_distribution_stats": None,
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -2114,40 +2115,81 @@ def _compute_equity_curve(orders):
 
 
 def _compute_pnl_distribution(orders):
-    """Compute histogram of trade P&L percentages."""
+    """Histogram of trade P&L%.
+
+    Jul 1, 2026 rewrite (quant review of the chart):
+      • UNIFORM 0.25%-wide bins (was mixed 0.25/0.50 → equal-width bars distorted density).
+      • FIXED -2.0%..+3.0% frame so the axis is stable batch-to-batch (comparability). Cross-batch
+        the losses bottom near -1.24% and the runners reach +2.8%, so this frame contains the body
+        and shows the short-left / long-right asymmetry directly; empty end-bins are informative.
+      • Overflow bins ALWAYS present at both ends (<-2.0 / ≥+3.0) so the frame never changes width;
+        a rare fat tail lands there instead of silently clipping the shape.
+      • Each bucket carries BOTH a compact lower-edge `label` (axis) and a full `label_range`
+        (tooltip) so "which edge is this?" is unambiguous.
+    """
     closed = [o for o in orders if o.pnl_percentage is not None]
     if not closed:
         return []
-    edges = [-1.5, -1.0, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1.0, 1.5]
+    lo_edge, hi_edge, width = -2.0, 3.0, 0.25
+    n_bins = int(round((hi_edge - lo_edge) / width))
+    edges = [round(lo_edge + i * width, 2) for i in range(n_bins + 1)]
+
+    def _split(rows):
+        return (sum(1 for o in rows if o.direction == "LONG"),
+                sum(1 for o in rows if o.direction == "SHORT"))
+
     buckets = []
     for i in range(len(edges) - 1):
         lo, hi = edges[i], edges[i + 1]
-        label = f"{lo:+.2f}%"
         in_bucket = [o for o in closed if lo <= (o.pnl_percentage or 0) < hi]
+        cl, cs = _split(in_bucket)
         buckets.append({
-            "label": label,
-            "lo": lo, "hi": hi,
-            "count": len(in_bucket),
-            "count_long": sum(1 for o in in_bucket if o.direction == "LONG"),
-            "count_short": sum(1 for o in in_bucket if o.direction == "SHORT"),
+            "label": f"{lo:+.2f}", "label_range": f"{lo:+.2f}% to {hi:+.2f}%",
+            "lo": lo, "hi": hi, "count": len(in_bucket),
+            "count_long": cl, "count_short": cs, "overflow": False,
         })
-    below = [o for o in closed if (o.pnl_percentage or 0) < edges[0]]
-    above = [o for o in closed if (o.pnl_percentage or 0) >= edges[-1]]
-    if below:
-        buckets.insert(0, {
-            "label": f"<{edges[0]:+.1f}%", "lo": -999, "hi": edges[0],
-            "count": len(below),
-            "count_long": sum(1 for o in below if o.direction == "LONG"),
-            "count_short": sum(1 for o in below if o.direction == "SHORT"),
-        })
-    if above:
-        buckets.append({
-            "label": f"≥{edges[-1]:+.1f}%", "lo": edges[-1], "hi": 999,
-            "count": len(above),
-            "count_long": sum(1 for o in above if o.direction == "LONG"),
-            "count_short": sum(1 for o in above if o.direction == "SHORT"),
-        })
+    below = [o for o in closed if (o.pnl_percentage or 0) < lo_edge]
+    above = [o for o in closed if (o.pnl_percentage or 0) >= hi_edge]
+    cl, cs = _split(below)
+    buckets.insert(0, {
+        "label": f"<{lo_edge:+.1f}", "label_range": f"< {lo_edge:+.2f}%",
+        "lo": -999, "hi": lo_edge, "count": len(below),
+        "count_long": cl, "count_short": cs, "overflow": True,
+    })
+    cl, cs = _split(above)
+    buckets.append({
+        "label": f"≥{hi_edge:+.1f}", "label_range": f"≥ {hi_edge:+.2f}%",
+        "lo": hi_edge, "hi": 999, "count": len(above),
+        "count_long": cl, "count_short": cs, "overflow": True,
+    })
     return buckets
+
+
+def _compute_pnl_distribution_stats(orders):
+    """Summary stats that SUBSTANTIATE the 'asymmetric payoff' caption (Jul 1, 2026): N, win-rate,
+    mean/expectancy (per-trade E[P&L%] == mean), median, avg win, avg loss, and the payoff ratio
+    (avg win / |avg loss|). Computed from RAW pnl_percentage (not the binned counts, which lose
+    precision). Returns None when there are no closed trades."""
+    import statistics as _st
+    vals = [o.pnl_percentage for o in orders if o.pnl_percentage is not None]
+    n = len(vals)
+    if n == 0:
+        return None
+    wins = [v for v in vals if v > 0]
+    losses = [v for v in vals if v < 0]
+    mean = sum(vals) / n
+    avg_win = (sum(wins) / len(wins)) if wins else None
+    avg_loss = (sum(losses) / len(losses)) if losses else None  # negative
+    payoff = (avg_win / abs(avg_loss)) if (avg_win is not None and avg_loss) else None
+    return {
+        "n": n,
+        "wr": round(100.0 * len(wins) / n, 1),
+        "mean": round(mean, 3),          # == per-trade expectancy in %
+        "median": round(_st.median(vals), 3),
+        "avg_win": round(avg_win, 3) if avg_win is not None else None,
+        "avg_loss": round(avg_loss, 3) if avg_loss is not None else None,
+        "payoff": round(payoff, 2) if payoff is not None else None,
+    }
 
 
 def _compute_hourly_performance(orders):
@@ -2166,8 +2208,10 @@ def _compute_hourly_performance(orders):
         trades = hourly[h]
         count = len(trades)
         if count == 0:
+            # Jul 1, 2026: null (not 0) for no-trade hours so the chart draws a GAP instead of a
+            # fabricated 0%-avg / mid-height point that reads like a real breakeven bucket.
             result.append({"hour": h, "label": f"{h:02d}:00", "trades": 0, "wins": 0,
-                           "win_rate": 0, "avg_pnl_pct": 0, "longs": 0, "shorts": 0})
+                           "win_rate": None, "avg_pnl_pct": None, "longs": 0, "shorts": 0})
             continue
         wins = sum(1 for o in trades if (o.pnl or 0) > 0)
         longs = sum(1 for o in trades if o.direction == "LONG")
@@ -2199,8 +2243,9 @@ def _compute_daily_performance(orders):
         trades = daily[d]
         count = len(trades)
         if count == 0:
+            # Jul 1, 2026: null (not 0) for no-trade days — draw a gap, not a fake breakeven point.
             result.append({"day": d, "label": _DAY_LABELS[d], "trades": 0, "wins": 0,
-                           "win_rate": 0, "avg_pnl_pct": 0, "longs": 0, "shorts": 0})
+                           "win_rate": None, "avg_pnl_pct": None, "longs": 0, "shorts": 0})
             continue
         wins = sum(1 for o in trades if (o.pnl or 0) > 0)
         longs = sum(1 for o in trades if o.direction == "LONG")
@@ -2987,28 +3032,48 @@ def _compute_day_time_heatmap(orders):
 
 
 def _compute_time_buckets(orders, bucket_minutes=15):
-    """Group closed trades into time buckets and compute per-bucket stats."""
+    """Group closed trades into CLOCK-ALIGNED time buckets and compute per-bucket stats.
+
+    Jul 1, 2026 rewrite (chart review): buckets are floored to clock quarters (:00/:15/:30/:45)
+    instead of the first-trade minute, and EMPTY interior windows are FILLED so the x-axis is
+    real linear time — a 3h gap between two active windows now renders as 3h of empty buckets,
+    not one step (the old collapsed axis made "when did conditions shift?" unreadable). Filling is
+    capped at MAX_BUCKETS (48h @15min); a longer span (rare — usually a multi-day 'Total') falls
+    back to active-only so the payload can't explode. Empty filled buckets keep numeric 0 (not
+    null) on purpose: the Portfolio-Value line SHOULD span them flat (no trades = no equity move).
+    """
     from datetime import timezone
     UTC_MINUS_3 = timezone(timedelta(hours=-3))
+    MAX_BUCKETS = 192  # 48h at 15-min granularity
     try:
         timed = [(o, o.closed_at.replace(tzinfo=timezone.utc) if o.closed_at and o.closed_at.tzinfo is None else o.closed_at)
                  for o in orders if o.closed_at is not None]
         if not timed:
             return []
         timed.sort(key=lambda x: x[1])
-        first_time = timed[0][1]
+
+        def _floor(ct):
+            # clock-align to the bucket boundary within the hour (0/15/30/45 for 15-min buckets)
+            return ct.replace(second=0, microsecond=0,
+                              minute=(ct.minute // bucket_minutes) * bucket_minutes)
+
         buckets = {}
         for o, ct in timed:
-            mins_since_start = (ct - first_time).total_seconds() / 60
-            bucket_idx = int(mins_since_start // bucket_minutes)
-            bucket_key = first_time + timedelta(minutes=bucket_idx * bucket_minutes)
-            if bucket_key not in buckets:
-                buckets[bucket_key] = []
-            buckets[bucket_key].append(o)
+            buckets.setdefault(_floor(ct), []).append(o)
+
+        start_bk, end_bk = _floor(timed[0][1]), _floor(timed[-1][1])
+        span = int((end_bk - start_bk).total_seconds() // (bucket_minutes * 60)) + 1
+        if span <= MAX_BUCKETS:
+            keys = [start_bk + timedelta(minutes=bucket_minutes * i) for i in range(span)]
+        else:
+            keys = sorted(buckets.keys())  # too long to fill — active-only fallback
+        # cross-day labels when the span exceeds a day, else compact HH:MM
+        _fmt = "%m/%d %H:%M" if span > (24 * 60 // bucket_minutes) else "%H:%M"
+
         result = []
         cumulative_pnl = 0
-        for bk in sorted(buckets.keys()):
-            bucket_orders = buckets[bk]
+        for bk in keys:
+            bucket_orders = buckets.get(bk, [])
             count = len(bucket_orders)
             pnl_sum = sum(o.pnl or 0 for o in bucket_orders)
             cumulative_pnl += pnl_sum
@@ -3022,7 +3087,7 @@ def _compute_time_buckets(orders, bucket_minutes=15):
             gaps813 = [getattr(o, 'entry_ema_gap_8_13', None) for o in bucket_orders if getattr(o, 'entry_ema_gap_8_13', None) is not None]
             local_time = bk.astimezone(UTC_MINUS_3)
             result.append({
-                "time": local_time.strftime("%H:%M"),
+                "time": local_time.strftime(_fmt),
                 "trades": count,
                 "longs": longs,
                 "shorts": shorts,
@@ -3352,6 +3417,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "period_performance": [],
             "equity_curve": [],
             "pnl_distribution": [],
+            "pnl_distribution_stats": None,
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -7274,6 +7340,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "period_performance": _compute_period_performance(orders),
         "equity_curve": _compute_equity_curve(orders),
         "pnl_distribution": _compute_pnl_distribution(orders),
+        "pnl_distribution_stats": _compute_pnl_distribution_stats(orders),
         "hourly_performance": _compute_hourly_performance(orders),
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),

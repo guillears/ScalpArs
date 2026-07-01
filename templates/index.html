@@ -4239,7 +4239,7 @@
                 <!-- Performance Over Time -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance Over Time</h3>
-                    <p class="text-xs text-gray-500 mb-3">P&L grouped by 15-minute windows — identify when market conditions shifted</p>
+                    <p class="text-xs text-gray-500 mb-3">P&L grouped by clock-aligned 15-minute windows on a real linear-time axis (empty windows shown as gaps) — identify when market conditions shifted</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="performance-over-time-chart"></canvas>
                     </div>
@@ -4249,7 +4249,9 @@
                 <!-- Cumulative P&L (Equity Curve) -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Cumulative P&L (Equity Curve)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Running total P&L trade by trade — separate lines for LONG and SHORT</p>
+                    <p class="text-xs text-gray-500 mb-2">Running total P&L trade by trade — separate lines for LONG and SHORT</p>
+                    <!-- Jul 1, 2026 — peak / max-drawdown / final strip: an equity curve exists to show DD depth -->
+                    <p id="equity-curve-stats" class="text-xs mb-3 text-gray-300" style="display:none;"></p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="equity-curve-chart"></canvas>
                     </div>
@@ -4259,7 +4261,9 @@
                 <!-- P&L Distribution -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">P&L Distribution</h3>
-                    <p class="text-xs text-gray-500 mb-3">Histogram of trade P&L % — right tail longer than left = asymmetric payoff</p>
+                    <p class="text-xs text-gray-500 mb-2">Histogram of trade P&L % — right tail longer than left = asymmetric payoff. Uniform 0.25%-wide bins over a fixed −2%…+3% frame (lower edge labeled; hover for the exact range). Loss/win zones tinted around the dashed 0% line.</p>
+                    <!-- Jul 1, 2026 — summary strip substantiates the "asymmetric payoff" claim -->
+                    <p id="pnl-distribution-stats" class="text-xs mb-3 text-gray-300" style="display:none;"></p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="pnl-distribution-chart"></canvas>
                     </div>
@@ -4269,7 +4273,7 @@
                 <!-- Performance by Hour -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Hour (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by hour of day — identify best and worst trading windows. Bar opacity ∝ trade count (faint = low N = noise); no-trade hours are gaps, not 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="hourly-performance-chart"></canvas>
                     </div>
@@ -4279,7 +4283,7 @@
                 <!-- Performance by Day of Week -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Performance by Day of Week (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days</p>
+                    <p class="text-xs text-gray-500 mb-3">Win rate and avg P&L % by day of week — spot your best and worst trading days. Bar opacity ∝ trade count (faint = low N = noise); no-trade days are gaps, not 0%.</p>
                     <div style="height: 320px; position: relative;">
                         <canvas id="daily-performance-chart"></canvas>
                     </div>
@@ -4289,7 +4293,7 @@
                 <!-- Day x Time Heatmap -->
                 <div class="mt-6 pt-6 border-t border-white/10">
                     <h3 class="text-sm font-semibold text-gray-300 mb-4">Day x Time Heatmap (UTC-3)</h3>
-                    <p class="text-xs text-gray-500 mb-3">Performance by day of week crossed with 4-hour time blocks — find your optimal trading windows</p>
+                    <p class="text-xs text-gray-500 mb-3">Performance by day of week crossed with 4-hour time blocks — find your optimal trading windows. Cell opacity ∝ trade count (a 1-trade cell is faded vs a 5-trade one).</p>
                     <div class="overflow-x-auto">
                         <table id="day-time-heatmap-table" class="w-full text-xs">
                             <thead>
@@ -15360,6 +15364,15 @@
                             });
                         }
 
+                        // Left-axis (Portfolio Value) range: hug the actual equity band instead of
+                        // starting at $0, which crushed a $2.7k→$3.1k swing into a flat line at the top.
+                        let potYMin, potYMax;
+                        if (portfolioValues && portfolioValues.length) {
+                            const lo = Math.min(...portfolioValues, startingBalance);
+                            const hi = Math.max(...portfolioValues, startingBalance);
+                            const pad = Math.max((hi - lo) * 0.15, hi * 0.005, 5);
+                            potYMin = lo - pad; potYMax = hi + pad;
+                        }
                         window._potChart = new Chart(potCanvas, {
                             type: 'bar',
                             data: { labels, datasets },
@@ -15395,12 +15408,13 @@
                                     }
                                 },
                                 scales: {
-                                    x: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    x: { ticks: { color: '#6b7280', font: { size: 10 }, autoSkip: true, maxRotation: 0, autoSkipPadding: 12 }, grid: { color: 'rgba(255,255,255,0.05)' } },
                                     y: {
                                         position: 'left',
                                         title: { display: true, text: 'Portfolio Value ($)', color: '#60a5fa', font: { size: 11 } },
                                         ticks: { color: '#60a5fa', callback: v => '$' + v.toFixed(0) },
-                                        grid: { color: 'rgba(255,255,255,0.05)' }
+                                        grid: { color: 'rgba(255,255,255,0.05)' },
+                                        min: potYMin, max: potYMax,
                                     },
                                     y1: {
                                         position: 'right',
@@ -15421,6 +15435,36 @@
                 const eqCanvas = document.getElementById('equity-curve-chart');
                 const eqEmpty = document.getElementById('equity-curve-empty');
                 const eqData = data.equity_curve;
+
+                // Peak / max-drawdown / final strip (Jul 1, 2026) — computed from the cumulative
+                // series: max drawdown = deepest peak-to-trough decline in running equity.
+                const eqStatsEl = document.getElementById('equity-curve-stats');
+                if (eqStatsEl) {
+                    if (eqData && eqData.length) {
+                        let peak = -Infinity, maxDD = 0, peakSoFar = -Infinity;
+                        for (const p of eqData) {
+                            const v = p.cumulative || 0;
+                            if (v > peakSoFar) peakSoFar = v;
+                            if (v > peak) peak = v;
+                            const dd = v - peakSoFar;           // ≤ 0
+                            if (dd < maxDD) maxDD = dd;
+                        }
+                        const final = eqData[eqData.length - 1].cumulative || 0;
+                        const _f = v => (v >= 0 ? '+$' : '-$') + Math.abs(v).toFixed(2);
+                        const g = t => `<span class="text-gray-500">${t}</span>`;
+                        const finCls = final >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        eqStatsEl.innerHTML =
+                            `${g('Peak')} <span class="text-emerald-400">${_f(peak)}</span> · ` +
+                            `${g('Max DD')} <span class="text-red-400">${_f(maxDD)}</span> · ` +
+                            `${g('Final')} <span class="${finCls} font-semibold">${_f(final)}</span> · ` +
+                            `${g('trades')} ${eqData.length}`;
+                        eqStatsEl.title = 'Max DD = deepest peak-to-trough decline in cumulative P&L over the run.';
+                        eqStatsEl.style.display = '';
+                    } else {
+                        eqStatsEl.style.display = 'none';
+                    }
+                }
+
                 const eqHash = JSON.stringify(eqData || []);
                 if (eqHash !== _lastEqHash) {
                     _lastEqHash = eqHash;
@@ -15509,6 +15553,31 @@
                 const distCanvas = document.getElementById('pnl-distribution-chart');
                 const distEmpty = document.getElementById('pnl-distribution-empty');
                 const distData = data.pnl_distribution;
+
+                // Summary strip (Jul 1, 2026) — substantiates the "asymmetric payoff" caption with
+                // real numbers instead of asking the eye to guess. Refreshed every poll (cheap DOM).
+                const distStatsEl = document.getElementById('pnl-distribution-stats');
+                const dStats = data.pnl_distribution_stats;
+                if (distStatsEl) {
+                    if (dStats && dStats.n) {
+                        const _sg = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                        const meanCls = dStats.mean >= 0 ? 'text-emerald-400' : 'text-red-400';
+                        const payCls = (dStats.payoff != null && dStats.payoff >= 1) ? 'text-emerald-400' : 'text-amber-400';
+                        const g = t => `<span class="text-gray-500">${t}</span>`;
+                        distStatsEl.innerHTML =
+                            `${g('N')} ${dStats.n} · ${g('WR')} ${dStats.wr}% · ` +
+                            `${g('mean/exp')} <span class="${meanCls} font-semibold">${_sg(dStats.mean)}</span> · ` +
+                            `${g('median')} ${_sg(dStats.median)} · ` +
+                            `${g('avg win')} <span class="text-emerald-400">${dStats.avg_win != null ? _sg(dStats.avg_win) : '—'}</span> · ` +
+                            `${g('avg loss')} <span class="text-red-400">${dStats.avg_loss != null ? _sg(dStats.avg_loss) : '—'}</span> · ` +
+                            `${g('payoff')} <span class="${payCls} font-semibold">${dStats.payoff != null ? dStats.payoff.toFixed(2) + '×' : '—'}</span>`;
+                        distStatsEl.title = 'payoff = avg win / |avg loss|; ≥1× means winners are bigger than losers. mean = per-trade expectancy in %.';
+                        distStatsEl.style.display = '';
+                    } else {
+                        distStatsEl.style.display = 'none';
+                    }
+                }
+
                 const distHash = JSON.stringify(distData || []);
                 if (distHash !== _lastDistHash) {
                     _lastDistHash = distHash;
@@ -15516,8 +15585,44 @@
                     if (distData && distData.length > 0) {
                         distEmpty.style.display = 'none';
                         distCanvas.style.display = 'block';
+                        // zero boundary = first bin whose lower edge is ≥ 0 (win side). Captured in a
+                        // closure so the tint/zero-line plugin can place the divider between bars.
+                        // zero divider index. NOTE: correct as long as the histogram frame straddles 0
+                        // (current −2…+3 always has a lo:-999 overflow at idx 0 and lo:0 mid-array). If the
+                        // backend frame in _compute_pnl_distribution is ever shifted so the lowest bin is ≥0,
+                        // the `_zeroIdx <= 0 → area.left` branch below would mis-tint — keep the frame straddling 0.
+                        const _zeroIdx = distData.findIndex(d => d.lo >= 0);
+                        const _nCats = distData.length;
+                        const zonesPlugin = {
+                            id: 'pnlDistZones',
+                            beforeDatasetsDraw(chart) {
+                                const area = chart.chartArea, xs = chart.scales.x, ctx = chart.ctx;
+                                if (!area || !xs) return;
+                                let xZero;
+                                if (_zeroIdx <= 0) xZero = area.left;
+                                else if (_zeroIdx >= _nCats) xZero = area.right;
+                                else {
+                                    const a = xs.getPixelForValue(_zeroIdx - 1), b = xs.getPixelForValue(_zeroIdx);
+                                    xZero = (a + b) / 2;
+                                }
+                                ctx.save();
+                                ctx.fillStyle = 'rgba(248,113,113,0.05)';   // loss zone
+                                ctx.fillRect(area.left, area.top, xZero - area.left, area.bottom - area.top);
+                                ctx.fillStyle = 'rgba(52,211,153,0.05)';    // win zone
+                                ctx.fillRect(xZero, area.top, area.right - xZero, area.bottom - area.top);
+                                ctx.strokeStyle = 'rgba(226,232,240,0.45)';
+                                ctx.lineWidth = 1.5;
+                                ctx.setLineDash([4, 3]);
+                                ctx.beginPath();
+                                ctx.moveTo(xZero, area.top);
+                                ctx.lineTo(xZero, area.bottom);
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                        };
                         window._distChart = new Chart(distCanvas, {
                             type: 'bar',
+                            plugins: [zonesPlugin],
                             data: {
                                 labels: distData.map(d => d.label),
                                 datasets: [
@@ -15548,14 +15653,21 @@
                                         bodyColor: '#d1d5db',
                                         borderColor: 'rgba(255,255,255,0.1)',
                                         borderWidth: 1,
+                                        callbacks: {
+                                            // full range in the tooltip title so "which edge?" is unambiguous
+                                            title: (items) => {
+                                                const i = items[0].dataIndex;
+                                                return (distData[i] && distData[i].label_range) || items[0].label;
+                                            }
+                                        }
                                     }
                                 },
                                 scales: {
                                     x: {
                                         stacked: true,
-                                        ticks: { color: '#6b7280', font: { size: 10 } },
+                                        ticks: { color: '#6b7280', font: { size: 10 }, autoSkip: true, maxRotation: 0 },
                                         grid: { color: 'rgba(255,255,255,0.05)' },
-                                        title: { display: true, text: 'P&L %', color: '#9ca3af', font: { size: 11 } }
+                                        title: { display: true, text: 'P&L % (bin lower edge)', color: '#9ca3af', font: { size: 11 } }
                                     },
                                     y: {
                                         stacked: true,
@@ -15583,10 +15695,15 @@
                     if (hourData && hourData.some(h => h.trades > 0)) {
                         hourEmpty.style.display = 'none';
                         hourCanvas.style.display = 'block';
+                        // opacity ∝ trade count so a 1-trade hour reads fainter than a busy one (low-N = noise)
+                        const _hMaxN = Math.max(1, ...hourData.map(h => h.trades || 0));
                         const barColors = hourData.map(h => {
-                            if (h.trades === 0) return 'rgba(107, 114, 128, 0.3)';
-                            return h.win_rate >= 50 ? 'rgba(52, 211, 153, 0.7)' : 'rgba(248, 113, 113, 0.7)';
+                            if (h.trades === 0) return 'rgba(107, 114, 128, 0.15)';
+                            const a = (0.30 + 0.55 * (h.trades / _hMaxN)).toFixed(2);
+                            return h.win_rate >= 50 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;
                         });
+                        const barBorders = hourData.map(h => h.trades === 0 ? 'rgba(107,114,128,0.3)'
+                            : (h.win_rate >= 50 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)'));
                         window._hourChart = new Chart(hourCanvas, {
                             type: 'bar',
                             data: {
@@ -15596,7 +15713,7 @@
                                         label: 'Win Rate %',
                                         data: hourData.map(h => h.win_rate),
                                         backgroundColor: barColors,
-                                        borderColor: barColors.map(c => c.replace('0.7', '1').replace('0.3', '0.5')),
+                                        borderColor: barBorders,
                                         borderWidth: 1,
                                         yAxisID: 'y',
                                         order: 2,
@@ -15613,6 +15730,7 @@
                                         pointBackgroundColor: hourData.map(h => h.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
                                         fill: false,
                                         tension: 0.3,
+                                        spanGaps: false,   // break the line across no-trade hours (null) — no fabricated 0%
                                         yAxisID: 'y1',
                                         order: 1,
                                     }
@@ -15675,10 +15793,14 @@
                     if (dayData && dayData.some(d => d.trades > 0)) {
                         dayEmpty.style.display = 'none';
                         dayCanvas.style.display = 'block';
+                        const _dMaxN = Math.max(1, ...dayData.map(d => d.trades || 0));
                         const dayBarColors = dayData.map(d => {
-                            if (d.trades === 0) return 'rgba(107, 114, 128, 0.3)';
-                            return d.win_rate >= 50 ? 'rgba(52, 211, 153, 0.7)' : 'rgba(248, 113, 113, 0.7)';
+                            if (d.trades === 0) return 'rgba(107, 114, 128, 0.15)';
+                            const a = (0.30 + 0.55 * (d.trades / _dMaxN)).toFixed(2);
+                            return d.win_rate >= 50 ? `rgba(52, 211, 153, ${a})` : `rgba(248, 113, 113, ${a})`;
                         });
+                        const dayBarBorders = dayData.map(d => d.trades === 0 ? 'rgba(107,114,128,0.3)'
+                            : (d.win_rate >= 50 ? 'rgba(52,211,153,1)' : 'rgba(248,113,113,1)'));
                         window._dayChart = new Chart(dayCanvas, {
                             type: 'bar',
                             data: {
@@ -15688,7 +15810,7 @@
                                         label: 'Win Rate %',
                                         data: dayData.map(d => d.win_rate),
                                         backgroundColor: dayBarColors,
-                                        borderColor: dayBarColors.map(c => c.replace('0.7', '1').replace('0.3', '0.5')),
+                                        borderColor: dayBarBorders,
                                         borderWidth: 1,
                                         yAxisID: 'y',
                                         order: 2,
@@ -15705,6 +15827,7 @@
                                         pointBackgroundColor: dayData.map(d => d.avg_pnl_pct >= 0 ? 'rgba(52, 211, 153, 1)' : 'rgba(248, 113, 113, 1)'),
                                         fill: false,
                                         tension: 0.3,
+                                        spanGaps: false,   // break across no-trade days (null)
                                         yAxisID: 'y1',
                                         order: 1,
                                     }
@@ -15777,7 +15900,9 @@
                                         <span class="text-gray-600 text-[10px]">-</span></td>`;
                                 } else {
                                     const intensity = Math.min(Math.abs(cell.avg_pnl_pct) / maxAbs, 1);
-                                    const alpha = 0.15 + intensity * 0.55;
+                                    // fade low-N cells: a 1-trade cell shouldn't glow like a 5-trade one (noise)
+                                    const nf = Math.min(cell.trades / 5, 1);
+                                    const alpha = 0.10 + intensity * 0.55 * nf;
                                     const bg = cell.avg_pnl_pct >= 0
                                         ? `rgba(52, 211, 153, ${alpha})`
                                         : `rgba(248, 113, 113, ${alpha})`;

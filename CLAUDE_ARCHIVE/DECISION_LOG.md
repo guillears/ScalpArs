@@ -1812,3 +1812,11 @@ Operator asked whether any sleeve's SL should be lowered, based on the worst tro
 **Registered CURRENT_STATE watchlist G2 with pre-committed gate:** ship mom-short-specific SL −0.60 (base+wide) when N≥20 mom-short winners still show max MAE shallower than −0.60 AND ≥2 SL-depth losers accumulate; abandon if any mom-short winner dips below −0.60 and recovers. Re-run the winner-MAE table each batch.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+**MECHANISM-CORRECTION ADDENDUM (same day, operator challenge: "did you model the ATR widening and the −1.20 floor?"):** No — the first-pass counterfactual compared actual outcomes against a FLAT SL at X, implicitly deleting the widening/floor. Re-run with the exact engine formula (`effective_sl = min(base, −ATR×1.5), floor −1.20`, widen-only, trading_engine.py:9409-9427; base −0.70 signal-dead / −1.00 signal-active; NO sleeve has a fixed SL — the −0.35 json rows are untraded LOW/MEDIUM confidence tiers; only pattern cells carry fixed SLs, e.g. C1-SHORT −0.70):
+- **MOM-short base −0.70→−0.60 = NO-OP in-sample** (kills 0, saves 0): widening dominates above ATR 0.40 (effective stays −0.71..−1.20 regardless of base), and below it the EMA13-cross exits fire at −0.40..−0.56 before any SL binds. The earlier "+0.60% saving" was the flat-SL artifact. G2's lever REWRITTEN.
+- **The real mom-short lever = sleeve-specific floor −1.20→−0.90:** saves MANTA (the only SL-depth loser, −1.20→−0.90, +0.30%), kills 0 winners (deepest winner MAE −0.45; BEL/JTO whose SLs would tighten to −0.90 have troughs −0.26/−0.17). Still N=1 benefit + needs per-sleeve-floor plumbing → watchlist, gate updated (≥2 floor-depth losers + N≥20 winners with MAE shallower than −0.60).
+- **FLIP re-verified under the real formula — even stronger do-not-touch:** DEXE won with trough −1.01 vs its effective SL −1.08 (0.08 margin); ONDO won at −1.02 on the −1.20 floor. A −0.90 floor kills both.
+- **MOM-long unchanged:** TAO's 0.03 margin is on the real base −0.70 (ATR 0.35 → no widening).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

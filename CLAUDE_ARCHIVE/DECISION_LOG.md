@@ -1797,3 +1797,18 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 **ADDENDUM (same day, operator methodology correction):** the GVol sweep's old-pool leg above must NOT be read as ship support — old-pool P&L reflects OLD exit mechanisms (inadmissible as evidence for the current stack; cross-period may only REFUTE, never SUPPORT — new memory `feedback_crossperiod_refute_only`). Baseline-only verdict (v3 + 07-01, N=28): GVol≥0.85 = 12·66.7%·+0.013% avg·+$142@2×, de-mux netΔ −$71 → **WATCHLIST, not ship.** Gate: promote if the cohort stays ≤+0.10% avg on N≥20 fresh (now 12, 1 fresh). The 0.85-threshold finding stands (0.90+ = noise-fitting) as the cut IF it ever ships. CURRENT_STATE item rewritten accordingly (the earlier "SHIP-worthy via cross-period" framing retracted).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-01 — Winner-MAE (worst-trough) SL analysis by sleeve → MOM-short −0.60 registered as watchlist (G2); flip + mom-long SLs confirmed correct
+
+Operator asked whether any sleeve's SL should be lowered, based on the worst trough of WINNERS (MAE). Method: winners' worst adverse dip = the room winning trades actually need; counterfactuals use optimistic no-gap fills (negative verdicts are conservative). Pool = SCREENED_BASELINE v3 (86).
+
+- **FLIP-short (33W/13L): DO NOT tighten.** Winner MAE min −1.02 / p10 −0.79 / median −0.35; two winners used ~all of the ATR-widened ~−1.05 room (troughs −1.01/−1.02 → wins +0.68/+0.63). Every tighter SL net-negative with perfect fills: −0.30 → −11.92%, −0.50 → −2.97%, −0.70 flat → −4.69%, −1.00 → −2.31%. Mechanism: the fade structurally endures a final push before rollover. Re-confirms the Jun-28 caps-for-losers rejection on the cleaner v3 pool.
+- **MOM-long (21W/4L): leave alone — base −0.70 near-perfectly calibrated.** Deepest winner dips: TAO −0.67 (ATR 0.35, living on the BASE −0.70 with 0.03 margin) and ACT −0.66 (ATR 1.48, on the widened room). −0.60 kills both → net −2.13%. Only theoretical gain = one trade's widening (JTO −1.13→−0.70 = +0.43) — not worth breaking the high-ATR-runner protection (locked Jun-13 note).
+- **MOM-short (11W/4L): the one genuine candidate.** NO winner has ever dipped past −0.45 (median MAE −0.22) — the −0.70/−1.00-wide/−1.20 room is unused by winners, pure loser-budget. SL −0.60: kills 0 winners (margin 0.15), saves +0.60%. SL −0.50: kills 0, saves +0.76% but margin 0.05 = razor-thin. Mechanism sound: continuation trade — median winner dip −0.22; a >0.6% bounce against = thesis refuted. **NOT shipped: realized saving is N=1** (MANTA −1.20, the only SL-depth loser; SOL/AAVE/FARTCOIN exit via EMA13-cross at −0.40..−0.56 before SL binds → SL rarely binds for this sleeve).
+- **Structural takeaway:** fade (flip) needs deep SL room; continuation (momentum) needs little; today all sleeves share the same base. The differentiation worth making eventually: mom-short tighter, others unchanged.
+
+**Registered CURRENT_STATE watchlist G2 with pre-committed gate:** ship mom-short-specific SL −0.60 (base+wide) when N≥20 mom-short winners still show max MAE shallower than −0.60 AND ≥2 SL-depth losers accumulate; abandon if any mom-short winner dips below −0.60 and recovers. Re-run the winner-MAE table each batch.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

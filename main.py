@@ -646,21 +646,24 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         used_margin = sum(o.investment for o in open_orders)
         bnb_usd = trading_engine.paper_bnb_balance_usd
 
-        # Immutable starting-capital baseline = paper_balance + paper_bnb_initial_usd, set ONCE at
-        # cold start and never drifted (trading_engine cold-start init). This is the CORRECT
-        # "Starting Balance" for the equity chart. NOTE: total_portfolio = seed + closed_pnl by
-        # construction, so a curve of (seed + cumulative_pnl) lands its endpoint exactly on this
-        # total — unlike the reverse-derived current−pnl figure, which drifts by the BNB fee burn.
-        _bs_row = (await db.execute(select(BotState).limit(1))).scalar_one_or_none()
-        starting_balance = getattr(_bs_row, 'runtime_initial_total_usd', None) if _bs_row else None
+        # Starting balance (seed) = current total portfolio − realized P&L. Paper accounting
+        # guarantees total_portfolio (free + margin + BNB) = seed + closed_pnl, so subtracting the
+        # realized P&L recovers the TRUE seed — self-consistent and immune to config edits or a
+        # stale reset baseline (the old runtime_initial_total_usd wasn't re-anchored on reset). By
+        # construction the equity curve (seed + cumulative_pnl) ends exactly on total_portfolio.
+        _closed_pnl = (await db.execute(
+            select(func.coalesce(func.sum(Order.pnl), 0)).where(
+                and_(Order.status == "CLOSED", Order.is_paper == True)))).scalar() or 0
+        total_portfolio = balance + used_margin + bnb_usd
+        starting_balance = total_portfolio - _closed_pnl
 
         return {
             "usdt_balance": balance,
             "bnb_balance": round(bnb_usd, 2),
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
-            "total_portfolio": balance + used_margin + bnb_usd,
-            "starting_balance": round(starting_balance, 2) if starting_balance is not None else None,
+            "total_portfolio": round(total_portfolio, 2),
+            "starting_balance": round(starting_balance, 2),
             "is_paper": True
         }
     else:

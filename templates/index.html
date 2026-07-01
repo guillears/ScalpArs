@@ -15787,12 +15787,12 @@
                                 scales: {
                                     x: {
                                         title: { display: true, text: 'Max Adverse Excursion (worst dip) %', color: '#f87171', font: { size: 11 } },
-                                        ticks: { color: '#9ca3af', callback: v => v + '%' },
+                                        ticks: { color: '#9ca3af', callback: v => Number(v).toFixed(2) + '%' },
                                         grid: { color: 'rgba(255,255,255,0.05)' },
                                     },
                                     y: {
                                         title: { display: true, text: 'Max Favorable Excursion (best peak) %', color: '#34d399', font: { size: 11 } },
-                                        ticks: { color: '#9ca3af', callback: v => v + '%' },
+                                        ticks: { color: '#9ca3af', callback: v => Number(v).toFixed(2) + '%' },
                                         grid: { color: 'rgba(255,255,255,0.05)' },
                                     }
                                 }

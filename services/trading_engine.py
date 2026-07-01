@@ -198,6 +198,8 @@ def reset_phantom_flip_state():
 # research surface, now superseded by SCREENED_BASELINE + the live Flip Trade Log (real fills, not naked
 # fades). Their watchlist candidates (bear-70-80, qs≥3 multipliers) are already captured in CURRENT_STATE.
 # Operator principle (2026-07-01): don't collect phantoms we don't display. Empty set = seed nothing.
+# ⚠ keep this in sync with the startup-purge allowlist in database.py::init_db — if they drift, the DB
+# purge deletes a newly-allowlisted source's history (or fails to purge a newly-retired one).
 _PHANTOM_KEEP_SOURCES = {"LONG_UNMATCHED_ONLY", "MOMENTUM_SHORT_W1_REGIME"}
 
 

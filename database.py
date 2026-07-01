@@ -64,6 +64,9 @@ async def init_db():
             return 'phantom_flips' in _pf_inspect(connection).get_table_names()
         try:
             if await conn.run_sync(_has_pf):
+                # ⚠ keep this allowlist in sync with _PHANTOM_KEEP_SOURCES in services/trading_engine.py —
+                # if they drift, this purge deletes a newly-allowlisted source's history (or fails to purge
+                # a newly-retired one). Raw SQL literal (can't drop a Python set into a NOT IN cheaply).
                 _res = await conn.execute(_pf_text(
                     "DELETE FROM phantom_flips WHERE source_filter NOT IN "
                     "('LONG_UNMATCHED_ONLY', 'MOMENTUM_SHORT_W1_REGIME')"))

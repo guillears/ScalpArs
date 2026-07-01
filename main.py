@@ -9252,40 +9252,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
             "top_pair_share": round(100.0 * top_n / n, 0),
         }
 
-    # Jun 15: REGIME-ALIGNMENT helper. A flip is a fade; the live data shows the edge lives
-    # in whether the fade direction agrees with the macro (BTC EMA20 slope sign): a SHORT
-    # fade aligns with a FALLING BTC, a LONG fade with a RISING BTC. "Counter" = fade fights
-    # the macro (short into a rising BTC) = the loser cohort. Split every source by this so a
-    # blended "✗ whipsaws" verdict that's really aligned-winners + counter-losers is exposed.
-    # Forward-only: phantoms with entry_btc_ema20_slope=NULL (pre-capture) only feed the parent.
-    def _aligned(r, fd):
-        s = r.entry_btc_ema20_slope
-        if s is None:
-            return None
-        return (s < 0) if fd == "SHORT" else (s > 0)
-
-    # Jun 15 watchlist — pair ADX direction at entry (rising = entry_adx > entry_adx_prev).
-    # Live batch hint: every bear FAN-flip loser had FALLING pair-ADX; rising-ADX shorts went
-    # 5/5. Mirrors the existing `Pair ADX Dir S: rising` momentum filter (which flips bypass).
-    # Split the FAN fades by it so the fresh batch shows whether rising-pair-ADX cleanly
-    # separates flip winners from losers. Forward-only (NULL entry_adx_prev → parent only).
-    def _padx_rising(r):
-        a, p = r.entry_adx, r.entry_adx_prev
-        if a is None or p is None:
-            return None
-        return a > p
-
     rows = []
-    # (source_filter, directions_to_render, show_subrows). Jun 16 pivot to LONGs:
-    #  • FAN_RATIO_GATE SHORT DROPPED — real data is authoritative now (Flip Trade Log +
-    #    the Flip Source dashboard filter); its LONG fade (FAN ⊘SHORT) is KEPT as a tracker.
-    #  • Pair RSI>65 + LONG_UNMATCHED_ONLY SLIMMED to a single top-line (now live sources →
-    #    migrating to real data; DELETE these phantom rows at real N≥30 each).
-    #  • FAN_CONTROL kept in full (it's the never-traded control — no real-data twin).
-    #  • NEW LONG-fade trackers (fade a BLOCKED SHORT → LONG): PAIR_ADX_MAX (exhausted
-    #    down-move bounce), BTC_ADX_BLOCK_SHORT (macro-aligned), PAIR_RSI_ADX_CROSS (pair
-    #    cross mirror). Aligned/counter sub-rows carry over the one robust short-side lesson;
-    #    FAN_CONTROL LONG serves as the shared long-side control.
     # Jul 1, 2026 — phantom tracker FOCUSED on LONG_UNMATCHED_ONLY only. Every other fade source
     # (PAIR_ADX_MAX / BTC_ADX_BLOCK_SHORT / PAIR_RSI_ADX_CROSS / PAIR_TREND_FILTER / FAN_* / PASS:*) is
     # RETIRED and no longer collected (see _PHANTOM_KEEP_SOURCES in trading_engine.py): it was the
@@ -9346,120 +9313,6 @@ async def _compute_phantom_flip_performance(db, is_paper):
         else:
             r["verdict"] = "⚠ marginal"
 
-    # Jun 15: FAN-RATIO CURVE. Pool the full-range FAN fades (dead-zone FAN_RATIO_GATE +
-    # the FAN_CONTROL pass-through), bucket by fan ratio (same ranges as the Fan Accel
-    # table) × regime alignment, to find WHERE the aligned fade edge actually peaks — i.e.
-    # is the May-29 dead-zone band the best range for the FADE, or is a different range
-    # better? Only the aligned column matters (counter is the known loser). Forward-only.
-    fan_curve = []
-    _fanflips = [r for r in flips if r.source_filter in ("FAN_RATIO_GATE", "FAN_CONTROL")
-                 and r.entry_ema_gap_5_8 and r.entry_ema_gap_8_13]
-    def _fan_align(r):
-        s = r.entry_btc_ema20_slope
-        if s is None:
-            return None
-        return (s < 0) if r.flip_direction == "SHORT" else (s > 0)
-    def _mini(rs):
-        n = len(rs)
-        if n == 0:
-            return None
-        w = sum(1 for r in rs if (r.pnl_pct or 0) > 0)
-        _tot = sum((r.pnl_pct or 0) for r in rs)
-        return {"n": n, "wr": round(100.0 * w / n, 0), "avg": round(_tot / n, 3), "tot": round(_tot, 1)}
-    # Jun 18: DZ marker now tracks the LIVE fan_ratio_block_long band instead of a hardcoded
-    # May-29 snapshot — opening the 3-5 band (or any block-band edit) reflects automatically.
-    # Buckets split 5-10 (now trades) vs 10-99 (spike-vetoed) to match flip_fan_spike_max=10.
-    _dz_bands = []
-    for _p in (getattr(config.trading_config.thresholds, 'fan_ratio_block_long', '') or '').split(','):
-        _p = _p.strip()
-        if '-' in _p:
-            try:
-                _a, _bb = _p.split('-'); _dz_bands.append((float(_a), float(_bb)))
-            except (ValueError, TypeError):
-                pass
-    _in_dz = lambda lo: any(a <= lo < b for a, b in _dz_bands)
-    # Jun 19: split the old 10-99 tail into 10-15 / 15-20 / 20-99 + add per-bucket Avg/Min/Max fan
-    # so the high-fan zone (where flip_fan_spike_max=10 vetoes) is auditable — do the winners hug
-    # just above 10 (→ raise the spike block) or spread to 99? avg_fan answers "where inside the bucket".
-    for _lo, _hi in [(0.0, 0.85), (0.85, 1.0), (1.0, 1.35), (1.35, 1.65), (1.65, 2.0), (2.0, 3.0), (3.0, 5.0), (5.0, 10.0), (10.0, 15.0), (15.0, 20.0), (20.0, 99.0)]:
-        _b = [r for r in _fanflips if _lo <= (r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13) < _hi]
-        if not _b:
-            continue
-        _fans = [r.entry_ema_gap_5_8 / r.entry_ema_gap_8_13 for r in _b]
-        fan_curve.append({
-            "bucket": f"{_lo:.2f}-{_hi:.2f}",
-            "in_deadzone": _in_dz(_lo),
-            "avg_fan": round(sum(_fans) / len(_fans), 2),
-            "min_fan": round(min(_fans), 2),
-            "max_fan": round(max(_fans), 2),
-            "all": _mini(_b),
-            "aligned": _mini([r for r in _b if _fan_align(r) is True]),
-            "counter": _mini([r for r in _b if _fan_align(r) is False]),
-        })
-    # Jun 15: LEFTOVER-FILTER TEST. The FAN flip opens mid-chain (gate #8) and SKIPS the ~21
-    # downstream filters (BTC trend/slope, pair trend, breadth, vol, ATR, 1h-RSI, quality).
-    # For each downstream filter that has a SHORT-side version reconstructable from the captured
-    # entry data, split the FAN_RATIO_GATE short phantoms into KEPT (a normal short would have
-    # PASSED the filter here) vs BLOCKED (would have been rejected). If the BLOCKED side is mostly
-    # losers, that filter is a candidate flip entry gate. Verdict is N-gated (both sides ≥10).
-    # NOTE: long-only filters (ATR_GAP_LONG, BTC_ACCEL_CHASE_LONG, RSI_SPIKE_GUARD) have no short
-    # version, and SPIKE_GUARD needs live volume-spike state — those are not evaluable here.
-    _th_lf = config.trading_config.thresholds
-    def _cfg(name, dflt):
-        try:
-            v = getattr(_th_lf, name, None)
-            return float(v) if v is not None else float(dflt)
-        except (TypeError, ValueError):
-            return float(dflt)
-    _lf_breadth = _cfg('market_breadth_bear_threshold', 45.0)
-    _lf_vmin = _cfg('global_vol_min_short', 0.5)
-    _lf_vmax = _cfg('global_vol_max_short', 1.1)
-    _lf_atrmin = _cfg('pair_atr_min_short', 0.25)
-    _lf_atrmax = _cfg('pair_atr_max_short', 2.5)
-    _lf_rsi1h = _cfg('btc_1h_rsi_min_short', 35.0)
-    _lf_qmax = _cfg('entry_quality_score_block_max', 1.0)
-    # each entry: (label, predicate) — predicate(r) → True=short PASSES (kept), False=BLOCKED, None=no data
-    _lf_specs = [
-        ("BTC trend (slope ≤ 0)",   lambda r: (r.entry_btc_ema20_slope <= 0) if r.entry_btc_ema20_slope is not None else None),
-        ("BTC 1h slope ≤ 0",        lambda r: (r.entry_btc_1h_slope <= 0) if r.entry_btc_1h_slope is not None else None),
-        ("Pair trend (slope ≤ 0)",  lambda r: (r.entry_ema20_slope <= 0) if r.entry_ema20_slope is not None else None),
-        (f"Breadth bear ≥ {_lf_breadth:.0f}%", lambda r: (r.entry_bear_pct >= _lf_breadth) if r.entry_bear_pct is not None else None),
-        (f"Pair ATR in [{_lf_atrmin:.2f},{_lf_atrmax:.2f}]", lambda r: (_lf_atrmin <= r.entry_atr_pct <= _lf_atrmax) if r.entry_atr_pct is not None else None),
-        (f"Global vol in [{_lf_vmin:.2f},{_lf_vmax:.2f}]", lambda r: (_lf_vmin <= r.entry_global_volume_ratio <= _lf_vmax) if r.entry_global_volume_ratio is not None else None),
-        (f"BTC 1h RSI ≥ {_lf_rsi1h:.0f}", lambda r: (r.entry_btc_rsi_1h >= _lf_rsi1h) if r.entry_btc_rsi_1h is not None else None),
-        (f"Quality score > {_lf_qmax:.0f}", lambda r: (r.entry_quality_score > _lf_qmax) if r.entry_quality_score is not None else None),
-    ]
-    _lf_pool = [r for r in flips if r.source_filter == "FAN_RATIO_GATE" and r.flip_direction == "SHORT"]
-    leftover_filter_test = []
-    for _lbl, _pred in _lf_specs:
-        _kept, _blocked = [], []
-        for r in _lf_pool:
-            try:
-                _v = _pred(r)
-            except Exception:
-                _v = None
-            if _v is True:
-                _kept.append(r)
-            elif _v is False:
-                _blocked.append(r)
-        _k, _bk = _mini(_kept), _mini(_blocked)
-        # verdict: separation = kept_avg − blocked_avg (positive = blocking the blocked side removes losers)
-        if _k and _bk and _k["n"] >= 10 and _bk["n"] >= 10:
-            _delta = round(_k["avg"] - _bk["avg"], 3)
-            if _delta >= 0.15:
-                _verdict = "★ gate candidate"
-            elif _delta <= -0.15:
-                _verdict = "✗ inverted"
-            else:
-                _verdict = "· neutral"
-        else:
-            _delta = round((_k["avg"] - _bk["avg"]), 3) if (_k and _bk) else None
-            _verdict = "⏳ low N"
-        # ≈Δ$ (synthetic): phantoms carry no real $, so approximate per the standard ~$10k flip
-        # notional ($500 × 20×) → 1% ≈ $100. This is Δavg% × 100 (intuition only, not measured $).
-        _delta_usd = round(_delta * 100.0, 1) if _delta is not None else None
-        leftover_filter_test.append({"filter": _lbl, "kept": _k, "blocked": _bk, "delta": _delta, "delta_usd": _delta_usd, "verdict": _verdict})
-
     # Jun 17 — SOURCE × BTC-REGIME cross-tab (the BULL-MECHANISM hunt). Each flip source split by
     # regime bucket so we see WHICH signal pays in WHICH regime — not just "flips pay" but e.g.
     # "BTC_RSI_ADX_CROSS LONG in HEALTHY_BULL". Keeps source (row) AND regime (col) so we never lose
@@ -9493,8 +9346,7 @@ async def _compute_phantom_flip_performance(db, is_paper):
             "chop": _agg(_b['chop']), "all": _agg(_b['all']),
         })
 
-    return {"rows": rows, "total": total, "fan_curve": fan_curve,
-            "leftover_filter_test": leftover_filter_test, "source_regime_xtab": source_regime_xtab}
+    return {"rows": rows, "total": total, "source_regime_xtab": source_regime_xtab}
 
 
 def _compute_flip_trades(flip_orders):

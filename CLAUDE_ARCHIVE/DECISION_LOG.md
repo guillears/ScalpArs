@@ -1832,3 +1832,11 @@ E's gate ("quantify how often a short-cluster maps to one BTC bounce before desi
 - Discipline: N=5 = DISCIPLINE-OVERRIDE, direction-consistent on 4 dates (≥3-sample rule), no pair concentration, 30-50% haircut → ~+$275-380/2wk expected. Build spec + tight revert gate registered in CURRENT_STATE E (would-be-blocked shorts are retro-identifiable in any batch CSV, no new tracking needed).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-01 — Balance→Leverage Schedule: design rule fixed (threshold = TargetGross/L), guess tiers rejected
+
+Operator drafted the UI schedule with the original guess tiers (0:20/10k:15/25k:10/100k:5). Analysis: mechanically valid but never converges to constant volume — within-tier gross still compounds 3-4× (10× tier: $250k→$990k; $198k/position at $99k balance vs thin-pair engine caps $30-50k and a ~$25-30k/pos slippage ceiling). The transition phase's goal is a ramp to CONSTANT gross (lev ∝ 1/balance = the fixed-volume cap via the lev knob), so the correct generator is **threshold(L) = G/L**. Concrete table at G=$150k placeholder registered in CURRENT_STATE ①: `0:20, 10000:15, 12500:12, 15000:10, 19000:8, 25000:6, 30000:5, 37500:4, 50000:3, 75000:2, 150000:1` (overshoot ≤~30%/tier; plateau from ~$7.5k balance). Locks: G calibrated from exit_slippage_pct telemetry (not chosen a priori); schedule ends at 1× → working-capital reserve mode is the continuation past balance=G; pick-one-primary still applies. Inert at $3k either way.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

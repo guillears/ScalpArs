@@ -190,6 +190,17 @@ def reset_phantom_flip_state():
     _PFLIP_COOLDOWN.clear()
 
 
+# Jul 1, 2026 — phantom seeding allowlist. Only these sources are still COLLECTED (+ displayed):
+# LONG_UNMATCHED_ONLY (the matched-long→short fade, the ★-paying mean-reversion-sleeve candidate) and
+# MOMENTUM_SHORT_W1_REGIME (the revert-gate observability for the reverted W1 filter; inert while W1 off).
+# All other phantom fades (PAIR_ADX_MAX / BTC_ADX_BLOCK_SHORT / BTC_RSI_ADX_CROSS / FAN_RATIO_GATE /
+# FAN_CONTROL / PAIR_TREND_FILTER / Pair RSI>65 / PASS:*) are RETIRED — they were the pre-live flip-short
+# research surface, now superseded by SCREENED_BASELINE + the live Flip Trade Log (real fills, not naked
+# fades). Their watchlist candidates (bear-70-80, qs≥3 multipliers) are already captured in CURRENT_STATE.
+# Operator principle (2026-07-01): don't collect phantoms we don't display. Empty set = seed nothing.
+_PHANTOM_KEEP_SOURCES = {"LONG_UNMATCHED_ONLY", "MOMENTUM_SHORT_W1_REGIME"}
+
+
 def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None, entry_fields=None, mode='FADE'):
     """Seed a virtual position when an entry is blocked. mode='FADE' (default) opens the
     OPPOSITE direction (fade-the-block, the bear mechanism). mode='PASS' opens the SAME
@@ -204,6 +215,8 @@ def _seed_phantom_flip(pair, entry_price, blocked_direction, source, cohort=None
     try:
         if not entry_price or entry_price <= 0 or blocked_direction not in ("LONG", "SHORT"):
             return
+        if source not in _PHANTOM_KEEP_SOURCES:
+            return  # Jul 1: retired sources — collect only the allowlisted phantoms (see _PHANTOM_KEEP_SOURCES)
         # Build the entry-context dict (+ regime from globals, as open_position does).
         _ef = dict(entry_fields or {})
         _g = globals()

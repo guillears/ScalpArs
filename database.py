@@ -53,7 +53,27 @@ async def init_db():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
+    # Jul 1, 2026 — one-time cleanup: purge retired phantom-flip sources (idempotent). Only the
+    # allowlisted phantoms (LONG_UNMATCHED_ONLY + MOMENTUM_SHORT_W1_REGIME) are collected/displayed
+    # now; delete the historical rows of the retired sources so the DB matches the display. Runs every
+    # boot but only touches rows once (nothing left to delete after the first run).
+    async with engine.begin() as conn:
+        from sqlalchemy import text as _pf_text, inspect as _pf_inspect
+        def _has_pf(connection):
+            return 'phantom_flips' in _pf_inspect(connection).get_table_names()
+        try:
+            if await conn.run_sync(_has_pf):
+                _res = await conn.execute(_pf_text(
+                    "DELETE FROM phantom_flips WHERE source_filter NOT IN "
+                    "('LONG_UNMATCHED_ONLY', 'MOMENTUM_SHORT_W1_REGIME')"))
+                if getattr(_res, 'rowcount', 0):
+                    import logging
+                    logging.getLogger("database").info(f"[DB] purged {_res.rowcount} retired phantom_flip rows")
+        except Exception as _e:
+            import logging
+            logging.getLogger("database").warning(f"[DB] phantom_flip cleanup skipped: {_e}")
+
     # Auto-migrate: add new columns to existing tables if missing
     async with engine.begin() as conn:
         from sqlalchemy import text, inspect as sa_inspect

@@ -9286,21 +9286,14 @@ async def _compute_phantom_flip_performance(db, is_paper):
     #    down-move bounce), BTC_ADX_BLOCK_SHORT (macro-aligned), PAIR_RSI_ADX_CROSS (pair
     #    cross mirror). Aligned/counter sub-rows carry over the one robust short-side lesson;
     #    FAN_CONTROL LONG serves as the shared long-side control.
+    # Jul 1, 2026 — phantom tracker FOCUSED on LONG_UNMATCHED_ONLY only. Every other fade source
+    # (PAIR_ADX_MAX / BTC_ADX_BLOCK_SHORT / PAIR_RSI_ADX_CROSS / PAIR_TREND_FILTER / FAN_* / PASS:*) is
+    # RETIRED and no longer collected (see _PHANTOM_KEEP_SOURCES in trading_engine.py): it was the
+    # pre-live flip-short research surface, now superseded by SCREENED_BASELINE + the live Flip Trade Log
+    # (real fills, not naked fades). The matched-long→SHORT fade is the ★-paying mean-reversion-sleeve
+    # candidate; broken out PER PATTERN (the W6 lead candidate) + PER REGIME below.
     source_specs = [
-        # Jun 26: FAN_CONTROL + FAN_RATIO_GATE removed from this phantom table — both are LIVE now
-        # (real fade data in the Flip Trade Log / FAN-Ratio Curve), so the fade-the-block phantom is
-        # redundant. Pair RSI >65 + LONG_UNMATCHED_ONLY removed — those sleeves were eliminated.
-        ("PAIR_ADX_MAX",        ("LONG",),         True),
-        ("BTC_ADX_BLOCK_SHORT", ("LONG",),         True),
-        ("PAIR_RSI_ADX_CROSS",  ("LONG",),         True),
-        ("PAIR_TREND_FILTER",   ("LONG", "SHORT"), True),
-        # Jun 29: re-added matched-long→SHORT fade, broken out PER PATTERN cohort below (the W6
-        # bear-tailwind flip-short candidate lives here — appears as the "↳ W6" sub-row).
-        ("LONG_UNMATCHED_ONLY", ("SHORT",),        True),
-        # Jun 26: BTC_RSI_ADX_CROSS removed — its SHORT ★ ("fade BTC overbought", phantom N=28/71%/+0.41%,
-        # cell BTC RSI 70-75 +0.61%) is REFUTED cross-batch: ZERO real short fills at BTC RSI ≥70, and the
-        # adjacent real band (65-70) is 75/40%WR/-0.31%/-$1466 — a loser. Same overbought-fade phantom
-        # mirage as PAIR_RSI_OB. Its LONG fade (✗ whipsaws) was the dead bounce-long thesis. → DECISION_LOG.
+        ("LONG_UNMATCHED_ONLY", ("SHORT",), True),
     ]
     for src, _dirs, _subrows in source_specs:
         for fd in _dirs:
@@ -9312,51 +9305,29 @@ async def _compute_phantom_flip_performance(db, is_paper):
             rows.append(a)
             if not _subrows:
                 continue
-            # regime-alignment sub-rows (aligned vs counter — the robust separator)
-            for _lbl, _want in [("  ↳ aligned (macro w/ fade)", True), ("  ↳ counter (macro v/ fade)", False)]:
-                aa = _agg([r for r in sub if _aligned(r, fd) is _want])
-                if aa:
-                    aa.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
-                    rows.append(aa)
-            # pair-ADX-direction sub-rows (FAN sources only) — the rising-pair-ADX watchlist
-            if src in ("FAN_RATIO_GATE", "FAN_CONTROL"):
-                for _lbl, _want in [("  ↳ pADX rising", True), ("  ↳ pADX falling", False)]:
-                    ap = _agg([r for r in sub if _padx_rising(r) is _want])
-                    if ap:
-                        ap.update({"source": _lbl, "flip_direction": fd, "is_subrow": True})
-                        rows.append(ap)
-            # Jun 16: per-cell split of the cross gate — bucket by BTC RSI×ADX cell (5-pt grid)
-            # so a winning sub-cell isn't masked by the blended "all-cross" average (mirrors
-            # what the fan-ratio curve did for FAN). Cells shown at N≥3.
-            if src == "BTC_RSI_ADX_CROSS":
-                _cells = {}
-                for r in sub:
-                    _br, _ba = r.entry_btc_rsi, r.entry_btc_adx
-                    if _br is None or _ba is None:
-                        continue
-                    _rk, _ak = int(_br // 5 * 5), int(_ba // 5 * 5)
-                    _cells.setdefault((_rk, _ak), []).append(r)
-                for (_rk, _ak), _crs in sorted(_cells.items()):
-                    cc = _agg(_crs)
-                    if cc and cc["n"] >= 3:
-                        cc.update({"source": f"  ↳ BTCrsi{_rk}-{_rk+5} × adx{_ak}-{_ak+5}",
-                                   "flip_direction": fd, "is_subrow": True})
-                        rows.append(cc)
-            # Jun 29: per-PATTERN cohort split of the matched-long fade. entry_cohort holds the
-            # joined pattern codes (e.g. "W6", "C6+W6"); split on "+" so each individual pattern
-            # gets an aggregated row (a C6+W6 flip counts toward BOTH C6 and W6 — matches the
-            # screen methodology). The W6 flip-short candidate surfaces as "↳ W6". Cells at N≥3.
-            if src == "LONG_UNMATCHED_ONLY":
-                _pat = {}
-                for r in sub:
-                    for _p in (r.entry_cohort or "").split("+"):
-                        if _p:
-                            _pat.setdefault(_p, []).append(r)
-                for _p, _prs in sorted(_pat.items(), key=lambda x: -len(x[1])):
-                    cc = _agg(_prs)
-                    if cc and cc["n"] >= 3:
-                        cc.update({"source": f"  ↳ {_p}", "flip_direction": fd, "is_subrow": True})
-                        rows.append(cc)
+            # per-PATTERN split (entry_cohort joined codes, split on "+"; a C6+W6 flip counts toward
+            # BOTH C6 and W6 — matches the screen methodology). Threshold LOWERED 3→1 (2026-07-01) so
+            # every pattern — the W6 flip-short lead candidate especially — surfaces from trade 1;
+            # low-N rows carry the ⏳ verdict so N=1 is visible without being mistaken for signal.
+            _pat = {}
+            for r in sub:
+                for _p in (r.entry_cohort or "").split("+"):
+                    if _p:
+                        _pat.setdefault(_p, []).append(r)
+            for _p, _prs in sorted(_pat.items(), key=lambda x: -len(x[1])):
+                cc = _agg(_prs)
+                if cc and cc["n"] >= 1:
+                    cc.update({"source": f"  ↳ {_p}", "flip_direction": fd, "is_subrow": True})
+                    rows.append(cc)
+            # per-REGIME split (2026-07-01, operator ask) — which BTC regime each fade fell in + its WR.
+            _reg = {}
+            for r in sub:
+                _reg.setdefault(r.entry_btc_regime or "?", []).append(r)
+            for _rg, _rrs in sorted(_reg.items(), key=lambda x: -len(x[1])):
+                cc = _agg(_rrs)
+                if cc and cc["n"] >= 1:
+                    cc.update({"source": f"  ↳ [{_rg}]", "flip_direction": fd, "is_subrow": True})
+                    rows.append(cc)
     total = _agg(flips) or {}
     # verdict per row: does the flip pay? Concentration gates the ★ — a great-looking
     # cell driven by one sticky pair (top_pair_share>=60%) is a mirage, not an edge

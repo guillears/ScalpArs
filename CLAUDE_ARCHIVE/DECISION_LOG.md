@@ -1726,3 +1726,16 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 **BASELINE re-freeze v2 (`screen_pool.py`):** `sleeve()` MOM_SHORT now applies the pair_vol≥max block (W1 logic kept but config-disabled); anchors 14/$310 (W1-block v1) → **16/$392 (low-pair-vol cohort)**; assert switched to `0 pair_vol≥max survivors`. SCREENED_BASELINE = **87 survivors: MOM-long 25·84%·+$2496 · MOM-short 16·69%·+$392 · FLIP-short 46·72%·+$561 · TOTAL 87·75%·+$3449.** Today's batch (11) under the filter: mom-shorts −$218 → +$116 (blocks TAO/PUMP/NEAR/AVAX = −$334, keeps XLM/AAVE).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-01 — Phantom Flip Tracker: RETIRE all sources except LONG_UNMATCHED_ONLY (collect + display)
+
+Operator principle: don't run phantoms we don't display — either keep the UI or remove from the DB too. Chose the latter (stop collecting the retired sources).
+
+- **Engine (`_seed_phantom_flip`):** added an allowlist `_PHANTOM_KEEP_SOURCES = {LONG_UNMATCHED_ONLY, MOMENTUM_SHORT_W1_REGIME}` — a single gate at the top of the function; every other seed site (PAIR_ADX_MAX / BTC_ADX_BLOCK_SHORT / PAIR_RSI_ADX_CROSS / PAIR_TREND_FILTER / FAN_RATIO_GATE / FAN_CONTROL / Pair RSI>65 / PASS:*) becomes a no-op. One line, reversible.
+- **DB (`database.py::init_db`):** idempotent startup cleanup `DELETE FROM phantom_flips WHERE source_filter NOT IN (allowlist)` — purges the historical retired rows on the live server after deploy.
+- **Report (main.py + templates):** Phantom Flip Tracker now shows ONLY the LONG_UNMATCHED_ONLY matched-long→SHORT fade, broken out **per PATTERN (threshold lowered 3→1 so the W6 flip-short lead + all patterns surface from trade 1)** and **per REGIME** (operator ask). REMOVED the **Fan-Ratio Curve** + **Leftover-Filter Test** tables (UI + both export blocks). Source×BTC-Regime naturally focuses on LONG_UNMATCHED (only source left). The aligned/counter + pADX + BTC-cell sub-blocks removed (dead once FAN/cross sources retired).
+- **Why safe:** the retired sources were the PRE-LIVE flip-short research surface; flip-shorts are now LIVE and analysed via SCREENED_BASELINE + the live Flip Trade Log (real fills, not naked fades). Their watchlist candidates (bear-70-80, qs≥3 multipliers) are already captured in CURRENT_STATE — nothing lost. Observation-only, ZERO live-trading impact (phantoms never trade).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

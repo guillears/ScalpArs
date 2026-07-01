@@ -7344,7 +7344,9 @@
             totEl.className = 'font-bold ' + (monthTotal >= 0 ? 'text-emerald-400' : 'text-red-400');
             totEl.title = 'avg %/day = geometric mean over calendar trading days; the performance table’s Daily Compound Return uses bot runtime-days, so the two can differ slightly';
             document.getElementById('pnl-cal-month-counts').innerHTML =
-                `<span class="text-emerald-400">${greenDays} / ${_pnlCalFmt$(greenSum)}</span> · <span class="text-red-400">${redDays} / ${_pnlCalFmt$(Math.abs(redSum) === 0 ? 0 : redSum)}</span>`;
+                `<span class="text-gray-500">Profitable:</span> <span class="text-emerald-400">${greenDays} day${greenDays === 1 ? '' : 's'} / ${_pnlCalFmt$(greenSum)}</span>` +
+                ` <span class="text-gray-600">·</span> ` +
+                `<span class="text-gray-500">Loss:</span> <span class="text-red-400">${redDays} day${redDays === 1 ? '' : 's'} / ${_pnlCalFmt$(Math.abs(redSum) === 0 ? 0 : redSum)}</span>`;
 
             // lifetime line (ALL months, every day in the dataset) — stays constant regardless of
             // which month is displayed, so the overall experiment total survives month navigation.

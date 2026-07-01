@@ -15398,14 +15398,21 @@
                             });
                         }
 
-                        // Left-axis (Portfolio Value) range: hug the actual equity band instead of
-                        // starting at $0, which crushed a $2.7k→$3.1k swing into a flat line at the top.
-                        let potYMin, potYMax;
+                        // Align the dashed Starting Balance line (left axis) with the Bucket-P&L ZERO
+                        // line (right axis) so they share ONE breakeven horizontal at the vertical
+                        // midline: make the left axis symmetric around startingBalance and the right
+                        // axis symmetric around 0. Equity above the line = cumulative profit; a green
+                        // bar rises from it, a red bar drops below it.
+                        let potYMin, potYMax, potY1Min, potY1Max;
                         if (portfolioValues && portfolioValues.length) {
-                            const lo = Math.min(...portfolioValues, startingBalance);
-                            const hi = Math.max(...portfolioValues, startingBalance);
-                            const pad = Math.max((hi - lo) * 0.15, hi * 0.005, 5);
-                            potYMin = lo - pad; potYMax = hi + pad;
+                            let H = 0;
+                            for (const v of portfolioValues) H = Math.max(H, Math.abs(v - startingBalance));
+                            H = Math.max(H * 1.15, Math.abs(startingBalance) * 0.01, 5);
+                            potYMin = startingBalance - H; potYMax = startingBalance + H;
+                            let Hb = 0;
+                            for (const v of pnlValues) if (v != null) Hb = Math.max(Hb, Math.abs(v));
+                            Hb = Math.max(Hb * 1.15, 10);
+                            potY1Min = -Hb; potY1Max = Hb;
                         }
                         window._potChart = new Chart(potCanvas, {
                             type: 'bar',
@@ -15454,7 +15461,8 @@
                                         position: 'right',
                                         title: { display: true, text: 'Bucket P&L ($)', color: '#9ca3af', font: { size: 11 } },
                                         ticks: { color: '#9ca3af', callback: v => '$' + v.toFixed(0) },
-                                        grid: { drawOnChartArea: false }
+                                        grid: { drawOnChartArea: false },
+                                        min: potY1Min, max: potY1Max,   // symmetric around 0 → its zero aligns with Starting Balance
                                     }
                                 }
                             }

@@ -1820,3 +1820,15 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 - **MOM-long unchanged:** TAO's 0.03 margin is on the real base −0.70 (ATR 0.35 → no widening).
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+---
+
+## 2026-07-01 — Watchlist E resolved to a design: SHORT-LOSS BRAKE (quantified; concurrency CAP rejected; build pending operator go)
+
+E's gate ("quantify how often a short-cluster maps to one BTC bounce before designing the cap") executed on the CURRENT stack (SCREENED_BASELINE v3 + 07-01 batch, 72 shorts):
+- **The 06-28 −$779 cluster is mostly extinct under today's filters** — its members (C1 AAVE/HYPE, weak momentum shorts, W2+W1 PUMP) are blocked by since-shipped weakcap / bear-breadth floor / ADXD / C1→1×. Residual clustering: 11 overlap-pairs + one 3-cluster; only ONE all-loss pair (TIA+BCH −$209 = 10% of short losses).
+- **Concurrency cap REJECTED (net-negative):** the only ≥3-concurrent cluster was 3 wins (+$193, XPL/LIT/XLM correlated breakdown — the moment the short book SHOULD be loaded). A cap can't distinguish good clustering (breakdown) from bad (bounce); it forfeits more than it saves.
+- **SHORT-LOSS BRAKE (block new shorts 30min after any short-SL close): saves +$548** — blocks 5 (1W/4L: WIF −321 / JTO −129 / AGLD −128 / AAVE −38 vs 币安人生 +68), 4 distinct dates, 4 pairs, window-robust (45min +$519 / 60min +$483), and each of the 3 worst short 2h-windows (−$327/−$219/−$191) contained a brake-catchable second loss. Mechanism: a fresh short stop-out = the tape is actively bouncing against shorts — don't add; asymmetric (only reacts to realized damage, never blocks winning clusters); event-triggered state machine, not a mined feature.
+- Discipline: N=5 = DISCIPLINE-OVERRIDE, direction-consistent on 4 dates (≥3-sample rule), no pair concentration, 30-50% haircut → ~+$275-380/2wk expected. Build spec + tight revert gate registered in CURRENT_STATE E (would-be-blocked shorts are retro-identifiable in any batch CSV, no new tracking needed).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>

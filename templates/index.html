@@ -489,10 +489,13 @@
                 </div>
             </div>
             <div id="pnl-calendar-card" class="glass rounded-xl p-6">
-                <div class="flex items-center justify-between mb-3 text-sm">
+                <div class="flex items-center justify-between mb-1 text-sm">
                     <span id="pnl-cal-month-total" class="font-bold"></span>
                     <span id="pnl-cal-month-counts" class="text-xs text-gray-400"></span>
                 </div>
+                <!-- Jul 1, 2026 — lifetime line: persists across month navigation so the overall
+                     experiment total stays visible even after switching months. -->
+                <div id="pnl-cal-lifetime" class="text-xs mb-3"></div>
                 <div class="grid grid-cols-7 gap-1 text-center text-[10px] text-gray-500 mb-1">
                     <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
                 </div>
@@ -7206,6 +7209,7 @@
         // ===== Daily P&L Calendar (Jun 11, 2026) =====
         let pnlCalData = null;           // {days: {'YYYY-MM-DD': {pnl, trades, wins, wr, day_return_pct}}}
         let pnlCalYear = null, pnlCalMonth = null;  // displayed month (1-12), local
+        let pnlCalCurIdx = null;         // last-known CURRENT month as (year*12+month) — auto-rollover anchor
 
         function loadPnlCalendar() {
             const tzOffsetMin = -new Date().getTimezoneOffset(); // e.g. UTC-3 -> -180
@@ -7213,11 +7217,20 @@
                 .then(r => r.json())
                 .then(d => {
                     pnlCalData = d;
+                    const now = new Date();
+                    const curIdx = now.getFullYear() * 12 + (now.getMonth() + 1);
                     if (pnlCalYear === null) {
-                        const now = new Date();
+                        pnlCalYear = now.getFullYear();
+                        pnlCalMonth = now.getMonth() + 1;
+                    } else if (pnlCalCurIdx !== null && (pnlCalYear * 12 + pnlCalMonth) === pnlCalCurIdx
+                               && curIdx !== pnlCalCurIdx) {
+                        // The user is viewing what WAS the current month and the real month has since
+                        // rolled over → follow it to the new month. If they'd navigated to a past/future
+                        // month manually, the indices won't match and we leave their view untouched.
                         pnlCalYear = now.getFullYear();
                         pnlCalMonth = now.getMonth() + 1;
                     }
+                    pnlCalCurIdx = curIdx;
                     renderPnlCalendar();
                 })
                 .catch(() => {});
@@ -7319,8 +7332,35 @@
             document.getElementById('pnl-cal-month-counts').innerHTML =
                 `<span class="text-emerald-400">${greenDays} / ${_pnlCalFmt$(greenSum)}</span> · <span class="text-red-400">${redDays} / ${_pnlCalFmt$(Math.abs(redSum) === 0 ? 0 : redSum)}</span>`;
 
-            // streaks (over trading days only)
+            // lifetime line (ALL months, every day in the dataset) — stays constant regardless of
+            // which month is displayed, so the overall experiment total survives month navigation.
+            const lifeEl = document.getElementById('pnl-cal-lifetime');
             const allKeys = Object.keys(days).sort();
+            if (lifeEl) {
+                let lifeTotal = 0, lifeCompound = 1, lifeHasPct = false, lifeDays = 0;
+                for (const k of allKeys) {
+                    const e = days[k];
+                    lifeTotal += e.pnl;
+                    if (e.day_return_pct !== null && e.day_return_pct !== undefined) {
+                        lifeCompound *= (1 + e.day_return_pct / 100); lifeHasPct = true; lifeDays++;
+                    }
+                }
+                if (allKeys.length) {
+                    const lifePct = lifeHasPct ? (lifeCompound - 1) * 100 : null;
+                    const lifePctStr = lifePct !== null ? `  (${lifePct >= 0 ? '+' : ''}${lifePct.toFixed(2)}% compounded)` : '';
+                    const cls = lifeTotal >= 0 ? 'text-emerald-400' : 'text-red-400';
+                    const range = allKeys[0] === allKeys[allKeys.length - 1] ? allKeys[0] : `${allKeys[0]} → ${allKeys[allKeys.length - 1]}`;
+                    lifeEl.innerHTML =
+                        `<span class="text-gray-500">Total (all months):</span> ` +
+                        `<span class="${cls} font-semibold">${_pnlCalFmt$(lifeTotal)}${lifePctStr}</span> ` +
+                        `<span class="text-gray-500">· ${lifeDays} trading day${lifeDays === 1 ? '' : 's'} · ${range}</span>`;
+                    lifeEl.title = 'Cumulative across every month in this experiment (clears on paper reset). Compounded % chains each trading day’s return.';
+                } else {
+                    lifeEl.textContent = '';
+                }
+            }
+
+            // streaks (over trading days only)
             let current = 0;
             for (let i = allKeys.length - 1; i >= 0; i--) {
                 if ((days[allKeys[i]].pnl || 0) > 0) current++; else break;

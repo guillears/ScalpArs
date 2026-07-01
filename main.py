@@ -1771,6 +1771,7 @@ async def get_performance(regime: str = None, window_hours: int = None,
             "pnl_distribution": [],
             "pnl_distribution_stats": None,
             "mae_mfe": [],
+            "sleeve_performance": [],
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -2204,6 +2205,48 @@ def _compute_pnl_distribution_stats(orders):
         "avg_loss": round(avg_loss, 3) if avg_loss is not None else None,
         "payoff": round(payoff, 2) if payoff is not None else None,
     }
+
+
+def _compute_sleeve_performance(orders):
+    """Per-sleeve performance rollup (Jul 1, 2026, operator-requested) — the exact split used in
+    every batch analysis: MOM-long / MOM-short / FLIP-short (+ Total). Sleeve is derived from
+    existing columns (entry_strategy + direction), so the orders CSV already carries the raw data.
+    Columns match the analysis convention: N · WR% · Avg P&L% · Total P&L% (leverage-invariant,
+    the canonical cross-batch metric) · Net $ (as-sized) · PF (gross wins/|gross losses|) ·
+    Worst % (fat-tail visibility)."""
+    def sleeve(o):
+        if 'FLIP' in (o.entry_strategy or ''):
+            return 'Flip-Short' if o.direction == 'SHORT' else 'Flip-Long'
+        return 'Mom-Long' if o.direction == 'LONG' else 'Mom-Short'
+    groups = {}
+    for o in orders:
+        if o.pnl_percentage is None:
+            continue
+        groups.setdefault(sleeve(o), []).append(o)
+    def stats(name, g):
+        n = len(g)
+        if n == 0:
+            return None
+        wins = [o for o in g if (o.pnl_percentage or 0) > 0]
+        tot_pct = sum(o.pnl_percentage or 0 for o in g)
+        gross_w = sum(o.pnl or 0 for o in g if (o.pnl or 0) > 0)
+        gross_l = abs(sum(o.pnl or 0 for o in g if (o.pnl or 0) < 0))
+        return {
+            'sleeve': name, 'n': n,
+            'wr': round(100.0 * len(wins) / n, 1),
+            'avg_pct': round(tot_pct / n, 3),
+            'total_pct': round(tot_pct, 2),
+            'net_usd': round(sum(o.pnl or 0 for o in g), 2),
+            'pf': round(gross_w / gross_l, 2) if gross_l > 0 else (999 if gross_w > 0 else 0),
+            'worst_pct': round(min((o.pnl_percentage or 0) for o in g), 2),
+        }
+    order = ['Mom-Long', 'Mom-Short', 'Flip-Short', 'Flip-Long']
+    rows = [s for name in order if (s := stats(name, groups.get(name, [])))]
+    all_closed = [o for o in orders if o.pnl_percentage is not None]
+    total = stats('Total', all_closed)
+    if total:
+        rows.append(total)
+    return rows
 
 
 def _compute_mae_mfe(orders):
@@ -3464,6 +3507,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
             "pnl_distribution": [],
             "pnl_distribution_stats": None,
             "mae_mfe": [],
+            "sleeve_performance": [],
             "hourly_performance": [],
             "daily_performance": [],
             "day_time_heatmap": [],
@@ -7388,6 +7432,7 @@ async def _compute_performance(db: AsyncSession, regime: str = None, window_hour
         "pnl_distribution": _compute_pnl_distribution(orders),
         "pnl_distribution_stats": _compute_pnl_distribution_stats(orders),
         "mae_mfe": _compute_mae_mfe(orders),
+        "sleeve_performance": _compute_sleeve_performance(orders),
         "hourly_performance": _compute_hourly_performance(orders),
         "daily_performance": _compute_daily_performance(orders),
         "day_time_heatmap": _compute_day_time_heatmap(orders),

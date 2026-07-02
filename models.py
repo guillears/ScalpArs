@@ -838,3 +838,18 @@ class InvestorLedger(Base):
     shares_delta = Column(Float, nullable=True)       # + on deposit, − on withdraw
     note = Column(String(200), nullable=True)
     created_at = Column(DateTime, nullable=False, default=func.now())
+
+
+class NavSnapshot(Base):
+    """Daily NAV/share snapshot (Jul 2, 2026). One row per UTC-3 calendar day,
+    upserted hourly so today's row tracks live equity. NAV history is the
+    deposit/withdrawal-proof performance record (the equity curve distorts on
+    cash flows; NAV/share does not) and the basis for any future HWM fee math."""
+    __tablename__ = "nav_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(String(10), nullable=False, unique=True, index=True)  # YYYY-MM-DD (UTC-3, matches dashboard days)
+    portfolio_value = Column(Float, nullable=False)   # total equity: free + margin + unrealized + BNB
+    total_shares = Column(Float, nullable=False)
+    nav_per_share = Column(Float, nullable=False)
+    updated_at = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())

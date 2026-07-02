@@ -4342,10 +4342,11 @@
                                     <th class="px-2 py-1 text-center text-gray-400">12-16</th>
                                     <th class="px-2 py-1 text-center text-gray-400">16-20</th>
                                     <th class="px-2 py-1 text-center text-gray-400">20-24</th>
+                                    <th class="px-2 py-1 text-center text-gray-400 border-l border-white/15">Total</th>
                             </tr>
                             </thead>
                             <tbody id="day-time-heatmap-body">
-                                <tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>
                         </tbody>
                     </table>
                     </div>
@@ -4364,15 +4365,29 @@
                     <div class="text-center">
                         <p class="text-xs text-gray-500 mb-1">Portfolio Value</p>
                         <p id="portfolio-total-value" class="text-lg font-bold text-white">$0.00</p>
+                        <p id="portfolio-reserve-split" class="text-[11px] text-gray-500 mt-0.5 hidden">
+                            Tradeable <span id="portfolio-tradeable" class="text-gray-300">$0</span>
+                            · Reserve <span id="portfolio-reserve" class="text-emerald-400">$0</span>
+                        </p>
                     </div>
                     <div class="text-center">
                         <p class="text-xs text-gray-500 mb-1">NAV / Share</p>
                         <p id="portfolio-nav" class="text-lg font-bold text-cyan-400">$1.000000</p>
+                        <p id="portfolio-hwm" class="text-[11px] text-gray-500 mt-0.5 hidden">HWM <span id="portfolio-hwm-val" class="text-gray-300">$1.0000</span></p>
                     </div>
                     <div class="text-center">
                         <p class="text-xs text-gray-500 mb-1">Total Shares</p>
                         <p id="portfolio-total-shares" class="text-lg font-bold text-gray-300">0</p>
                     </div>
+                </div>
+
+                <!-- NAV / Share history (Jul 2, 2026) — deposit/withdrawal-proof performance record -->
+                <div id="nav-history-wrap" class="mb-6 hidden">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-xs font-semibold text-gray-400">NAV / Share History (daily)</h3>
+                        <span id="nav-history-range" class="text-[11px] text-gray-500"></span>
+                    </div>
+                    <div style="height: 160px;"><canvas id="nav-history-chart"></canvas></div>
                 </div>
 
                 <div class="overflow-x-auto">
@@ -7193,6 +7208,20 @@
         // API Base
         const API_BASE = '';
 
+        // Day x Time Heatmap: trade-weighted aggregate of a set of cells (marginal totals).
+        // Weighted by N so a 1-trade cell doesn't count like a 5-trade one.
+        function dtHeatmapAgg(cells) {
+            let trades = 0, wins = 0, pnlSum = 0;
+            for (const c of (cells || [])) {
+                if (!c || !c.trades) continue;
+                trades += c.trades;
+                wins += c.wins || 0;
+                pnlSum += (c.avg_pnl_pct || 0) * c.trades;
+            }
+            if (trades === 0) return { trades: 0, wins: 0, win_rate: 0, avg_pnl_pct: 0 };
+            return { trades, wins, win_rate: wins / trades * 100, avg_pnl_pct: pnlSum / trades };
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             initBalancesHidden();
@@ -9097,21 +9126,26 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
                 const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
-                lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')}`);
+                lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')} ${'Total'.padStart(12)}`);
                 const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                const dtCellStr = (cell) => {
+                    if (!cell || cell.trades === 0) return '-'.padStart(12);
+                    return `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`.padStart(12);
+                };
                 for (let d = 0; d < 7; d++) {
                     let row = dayNames[d].padEnd(6);
                     for (let b = 0; b < 6; b++) {
-                        const cell = perf.day_time_heatmap.find(c => c.day === d && c.block === b);
-                        if (!cell || cell.trades === 0) {
-                            row += ' ' + '-'.padStart(12);
-                        } else {
-                            const s = `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`;
-                            row += ' ' + s.padStart(12);
-                        }
+                        row += ' ' + dtCellStr(perf.day_time_heatmap.find(c => c.day === d && c.block === b));
                     }
+                    row += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.day === d)));
                     lines.push(row);
                 }
+                let totRow = 'Total'.padEnd(6);
+                for (let b = 0; b < 6; b++) {
+                    totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.block === b)));
+                }
+                totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap));
+                lines.push(totRow);
             }
 
             lines.push(`\n${hr2}`);
@@ -9786,6 +9820,26 @@
             return lines;
         }
 
+        // NAV/share history section (Jul 2, 2026) — shared by BOTH report builders (D12).
+        function _buildNavHistoryLines(invData, hr, hr2) {
+            const lines = [];
+            if (!invData || !(invData.nav_history || []).length) return lines;
+            const hist = invData.nav_history;
+            lines.push(`\n${hr}`);
+            lines.push('## NAV / SHARE HISTORY (daily, UTC-3)\n');
+            lines.push(`Current NAV: $${(invData.nav_per_share || 0).toFixed(6)}  |  High-Water Mark: $${(invData.nav_high_water || 0).toFixed(6)}  |  Portfolio: $${(invData.portfolio_value || 0).toFixed(2)}  |  Tradeable: $${(invData.tradeable != null ? invData.tradeable.toFixed(2) : '-')}  |  Reserve: $${(invData.reserve != null ? invData.reserve.toFixed(2) : '-')} (${invData.reserve_mode || '-'})`);
+            lines.push('');
+            lines.push(`${'Date'.padEnd(12)} ${'NAV/Share'.padStart(12)} ${'Δ day'.padStart(10)} ${'Portfolio $'.padStart(14)}`);
+            for (let i = 0; i < hist.length; i++) {
+                const h = hist[i];
+                const prev = i > 0 ? hist[i - 1].nav : null;
+                const chg = prev ? ((h.nav / prev - 1) * 100) : null;
+                const chgStr = chg == null ? '-' : `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+                lines.push(`${h.date.padEnd(12)} ${('$' + h.nav.toFixed(6)).padStart(12)} ${chgStr.padStart(10)} ${('$' + h.portfolio_value.toFixed(2)).padStart(14)}`);
+            }
+            return lines;
+        }
+
         async function copyToClipboard(text) {
             if (navigator.clipboard && window.isSecureContext) {
                 await navigator.clipboard.writeText(text);
@@ -9829,18 +9883,20 @@
                 //  that flipped the button to "Failed!". The correctly-placed copy lives later in
                 //  the report build, after the declarations + fetch.)
                 const regimeParam = _params1.length ? '?' + _params1.join('&') : '';
-                const [perfRes, cfgRes, logRes, statusRes, bnbRes] = await Promise.all([
+                const [perfRes, cfgRes, logRes, statusRes, bnbRes, invRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance${regimeParam}`),
                     fetch(`${API_BASE}/api/config`),
                     fetch(`${API_BASE}/api/config/changelog?limit=50`),
                     fetch(`${API_BASE}/api/status`),
-                    fetch(`${API_BASE}/api/bnb-swaps`)
+                    fetch(`${API_BASE}/api/bnb-swaps`),
+                    fetch(`${API_BASE}/api/investors`)
                 ]);
                 const perf = await perfRes.json();
                 const cfg = await cfgRes.json();
                 const changelog = logRes.ok ? await logRes.json() : [];
                 const status = statusRes.ok ? await statusRes.json() : null;
                 const bnbData = (bnbRes && bnbRes.ok) ? await bnbRes.json() : null;
+                const invData = (invRes && invRes.ok) ? await invRes.json() : null;
                 const lines = [];
                 const hr = '='.repeat(80);
                 const hr2 = '-'.repeat(60);
@@ -9864,6 +9920,9 @@
 
                 // --- BNB SWAP HISTORY (May 25) ---
                 lines.push(..._buildBnbSwapLines(bnbData, hr, hr2));
+
+                // --- NAV / SHARE HISTORY (Jul 2) ---
+                lines.push(..._buildNavHistoryLines(invData, hr, hr2));
 
                 // --- OVERALL PERFORMANCE ---
                 lines.push(`\n${hr}`);
@@ -10974,21 +11033,26 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
                     const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
-                    lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')}`);
+                    lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')} ${'Total'.padStart(12)}`);
                     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                    const dtCellStr = (cell) => {
+                        if (!cell || cell.trades === 0) return '-'.padStart(12);
+                        return `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`.padStart(12);
+                    };
                     for (let d = 0; d < 7; d++) {
                         let row = dayNames[d].padEnd(6);
                         for (let b = 0; b < 6; b++) {
-                            const cell = perf.day_time_heatmap.find(c => c.day === d && c.block === b);
-                            if (!cell || cell.trades === 0) {
-                                row += ' ' + '-'.padStart(12);
-                            } else {
-                                const s = `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`;
-                                row += ' ' + s.padStart(12);
-                            }
+                            row += ' ' + dtCellStr(perf.day_time_heatmap.find(c => c.day === d && c.block === b));
                         }
+                        row += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.day === d)));
                         lines.push(row);
                     }
+                    let totRow = 'Total'.padEnd(6);
+                    for (let b = 0; b < 6; b++) {
+                        totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.block === b)));
+                    }
+                    totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap));
+                    lines.push(totRow);
                 }
 
                 // --- GAP PERFORMANCE ---
@@ -11590,13 +11654,14 @@
                 const _flipSrcSplit = (document.getElementById('flip-source-filter') || {}).value || '';
                 const _dirSplit = (document.getElementById('direction-filter') || {}).value || '';
                 const _winSuffix = _buildWindowQuery('&') + (_flipSrcSplit ? `&flip_source=${encodeURIComponent(_flipSrcSplit)}` : '') + (_dirSplit ? `&direction=${encodeURIComponent(_dirSplit)}` : '');
-                const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes] = await Promise.all([
+                const [perfBullRes, perfBearRes, cfgRes, logRes, statusRes, bnbRes, invRes] = await Promise.all([
                     fetch(`${API_BASE}/api/performance?regime=BULLISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/performance?regime=BEARISH${_winSuffix}`),
                     fetch(`${API_BASE}/api/config`),
                     fetch(`${API_BASE}/api/config/changelog?limit=50`),
                     fetch(`${API_BASE}/api/status`),
-                    fetch(`${API_BASE}/api/bnb-swaps`)
+                    fetch(`${API_BASE}/api/bnb-swaps`),
+                    fetch(`${API_BASE}/api/investors`)
                 ]);
                 const perfBull = await perfBullRes.json();
                 const perfBear = await perfBearRes.json();
@@ -11604,6 +11669,7 @@
                 const changelog = logRes.ok ? await logRes.json() : [];
                 const status = statusRes.ok ? await statusRes.json() : null;
                 const bnbData = (bnbRes && bnbRes.ok) ? await bnbRes.json() : null;
+                const invData = (invRes && invRes.ok) ? await invRes.json() : null;
                 const lines = [];
                 const hr = '='.repeat(80);
                 const hr2 = '-'.repeat(60);
@@ -11627,6 +11693,9 @@
 
                 // May 25 — BNB swap history in split-report too
                 lines.push(..._buildBnbSwapLines(bnbData, hr, hr2));
+
+                // Jul 2 — NAV/share history in split-report too (D12)
+                lines.push(..._buildNavHistoryLines(invData, hr, hr2));
 
                 lines.push(`\n${sectionHr}`);
                 lines.push('### BULLISH REGIME');
@@ -16123,37 +16192,54 @@
                         const pnls = dtData.filter(c => c.trades > 0).map(c => c.avg_pnl_pct);
                         const maxAbs = Math.max(Math.abs(Math.min(...pnls)), Math.abs(Math.max(...pnls)), 0.0001);
                         const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                        // shared cell painter for inner cells AND marginal totals (same opacity-by-N + color-by-avg%)
+                        const paintCell = (cell, label, extraStyle = '') => {
+                            if (!cell || cell.trades === 0) {
+                                return `<td class="px-2 py-2 text-center" style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(255,255,255,0.05); ${extraStyle}">
+                                        <span class="text-gray-600 text-[10px]">-</span></td>`;
+                            }
+                            const intensity = Math.min(Math.abs(cell.avg_pnl_pct) / maxAbs, 1);
+                            // fade low-N cells: a 1-trade cell shouldn't glow like a 5-trade one (noise)
+                            const nf = Math.min(cell.trades / 5, 1);
+                            const alpha = 0.10 + intensity * 0.55 * nf;
+                            const bg = cell.avg_pnl_pct >= 0
+                                ? `rgba(52, 211, 153, ${alpha})`
+                                : `rgba(248, 113, 113, ${alpha})`;
+                            const pnlColor = cell.avg_pnl_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
+                            const wrColor = cell.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
+                            return `<td class="px-2 py-2 text-center" style="background: ${bg}; border: 1px solid rgba(255,255,255,0.08); ${extraStyle}"
+                                        title="${label} | ${cell.trades} trades | WR ${safe(cell.win_rate).toFixed(1)}% | Avg P&L ${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(4)}%">
+                                        <div class="font-bold ${pnlColor} text-xs">${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(2)}%</div>
+                                        <div class="text-[10px] text-gray-400">${cell.trades}t <span class="${wrColor}">${safe(cell.win_rate).toFixed(0)}%W</span></div>
+                                    </td>`;
+                        };
+                        const totalSep = 'border-left: 2px solid rgba(255,255,255,0.15);';
                         let html = '';
                         for (let d = 0; d < 7; d++) {
                             html += `<tr>`;
                             html += `<td class="px-2 py-2 font-medium text-gray-300 text-sm">${dayNames[d]}</td>`;
                             for (let b = 0; b < 6; b++) {
                                 const cell = dtData.find(c => c.day === d && c.block === b);
-                                if (!cell || cell.trades === 0) {
-                                    html += `<td class="px-2 py-2 text-center" style="background: rgba(107, 114, 128, 0.1); border: 1px solid rgba(255,255,255,0.05);">
-                                        <span class="text-gray-600 text-[10px]">-</span></td>`;
-                                } else {
-                                    const intensity = Math.min(Math.abs(cell.avg_pnl_pct) / maxAbs, 1);
-                                    // fade low-N cells: a 1-trade cell shouldn't glow like a 5-trade one (noise)
-                                    const nf = Math.min(cell.trades / 5, 1);
-                                    const alpha = 0.10 + intensity * 0.55 * nf;
-                                    const bg = cell.avg_pnl_pct >= 0
-                                        ? `rgba(52, 211, 153, ${alpha})`
-                                        : `rgba(248, 113, 113, ${alpha})`;
-                                    const pnlColor = cell.avg_pnl_pct >= 0 ? 'text-emerald-300' : 'text-red-300';
-                                    const wrColor = cell.win_rate >= 50 ? 'text-emerald-400' : 'text-red-400';
-                                    html += `<td class="px-2 py-2 text-center" style="background: ${bg}; border: 1px solid rgba(255,255,255,0.08);"
-                                        title="${cell.day_label} ${cell.block_label} | ${cell.trades} trades | WR ${safe(cell.win_rate)}% | Avg P&L ${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(4)}%">
-                                        <div class="font-bold ${pnlColor} text-xs">${safe(cell.avg_pnl_pct) >= 0 ? '+' : ''}${safe(cell.avg_pnl_pct).toFixed(2)}%</div>
-                                        <div class="text-[10px] text-gray-400">${cell.trades}t <span class="${wrColor}">${safe(cell.win_rate).toFixed(0)}%W</span></div>
-                                    </td>`;
-                                }
+                                html += paintCell(cell, `${dayNames[d]} ${cell ? cell.block_label : ''}`);
                             }
+                            // day total (all blocks)
+                            const dayAgg = dtHeatmapAgg(dtData.filter(c => c.day === d));
+                            html += paintCell(dayAgg, `${dayNames[d]} — all blocks`, totalSep);
                             html += `</tr>`;
                         }
+                        // total row (per block across all days) + grand total corner
+                        const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
+                        html += `<tr style="border-top: 2px solid rgba(255,255,255,0.15);">`;
+                        html += `<td class="px-2 py-2 font-medium text-gray-300 text-sm">Total</td>`;
+                        for (let b = 0; b < 6; b++) {
+                            const blockAgg = dtHeatmapAgg(dtData.filter(c => c.block === b));
+                            html += paintCell(blockAgg, `${blockLabels[b]} — all days`);
+                        }
+                        html += paintCell(dtHeatmapAgg(dtData), 'All trades', totalSep);
+                        html += `</tr>`;
                         dtBody.innerHTML = html;
                     } else {
-                        dtBody.innerHTML = '<tr><td colspan="7" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
+                        dtBody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-center text-gray-500">No data</td></tr>';
                     }
                 }
 
@@ -17857,6 +17943,81 @@
         // ----- Investor Portfolio -----
         let _investorsCache = [];
 
+        // NAV/share daily history chart + high-water mark (Jul 2, 2026).
+        // NAV is the deposit/withdrawal-proof performance view — the equity curve
+        // distorts on cash flows, NAV/share does not.
+        let _navHistHash = '';
+        function renderNavHistoryChart(data) {
+            const wrap = document.getElementById('nav-history-wrap');
+            const canvas = document.getElementById('nav-history-chart');
+            if (!wrap || !canvas) return;
+            const hist = data.nav_history || [];
+            if (hist.length < 2) { wrap.classList.add('hidden'); return; }  // need ≥2 days for a line
+            wrap.classList.remove('hidden');
+            const hash = JSON.stringify([hist, data.nav_high_water]);
+            if (hash === _navHistHash) return;
+            _navHistHash = hash;
+            const rangeEl = document.getElementById('nav-history-range');
+            if (rangeEl) rangeEl.textContent = `${hist[0].date} → ${hist[hist.length - 1].date}`;
+            const labels = hist.map(h => h.date.slice(5));  // MM-DD
+            const navs = hist.map(h => h.nav);
+            const hwm = data.nav_high_water;
+            if (window._navChart) window._navChart.destroy();
+            window._navChart = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'NAV / Share',
+                            data: navs,
+                            borderColor: '#22d3ee',
+                            backgroundColor: 'rgba(34, 211, 238, 0.08)',
+                            fill: true,
+                            tension: 0.25,
+                            pointRadius: hist.length > 45 ? 0 : 2,
+                            borderWidth: 2,
+                        },
+                        {
+                            label: 'High-Water Mark',
+                            data: navs.map(() => hwm),
+                            borderColor: 'rgba(251, 191, 36, 0.7)',
+                            borderDash: [6, 4],
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            fill: false,
+                        },
+                        {
+                            label: 'Breakeven ($1.00)',
+                            data: navs.map(() => 1.0),
+                            borderColor: 'rgba(156, 163, 175, 0.5)',
+                            borderDash: [3, 3],
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            fill: false,
+                        },
+                    ],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(6)}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { ticks: { color: '#6b7280', font: { size: 10 }, maxTicksLimit: 12 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                        y: { ticks: { color: '#6b7280', font: { size: 10 }, callback: (v) => '$' + Number(v).toFixed(4) }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                    },
+                },
+            });
+        }
+
         async function loadInvestors() {
             try {
                 const res = await fetch(`${API_BASE}/api/investors`);
@@ -17866,6 +18027,23 @@
                 document.getElementById('portfolio-total-value').textContent = `$${data.portfolio_value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
                 document.getElementById('portfolio-nav').textContent = `$${data.nav_per_share.toFixed(4)}`;
                 document.getElementById('portfolio-total-shares').textContent = data.total_shares.toFixed(2);
+
+                // Tradeable / Reserve split (mirrors the balance card; only shown when a reserve is active)
+                const splitEl = document.getElementById('portfolio-reserve-split');
+                if (splitEl && data.tradeable != null) {
+                    const showSplit = (data.reserve || 0) > 0 || ['schedule', 'working_capital'].includes(data.reserve_mode);
+                    splitEl.classList.toggle('hidden', !showSplit);
+                    document.getElementById('portfolio-tradeable').textContent = `$${(data.tradeable || 0).toLocaleString(undefined, {maximumFractionDigits:0})}`;
+                    document.getElementById('portfolio-reserve').textContent = `$${(data.reserve || 0).toLocaleString(undefined, {maximumFractionDigits:0})}`;
+                }
+
+                // High-water mark + NAV/share history chart
+                const hwmEl = document.getElementById('portfolio-hwm');
+                if (hwmEl && data.nav_high_water != null) {
+                    hwmEl.classList.remove('hidden');
+                    document.getElementById('portfolio-hwm-val').textContent = `$${data.nav_high_water.toFixed(4)}`;
+                }
+                renderNavHistoryChart(data);
 
                 const tbody = document.getElementById('investors-table-body');
                 if (!_investorsCache.length) {

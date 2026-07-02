@@ -23,7 +23,7 @@ from sqlalchemy import select, and_, func, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import init_db, get_db, AsyncSessionLocal
-from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip
+from models import Order, Transaction, BotState, PairData, ConfigChangeLog, BnbSwapLog, Investor, InvestorLedger, PhantomFlip, NavSnapshot
 import config
 from config import (
     trading_config, save_trading_config, load_trading_config,
@@ -62,6 +62,7 @@ _install_terminal_handler()
 _scan_task = None
 _monitor_task = None
 _bnb_swap_task = None
+_nav_task = None
 should_stop = False
 _scan_lock = asyncio.Lock()
 
@@ -150,9 +151,41 @@ async def bnb_swap_loop():
         await asyncio.sleep(interval)
 
 
+async def nav_snapshot_loop():
+    """Hourly NAV/share snapshot (Jul 2, 2026). Upserts one row per UTC-3 calendar
+    day, so today's row tracks live equity and yesterday's last write becomes the
+    end-of-day close. Skips while no shares exist (NAV undefined). Runs on the
+    server, not the browser — history accrues even with the dashboard closed."""
+    global should_stop
+    await asyncio.sleep(120)  # let engine/WS warm up so current_price is populated
+    logger.info("[NAV_LOOP] NAV snapshot loop started (hourly)")
+    while not should_stop:
+        try:
+            async with AsyncSessionLocal() as db:
+                total_shares = await _get_total_shares(db)
+                if total_shares > 0:
+                    portfolio = await _get_portfolio_value(db)
+                    nav = portfolio / total_shares
+                    today = datetime.now(timezone(timedelta(hours=-3))).strftime("%Y-%m-%d")
+                    result = await db.execute(select(NavSnapshot).where(NavSnapshot.date == today))
+                    snap = result.scalar_one_or_none()
+                    if snap:
+                        snap.portfolio_value = round(portfolio, 2)
+                        snap.total_shares = round(total_shares, 6)
+                        snap.nav_per_share = round(nav, 6)
+                    else:
+                        db.add(NavSnapshot(date=today, portfolio_value=round(portfolio, 2),
+                                           total_shares=round(total_shares, 6),
+                                           nav_per_share=round(nav, 6)))
+                    await db.commit()
+        except Exception as e:
+            logger.error(f"[NAV_LOOP] Error in NAV snapshot loop: {e}")
+        await asyncio.sleep(3600)
+
+
 async def start_background_tasks():
     """Start background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, should_stop
     should_stop = False
     
     # Start WebSocket tracker for real-time price tracking
@@ -174,19 +207,20 @@ async def start_background_tasks():
     _monitor_task = asyncio.create_task(monitor_loop())
     _scan_task = asyncio.create_task(scan_loop())
     _bnb_swap_task = asyncio.create_task(bnb_swap_loop())
-    logger.info("[STARTUP] Monitor, scan, and BNB swap loops started independently")
+    _nav_task = asyncio.create_task(nav_snapshot_loop())
+    logger.info("[STARTUP] Monitor, scan, BNB swap, and NAV snapshot loops started independently")
 
 
 async def stop_background_tasks():
     """Stop background trading tasks"""
-    global _scan_task, _monitor_task, _bnb_swap_task, should_stop
+    global _scan_task, _monitor_task, _bnb_swap_task, _nav_task, should_stop
     should_stop = True
-    
+
     # Stop WebSocket tracker
     await websocket_tracker.stop()
     logger.info("[SHUTDOWN] WebSocket price tracker stopped")
-    
-    for task in (_monitor_task, _scan_task, _bnb_swap_task):
+
+    for task in (_monitor_task, _scan_task, _bnb_swap_task, _nav_task):
         if task:
             task.cancel()
             try:
@@ -11576,8 +11610,26 @@ class InvestorRename(BaseModel):
     name: str
 
 
+def _open_unrealized_pnl(open_orders) -> float:
+    """Gross unrealized P&L of open positions from their live-tracked current_price.
+    Gross (no fee deduction): fees are paid from the BNB balance at close, and BNB
+    is already counted in portfolio value — netting fees here would double-count."""
+    total = 0.0
+    for o in open_orders:
+        cp = o.current_price
+        if not cp or cp <= 0 or not o.quantity or not o.entry_price:
+            continue
+        raw = (cp - o.entry_price) * o.quantity
+        total += raw if o.direction == "LONG" else -raw
+    return total
+
+
 async def _get_portfolio_value(db: AsyncSession) -> float:
-    """Return the total USDT portfolio value (balance + open positions margin)."""
+    """Return total equity: free balance + open margin + open UNREALIZED P&L + BNB.
+
+    Jul 2, 2026 fix: unrealized P&L was previously excluded, so NAV/share jumped
+    stepwise on every close instead of tracking true equity — and deposits made
+    while positions were open priced shares at a slightly wrong NAV."""
     await trading_engine.initialize(db)
     if trading_engine.is_paper_mode:
         balance = await trading_engine._recalculate_paper_balance(db)
@@ -11587,12 +11639,17 @@ async def _get_portfolio_value(db: AsyncSession) -> float:
         open_orders = result.scalars().all()
         used_margin = sum(o.investment for o in open_orders)
         bnb_usd = trading_engine.paper_bnb_balance_usd
-        return balance + used_margin + bnb_usd
+        return balance + used_margin + _open_unrealized_pnl(open_orders) + bnb_usd
     else:
         bal = await binance_service.get_balance()
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = bal['bnb_total'] * bnb_price if bnb_price > 0 else 0
-        return bal['usdt_total'] + bnb_usd
+        result = await db.execute(
+            select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False))
+        )
+        open_orders = result.scalars().all()
+        # usdt_total = Binance walletBalance (excludes unrealized) → add it here too
+        return bal['usdt_total'] + _open_unrealized_pnl(open_orders) + bnb_usd
 
 
 async def _get_total_shares(db: AsyncSession) -> float:
@@ -11649,11 +11706,39 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
             "created_at": inv.created_at.isoformat() if inv.created_at else None,
         })
 
+    # NAV history (last 120 days) + high-water mark, live point included via the hourly upsert
+    hist_result = await db.execute(
+        select(NavSnapshot).order_by(NavSnapshot.date.desc()).limit(120)
+    )
+    snaps = list(reversed(hist_result.scalars().all()))
+    nav_history = [{"date": s.date, "nav": round(s.nav_per_share, 6),
+                    "portfolio_value": round(s.portfolio_value, 2)} for s in snaps]
+    high_water = max((s.nav_per_share for s in snaps), default=nav)
+    high_water = max(high_water, nav)
+
+    # Tradeable / Reserve split — same engine-mirroring helper as the balance card
+    if trading_engine.is_paper_mode:
+        _free = await trading_engine._recalculate_paper_balance(db)
+        _margin_result = await db.execute(
+            select(func.coalesce(func.sum(Order.investment), 0)).where(
+                and_(Order.status == "OPEN", Order.is_paper == True))
+        )
+        _margin = _margin_result.scalar() or 0
+    else:
+        _bal = await binance_service.get_balance()
+        _free, _margin = _bal['usdt_free'], _bal['usdt_used']
+    _reserve, _tradeable, _rmode = _reserve_split(_free, _margin)
+
     return {
         "investors": rows,
         "total_shares": round(total_shares, 6),
         "nav_per_share": round(nav, 6),
         "portfolio_value": round(portfolio_value, 2),
+        "nav_history": nav_history,
+        "nav_high_water": round(high_water, 6),
+        "reserve": _reserve,
+        "tradeable": _tradeable,
+        "reserve_mode": _rmode,
     }
 
 

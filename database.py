@@ -604,6 +604,21 @@ async def init_db():
                 connection.execute(text(
                     "CREATE INDEX IF NOT EXISTS ix_investor_ledger_investor_id ON investor_ledger (investor_id)"
                 ))
+            # Jul 2, 2026 — daily NAV/share snapshots (deposit-proof performance record)
+            if 'nav_snapshots' not in inspector.get_table_names():
+                connection.execute(text("""
+                    CREATE TABLE nav_snapshots (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        date VARCHAR(10) NOT NULL UNIQUE,
+                        portfolio_value FLOAT NOT NULL,
+                        total_shares FLOAT NOT NULL,
+                        nav_per_share FLOAT NOT NULL,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """))
+                connection.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_nav_snapshots_date ON nav_snapshots (date)"
+                ))
 
         await conn.run_sync(_migrate)
 

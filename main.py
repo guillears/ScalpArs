@@ -164,7 +164,14 @@ async def nav_snapshot_loop():
             async with AsyncSessionLocal() as db:
                 total_shares = await _get_total_shares(db)
                 if total_shares > 0:
+                    # _get_portfolio_value raises on a failed live balance fetch (C1) —
+                    # caught below, snapshot skipped, retried next hour. The <=0 guard is
+                    # a second line of defense: never persist a zero/negative-equity NAV.
                     portfolio = await _get_portfolio_value(db)
+                    if portfolio <= 0:
+                        logger.warning(f"[NAV_LOOP] Skipping snapshot: non-positive portfolio value {portfolio}")
+                        await asyncio.sleep(3600)
+                        continue
                     nav = portfolio / total_shares
                     today = datetime.now(timezone(timedelta(hours=-3))).strftime("%Y-%m-%d")
                     result = await db.execute(select(NavSnapshot).where(NavSnapshot.date == today))
@@ -580,6 +587,9 @@ async def reset_trading(direction: str = "ALL", db: AsyncSession = Depends(get_d
         await db.execute(
             delete(PhantomFlip).where(PhantomFlip.is_paper == is_paper)
         )
+        # NAV snapshots: a full reset re-seeds the balance, so keeping old rows would
+        # record the reset as a fake performance cliff. Fresh record per run.
+        await db.execute(delete(NavSnapshot))
         import services.trading_engine as _te
         _te.reset_phantom_flip_state()
 
@@ -709,8 +719,12 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         _closed_pnl = (await db.execute(
             select(func.coalesce(func.sum(Order.pnl), 0)).where(
                 and_(Order.status == "CLOSED", Order.is_paper == True)))).scalar() or 0
-        total_portfolio = balance + used_margin + bnb_usd
-        starting_balance = total_portfolio - _closed_pnl
+        # Jul 2 review I1: card total = TRUE equity (incl. open unrealized), matching the
+        # Portfolio panel's NAV base. The SEED stays derived from realized components only —
+        # the equity curve accumulates CLOSED P&L, so its anchor must not wobble intraday.
+        _realized_total = balance + used_margin + bnb_usd
+        total_portfolio = _realized_total + _open_unrealized_pnl(open_orders)
+        starting_balance = _realized_total - _closed_pnl
 
         _reserve, _tradeable, _rmode = _reserve_split(balance, used_margin)
 
@@ -719,6 +733,8 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
             "bnb_balance": round(bnb_usd, 2),
             "bnb_balance_is_usd": True,
             "usdt_in_orders": used_margin,
+            "open_orders_count": len(open_orders),
+            "max_open_positions": config.trading_config.investment.max_open_positions,
             "total_portfolio": round(total_portfolio, 2),
             "starting_balance": round(starting_balance, 2),
             "reserve": _reserve,
@@ -731,14 +747,21 @@ async def get_balance(db: AsyncSession = Depends(get_db)):
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = balance['bnb_total'] * bnb_price if bnb_price > 0 else 0
         usdt_free = balance['usdt_free']
-        total = balance['usdt_total'] + bnb_usd
+        _live_open = (await db.execute(
+            select(Order).where(
+                and_(Order.status == "OPEN", Order.is_paper == False)))).scalars().all()
+        # walletBalance excludes unrealized on Binance futures → add it (true equity, review I1)
+        total = balance['usdt_total'] + _open_unrealized_pnl(_live_open) + bnb_usd
         _reserve, _tradeable, _rmode = _reserve_split(usdt_free, balance['usdt_used'])
+        _live_open_count = len(_live_open)
         return {
             "usdt_balance": usdt_free,
             "bnb_balance": balance['bnb_total'],
             "bnb_balance_usd": round(bnb_usd, 2),
             "bnb_balance_is_usd": False,
             "usdt_in_orders": balance['usdt_used'],
+            "open_orders_count": _live_open_count,
+            "max_open_positions": config.trading_config.investment.max_open_positions,
             "total_portfolio": round(total, 2),
             "starting_balance": None,  # live: no paper seed; chart falls back to reverse-derivation
             "reserve": _reserve,
@@ -1277,7 +1300,10 @@ async def get_pnl_calendar(tz_offset_min: int = 0, db: AsyncSession = Depends(ge
 
     portfolio_now = None
     try:
-        portfolio_now = await _get_portfolio_value(db)
+        # REALIZED equity only (review I2): the day-return back-walk pairs closed-P&L
+        # deltas with a closed-P&L baseline — including live unrealized here would make
+        # every HISTORICAL day's % drift intraday while positions are open.
+        portfolio_now = (await _portfolio_components(db))["realized_equity"]
     except Exception:
         pass
     if portfolio_now is not None:
@@ -11624,32 +11650,53 @@ def _open_unrealized_pnl(open_orders) -> float:
     return total
 
 
-async def _get_portfolio_value(db: AsyncSession) -> float:
-    """Return total equity: free balance + open margin + open UNREALIZED P&L + BNB.
+async def _portfolio_components(db: AsyncSession) -> dict:
+    """Single source of truth for equity components (Jul 2, 2026 review refactor).
 
-    Jul 2, 2026 fix: unrealized P&L was previously excluded, so NAV/share jumped
-    stepwise on every close instead of tracking true equity — and deposits made
-    while positions were open priced shares at a slightly wrong NAV."""
+    Returns {free, margin, unrealized, bnb, realized_equity, total_equity}.
+    total_equity = TRUE equity (includes open unrealized P&L); realized_equity
+    excludes it (stable seed/day-return baseline).
+
+    Raises RuntimeError when the live balance fetch fails — get_balance fail-opens
+    to zeros, and persisting those as NAV or pricing share issuance against them
+    would corrupt the record (review C1). Callers either surface the error (API)
+    or skip the cycle (snapshot loop)."""
     await trading_engine.initialize(db)
     if trading_engine.is_paper_mode:
-        balance = await trading_engine._recalculate_paper_balance(db)
+        free = await trading_engine._recalculate_paper_balance(db)
+        await trading_engine._recalculate_paper_bnb(db)
         result = await db.execute(
             select(Order).where(and_(Order.status == "OPEN", Order.is_paper == True))
         )
         open_orders = result.scalars().all()
-        used_margin = sum(o.investment for o in open_orders)
+        margin = sum(o.investment for o in open_orders)
         bnb_usd = trading_engine.paper_bnb_balance_usd
-        return balance + used_margin + _open_unrealized_pnl(open_orders) + bnb_usd
+        realized = free + margin + bnb_usd
     else:
         bal = await binance_service.get_balance()
+        if not bal.get('ok', True):
+            raise RuntimeError("Binance balance fetch failed — refusing zero-equity fallback")
         bnb_price = await binance_service.get_bnb_price()
         bnb_usd = bal['bnb_total'] * bnb_price if bnb_price > 0 else 0
         result = await db.execute(
             select(Order).where(and_(Order.status == "OPEN", Order.is_paper == False))
         )
         open_orders = result.scalars().all()
-        # usdt_total = Binance walletBalance (excludes unrealized) → add it here too
-        return bal['usdt_total'] + _open_unrealized_pnl(open_orders) + bnb_usd
+        free, margin = bal['usdt_free'], bal['usdt_used']
+        # usdt_total = Binance walletBalance (excludes unrealized)
+        realized = bal['usdt_total'] + bnb_usd
+    unrealized = _open_unrealized_pnl(open_orders)
+    return {"free": free, "margin": margin, "unrealized": unrealized, "bnb": bnb_usd,
+            "realized_equity": realized, "total_equity": realized + unrealized}
+
+
+async def _get_portfolio_value(db: AsyncSession) -> float:
+    """Total TRUE equity: free + margin + open unrealized P&L + BNB.
+
+    Jul 2, 2026 fix: unrealized P&L was previously excluded, so NAV/share jumped
+    stepwise on every close instead of tracking true equity — and deposits made
+    while positions were open priced shares at a slightly wrong NAV."""
+    return (await _portfolio_components(db))["total_equity"]
 
 
 async def _get_total_shares(db: AsyncSession) -> float:
@@ -11688,7 +11735,10 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
     investors = result.scalars().all()
 
     total_shares = await _get_total_shares(db)
-    portfolio_value = await _get_portfolio_value(db)
+    # One components read serves portfolio value AND the reserve split — the previous
+    # two-pass version could straddle a monitor-loop commit (review minor).
+    comps = await _portfolio_components(db)
+    portfolio_value = comps["total_equity"]
     nav = portfolio_value / total_shares if total_shares > 0 else 1.0
 
     rows = []
@@ -11706,28 +11756,20 @@ async def list_investors(db: AsyncSession = Depends(get_db)):
             "created_at": inv.created_at.isoformat() if inv.created_at else None,
         })
 
-    # NAV history (last 120 days) + high-water mark, live point included via the hourly upsert
+    # NAV history (last 120 days shown) + high-water mark, live point included via the hourly upsert
     hist_result = await db.execute(
         select(NavSnapshot).order_by(NavSnapshot.date.desc()).limit(120)
     )
     snaps = list(reversed(hist_result.scalars().all()))
     nav_history = [{"date": s.date, "nav": round(s.nav_per_share, 6),
                     "portfolio_value": round(s.portfolio_value, 2)} for s in snaps]
-    high_water = max((s.nav_per_share for s in snaps), default=nav)
-    high_water = max(high_water, nav)
+    # HWM over the WHOLE table, not the 120-day display window — a windowed max would
+    # silently decay once an early peak scrolls out (review I4; fee math depends on this)
+    hwm_result = await db.execute(select(func.max(NavSnapshot.nav_per_share)))
+    high_water = max(hwm_result.scalar() or 0.0, nav)
 
     # Tradeable / Reserve split — same engine-mirroring helper as the balance card
-    if trading_engine.is_paper_mode:
-        _free = await trading_engine._recalculate_paper_balance(db)
-        _margin_result = await db.execute(
-            select(func.coalesce(func.sum(Order.investment), 0)).where(
-                and_(Order.status == "OPEN", Order.is_paper == True))
-        )
-        _margin = _margin_result.scalar() or 0
-    else:
-        _bal = await binance_service.get_balance()
-        _free, _margin = _bal['usdt_free'], _bal['usdt_used']
-    _reserve, _tradeable, _rmode = _reserve_split(_free, _margin)
+    _reserve, _tradeable, _rmode = _reserve_split(comps["free"], comps["margin"])
 
     return {
         "investors": rows,
@@ -11788,6 +11830,8 @@ async def investor_deposit(body: InvestorDeposit, db: AsyncSession = Depends(get
         raise HTTPException(404, "Investor not found")
 
     nav = await _get_nav_per_share(db)
+    if nav <= 0:
+        raise HTTPException(503, "NAV unavailable — refusing to price share issuance (retry shortly)")
     new_shares = body.amount / nav
     inv.shares += new_shares
     inv.total_deposited += body.amount
@@ -11807,6 +11851,8 @@ async def investor_withdraw(body: InvestorWithdraw, db: AsyncSession = Depends(g
         raise HTTPException(404, "Investor not found")
 
     nav = await _get_nav_per_share(db)
+    if nav <= 0:
+        raise HTTPException(503, "NAV unavailable — refusing to price share redemption (retry shortly)")
     shares_needed = body.amount / nav
 
     if shares_needed > inv.shares + 1e-9:

@@ -249,6 +249,7 @@
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">USDT in Open Orders</p>
                     <p id="usdt-orders" class="text-2xl font-bold text-yellow-400">$0.00</p>
+                    <p id="usdt-orders-count" class="text-xs text-gray-500 mt-1"></p>
                 </div>
                 <div class="glass rounded-xl p-5">
                     <p class="text-sm text-gray-400 mb-1">Total Portfolio Value</p>
@@ -7222,6 +7223,14 @@
             return { trades, wins, win_rate: wins / trades * 100, avg_pnl_pct: pnlSum / trades };
         }
 
+        // Text-export cell formatter for the heatmap — shared by BOTH report builders.
+        // Width 16: marginal totals like "85t 68%W +0.35%" are 15 chars and sheared the
+        // old 12-char columns (review I5).
+        function dtHeatmapCellStr(cell, w = 16) {
+            if (!cell || cell.trades === 0) return '-'.padStart(w);
+            return `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`.padStart(w);
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             initBalancesHidden();
@@ -7985,6 +7994,10 @@
                     }
                 }
                 document.getElementById('usdt-orders').textContent = formatUSD(data.usdt_in_orders);
+                const ordCountEl = document.getElementById('usdt-orders-count');
+                if (ordCountEl && data.open_orders_count != null) {
+                    ordCountEl.textContent = `Open Positions: ${data.open_orders_count}`;
+                }
                 document.getElementById('total-portfolio').textContent = formatUSD(data.total_portfolio);
             } catch (e) {
                 console.error('Error loading balance:', e);
@@ -9126,25 +9139,21 @@
                 lines.push(`\n${hr2}`);
                 lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
                 const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
-                lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')} ${'Total'.padStart(12)}`);
+                lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(16)).join(' ')} ${'Total'.padStart(16)}`);
                 const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                const dtCellStr = (cell) => {
-                    if (!cell || cell.trades === 0) return '-'.padStart(12);
-                    return `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`.padStart(12);
-                };
                 for (let d = 0; d < 7; d++) {
                     let row = dayNames[d].padEnd(6);
                     for (let b = 0; b < 6; b++) {
-                        row += ' ' + dtCellStr(perf.day_time_heatmap.find(c => c.day === d && c.block === b));
+                        row += ' ' + dtHeatmapCellStr(perf.day_time_heatmap.find(c => c.day === d && c.block === b));
                     }
-                    row += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.day === d)));
+                    row += ' ' + dtHeatmapCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.day === d)));
                     lines.push(row);
                 }
                 let totRow = 'Total'.padEnd(6);
                 for (let b = 0; b < 6; b++) {
-                    totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.block === b)));
+                    totRow += ' ' + dtHeatmapCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.block === b)));
                 }
-                totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap));
+                totRow += ' ' + dtHeatmapCellStr(dtHeatmapAgg(perf.day_time_heatmap));
                 lines.push(totRow);
             }
 
@@ -9827,7 +9836,7 @@
             const hist = invData.nav_history;
             lines.push(`\n${hr}`);
             lines.push('## NAV / SHARE HISTORY (daily, UTC-3)\n');
-            lines.push(`Current NAV: $${(invData.nav_per_share || 0).toFixed(6)}  |  High-Water Mark: $${(invData.nav_high_water || 0).toFixed(6)}  |  Portfolio: $${(invData.portfolio_value || 0).toFixed(2)}  |  Tradeable: $${(invData.tradeable != null ? invData.tradeable.toFixed(2) : '-')}  |  Reserve: $${(invData.reserve != null ? invData.reserve.toFixed(2) : '-')} (${invData.reserve_mode || '-'})`);
+            lines.push(`Current NAV: $${(invData.nav_per_share || 0).toFixed(6)}  |  High-Water Mark: $${(invData.nav_high_water || 0).toFixed(6)}  |  Portfolio: $${(invData.portfolio_value || 0).toFixed(2)}  |  Tradeable: ${(invData.tradeable != null ? '$' + invData.tradeable.toFixed(2) : '-')}  |  Reserve: ${(invData.reserve != null ? '$' + invData.reserve.toFixed(2) : '-')} (${invData.reserve_mode || '-'})`);
             lines.push('');
             lines.push(`${'Date'.padEnd(12)} ${'NAV/Share'.padStart(12)} ${'Δ day'.padStart(10)} ${'Portfolio $'.padStart(14)}`);
             for (let i = 0; i < hist.length; i++) {
@@ -11033,25 +11042,21 @@
                     lines.push(`\n${hr2}`);
                     lines.push('## Day x Time Heatmap (UTC-3, 4h blocks)\n');
                     const blockLabels = ['00-04', '04-08', '08-12', '12-16', '16-20', '20-24'];
-                    lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(12)).join(' ')} ${'Total'.padStart(12)}`);
+                    lines.push(`${'Day'.padEnd(6)} ${blockLabels.map(b => b.padStart(16)).join(' ')} ${'Total'.padStart(16)}`);
                     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                    const dtCellStr = (cell) => {
-                        if (!cell || cell.trades === 0) return '-'.padStart(12);
-                        return `${cell.trades}t ${cell.win_rate.toFixed(0)}%W ${(cell.avg_pnl_pct >= 0 ? '+' : '') + cell.avg_pnl_pct.toFixed(2)}%`.padStart(12);
-                    };
                     for (let d = 0; d < 7; d++) {
                         let row = dayNames[d].padEnd(6);
                         for (let b = 0; b < 6; b++) {
-                            row += ' ' + dtCellStr(perf.day_time_heatmap.find(c => c.day === d && c.block === b));
+                            row += ' ' + dtHeatmapCellStr(perf.day_time_heatmap.find(c => c.day === d && c.block === b));
                         }
-                        row += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.day === d)));
+                        row += ' ' + dtHeatmapCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.day === d)));
                         lines.push(row);
                     }
                     let totRow = 'Total'.padEnd(6);
                     for (let b = 0; b < 6; b++) {
-                        totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.block === b)));
+                        totRow += ' ' + dtHeatmapCellStr(dtHeatmapAgg(perf.day_time_heatmap.filter(c => c.block === b)));
                     }
-                    totRow += ' ' + dtCellStr(dtHeatmapAgg(perf.day_time_heatmap));
+                    totRow += ' ' + dtHeatmapCellStr(dtHeatmapAgg(perf.day_time_heatmap));
                     lines.push(totRow);
                 }
 
@@ -18043,7 +18048,9 @@
                     hwmEl.classList.remove('hidden');
                     document.getElementById('portfolio-hwm-val').textContent = `$${data.nav_high_water.toFixed(4)}`;
                 }
-                renderNavHistoryChart(data);
+                // Own try: a Chart.js failure (CDN hiccup) must not abort the investors
+                // table render below (review I3)
+                try { renderNavHistoryChart(data); } catch (chartErr) { console.error('NAV chart render failed:', chartErr); }
 
                 const tbody = document.getElementById('investors-table-body');
                 if (!_investorsCache.length) {

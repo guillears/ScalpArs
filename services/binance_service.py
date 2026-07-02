@@ -304,6 +304,7 @@ class BinanceService:
                     break
             
             return {
+                'ok': True,
                 'usdt_free': usdt_free,
                 'usdt_used': float(usdt_balance.get('used', 0)),
                 'usdt_total': usdt_wallet,
@@ -313,7 +314,11 @@ class BinanceService:
             }
         except Exception as e:
             logger.error(f"[BINANCE] Error fetching balance: {e}")
+            # 'ok': False lets callers distinguish a FAILED fetch from a genuinely
+            # empty account — zeros must never be persisted as NAV or used to price
+            # share issuance (Jul 2 review C1).
             return {
+                'ok': False,
                 'usdt_free': 0,
                 'usdt_used': 0,
                 'usdt_total': 0,
